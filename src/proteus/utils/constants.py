@@ -1,7 +1,6 @@
 # Physical, numerical, etc constants
 from __future__ import annotations
 
-# Astronomical constants
 L_sun = 3.828e26  # W, IAU definition
 R_sun = 6.957e8  # m
 R_sun_cm = 100 * R_sun  # cm
@@ -17,6 +16,29 @@ M_core_earth = 1.94e24  # kg
 # ~500 GPa. Above this pressure the high-pressure power-law liquidus branch is
 # an extrapolation, so a superheat margin evaluated there is uncertain.
 FEI2021_LIQUIDUS_P_CALIB_PA = 500e9  # Pa
+# EOS name prefixes of the PALEOS family. The mantle EOS is matched to derive
+# the solidus from mushy_zone_factor; the config validator matches the core
+# and ice-layer EOS too.
+PALEOS_EOS_PREFIXES = ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
+# Temperature-dependent silicate EOS whose energetics read melting_dir and the WB P-S set.
+TDEP_EOS_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
+# Zalmoxis EOS component of each dissolved volatile species that has a table.
+VOLATILE_EOS_MAP = {'H2O': 'PALEOS:H2O', 'H2': 'Chabrier:H'}
+# PALEOS keys of the Zalmoxis material registry (load_zalmoxis_material_dictionaries).
+PALEOS_REGISTRY_KEYS = frozenset(
+    {
+        'PALEOS:iron',
+        'PALEOS:MgSiO3',
+        'PALEOS:H2O',
+        'PALEOS-2phase:MgSiO3',
+        'PALEOS-2phase:MgSiO3-highres',
+        'PALEOS-API:iron',
+        'PALEOS-API:MgSiO3',
+        'PALEOS-API:H2O',
+        'PALEOS-API-2phase:MgSiO3',
+    }
+)
+
 mol = 6.02214076e23  # mol definition
 
 # Earth heat flux, globally averaged [W m-2]
@@ -45,10 +67,58 @@ const_k = 1.38065812e-23  # Boltzman thermodynamic constant
 const_sigma = 5.67051196e-8  # Stefan-Boltzman constant
 const_G = 6.67428e-11  # Gravitational constant (2006 measurements)
 const_Nav = 6.02214076e23  # Avogadro's constant [mol-1]
+const_mp = 1.6726231e-27  # Proton mass [kg]
 B_ein = 2.5
 
-# Supported gases
+# CODATA electron rest mass, expressed as a molar mass [g mol-1]; not an
+# element, so it doesn't belong in element_mmw.
+electron_molar_mass = 5.4858e-4
+
+# Supported volatiles
 vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
+
+# Gases VULCAN can condense (it has their saturation pressure and growth rate),
+# with the bulk density of their condensate particles [g cm-3].
+CHEM_CONDENSATE_DENSITY = {
+    'C': 2.26,  # graphite
+    'H2O': 1.0,  # liquid water, VULCAN's own value
+    'H2SO4': 1.83,  # liquid sulfuric acid
+    'NH3': 0.82,  # ammonia ice
+    'S2': 2.07,  # orthorhombic sulfur
+    'S8': 2.07,  # orthorhombic sulfur
+}
+
+# Supported vapours
+vap_list = [
+    'SiO',
+    'SiO2',
+    'Si',
+    'Na',
+    'K',
+    'Ti',
+    'TiO',
+    'TiO2',
+    'Mg',
+    'MgO',
+    'Al',
+    'HAlO2',
+    'SiH',
+    'SiH4',
+    'Fe',
+    'FeO',
+    'FeO2H2',
+    'CaO',
+    'NaOH',
+    'Ca',
+    'KOH',
+    'V',
+    'Mg2',
+    'VO',
+    'AlO',
+    'Na2',
+    'NaO',
+]
+
 prt_gases = [
     'C2H2',
     'C2H4',
@@ -85,23 +155,63 @@ prt_cia_species = [
     'O2--O2',
 ]
 prt_ignored_gases = {'e-', 'MMW', 'nabla_ad'}
-vap_list = ['SiO']  # just one for now
 
-# Noble gases. Each is chemically inert, and its gas species and its element
-# are the same monatomic entity. They are full members of both gas_list (the
-# modelled gas species) and element_list (the supported elements), so they are
-# tracked in the helpfile schema, the surface pressure, and the whole-planet
-# mass balance without special-casing. They are opt-in per gas via the
-# outgassing config, so a run with no noble budget carries them as zero.
+# Noble gases. They are full members of both gas_list and element_list.
+# They are tracked in the helpfile and the whole-planet mass balance.
 noble_gases = ['He', 'Ne', 'Ar', 'Kr', 'Xe']
 
-gas_list = vol_list + vap_list + noble_gases
+# Construct gas list from all three sources (with duplicates removed)
+gas_list = list(dict.fromkeys(vol_list + noble_gases + vap_list))
 
-# Supported elements: the reactive and rock-forming elements plus the inert
-# noble gases.
-element_list = ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'] + noble_gases
+# Gases except rock vapours - tracked separately in M_vaps.
+vol_gas_list = [s for s in gas_list if s not in vap_list]
 
-# Masses of elements [kg mol-1], from https://iupac.qmul.ac.uk/AtWt/
+# Supported elements: volatiles, rock-forming elements, noble gases (above)
+vol_element_list = ['H', 'O', 'C', 'N', 'S']
+vap_element_list = ['Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K', 'V']
+
+# Construct element list from all three sources (with duplicates removed)
+element_list = list(dict.fromkeys(vol_element_list + vap_element_list + noble_gases))
+
+# Condensates the atmodeller outgassing module includes, by Hill formula
+condensate_names = {'C': 'Graphite', 'S': 'Sulfur', 'H2O': 'Water', 'H2O4S': 'Sulfuric acid'}
+
+# Condensate densities [kg m-3]
+condensate_density = {
+    # https://material-properties.org/graphite-density-strength-hardness-melting-point/
+    'C': 2260.0,
+    # https://en.wikipedia.org/wiki/Sulfur?useskin=vector
+    'S': 2070.0,
+    # STP density of water [kg m-3]
+    'H2O': 1000.0,
+    # https://www.engineeringtoolbox.com/indsulfuric-acid-density-d_2163.html
+    'H2O4S': 1792.2,
+}
+
+# Condensate thermal conductivities [W m-1 K-1]
+condensate_conductivity = {
+    # polycrystalline graphite, https://www.eastcarb.com/graphite-thermal-conductivity/
+    'C': 100.0,
+    # https://material-properties.org/Sulfur-thermal-properties-melting-point-thermal-conductivity-expansion/
+    'S': 0.269,
+    # https://www.engineeringtoolbox.com/thermal-conductivity-liquids-d_1260.html
+    'H2O': 0.609,
+    'H2O4S': 0.3,
+}
+
+# Activity at and above which a condensate counts as saturated (stable) [1]
+CONDENSATE_SATURATED_ACTIVITY = 0.999
+
+# Condensed mass above which a condensate carries a real layer [kg]. Below saturation the
+# solver reports only a floor of order 1e-6 kg; a larger mass at lower activity is a layer
+# held by outgas.prevent_desaturation.
+CONDENSATE_HELD_MASS_KG = 1.0
+
+# Thermal resistance of the condensed stack below which it is negligible and the surface
+# stays fixed [m2 K W-1]; the skin then lowers T_surf by F * 1e-5 K, about 1 K at 1e5 W m-2.
+SKIN_RESISTANCE_MIN = 1.0e-5
+
+# Molar masses of elements [kg mol-1], from https://iupac.qmul.ac.uk/AtWt/
 element_mmw = {
     'H': 1.008000000e-03,
     'He': 4.002000000e-03,
@@ -188,7 +298,6 @@ element_mmw = {
     'Pa': 2.310350000e-01,
     'U': 2.380280000e-01,
 }  # noqa
-
 ## Constant from Zephyrus
 ergcm2stoWm2 = 1e-3  # convert [erg s-1 cm-2] to [W m-2]
 # Sun parameters

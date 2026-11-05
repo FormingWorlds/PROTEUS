@@ -24,6 +24,8 @@ from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.config import read_config_object
 from proteus.interior_energetics.aragog import read_ncdf
 from proteus.utils.constants import R_earth, vol_list
+from proteus.utils.coupler import read_helpfile_table
+from proteus.utils.helper import format_subyear_time
 from proteus.utils.plot import get_colour, latexify
 
 # Target times for sampling profile [log years]
@@ -61,15 +63,13 @@ def postproc_once(simdir: str, plot: bool = True):
     config_path = os.path.join(simdir, 'init_coupler.toml')
     if not os.path.isfile(config_path):
         raise FileNotFoundError(f'Cannot find {config_path}')
+    hf_all = read_helpfile_table(hfpath, min_rows=1)
 
     # Make chili folder
     chilidir = os.path.join(simdir, 'chili') + '/'
     if os.path.isdir(chilidir):
         rmtree(chilidir)
     os.mkdir(chilidir)
-
-    # Read simulation helpfile
-    hf_all = pd.read_csv(hfpath, delimiter=r'\s+')
 
     # Copy config
     print('    copy config file')
@@ -103,7 +103,11 @@ def postproc_once(simdir: str, plot: bool = True):
     out['phi(vol_frac)'] = np.array(hf_all['Phi_global_vol'])
     out['fO2_melt(bar)'] = np.array(hf_all['O2_bar'])
     out['fO2_solid(bar)'] = out['fO2_melt(bar)']  # assumes homogeneous fO2
-    out['thick_surf_bl(m)'] = np.ones_like(out['t(yr)']) * config.atmos_clim.surface_d
+    # A skin from saturation changes in time; the helpfile holds the skin in effect
+    if config.atmos_clim.surface_d == 'saturation':
+        out['thick_surf_bl(m)'] = np.array(hf_all['boundary_layer_thickness'], dtype=float)
+    else:
+        out['thick_surf_bl(m)'] = np.ones_like(out['t(yr)']) * config.atmos_clim.surface_d
 
     out['massC_solid(kg)'] = np.array(hf_all['C_kg_solid'])
     out['massC_melt(kg)'] = np.array(hf_all['C_kg_liquid'])
@@ -123,8 +127,8 @@ def postproc_once(simdir: str, plot: bool = True):
 
     visc_arr = []
     for idx_t, t in enumerate(out['t(yr)']):
-        # Aragog names snapshots with %d (truncation), not rounding.
-        ncfile = os.path.join(simdir, 'data', f'{int(t)}_int.nc')
+        # Snapshot filenames use format_subyear_time (p decimal separator).
+        ncfile = os.path.join(simdir, 'data', format_subyear_time(t) + '_int.nc')
         if not os.path.isfile(ncfile):
             visc_arr.append(np.nan)
             continue
@@ -157,7 +161,7 @@ def postproc_once(simdir: str, plot: bool = True):
         else:
             print(f'      tau{tau} -> {tclose:.2e} yr')
 
-        ncfile = os.path.join(simdir, 'data', f'{tclose:.0f}_atm.nc')
+        ncfile = os.path.join(simdir, 'data', format_subyear_time(tclose) + '_atm.nc')
         atm = read_ncdf_profile(ncfile, extra_keys=['x_gas'], combine_edges=False)
 
         # climate profile

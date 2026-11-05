@@ -62,11 +62,11 @@ def _make_hf_row(
     return hf_row
 
 
-def _run(hf_row):
-    """Call dummy outgas with a mock config."""
+def _run(hf_row, initial=True):
+    """Call dummy outgas with a mock config, in the init stage by default."""
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
-    calc_surface_pressures_dummy(dirs, config, hf_row)
+    calc_surface_pressures_dummy(dirs, config, hf_row, initial=initial)
 
 
 def _expected_species_kg(element_kg, element):
@@ -410,6 +410,55 @@ def test_dummy_outgas_oxygen_total():
     O_from_H2O = H2O_kg * (15.999 / 18.015)
     O_from_CO2 = CO2_kg * (2 * 15.999 / 44.009)
     assert O_total == pytest.approx(O_from_H2O + O_from_CO2, rel=1e-6)
+
+
+@pytest.mark.unit
+def test_dummy_outgas_keeps_a_positive_oxygen_budget():
+    """A positive saved O budget is an input and is kept as given, whatever O
+    the outgassed species carry; only an empty one is derived from them."""
+    hf_row = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=0, S_kg=0, Phi_global=0.5)
+    hf_row['O_kg_total'] = 7.0e21
+    _run(hf_row)
+    assert hf_row['O_kg_total'] == pytest.approx(7.0e21, rel=1e-15)
+    assert hf_row['O_kg_atm'] + hf_row['O_kg_liquid'] < 1.0e21
+
+
+@pytest.mark.unit
+def test_dummy_outgas_derives_an_empty_oxygen_budget_only_in_the_init_stage():
+    """In the init stage an empty O budget is derived from the outgassed species;
+    an O budget that escape or a strip emptied later stays at 0. The atmosphere
+    and melt still hold the stoichiometric O of the H2O, CO2 and SO2 built from
+    H, C and S, which O_kg_total does not bound with the dummy outgassing."""
+    initial = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=0, S_kg=0, Phi_global=0.5)
+    _run(initial)
+    later = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=0, S_kg=0, Phi_global=0.5)
+    _run(later, initial=False)
+    assert initial['O_kg_total'] == pytest.approx(
+        initial['O_kg_atm'] + initial['O_kg_liquid'], rel=1e-12
+    )
+    assert initial['O_kg_total'] > 0.0
+    assert later['O_kg_total'] == pytest.approx(0.0, abs=0.0)
+
+
+@pytest.mark.unit
+def test_an_impact_stripped_dummy_oxygen_budget_stays_empty_while_the_species_keep_their_o():
+    """Known limit of the dummy outgassing: an impact that strips the whole O
+    budget derived in the init stage leaves it 0, while the atmosphere and melt
+    keep the stoichiometric O of the H2O and CO2 built from H and C."""
+    from proteus.accretion.wrapper import _apply_volatile_consequences
+
+    _, H2O_kg = _expected_species_kg(1e20, 'H')
+    _, CO2_kg = _expected_species_kg(1e19, 'C')
+    species_O = H2O_kg * (15.999 / 18.015) + CO2_kg * (2 * 15.999 / 44.009)
+    hf_row = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=0, S_kg=0, Phi_global=0.5)
+    _run(hf_row)
+    assert hf_row['O_kg_total'] == pytest.approx(species_O, rel=1e-6)
+    hf_row['M_int'] = 4.0e24
+    _apply_volatile_consequences(hf_row, {'O': hf_row['O_kg_total']}, {}, {}, 1.0)
+    assert hf_row['O_kg_total'] == 0.0
+    _run(hf_row, initial=False)
+    assert hf_row['O_kg_total'] == pytest.approx(0.0, abs=0.0)
+    assert hf_row['O_kg_atm'] + hf_row['O_kg_liquid'] == pytest.approx(species_O, rel=1e-6)
 
 
 # ---------------------------------------------------------------------------

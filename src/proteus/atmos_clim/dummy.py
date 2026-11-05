@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from proteus.atmos_clim.common import clip_radius_to_hill
+from proteus.atmos_clim.surface_skin import effective_surf_state
 from proteus.utils.constants import const_R, const_sigma, gas_list
 from proteus.utils.helper import UpdateStatusfile
 
@@ -17,6 +19,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Run the dummy atmosphere module
 def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
+    # Gas composition for escape equal to surface composition
     log.debug('Running dummy atmosphere...')
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
@@ -32,6 +35,9 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
         T_surf_atm = float(hf_row['T_magma'])
         atm_H = const_R * T_surf_atm / (hf_row['atm_kg_per_mol'] * hf_row['gravity'])
         R_obs = hf_row['R_int'] + atm_H * config.atmos_clim.dummy.height_factor
+        # The dummy XUV level sits at the observed radius, limited to the Hill
+        # radius; there is no profile to re-read pressure or temperature from.
+        R_xuv = clip_radius_to_hill(config, hf_row, R_obs)
         output = {
             'T_surf': T_surf_atm,
             'F_atm': fixed_flux,
@@ -40,9 +46,11 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
             'R_obs': R_obs,
             'albedo': 0.0,
             'p_xuv': hf_row['P_surf'],
-            'R_xuv': R_obs,
+            'R_xuv': R_xuv,
             'p_obs': hf_row['P_surf'],
             'T_obs': T_surf_atm,
+            'T_xuv': T_surf_atm,
+            'g_xuv': hf_row['gravity'] * (hf_row['R_int'] / R_xuv) ** 2,
             'ocean_areacov': 0.0,
             'ocean_maxdepth': 0.0,
             'P_surf_clim': hf_row['P_surf'],
@@ -57,8 +65,9 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     albedo_pl = float(hf_row['albedo_pl'])
     inst_sf = config.orbit.s0_factor
     albedo_s = config.atmos_clim.surf_greyalbedo
-    skin_d = config.atmos_clim.surface_d
-    skin_k = config.atmos_clim.surface_k
+    skin_d = float(hf_row['boundary_layer_thickness'])
+    skin_k = float(hf_row['boundary_layer_conductivity'])
+    surf_state = effective_surf_state(config, hf_row)
 
     # Copy variables
     T_magma = float(hf_row['T_magma'])
@@ -81,7 +90,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
         return {'fl_U_LW': fl_U_LW, 'fl_D_SW': fl_D_SW, 'fl_U_SW': fl_U_SW, 'fl_N': fl_N}
 
     # fixed T_Surf
-    if config.atmos_clim.surf_state == 'fixed':
+    if surf_state == 'fixed':
         log.info('Calculating fluxes with dummy atmosphere')
         if config.interior_energetics.module == 'boundary':
             T_surf_atm = hf_row['T_surf']
@@ -90,7 +99,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
         fluxes = _calc_fluxes(T_surf_atm)
 
     # conductive lid
-    elif config.atmos_clim.surf_state == 'skin':
+    elif surf_state == 'skin':
         log.info('Calculating fluxes with dummy atmosphere and CBL')
         from scipy.optimize import root_scalar
 
@@ -131,6 +140,12 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     atm_H = const_R * T_surf_atm / (hf_row['atm_kg_per_mol'] * hf_row['gravity'])
     R_obs = hf_row['R_int'] + atm_H * config.atmos_clim.dummy.height_factor
 
+    # Bond albedo - handle zero instellation case to avoid divide by zero
+    if fluxes['fl_D_SW'] <= 0.0:
+        bond_albedo = 0.0
+    else:
+        bond_albedo = fluxes['fl_U_SW'] / fluxes['fl_D_SW']
+
     # Return result
     log.info('    T_surf     =  %.3e  K' % T_surf_atm)
     log.info('    F_atm      =  %.3e  W m-2' % F_atm_lim)
@@ -144,18 +159,22 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     output['F_olr'] = fluxes['fl_U_LW']  # OLR
     output['F_sct'] = fluxes['fl_U_SW']  # Scattered SW flux
     output['R_obs'] = R_obs
-    output['albedo'] = fluxes['fl_U_SW'] / fluxes['fl_D_SW']
+    output['albedo'] = bond_albedo
     output['p_xuv'] = hf_row['P_surf']
-    output['R_xuv'] = R_obs
+    # The XUV level sits at the observed radius, limited to the Hill radius
+    R_xuv = clip_radius_to_hill(config, hf_row, R_obs)
+    output['R_xuv'] = R_xuv
     output['p_obs'] = hf_row['P_surf']
     # For the dummy climate model, the observed temperature is the surface temperature.
     # Use the locally computed value to avoid requiring hf_row["T_surf"] in unit tests.
     output['T_obs'] = T_surf_atm
+    output['g_obs'] = hf_row['gravity'] * (hf_row['R_int'] / R_obs) ** 2
+    output['T_xuv'] = T_surf_atm
+    output['g_xuv'] = hf_row['gravity'] * (hf_row['R_int'] / R_xuv) ** 2
     output['ocean_areacov'] = 0.0
     output['ocean_maxdepth'] = 0.0
     output['P_surf_clim'] = hf_row['P_surf']
 
-    # Gas composition for escape equal to surface composition
     for g in gas_list:
         hf_row[f'{g}_vmr_xuv'] = float(hf_row.get(f'{g}_vmr', 0.0))
 

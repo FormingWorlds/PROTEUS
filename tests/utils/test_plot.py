@@ -21,11 +21,38 @@ from proteus.utils.plot import (
     get_colour,
     latex_float,
     latexify,
+    profile_sample_tmin,
     sample_output,
     sample_times,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+@pytest.mark.unit
+def test_style_neutral_mixes_the_text_and_face_colours_of_the_active_style():
+    """Fade 0 is the text colour and 1 the axes face colour; in the default style
+    the 2 fade constants give exactly '#444444' and '#808080'. A transparent axes
+    face, by name or by alpha, stands for the figure face colour."""
+    import matplotlib as mpl
+    from matplotlib.colors import to_rgb
+
+    from proteus.utils.plot import FADE_DARK_GREY, FADE_MID_GREY, style_neutral
+
+    with mpl.style.context('default'):
+        assert style_neutral() == to_rgb('black')
+        assert style_neutral(1.0) == to_rgb('white')
+        assert style_neutral(FADE_DARK_GREY) == to_rgb('#444444')
+        assert style_neutral(FADE_MID_GREY) == to_rgb('#808080')
+    dark = {'text.color': '#e0d0c0', 'axes.facecolor': '#102030', 'figure.facecolor': '#405060'}
+    with mpl.rc_context(dark):
+        assert style_neutral(0.0) == to_rgb('#e0d0c0')
+        assert style_neutral(1.0) == to_rgb('#102030')
+        assert style_neutral(0.5) == pytest.approx((120 / 255,) * 3)
+        for transparent in ('none', '#10203000'):
+            with mpl.rc_context({'axes.facecolor': transparent}):
+                assert style_neutral(1.0) == to_rgb('#405060')
+                assert style_neutral(0.0) == to_rgb('#e0d0c0')
 
 
 @pytest.mark.unit
@@ -137,5 +164,154 @@ def test_sample_output_files(mock_glob):
 
     assert len(t) <= 3
     assert len(f) == len(t)
-    assert all(isinstance(time, int) for time in t)
+    assert all(isinstance(time, float) for time in t)
     assert all(path.endswith('.nc') for path in f)
+
+
+@pytest.mark.unit
+@patch('proteus.utils.plot.glob.glob')
+def test_sample_output_parses_subyear_times(mock_glob):
+    """Sub-year snapshot names (``884p700_atm.nc``) parse without a crash.
+
+    A whole-year name lets the time parse with ``int()``. A sub-year name
+    such as ``30p200_atm.nc`` makes that raise ValueError, so the parser
+    reads the time as a float and keeps two rows inside one year distinct.
+    """
+    files = ['/tmp/30p200_atm.nc', '/tmp/30p800_atm.nc', '/tmp/40p000_atm.nc']
+    mock_glob.return_value = files
+
+    handler = MagicMock()
+    handler.directories = {'output/data': '/tmp'}
+
+    t, f = sample_output(handler, nsamp=8)
+
+    assert 30.2 in t
+    assert 30.8 in t
+    assert all(isinstance(time, float) for time in t)
+    assert all(path.endswith('_atm.nc') for path in f)
+
+
+# ---------------------------------------------------------------------------
+# Grid-quantity label / scale / log / colourmap helpers
+# ---------------------------------------------------------------------------
+
+
+def test_get_label_uses_preset_then_falls_back_to_last_path_component():
+    """get_label returns the preset display label, or the final dotted component
+    when a quantity has no preset (so an unlabelled axis still reads sensibly).
+    """
+    from proteus.utils.plot import get_label
+
+    assert get_label('P_surf') == r'$P_{\rm surf}$ [bar]'
+    assert get_label('some.unregistered.field') == 'field'
+
+
+def test_get_scale_converts_known_units_else_identity():
+    """get_scale returns the preset unit conversion, defaulting to 1.0 when unset.
+
+    rho_obs is kg/m^3 scaled to g/cm^3 (factor 1e-3); an unknown quantity is 1.0.
+    """
+    from proteus.utils.plot import get_scale
+
+    assert get_scale('rho_obs') == pytest.approx(1.0e-3)
+    assert get_scale('atm_kg_per_mol') == pytest.approx(1.0e3)
+    assert get_scale('unregistered_quantity') == pytest.approx(1.0)
+
+
+def test_get_log_scale_flags_only_log_quantities():
+    """get_log_scale is True for log-axis quantities and False otherwise/by default.
+
+    Signed fluxes (F_int, F_atm) and F_tidal (zero without tides) are linear, so a
+    log axis does not hide their non-positive values; F_olr is always positive.
+    """
+    from proteus.utils.plot import get_log_scale
+
+    assert get_log_scale('P_surf') is True
+    assert get_log_scale('F_olr') is True
+    assert get_log_scale('T_surf') is False
+    assert [get_log_scale(f) for f in ('F_int', 'F_atm', 'F_net', 'F_tidal')] == [False] * 4
+    assert get_log_scale('unregistered_quantity') is False
+    # Without a preset, the inference convention applies (compositional columns).
+    assert get_log_scale('XYZ_vmr') is True
+
+
+def test_get_colourmap_resolves_crameri_and_matplotlib_names(caplog):
+    """get_colourmap resolves Crameri maps with or without the 'cmc.' prefix and any
+    matplotlib map, defaults to batlowK_r, and warns before falling back.
+    """
+    from proteus.utils.plot import DEFAULT_COLOURMAP, get_colourmap
+
+    assert DEFAULT_COLOURMAP == 'batlowK_r'
+    assert get_colourmap('vik').name == get_colourmap('cmc.vik').name
+    assert 'vik' in get_colourmap('vik').name
+    assert get_colourmap('viridis').name == 'viridis'
+    assert 'batlowK_r' in get_colourmap(None).name
+    with caplog.at_level('WARNING'):
+        fallback = get_colourmap('definitely_not_a_colourmap')
+    assert 'batlowK_r' in fallback.name
+    assert any('colourmap' in rec.message.lower() for rec in caplog.records)
+
+
+PROTEUS_MPL_COLOURMAPS = [
+    f'{name}{suffix}'
+    for name in ('proteus', 'proteus_div', 'proteus_phase')
+    for suffix in ('', '_r')
+]
+
+
+@pytest.fixture
+def unregistered_proteus_colourmaps():
+    """Remove the proteus-mpl colour maps, as in a process that never called use()."""
+    import matplotlib as mpl
+
+    from proteus.utils.plot import register_proteus_mpl_colourmaps
+
+    def unregister():
+        for name in PROTEUS_MPL_COLOURMAPS:
+            if name in mpl.colormaps:
+                mpl.colormaps.unregister(name)
+
+    unregister()
+    yield
+    unregister()
+    register_proteus_mpl_colourmaps()
+
+
+@pytest.mark.usefixtures('unregistered_proteus_colourmaps')
+def test_get_colourmap_finds_proteus_mpl_maps_without_their_style():
+    """With proteus-mpl installed but its style never applied (style = "matplotlib"),
+    'proteus' resolves to the proteus-mpl map instead of falling back to batlowK_r,
+    and the lookup leaves the matplotlib style settings unchanged.
+    """
+    pytest.importorskip('proteus_mpl')
+    import matplotlib as mpl
+
+    from proteus.utils.plot import get_colourmap
+
+    before = mpl.rcParams.copy()
+    assert get_colourmap('proteus').name == 'proteus'
+    assert get_colourmap('proteus_div_r').name == 'proteus_div_r'
+    assert set(PROTEUS_MPL_COLOURMAPS) <= set(mpl.colormaps)
+    assert mpl.rcParams == before
+
+
+@pytest.mark.usefixtures('unregistered_proteus_colourmaps')
+def test_get_colourmap_falls_back_from_proteus_without_proteus_mpl(caplog):
+    """Without proteus-mpl, 'proteus' is unknown: get_colourmap warns and falls back."""
+    from proteus.utils.plot import DEFAULT_COLOURMAP, get_colourmap
+
+    with patch.dict('sys.modules', {'proteus_mpl': None}):
+        with caplog.at_level('WARNING'):
+            cmap = get_colourmap('proteus')
+    assert DEFAULT_COLOURMAP in cmap.name
+    assert any("'proteus'" in rec.message for rec in caplog.records)
+
+
+@pytest.mark.unit
+def test_profile_sample_tmin_starts_late_only_once_a_run_passes_1e3_yr():
+    """Profile snapshots are sampled from 1 yr in a run up to 1e3 yr, from 1e3 yr in a
+    longer run, and from 1 yr when there are no times yet."""
+    assert profile_sample_tmin([1.0, 278.0]) == pytest.approx(1.0)
+    assert profile_sample_tmin([1.0, 1000.0]) == pytest.approx(1.0)  # the limit itself
+    assert profile_sample_tmin([1.0, 1110.5]) == pytest.approx(1.0e3)
+    assert profile_sample_tmin([]) == pytest.approx(1.0)

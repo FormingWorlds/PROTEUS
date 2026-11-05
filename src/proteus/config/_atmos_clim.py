@@ -1,19 +1,27 @@
 from __future__ import annotations
 
+import logging
 import os
+from typing import Literal, Union
 
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le
 
+from proteus.utils.constants import R_earth
+
 from ._converters import lowercase, none_if_none
+
+log = logging.getLogger('fwl.' + __name__)
 
 
 def warn_if_dummy(instance, attribute, value):
+    """Reject enabling this option when the dummy atmos_clim module is selected."""
     if (instance.module == 'dummy') and value:
         raise ValueError(f'Dummy atmos_clim module is incompatible with {attribute.name}=True')
 
 
 def valid_rayleigh(instance, attribute, value):
+    """Reject Rayleigh scattering with the dummy module or AGNI in grey-gas mode."""
     if not value:
         return
 
@@ -46,6 +54,49 @@ def valid_aerosols_enabled(instance, attribute, value):
         )
 
 
+def valid_p_obs(instance, attribute, value):
+    """p_obs is either a positive pressure [bar], or None ('none' in the
+    config file), which lets AGNI determine the photosphere self-consistently
+    from optical depth instead. The latter is only meaningful for AGNI.
+    """
+    if value is None:
+        if instance.module != 'agni':
+            raise ValueError("`p_obs='none'` requires atmos_clim.module='agni'")
+        return
+
+    if value <= 0:
+        raise ValueError('`p_obs` must be > 0')
+
+
+def valid_surface_skin(instance, attribute, value):
+    """surface_d and surface_k are each a positive number, or both 'saturation'.
+
+    'saturation' derives the skin from the saturated condensate layers and needs
+    `surf_state = 'skin'`, which then falls back to 'fixed' while no layer has formed.
+    """
+    name = attribute.name
+    if value == 'saturation':
+        other = 'surface_k' if name == 'surface_d' else 'surface_d'
+        if getattr(instance, other) != 'saturation':
+            raise ValueError(f"`{name}='saturation'` requires `{other}='saturation'`")
+        if instance.surf_state != 'skin':
+            raise ValueError(f"`{name}='saturation'` requires `surf_state='skin'`")
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0:
+        raise ValueError(f"`{name}` must be a positive number or 'saturation', got {value!r}")
+
+
+def surf_state_to_int(surf_state: str) -> int:
+    """Return the AGNI integer surface boundary condition for a surface state."""
+    match surf_state:
+        case 'fixed':
+            return 1
+        case 'skin':
+            return 2
+        case _:
+            raise ValueError(f"Invalid surf_state for AGNI: '{surf_state}'")
+
+
 def check_overlap(instance, attribute, value):
     _overlaps = ('ro', 'ee', 'rorr')
     if value not in _overlaps:
@@ -53,6 +104,7 @@ def check_overlap(instance, attribute, value):
 
 
 def valid_agni(instance, attribute, value):
+    """Validate AGNI settings: pressure ordering, surface-state support, rainout, spectral file."""
     if instance.module != 'agni':
         return
 
@@ -61,7 +113,7 @@ def valid_agni(instance, attribute, value):
         raise ValueError('Must set `p_top` to be less than `agni.psurf_thresh`')
 
     # ensure p_obs is greater than p_top
-    if instance.p_top > instance.p_obs:
+    if instance.p_obs is not None and instance.p_top > instance.p_obs:
         raise ValueError('Must set `p_top` to be less than `p_obs`')
 
     # agni does not support mixed_layer surface state
@@ -95,6 +147,12 @@ def valid_agni(instance, attribute, value):
         if not instance.spectral_bands:
             raise ValueError('Must set atmos_clim.spectral_bands')
 
+    # AGNI loads every opacity with equilibrium chemistry, which can add any gas
+    if instance.agni.chemistry == 'eq' and not instance.agni.load_all_opacities:
+        log.warning(
+            'atmos_clim.agni.load_all_opacities = false has no effect with chemistry = "eq"'
+        )
+
     # fastchem installed?
     if instance.agni.chemistry == 'eq':
         FC_DIR = os.environ.get('FC_DIR')
@@ -119,7 +177,7 @@ class Agni:
     verbosity: int
         Logging and output verbosity for agni (0:none, 1:info, 2:debug).
     surf_material: str
-        Surface scattering material file. Set to 'greybody' to use surf_greyalbedo.
+        Surface scattering material: the file name of a Hammond et al. (2024) spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo.
     chemistry: str | None
         Atmospheric chemistry treatment. Choices: 'none', 'eq' (FastChem).
     solve_energy: bool
@@ -150,6 +208,8 @@ class Agni:
         Include sensible heat flux at surface
     real_gas: bool
         Use real gas equations of state in atmosphere, where possible.
+    thermo_functions: bool
+        Use temperature-dependent thermodynamic properties.
     psurf_thresh: float
         Use the transparent-atmosphere solver when P_surf is less than this value [bar].
     dx_max: float
@@ -159,7 +219,7 @@ class Agni:
     max_steps: int
         Maximum number of iterations before giving up.
     perturb_all: bool
-        Recalculate entire jacobian matrix at every iteration?
+        Recalculate entire jacobian matrix at every iteration? Has no effect when `broyden` is enabled.
     mlt_criterion: str
         Convection criterion. Options: (l)edoux, (s)chwarzschild.
     fastchem_floor:float
@@ -175,16 +235,44 @@ class Agni:
     ini_profile: str
         Shape of initial T(p) guess: 'loglinear', 'isothermal', 'dry_adiabat', 'analytic'.
     ls_default: int
-        Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking.
+        Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking, 3: non-monotone Armijo.
+    broyden: bool
+        Update the jacobian with Broyden's method between finite-difference evaluations, to reduce the number of radiative transfer calculations. Intended for use with `ls_default = 3`. Disabled when PROTEUS retries a failed solve.
     fdo: int
         Numerical order of finite-difference for jacobian. 2 or 4.
     spectral_file: str | None
         Path to AGNI spectral file, or 'greygas' to enable the grey-gas RT scheme.
         If None, will use atmos_clim.spectral_group and atmos_clim.spectral_bands.
+    load_all_opacities: bool
+        Load the opacities of every gas in the spectral file into SOCRATES. If false, only the gases that PROTEUS models are loaded, which makes each radiative transfer calculation faster with spectral files that hold other gases. Has no effect with `chemistry = "eq"`, which loads every gas.
     grey_opacity_lw: float
         Grey longwave opacity [m2 kg-1], used when `spectral_file='greygas'`.
     grey_opacity_sw: float
         Grey shortwave opacity [m2 kg-1], used when `spectral_file='greygas'`.
+    hydrograv_steps: int
+        Number of steps to use when calculating heights and gravity.
+    hydrograv_maxdr: float
+        Maximum step size to use when calculating heights [m]
+    hydrograv_hilldr: float
+        Maximum step size to use beyond the Hill radius [m]
+    hydrograv_mindr: float
+        Minimum step size to use when calculating heights [m]
+    hydrograv_ming: float
+        Minimum allowed gravity in the atmosphere [m/s^2]
+    hydrograv_constg: bool
+        Constant gravity with height?
+    hydrograv_selfg: bool
+        Include self-gravity of the atmosphere?
+    aerosol_r_eff: float
+        Effective radius of log-normal size distribution for Mie aerosols [m].
+    aerosol_sigma_g: float
+        Standard deviation of log-normal particle-size distribution for Mie aerosols.
+    tau_obs: float
+        Reference vertical optical depth defining the photosphere, used when
+        `atmos_clim.p_obs='none'`.
+    wl_obs: float
+        Reference wavelength [m] at which `tau_obs` is evaluated, used when
+        `atmos_clim.p_obs='none'`.
     """
 
     verbosity: int = field(
@@ -238,7 +326,8 @@ class Agni:
         converter=lowercase,
         validator=in_(('loglinear', 'isothermal', 'dry_adiabat', 'analytic')),
     )
-    ls_default: int = field(default=2, validator=in_((0, 1, 2)))
+    ls_default: int = field(default=3, validator=in_((0, 1, 2, 3)))
+    broyden: bool = field(default=True)
     fdo: int = field(default=2, validator=in_((2, 4)))
     check_safe_gas: bool = field(
         default=True,
@@ -251,11 +340,24 @@ class Agni:
         },
     )
     spectral_file: str | None = field(default=None, converter=none_if_none)
+    load_all_opacities: bool = field(default=True)
     grey_opacity_lw: float = field(default=1e1, validator=gt(0))
     grey_opacity_sw: float = field(default=1e-4, validator=gt(0))
+    hydrograv_steps: int = field(default=2048, validator=gt(0))
+    hydrograv_maxdr: float = field(default=R_earth, validator=gt(0))
+    hydrograv_hilldr: float = field(default=R_earth * 1e-3, validator=gt(0))
+    hydrograv_mindr: float = field(default=1e-5, validator=gt(0))
+    hydrograv_ming: float = field(default=1e-4, validator=gt(0))
+    hydrograv_constg: bool = field(default=False)
+    hydrograv_selfg: bool = field(default=True)
+    aerosol_r_eff: float = field(default=1.0e-6, validator=(gt(1e-10), le(1.0)))
+    aerosol_sigma_g: float = field(default=1.65, validator=(ge(1.0), le(100.0)))
+    tau_obs: float = field(default=0.02, validator=(gt(1e-10), le(1e10)))
+    wl_obs: float = field(default=1.125e-6, validator=(gt(1e-10), le(1.0)))
 
 
 def valid_janus(instance, attribute, value):
+    """Validate JANUS settings: spectral file selection and temperature-bound ordering."""
     if instance.module != 'janus':
         return
 
@@ -327,20 +429,6 @@ class Dummy:
     fixed_flux: float = field(default=-1.0)
 
 
-def valid_albedo(instance, attribute, value):
-    if isinstance(value, str):
-        return
-
-    elif isinstance(value, float):
-        if not (0 <= value <= 1):
-            raise ValueError('The value of `albedo_pl` must be between 0 and 1')
-        else:
-            return
-
-    else:
-        raise ValueError('The value of `albedo_pl` must be a string or a float')
-
-
 @define
 class AtmosClim:
     """Atmosphere parameters, model selection.
@@ -353,18 +441,29 @@ class AtmosClim:
         Spectral file group defining gas opacities. See https://proteus-framework.org/SOCRATES/Reference/proteus_spectral_file_reference.html
     spectral_bands: str
         Number of wavenumber bands in k-table.
+    spectral_cache: str | None
+        Folder in which to reuse prepared spectral files across runs that share
+        a stellar spectrum. None disables the cache and every run builds its own.
     num_levels: int
         Number of vertical atmosphere levels.
     p_top: float
         Top-of-atmosphere pressure [bar].
-    p_obs: float
-        Observation pressure level [bar] (transit radius).
+    p_obs: float | Literal['none']
+        Observation pressure level [bar] (transit radius). Set to 'none'
+        (-> None) to instead let AGNI determine this pressure level
+        self-consistently from the optical depth (see `agni.tau_obs`,
+        `agni.wl_obs`); AGNI only.
     overlap_method: str
         Gas overlap method. Choices: 'ro', 'rorr', 'ee'.
-    surface_d: float
-        Conductive skin thickness [m].
-    surface_k: float
-        Conductive skin thermal conductivity [W m-1 K-1].
+    surface_d: float | str
+        Conductive skin thickness [m], or 'saturation' (together with `surface_k`)
+        to use the total thickness of the saturated condensate layers, such as
+        graphite, that float on the surface. 'saturation' needs `surf_state='skin'`;
+        while the layers are negligible the surface is fixed (T_surf = T_magma).
+    surface_k: float | str
+        Conductive skin thermal conductivity [W m-1 K-1], or 'saturation' to combine
+        the conductivities of the stacked condensate layers in series,
+        k = d / sum(d_i / k_i).
     aerosols_enabled: bool
         Enable aerosol radiative effects.
     cloud_enabled: bool
@@ -373,8 +472,10 @@ class AtmosClim:
         Surface energy balance scheme. Choices: 'mixed_layer', 'fixed', 'skin'.
     surf_greyalbedo: float
         Grey surface albedo.
-    albedo_pl: float | str
-        Planetary bond albedo. Can be float (0 to 1) or str (path to CSV lookup).
+    albedo_pl: float
+        Planetary bond albedo (0 to 1).
+    cloud_alpha: float
+        Condensate retention fraction (0 = full rainout, 1 = fully retained).
     rayleigh: bool
         Include Rayleigh scattering (AGNI, JANUS only).
     tmp_minimum: float
@@ -396,40 +497,154 @@ class AtmosClim:
     # Grid and spectral setup (shared by agni + janus)
     spectral_group: str = field(default='Honeyside')
     spectral_bands: str = field(default='48')
+    spectral_cache: str | None = field(default=None, converter=none_if_none)
     num_levels: int = field(default=50, validator=ge(15))
     p_top: float = field(default=1e-6, validator=gt(0))
-    p_obs: float = field(default=20e-3, validator=gt(0))
+    p_obs: Union[float, Literal['none']] = field(
+        default=20e-3, validator=valid_p_obs, converter=none_if_none
+    )
     overlap_method: str = field(default='ee', validator=check_overlap)
 
     # Radiative and surface properties
     surf_state: str = field(default='skin', validator=(in_(('mixed_layer', 'fixed', 'skin')),))
-    surface_d: float = field(default=0.01, validator=gt(0))
-    surface_k: float = field(default=2.0, validator=gt(0))
+    surface_d = field(default=0.01, validator=valid_surface_skin)
+    surface_k = field(default=2.0, validator=valid_surface_skin)
     aerosols_enabled: bool = field(default=False, validator=valid_aerosols_enabled)
     cloud_enabled: bool = field(default=False, validator=warn_if_dummy)
     cloud_alpha: float = field(default=0.0, validator=(ge(0), le(1)))
     surf_greyalbedo: float = field(default=0.1, validator=(ge(0), le(1)))
-    albedo_pl = field(default=0.0, validator=valid_albedo)
+    albedo_pl: float = field(default=0.0, validator=(ge(0), le(1)))
     rayleigh: bool = field(default=True, validator=valid_rayleigh)
     tmp_minimum: float = field(default=0.5, validator=gt(0))
 
     @property
     def surf_state_int(self) -> int:
         """Return integer surface boundary condition for agni."""
-        match self.surf_state:
-            case 'fixed':
-                return 1
-            case 'skin':
-                return 2
-            case _:
-                raise ValueError(f"Invalid surf_state for AGNI: '{self.surf_state}'")
+        return surf_state_to_int(self.surf_state)
 
-    @property
-    def albedo_from_file(self) -> bool:
-        """Is albedo set by lookup table or not?"""
-        if isinstance(self.albedo_pl, str):
-            return True
-        elif isinstance(self.albedo_pl, float):
-            return False
-        else:
-            raise ValueError('Cannot determine configuration for setting `albedo_pl`')
+
+# Thematic grouping for the generated configuration reference. Each entry is
+# ``(heading, qualifier, option names)``; a heading of ``None`` renders the
+# section's opening table with no heading of its own. Order here is the order
+# on the page, and it is deliberately independent of the order the fields are
+# declared in above, which follows the code rather than the reader.
+#
+# Every option of a listed class must appear exactly once across its groups.
+# ``tools/_config_schema.py`` fails the build otherwise, so an option added
+# here cannot quietly go missing from the documentation.
+DOC_GROUPS = {
+    'AtmosClim': (
+        (
+            None,
+            None,
+            (
+                'module',
+                'spectral_group',
+                'spectral_bands',
+                'spectral_cache',
+                'num_levels',
+                'p_top',
+                'p_obs',
+                'overlap_method',
+            ),
+        ),
+        (
+            'Radiative properties',
+            None,
+            (
+                'rayleigh',
+                'cloud_enabled',
+                'cloud_alpha',
+                'aerosols_enabled',
+                'albedo_pl',
+                'surf_greyalbedo',
+            ),
+        ),
+        ('Surface boundary condition', None, ('surf_state', 'surface_d', 'surface_k')),
+        ('Solver limits', None, ('tmp_minimum',)),
+    ),
+    'Agni': (
+        (
+            'Physics',
+            None,
+            (
+                'solve_energy',
+                'convection',
+                'conduction',
+                'sens_heat',
+                'rainout',
+                'oceans',
+                'latent_heat',
+                'real_gas',
+                'thermo_functions',
+                'chemistry',
+                'mlt_criterion',
+            ),
+        ),
+        ('Surface properties', None, ('surf_material', 'surf_roughness', 'surf_windspeed')),
+        ('Condensation', None, ('phs_timescale', 'evap_efficiency')),
+        (
+            'Solver tuning',
+            None,
+            (
+                'solution_atol',
+                'solution_rtol',
+                'psurf_thresh',
+                'dx_max',
+                'dx_max_ini',
+                'max_steps',
+                'perturb_all',
+                'ini_profile',
+                'ls_default',
+                'broyden',
+                'fdo',
+                'verbosity',
+            ),
+        ),
+        (
+            'Spectral and gas allocation',
+            None,
+            (
+                'spectral_file',
+                'load_all_opacities',
+                'grey_opacity_lw',
+                'grey_opacity_sw',
+                'check_safe_gas',
+            ),
+        ),
+        (
+            'FastChem equilibrium chemistry',
+            'used when `chemistry = "eq"`',
+            (
+                'fastchem_floor',
+                'fastchem_maxiter_chem',
+                'fastchem_maxiter_solv',
+                'fastchem_xtol_chem',
+                'fastchem_xtol_elem',
+            ),
+        ),
+        (
+            'Hydrostatic integration',
+            None,
+            (
+                'hydrograv_steps',
+                'hydrograv_maxdr',
+                'hydrograv_hilldr',
+                'hydrograv_mindr',
+                'hydrograv_ming',
+                'hydrograv_constg',
+                'hydrograv_selfg',
+            ),
+        ),
+        (
+            'Aerosol optics',
+            'used for auto-discovered Mie-theory aerosols',
+            ('aerosol_r_eff', 'aerosol_sigma_g'),
+        ),
+        (
+            'Photosphere from optical depth',
+            "used when `atmos_clim.p_obs='none'`",
+            ('tau_obs', 'wl_obs'),
+        ),
+    ),
+}

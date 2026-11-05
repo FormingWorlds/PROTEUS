@@ -26,8 +26,10 @@ Mocking strategy:
 
 from __future__ import annotations
 
+import math
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 from proteus.outgas.wrapper import (
@@ -35,10 +37,13 @@ from proteus.outgas.wrapper import (
     calc_target_elemental_inventories,
     check_desiccation,
     check_ic_oxygen_budget,
+    condensed_mass_withheld,
+    desiccated_after_trapping,
     run_desiccated,
     run_outgassing,
+    run_outgassing_and_vapourisation,
 )
-from proteus.utils.constants import element_list, gas_list
+from proteus.utils.constants import element_list, gas_list, noble_gases, vap_list, vol_list
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -363,6 +368,94 @@ def test_check_desiccation_single_element_prevents():
     assert check_desiccation(config, hf_row) is True
 
 
+@pytest.mark.physics_invariant
+def test_check_desiccation_counts_noble_gases():
+    """A retained noble-gas inventory prevents desiccation, because a planet that
+    still holds an atmosphere is not dry.
+
+    The volatile elements are all depleted here, so the noble inventory is the
+    only thing the gate can be responding to. Rock-forming elements are checked
+    at the same time and must NOT prevent desiccation: rock vapour is driven by
+    surface temperature rather than a retained volatile inventory, so it is
+    outside the scope of the word. Edge case: a noble inventory exactly at the
+    threshold is permitted, since the comparison is strict.
+    """
+    config = MagicMock()
+    config.outgas.mass_thresh = 1e16
+
+    # Every volatile depleted; helium alone is above threshold.
+    hf_row = {e + '_kg_total': 1e12 for e in element_list}
+    hf_row['He_kg_total'] = 4.0e18  # roughly 1 ppmw of an Earth mantle
+    assert check_desiccation(config, hf_row) is False
+
+    # Deplete helium and the gate flips, so the noble entry was load-bearing.
+    hf_row['He_kg_total'] = 1e12
+    assert check_desiccation(config, hf_row) is True
+
+    # Boundary: exactly at the threshold is not "above" it.
+    hf_row['He_kg_total'] = 1e16
+    assert check_desiccation(config, hf_row) is True
+    # One part in 1e6 above the threshold is, so the comparison is not rounding
+    # the boundary away.
+    hf_row['He_kg_total'] = 1e16 * (1.0 + 1e-6)
+    assert check_desiccation(config, hf_row) is False
+
+    # A rock-forming element above the threshold does not prevent desiccation.
+    hf_row['He_kg_total'] = 1e12
+    hf_row['Si_kg_total'] = 1e22
+    assert check_desiccation(config, hf_row) is True
+
+
+@pytest.mark.unit
+def test_run_desiccated_skips_vapourisation_for_a_crystallised_mantle():
+    """The desiccated path applies the same crystallised-mantle gate as the
+    outgassing path, so a frozen mantle produces no rock vapour.
+
+    The main loop dispatches desiccation ahead of crystallisation, so a planet
+    that is both desiccated and solidified reaches run_desiccated with a
+    sub-critical melt fraction. Vapourising a frozen mantle is the state the
+    sibling path already refuses. Edge case: melt fraction exactly at phi_crit
+    counts as crystallised, matching the main loop's own criterion, so
+    vapourisation is skipped there too.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = True
+    config.params.stop.solid.phi_crit = 0.01
+
+    def _row(phi):
+        hf_row = {'atm_kg_per_mol': 0.029, 'Phi_global': phi}
+        for s in gas_list:
+            hf_row[s + '_kg_atm'] = 1e18
+        return hf_row
+
+    with patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap:
+        run_desiccated({}, config, _row(0.0), False)
+        mock_vap.assert_not_called()
+
+    # Above the critical melt fraction the mantle is still molten, so rock
+    # vapour is computed as usual.
+    with patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap:
+        run_desiccated({}, config, _row(0.5), False)
+        mock_vap.assert_called_once()
+
+    # Boundary: exactly at phi_crit is crystallised, the same call the main loop
+    # makes when it sets its own crystallised flag, so vapourisation is skipped.
+    with patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap:
+        run_desiccated({}, config, _row(0.01), False)
+        mock_vap.assert_not_called()
+    # Just above it the mantle is molten and vapourisation runs, so the boundary
+    # is resolved rather than the gate always refusing.
+    with patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap:
+        run_desiccated({}, config, _row(0.01 * (1.0 + 1e-9)), False)
+        mock_vap.assert_called_once()
+
+    # With vapourisation switched off entirely the gate is never consulted.
+    config.outgas.vapourise = False
+    with patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap:
+        run_desiccated({}, config, _row(0.5), False)
+        mock_vap.assert_not_called()
+
+
 @pytest.mark.unit
 def test_run_outgassing_calliope_calculation():
     """
@@ -387,14 +480,22 @@ def test_run_outgassing_calliope_calculation():
     hf_row['atm_kg_per_mol'] = 0.018  # Mean molecular weight (kg/mol) for steam
 
     with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calc:
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
 
         # Verify CALLIOPE was called
         mock_calc.assert_called_once_with(dirs, config, hf_row)
 
-        # Verify atmosphere mass aggregation: M_atm = sum of all gas masses
+        # Verify atmosphere mass aggregation: M_atm = sum of all gas masses.
+        # run_outgassing sums over the canonical constants.gas_list
+        # (vol_list + noble_gases + vap_list), so the noble gases are
+        # included regardless of config.outgas.vapourise.
         expected_M_atm = sum(hf_row[s + '_kg_atm'] for s in gas_list)
         assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-10)
+        # Discrimination guard: dropping the noble gases from the sum (the
+        # most plausible wrong aggregation, and what this test previously
+        # asserted) changes the answer by far more than the tolerance.
+        without_nobles = sum(hf_row[s + '_kg_atm'] for s in vol_list + vap_list)
+        assert abs(expected_M_atm - without_nobles) / expected_M_atm > 1e-10 * 1e3
 
 
 @pytest.mark.unit
@@ -425,11 +526,19 @@ def test_run_outgassing_atmosphere_mass_conservation():
     hf_row['atm_kg_per_mol'] = 0.029  # N2-like
 
     with patch('proteus.outgas.calliope.calc_surface_pressures'):
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
 
-        # Check mass conservation with tolerance for floating point
+        # Check mass conservation. gas_masses is built over the canonical
+        # gas_list, which is exactly what run_outgassing sums, so the only
+        # admissible discrepancy is float-summation rounding.
         expected_M_atm = sum(gas_masses)
-        assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-6)
+        assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-10)
+        # Discrimination guard: summing over the wrong species list is the
+        # plausible regression here (an earlier revision aggregated over
+        # vol_list + vap_list and silently dropped the noble gases).
+        # Omitting them moves the total by far more than the tolerance.
+        without_nobles = sum(hf_row[s + '_kg_atm'] for s in gas_list if s not in noble_gases)
+        assert abs(expected_M_atm - without_nobles) / expected_M_atm > 1e-7
         # Positivity invariant: the sum is over strictly positive gas
         # masses spanning 10 orders of magnitude, so M_atm must be
         # dominated by the largest entry (1e20 kg) and never negative.
@@ -462,14 +571,16 @@ def test_run_outgassing_disabled_module():
     hf_row['atm_kg_per_mol'] = 0.044  # CO2-like
 
     with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calc:
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
 
         # CALLIOPE should not be called
         mock_calc.assert_not_called()
 
-        # M_atm should still be aggregated
-        expected_M_atm = len(gas_list) * 1e18
-        assert hf_row['M_atm'] == expected_M_atm
+        # M_atm should still be aggregated over run_outgassing's
+        # gas_list (vol_list + + noble_gases+ vap_list, since config.outgas.vapourise is
+        # truthy on this MagicMock).
+        expected_M_atm = len(vol_list + noble_gases + vap_list) * 1e18
+        assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -481,6 +592,7 @@ def test_run_desiccated_zeros_outgassing_keys():
     Must avoid divide-by-zero elsewhere (preserve atm_kg_per_mol, VMRs).
     """
     config = MagicMock()
+    config.outgas.vapourise = False
 
     # Setup hf_row with outgassing data
     hf_row = {}
@@ -493,7 +605,7 @@ def test_run_desiccated_zeros_outgassing_keys():
     hf_row['atm_kg_per_mol'] = 0.029  # MMW preserved to avoid divide-by-zero
     hf_row['M_atm'] = 1e20
 
-    run_desiccated(config, hf_row)
+    run_desiccated({}, config, hf_row, False)
 
     # Check that pressure and masses are zeroed
     assert hf_row['P_surf'] == pytest.approx(0.0, abs=1e-12)
@@ -504,8 +616,444 @@ def test_run_desiccated_zeros_outgassing_keys():
 
     # Check that excepted keys are NOT zeroed (prevent divide-by-zero downstream)
     assert hf_row['atm_kg_per_mol'] == pytest.approx(0.029, rel=1e-12)  # Preserved
-    for s in gas_list:
+    # With vapourise=False, run_desiccated's excepted_keys only covers
+    # vol_list VMRs (see outgas/wrapper.py); vap_list/noble-gas VMRs are
+    # zeroed like any other non-excepted key.
+    for s in vol_list:
         assert hf_row[s + '_vmr'] == pytest.approx(0.1, rel=1e-12)  # Preserved
+
+
+@pytest.mark.physics_invariant
+def test_run_desiccated_keeps_the_solid_share_and_books_the_rest():
+    """A desiccated row empties the atmosphere and the melt of every species and
+    element, noble gases included, keeps the solid columns, sets each total to its
+    solid share, and books only the atmosphere and melt mass.
+
+    Physical scenario: a frozen mantle holding volatiles in the solid when the
+    atmosphere escapes below the threshold. Edge case: an earlier desiccation
+    already booked.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.interior_struct.module = 'zalmoxis'
+    fluid, solid = 2.0e15, 3.0e14
+    hf_row = {}
+    for name in [*element_list, *gas_list]:
+        hf_row.update({f'{name}_kg_atm': fluid, f'{name}_kg_liquid': fluid})
+        hf_row.update({f'{name}_kg_solid': solid, f'{name}_kg_total': 2 * fluid + solid})
+    mol_solid = 1.0
+    for name in gas_list:
+        hf_row.update({f'{name}_mol_solid': mol_solid, f'{name}_mol_total': 5.0})
+    hf_row.update(
+        atm_kg_per_mol=0.01, Phi_global=0.5, M_desiccated=1.0e15, M_volatile_change=-3.0e15
+    )
+
+    run_desiccated({}, config, hf_row, False)
+
+    for name in [*element_list, *gas_list]:
+        assert hf_row[f'{name}_kg_atm'] == 0.0 == hf_row[f'{name}_kg_liquid']
+        assert hf_row[f'{name}_kg_solid'] == solid == hf_row[f'{name}_kg_total']
+    assert all(
+        hf_row[f'{s}_mol_total'] == hf_row[f'{s}_mol_solid'] == mol_solid for s in gas_list
+    )
+    removed = 2 * fluid * len(element_list)
+    assert hf_row['M_desiccated'] == pytest.approx(1.0e15 + removed, rel=1e-12)
+    assert hf_row['M_volatile_change'] == pytest.approx(-3.0e15 - removed, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('total', 'kept'),
+    [
+        pytest.param(5.0e15, 4.0e15, id='total-holds-solid-and-graphite'),
+        pytest.param(2.0e15, 2.0e15, id='escape-took-part-of-the-held-mass'),
+    ],
+)
+def test_desiccation_keeps_condensed_graphite_with_the_solid_mantle(total, kept):
+    """Graphite in C_kg_condensed stays when the atmosphere goes, alongside the solid.
+
+    Physical scenario: a desiccating Mercury-like planet with a graphite crust and
+    a little carbon in the frozen mantle. Edge case: an escape-debited total below
+    the held mass, which scales solid and condensed by the same share.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.interior_struct.module = 'dummy'
+    solid, condensed = 1.0e15, 3.0e15
+    hf_row = {
+        f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
+    }
+    hf_row.update(C_kg_atm=1.0e15, C_kg_solid=solid, C_kg_condensed=condensed, C_kg_total=total)
+    hf_row.update(M_desiccated=0.0, atm_kg_per_mol=0.01, Phi_global=0.2)
+
+    run_desiccated({}, config, hf_row, False)
+
+    share = kept / (solid + condensed)
+    assert hf_row['C_kg_atm'] == 0.0
+    assert hf_row['C_kg_total'] == pytest.approx(kept, rel=1e-12)
+    assert hf_row['C_kg_condensed'] == pytest.approx(condensed * share, rel=1e-12)
+    assert hf_row['C_kg_solid'] == pytest.approx(solid * share, rel=1e-12)
+    # Closure: what is kept is exactly the solid plus the condensed reservoir.
+    assert hf_row['C_kg_solid'] + hf_row['C_kg_condensed'] == pytest.approx(kept, rel=1e-12)
+
+
+def _condensate_config(prevent: bool):
+    """Config with only the switch the condensed reservoir reads."""
+    config = MagicMock()
+    config.outgas.prevent_desaturation = prevent
+    return config
+
+
+def _graphite_row(total: float = 1.0e20, layer: float = 4.0e19) -> dict:
+    """A row whose carbon holds a graphite layer from earlier steps."""
+    from proteus.utils.constants import condensate_density, vol_element_list
+
+    hf_row = {f'{e}_kg_{r}': 0.0 for e in vol_element_list for r in ('total', 'condensed')}
+    hf_row.update({f'{c}_cd_kg': 0.0 for c in condensate_density})
+    hf_row.update(C_kg_total=total, C_kg_condensed=layer, C_cd_kg=layer)
+    return hf_row
+
+
+@pytest.mark.physics_invariant
+def test_condensates_re_vapourise_by_default():
+    """Without prevent_desaturation the solve sees the whole inventory and owns the layer.
+
+    The solve starts from empty condensed columns and the full carbon total, and the
+    layer it reports replaces the earlier one, so a shrinking layer stays shrunk.
+    """
+    hf_row = _graphite_row()
+    with condensed_mass_withheld(_condensate_config(False), hf_row, initial=False):
+        seen = (hf_row['C_kg_total'], hf_row['C_kg_condensed'], hf_row['C_cd_kg'])
+        hf_row['C_kg_condensed'] = hf_row['C_cd_kg'] = 1.0e19  # the solve re-vapourised most
+
+    assert seen == (1.0e20, 0.0, 0.0)
+    assert hf_row['C_kg_total'] == pytest.approx(1.0e20, rel=1e-12)
+    assert hf_row['C_kg_condensed'] == pytest.approx(1.0e19, rel=1e-12)
+    assert hf_row['C_cd_kg'] == pytest.approx(1.0e19, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('new', [0.0, 5.0e18], ids=['nothing-new', 'more-condenses'])
+def test_held_layer_is_hidden_from_the_solve_and_only_grows(new):
+    """With prevent_desaturation the earlier layer is out of the solve and comes back on top.
+
+    The solve sees the carbon total less the layer, so it cannot re-vapourise it; on
+    exit the layer is added to the totals and reservoirs, so it never shrinks.
+    Edge case: a solve that condenses nothing leaves the layer as it was.
+    """
+    layer = 4.0e19
+    hf_row = _graphite_row(layer=layer)
+    with condensed_mass_withheld(_condensate_config(True), hf_row, initial=False):
+        seen = (hf_row['C_kg_total'], hf_row['C_kg_condensed'], hf_row['C_cd_kg'])
+        hf_row['C_kg_condensed'] = hf_row['C_cd_kg'] = new  # what this solve condensed
+
+    assert seen == (pytest.approx(1.0e20 - layer, rel=1e-12), 0.0, 0.0)
+    assert hf_row['C_kg_total'] == pytest.approx(1.0e20, rel=1e-12)
+    assert hf_row['C_kg_condensed'] == pytest.approx(layer + new, rel=1e-12)
+    assert hf_row['C_cd_kg'] == pytest.approx(layer + new, rel=1e-12)
+    assert hf_row['C_kg_condensed'] >= layer
+
+
+def test_held_layer_is_restored_when_the_solve_raises():
+    """A failing solve leaves the carbon total and the layer as they were.
+
+    Edge case: the solve raises before it writes the condensate columns, so the
+    graphite mass is exactly the held layer, not the layer counted twice.
+    """
+    hf_row = _graphite_row()
+    with (
+        pytest.raises(RuntimeError, match='solve failed'),
+        condensed_mass_withheld(_condensate_config(True), hf_row, initial=False),
+    ):
+        raise RuntimeError('solve failed')
+
+    assert hf_row['C_kg_total'] == pytest.approx(1.0e20, rel=1e-12)
+    assert hf_row['C_kg_condensed'] == pytest.approx(4.0e19, rel=1e-12)
+    assert hf_row['C_cd_kg'] == pytest.approx(4.0e19, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_init_stage_solves_keep_no_earlier_condensate():
+    """In the init stage the solve sees the whole budget and its layer replaces the old one.
+
+    Each init iteration solves the same starting state again, so condensate left by
+    an earlier trial solve is not withheld or added on top, even with
+    prevent_desaturation on.
+    """
+    hf_row = _graphite_row(layer=4.0e19)
+    with condensed_mass_withheld(_condensate_config(True), hf_row, initial=True):
+        seen = (hf_row['C_kg_total'], hf_row['C_kg_condensed'], hf_row['C_cd_kg'])
+        hf_row['C_kg_condensed'] = hf_row['C_cd_kg'] = 3.0e19  # this trial's equilibrium
+
+    assert seen == (1.0e20, 0.0, 0.0)
+    assert hf_row['C_kg_total'] == pytest.approx(1.0e20, rel=1e-12)
+    # Discrimination: holding the old layer back would give 4e19 + 3e19 here.
+    assert hf_row['C_kg_condensed'] == pytest.approx(3.0e19, rel=1e-12)
+    assert hf_row['C_cd_kg'] == pytest.approx(3.0e19, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(('prevent', 'desiccated'), [(True, True), (False, False)])
+def test_a_held_graphite_layer_does_not_block_desiccation(prevent, desiccated):
+    """Carbon held in a layer that cannot re-vapourise is not reachable inventory.
+
+    Physical scenario: every volatile has escaped except a thick graphite crust.
+    With prevent_desaturation the crust cannot outgas, so the planet is desiccated;
+    without it the crust could re-vapourise and the planet is not.
+    """
+    config = _condensate_config(prevent)
+    config.outgas.mass_thresh = 1.0e16
+    hf_row = {e + '_kg_total': 0.0 for e in element_list}
+    hf_row.update(C_kg_total=3.0e19, C_kg_condensed=3.0e19)
+
+    assert check_desiccation(config, hf_row) is desiccated
+    assert hf_row['C_kg_total'] == pytest.approx(3.0e19, rel=1e-12)  # the gate only reads
+
+
+@pytest.mark.physics_invariant
+def test_a_desiccated_row_with_a_solid_share_stays_desiccated():
+    """Totals that keep their solid share are below the threshold as before, and the
+    gate balance subtracts only what was removed, so the row passes the check again,
+    as on resume.
+
+    Physical scenario: H and N left partly in the frozen mantle at desiccation.
+    Edge case: the loss is 1e12 kg inside the gate, so a row that books nothing
+    is refused.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.mass_thresh = 1.0e16
+    config.interior_struct.module = 'dummy'
+    hf_row = {
+        f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
+    }
+    h_solid, n_solid, esc = 6.0e15, 1.0e15, 3.9e17
+    hf_row.update(H_kg_atm=1.0e15, H_kg_solid=h_solid, H_kg_total=7.0e15)
+    hf_row.update(N_kg_atm=2.0e15, N_kg_solid=n_solid, N_kg_total=3.0e15)
+    hf_row.update(M_vol_initial=1.5 * esc + 1.0e16 - 1.0e12, esc_kg_cumulative=esc)
+    hf_row.update(M_desiccated=0.0, atm_kg_per_mol=0.01, Phi_global=0.2)
+
+    assert check_desiccation(config, hf_row) is True
+    run_desiccated({}, config, hf_row, False)
+    assert hf_row['H_kg_total'] == h_solid and hf_row['N_kg_total'] == n_solid
+    assert hf_row['M_desiccated'] == pytest.approx(3.0e15, rel=1e-12)
+    assert check_desiccation(config, hf_row) is True
+    assert check_desiccation(config, {**hf_row, 'M_desiccated': 0.0}) is False
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('solid', 'total', 'kept'),
+    [
+        pytest.param(1.1e16, 0.0, 0.0, id='escape-floored-total-under-stale-solid'),
+        pytest.param(1.1e16, 4.0e15, 4.0e15, id='stale-solid-above-escaped-total'),
+        pytest.param(float('nan'), 2.0e15, 0.0, id='unreadable-solid-nan'),
+        pytest.param(float('inf'), 2.0e15, 0.0, id='unreadable-solid-inf'),
+        pytest.param(-5.0e14, 2.0e15, 0.0, id='negative-solid'),
+        pytest.param(0.0, -1.0e14, -1.0e14, id='negative-total'),
+    ],
+)
+def test_the_kept_solid_share_stays_within_the_total(solid, total, kept, caplog):
+    """The kept share is the solid column limited to [0, total before the call], and
+    a non-finite solid column keeps nothing; the solid column becomes the kept share,
+    no total rises, the booking is not negative and the row passes the check again.
+
+    Physical scenario: escape floors C below the threshold while the solid column
+    still holds the value of the last outgassing call. Edge cases: a total floored
+    to zero, a non-finite and a negative solid column, a negative total.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.mass_thresh = 1.0e16
+    config.interior_struct.module = 'dummy'
+    hf_row = {
+        f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
+    }
+    hf_row.update(C_kg_atm=1.0e15, C_kg_solid=solid, C_kg_total=total)
+    hf_row.update(CO2_kg_solid=solid, CO2_kg_total=total, CO2_mol_solid=4.0)
+    hf_row.update(M_vol_initial=4.0e17, esc_kg_cumulative=3.9e17, M_desiccated=0.0)
+    hf_row.update(atm_kg_per_mol=0.01, Phi_global=0.2)
+
+    assert check_desiccation(config, hf_row) is True
+    run_desiccated({}, config, hf_row, False)
+    for s in ('C', 'CO2'):
+        assert hf_row[f'{s}_kg_total'] == kept == hf_row[f'{s}_kg_solid']
+    mol = 4.0 * kept / solid if kept > 0 else 0.0
+    assert hf_row['CO2_mol_total'] == pytest.approx(mol) == hf_row['CO2_mol_solid']
+    assert hf_row['M_desiccated'] == pytest.approx(total - kept, abs=1.0)
+    assert check_desiccation(config, hf_row) is True
+    assert 'C_mol_total' not in hf_row
+    assert ('solid C column is not finite' in caplog.text) is (not math.isfinite(solid))
+
+
+@pytest.mark.physics_invariant
+def test_nothing_kept_leaves_zero_mol_columns():
+    """Where nothing is kept, the mol total and mol solid of a species are 0, even
+    when the mol solid column was non-finite.
+
+    Physical scenario: Ne with an unreadable solid column at desiccation. Edge case:
+    an infinite mol solid, which times a kept share of 0 is not a number.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.interior_struct.module = 'dummy'
+    hf_row = {'Ne_kg_total': 1.0e14, 'Ne_kg_solid': math.inf, 'Ne_mol_solid': math.inf}
+    hf_row.update(atm_kg_per_mol=0.01, Phi_global=0.2)
+    run_desiccated({}, config, hf_row, False)
+    assert hf_row['Ne_kg_total'] == hf_row['Ne_kg_solid'] == 0.0
+    assert hf_row['Ne_mol_total'] == hf_row['Ne_mol_solid'] == 0.0
+
+
+@pytest.mark.physics_invariant
+def test_a_non_finite_ledger_on_entry_stays_desiccated():
+    """A non-finite M_desiccated reads as zero in check_desiccation, so the booking
+    starts from zero and the written row passes the check again.
+
+    Physical scenario: desiccation of a row whose ledger an upstream step left
+    unreadable. Edge case: the loss is inside the gate only with the booking.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.mass_thresh = 1.0e16
+    config.interior_struct.module = 'dummy'
+    hf_row = {f'{e}_kg_total': 0.0 for e in element_list}
+    hf_row.update(H_kg_atm=5.0e15, H_kg_total=5.0e15, M_desiccated=math.nan)
+    hf_row.update(M_vol_initial=1.0e17, esc_kg_cumulative=6.5e16)
+    hf_row.update(atm_kg_per_mol=0.01, Phi_global=0.2)
+    assert check_desiccation(config, hf_row) is True
+    run_desiccated({}, config, hf_row, False)
+    assert hf_row['M_desiccated'] == pytest.approx(5.0e15, rel=1e-12)
+    assert check_desiccation(config, hf_row) is True
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('module', ['zalmoxis', 'dummy'])
+def test_a_desiccated_row_gives_the_same_verdict_again(module):
+    """check_desiccation gives the same verdict before and after run_desiccated, as in
+    the loop and on resume; a second run_desiccated books nothing.
+
+    Physical scenario: desiccation with one element total left unreadable by an
+    upstream failure. Edge case: without the Zalmoxis structure the ledger stays.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.mass_thresh = 1.0e16
+    config.interior_struct.module = module
+    hf_row = {
+        f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
+    }
+    hf_row.update(H_kg_total=float('nan'), N_kg_total=5.0e15, N_kg_atm=5.0e15)
+    hf_row.update(M_vol_initial=5.0e17, esc_kg_cumulative=1.0e17, M_desiccated=0.0)
+    hf_row.update(M_volatile_change=-1.0e17, atm_kg_per_mol=0.028, Phi_global=0.5)
+
+    in_loop = check_desiccation(config, hf_row)
+    run_desiccated({}, config, hf_row, False)
+    assert check_desiccation(config, hf_row) is in_loop
+    # An unreadable total refuses desiccation and stays visible.
+    assert in_loop is False and hf_row['H_kg_total'] != hf_row['H_kg_total']
+
+    hf_row.update(H_kg_total=0.0, M_vol_initial=1.05e17)
+    assert check_desiccation(config, hf_row) is True
+    booked = (hf_row['M_desiccated'], hf_row['M_volatile_change'])
+    run_desiccated({}, config, hf_row, False)
+    assert (hf_row['M_desiccated'], hf_row['M_volatile_change']) == booked
+    assert booked[1] == (-1.05e17 if module == 'zalmoxis' else -1.0e17)
+
+
+@pytest.mark.physics_invariant
+def test_an_unreadable_total_refuses_desiccation_and_is_not_hidden():
+    """A non-finite element total refuses desiccation, with or without an escape
+    baseline, and run_desiccated leaves it non-finite rather than writing zero.
+
+    Physical scenario: an upstream failure leaves H unreadable while every other
+    total is below the threshold. Edge cases: no escape baseline yet, where the
+    gate would otherwise accept on the threshold test alone; Fe and He, which are
+    both a species and an element, with a mol total that follows the kg total.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.mass_thresh = 1.0e16
+    config.interior_struct.module = 'zalmoxis'
+    hf_row = {
+        f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
+    }
+    hf_row.update(H_kg_total=float('nan'), N_kg_total=5.0e15, N_kg_atm=5.0e15)
+    hf_row.update(Fe_kg_total=float('nan'), Fe_kg_solid=1.0e14, Fe_mol_solid=2.0)
+    hf_row.update(He_kg_total=float('inf'), He_kg_solid=1.0e14, He_mol_solid=2.0)
+    hf_row.update(M_vol_initial=0.0, M_desiccated=0.0, M_volatile_change=0.0)
+    hf_row.update(atm_kg_per_mol=0.028, Phi_global=0.5)
+
+    assert check_desiccation(config, hf_row) is False
+
+    run_desiccated({}, config, hf_row, False)
+    assert hf_row['H_kg_total'] != hf_row['H_kg_total']
+    assert math.isnan(hf_row['Fe_kg_total']) and math.isnan(hf_row['Fe_mol_total'])
+    assert hf_row['Fe_mol_solid'] == pytest.approx(2.0, rel=1e-12)
+    assert hf_row['He_kg_total'] == math.inf and math.isnan(hf_row['He_mol_total'])
+    assert hf_row['N_kg_total'] == 0.0
+    assert hf_row['M_desiccated'] == pytest.approx(5.0e15, rel=1e-12)
+
+
+@pytest.mark.parametrize('ledger', [float('nan'), float('inf'), float('-inf')])
+def test_a_non_finite_desiccation_ledger_cannot_open_the_gate(ledger):
+    """A non-finite M_desiccated reads as zero, so a large unexplained loss is refused."""
+    config = MagicMock()
+    config.outgas.mass_thresh = 1.0e16
+    hf_row = {f'{e}_kg_total': 0.0 for e in element_list}
+    hf_row.update(M_vol_initial=1.0e17, esc_kg_cumulative=1.0e15, M_desiccated=ledger)
+    assert check_desiccation(config, hf_row) is False
+    hf_row['M_desiccated'] = 9.9e16  # the same loss, booked as removed at desiccation
+    assert check_desiccation(config, hf_row) is True
+
+
+@pytest.mark.physics_invariant
+def test_desiccation_leaves_the_mass_bookkeeping_self_consistent():
+    """A desiccated iteration empties the atmosphere without leaving any mass
+    aggregate stale, so the runtime mass check still passes afterwards.
+
+    ``run_desiccated`` zeroes every per-species mass. The aggregates summed from
+    them must go to zero in the same sweep: an aggregate left at its previous
+    value disagrees with a summed zero by 100 percent, which the check reports
+    rather than tolerating. Edge case: the check is exercised both before and
+    after desiccation, so a row that was consistent stays consistent across the
+    transition rather than only being consistent at one end.
+    """
+    from proteus.utils.constants import vol_gas_list
+    from proteus.utils.coupler import assert_mass_conservation
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+
+    # A consistent end-of-iteration row: asymmetric species split so a summation
+    # regression moves the aggregate instead of cancelling out.
+    hf_row = {}
+    weights = [1.0] + [0.02] * (len(vol_gas_list) - 1)
+    for s, w in zip(vol_gas_list, weights):
+        hf_row[s + '_kg_atm'] = 1.0e18 * w
+    hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    hf_row['M_atm'] = hf_row['M_vol_atm']
+    hf_row['M_vaps'] = 0.0
+    hf_row['M_planet'] = 5.97e24  # 1 M_earth
+    hf_row['P_surf'] = 90.0
+    hf_row['atm_kg_per_mol'] = 0.029
+    hf_row['Phi_global'] = 1.0
+
+    # The row is consistent to begin with, so a failure after desiccation is
+    # caused by desiccation and not by the fixture.
+    assert assert_mass_conservation(hf_row) is None
+    assert hf_row['M_vol_atm'] > 1.0e18  # the dominant species alone exceeds this
+
+    run_desiccated({}, config, hf_row, False)
+
+    # Every aggregate followed the species masses to zero.
+    assert hf_row['M_atm'] == pytest.approx(0.0, abs=1e-12)
+    assert hf_row['M_vol_atm'] == pytest.approx(0.0, abs=1e-12)
+    assert hf_row['M_vaps'] == pytest.approx(0.0, abs=1e-12)
+    assert sum(hf_row[s + '_kg_atm'] for s in vol_gas_list) == pytest.approx(0.0, abs=1e-12)
+    # So the invariant still holds on the first desiccated iteration.
+    assert assert_mass_conservation(hf_row) is None
+    # M_planet is untouched by desiccation: the interior is still there.
+    assert hf_row['M_planet'] == pytest.approx(5.97e24, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -522,6 +1070,7 @@ def test_run_desiccated_zeros_derived_fO2_and_O_residual():
     keys from expected_keys() would leave the seeded values untouched.
     """
     config = MagicMock()
+    config.outgas.vapourise = False
 
     hf_row = {}
     for s in gas_list:
@@ -534,7 +1083,7 @@ def test_run_desiccated_zeros_derived_fO2_and_O_residual():
     hf_row['fO2_shift_IW_derived'] = -3.7  # finite, non-default
     hf_row['O_res'] = 1.2e9  # non-trivial residual
 
-    run_desiccated(config, hf_row)
+    run_desiccated({}, config, hf_row, False)
 
     assert hf_row['fO2_shift_IW_derived'] == pytest.approx(0.0, abs=1e-12)
     assert hf_row['O_res'] == pytest.approx(0.0, abs=1e-12)
@@ -549,6 +1098,7 @@ def test_run_desiccated_preserves_critical_keys():
     Setting to zero would cause division errors. Preserve last valid values.
     """
     config = MagicMock()
+    config.outgas.vapourise = False
 
     # Setup with specific values for all gases in gas_list
     hf_row = {
@@ -573,11 +1123,14 @@ def test_run_desiccated_preserves_critical_keys():
     original_mmw = hf_row['atm_kg_per_mol']
     original_vmrs = {s: hf_row[s + '_vmr'] for s in gas_list}
 
-    run_desiccated(config, hf_row)
+    run_desiccated({}, config, hf_row, False)
 
     # Verify preservation
     assert hf_row['atm_kg_per_mol'] == original_mmw
-    for s in gas_list:
+    # With vapourise=False, run_desiccated's excepted_keys only covers
+    # vol_list VMRs (see outgas/wrapper.py); vap_list/noble-gas VMRs are
+    # zeroed like any other non-excepted key.
+    for s in vol_list:
         assert hf_row[s + '_vmr'] == original_vmrs[s]
 
 
@@ -606,7 +1159,7 @@ def test_run_outgassing_zero_atmosphere_mass():
     hf_row['atm_kg_per_mol'] = 0.029  # Arbitrary (not used when M_atm=0)
 
     with patch('proteus.outgas.calliope.calc_surface_pressures'):
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
 
         # M_atm should be exactly zero
         assert hf_row['M_atm'] == pytest.approx(0.0, abs=1e-12)
@@ -707,10 +1260,15 @@ def test_run_outgassing_mixed_species_dominance():
     hf_row['atm_kg_per_mol'] = 0.029  # N2/O2-dominated
 
     with patch('proteus.outgas.calliope.calc_surface_pressures'):
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
 
-        # Check mass conservation
-        expected_M_atm = sum(hf_row[s + '_kg_atm'] for s in gas_list)
+        # Check mass conservation. run_outgassing sums over its own local
+        # gas_list (vol_list + vap_list, since config.outgas.vapourise is
+        # truthy on this MagicMock) via hf_row.get(..., 0.0), so match that
+        # here rather than the canonical constants.gas_list / a bare
+        # subscript (the hf_row fixture above doesn't set every vap_list
+        # species explicitly).
+        expected_M_atm = sum(hf_row.get(s + '_kg_atm', 0.0) for s in vol_list + vap_list)
         assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-10)
 
         # M_atm should be dominated by N2+O2
@@ -774,7 +1332,8 @@ def test_run_desiccated_zeros_element_mass_ratios():
     }
 
     config = MagicMock()
-    run_desiccated(config, hf_row)
+    config.outgas.vapourise = False
+    run_desiccated({}, config, hf_row, False)
 
     # All ratio columns must be zero after desiccation.
     for key in ('C/H_atm', 'O/H_atm', 'N/H_atm', 'S/H_atm', 'C/O_atm'):
@@ -1075,7 +1634,7 @@ def test_run_outgassing_from_O_budget_dispatches_to_calliope():
     hf_row['atm_kg_per_mol'] = 0.018
 
     with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calc:
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
         mock_calc.assert_called_once_with(dirs, config, hf_row)
         # Pre-seed invariant under from_O_budget: run_outgassing must set
         # fO2_shift_IW_derived to the configured buffer value before
@@ -1117,7 +1676,7 @@ def test_run_outgassing_from_O_budget_dispatches_to_atmodeller():
         # both calls active (or fell through to calliope as a default)
         # would silently double-solve, with the second result winning.
         with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calliope:
-            run_outgassing(dirs, config, hf_row)
+            run_outgassing(dirs, config, hf_row, initial=False)
         mock_calc.assert_called_once_with(dirs, config, hf_row)
         mock_calliope.assert_not_called()
 
@@ -1138,15 +1697,37 @@ def test_run_outgassing_from_O_budget_rejects_dummy_backend():
     hf_row = {}
 
     with pytest.raises(NotImplementedError, match='dummy'):
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
     # Negative side-effect check: the dummy backend's calc function
     # must NOT be invoked when the wrapper rejects the combination.
     # A regression that raised AFTER dispatching would leak a partial
     # solve into hf_row.
     with patch('proteus.outgas.dummy.calc_surface_pressures_dummy') as mock_dummy:
         with pytest.raises(NotImplementedError, match='dummy'):
-            run_outgassing(dirs, config, hf_row)
+            run_outgassing(dirs, config, hf_row, initial=False)
         mock_dummy.assert_not_called()
+
+
+class _StopAfterDispatch(Exception):
+    """Raised by a patched solver to end run_outgassing right after its call."""
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('initial', [True, False])
+def test_run_outgassing_tells_the_dummy_whether_it_is_the_init_stage(initial):
+    """The dummy outgassing derives an empty O budget only in the init stage, so
+    the wrapper must forward that flag to it unchanged."""
+    config = MagicMock()
+    config.outgas.module = 'dummy'
+    config.planet.fO2_source = 'user_constant'
+    config.outgas.fO2_shift_IW = 2.0
+    with patch(
+        'proteus.outgas.dummy.calc_surface_pressures_dummy', side_effect=_StopAfterDispatch
+    ) as mock_dummy:
+        with pytest.raises(_StopAfterDispatch):
+            run_outgassing({'output': '/tmp/test'}, config, {}, initial=initial)
+    assert mock_dummy.call_count == 1
+    assert mock_dummy.call_args.kwargs == {'initial': initial}
 
 
 @pytest.mark.unit
@@ -1166,14 +1747,14 @@ def test_run_outgassing_rejects_unknown_fO2_source():
     hf_row = {}
 
     with pytest.raises(NotImplementedError, match='something_unexpected'):
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
     # No-dispatch invariant: an unrecognised fO2_source must reject
     # before any backend call. A regression that raised AFTER dispatch
     # (or that left the legacy chemistry path running and re-raised on
     # exit) would still match the regex but quietly do real work.
     with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calc:
         with pytest.raises(NotImplementedError, match='something_unexpected'):
-            run_outgassing(dirs, config, hf_row)
+            run_outgassing(dirs, config, hf_row, initial=False)
         mock_calc.assert_not_called()
 
 
@@ -1767,3 +2348,626 @@ def test_run_crystallized_rejects_fractionated_escape():
     run_crystallized(_cryst_cfg('bulk'), hf_bulk, dt)
     assert hf_bulk['M_atm'] == pytest.approx(90.0, rel=1e-9)
     assert hf_bulk['M_atm'] < base['M_atm'] - 1.0
+
+
+# ---------------------------------------------------------------------------
+# run_outgassing_and_vapourisation: volatile solve + rock-vapour orchestration
+# ---------------------------------------------------------------------------
+
+
+def _vapourise_config(vapourise: bool, phi_crit: float = 0.3):
+    """MagicMock config with the two real scalars the orchestrator reads."""
+    config = MagicMock()
+    config.outgas.vapourise = vapourise
+    config.params.stop.solid.phi_crit = phi_crit
+    return config
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_outgassing_and_vapourisation_runs_vapour_step_above_phi_crit():
+    """With vapourise enabled and the mantle above the solidification threshold,
+    the orchestrator resets the rock-vapour reservoirs, runs the volatile solve,
+    then runs the silicate (rock-vapour) step.
+
+    Reset invariant: a stale M_vaps and stale vapour-species mass are zeroed
+    before the solve (rock-vapour mass is non-negative and re-derived each call).
+    """
+    dirs = {'output': '/tmp/test'}
+    config = _vapourise_config(vapourise=True, phi_crit=0.3)
+
+    vap_species = vap_list[0]
+    hf_row = {
+        'Phi_global': 0.5,  # above phi_crit -> vapourisation step runs
+        'M_vaps': 5.0e18,  # stale value that must be reset
+        vap_species + '_kg_atm': 9.0e9,  # stale vapour mass that must be reset
+    }
+
+    with (
+        patch('proteus.outgas.wrapper.run_outgassing') as mock_outgas,
+        patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap,
+    ):
+        run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True)
+
+    mock_outgas.assert_called_once_with(dirs, config, hf_row, initial=True)
+    mock_vap.assert_called_once_with(dirs, config, hf_row, True)
+    # Reset happened before the (mocked, no-op) vapourisation step.
+    assert hf_row['M_vaps'] == 0.0
+    assert hf_row['M_vaps'] >= 0.0
+    assert hf_row[vap_species + '_kg_atm'] == 0.0
+
+
+@pytest.mark.unit
+def test_run_outgassing_and_vapourisation_skips_vapour_step_below_phi_crit():
+    """When the mantle is below the solidification threshold, the vapourisation step
+    is skipped even with vapourise enabled; the volatile solve still runs.
+
+    Edge case: Phi_global < phi_crit disables rock vapour (a near-solid mantle
+    has no melt to vaporise).
+    """
+    dirs = {'output': '/tmp/test'}
+    config = _vapourise_config(vapourise=True, phi_crit=0.3)
+    hf_row = {'Phi_global': 0.1, 'M_vaps': 2.0e18}  # below phi_crit
+
+    with (
+        patch('proteus.outgas.wrapper.run_outgassing') as mock_outgas,
+        patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap,
+    ):
+        run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=False)
+
+    mock_outgas.assert_called_once_with(dirs, config, hf_row, initial=False)
+    mock_vap.assert_not_called()
+    assert hf_row['M_vaps'] == 0.0
+
+
+@pytest.mark.unit
+def test_run_outgassing_and_vapourisation_skips_vapour_step_when_disabled():
+    """With vapourise disabled the vapourisation step never runs, regardless of the
+    melt fraction; the volatile solve still runs and M_vaps stays zero.
+
+    Discrimination: Phi_global is well above phi_crit, so only the vapourise
+    flag (not the melt gate) can be responsible for skipping the vapourisation step.
+    """
+    dirs = {'output': '/tmp/test'}
+    config = _vapourise_config(vapourise=False, phi_crit=0.3)
+    hf_row = {'Phi_global': 0.9, 'M_vaps': 7.0e18}
+
+    with (
+        patch('proteus.outgas.wrapper.run_outgassing') as mock_outgas,
+        patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap,
+    ):
+        run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True)
+
+    mock_outgas.assert_called_once_with(dirs, config, hf_row, initial=True)
+    mock_vap.assert_not_called()
+    assert hf_row['M_vaps'] == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_crystallized_scales_the_volatile_element_reservoirs():
+    """A frozen-mantle step shrinks the per-element atmospheric reservoirs too.
+
+    Escape sizes the next step's loss from the ``{element}_kg_atm`` keys, so a
+    step that erodes the column without moving them leaves escape drawing on
+    an atmosphere that is no longer there.
+    """
+    from proteus.outgas.wrapper import run_crystallized
+
+    hf_row = {
+        'M_atm': 105.0,  # the H2O column and the Si vapour
+        'esc_rate_total': 1.0,
+        'esc_step_kg': 10.0,  # 10 of the 105 kg of elements leaves, 95/105 is retained
+        'H2O_kg_atm': 100.0,
+        'H2O_bar': 10.0,
+        'P_surf': 10.0,
+        'H_kg_atm': 20.0,
+        'O_kg_atm': 80.0,
+        'C_kg_atm': 0.0,
+        'Si_kg_atm': 5.0,  # symbol is also a species, so it must scale once
+    }
+    run_crystallized(_cryst_cfg(), hf_row, dt=1.0)
+
+    assert hf_row['H_kg_atm'] == pytest.approx(20.0 * 95.0 / 105.0, rel=1e-9)
+    assert hf_row['O_kg_atm'] == pytest.approx(80.0 * 95.0 / 105.0, rel=1e-9)
+    # Discrimination: an unscaled reservoir stays at 20.0, which is 1.9 kg from
+    # the correct value and far outside the tolerance above.
+    assert abs(hf_row['H_kg_atm'] - 20.0) > 1.0
+    # Si is reached through the species loop and the element loop must not
+    # scale it a second time; twice would land on 4.09, not 4.52.
+    assert hf_row['Si_kg_atm'] == pytest.approx(5.0 * 95.0 / 105.0, rel=1e-9)
+    # An element the column never held stays empty rather than going negative.
+    assert hf_row['C_kg_atm'] == pytest.approx(0.0, abs=1e-30)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_two_frozen_mantle_steps_keep_the_escapable_reservoir_with_the_column():
+    """Across consecutive frozen-mantle steps the escapable reservoir tracks
+    the column it is drawn from, rather than holding its starting value.
+
+    The reservoir escape may draw on cannot exceed the atmosphere that holds
+    it, so a run that erodes the column must shrink both together.
+    """
+    from proteus.escape.wrapper import escapable_mass
+    from proteus.outgas.wrapper import run_crystallized
+
+    hf_row = {
+        'M_atm': 1.0e20,
+        'esc_rate_total': 1.0,
+        'P_surf': 100.0,
+        'H2O_kg_atm': 1.0e20,
+        'H2O_bar': 100.0,
+        'H_kg_atm': 2.0e19,
+        'O_kg_atm': 8.0e19,
+    }
+    for step in range(2):
+        hf_row['esc_step_kg'] = 0.5 * hf_row['M_atm']
+        run_crystallized(_cryst_cfg(), hf_row, dt=1.0)
+        # The invariant, checked at every step rather than only at the end.
+        assert escapable_mass(hf_row, 'outgas') <= hf_row['M_atm'] * (1.0 + 1e-12), (
+            f'step {step}: escape may draw on more mass than the column holds'
+        )
+
+    # Half leaves twice, so a quarter of the column and of each element remains.
+    assert hf_row['M_atm'] == pytest.approx(2.5e19, rel=1e-9)
+    assert hf_row['H_kg_atm'] == pytest.approx(5.0e18, rel=1e-9)
+    # Discrimination: reservoirs pinned at their starting value would report
+    # 1.0e20 escapable against a 2.5e19 column, a factor of four out.
+    assert escapable_mass(hf_row, 'outgas') == pytest.approx(2.5e19, rel=1e-9)
+
+
+def _outgas_row(**values) -> dict:
+    """Row carrying every reservoir the wrapper reads around a chemistry solve."""
+    row = {'P_surf': 0.0, 'atm_kg_per_mol': 0.044, 'M_planet': 6.0e24}
+    for s in gas_list:
+        for key in ('_kg_atm', '_kg_liquid', '_kg_solid', '_kg_total', '_vmr', '_bar'):
+            row[s + key] = 0.0
+    for e in element_list:
+        if e not in gas_list:
+            for reservoir in ('atm', 'liquid', 'solid', 'total'):
+                row[f'{e}_kg_{reservoir}'] = 0.0
+    row.update(values)
+    return row
+
+
+def _outgas_config() -> MagicMock:
+    """Config for a dummy-backend solve under the default oxygen buffer."""
+    config = MagicMock()
+    config.outgas.module = 'dummy'
+    config.outgas.fO2_shift_IW = 0.0
+    config.outgas.h2_binodal = False
+    config.planet.fO2_source = 'user_constant'
+    config.interior_struct.zalmoxis.global_miscibility = False
+    return config
+
+
+@pytest.mark.physics_invariant
+def test_run_outgassing_leaves_condensed_graphite_to_the_backend_that_wrote_it():
+    """atmodeller writes the carbon it condenses as graphite into C_kg_solid.
+    That share belongs to the chemistry, not to trapping, so each solve must
+    see the whole carbon budget and write its own graphite over the last one.
+    Taking last step's graphite for trapped mass would hide it from the budget
+    and keep the larger of the two solids, leaving the carbon reservoirs short
+    of the total by the smaller of them, which the closure check refuses."""
+    from proteus.utils.coupler import assert_mass_conservation
+
+    received = []
+
+    def condensing_backend(dirs, config, hf_row, **_kwargs):
+        # Stand in for atmodeller: read the carbon budget, condense a fifth of
+        # it as graphite, and split the rest 3:5 between atmosphere and melt.
+        total = hf_row['C_kg_total']
+        received.append(total)
+        hf_row.update(C_kg_solid=0.2 * total, C_kg_atm=0.3 * total, C_kg_liquid=0.5 * total)
+        hf_row.update(CO2_kg_atm=0.3 * total * 44.009 / 12.011, CO2_vmr=1.0, CO2_bar=100.0)
+        hf_row['P_surf'] = 100.0
+
+    config = _outgas_config()
+    row = _outgas_row(C_kg_total=1.0e21)
+    target = 'proteus.outgas.dummy.calc_surface_pressures_dummy'
+    with patch(target, side_effect=condensing_backend):
+        run_outgassing({}, config, row, initial=False)
+        assert_mass_conservation(row, check_element_closure=True, derived_elements=('O',))
+        # The second solve starts with last step's graphite in the column.
+        run_outgassing({}, config, row, initial=False)
+
+    # Both solves partitioned the whole budget; hiding the graphite would have
+    # handed the second one 8e20 kg.
+    assert received == pytest.approx([1.0e21, 1.0e21], rel=1e-12)
+    # The solid is this solve's graphite, and nothing was recorded as trapped.
+    assert row['C_kg_solid'] == pytest.approx(2.0e20, rel=1e-12)
+    assert row.get('C_kg_trapped', 0.0) == pytest.approx(0.0, abs=0.0)
+    assert_mass_conservation(row, check_element_closure=True, derived_elements=('O',))
+
+
+@pytest.mark.physics_invariant
+def test_run_outgassing_hides_the_trapped_mass_and_rebuilds_species_totals():
+    """The chemistry partitions only the inventory it can reach, so the trapped
+    mass is withheld from the element totals it is handed. The species totals
+    it writes stay its own: after each solve a trapped species' total is its
+    fresh atmosphere plus melt plus the trapped share, so the total follows the
+    chemistry from one solve to the next. The trapped mass is put back even
+    when the solve raises."""
+    from proteus.utils.coupler import assert_mass_conservation
+    from proteus.utils.helper import eval_gas_mmw
+
+    mmw = eval_gas_mmw('H2O')
+    received = []
+    # Reachable water [kg] in the atmosphere and the melt, one pair per solve:
+    # the second solve turns some water into other species.
+    water = iter([(3.6e20, 1.08e21), (4.0e20, 8.0e20)])
+
+    def backend(dirs, config, hf_row, **_kwargs):
+        # Stand in for CALLIOPE: split the hydrogen it is handed 1:3, write the
+        # water partition with its own species total, and zero every solid.
+        total = hf_row['H_kg_total']
+        received.append(total)
+        hf_row.update(H_kg_atm=0.25 * total, H_kg_liquid=0.75 * total, H_kg_solid=0.0)
+        atm, liquid = next(water)
+        hf_row.update(H2O_kg_atm=atm, H2O_kg_liquid=liquid, H2O_kg_solid=0.0)
+        hf_row.update(H2O_kg_total=atm + liquid, H2O_mol_solid=0.0)
+        hf_row.update(H2O_mol_atm=atm / mmw, H2O_mol_liquid=liquid / mmw)
+        hf_row.update(H2O_mol_total=(atm + liquid) / mmw)
+        hf_row.update(H2O_vmr=1.0, H2O_bar=200.0, P_surf=200.0)
+
+    config = _outgas_config()
+    row = _outgas_row(H_kg_total=2.0e20, H_kg_solid=4.0e19, H_kg_trapped=4.0e19)
+    row.update(H2O_kg_total=1.8e21, H2O_kg_solid=3.6e20, H2O_kg_trapped=3.6e20)
+    target = 'proteus.outgas.dummy.calc_surface_pressures_dummy'
+    with patch(target, side_effect=backend):
+        run_outgassing({}, config, row, initial=False)
+        assert row['H2O_kg_total'] == pytest.approx(1.8e21, rel=1e-12)
+        assert_mass_conservation(row, check_element_closure=True, derived_elements=('O',))
+        run_outgassing({}, config, row, initial=False)
+
+    # Both solves saw the reachable hydrogen alone, 2e20 - 4e19 kg.
+    assert received == pytest.approx([1.6e20, 1.6e20], rel=1e-12)
+    assert row['H_kg_total'] == pytest.approx(2.0e20, rel=1e-12)
+    # The species total followed the second solve to 1.2e21 + 3.6e20 kg;
+    # restoring the total saved before the solve would have left it at 1.8e21.
+    assert row['H2O_kg_total'] == pytest.approx(1.56e21, rel=1e-12)
+    assert abs(row['H2O_kg_total'] - 1.8e21) > 1.0e20
+    assert row['H2O_mol_solid'] == pytest.approx(3.6e20 / mmw, rel=1e-12)
+    assert_mass_conservation(row, check_element_closure=True, derived_elements=('O',))
+
+    # Error contract: a solve that raises still has the trapped mass put back.
+    with patch(target, side_effect=RuntimeError('no convergence')):
+        with pytest.raises(RuntimeError, match='no convergence'):
+            run_outgassing({}, config, row, initial=False)
+    assert row['H_kg_total'] == pytest.approx(2.0e20, rel=1e-12)
+    assert row['H2O_kg_solid'] == pytest.approx(3.6e20, rel=1e-12)
+
+
+def _nearly_dry_row(**values) -> dict:
+    """Row whose reachable inventory is below the 1e16 kg desiccation threshold."""
+    row = _outgas_row(M_atm=1.0e14, M_vol_atm=0.0)
+    row.update(He_kg_total=1.0e14, He_kg_atm=1.0e14)
+    row.update(values)
+    return row
+
+
+@pytest.mark.physics_invariant
+def test_desiccation_with_trapped_mass_or_a_noble_gas_keeps_the_closure():
+    """A planet whose atmosphere and melt have emptied is desiccated even when
+    its mantle holds trapped volatiles, and a trace noble-gas inventory below
+    the threshold does not prevent it. The desiccated row must still pass the
+    per-element closure check instead of aborting the run: the trapped mass
+    stays in the solid and in the total, and the atmospheric remainders, the
+    helium included, are removed and booked in M_desiccated."""
+    from proteus.utils.coupler import assert_mass_conservation
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.mass_thresh = 1e16
+    config.outgas.trap_mode = 'front'
+    config.planet.fO2_source = 'from_O_budget'
+
+    # 4e19 kg of hydrogen trapped, 5e15 kg still reachable, 1e14 kg of helium.
+    trapped = _nearly_dry_row(H_kg_total=4.0e19 + 5.0e15, H_kg_atm=5.0e15)
+    trapped.update(H_kg_solid=4.0e19, H_kg_trapped=4.0e19)
+    trapped.update(H2O_kg_solid=3.6e20, H2O_kg_trapped=3.6e20, H2O_kg_total=3.6e20)
+    assert check_desiccation(config, trapped)
+    run_desiccated({}, config, trapped, False)
+    assert trapped['H_kg_solid'] == pytest.approx(4.0e19, rel=1e-12)
+    assert trapped['H_kg_total'] == pytest.approx(4.0e19, rel=1e-12)
+    assert trapped['H_kg_atm'] == pytest.approx(0.0, abs=0.0)
+    assert trapped['H2O_kg_solid'] == pytest.approx(3.6e20, rel=1e-12)
+    assert trapped['He_kg_total'] == pytest.approx(0.0, abs=0.0)
+    assert trapped['M_desiccated'] == pytest.approx(5.0e15 + 1.0e14, rel=1e-9)
+    assert_mass_conservation(trapped, check_element_closure=True)
+
+    # Edge case, no trapping at all: helium alone, which escape never floors.
+    noble = _nearly_dry_row()
+    assert check_desiccation(config, noble)
+    run_desiccated({}, config, noble, False)
+    assert noble['He_kg_total'] == pytest.approx(0.0, abs=0.0)
+    assert noble['M_desiccated'] == pytest.approx(1.0e14, rel=1e-12)
+    assert_mass_conservation(noble, check_element_closure=True)
+
+    # Emptying the atmosphere and keeping the helium total would leave that
+    # total with no reservoir, which the closure refuses.
+    stale = dict(noble, He_kg_total=1.0e14)
+    with pytest.raises(RuntimeError, match='closure failed for He'):
+        assert_mass_conservation(stale, check_element_closure=True)
+
+
+@pytest.mark.physics_invariant
+def test_a_remelt_after_desiccation_returns_the_planet_its_volatiles():
+    """A desiccated planet keeps its trapped H, O and Ar in the solid. When the
+    mantle then remelts, the released mass is in the melt again, so the planet
+    is no longer desiccated: escape and outgassing must take it from there.
+    While it stays flagged, run_desiccated keeps the released mass in the melt
+    and in the totals; nothing leaves the planet without escape booking it."""
+    import pandas as pd
+
+    from proteus.outgas.trapping import run_trapping
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.mass_thresh = 1e16
+    config.outgas.trap_mode = 'front'
+    config.planet.fO2_source = 'from_O_budget'
+
+    # 4e19 kg H, 3.2e20 kg O (as 3.6e20 kg H2O) and 1e18 kg Ar trapped.
+    row = _nearly_dry_row(H_kg_total=4.0e19, O_kg_total=3.2e20, Ar_kg_total=1.0e18)
+    trapped = {'H': 4.0e19, 'O': 3.2e20, 'H2O': 3.6e20, 'Ar': 1.0e18}
+    for name, mass in trapped.items():
+        row.update({f'{name}_kg_solid': mass, f'{name}_kg_trapped': mass})
+    row['H2O_kg_total'] = 3.6e20
+    from proteus.utils.helper import eval_gas_mmw
+
+    row['Ar_mol_solid'] = 1.0e18 / eval_gas_mmw('Ar')
+    assert check_desiccation(config, row)
+    run_desiccated({}, config, row, False)
+    totals = {e: row[f'{e}_kg_total'] for e in ('H', 'O', 'Ar')}
+    assert totals['H'] == pytest.approx(4.0e19, rel=1e-12)
+    # Argon is its own element: the solid keeps its moles and they make the total.
+    assert row['Ar_mol_solid'] == pytest.approx(1.0e18 / eval_gas_mmw('Ar'), rel=1e-12)
+    assert row['Ar_mol_total'] == pytest.approx(1.0e18 / eval_gas_mmw('Ar'), rel=1e-12)
+
+    # Phi 0.30 -> 0.65 remelts half of the solid mantle.
+    row.update(Time=2.0e4, M_mantle=4.0e24, Phi_global=0.65)
+    prev = pd.DataFrame([{'Time': 1.0e4, 'M_mantle': 4.0e24, 'Phi_global': 0.30}])
+    step = run_trapping(config, row, prev)
+    assert step.remelted
+    assert row['Ar_kg_liquid'] == pytest.approx(5.0e17, rel=1e-12)
+    assert not desiccated_after_trapping(config, row, True, step)
+
+    # Left flagged, the next desiccated step keeps every total and the
+    # released half in the melt; emptying the melt would delete that half.
+    flagged = dict(row)
+    run_desiccated({}, config, flagged, False)
+    for element, total in totals.items():
+        assert row[f'{element}_kg_total'] == pytest.approx(total, rel=1e-12)
+        assert flagged[f'{element}_kg_total'] == pytest.approx(total, rel=1e-12)
+        assert flagged[f'{element}_kg_liquid'] == pytest.approx(0.5 * total, rel=1e-12)
+
+    # Edge cases: a freezing step, a planet that was not desiccated, and no
+    # trapping step at all leave the flag as it was.
+    assert desiccated_after_trapping(config, row, False, step) is False
+    assert desiccated_after_trapping(config, row, True, None) is True
+    frozen = MagicMock(remelted=False, total_trapped=1.0e18)
+    assert desiccated_after_trapping(config, row, True, frozen) is True
+    # Error contract: a release too small to clear mass_thresh stays desiccated.
+    tiny = _nearly_dry_row(H_kg_total=4.0e15, H_kg_solid=4.0e15, H_kg_trapped=4.0e15)
+    tiny['He_kg_total'] = 0.0
+    run_desiccated({}, config, tiny, False)
+    tiny.update(Time=2.0e4, M_mantle=4.0e24, Phi_global=0.65)
+    small = run_trapping(config, tiny, prev)
+    assert small.remelted
+    assert desiccated_after_trapping(config, tiny, True, small) is True
+    # It stays desiccated, but the released 2e15 kg stays in the melt and total.
+    run_desiccated({}, config, tiny, False)
+    assert tiny['H_kg_total'] == pytest.approx(4.0e15, rel=1e-12)
+    assert tiny['H_kg_liquid'] == pytest.approx(2.0e15, rel=1e-12)
+
+
+def _remelt_desiccated(config, row: dict, phis) -> tuple[dict, list[bool]]:
+    """Remelt a desiccated row through ``phis`` the way the main loop orders it.
+
+    Each step: trapping releases, the flag is re-checked, and a planet still
+    flagged goes through run_desiccated. The previous row alone is passed as
+    history; the trapped mass predates it, so the release is the solid share.
+    """
+    import pandas as pd
+
+    from proteus.outgas.trapping import TRAPPED_COLUMNS, run_trapping
+
+    # Only the columns the trapping step reads back from the history.
+    read = ('Time', 'M_mantle', 'Phi_global', *(f'{n}_kg_trapped' for n in TRAPPED_COLUMNS))
+    flags = []
+    desiccated = True
+    for phi in phis:
+        prev = pd.DataFrame([{key: row.get(key, 0.0) for key in read}])
+        row = dict(row, Time=row['Time'] + 1.0, Phi_global=phi)
+        step = run_trapping(config, row, prev)
+        desiccated = desiccated_after_trapping(config, row, desiccated, step)
+        if desiccated:
+            run_desiccated({}, config, row, False)
+        flags.append(desiccated)
+    return row, flags
+
+
+@pytest.mark.physics_invariant
+def test_a_slow_remelt_after_desiccation_keeps_what_it_releases():
+    """A desiccated planet with 4e18 kg of H and 3.2e19 kg of O trapped remelts
+    from Phi = 0.30 to 0.50, which releases 2/7 of the trapped water, 1.03e19
+    kg. In 1000 steps of 2e-4 each step releases less than mass_thresh, so no
+    single step clears the flag; the release must still stay in the melt and
+    the totals until the accumulated mass does. The end state is the one 4
+    steps of 0.05 reach."""
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.mass_thresh = 1e16
+    config.outgas.trap_mode = 'front'
+    config.planet.fO2_source = 'from_O_budget'
+
+    start = _nearly_dry_row(H_kg_total=4.0e18, O_kg_total=3.2e19, He_kg_total=0.0)
+    for name, mass in {'H': 4.0e18, 'O': 3.2e19, 'H2O': 3.6e19}.items():
+        start.update({f'{name}_kg_solid': mass, f'{name}_kg_trapped': mass})
+    start.update(H2O_kg_total=3.6e19, Time=1.0e4, M_mantle=4.0e24, Phi_global=0.30)
+    assert check_desiccation(config, start)
+    run_desiccated({}, config, start, False)
+
+    fine, fine_flags = _remelt_desiccated(
+        config, dict(start), [0.30 + 2.0e-4 * k for k in range(1, 1001)]
+    )
+    coarse, coarse_flags = _remelt_desiccated(config, dict(start), [0.35, 0.40, 0.45, 0.50])
+    assert fine['Phi_global'] == pytest.approx(0.50, abs=1e-12)
+
+    # The trapped water left is 5/7 of it, the released 2/7 = 1.03e19 kg.
+    released = 3.6e19 * 2.0 / 7.0
+    for end in (fine, coarse):
+        assert end['H2O_kg_trapped'] == pytest.approx(3.6e19 - released, rel=1e-9)
+        for element, total in (('H', 4.0e18), ('O', 3.2e19)):
+            assert end[f'{element}_kg_total'] == pytest.approx(total, rel=1e-12)
+            parts = end[f'{element}_kg_liquid'] + end[f'{element}_kg_solid']
+            assert parts == pytest.approx(total, rel=1e-12)
+    assert fine['H2O_kg_liquid'] == pytest.approx(released, rel=1e-9)
+    assert fine['H2O_kg_liquid'] == pytest.approx(coarse['H2O_kg_liquid'], rel=1e-9)
+
+    # Each fine step returns 9.1e15 kg of O, below mass_thresh: the first leaves
+    # the planet desiccated, the second, with 1.8e16 kg in the melt, clears it.
+    assert fine_flags[:2] == [True, False]
+    assert not any(fine_flags[2:])
+    assert coarse_flags[0] is False
+    # Edge case: a release that never reaches mass_thresh keeps the planet
+    # desiccated to the end and still keeps every kilogram it released.
+    stalled, stalled_flags = _remelt_desiccated(config, dict(start), [0.3002])
+    assert stalled_flags == [True]
+    assert stalled['O_kg_liquid'] == pytest.approx(3.2e19 * 2.0e-4 / 0.70, rel=1e-9)
+    assert stalled['O_kg_total'] == pytest.approx(3.2e19, rel=1e-12)
+
+
+def _desiccating_row() -> dict:
+    """Row the step before desiccation empties it.
+
+    Hydrogen holds its trapped 4e19 kg plus a 5e15 kg remainder in the
+    atmosphere, below the desiccation threshold; oxygen its trapped 3.2e20 kg
+    plus 4e15 kg in the melt; carbon a 1e15 kg remainder in the melt and
+    helium, which escape never floors, 1e14 kg in the atmosphere.
+    """
+    row = _outgas_row()
+    row.update(H_kg_atm=5.0e15, H_kg_solid=4.0e19, H_kg_total=4.0e19 + 5.0e15)
+    row.update(O_kg_liquid=4.0e15, O_kg_solid=3.2e20, O_kg_total=3.2e20 + 4.0e15)
+    row.update(C_kg_liquid=1.0e15, C_kg_total=1.0e15, He_kg_atm=1.0e14, He_kg_total=1.0e14)
+    row.update(H2O_kg_solid=3.6e20, H2O_kg_total=3.6e20, H2O_mol_solid=2.0e22)
+    row.update(H_kg_trapped=4.0e19, O_kg_trapped=3.2e20, H2O_kg_trapped=3.6e20)
+    row['M_desiccated'] = 0.0
+    return row
+
+
+@pytest.mark.physics_invariant
+def test_desiccation_with_trapping_keeps_the_mantle_and_books_the_atmosphere():
+    """With trapping on, desiccation empties the atmosphere and keeps the solid
+    and the melt: a remelt returns buried mass to the melt, which emptying it
+    every step would remove. Each total becomes what the mantle holds, the
+    per-element closure holds, and the atmosphere removed is booked in
+    M_desiccated. With trapping off the melt is emptied as well, as on main."""
+    from proteus.utils.coupler import assert_mass_conservation
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.trap_mode = 'front'
+    row = _desiccating_row()
+    run_desiccated({}, config, row, False)
+    assert row['H_kg_total'] == pytest.approx(4.0e19, rel=1e-15)
+    assert row['O_kg_total'] == pytest.approx(3.2e20 + 4.0e15, rel=1e-15)
+    assert row['O_kg_liquid'] == pytest.approx(4.0e15, rel=1e-15)
+    assert row['C_kg_total'] == pytest.approx(1.0e15, rel=1e-15)
+    assert row['He_kg_total'] == pytest.approx(0.0, abs=0.0)
+    assert row['H_kg_atm'] == pytest.approx(0.0, abs=0.0)
+    assert row['H2O_kg_solid'] == pytest.approx(3.6e20, rel=1e-15)
+    assert row['H2O_mol_total'] == pytest.approx(2.0e22, rel=1e-15)
+    # The 5e15 kg of H and 1e14 kg of He in the atmosphere are booked.
+    # Held to 1e6 kg: the booking is a difference of sums near 3.6e20 kg.
+    assert row['M_desiccated'] == pytest.approx(5.0e15 + 1.0e14, abs=1.0e6)
+    assert_mass_conservation(row, check_element_closure=True, require_atm_le_planet=False)
+
+    # Discrimination: with trapping off the melt goes too, 5e15 kg more.
+    config.outgas.trap_mode = 'none'
+    off = _desiccating_row()
+    run_desiccated({}, config, off, False)
+    assert off['O_kg_total'] == pytest.approx(3.2e20, rel=1e-15)
+    assert off['C_kg_total'] == pytest.approx(0.0, abs=0.0)
+    assert off['M_desiccated'] - row['M_desiccated'] == pytest.approx(5.0e15, abs=1.0e6)
+
+    # Edge case: desiccating again removes and books nothing more.
+    config.outgas.trap_mode = 'front'
+    again = dict(row)
+    run_desiccated({}, config, again, False)
+    for key in ('H_kg_total', 'O_kg_liquid', 'C_kg_total', 'M_desiccated'):
+        assert again[key] == pytest.approx(row[key], rel=1e-15)
+    # Error contract: a non-finite melt column keeps nothing, the solid stays,
+    # and a non-finite total is carried, not turned into zero.
+    stale = _desiccating_row()
+    stale.update(O_kg_liquid=float('nan'), C_kg_total=float('nan'))
+    run_desiccated({}, config, stale, False)
+    assert stale['O_kg_total'] == pytest.approx(3.2e20, rel=1e-15)
+    assert stale['O_kg_liquid'] == pytest.approx(0.0, abs=0.0)
+    assert not np.isfinite(stale['C_kg_total'])
+
+
+@pytest.mark.physics_invariant
+def test_a_frozen_atmosphere_loses_per_element_what_escape_takes_from_each_total():
+    """On a frozen mantle, escape debits each element total by its share of the
+    escaping mass, its atmospheric mass over the element sum, and run_crystallized
+    removes the same mass from each element's atmosphere. With CALLIOPE the
+    species masses sum to 1.0000177 times the element masses; a scaling sized
+    from M_atm would then leave 1.8e-5 of every step's loss in the atmosphere,
+    and as escape draws the N total down to what the solid holds that gap grows
+    past the closure tolerance. Over 60 quarter-atmosphere steps every element
+    closes to 1e-10 instead."""
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.wrapper import run_crystallized
+    from proteus.utils.coupler import assert_mass_conservation
+
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.escape.dummy.rate = 1.0e9  # kg/s, capped at a quarter of the atmosphere
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
+    config.outgas.mass_thresh = 1.0e10
+    config.outgas.vapourise = False
+    config.interior_struct.module = 'dummy'
+
+    ratio = 1.0000177
+    row = _outgas_row()
+    # A frozen H2O-N2 atmosphere over a mantle that holds 1e15 kg of N and some H, O.
+    atm = {'H': 4.0e17, 'O': 3.2e18, 'N': 1.2e16}
+    held = {'H': 1.0e17, 'O': 8.0e17, 'N': 1.0e15}
+    for e in atm:
+        row.update({f'{e}_kg_atm': atm[e], f'{e}_kg_solid': held[e]})
+        row[f'{e}_kg_total'] = atm[e] + held[e]
+    species = {'H2O': 3.6e18 * ratio, 'N2': 1.2e16 * ratio}
+    for s, mass in species.items():
+        row.update({f'{s}_kg_atm': mass, f'{s}_bar': mass * 1e-17})
+    row.update(M_atm=sum(species.values()), M_vol_atm=sum(species.values()), P_surf=36.12)
+    row.update(M_planet=6.0e24, esc_kg_cumulative=0.0, M_vol_initial=4.513e18)
+    n_start = row['N_kg_total']
+
+    for _ in range(60):
+        run_escape(config, row, dt=1.0e4, atmosphere_only=True)
+        run_crystallized(config, row, dt=1.0e4)
+        for e in atm:
+            parts = row[f'{e}_kg_atm'] + row[f'{e}_kg_liquid'] + row[f'{e}_kg_solid']
+            assert parts == pytest.approx(row[f'{e}_kg_total'], rel=1e-10)
+        assert_mass_conservation(row, check_element_closure=True, closure_rtol=1.0e-4)
+
+    # The N total is down to what the solid holds, the atmosphere to 3e8 kg.
+    assert row['N_kg_total'] == pytest.approx(1.0e15, rel=1e-6)
+    assert row['N_kg_atm'] < 1.0e9
+    # The species columns keep their ratio to the element masses.
+    assert row['M_atm'] == pytest.approx(ratio * sum(row[f'{e}_kg_atm'] for e in atm), rel=1e-9)
+    # Discrimination: sized from M_atm, the atmosphere would keep 1.8e-5 of the
+    # 1.2e16 kg of N that escaped, 2.1e-4 of the N total, past the 1e-4 limit.
+    gap = (1.0 - 1.0 / ratio) * (n_start - row['N_kg_total'])
+    assert gap / row['N_kg_total'] > 2.0e-4
+
+    # Edge case: a row that records no element atmosphere scales by the species
+    # sum, the only measure of the column it has.
+    bare = {'M_atm': 100.0, 'esc_rate_total': 1.0, 'esc_step_kg': 10.0, 'H2O_kg_atm': 100.0}
+    run_crystallized(_cryst_cfg(), bare, dt=1.0)
+    assert bare['H2O_kg_atm'] == pytest.approx(90.0, rel=1e-12)

@@ -1,0 +1,54 @@
+name: AGENTS.md sync
+
+# Compares the shared AGENTS.md blocks of the ecosystem modules with tools/agents/.
+# A separate workflow, so a module that lags behind a tools/agents/ edit does not fail the nightly.
+
+on:
+  schedule:
+    - cron: '17 4 * * *'   # daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  agents-md-sync:
+    name: AGENTS.md shared blocks in module repositories
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Clone module repositories
+        run: |
+          failed=0
+          for repo in CALLIOPE JANUS MORS SPIDER ZEPHYRUS aragog Zalmoxis SOCRATES VULCAN fwl-io atmodeller Obliqua Morrigan; do
+            git clone --depth 1 --quiet "https://github.com/FormingWorlds/${repo}.git" "../modules/${repo}" \
+              || { echo "::error::clone failed: ${repo}"; failed=1; }
+          done
+          exit "$failed"
+
+      - name: Check the modules that carry AGENTS.md
+        if: ${{ !cancelled() }}
+        run: |
+          shopt -s nullglob
+          failed=0
+          seen=0
+          for dir in ../modules/*/; do
+            repo=$(basename "$dir")
+            seen=$((seen + 1))
+            if [ ! -f "${dir}AGENTS.md" ]; then
+              echo "::notice::${repo} has no AGENTS.md yet"
+              continue
+            fi
+            python tools/agents/check_agents_md.py "$dir" || { echo "::error::${repo}: check_agents_md.py failed"; failed=1; }
+            python tools/agents/sync_core.py --check "$dir" || { echo "::error::${repo}: sync_core.py --check failed"; failed=1; }
+          done
+          [ "$seen" -gt 0 ] || { echo "::error::no module repository to check"; failed=1; }
+          exit "$failed"

@@ -295,6 +295,22 @@ def test_remove_old_keeps_archive_and_recent_snapshots(tmp_path):
     assert (tmp_path / 'spider_eos' / 'table.dat').read_text(encoding='utf-8') == 'eos'
 
 
+def test_remove_old_prunes_the_zalmoxis_copy_with_its_snapshot(tmp_path):
+    """A <time>_zalmoxis.dat copy goes with the _int.nc of the same time."""
+    for name in ('100_int.nc', '100_zalmoxis.dat', '1000_int.nc', '1000_zalmoxis.dat'):
+        (tmp_path / name).write_text(name, encoding='utf-8')
+    (tmp_path / 'zalmoxis_output.dat').write_text('mesh', encoding='utf-8')
+
+    archive_mod.remove_old(str(tmp_path), before=500)
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == [
+        '1000_int.nc',
+        '1000_zalmoxis.dat',
+        'zalmoxis_output.dat',
+    ]
+    assert (tmp_path / '1000_zalmoxis.dat').read_text(encoding='utf-8') == '1000_zalmoxis.dat'
+
+
 def test_remove_old_keeps_non_timestamped_nc_and_json_names(tmp_path):
     """A .nc/.json name without a leading integer time token is not a
     snapshot and must be kept rather than crashing the int() parse.
@@ -359,8 +375,16 @@ def test_snapshot_time_recognizes_only_integer_prefixed_nc_json():
     assert st('1000_int.nc') == 1000
     assert st('1000_atm.nc') == 1000
     assert st('5000.json') == 5000
+    assert st('884p700_int.nc') == pytest.approx(884.7)
+    assert st('884p700_atm.nc') == pytest.approx(884.7)
+    # Dot-form filenames (legacy) parse to the same value
+    assert st('884.700_int.nc') == pytest.approx(884.7)
+    assert st('884.700_atm.nc') == pytest.approx(884.7)
     # Boundary: age 0 must be 0, not None (distinct from "not a snapshot")
     assert st('0_int.nc') == 0
+    # The Zalmoxis structure copy saved with each snapshot
+    assert st('884p700_zalmoxis.dat') == pytest.approx(884.7)
+    assert st('mesh_zalmoxis.dat') is None
     # Fixed-name runtime files and runtime dirs -> None
     assert st('zalmoxis_output.dat') is None
     assert st('zalmoxis_output.dat.prev') is None

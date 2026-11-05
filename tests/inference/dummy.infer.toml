@@ -14,7 +14,7 @@ ref_config = "tests/inference/base.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
 init_samps = 2        # Number of random samples if starting from scratch.
-init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
+init_grid  = 'none'                 # Path pre-computed grid (relative to PROTEUS output folder)
 
 # Parameters for Bayesian optimisation
 n_workers  = 2       # Number of parallel workers

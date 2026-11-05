@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from proteus.atmos_clim.common import clip_radius_to_hill
 from proteus.escape.common import calc_unfract_fluxes
 from proteus.utils.constants import AU, element_list, gas_list
 from proteus.utils.helper import UpdateStatusfile, eval_gas_mmw
@@ -86,6 +87,37 @@ def _set_boreas_params(config: Config, hf_row: dict) -> boreas.ModelParams:
     return params
 
 
+def bound_escape_level(config: Config, hf_row: dict, r_xuv: float) -> float:
+    """Bound the escape level to the Hill radius and scale the rate with it.
+
+    BOREAS solves for its own XUV radius, and everything computed from that
+    radius collects XUV over the corresponding cross-section. Gas beyond the
+    Hill radius is not bound to the planet, so when the solved radius exceeds
+    it, the bulk rate already stored in ``hf_row`` is scaled by the area ratio
+    of the clipped level, and the clipped radius is returned so the
+    per-element rates are sized from the same cross-section.
+
+    Parameters
+    ----------
+        config : Config
+            Configuration options for PROTEUS.
+        hf_row : dict
+            Current helpfile row, holding ``esc_rate_total``; modified in
+            place when the level is clipped.
+        r_xuv : float
+            XUV radius solved by BOREAS [m].
+
+    Returns
+    ----------
+        float
+            The bounded XUV radius [m].
+    """
+    r_clip = clip_radius_to_hill(config, hf_row, r_xuv)
+    if r_clip < r_xuv:
+        hf_row['esc_rate_total'] *= (r_clip / r_xuv) ** 2
+    return r_clip
+
+
 def run_boreas(config: Config, hf_row: dict, dirs: dict):
     """Run BOREAS escape model.
 
@@ -137,10 +169,11 @@ def run_boreas(config: Config, hf_row: dict, dirs: dict):
     regime_map = {'RL': 'recomb-limited', 'EL': 'energy-limited', 'DL': 'diffusion-limited'}
     log.info('Escape regime is ' + regime_map[fr_result['regime']])
 
-    # Store bulk outputs (rate, sound speed, escape level)
+    # Store bulk outputs (rate, sound speed, escape level). The level is
+    # bounded to the Hill radius, scaling the rate with the clipped area.
     hf_row['esc_rate_total'] = fr_result['Mdot'] * 1e-3  # g/s   ->  kg/s
     hf_row['cs_xuv'] = fr_result['cs'] * 1e-2  # cm/s  ->  m/s
-    hf_row['R_xuv'] = fr_result['RXUV'] * 1e-2  # cm    ->  m
+    hf_row['R_xuv'] = bound_escape_level(config, hf_row, fr_result['RXUV'] * 1e-2)  # m
     hf_row['p_xuv'] = 0.0  # to be calc'd by atmosphere module
 
     # If not doing fractionation, overwrite fluxes...

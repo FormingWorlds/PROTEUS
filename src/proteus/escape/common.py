@@ -26,7 +26,8 @@ def calc_unfract_fluxes(hf_row: dict, reservoir: str, min_thresh: float):
         reservoir: str
             Element reservoir representing the escaping composition (bulk, outgas)
         min_thresh: float
-            Minimum threshold for element mass [kg]. Inventories below this are set to zero.
+            Minimum threshold for element mass [kg]. Below this reservoir total no
+            per-element escape rates are computed.
     """
 
     # which composition sets bulk escape?

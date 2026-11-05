@@ -4,21 +4,38 @@ import math
 import warnings
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_, lt
+from attrs.validators import ge, gt, in_, le, lt
 
-# Default relative tolerance for the interior ODE solver. ``rtol`` and its
-# deprecated alias ``num_tolerance`` default to a sentinel so that "left at
-# the default" can be told apart from "explicitly set to the default value";
-# both resolve to this in Interior.__attrs_post_init__ when unset.
-_DEFAULT_RTOL = 1e-10
+from ._converters import none_if_none
+
 _TOL_UNSET = -1.0
 
+
+def default_rtol(module: str) -> float:
+    """Interior rtol when unset: 1e-8 for Aragog (the tolerance at which its rate
+    phase-boundary cap is verified), 1e-10 otherwise."""
+    return 1e-8 if module == 'aragog' else 1e-10
+
+
+def rtol_is_set(ie: dict) -> bool:
+    """Whether a raw ``[interior_energetics]`` table sets rtol or one of its aliases."""
+    return (
+        ie.get('rtol', _TOL_UNSET) != _TOL_UNSET
+        or ie.get('num_tolerance', _TOL_UNSET) != _TOL_UNSET
+        or ie.get('spider', {}).get('tolerance_rel', _TOL_UNSET) > 0
+    )
+
+
 # Single canonical "disabled" value for the three per-call Aragog step caps.
-# 0.0 is the schema default that the wrapper promotes to a built-in on the
-# zalmoxis stack, a positive value is used verbatim, and this sentinel forces
-# the cap off even on zalmoxis. Any other negative, NaN, or infinity is a
-# malformed cap.
+# The schema default 0.0 resolves to off (no cap), a positive value is used
+# verbatim, and this sentinel is the explicit off spelling written back into a
+# config snapshot. Any other negative, NaN, or infinity is a malformed cap.
 _STEP_CAP_OFF = -1.0
+
+# The three per-call Aragog step-cap field names, named once here so the
+# config-load validator and the config writer stay in step with each other
+# and with the fields defined below.
+_STEP_CAP_FIELDS = ('phi_step_cap', 'temperature_step_cap', 'entropy_step_cap')
 
 
 def _gt0_or_unset(instance, attribute, value):
@@ -32,12 +49,11 @@ def _gt0_or_unset(instance, attribute, value):
 def _step_cap_valid(instance, attribute, value):
     """Accept the -1.0 off sentinel or any finite value >= 0; reject the rest.
 
-    The three per-call step caps use -1.0 as the only "disabled" value so the
-    off switch is a single canonical choice. 0.0 is the schema default (the
-    wrapper promotes it to the zalmoxis built-in) and a positive value is a
-    real cap. Any other negative, along with NaN and the infinities, is a
-    malformed value and raises rather than silently disabling the
-    crystallisation-onset guard.
+    The three per-call step caps use -1.0 as the canonical explicit "disabled"
+    value. The schema default 0.0 also resolves to off (no cap) and a positive
+    value is a real cap. Any other negative, along with NaN and the infinities,
+    is a malformed value and raises rather than silently disabling a cap the
+    user asked for.
     """
     if value == _STEP_CAP_OFF:
         return
@@ -47,7 +63,23 @@ def _step_cap_valid(instance, attribute, value):
         )
 
 
+def _valid_bool(instance, attribute, value):
+    """Require a boolean value."""
+    if not isinstance(value, bool):
+        raise TypeError(f'`{attribute.name}` must be a bool, got {value!r}')
+
+
+def _check_top_cell_dt_rel_dT_pair(aragog) -> None:
+    """Require top_cell_dt_rel_dT_solid <= top_cell_dt_rel_dT."""
+    if aragog.top_cell_dt_rel_dT_solid > aragog.top_cell_dt_rel_dT:
+        raise ValueError(
+            f'`top_cell_dt_rel_dT_solid` ({aragog.top_cell_dt_rel_dT_solid}) must be <= '
+            f'top_cell_dt_rel_dT ({aragog.top_cell_dt_rel_dT})'
+        )
+
+
 def valid_spider(instance, attribute, value):
+    """SPIDER requires at least one energy transport term to be enabled."""
     if instance.module != 'spider':
         return
 
@@ -99,6 +131,10 @@ class Spider:
         across the solidus/liquidus. Passed to SPIDER as
         ``-matprop_smooth_width`` and to Aragog via
         ``_PhaseMixedParameters``.
+    tolerance_struct: float
+        Absolute mass tolerance [kg] for the interior-radius secant solver.
+    log_output: bool
+        Write SPIDER solver log output.
     """
 
     solver_type: str = field(default='bdf', validator=in_(('adams', 'bdf')))
@@ -128,7 +164,21 @@ class Spider:
     log_output: bool = field(default=True)
 
 
+def _check_aragog_top_cell_dt_limit_surface_bc(interior) -> None:
+    """Reject Aragog top_cell_dt_limit with grey_body surface boundary conditions."""
+    if (
+        interior.module == 'aragog'
+        and interior.aragog.top_cell_dt_limit
+        and interior.surface_bc_mode == 'grey_body'
+    ):
+        raise ValueError(
+            'interior_energetics.aragog.top_cell_dt_limit = true cannot be used with '
+            "interior_energetics.surface_bc_mode = 'grey_body'"
+        )
+
+
 def valid_aragog(instance, attribute, value):
+    """Aragog requires at least one energy transport term to be enabled."""
     if instance.module != 'aragog':
         return
 
@@ -140,6 +190,114 @@ def valid_aragog(instance, attribute, value):
         or instance.trans_grav_sep
     ):
         raise ValueError('Must enable at least one energy transport term in Aragog')
+
+
+@define
+class AragogCoreModule:
+    """Parameters of the core evolution module (core_bc = 'core_module').
+
+    The core carries its own state: an energy budget with inner-core
+    growth and light-element gravitational energy, evolved as an extra
+    ODE state inside Aragog. The CMB radius and pressure always come from
+    the running mesh, so only material and model choices live here.
+
+    Attributes
+    ----------
+    alpha: float
+        Core thermal expansion coefficient [K-1].
+    c_p: float
+        Core specific heat capacity [J kg-1 K-1].
+    melting_curve: str
+        'iron' (Anzellini et al. 2013 via PALEOS, with light-element
+        depression) or 'quadratic' (Nimmo 2015 Eq. 6 parameterisation).
+    light_element_fraction: float
+        Mole fraction of light elements depressing the iron melting curve.
+    depression: float
+        Melting-point depression per unit mole fraction, as a fraction of the melting
+        temperature [1]; its product with light_element_fraction must stay below 1.
+    t_m0: float
+        Quadratic-curve prefactor [K] (melting_curve = 'quadratic').
+    t_m1: float
+        Quadratic-curve linear coefficient [Pa-1].
+    t_m2: float
+        Quadratic-curve quadratic coefficient [Pa-2].
+    ds_fusion: float
+        Entropy of fusion at the inner-core boundary [J kg-1 K-1].
+    alpha_c: float
+        Compositional expansivity of the outer-core alloy.
+    c_light: float
+        Light-element mass fraction of the outer core (complete rejection).
+    q_radio: float
+        Core radiogenic power [W], constant over a run.
+    stratification: bool
+        When true, the outer core above layer_base_fraction of the CMB radius is a resolved
+        shell whose temperatures are part of the solver state: heat moves
+        through it by conduction and, where its gradient is superadiabatic,
+        by convective mixing, so a stable layer forms below the CMB when the
+        CMB heat flow is subadiabatic and erodes when it is not. The CMB heat
+        flow sees the temperature of the top of the shell. Experimental:
+        erosion of a layer does not run on CVODE at the default tolerances.
+        Not available with accretion.
+    k_core: float
+        Core thermal conductivity [W m-1 K-1] for conduction in the
+        stratified shell and the entropy and dynamo diagnostics; the default is the
+        Nimmo (2015) Table 2 value.
+    layer_base_fraction: float
+        Base of the stratified shell as a fraction of the CMB radius, in (0, 1);
+        the inner core must stay below it. Used with the experimental
+        stratification.
+    layer_k_mix: float
+        Eddy diffusivity [m2 s-1] of convective mixing in the stratified shell
+        at the reference superadiabatic gradient. Used with the experimental
+        stratification.
+    layer_g_mix: float
+        Reference superadiabatic gradient of the shell mixing, as a fraction of
+        the adiabatic gradient at the CMB. Used with the experimental
+        stratification.
+    f_ohm: float
+        Ohmic fraction of the dissipation in the field-strength scaling,
+        in (0, 1]; Christensen et al. (2009) adopt 1 for planets.
+    ra_crit_cmb: float
+        Critical Rayleigh number of the mantle-side boundary layer that sets
+        the CMB heat flux from the core-mantle temperature contrast; the
+        default is the theoretical value of Thiriet et al. (2019, Table 2).
+    flux_geometry: str
+        Which printed Earth-core efficiency factor converts the
+        superadiabatic flux into the field-strength scaling's F:
+        'const_flux' or 'zero_outer'.
+    """
+
+    alpha: float = field(default=1.35e-5, validator=gt(0))
+    c_p: float = field(default=840.0, validator=gt(0))
+    melting_curve: str = field(default='iron', validator=in_(('iron', 'quadratic')))
+    light_element_fraction: float = field(default=0.0, validator=(ge(0), lt(1)))
+    depression: float = field(default=0.0, validator=ge(0))
+    t_m0: float = field(default=2677.0, validator=gt(0))
+    t_m1: float = field(default=2.95e-12)
+    t_m2: float = field(default=8.37e-25)
+    ds_fusion: float = field(default=172.8, validator=gt(0))
+    alpha_c: float = field(default=0.0, validator=ge(0))
+    c_light: float = field(default=0.0, validator=(ge(0), lt(1)))
+    q_radio: float = field(default=0.0, validator=ge(0))
+    stratification: bool = field(default=False)
+    k_core: float = field(default=130.0, validator=gt(0))
+    layer_base_fraction: float = field(default=0.4, validator=(gt(0), lt(1)))
+    layer_k_mix: float = field(default=1.0e7, validator=gt(0))
+    layer_g_mix: float = field(default=1.0e-3, validator=gt(0))
+    f_ohm: float = field(default=1.0, validator=(gt(0), le(1)))
+    ra_crit_cmb: float = field(default=450.0, validator=(gt(0), lt(float('inf'))))
+    flux_geometry: str = field(
+        default='const_flux', validator=in_(('const_flux', 'zero_outer'))
+    )
+
+    def __attrs_post_init__(self):
+        # The iron melting curve scales with 1 - depression * light_element_fraction.
+        product = self.depression * self.light_element_fraction
+        if self.melting_curve == 'iron' and not product < 1:
+            raise ValueError(
+                'interior_energetics.aragog.core_module: depression * light_element_fraction '
+                f'= {product:g} must be below 1.'
+            )
 
 
 @define
@@ -182,6 +340,10 @@ class Aragog:
           - 'gradient': gradient-based state with two boundary entropies
                         as state variables.
           - 'bower2018': experimental, do not use for production.
+          - 'core_module': full core evolution module with nucleation,
+                           crystallisation regimes, and dynamo energetics
+                           (aragog.core), coupled through a boundary-layer
+                           CMB flux in the core-mantle temperature contrast.
     """
 
     mass_coordinates: bool = field(default=True)
@@ -193,18 +355,57 @@ class Aragog:
     equilibration."""
     core_bc: str = field(
         default='energy_balance',
-        validator=in_(('quasi_steady', 'energy_balance', 'gradient', 'bower2018')),
+        validator=in_(
+            ('quasi_steady', 'energy_balance', 'gradient', 'bower2018', 'core_module')
+        ),
     )
     phase_smoothing: str = field(
         default='tanh',
         validator=in_(('tanh', 'cubic_hermite')),
     )
     """Phase-boundary smoothing for Jgrav and Jmix: 'tanh' (SPIDER parity) or 'cubic_hermite'."""
+    separation_viscosity: str = field(
+        default='mixture',
+        validator=in_(('melt', 'mixture')),
+    )
+    """Drag viscosity for the gravitational-separation velocity
+    v_rel = |dRho| g F(phi) / eta. 'melt' (fixed single-phase liquid
+    viscosity, SPIDER parity) keeps separation active below the
+    rheological transition in coupled caps-off runs, which collapses
+    the CMB temperature; 'mixture' (rheological-transition-blended bulk
+    viscosity) ties the drag viscosity to the same solid-fraction rise
+    that stiffens the bulk rheology, so separation locks up at the same
+    melt fraction instead, which is why the default here is 'mixture'
+    while Aragog's own default stays 'melt' for SPIDER parity. The
+    regime boundaries are the porosities where adjacent permeability
+    laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c). The melt
+    drainage of front trapping (outgas.trap_mode 'front') takes the melt
+    viscosity whatever this setting."""
+    separation_buoyancy: str = field(
+        default='mixture',
+        validator=in_(('mixture', 'solid')),
+    )
+    """Buoyancy of the gravitational-separation velocity. 'mixture' takes it
+    against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie 1984, Eq. 3.7),
+    on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes
+    regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes
+    (rho_s - rho_l) g on every regime (Abe 1995, Eq. 40), as SPIDER does, so
+    'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt
+    drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy.
+    Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5;
+    from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2."""
+    allow_resume_law_change: bool = field(default=False, validator=_valid_bool)
+    """Let a resume change separation_viscosity or separation_buoyancy from the values
+    in the run's init_coupler.toml, with one warning per switched law in the log. False
+    stops such a resume, because the changed law would act from the resume row on. A law
+    the record does not hold must be set in the config file either way; a record that
+    names the Aragog module and lacks separation_viscosity counts as 'melt', and a record
+    of another interior module holds neither law. init_coupler.toml records false."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),
     )
-    """ODE solver: 'cvode' (SUNDIALS, SPIDER parity), 'radau' (scipy), 'bdf' (scipy)."""
+    """ODE solver: 'cvode' (SUNDIALS, SPIDER parity; needs scikits-odes-sundials and stops the run at setup without it), 'radau' (scipy), 'bdf' (scipy)."""
     scalar_gravity_override: bool = field(default=False)
     """Scalar-gravity comparison knob. When True, the external mesh file that
     Zalmoxis writes has its gravity column overwritten with a uniform scalar
@@ -217,32 +418,48 @@ class Aragog:
     or near the two-phase window at solve() entry, a CVODE root function (and
     the equivalent scipy event) returns control at the exact time the larger
     of the global mass-weighted |ΔΦ| and the maximum single-cell |Δφ| reaches
-    this cap. The per-cell term bounds how far one deep cell may cross the
-    mushy window in a single call, which removes the discontinuous
-    core-temperature drop at crystallisation onset. Schema default 0.0, which
-    the Aragog wrapper promotes to a non-zero default for the coupled zalmoxis
-    interior stack; a positive value here overrides that. -1.0 is the single
-    off sentinel that keeps the cap disabled even on zalmoxis; any other
-    negative, NaN, or infinity is rejected at load."""
+    this cap. Off by default: the schema default 0.0 resolves to no cap,
+    because on a benign freezing-front crossing the root function slices the
+    coupled step into many small ones and drives the reported CMB heat flux
+    briefly negative where the uncapped run stays positive, so the cap is a
+    debugging control, not a production setting. Set a positive value
+    to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is
+    rejected at load, since it cannot be told apart from the unset default;
+    any other negative, NaN, or infinity is rejected too."""
+
+    core_module: AragogCoreModule = field(factory=AragogCoreModule)
+    """Core evolution module parameters, active when core_bc =
+    'core_module': the core evolves its own energy budget (inner-core
+    growth, latent and gravitational terms) as an extra ODE state, and
+    the reported core temperature (T_cmb) is that state, not the temperature
+    of the lowermost mantle node."""
 
     temperature_step_cap: float = field(default=0.0, validator=_step_cap_valid)
     """Per-call per-cell temperature step cap [K]. Shares the same root
     function as phi_step_cap and fires on the maximum single-cell |ΔT| since
-    solve() entry. It bounds the core-temperature drop on the solid adiabat
-    just below the solidus, where the melt-fraction cap goes blind because a
-    fully solid cell's melt fraction can no longer move. Schema default 0.0,
-    which the Aragog wrapper promotes to a non-zero default for the coupled
-    zalmoxis stack; a positive value overrides that. -1.0 is the single off
-    sentinel that keeps the cap disabled even on zalmoxis; any other negative,
-    NaN, or infinity is rejected at load."""
+    solve() entry. When enabled it bounds the per-cell temperature change on
+    the solid adiabat just below the solidus, where the melt-fraction cap
+    cannot act because a fully solid cell's melt fraction no longer moves. Off
+    by default (schema default 0.0 resolves to no cap); on a benign
+    freezing-front crossing the caps slice the coupled step into many small
+    ones and drive the reported CMB heat flux briefly negative, so they are a
+    debugging control, not a production setting. Set a positive value to enable
+    it; -1.0 is the explicit
+    off spelling. An explicit 0.0 is rejected at load, since it cannot be told
+    apart from the unset default; any other negative, NaN, or infinity is
+    rejected too."""
 
     entropy_step_cap: float = field(default=0.0, validator=_step_cap_valid)
     """Per-call per-cell entropy step cap [J/kg/K], in the native solver
     variable; same role as temperature_step_cap without an EOS lookup in the
-    root function. Schema default 0.0, which the Aragog wrapper promotes to a
-    non-zero default for the coupled zalmoxis stack; a positive value overrides
-    that. -1.0 is the single off sentinel that keeps the cap disabled even on
-    zalmoxis; any other negative, NaN, or infinity is rejected at load."""
+    root function. Off by default (schema default 0.0 resolves to no cap); on
+    a benign freezing-front crossing the caps slice the coupled step into many
+    small ones and drive the reported CMB heat flux briefly negative, so they
+    are a debugging control, not a production setting. Set a positive value to
+    enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected
+    at load, since it
+    cannot be told apart from the unset default; any other negative, NaN, or
+    infinity is rejected too."""
 
     phase_boundary_entropy_margin: float = field(default=200.0, validator=gt(0))
     """Phase-boundary proximity band [J/kg/K] within which a staggered cell
@@ -256,12 +473,26 @@ class Aragog:
     Keeping the default reproduces current behaviour, and modestly widening the
     band does not move a converged result because tighter steps only refine an
     adaptive integrator; but a value orders of magnitude above the default makes
-    every cell count as near a boundary at all times, clamping the integrator to
-    1 yr steps (max_step = 1 yr, versus 100 yr otherwise) for the whole run and
-    stalling it, so keep the band of order a few hundred J/kg/K. Default 200.0,
+    every cell count as near a boundary at all times, so every call runs under
+    the phase-boundary step control: with phase_boundary_cap = 'fixed' that clamps
+    the integrator to 1 yr steps (versus 100 yr otherwise) and stalls the run, and
+    with 'rate' every call runs as CVODE segments with max_step between 1 and
+    100 yr. Keep the band of order a few hundred J/kg/K. Default 200.0,
     matching Aragog's own default;
     a positive value is required (0 or negative is not a valid disabled state
     for a proximity band)."""
+
+    phase_boundary_cap: str = field(
+        default='rate',
+        validator=in_(('fixed', 'rate')),
+    )
+    """Phase-boundary step-size policy: 'fixed' tightens max_step to 1 yr
+    whenever any cell is near or inside the two-phase band; 'rate' (default) uses
+    event-driven CVODE segments with max_step scaled by approach time to the
+    nearest phase boundary, clipped to [1, 100] yr. 'rate' needs the CVODE solver
+    and a core_bc other than 'gradient'; otherwise Aragog logs it and uses 1 yr. Its
+    accuracy is verified at rtol 1e-8; Aragog warns once per solver at an rtol above
+    1e-7."""
 
     tolerance_struct: float = field(default=1e2, validator=gt(0))
     """Absolute mass tolerance [kg] for the secant solver in
@@ -269,8 +500,71 @@ class Aragog:
     matching field so both backends drive the same outer-loop convergence
     criterion."""
 
+    top_cell_dt_limit: bool = field(default=False, validator=_valid_bool)
+    """Limit the coupling time step by the top-cell radiative drain time tau_drain
+    (down to params.dt.minimum * escape.step_dt_floor_frac, below params.dt.minimum)
+    and keep hf_row['T_magma'], hf_row['T_surf'], and hf_row['Phi_global'] on the Aragog
+    solver state by skipping the tmagma_atol/tmagma_rtol post-step clip on steps where
+    tau_drain is finite and the step does not exceed tau_drain (staying active when the
+    escape step floor or an impact-landing snap-forward places the step above tau_drain);
+    planet.prevent_warming still clamps T_magma, T_surf, Phi_global, and F_int when active.
+    Incompatible with interior_energetics.surface_bc_mode = 'grey_body'; the rule is checked
+    when the config is loaded (a grid case fails when its written TOML is read back). A 1-point EOS
+    temperature lookahead probes S_trial = max(S_top - cp_eff * dT_allow / T_top, S_min + 300)
+    and replaces the step-start heat capacity cp_eff with the chord heat capacity
+    cp_chord = min(cp_eff, T_top * (S_top - S_trial) / (T_top - T_trial)) in the T_top form
+    whenever T(P_top, S_trial) falls more than dT_allow below T_top (T_top - T_trial > dT_allow
+    and S_top > S_trial), bounding the linearized unresupplied top-cell drop under the step's
+    linearization dS = q / T_top with q = cp_chord * dT_allow. A lookahead trial that reaches
+    or spans the flat part of the PALEOS solid table (T held at T_sol from the last node below
+    S_sol) can give a step that exceeds dT_allow; this is shown on constructed slice states, and
+    no step of the coupled runs exceeded dT_allow. On an energy basis (integral of T dS = q at
+    constant P_top) the drop also exceeds dT_allow in the liquid, because the exact entropy step
+    is larger than q / T_top: the PALEOS slice scans give at most 1.106 dT_allow at
+    top_cell_dt_rel_dT = 0.08 and 1.204 at 0.15 for T_surf / T_top <= 1.02, and up to 1.110
+    and 1.211 at 1.05. Using T_mean = 0.5 * (T_top + T_trial) in
+    the chord numerator would reduce cp_chord by the fraction (T_top - T_trial) / (2 * T_top).
+    See docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations."""
+
+    top_cell_dt_rel_dT: float = field(
+        default=0.08,
+        converter=float,
+        validator=(gt(0.0), le(0.15)),
+    )
+    """Relative surface-temperature change allowance eta_T at a top-cell melt fraction
+    >= 0.40 (mush and liquid) for the top-cell drain-time step limit; must lie in (0, 0.15].
+    A value below 0.08 also needs top_cell_dt_rel_dT_solid set at or below it; the pair is
+    checked when the config is loaded.
+    Sets the allowed temperature scale dT_allow = eta_eff * T_surf for the step energy
+    q = cp_chord * dT_allow, bounding the linearized unresupplied top-cell temperature drop
+    T_top - T(P_top, S_top - q / T_top) <= dT_allow under the step's linearization
+    dS = q / T_top with the chord heat capacity cp_chord in the T_top form. A lookahead trial
+    that reaches or spans the flat part of the PALEOS solid table (T held at T_sol from the last
+    node below S_sol) can give a step that exceeds dT_allow; this is shown on constructed slice
+    states, and no step of the coupled runs exceeded dT_allow. On an energy basis (integral of
+    T dS = q at constant P_top) the drop also exceeds dT_allow in the liquid: at most 1.106
+    dT_allow at 0.08 and 1.204 at 0.15 for T_surf / T_top <= 1.02, and up to 1.110 and 1.211
+    at 1.05. See
+    docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations."""
+
+    top_cell_dt_rel_dT_solid: float = field(
+        default=0.08,
+        converter=float,
+        validator=(gt(0.0), le(0.15)),
+    )
+    """Relative surface-temperature change allowance eta_T_solid at a fully solid
+    top cell (top-cell melt fraction 0), ramped linearly to top_cell_dt_rel_dT at
+    a top-cell melt fraction of 0.40; must lie in (0, top_cell_dt_rel_dT] (up to 0.15), with
+    the pair checked when the config is loaded. See
+    docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations."""
+
+    def __attrs_post_init__(self):
+        """Check top_cell_dt_rel_dT_solid against top_cell_dt_rel_dT once both are set."""
+        _check_top_cell_dt_rel_dT_pair(self)
+
 
 def valid_interiordummy(instance, attribute, value):
+    """Dummy interior requires the liquidus to sit above the solidus."""
     if instance.module != 'dummy':
         return
 
@@ -282,9 +576,25 @@ def valid_interiordummy(instance, attribute, value):
         raise ValueError(f'Dummy liquidus ({tliq}K) must be greater than solidus ({tsol}K)')
 
 
+def _warn_ignored_key(path: str, reason: str) -> None:
+    """Warn that a deprecated configuration key is set and ignored.
+
+    FutureWarning, not DeprecationWarning: Python shows it by default, so a
+    user loading an older configuration or run record sees it.
+    """
+    warnings.warn(
+        f'{path} is deprecated and ignored: {reason}.',
+        FutureWarning,
+        stacklevel=4,
+    )
+
+
 @define
 class InteriorBoundary:
     """Parameters for Boundary interior module. Default values taken from Schaefer et al. 2016 (https://iopscience.iop.org/article/10.3847/0004-637X/829/2/63/pdf).
+
+    The mantle and core masses and radii come from the interior structure
+    module, so the mantle and core densities are not set here.
 
     Attributes
     ----------
@@ -302,10 +612,14 @@ class InteriorBoundary:
         Always use fallback atmosphere heat capacity?
     atm_heat_capacity: float
         Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].
-    silicate_density: float
-        Silicate density [kg/m^3]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F).
-    core_density: float
-        Core density [kg/m^3].
+    silicate_density: float or None
+        Deprecated and ignored: the boundary interior takes its mantle mass and radius from the structure.
+    core_density: float or None
+        Deprecated and ignored: the boundary interior takes its core mass and radius from the structure.
+    core_shear: float
+        Core shear modulus [Pa].
+    core_bulk: float
+        Core bulk modulus [Pa].
     thermal_conductivity: float
         Thermal conductivity [W/m/K].
     thermal_diffusivity: float
@@ -334,10 +648,10 @@ class InteriorBoundary:
     critical_rayleigh_number: float = field(default=1.1e3, validator=gt(0))  # -
     nusselt_exponent: float = field(default=0.33, validator=gt(0))  # -
     silicate_heat_capacity: float = field(default=1.2e3, validator=gt(0))  # J/kg/K
-    core_density: float = field(default=10738.0, validator=gt(0))  # kg/m^3
+    core_shear: float = field(default=1.0e-1, validator=gt(0))  # Pa
+    core_bulk: float = field(default=5e11, validator=gt(0))  # Pa
     atm_heat_capacity_const: bool = field(default=True)
     atm_heat_capacity: float = field(default=1.7e4, validator=gt(0))  # J/kg/K
-    silicate_density: float = field(default=4103.0, validator=gt(0))  # kg/m^3
     thermal_conductivity: float = field(default=4.2, validator=gt(0))  # W/m/K
     thermal_diffusivity: float = field(default=1e-6, validator=gt(0))  # m^2/s
     thermal_expansivity: float = field(default=2e-5, validator=gt(0))  # 1/K
@@ -358,17 +672,35 @@ class InteriorBoundary:
 
     logging: bool = field(default=False)
 
+    # Deprecated and ignored; kept so that older configurations and run records load.
+    silicate_density: float | str | None = field(default=None, converter=none_if_none)
+    core_density: float | str | None = field(default=None, converter=none_if_none)
+
+    def __attrs_post_init__(self):
+        if self.silicate_density is not None:
+            _warn_ignored_key(
+                'interior_energetics.boundary.silicate_density',
+                'the boundary interior takes its mantle mass and radius from the structure',
+            )
+        if self.core_density is not None:
+            _warn_ignored_key(
+                'interior_energetics.boundary.core_density',
+                'the boundary interior takes its core mass and radius from the structure',
+            )
+
 
 @define
 class InteriorDummy:
     """Parameters for Dummy interior module.
 
+    The mantle density the dummy interior reports is its mantle mass over the
+    mantle shell volume.
+
     Attributes
     ----------
-    mantle_rho: float
-        Mantle density [kg m-3] for the dummy density profile and the
-        fallback mantle-mass estimate. When the interior structure provides
-        the masses, the mantle mass is taken as ``M_int - M_core`` instead.
+    mantle_rho: float or None
+        Deprecated and ignored: the dummy interior reports its mantle mass over
+        the mantle shell volume as its density.
     mantle_cp: float
         Mantle specific heat capacity [J kg-1 K-1]
     mantle_tliq: float
@@ -383,9 +715,19 @@ class InteriorDummy:
 
     mantle_tliq: float = field(default=2700.0, validator=ge(0))
     mantle_tsol: float = field(default=1700.0, validator=ge(0))
-    mantle_rho: float = field(default=4.55e3, validator=gt(0))
     mantle_cp: float = field(default=1792.0, validator=ge(0))
     heat_internal: float = field(default=0.0, validator=ge(0))
+
+    # Deprecated and ignored; kept so that older configurations and run records load.
+    mantle_rho: float | str | None = field(default=None, converter=none_if_none)
+
+    def __attrs_post_init__(self):
+        if self.mantle_rho is not None:
+            _warn_ignored_key(
+                'interior_energetics.dummy.mantle_rho',
+                'the dummy interior reports its mantle mass over the mantle shell volume '
+                'as its density',
+            )
 
 
 @define
@@ -408,14 +750,71 @@ class Interior:
         Concentration (ppmw) of uranium at reference age t=radio_tref.
     radio_Th: float
         Concentration (ppmw) of thorium-232 at reference age t=radio_tref.
+    radio_Al: float
+        Concentration (ppmw) of aluminium-26 at reference age t=radio_tref;
+        1.23 is the canonical early solar system value.
+    radio_Fe: float
+        Concentration (ppmw) of iron-60 at reference age t=radio_tref.
     heat_radiogenic: bool
         Include radiogenic heat production?
     heat_tidal: bool
         Include tidal heating?
     rfront_loc: float
-        Centre of rheological transition in terms of melt fraction
+        Centre of rheological transition in terms of melt fraction. SPIDER
+        receives it as ``-phi_critical``. Aragog centres its viscosity blend,
+        its reported rheological front and the melt-fraction ramp of
+        ``kappah_floor`` on it; the boundary module uses it as the transition
+        point of its viscosity models.
+        SPIDER and Aragog use melt mass fraction (0.4 by volume is about 0.375 by
+        mass at a 10 percent melt-solid density contrast); the boundary module
+        takes its melt fraction linearly in temperature between solidus and
+        liquidus and its rheological transition width from
+        ``phase_transition_width``, not ``rfront_wid``.
     rfront_wid: float
         Width of rheological transition in terms of melt fraction
+    num_levels: int
+        Number of radial grid levels for the energetics domain.
+    num_tolerance: float
+        Deprecated alias for rtol; emits a DeprecationWarning when set.
+    trans_conduction: bool
+        Include conductive heat transfer.
+    trans_convection: bool
+        Include convective heat transfer (mixing length theory).
+    trans_grav_sep: bool
+        Include gravitational separation (Stokes settling).
+    trans_mixing: bool
+        Include the chemical mixing flux.
+    mixing_length: str
+        Mixing-length scale: 'nearest' (distance to nearest boundary) or
+        'constant' (a quarter of the mantle depth).
+    kappah_floor: float
+        Eddy diffusivity floor [m2 s-1]; prevents mixing-length transport
+        from freezing out.
+    tmagma_atol: float
+        Maximum increase in T_magma and T_surf per PROTEUS step (maximum
+        increase atol + rtol * T_magma_prev) [K]; disabled on Aragog steps
+        where interior_energetics.aragog.top_cell_dt_limit is true,
+        tau_drain is finite, and the step does not exceed tau_drain.
+    tmagma_rtol: float
+        Maximum relative increase in T_magma and T_surf per PROTEUS step
+        (maximum increase atol + rtol * T_magma_prev); disabled on Aragog
+        steps where interior_energetics.aragog.top_cell_dt_limit is true,
+        tau_drain is finite, and the step does not exceed tau_drain.
+    tmagma_tides_step: float
+        Maximum change in T_magma allowed when tides are active [K].
+    param_utbl: bool
+        Enable the ultra-thin boundary layer parameterisation.
+    param_utbl_const: float
+        Ultra-thin boundary layer scaling constant [K-1].
+    surface_bc_mode: str
+        Surface boundary condition for SPIDER/Aragog: 'flux' (prescribed
+        F_atm from the atmosphere module) or 'grey_body' (native grey-body
+        boundary condition computed inside the interior solver).
+        Incompatible with interior_energetics.aragog.top_cell_dt_limit = true.
+    const_properties: bool
+        Enable constant-properties mode: bypass the EOS tables and use the
+        analytical T(S) = T_ref * exp((S - S_ref) / Cp) relationship, for
+        controlled parity tests.
 
     module: str
         Module for simulating the magma ocean. Choices: 'spider', 'aragog', 'dummy'.
@@ -439,19 +838,17 @@ class Interior:
     )
     num_levels: int = field(default=80, validator=ge(40))
 
-    # Unified ODE tolerance: both SPIDER and Aragog read from here.
-    # num_tolerance is a deprecated alias (emits DeprecationWarning).
-    # matprop_smooth_width lives on the Spider subclass but is read by both solvers.
-    #
-    # rtol and num_tolerance default to a sentinel so that an explicit
-    # value equal to the resolved default is not mistaken for "unset".
-    # Both resolve to _DEFAULT_RTOL in __attrs_post_init__.
+    # Unified ODE tolerance for SPIDER and Aragog; num_tolerance is a deprecated alias.
+    # The sentinel default tells "unset" apart from an explicit value equal to the
+    # default; __attrs_post_init__ resolves it per module.
     rtol: float = field(default=_TOL_UNSET, validator=_gt0_or_unset)
     """Relative numerical tolerance for the interior ODE solver.
     SPIDER: -ts_sundials_rtol (used internally via atol_sf scaling).
     Aragog: scipy solve_ivp rtol. The deprecated aliases num_tolerance and
     [interior_energetics.spider].tolerance_rel copy into this field.
-    Resolves to 1e-10 when left unset."""
+    Resolves to 1e-8 for Aragog and 1e-10 for SPIDER when left unset.
+    With interior_struct.module = 'spider' it also sets the relative tolerance
+    of the secant solve for the interior radius."""
 
     atol: float = field(default=1e-10, validator=gt(0))
     """Absolute numerical tolerance for the interior ODE solver.
@@ -479,7 +876,7 @@ class Interior:
     )
 
     mixing_length: str = field(default='nearest', validator=in_(('nearest', 'constant')))
-    grain_size: float = field(default=0.1, validator=gt(0))
+    grain_size: float = field(default=1e-3, validator=gt(0))
     flux_guess: float = field(default=-1)
     tmagma_atol: float = field(default=20.0, validator=ge(0))
     tmagma_rtol: float = field(default=0.02, validator=ge(0))
@@ -491,8 +888,9 @@ class Interior:
     radio_U: float = field(default=0.031, validator=ge(0))
     radio_Th: float = field(default=0.124, validator=ge(0))
 
-    rfront_loc: float = field(default=0.5, validator=(gt(0), lt(1)))
+    rfront_loc: float = field(default=0.4, validator=(gt(0), lt(1)))
     rfront_wid: float = field(default=0.2, validator=(gt(0), lt(1)))
+    tmagma_tides_step: float = field(default=10.0, validator=ge(0))
 
     # Phase-dependent eddy diffusivity floor [m^2/s]. Default 0 = standard MLT.
     # When > 0, applies max(kh_MLT, floor * f(phi)) where f transitions from
@@ -507,28 +905,18 @@ class Interior:
     param_utbl: bool = field(default=False)
     param_utbl_const: float = field(default=1e-7, validator=gt(0))
 
-    # Surface boundary condition mode for SPIDER/Aragog.
-    #
-    # - 'flux' (default): prescribed heat flux from hf_row['F_atm']. SPIDER
-    #   uses -SURFACE_BC 4, Aragog uses outer_boundary_condition=4. The Python
-    #   atmosphere module (dummy, AGNI, JANUS) is responsible for computing
-    #   F_atm, which the interior consumes unchanged for the full duration of
-    #   the coupling step.
-    #
-    # - 'grey_body': native grey-body BC computed inside the interior solver
-    #   per CVode substep from the current top-cell T. SPIDER uses -SURFACE_BC 1
-    #   -emissivity0 1.0, Aragog uses outer_boundary_condition=1 with
-    #   emissivity=1. Both compute F = sigma * (T_surf^4 - T_eqm^4) using the
-    #   T_eqm value in hf_row['T_eqm']. This is the formulation used by
-    #   SPIDER-Aragog parity tests: both solvers follow the identical physical
-    #   law so their cooling trajectories can be compared directly. The
-    #   Python-side atmosphere module still runs to populate diagnostic
-    #   helpfile fields (F_olr, F_sct, R_obs, ...), but its F_atm output is
-    #   not used by the interior.
     surface_bc_mode: str = field(
         default='flux',
         validator=in_(('flux', 'grey_body')),
     )
+    """Surface boundary condition mode for SPIDER and Aragog: 'flux' or 'grey_body'.
+    'flux' consumes prescribed F_atm from the atmosphere module as the upper boundary flux.
+    'grey_body' evaluates radiative surface cooling sigma * (T_surf^4 - T_eqm^4) inside the
+    interior solver per substep from current top-cell T (SPIDER uses -SURFACE_BC 1
+    -emissivity0 1.0; Aragog uses outer_boundary_condition=1 with emissivity=1). The
+    atmosphere module still runs to populate diagnostic helpfile fields (F_olr, F_sct,
+    R_obs), but its F_atm output is not used by the interior. Incompatible with
+    interior_energetics.aragog.top_cell_dt_limit = true."""
 
     # -----------------------------------------------------------------
     # EOS and rheology parameters exposed to config. Defaults match
@@ -594,7 +982,9 @@ class Interior:
     # For controlled parity comparisons with dummy structure + atmosphere.
     const_properties: bool = field(default=False)
     const_rho: float = field(default=4000.0, validator=gt(0))
-    """Constant density [kg/m3]."""
+    """Constant density [kg/m3]. SPIDER and Aragog read it only when
+    const_properties = true. The dummy interior also uses it for its mantle mass
+    when the helpfile row has no M_int or M_core."""
     const_Cp: float = field(default=1000.0, validator=gt(0))
     """Constant heat capacity [J/kg/K]."""
     const_alpha: float = field(default=1e-5, validator=gt(0))
@@ -664,7 +1054,10 @@ class Interior:
         equal to the resolved default still counts as set and is not
         overridden by an alias.
 
-        All aliases will be removed in a future release.
+        All aliases will be removed in a future release. The Aragog cross-field
+        checks run last: the top_cell_dt_rel_dT pair (again, for an aragog section
+        changed after its own construction) and top_cell_dt_limit against
+        surface_bc_mode = 'grey_body'.
         """
         # Whether each field was supplied is tracked via the sentinel
         # default, not by value-comparison against the resolved default.
@@ -717,4 +1110,129 @@ class Interior:
 
         # Resolve the sentinel to the real default if nothing set rtol.
         if not rtol_set:
-            object.__setattr__(self, 'rtol', _DEFAULT_RTOL)
+            object.__setattr__(self, 'rtol', default_rtol(self.module))
+
+        _check_top_cell_dt_rel_dT_pair(self.aragog)
+        _check_aragog_top_cell_dt_limit_surface_bc(self)
+
+
+# Thematic grouping for the generated configuration reference. Each entry is
+# ``(heading, qualifier, option names)``; a heading of ``None`` renders the
+# section's opening table with no heading of its own. Order here is the order
+# on the page, and is independent of the order the fields are declared in.
+DOC_GROUPS = {
+    'Interior': (
+        (
+            None,
+            None,
+            (
+                'module',
+                'num_levels',
+                'rtol',
+                'num_tolerance',
+                'atol',
+                'flux_guess',
+                'surface_bc_mode',
+            ),
+        ),
+        (
+            'Transport physics',
+            None,
+            (
+                'trans_conduction',
+                'trans_convection',
+                'trans_grav_sep',
+                'trans_mixing',
+            ),
+        ),
+        (
+            'Heating',
+            None,
+            (
+                'heat_tidal',
+                'heat_radiogenic',
+                'radio_tref',
+                'radio_Al',
+                'radio_Fe',
+                'radio_K',
+                'radio_U',
+                'radio_Th',
+            ),
+        ),
+        (
+            'Rheology and convection',
+            None,
+            (
+                'rfront_loc',
+                'rfront_wid',
+                'grain_size',
+                'mixing_length',
+                'kappah_floor',
+            ),
+        ),
+        (
+            'Coupling limits',
+            None,
+            (
+                'tmagma_atol',
+                'tmagma_rtol',
+                'tmagma_tides_step',
+            ),
+        ),
+        (
+            'Ultra-thin boundary layer',
+            None,
+            (
+                'param_utbl',
+                'param_utbl_const',
+            ),
+        ),
+        (
+            'Hydrostatic EOS (Adams-Williamson)',
+            None,
+            (
+                'adams_williamson_rhos',
+                'adams_williamson_beta',
+                'adiabatic_bulk_modulus',
+            ),
+        ),
+        (
+            'Phase material properties',
+            None,
+            (
+                'melt_log10visc',
+                'solid_log10visc',
+                'melt_cond',
+                'solid_cond',
+                'eddy_diffusivity_thermal',
+                'eddy_diffusivity_chemical',
+                'latent_heat_of_fusion',
+                'phase_transition_width',
+            ),
+        ),
+        (
+            'Core thermal model',
+            None,
+            ('core_tfac_avg',),
+        ),
+        (
+            'Diagnostics',
+            None,
+            ('write_flux_diagnostics',),
+        ),
+        (
+            'Constant-properties mode',
+            None,
+            (
+                'const_properties',
+                'const_rho',
+                'const_Cp',
+                'const_alpha',
+                'const_cond',
+                'const_log10visc',
+                'const_T_ref',
+                'const_S_ref',
+            ),
+        ),
+    ),
+}

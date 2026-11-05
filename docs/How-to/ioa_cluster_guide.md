@@ -20,7 +20,6 @@ If you have already installed Julia in your home folder, remove it and any bashr
 
 Then set the variables in your bashrc file:
 ```bash
-export JULIAUP_HOME=/data/$USER/.juliaup/
 export JULIAUP_DEPOT_PATH=/data/$USER/.juliaup/
 export JULIA_DEPOT_PATH=/data/$USER/.julia/
 ```
@@ -30,15 +29,22 @@ Set your module config in your bashrc too:
 module load netcdf openmpi mpich cuda
 ```
 
-Then install Julia, making sure to set the path to `/data/<username>/.julia` when prompted
+Then load them in this terminal and run the official installer. Choose `Customize installation`, and at `Enter the folder where you want to install Juliaup` enter `/data/<username>/.julia`, a folder that does not exist yet. That folder holds the juliaup program. The installer downloads a first Julia into the folder of `JULIAUP_DEPOT_PATH`.
 
 ```bash
+source ~/.bashrc
 curl -fsSL https://install.julialang.org | sh
+```
+
+Open a new terminal, then add Julia 1.13. The installer checks for it and does not install it:
+
+```bash
+juliaup add 1.13
 ```
 
 ## Setup Python
 
-It is **important that you DO NOT** set the variable `PYTHON_JULIAPKG_EXE`. The main install steps will instruct you to do this. Please ignore that advice.
+You need not set the variable `PYTHON_JULIAPKG_EXE` yourself: `bash install.sh` sets it to the binary of the Julia 1.13 that you added, in the conda environment. In the manual steps, set it as they describe, to that binary and not to the juliaup launcher.
 
 Then install Python, also making sure to install to `/data/<username>/miniforge3`:
 

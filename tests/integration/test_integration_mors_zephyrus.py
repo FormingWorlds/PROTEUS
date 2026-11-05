@@ -19,7 +19,7 @@ Three scenarios sweep XUV environment and atmospheric inventory:
 - ``low_xuv_slow_rotator``: 1 M_Earth, 0.5 AU, 3000 ppmw H,
   10th-percentile rotation (quiet star, weak XUV).
 
-Per ``proteus-tests.md`` §1, the file also includes an explicit
+Per ``tests/AGENTS.md``, the file also includes an explicit
 error-contract test that exercises the zephyrus Pxuv schema validator.
 
 Invariants asserted per scenario:
@@ -30,7 +30,7 @@ Invariants asserted per scenario:
 - Escape rate non-negative, finite, bounded above by a physically plausible
   ceiling (rejects per-area-vs-per-volume swap).
 - Per-element mass closure ``atm + liq + sol == total`` for H/C/N/S/O at
-  the final row (conservation invariant carve-out, §2).
+  the final row (conservation invariant; tests/AGENTS.md, Discriminating values).
 
 See also:
 - docs/How-to/testing.md
@@ -41,7 +41,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -102,19 +101,19 @@ def _ensure_mors_data_or_skip() -> None:
     so mors data needs its own primer here). Skip only when the
     download itself fails, which is the offline-without-cache case.
 
-    Checks both case variants of the directory name because the MORS
-    downloader inconsistently lands data at ``Spada`` or ``spada``
-    depending on the OS and the path through DownloadEvolutionTracks
-    vs the OSF fallback.
+    The tracks are looked for where MORS places them, ``spada_data_dir()``.
     """
-    fwl = os.environ.get('FWL_DATA')
-    if not fwl:
+    if not os.environ.get('FWL_DATA'):
         pytest.skip('FWL_DATA env var not set; mors track data unavailable')
-    parent = Path(fwl) / 'stellar_evolution_tracks'
-    candidates = (parent / 'spada', parent / 'Spada')
+    from mors.data import spada_data_dir
+
+    try:
+        grid = spada_data_dir()
+    except OSError as exc:
+        pytest.skip(f'cannot resolve the mors spada directory: {exc}')
 
     def _present() -> bool:
-        return any(c.is_dir() and any(c.iterdir()) for c in candidates)
+        return grid.is_dir() and any(grid.iterdir())
 
     if _present():
         return
@@ -125,10 +124,7 @@ def _ensure_mors_data_or_skip() -> None:
     except (OSError, RuntimeError, Exception) as exc:  # noqa: BLE001
         pytest.skip(f'could not fetch mors spada tracks: {exc}')
     if not _present():
-        pytest.skip(
-            'mors spada tracks still missing after download attempt at '
-            f'{parent} (checked spada/ and Spada/)'
-        )
+        pytest.skip(f'mors spada tracks still missing after download attempt at {grid}')
 
 
 @pytest.mark.integration
@@ -225,7 +221,7 @@ def test_mors_zephyrus_two_timesteps(proteus_multi_timestep_run, scenario):
         assert np.all(rate < 1e10), f'esc_rate_total above physical bound: max={rate.max():.3e}'
 
     # Per-element mass closure: the conservation invariant, satisfies the
-    # exponent-error guard from proteus-tests.md §2 by construction.
+    # exponent-error guard from tests/AGENTS.md, "Discriminating values" by construction.
     for elt in ('H', 'C', 'N', 'S', 'O'):
         atm_key = f'{elt}_kg_atm'
         liq_key = f'{elt}_kg_liquid'
@@ -255,7 +251,7 @@ def test_mors_zephyrus_two_timesteps(proteus_multi_timestep_run, scenario):
 
 
 # ---------------------------------------------------------------------------
-# Error-contract path per proteus-tests.md §1 clause 2.
+# Error-contract path per tests/AGENTS.md.
 # ---------------------------------------------------------------------------
 
 

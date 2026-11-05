@@ -11,6 +11,34 @@ from proteus.utils.helper import CommentFromStatus
 
 log = logging.getLogger('fwl.' + __name__)
 
+# Broad status categories of the codes in `CommentFromStatus` (proteus.utils.helper),
+# shared by `summarise` and the grid analysis. Code 29 is 'Completed (planet evaporated)'.
+STATUS_CATEGORIES = {
+    'Running': tuple(range(0, 10)),
+    'Completed': (*range(10, 20), 29),
+    'Error': tuple(range(20, 29)),
+}
+
+
+def status_category(code: int) -> str:
+    """Return the broad category of a status code.
+
+    Parameters
+    ----------
+    code : int
+        A PROTEUS status code (see ``CommentFromStatus``).
+
+    Returns
+    -------
+    str
+        'Running' (0-9), 'Completed' (10-19 and 29), 'Error' (20-28), or
+        'Unknown' for any other code.
+    """
+    for name, codes in STATUS_CATEGORIES.items():
+        if code in codes:
+            return name
+    return 'Unknown'
+
 
 def summarise(pgrid_dir: str, tgt_status: str = None):
     """
@@ -72,10 +100,8 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
 
     # Check options
     gen_cases = {
-        # Broad categories
-        'Running': list(range(0, 10, 1)),
-        'Completed': list(range(10, 20, 1)),
-        'Error': list(range(20, 30, 1)),
+        # Broad categories (shared ranges)
+        **{name: list(codes) for name, codes in STATUS_CATEGORIES.items()},
         'All': list(range(0, 100, 1)),
         # Narrower categories
         'Solidified': [10],

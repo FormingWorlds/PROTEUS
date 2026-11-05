@@ -31,6 +31,11 @@ Module scope:
     and returns Imk2. SPIDER ordering gets reversed so i=0 sits at
     the CMB.
   - ``juliacall.JuliaError`` is wrapped into ``RuntimeError``.
+  - on the heated (non-early-return) paths, the hardcoded ``nmk``
+    mode table, ``sigma`` (the orbital forcing frequency), and
+    ``LNk`` (0 + Imk2*1j for all three modes) are stored into
+    ``tides_o`` under ``primary='planet', perturber='star'``; the
+    early-return and error paths leave ``tides_o`` untouched.
 
 See also:
 - docs/How-to/testing.md
@@ -46,6 +51,8 @@ import numpy as np
 import pytest
 
 pytest.importorskip('juliacall')
+
+from proteus.orbit.common import Tides_t
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -67,11 +74,14 @@ def _make_interior_t(module: str, nlev_s: int = 5):
     return interior_o
 
 
-def _make_config(module: str, visc_thresh: float = 1e9, ncalc: int = 1000):
+def _make_config(
+    module: str, visc_thresh: float = 1e9, ncalc: int = 1000, perturber: str = 'star'
+):
     cfg = types.SimpleNamespace()
     cfg.interior_energetics = types.SimpleNamespace()
     cfg.interior_energetics.module = module
     cfg.orbit = types.SimpleNamespace()
+    cfg.orbit.perturber = perturber
     cfg.orbit.lovepy = types.SimpleNamespace()
     cfg.orbit.lovepy.visc_thresh = visc_thresh
     cfg.orbit.lovepy.ncalc = ncalc
@@ -108,6 +118,11 @@ def test_jlarr_converts_to_julia_array_with_documented_element_type(monkeypatch)
     ``jl.Array[jl.LovePy.prec, 1]`` Julia type. Pin the call
     signature so a regression that broadened the dim from 1 to 2 or
     swapped the element type surfaces.
+
+    ``_jlarr`` is bound (via ``make_julia_converters('LovePy')``) from
+    ``proteus.utils.julia_common``, so ``jl``/``juliacall`` are patched
+    there, not on ``lovepy_mod`` -- the converter closures resolve
+    those names in the module they were defined in, not the caller's.
     """
     from proteus.orbit import lovepy as lovepy_mod
 
@@ -118,8 +133,8 @@ def test_jlarr_converts_to_julia_array_with_documented_element_type(monkeypatch)
     fake_jl.LovePy = MagicMock()
     fake_jl.LovePy.prec = 'prec_sentinel'
     fake_jl.Array.__getitem__ = MagicMock(return_value='destination_type')
-    monkeypatch.setattr(lovepy_mod, 'juliacall', fake_juliacall)
-    monkeypatch.setattr(lovepy_mod, 'jl', fake_jl)
+    monkeypatch.setattr('proteus.utils.julia_common.juliacall', fake_juliacall)
+    monkeypatch.setattr('proteus.utils.julia_common.jl', fake_jl)
 
     arr = np.array([1.0, 2.0, 3.0])
     out = lovepy_mod._jlarr(arr)
@@ -135,6 +150,10 @@ def test_jlsca_converts_to_julia_prec_scalar(monkeypatch):
     """``_jlsca`` converts a python float to the LovePy precision
     type via ``juliacall.convert(jl.LovePy.prec, sca)``. Pin the
     destination-type argument.
+
+    See ``test_jlarr_converts_to_julia_array_with_documented_element_type``
+    for why ``jl``/``juliacall`` are patched on
+    ``proteus.utils.julia_common``.
     """
     from proteus.orbit import lovepy as lovepy_mod
 
@@ -143,8 +162,8 @@ def test_jlsca_converts_to_julia_prec_scalar(monkeypatch):
     fake_jl = MagicMock(name='jl')
     fake_jl.LovePy = MagicMock()
     fake_jl.LovePy.prec = 'prec_sentinel'
-    monkeypatch.setattr(lovepy_mod, 'juliacall', fake_juliacall)
-    monkeypatch.setattr(lovepy_mod, 'jl', fake_jl)
+    monkeypatch.setattr('proteus.utils.julia_common.juliacall', fake_juliacall)
+    monkeypatch.setattr('proteus.utils.julia_common.jl', fake_jl)
 
     out = lovepy_mod._jlsca(0.5)
     fake_juliacall.convert.assert_called_once_with('prec_sentinel', 0.5)
@@ -164,6 +183,12 @@ def test_run_lovepy_dummy_returns_zero_when_top_cell_below_visc_thresh(monkeypat
 
     Discrimination: the Julia ``calc_lovepy_tides`` is not called
     on the early-return path; pin the call count at 0.
+
+    The early-return path still populates a zero-heating tides_o
+    entry (``store_lovepy_tides(omega, 0.0, tides_o)``) so a later
+    ``tides_o.get('planet', 'star')`` in the sp1d path does not raise
+    ``KeyError`` for a fully-liquid mantle -- confirmed here rather
+    than assuming the entry stays absent.
     """
     from proteus.orbit import lovepy as lovepy_mod
 
@@ -179,11 +204,18 @@ def test_run_lovepy_dummy_returns_zero_when_top_cell_below_visc_thresh(monkeypat
     interior_o.visc[0] = 1.0
     cfg = _make_config(module='dummy', visc_thresh=1e9)
     hf_row = {'orbital_period': 86400.0 * 365.0, 'eccentricity': 0.1}
+    tides_o = Tides_t()
 
-    out = lovepy_mod.run_lovepy(hf_row, dirs={}, interior_o=interior_o, config=cfg)
+    out = lovepy_mod.run_lovepy(
+        hf_row, dirs={}, interior_o=interior_o, tides_o=tides_o, config=cfg
+    )
 
     assert out == pytest.approx(0.0, abs=1e-12)
     fake_jl.calc_lovepy_tides.assert_not_called()
+    # A zero-heating entry must still be registered on this early-return
+    # path, so a downstream tides_o.get('planet', 'star') never raises.
+    storage = tides_o.get(primary='planet', perturber='star')
+    assert np.all(storage.LNk == 0.0 + 0.0j)
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +229,11 @@ def test_run_lovepy_aragog_returns_zero_when_full_mantle_below_visc_thresh(monke
     region of high-viscosity cells from the bottom up).
 
     Discrimination: the Julia tides call does not fire.
+
+    A zero-heating tides_o entry must still be registered on this
+    fully-liquid early-return path (matching the dummy/boundary case
+    above), so a downstream ``tides_o.get('planet', 'star')`` never
+    raises ``KeyError`` during the early magma-ocean phase.
     """
     from proteus.orbit import lovepy as lovepy_mod
 
@@ -210,10 +247,15 @@ def test_run_lovepy_aragog_returns_zero_when_full_mantle_below_visc_thresh(monke
     interior_o.visc[:] = 1.0
     cfg = _make_config(module='aragog', visc_thresh=1e9)
     hf_row = {'orbital_period': 1e7, 'eccentricity': 0.0}
+    tides_o = Tides_t()
 
-    out = lovepy_mod.run_lovepy(hf_row, dirs={}, interior_o=interior_o, config=cfg)
+    out = lovepy_mod.run_lovepy(
+        hf_row, dirs={}, interior_o=interior_o, tides_o=tides_o, config=cfg
+    )
     assert out == pytest.approx(0.0, abs=1e-12)
     fake_jl.calc_lovepy_tides.assert_not_called()
+    storage = tides_o.get(primary='planet', perturber='star')
+    assert np.all(storage.LNk == 0.0 + 0.0j)
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +270,12 @@ def test_run_lovepy_dummy_heated_branch_writes_tides_and_returns_imk2(monkeypatc
     ``float(Imk2)``.
 
     Discrimination: per-cell tides slot is populated; return value
-    matches the Imk2 mock; calc_lovepy_tides called once.
+    matches the Imk2 mock; calc_lovepy_tides called once. Also
+    covers the ``tides_o`` storage block reached on this path: the
+    hardcoded mode table, and the per-mode reality-condition mirror
+    for ``sigma``/``LNk`` -- (2,0,1) and (2,2,3) share the same sign
+    (forcing frequency -omega), (2,2,1) gets the opposite sign
+    (+omega) -- get written under ``primary='planet', perturber='star'``.
     """
     from proteus.orbit import lovepy as lovepy_mod
 
@@ -241,14 +288,40 @@ def test_run_lovepy_dummy_heated_branch_writes_tides_and_returns_imk2(monkeypatc
     interior_o = _make_interior_t(module='dummy', nlev_s=3)
     cfg = _make_config(module='dummy', visc_thresh=1e9, ncalc=1000)
     hf_row = {'orbital_period': 1e7, 'eccentricity': 0.1}
+    tides_o = Tides_t()
 
-    out = lovepy_mod.run_lovepy(hf_row, dirs={}, interior_o=interior_o, config=cfg)
+    out = lovepy_mod.run_lovepy(
+        hf_row, dirs={}, interior_o=interior_o, tides_o=tides_o, config=cfg
+    )
     assert fake_jl.calc_lovepy_tides.call_count == 1
     # Tides slot 0 populated from power_prf[1].
     assert interior_o.tides[0] == pytest.approx(1.5e-6, rel=1e-12)
     # Imk2 returned as Python float.
     assert isinstance(out, float)
     assert out == pytest.approx(-0.0125, rel=1e-12)
+
+    storage = tides_o.get(primary='planet', perturber='star')
+    np.testing.assert_array_equal(storage.nmk, [[2, 0, 1], [2, 2, 1], [2, 2, 3]])
+    expected_omega = 2 * np.pi / hf_row['orbital_period']
+    # Flat (3,) shape, not (3, 1): nested-bracket construction previously
+    # left this array 2-D, which breaks _dense_love's boolean-mask
+    # assignment (dense[indices] = LNk[mask]) for more than one masked
+    # mode.
+    assert storage.sigma.shape == (3,)
+    assert storage.LNk.shape == (3,)
+    # (2,0,1) and (2,2,3) sit at forcing frequency -omega; (2,2,1) at
+    # +omega -- the reality condition Im(k2(-omega)) = -Im(k2(omega))
+    # then flips the sign of LNk between them (see store_lovepy_tides).
+    np.testing.assert_allclose(
+        storage.sigma, [-expected_omega, expected_omega, -expected_omega], rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        storage.LNk, [0.0 + 0.0125j, 0.0 - 0.0125j, 0.0 + 0.0125j], rtol=1e-12
+    )
+    # Discrimination: the real part must stay exactly zero (only
+    # Imk2 is known; a regression that leaked omega or Imk2 into the
+    # real part would fail this).
+    assert np.all(np.real(storage.LNk) == 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -281,8 +354,11 @@ def test_run_lovepy_aragog_heated_branch_writes_per_cell_tides(monkeypatch):
     monkeypatch.setattr(lovepy_mod, 'jl', fake_jl)
     monkeypatch.setattr(lovepy_mod, '_jlarr', lambda a: a)
     monkeypatch.setattr(lovepy_mod, '_jlsca', lambda s: s)
+    tides_o = Tides_t()
 
-    out = lovepy_mod.run_lovepy(hf_row, dirs={}, interior_o=interior_o, config=cfg)
+    out = lovepy_mod.run_lovepy(
+        hf_row, dirs={}, interior_o=interior_o, tides_o=tides_o, config=cfg
+    )
     # tides[0:i_top] holds the power, with tides[0] duplicated from tides[1].
     assert interior_o.tides[1] == pytest.approx(2e-6, rel=1e-12)
     assert interior_o.tides[2] == pytest.approx(3e-6, rel=1e-12)
@@ -293,6 +369,17 @@ def test_run_lovepy_aragog_heated_branch_writes_per_cell_tides(monkeypatch):
     assert interior_o.tides[4] == pytest.approx(0.0, abs=1e-30)
     assert isinstance(out, float)
     assert out == pytest.approx(-0.025, rel=1e-12)
+
+    storage = tides_o.get(primary='planet', perturber='star')
+    expected_omega = 2 * np.pi / hf_row['orbital_period']
+    assert storage.sigma.shape == (3,)
+    assert storage.LNk.shape == (3,)
+    np.testing.assert_allclose(
+        storage.sigma, [-expected_omega, expected_omega, -expected_omega], rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        storage.LNk, [0.0 + 0.025j, 0.0 - 0.025j, 0.0 + 0.025j], rtol=1e-12
+    )
 
 
 def test_run_lovepy_spider_heated_branch_reverses_order(monkeypatch):
@@ -318,8 +405,11 @@ def test_run_lovepy_spider_heated_branch_reverses_order(monkeypatch):
     monkeypatch.setattr(lovepy_mod, 'jl', fake_jl)
     monkeypatch.setattr(lovepy_mod, '_jlarr', lambda a: a)
     monkeypatch.setattr(lovepy_mod, '_jlsca', lambda s: s)
+    tides_o = Tides_t()
 
-    out = lovepy_mod.run_lovepy(hf_row, dirs={}, interior_o=interior_o, config=cfg)
+    out = lovepy_mod.run_lovepy(
+        hf_row, dirs={}, interior_o=interior_o, tides_o=tides_o, config=cfg
+    )
     # Under SPIDER ordering, the tides array is reversed on write
     # so the entry that was at index 1 (post-duplication) lands at
     # ``-2`` in the surface-to-CMB array. tides[-1] holds the prefix
@@ -331,6 +421,78 @@ def test_run_lovepy_spider_heated_branch_reverses_order(monkeypatch):
     # Far end (surface side) stays zero.
     assert interior_o.tides[0] == pytest.approx(0.0, abs=1e-30)
     assert out == pytest.approx(-0.030, rel=1e-12)
+
+    storage = tides_o.get(primary='planet', perturber='star')
+    assert storage.LNk.shape == (3,)
+    np.testing.assert_allclose(
+        storage.LNk, [0.0 + 0.030j, 0.0 - 0.030j, 0.0 + 0.030j], rtol=1e-12
+    )
+
+
+# ---------------------------------------------------------------------------
+# run_lovepy: satellite perturber reads the satellite-side orbital state.
+# ---------------------------------------------------------------------------
+
+
+def test_run_lovepy_satellite_perturber_reads_satellite_orbital_state(monkeypatch):
+    """``config.orbit.perturber == 'satellite'`` reads
+    ``orbital_period_sat``/``eccentricity_sat`` instead of the star-planet
+    fields, and tags the ``tides_o`` entry ``perturber='satellite'``."""
+    from proteus.orbit import lovepy as lovepy_mod
+
+    fake_jl = MagicMock(name='jl')
+    fake_jl.calc_lovepy_tides = MagicMock(return_value=(np.array([0.0, 1.5e-6]), 0.05, -0.0125))
+    monkeypatch.setattr(lovepy_mod, 'jl', fake_jl)
+    monkeypatch.setattr(lovepy_mod, '_jlarr', lambda a: a)
+    monkeypatch.setattr(lovepy_mod, '_jlsca', lambda s: s)
+
+    interior_o = _make_interior_t(module='dummy', nlev_s=3)
+    cfg = _make_config(module='dummy', visc_thresh=1e9, perturber='satellite')
+    hf_row = {
+        'orbital_period': 1e9,
+        'eccentricity': 0.9,
+        'orbital_period_sat': 2.36e6,
+        'eccentricity_sat': 0.02,
+    }
+    tides_o = Tides_t()
+
+    out = lovepy_mod.run_lovepy(
+        hf_row, dirs={}, interior_o=interior_o, tides_o=tides_o, config=cfg
+    )
+    assert out == pytest.approx(-0.0125, rel=1e-12)
+    storage = tides_o.get(primary='planet', perturber='satellite')
+    expected_omega = 2 * np.pi / hf_row['orbital_period_sat']
+    np.testing.assert_allclose(
+        storage.sigma, [-expected_omega, expected_omega, -expected_omega], rtol=1e-12
+    )
+
+
+def test_run_lovepy_rejects_an_unrecognized_perturber(monkeypatch):
+    """Neither 'star' nor 'satellite': must raise a clear ``ValueError``
+    up front, not silently fall through and fail later with an
+    ``UnboundLocalError`` on ``omega``/``ecc`` (only ever assigned inside
+    the 'star'/'satellite' branches). Mirrors
+    ``test_run_obliqua_rejects_an_unrecognized_perturber``.
+    """
+    from proteus.orbit import lovepy as lovepy_mod
+
+    updates: list[tuple] = []
+    monkeypatch.setattr(
+        lovepy_mod, 'UpdateStatusfile', lambda dirs, code: updates.append((dirs, code))
+    )
+
+    interior_o = _make_interior_t(module='dummy', nlev_s=3)
+    cfg = _make_config(module='dummy', perturber=None)
+    hf_row = {'orbital_period': 1e7, 'eccentricity': 0.1}
+    tides_o = Tides_t()
+
+    with pytest.raises(ValueError, match='perturber'):
+        lovepy_mod.run_lovepy(
+            hf_row, dirs={'output': '/tmp'}, interior_o=interior_o, tides_o=tides_o, config=cfg
+        )
+    assert updates == [({'output': '/tmp'}, 26)]
+    # The error path exits before the tides_o storage block.
+    assert tides_o.interactions == []
 
 
 # ---------------------------------------------------------------------------
@@ -365,11 +527,14 @@ def test_run_lovepy_julia_error_wrapped_into_runtime_error(monkeypatch):
     interior_o = _make_interior_t(module='dummy', nlev_s=3)
     cfg = _make_config(module='dummy', visc_thresh=1e9, ncalc=1000)
     hf_row = {'orbital_period': 1e7, 'eccentricity': 0.1}
+    tides_o = Tides_t()
 
     with pytest.raises(RuntimeError, match=r'(?i)lovepy'):
         lovepy_mod.run_lovepy(
-            hf_row, dirs={'output': '/tmp'}, interior_o=interior_o, config=cfg
+            hf_row, dirs={'output': '/tmp'}, interior_o=interior_o, tides_o=tides_o, config=cfg
         )
     # UpdateStatusfile recorded the error code.
     assert len(updates) == 1
     assert updates[0][1] == 26
+    # The error path exits before the tides_o storage block.
+    assert tides_o.interactions == []

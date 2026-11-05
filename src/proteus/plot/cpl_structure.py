@@ -9,17 +9,43 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from cmcrameri import cm
+from matplotlib.lines import Line2D
 from matplotlib.ticker import MultipleLocator
 
 from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.interior_energetics.wrapper import read_interior_data
 from proteus.utils.constants import R_earth
-from proteus.utils.plot import get_colour, latex_float, sample_output
+from proteus.utils.plot import get_colour, latex_float, profile_sample_tmin, sample_times
 
 if TYPE_CHECKING:
     from proteus import Proteus
 
 log = logging.getLogger('fwl.' + __name__)
+
+
+def _interior_profile(ds, module: str) -> tuple[np.ndarray, np.ndarray]:
+    """Radius [R_earth] and temperature [K] of an interior snapshot."""
+    if module == 'aragog':
+        # Entropy solver uses staggered variables (temp_s, radius_s) [K, km]
+        key = 's' if 'temp_s' in ds else 'b'
+        int_t = np.array(ds['temp_' + key][::-1], dtype=float)
+        int_r = np.array(ds['radius_' + key][::-1], dtype=float) * 1e3
+    else:
+        int_t = np.array(ds.get_dict_values(['data', 'temp_b']), dtype=float)
+        int_r = np.array(ds.get_dict_values(['data', 'radius_b']), dtype=float)
+    return int_r / R_earth, int_t
+
+
+def _has_skin(hf_all: pd.DataFrame, idx: int) -> bool:
+    """Whether a helpfile row holds a conductive skin: T_surf below T_magma, and a
+    positive boundary_layer_conductivity where the helpfile has that column."""
+    if 'T_surf' not in hf_all.columns or 'T_magma' not in hf_all.columns:
+        return False
+    row = hf_all.iloc[idx]
+    if 'boundary_layer_conductivity' in hf_all.columns:
+        if not float(row['boundary_layer_conductivity']) > 0:
+            return False
+    return float(row['T_surf']) < float(row['T_magma'])
 
 
 def plot_structure(
@@ -37,6 +63,11 @@ def plot_structure(
 
     if module not in ('spider', 'aragog'):
         log.debug("Cannot make structure plot with interior module '%s'" % module)
+        return
+
+    # A missing snapshot would pair a profile with the wrong time
+    if atm_data is None or len(atm_data) != len(times) or len(int_data) != len(times):
+        log.warning('Snapshot data do not match the plot times; skipping plot_structure')
         return
 
     log.info('Plot structure')
@@ -72,26 +103,15 @@ def plot_structure(
     obs_m = '.'
 
     # loop over times
+    any_skin = False
     for i, time in enumerate(times):
         # Get atmosphere data for this time
         prof = atm_data[i]
         atm_r = prof['z'] / R_earth + R_int[i]
         atm_t = prof['t']
 
-        # Get temperuture-depth interior data for this time
-        ds = int_data[i]
-        if module == 'aragog':
-            # Entropy solver uses staggered variables (temp_s, radius_s)
-            if 'temp_s' in ds:
-                int_t = ds['temp_s'][::-1]
-                int_r = ds['radius_s'][::-1] * 1e3
-            else:
-                int_t = ds['temp_b'][::-1]
-                int_r = ds['radius_b'][::-1] * 1e3
-        elif module == 'spider':
-            int_t = ds.get_dict_values(['data', 'temp_b'])
-            int_r = ds.get_dict_values(['data', 'radius_b'])
-        int_r /= R_earth
+        # Get temperature-depth interior data for this time
+        int_r, int_t = _interior_profile(int_data[i], module)
 
         # Plot decorators
         label = latex_float(time) + ' yr'
@@ -111,6 +131,19 @@ def plot_structure(
         # Plot mantle
         R_mantle = np.amax(int_r)
         ax.plot(int_r, int_t, linestyle='solid', color=color, lw=lw, zorder=i)
+
+        # Join the top of the mantle to the base of the atmosphere; dashed across a skin
+        j_top, j_base = int(np.argmax(int_r)), int(np.argmin(atm_r))
+        skin = _has_skin(hf_all, hf_idxs[i])
+        any_skin = any_skin or skin
+        ax.plot(
+            [int_r[j_top], atm_r[j_base]],
+            [int_t[j_top], atm_t[j_base]],
+            linestyle='dashed' if skin else 'solid',
+            color=color,
+            lw=lw,
+            zorder=i,
+        )
 
         # Plot core
         R_core = np.amin(int_r)
@@ -150,6 +183,10 @@ def plot_structure(
     hdls = []
     hdls.append(ax.scatter(-100, 0, c='k', s=ms, marker=esc_m, label='Escape level'))
     hdls.append(ax.scatter(-100, 0, c='k', s=ms, marker=obs_m, label='Observed level'))
+    if any_skin:
+        hdls.append(
+            Line2D([], [], color='k', lw=lw, linestyle='dashed', label='Conductive skin')
+        )
     ax.legend(handles=hdls, loc='lower center', framealpha=1.0).set_zorder(99)
 
     plt.close()
@@ -159,17 +196,37 @@ def plot_structure(
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 
+def structure_plot_times(output_dir: str, int_module: str, nsamp: int = 8) -> list:
+    """Sample the times [yr] that have both an atmosphere and an interior snapshot."""
+    from proteus.atmos_clim.common import list_atmosphere_times
+    from proteus.utils.coupler import select_profile_plot_times
+
+    if int_module == 'spider':
+        from proteus.interior_energetics.spider import get_all_output_times
+    elif int_module == 'aragog':
+        from proteus.interior_energetics.aragog import get_all_output_times
+    else:
+        return []
+    times = select_profile_plot_times(
+        list(get_all_output_times(output_dir)),
+        list_atmosphere_times(output_dir),
+        no_int_snapshots=False,
+        interior_rounds_to_year=int_module == 'spider',
+    )
+    if not times:
+        return []
+    plot_times, _ = sample_times(times, nsamp, tmin=profile_sample_tmin(times))
+    return plot_times
+
+
 def plot_structure_entry(handler: Proteus):
-    plot_times, _ = sample_output(handler, extension='_atm.nc', tmin=1e3)
+    int_module = handler.config.interior_energetics.module
+    output_dir = handler.directories['output']
+    plot_times = structure_plot_times(output_dir, int_module)
     log.info('Snapshots: %s', plot_times)
 
     # read helpfile
-    hf_all = pd.read_csv(
-        os.path.join(handler.directories['output'], 'runtime_helpfile.csv'), sep=r'\s+'
-    )
-
-    int_module = handler.config.interior_energetics.module
-    output_dir = handler.directories['output']
+    hf_all = pd.read_csv(os.path.join(output_dir, 'runtime_helpfile.csv'), sep=r'\s+')
 
     int_data = read_interior_data(output_dir, int_module, plot_times)
     atm_data = read_atmosphere_data(output_dir, plot_times)

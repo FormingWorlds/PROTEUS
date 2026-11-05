@@ -165,8 +165,8 @@ def test_star_bol_scale_allows_zero_rejects_negative():
     """
     from proteus.config._star import Star
 
-    # Zero is allowed.
-    s_zero = Star(bol_scale=0.0)
+    # Zero is allowed (bol_scale != 1.0 requires bol_scale_start to be set).
+    s_zero = Star(bol_scale=0.0, bol_scale_start=0.0, bol_scale_duration=1.0)
     assert s_zero.bol_scale == pytest.approx(0.0, abs=1e-12)
     # Positive round-trips.
     s_one = Star(bol_scale=1.0)

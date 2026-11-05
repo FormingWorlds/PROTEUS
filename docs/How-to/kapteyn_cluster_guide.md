@@ -51,15 +51,7 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     cd /dataserver/users/formingworlds/<username>
     ```
 
-4. Configure the system environment. The Kapteyn cluster provides NetCDF
-   and other libraries via the module system. Add the following to your
-   `~/.bashrc` so the correct modules are loaded on every login:
-    ```console
-    echo "module purge" >> "$HOME/.bashrc"
-    echo "module load netcdf-fortran" >> "$HOME/.bashrc"
-    ```
-
-5. To avoid the cluster terminating PROTEUS jobs, increase the temporary file limit:
+4. To avoid the cluster terminating PROTEUS jobs, increase the temporary file limit:
     ```console
     echo "ulimit -Sn 4000000" >> "$HOME/.bashrc"
     echo "ulimit -Hn 5000000" >> "$HOME/.bashrc"
@@ -69,43 +61,72 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     source "$HOME/.bashrc"
     ```
 
-6. You can now follow the usual installation steps [here](installation.md), but, since your home folder is capped
-   at 9GB, you need to install Julia and miniconda or conda-forge in "/dataserver/users/formingworlds/<username>".
+5. Install conda, by following step 3 of the [installation steps](installation.md),
+   and stop before you clone PROTEUS. Since your home folder is capped at 9GB, install
+   miniconda or conda-forge in "/dataserver/users/formingworlds/<username>"
+   rather than in the default location. See
+   [Miniconda and conda-forge considerations](#miniconda-and-conda-forge-considerations)
+   below. Then make the PROTEUS environment:
+    ```console
+    conda create -n proteus python=3.12
+    conda activate proteus
+    ```
+
+6. Install NetCDF-Fortran into that environment. The Kapteyn module system
+   does not provide it, and SOCRATES needs it both to build and to run:
+    ```console
+    conda install -c conda-forge netcdf-fortran gfortran
+    conda env config vars set LD_LIBRARY_PATH="$CONDA_PREFIX/lib"
+    conda activate proteus
+    ```
+    The last command reactivates the environment so that the variable takes
+    effect. Setting `LD_LIBRARY_PATH` is necessary because SOCRATES links
+    against the absolute path that `nf-config` reports but records no run path
+    of its own. Without the variable SOCRATES still compiles, and the binaries
+    it produces then fail with `libnetcdff.so.7: cannot open shared object
+    file`. Installing `gfortran` alongside NetCDF-Fortran makes SOCRATES build
+    with a compiler that can read its module files, which the system compiler
+    cannot always do.
+
+7. Set up Julia as in [Julia considerations](#julia-considerations) below. Then clone PROTEUS, run the installer and complete the remaining
+   [installation steps](installation.md).
 
 ### Julia considerations
 If you have already installed Julia in your home folder, you could remove that through `rm -rf ~/.julia`.
 
-If you install Julia through Juliaup this involves:
+If you install Julia through Juliaup, first add these two variables to your `~/.shellrc`, e.g. `~/.bashrc`, so that they are set at each login. `JULIAUP_DEPOT_PATH` places the Julia versions of Juliaup, and `JULIA_DEPOT_PATH` places the Julia ecosystem, such as Julia packages, outside `$HOME`:
 ```console
-export JULIAUP_HOME=/dataserver/users/formingworlds/<username>/.juliaup
+export JULIAUP_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.juliaup
+export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia
+```
+
+Load them in this terminal and run the official installer. It places the juliaup program in `~/.juliaup` and downloads a first Julia into the folder of `JULIAUP_DEPOT_PATH`:
+```console
+source ~/.bashrc
 curl -fsSL https://install.julialang.org | sh
 ```
 
-To also make sure that the Julia ecosystem, such as Julia packages, are also not installed in `$HOME`, add `JULIA_DEPOT_PATH` to your `~/.shellrc`, e.g. `~/.bashrc`:
+Then open a new terminal and add Julia 1.13, which the PROTEUS installer checks for and does not install:
 ```console
-export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia
+juliaup add 1.13
 ```
-Setting only this variable will be sufficient if you have not installed Julia through Juliaup.
-In any case, it is best to have both of these Julia environment variables exported when you log in,
-so please add this to your `~/.shellrc`, e.g. `~/.bashrc`:
-```console
-export JULIAUP_HOME=/dataserver/users/formingworlds/<username>/.juliaup
-export JULIA_DEPOT_PATH="/dataserver/users/formingworlds/<username>/.julia"
-```
+
+Setting only `JULIA_DEPOT_PATH` will be sufficient if you have not installed Julia through Juliaup.
+
 If you install Julia using `tar`, use the following steps:
 
 ```
-export JULIA_DIR=/dataserver/users/formingworlds/<username>/julia-1.11.6
+export JULIA_DIR=/dataserver/users/formingworlds/<username>/julia-1.13.0
 
 mkdir -p $JULIA_DIR
 
 cd /dataserver/users/formingworlds/<username>
 
-wget https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.11.6-linux-x86_64.tar.gz
+wget https://julialang-s3.julialang.org/bin/linux/x64/1.13/julia-1.13.0-linux-x86_64.tar.gz
 
-tar -xvzf julia-1.11.6-linux-x86_64.tar.gz
+tar -xvzf julia-1.13.0-linux-x86_64.tar.gz
 
-echo 'export PATH=/dataserver/users/formingworlds/<username>/julia-1.11.6/bin:$PATH' >> ~/.bashrc
+echo 'export PATH=/dataserver/users/formingworlds/<username>/julia-1.13.0/bin:$PATH' >> ~/.bashrc
 
 echo 'export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia' >> ~/.bashrc
 
@@ -226,16 +247,33 @@ This displays the jobs currently running on Condormaster, including both your jo
 
 ### NetCDF Error
 
-SOCRATES is using the NetCDF version installed by Python in your PROTEUS environment instead of the NetCDF version installed on the Kapteyn cluster system.
+Either the SOCRATES build stops with `ERROR: NetCDF-Fortran library is not
+installed`, or a run fails with `libnetcdff.so.7: cannot open shared object
+file`.
 
-To resolve this issue:
+The cluster provides no NetCDF-Fortran of its own, so both the library and the
+path to it come from your conda environment. Check that the environment is
+active and that it supplies them:
 
-1. Deactivate all conda environments.
-2. Go to the PROTEUS folder : `cd PROTEUS/`
-3. Delete the `socrates/` directory using `rm -r socrates/`
-4. Run the `./tools/get_socrates.sh` command to download SOCRATES again, ensuring this is done OUTSIDE of any conda environment.
-5. Execute the `cat socrates/set_rad_env` command to verify that SOCRATES is pointing to the correct NetCDF version (i.e. the NetCDF version installed on the Kapteyn cluster system).
-6. Finally, run a PROTEUS simulation using the `dummy.toml` configuration file to confirm it is working correctly.
+```console
+conda activate proteus
+nf-config --flibs
+echo $LD_LIBRARY_PATH
+```
+
+`nf-config` should report a `-L` path inside your conda environment, and
+`LD_LIBRARY_PATH` should contain that same environment's `lib` directory. If
+either is missing, apply the NetCDF-Fortran installation step from the
+[installation section](#installation) above and reactivate the environment.
+
+To check that an existing SOCRATES build can find the library at run time:
+
+```console
+ldd $RAD_DIR/bin/l_run_cdf | grep netcdff
+```
+
+A working installation prints a path to `libnetcdff.so`; a broken one prints
+`not found`.
 
 ### Error reporting
 

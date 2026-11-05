@@ -52,11 +52,23 @@ class Calliope:
         If True, include CH4.
     include_CO: bool
         If True, include CO.
+    include_He: bool
+        If True, include He (noble gas; budget set in planet.elements).
+    include_Ne: bool
+        If True, include Ne (noble gas; budget set in planet.elements).
+    include_Ar: bool
+        If True, include Ar (noble gas; budget set in planet.elements).
+    include_Kr: bool
+        If True, include Kr (noble gas; budget set in planet.elements).
+    include_Xe: bool
+        If True, include Xe (noble gas; budget set in planet.elements).
     solubility: bool
         Enable solubility of volatiles into melt.
     nguess: int
         Maximum number of initial-guess samples for the CALLIOPE
-        equilibrium solver. Default 1000.
+        equilibrium solver. The samples come from a fixed seed, so identical
+        inputs draw the same guesses, and an input that exhausts the samples
+        fails the same way on a rerun. Default 1000.
     nsolve: int
         Maximum number of iterations of the CALLIOPE equilibrium
         solver per call. Default 3000.
@@ -118,9 +130,15 @@ class Atmodeller:
     solver_max_steps : int
         Maximum iterations for the root-finder.
     solver_multistart : int
-        Number of random restarts for the root-finder.
+        Maximum number of attempts per solve. atmodeller perturbs a start that
+        fails and tries again, up to this many times, so a larger value costs time
+        only on a solve that does not converge at once. A solve that still fails
+        raises.
     include_condensates : bool
-        Enable condensate phases (graphite, etc.) in the equilibrium.
+        Enable condensed phases in the equilibrium: every condensate atmodeller
+        provides for the outgassing elements, which are graphite (C), sulfur (S),
+        water (H2O) and sulfuric acid (H2O4S). Each joins a solve when its elements
+        have budgets and T_magma lies inside its thermodynamic data range.
     solubility_H2O : str
         Solubility law for H2O. See atmodeller.solubility.library.
     solubility_CO2 : str
@@ -152,7 +170,7 @@ class Atmodeller:
         validator=validators.in_(('robust', 'basic')),
     )
     solver_max_steps: int = field(default=1024, validator=validators.gt(0))
-    solver_multistart: int = field(default=10, validator=validators.gt(0))
+    solver_multistart: int = field(default=50, validator=validators.gt(0))
     include_condensates: bool = field(default=True)
     solubility_H2O: str | None = field(default='H2O_peridotite_sossi23', converter=none_if_none)
     solubility_CO2: str | None = field(default='CO2_basalt_dixon95', converter=none_if_none)
@@ -171,6 +189,36 @@ class Atmodeller:
 
 
 @define
+class Lavatmos:
+    """Module parameters for LavAtmos rock vapourisation.
+
+    Attributes
+    ----------
+    T_min: float
+        Lower bound [K] on the surface temperature that LavAtmos uses: the
+        vapourisation runs at max(T_min, T_magma).
+    melt_comp_name: str
+        Name of the melt composition file, a CSV file without its extension
+        in the `input/lava_compositions` folder of `LAVA_DIR`.
+    P_melt: float
+        Pressure used for melt activities [bar].
+    xatol: float
+        Absolute tolerance of the LavAtmos fO2 solve, passed to LavAtmos as
+        its `xatol` argument.
+    fO2_buffer_model: str
+        IW buffer model used for LavAtmos fO2 solve. One of 'oneill', 'fischer'.
+    """
+
+    T_min: float = field(default=1500.0, validator=validators.gt(0.0))
+    melt_comp_name: str = field(default='BSE_palm')
+    P_melt: float = field(default=0.01, validator=validators.gt(0.0))
+    xatol: float = field(default=1e-5, validator=validators.gt(0.0))
+    fO2_buffer_model: str = field(
+        default='oneill', validator=validators.in_(('oneill', 'fischer'))
+    )
+
+
+@define
 class Outgas:
     """Outgassing parameters (fO2) and included volatiles.
 
@@ -181,28 +229,104 @@ class Outgas:
     fO2_shift_IW: float
         Oxygen fugacity relative to Iron-Wustite [log10 units].
     mass_thresh: float
-        Minimum threshold for element mass [kg]. Inventories below this are set to zero.
+        Minimum threshold for element mass [kg]. Outgassing treats H, C, N or S below it
+        as absent; escape empties a non-noble element whose reachable mass (its total
+        less the mass trapped in the solid) is below it, down to the trapped mass,
+        except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases
+        are exempt. CALLIOPE also uses it as the absolute mass tolerance [kg] of its
+        equilibrium solve.
     h2_binodal: bool
         Enable binodal-controlled H2 partitioning between atmosphere and
         magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model.
+        Not available yet: `true` is rejected when the config loads.
     T_floor: float
         Temperature floor [K]. The outgassing temperature is clamped to
-        this value from below before the chemistry solve.
+        this value from below for the chemistry solve and the target masses.
+    prevent_desaturation: bool
+        Whether condensed mass leaves the outgassing system for good. With
+        `false`, each solve re-equilibrates the whole inventory, so a condensate can
+        re-vapourise as conditions change. With `true`, the mass held in each
+        `{e}_kg_condensed` reservoir is withheld from the chemistry, from escape and
+        from the desiccation gate, and the reservoir can only grow: a condensed
+        layer can only get thicker. Each condensate's `{X}_cd_activity` is then the
+        saturation of the inventory left in the solve, so it can fall below 1 while
+        its layer is held. Only atmodeller with `outgas.atmodeller.include_condensates`
+        forms condensates: with another backend, or with atmodeller and its
+        condensates off, the flag holds nothing, and a warning at config load says
+        so.
     solver_rtol: float
-        Relative tolerance for the volatile equilibrium solver.
+        Relative tolerance [1] of the CALLIOPE and atmodeller equilibrium
+        solvers. It is also the relative tolerance of the per-element mass
+        closure check that runs after each outgassing step while trapping is on.
     solver_atol: float
-        Absolute tolerance for the volatile equilibrium solver.
+        Absolute tolerance of the equilibrium solvers: CALLIOPE takes it as
+        `xtol` of its root solve, atmodeller as `atol`. Unused by the dummy
+        module.
+    trap_mode: str
+        Solid-phase volatile trapping during mantle crystallisation.
+        Choices: 'none' (off) and 'front' (F_tl from the drainage of melt
+        across the freezing front the interior solver resolves; needs
+        `interior_energetics.module = 'aragog'`). The disaggregation melt
+        fraction that tops the front is `interior_energetics.rfront_loc`,
+        the melt fraction of the solver's own rheological transition, not a
+        separate field.
+    trap_phi_min: float
+        Porosity below which a node counts as solid [1]. Needed because
+        the density-derived porosity never reaches exactly zero.
+    trap_mush_log10visc: float
+        Log10 viscosity of the mush near the solidus [log10(Pa s)],
+        entering the matrix deformation time. A value of zero or below
+        selects the default of 20, mid-range of the 18 to 22 the
+        literature allows.
+    trap_n_front_min: int
+        Fewest nodes a freezing front must span before its drainage is
+        integrated rather than bounded above.
+    trap_max_front_fraction: float
+        Largest fraction of the mantle thickness the front may occupy
+        before its drainage is bounded above instead of integrated [1].
+        The default of 1 sets no limit: where percolation controls the
+        drainage, the retained fraction depends on the ratio of drainage
+        speed to front speed and not on the front thickness, and a thicker
+        front only lengthens the residence time.
+    D_const_H2O: float
+        Crystal/melt partition coefficient of H2O [1], D = w_solid / w_liquid.
+    D_const_CO2: float
+        Crystal/melt partition coefficient of CO2 [1], D = w_solid / w_liquid.
+    D_const_O2: float
+        Crystal/melt partition coefficient of O2 [1], D = w_solid / w_liquid.
+    D_const_H2: float
+        Crystal/melt partition coefficient of H2 [1], D = w_solid / w_liquid.
+    D_const_CH4: float
+        Crystal/melt partition coefficient of CH4 [1], D = w_solid / w_liquid.
+    D_const_CO: float
+        Crystal/melt partition coefficient of CO [1], D = w_solid / w_liquid.
+    D_const_N2: float
+        Crystal/melt partition coefficient of N2 [1], D = w_solid / w_liquid.
+    D_const_NH3: float
+        Crystal/melt partition coefficient of NH3 [1], D = w_solid / w_liquid.
+    D_const_S2: float
+        Crystal/melt partition coefficient of S2 [1], D = w_solid / w_liquid.
+    D_const_SO2: float
+        Crystal/melt partition coefficient of SO2 [1], D = w_solid / w_liquid.
+    D_const_H2S: float
+        Crystal/melt partition coefficient of H2S [1], D = w_solid / w_liquid.
     calliope: Calliope
         Parameters for CALLIOPE module.
     atmodeller: Atmodeller
         Parameters for atmodeller module.
+    vapourise: bool
+        Enable rock vapourisation via LavAtmos/ThermoEngineLite. Requires
+        `LAVA_DIR` and `FC_DIR` to be set; see the optional modules
+        installation guide. LavAtmos parameters are set in `outgas.lavatmos`.
+    lavatmos: Lavatmos
+        Parameters for the LavAtmos rock-vapour module.
     """
 
     module: str = field(
         default='calliope', validator=validators.in_(('calliope', 'atmodeller', 'dummy'))
     )
     fO2_shift_IW: float = field(
-        default=4.0, validator=[validators.ge(-12.0), validators.le(12.0)]
+        default=2.0, validator=[validators.ge(-12.0), validators.le(12.0)]
     )
 
     mass_thresh: float = field(default=1e16, validator=validators.gt(0.0))
@@ -220,5 +344,106 @@ class Outgas:
     solver_rtol: float = field(default=1e-4, validator=validators.gt(0.0))
     solver_atol: float = field(default=1e-6, validator=validators.gt(0.0))
 
+    # Condensed mass removed from the chemistry once formed, so it cannot re-vapourise
+    prevent_desaturation: bool = field(default=False)
+
+    # Solid-phase volatile trapping, run before and apart from the chemistry solve,
+    # so it sits beside T_floor rather than under [outgas.calliope]. The default
+    # 'none' leaves a run as it was without trapping.
+    trap_mode: str = field(default='none', validator=validators.in_(('none', 'front')))
+
+    # Drainage-integral parameters of the front scheme, which computes the
+    # trapped melt fraction from the front the interior solver resolves.
+    trap_phi_min: float = field(
+        default=0.01, validator=[validators.gt(0.0), validators.lt(1.0)]
+    )
+    trap_mush_log10visc: float = field(default=-1.0)
+    trap_n_front_min: int = field(default=3, validator=validators.ge(2))
+    trap_max_front_fraction: float = field(
+        default=1.0, validator=[validators.gt(0.0), validators.le(1.0)]
+    )
+
+    # Crystal/melt partition coefficients D = w_solid / w_liquid. Only water enters
+    # the lattice appreciably (Hauri, Gaetani & Green 2006; Hirschmann et al.
+    # 2016); the other species are buried with the interstitial melt alone.
+    D_const_H2O: float = field(default=0.0017, validator=validators.ge(0.0))
+    D_const_CO2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_O2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_H2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_CH4: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_CO: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_N2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_NH3: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_S2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_SO2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_H2S: float = field(default=0.0, validator=validators.ge(0.0))
+
     calliope: Calliope = field(factory=Calliope)
     atmodeller: Atmodeller = field(factory=Atmodeller)
+    lavatmos: Lavatmos = field(factory=Lavatmos)
+
+    # LavAtmos / silicate coupling is opt-in: default to disabled.
+    vapourise: bool = field(default=False)
+
+
+# Thematic grouping for the generated configuration reference. Each entry is
+# ``(heading, qualifier, option names)``; a heading of ``None`` renders the
+# section's opening table with no heading of its own. Order here is the order
+# on the page, and is independent of the order the fields are declared in.
+DOC_GROUPS = {
+    'Calliope': (
+        (
+            'Species switches',
+            'set to `false` to exclude a species from the equilibrium',
+            (
+                'include_H2O',
+                'include_CO2',
+                'include_N2',
+                'include_S2',
+                'include_SO2',
+                'include_H2S',
+                'include_NH3',
+                'include_H2',
+                'include_CH4',
+                'include_CO',
+                'include_He',
+                'include_Ne',
+                'include_Ar',
+                'include_Kr',
+                'include_Xe',
+                'solubility',
+            ),
+        ),
+        ('Solver', None, ('nguess', 'nsolve', 'p_guess_max')),
+    ),
+    'Atmodeller': (
+        (
+            None,
+            None,
+            (
+                'solver_mode',
+                'solver_max_steps',
+                'solver_multistart',
+                'include_condensates',
+            ),
+        ),
+        (
+            'Solubility laws',
+            'set to `"none"` to disable dissolution for a species',
+            (
+                'solubility_H2O',
+                'solubility_CO2',
+                'solubility_H2',
+                'solubility_N2',
+                'solubility_S2',
+                'solubility_CO',
+                'solubility_CH4',
+            ),
+        ),
+        (
+            'Real gas EOS',
+            'set to `"none"` for ideal gas',
+            ('eos_H2O', 'eos_CO2', 'eos_H2', 'eos_CH4', 'eos_CO'),
+        ),
+    ),
+}

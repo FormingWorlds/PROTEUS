@@ -2,8 +2,8 @@
 
 The grid manager is plumbing-heavy: file IO, subprocess dispatch, TOML
 parsing, and a multiprocessing-driven worker loop. The tests below cover
-the public surface (``Grid``, ``setup_logger``, ``_thread_target``,
-``grid_from_config``) with all heavy callouts mocked. Each test pins at
+the public surface (``Grid``, ``_thread_target``, ``grid_from_config``)
+with all heavy callouts mocked. Each test pins at
 least two discriminating post-state facts so that a regression which
 silently no-ops one branch cannot pass.
 
@@ -16,22 +16,35 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
+import re
+import traceback
+from pathlib import Path
 from unittest import mock
 
 import numpy as np
 import pytest
 import toml
 
+from proteus.config import UnknownConfigKeyError, read_config_object
 from proteus.grid import manage as gm
+from proteus.grid.dimensions import dimension_values
 from proteus.grid.manage import (
     Grid,
     _thread_target,
+    grid_dimension_keys,
     grid_from_config,
-    setup_logger,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+WRITTEN = ['aragog', 'spider', 'dummy']  # neither ascending nor descending
+
+
+class Hashed(str):
+    """A str whose hashes put a set of the WRITTEN values in another order."""
+
+    def __hash__(self):
+        return {'aragog': 3, 'spider': 2, 'dummy': 1}[str(self)]
 
 
 # ---------------------------------------------------------------------------
@@ -73,89 +86,6 @@ def grid_with_mocks(fake_proteus_dir, base_config_path, monkeypatch):
         base_config_path=str(base_config_path),
     )
     return g
-
-
-# ---------------------------------------------------------------------------
-# setup_logger
-# ---------------------------------------------------------------------------
-
-
-class TestSetupLogger:
-    """Verify the custom logger setup: file handler, level mapping,
-    pre-existing log removal, and excepthook installation.
-    """
-
-    def test_creates_log_file_and_attaches_handlers(self, tmp_path):
-        """A fresh logger writes its log to logpath and attaches at least
-        one file handler. Default level=1 maps to INFO.
-        """
-        logpath = tmp_path / 'mgr.log'
-        # Run setup, then write a record and force a flush.
-        setup_logger(logpath=str(logpath), level=1, logterm=False)
-        root = logging.getLogger()
-        root.info('hello unit-test world')
-        for h in root.handlers:
-            h.flush()
-        assert logpath.exists()
-        # File contains the message (discriminates against an empty-flush bug)
-        contents = logpath.read_text()
-        assert 'hello unit-test world' in contents
-        # Level was mapped to INFO (not DEBUG / WARNING). Verify root level.
-        assert root.level == logging.INFO
-
-    def test_pre_existing_log_is_removed(self, tmp_path):
-        """If logpath exists at entry, ``setup_logger`` deletes it before
-        re-creating; old content is gone after the call.
-        """
-        logpath = tmp_path / 'stale.log'
-        logpath.write_text('STALE_CONTENT_DO_NOT_KEEP\n')
-        setup_logger(logpath=str(logpath), level=1, logterm=False)
-        root = logging.getLogger()
-        for h in root.handlers:
-            h.flush()
-        contents = logpath.read_text()
-        # The stale content must be gone (file was deleted and recreated).
-        assert 'STALE_CONTENT_DO_NOT_KEEP' not in contents
-        # And the file must still exist (recreated by FileHandler).
-        assert logpath.exists()
-
-    @pytest.mark.parametrize(
-        'level_arg,expected_level',
-        [
-            (0, logging.DEBUG),
-            (2, logging.WARNING),
-            (3, logging.ERROR),
-            (4, logging.CRITICAL),
-        ],
-        ids=['debug', 'warning', 'error', 'critical'],
-    )
-    def test_level_mapping(self, tmp_path, level_arg, expected_level):
-        """Each numeric level argument maps to the documented logging
-        level constant. The default branch (1 -> INFO) is covered by
-        ``test_creates_log_file_and_attaches_handlers``.
-        """
-        logpath = tmp_path / f'level_{level_arg}.log'
-        setup_logger(logpath=str(logpath), level=level_arg, logterm=False)
-        root = logging.getLogger()
-        # Discriminating across all four levels: each is distinct.
-        assert root.level == expected_level
-        # File handler still present (level argument should not disable IO).
-        assert any(isinstance(h, logging.FileHandler) for h in root.handlers)
-
-    def test_excepthook_installed(self, tmp_path):
-        """``setup_logger`` replaces ``sys.excepthook`` so unhandled
-        exceptions get logged. The hook must be callable and distinct
-        from the pre-call value (default ``sys.__excepthook__``).
-        """
-        logpath = tmp_path / 'hook.log'
-        original = sys.excepthook
-        try:
-            setup_logger(logpath=str(logpath), level=1, logterm=False)
-            new_hook = sys.excepthook
-            assert callable(new_hook)
-            assert new_hook is not original
-        finally:
-            sys.excepthook = original
 
 
 # ---------------------------------------------------------------------------
@@ -338,14 +268,17 @@ class TestGridInit:
         # New outdir exists and contains ref_config.toml (proof of fresh init):
         assert os.path.isfile(os.path.join(g.outdir, 'ref_config.toml'))
 
-    def test_refuses_to_clean_outdir_containing_git(self, fake_proteus_dir, base_config_path):
-        """Safety net: never wipe a directory containing a git repo.
+    @pytest.mark.parametrize('git_name', ['.git', '.GIT', '.Git'])
+    def test_refuses_to_clean_outdir_containing_git(
+        self, fake_proteus_dir, base_config_path, git_name
+    ):
+        """Safety net: never wipe a directory containing a git repo, in any letter case.
 
         Verifies the error fires AND that the .git directory survives,
         i.e. the safety net actually short-circuits before rmtree runs.
         """
         outdir = os.path.join(str(fake_proteus_dir), 'output', 'has_git')
-        git_dir = os.path.join(outdir, '.git')
+        git_dir = os.path.join(outdir, git_name)
         os.makedirs(git_dir)
         # Sentinel under .git: proves the partial wipe never ran.
         sentinel = os.path.join(git_dir, 'HEAD')
@@ -356,6 +289,17 @@ class TestGridInit:
         # Safety net engaged: the .git tree (and its content) is untouched.
         assert os.path.isdir(git_dir)
         assert os.path.isfile(sentinel)
+
+    @pytest.mark.parametrize('prepare', [True, False])
+    @pytest.mark.parametrize('name', ['', '.', '..', '../elsewhere'])
+    def test_a_name_outside_a_missing_output_folder_is_refused(
+        self, fake_proteus_dir, base_config_path, name, prepare
+    ):
+        """With no output/ yet, the name checks refuse alone (the link check needs output/),
+        in __init__ also when the output is prepared later."""
+        assert not (fake_proteus_dir / 'output').exists()
+        with pytest.raises(ValueError, match='must name a folder inside'):
+            Grid(name=name, base_config_path=str(base_config_path), prepare_output=prepare)
 
 
 # ---------------------------------------------------------------------------
@@ -473,16 +417,164 @@ class TestSetDimension:
         # Length reflects the deduplication
         assert len(g.dim_avars['d']) == 3
 
-    def test_direct_does_not_sort_strings(self, grid_with_mocks):
-        """String values are kept as a set-derived list (no sort branch
-        taken because elements are not numeric).
-        """
+    def test_direct_keeps_the_written_order_whatever_the_string_hashes(self, grid_with_mocks):
+        """The order of a string dimension numbers the cases, so it must not follow the string
+        hashes, which change with the hash seed of the process; duplicates are removed at
+        their first occurrence."""
+        values = [Hashed(v) for v in ('aragog', 'spider', 'aragog', 'dummy')]
+        assert list(set(values)) == ['dummy', 'spider', 'aragog']
         g = grid_with_mocks
         g.add_dimension('d', 'atmos_clim.module')
-        g.set_dimension_direct('d', ['agni', 'janus', 'agni'])
-        # Discriminating: deduplicated regardless
-        assert set(g.dim_avars['d']) == {'agni', 'janus'}
-        assert len(g.dim_avars['d']) == 2
+        g.set_dimension_direct('d', values)
+        assert g.dim_avars['d'] == WRITTEN
+
+    def test_direct_without_sort_keeps_the_written_numeric_order(self, grid_with_mocks):
+        """With sort=False a numeric dimension keeps its written order, duplicates removed
+        at their first occurrence; the default still sorts."""
+        g = grid_with_mocks
+        g.add_dimension('d', 'planet.mass_tot')
+        g.set_dimension_direct('d', [3.0, 1.0, 2.0, 1.0], sort=False)
+        assert g.dim_avars['d'] == [3.0, 1.0, 2.0]
+        g.set_dimension_direct('d', [3.0, 1.0, 2.0, 1.0])
+        assert g.dim_avars['d'] == [1.0, 2.0, 3.0]
+
+    def test_direct_values_property(self):
+        """Over strings, integers, floats with +-inf and bools: the result holds each distinct value once;
+        it is sorted when the first value is not a string and sort is True, else each value
+        sits in the order of its first occurrence."""
+        from hypothesis import given, settings
+        from hypothesis import strategies as st
+
+        values = st.one_of(
+            st.lists(st.text(), min_size=1),
+            st.lists(st.integers(), min_size=1),
+            st.lists(st.floats(allow_nan=False), min_size=1),
+            st.lists(st.booleans(), min_size=1),
+        )
+
+        @settings(derandomize=True, max_examples=200)
+        @given(values, st.booleans())
+        def check(vals, sort):
+            g = Grid.__new__(Grid)
+            g.dim_avars = {}
+            g.set_dimension_direct('d', vals, sort=sort)
+            out = g.dim_avars['d']
+            assert len(out) == len(set(vals)) and set(out) == set(vals)
+            if sort and not isinstance(vals[0], str):
+                assert out == sorted(out)
+            else:
+                first = [vals.index(v) for v in out]
+                assert first == sorted(first)
+
+        check()
+
+    @pytest.mark.parametrize(
+        ('values', 'cause'),
+        [
+            ([], 'no values'),
+            ([1.0, float('nan'), 2.0], 'NaN'),
+            ([1.0, 'aragog'], 'mixes strings with other values'),
+            (['aragog', 1.0], 'mixes strings with other values'),
+            ('aragog', 'is not a list'),
+            (5, 'is not a list'),
+            ([[1], [2]], 'not a real number, boolean or string'),
+            ([{'x': 1}], 'not a real number, boolean or string'),
+            ([complex(1, 1)], 'not a real number, boolean or string'),
+            ((v for v in [2.0, 1.0]), 'is not a list'),
+            ({'spider', 'aragog'}, 'is not a list'),
+            (np.array(5.0), 'is not a list'),
+            (np.array([[1.0], [2.0]]), 'is not a list'),
+            (np.array([]), 'has no values'),
+            ([np.float32('nan'), 1.0], 'holds NaN'),
+            (np.array([1.0, np.nan]), 'holds NaN'),
+            (['aragog', True], 'mixes strings with other values'),
+            ([True, 'aragog'], 'mixes strings with other values'),
+            (['aragog', np.True_], 'mixes strings with other values'),
+        ],
+        ids=[
+            'empty',
+            'nan',
+            'number-first',
+            'string-first',
+            'string',
+            'scalar',
+            'nested',
+            'table',
+            'complex',
+            'generator',
+            'set',
+            '0-d-array',
+            '2-d-array',
+            'empty-array',
+            'float32-nan',
+            'array-nan',
+            'string-then-bool',
+            'bool-then-string',
+            'string-then-np-bool',
+        ],
+    )
+    def test_direct_refuses_an_axis_it_cannot_order(self, grid_with_mocks, values, cause):
+        """An empty axis, a NaN (never equal to itself, so never deduplicated or ordered), a
+        mix of strings with other values, a value that is no list and an element that is no
+        number, boolean or string are refused with the axis name."""
+        g = grid_with_mocks
+        g.add_dimension('d', 'planet.mass_tot')
+        with pytest.raises(ValueError, match=f"direct dimension 'd'.*{cause}"):
+            g.set_dimension_direct('d', values)
+        assert g.dim_avars['d'] is None  # the axis keeps no values
+
+    def test_direct_refuses_any_nan_or_mixed_axis_property(self):
+        """Over number lists with a NaN or a string, and string lists with a NaN or a number,
+        put in at any place: the axis is refused and nothing is stored, sort on or off."""
+        from hypothesis import given, settings
+        from hypothesis import strategies as st
+
+        numbers = st.lists(st.one_of(st.integers(), st.floats(allow_nan=False)), min_size=1)
+        cases = st.one_of(
+            st.tuples(numbers, st.one_of(st.just(float('nan')), st.text())),
+            st.tuples(
+                st.lists(st.text(), min_size=1), st.one_of(st.just(float('nan')), st.integers())
+            ),
+        )
+
+        @settings(derandomize=True, max_examples=200)
+        @given(cases, st.integers(min_value=0), st.booleans())
+        def check(case, where, sort):
+            vals, extra = list(case[0]), case[1]
+            vals.insert(where % (len(vals) + 1), extra)
+            g = Grid.__new__(Grid)
+            g.dim_avars = {}
+            with pytest.raises(ValueError, match="direct dimension 'd'"):
+                g.set_dimension_direct('d', vals, sort=sort)
+            assert g.dim_avars == {}
+
+        check()
+
+    @pytest.mark.parametrize(
+        ('values', 'expected'),
+        [
+            ([''], ['']),
+            ([0.0], [0.0]),
+            ([False], [False]),
+            ((2.0, 1.0), [1.0, 2.0]),
+            (np.array([3.0, 1.0, 3.0]), [1.0, 3.0]),
+            ([np.int64(2), np.int64(1)], [1, 2]),
+            ([np.True_, np.False_], [False, True]),
+            ([float('inf'), 1.0], [1.0, float('inf')]),
+        ],
+        ids=['empty-string', 'zero', 'false', 'tuple', 'array', 'np-int', 'np-bool', 'inf'],
+    )
+    def test_direct_keeps_every_valid_axis(self, grid_with_mocks, values, expected):
+        """Empty strings, zero, false, tuples, 1-D arrays, NumPy numbers and booleans and
+        inf are values like any other; a boolean stays a boolean."""
+        g = grid_with_mocks
+        g.add_dimension('d', 'planet.mass_tot')
+        g.set_dimension_direct('d', values)
+        out = g.dim_avars['d']
+        assert out == expected
+        assert [isinstance(v, (bool, np.bool_)) for v in out] == [
+            isinstance(v, bool) for v in expected
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +613,22 @@ class TestGridGenerate:
         # Each grid point is a dict mapping the variable names:
         for gp in g.flat:
             assert set(gp.keys()) == {'planet.mass_tot', 'planet.elements.H_budget'}
+
+    def test_generate_numbers_cases_in_the_written_order_of_a_string_dimension(
+        self, grid_with_mocks
+    ):
+        """The case index of a grid point follows the written order of a string dimension,
+        with the next dimension varying fastest."""
+        g = grid_with_mocks
+        g.add_dimension('a', 'atmos_clim.module')
+        g.add_dimension('b', 'planet.mass_tot')
+        values = [Hashed(v) for v in WRITTEN]
+        assert list(set(values)) != WRITTEN
+        g.set_dimension_direct('a', values)
+        g.set_dimension_direct('b', [2.0, 1.0])
+        g.generate()
+        cases = [(gp['atmos_clim.module'], gp['planet.mass_tot']) for gp in g.flat]
+        assert cases == [(a, b) for a in WRITTEN for b in (1.0, 2.0)]
 
     def test_generate_keys_map_correctly(self, grid_with_mocks):
         """The flattened grid contains every (a, b) combination exactly
@@ -662,6 +770,159 @@ class TestWriteConfigFiles:
         values = {v for _attr, v in recursive_calls}
         assert values == {0.5, 1.0, 200.0}
 
+    def test_unknown_key_in_the_base_config_stops_the_grid(
+        self, fake_proteus_dir, tmp_path, monkeypatch
+    ):
+        """A misspelled key in the base config halts the grid before any case is written.
+
+        Per-case configs are serialised out of the structured object, so an
+        unrecognised key in the base file never survives into them. Nothing
+        downstream can notice it: every case config reads as clean while the
+        whole grid runs on a default the user did not choose. Loading the base
+        file is the only place the mistake is still visible.
+        """
+        import tomllib
+
+        import tomlkit
+        from helpers import PROTEUS_ROOT
+
+        with open(PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml', 'rb') as f:
+            raw = tomllib.load(f)
+        # Misspell the maximum time-step. Left unchecked this silently reverts
+        # to the schema default for every case in the grid.
+        raw['params']['dt']['maxium'] = raw['params']['dt'].pop('maximum')
+        dirty = tmp_path / 'dirty_base.toml'
+        with open(dirty, 'w') as f:
+            tomlkit.dump(raw, f)
+
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        g = Grid(name='typo_base_grid', base_config_path=str(dirty))
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        with pytest.raises(ValueError, match='params.dt.maxium'):
+            g.write_config_files()
+
+        # No case config was written, so the grid cannot proceed on the
+        # silently defaulted value.
+        assert not [p for p in os.listdir(g.cfgdir) if p.startswith('case_')]
+
+        # Edge case and discriminator: the unmodified base file writes both
+        # cases, so the refusal above is caused by the misspelling and not by
+        # this base config being unloadable in the first place.
+        clean = tmp_path / 'clean_base.toml'
+        with open(PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml', 'rb') as f:
+            with open(clean, 'w') as out:
+                tomlkit.dump(tomllib.load(f), out)
+        g2 = Grid(name='clean_base_grid', base_config_path=str(clean))
+        g2.add_dimension('m', 'planet.mass_tot')
+        g2.set_dimension_direct('m', [0.5, 1.0])
+        g2.generate()
+        g2.write_config_files()
+        assert sorted(p for p in os.listdir(g2.cfgdir) if p.startswith('case_')) == [
+            'case_000000.toml',
+            'case_000001.toml',
+        ]
+
+    def test_a_second_held_grid_is_refused_while_one_holds_the_log(self, fake_proteus_dir):
+        """Only one grid may hold the log lines at a time; after its release the loggers
+        are as before and another grid may hold them."""
+        from helpers import PROTEUS_ROOT
+
+        base = str(PROTEUS_ROOT / 'tests/grid/base.toml')
+        before = _log_state()
+        first = Grid(name='held_a', base_config_path=base, prepare_output=False)
+        try:
+            with pytest.raises(RuntimeError, match='holds the log'):
+                Grid(name='held_b', base_config_path=base, prepare_output=False)
+        finally:
+            first.release_log()
+        assert _log_state() == before
+        Grid(name='held_c', base_config_path=base, prepare_output=False).release_log()
+        assert _log_state() == before
+
+    @pytest.mark.parametrize(
+        ('key', 'values', 'expected', 'line'),
+        [
+            (
+                'params.out.remove_sf',
+                np.array([True, False]),
+                [False, True],
+                'remove_sf = false',
+            ),
+            ('params.out.write_mod', np.array([3, 5]), [3, 5], 'write_mod = 3'),
+        ],
+        ids=['bool', 'int'],
+    )
+    def test_a_numpy_axis_is_written_as_toml_values(
+        self, fake_proteus_dir, monkeypatch, key, values, expected, line
+    ):
+        """Axis values given as numpy scalars reach each case config as plain TOML values;
+        tomlkit cannot write numpy.bool_ or numpy.int64 itself."""
+        from helpers import PROTEUS_ROOT
+
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        g = Grid(name='np_grid', base_config_path=str(PROTEUS_ROOT / 'tests/grid/base.toml'))
+        g.add_dimension('r', key)
+        g.set_dimension_direct('r', values)
+        g.generate()
+        try:
+            g.write_config_files()
+        except Exception as exc:  # noqa: BLE001 -- the failure under test, made an assertion
+            raise AssertionError(f'numpy axis not written: {exc!r}') from exc
+        name = key.rsplit('.', 1)[1]
+        cases = [getattr(read_config_object(g._get_tmpcfg(i)).params.out, name) for i in (0, 1)]
+        assert cases == expected
+        with open(g._get_tmpcfg(0)) as f:
+            text = f.read()
+        assert line in text
+
+    def test_a_value_refused_at_assignment_names_the_case_and_the_key(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """A value an attrs validator refuses when the grid sets it carries the case index
+        and the dotted key, as a value refused at the read-back does."""
+        from helpers import PROTEUS_ROOT
+
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        g = Grid(name='range_grid', base_config_path=str(PROTEUS_ROOT / 'tests/grid/base.toml'))
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [-1.0])
+        g.generate()
+        with pytest.raises(
+            ValueError, match=re.escape('Grid case 0 (planet.mass_tot = -1.0): ')
+        ) as err:
+            g.write_config_files()
+        assert not os.path.exists(g._get_tmpcfg(0))
+        assert err.value.__cause__ is None and err.value.__suppress_context__
+
+    def test_a_quoted_false_for_a_bool_field_stops_the_grid(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """A grid axis that sets a bool field to the string ``"false"`` stops at the
+        read-back of the case config, naming the field, instead of running as true; the
+        same axis with ``false`` writes the case."""
+        from helpers import PROTEUS_ROOT
+
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        base = str(PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml')
+        g = Grid(name='quoted_bool_grid', base_config_path=base)
+        g.add_dimension('r', 'params.out.remove_sf')
+        g.set_dimension_direct('r', ['false'])
+        g.generate()
+        with pytest.raises(ValueError, match='Grid case 0') as err:
+            g.write_config_files()
+        assert "params.out.remove_sf: must be true or false, got 'false'" in str(err.value)
+
+        g2 = Grid(name='bool_grid', base_config_path=base)
+        g2.add_dimension('r', 'params.out.remove_sf')
+        g2.set_dimension_direct('r', [False])
+        g2.generate()
+        g2.write_config_files()
+        case = read_config_object(os.path.join(g2.cfgdir, 'case_000000.toml'))
+        assert case.params.out.remove_sf is False
+
 
 # ---------------------------------------------------------------------------
 # Grid.slurm_config
@@ -705,8 +966,39 @@ class TestSlurmConfig:
         assert '--array=0-1' in contents
         # max_days propagated:
         assert '--time=2-00' in contents
-        # max_mem propagated:
-        assert '--mem-per-cpu=8G' in contents
+        # max_mem propagated, converted from GB to MB: 8 GB is 8192 MB
+        assert '--mem-per-cpu=8192M' in contents
+
+    def test_slurm_script_converts_non_integer_days_and_memory(
+        self, grid_with_mocks, monkeypatch
+    ):
+        """A non-integer allocation of 1.5 days and 2.5 GB is written as the Slurm time
+        1-12:00:00 and the memory 2560M, not truncated to whole days or whole GB."""
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+
+            def write(self, path):
+                with open(path, 'w') as h:
+                    h.write('')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        g.slurm_config(max_jobs=4, test_run=True, max_days=1.5, max_mem=2.5)
+        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        # Half a day is 12 hours; 2.5 GB is 2.5 * 1024 = 2560 MB
+        assert '--time=1-12:00:00' in contents
+        assert '--mem-per-cpu=2560M' in contents
+        # Truncating to whole days or whole GB would give these instead
+        assert '--time=1-00:00:00' not in contents
+        assert '--mem-per-cpu=2048M' not in contents
 
     def test_slurm_script_real_run_uses_proteus(self, grid_with_mocks, monkeypatch):
         """When ``test_run=False`` the dispatch command is the real CLI."""
@@ -983,6 +1275,26 @@ class TestGridRun:
 # ---------------------------------------------------------------------------
 
 
+def _log_state():
+    """Handlers, level and propagation of the fwl logger and the grid manager's logger."""
+    return [
+        (lg.handlers[:], lg.level, lg.propagate) for lg in (logging.getLogger('fwl'), gm.log)
+    ]
+
+
+def _valid_grid(proteus_dir, monkeypatch, **dimensions):
+    """A grid file over tests/grid/base.toml whose run only writes the case configs."""
+    from helpers import PROTEUS_ROOT
+
+    (proteus_dir / 'base.toml').write_text(
+        (PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml').read_text()
+    )
+    monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: self.write_config_files())
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    dims = dimensions or {'planet.mass_tot': {'method': 'direct', 'values': [1.0, 0.5]}}
+    return _write_grid_toml(proteus_dir / 'g.toml', dimensions=dims)
+
+
 def _write_grid_toml(path, **overrides):
     """Helper: write a minimal valid .grid.toml at ``path``."""
     body = {
@@ -1002,45 +1314,110 @@ def _write_grid_toml(path, **overrides):
 class TestGridFromConfig:
     """grid_from_config: TOML parse + Grid build + dispatch wiring."""
 
-    def test_invalid_method_raises(self, fake_proteus_dir, monkeypatch):
-        """An unknown ``method`` value in a dimension table raises
-        ValueError with the offending name in the message.
-        """
-        # base config must exist at the path Grid expects (PROTEUS_DIR/ref_config)
-        base_path = fake_proteus_dir / 'base.toml'
-        base_path.write_text('# base\n')
+    @pytest.mark.parametrize(
+        ('table', 'reason'),
+        [
+            ({'method': 'BOGUS_METHOD', 'values': [0.5]}, 'whose method is not one of'),
+            ({'method': 'linspace', 'start': 1.0, 'stop': 2.0}, 'without a key its method'),
+            ({'method': 'direct'}, 'without a key its method reads'),
+        ],
+    )
+    def test_bad_dimension_table_keeps_the_old_output(self, fake_proteus_dir, table, reason):
+        """A bad method or a missing method key stops the grid before the old output
+        directory is removed."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        old = fake_proteus_dir / 'output' / 'unit_grid' / 'case_000000' / 'runtime_helpfile.csv'
+        old.parent.mkdir(parents=True)
+        old.write_text('kept\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml', dimensions={'planet.mass_tot': table}
+        )
+        with pytest.raises(UnknownConfigKeyError, match=reason) as exc:
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert '"planet.mass_tot"' in str(exc.value)
+        assert old.read_text() == 'kept\n'
 
-        grid_path = fake_proteus_dir / 'g.toml'
+    @pytest.mark.parametrize(
+        ('table', 'match'),
+        [
+            ({'plot_ecfd': True}, 'Unknown key'),
+            ({'style': 'midnight'}, 'style'),
+            ({'colormap': 'batlowK_rr'}, 'colour map'),
+        ],
+        ids=['misspelt_key', 'unknown_style', 'misspelt_colour_map'],
+    )
+    def test_bad_post_processing_table_stops_the_grid_at_launch(
+        self, fake_proteus_dir, monkeypatch, table, match
+    ):
+        """A misspelt [post_processing] key or value stops `proteus grid` before the
+        grid is built (no Grid, no output folder), not only `grid-analyse` after the
+        grid has run; a valid table lets the grid start.
+        """
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            dimensions={'post_processing': table, 'planet.mass_tot': _DIM},
+        )
+        built = mock.MagicMock(return_value=mock.MagicMock(size=1))
+        monkeypatch.setattr(gm, 'Grid', built)
+        with pytest.raises(ValueError, match=match):
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert built.call_count == 0
+        assert not (fake_proteus_dir / 'output' / 'unit_grid').exists()
         _write_grid_toml(
             grid_path,
+            dimensions={'post_processing': {'style': 'dark'}, 'planet.mass_tot': _DIM},
+        )
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert built.call_count == 1
+
+    @pytest.mark.parametrize(
+        ('values', 'reason'),
+        [
+            ([], 'has no values'),
+            ([1.0, float('nan')], 'holds NaN'),
+            ('aragog', 'is not a list'),
+            (5, 'is not a list'),
+            ([[1], [2]], 'not a real number, boolean or string'),
+            ({'x': 1.0}, 'is not a list'),
+        ],
+        ids=['empty', 'nan', 'string', 'scalar', 'nested', 'inline-table'],
+    )
+    def test_bad_direct_values_keep_the_old_output(self, fake_proteus_dir, values, reason):
+        """A direct axis the grid cannot build stops the grid at load, named by its key and
+        the grid file, before the old output directory is removed."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        old = fake_proteus_dir / 'output' / 'unit_grid' / 'case_000000' / 'runtime_helpfile.csv'
+        old.parent.mkdir(parents=True)
+        old.write_text('kept\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            dimensions={'planet.mass_tot': {'method': 'direct', 'values': values}},
+        )
+        with pytest.raises(ValueError, match=reason) as exc:
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert '"planet.mass_tot"' in str(exc.value) and str(grid_path) in str(exc.value)
+        assert old.read_text() == 'kept\n'
+
+    def test_bad_second_direct_axis_keeps_the_old_output(self, fake_proteus_dir):
+        """A bad direct axis after a valid one stops the grid at load, named by its own key,
+        before the old output directory is removed."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        old = fake_proteus_dir / 'output' / 'unit_grid' / 'case_000000' / 'runtime_helpfile.csv'
+        old.parent.mkdir(parents=True)
+        old.write_text('kept\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
             dimensions={
-                'planet.mass_tot': {
-                    'method': 'BOGUS_METHOD',
-                    'values': [0.5],
-                },
+                'planet.mass_tot': {'method': 'direct', 'values': [1.0, 2.0]},
+                'orbit.semimajoraxis': {'method': 'direct', 'values': [0.1, float('nan')]},
             },
         )
-        # Stop dispatch early (raise during dim setup, not at pg.run)
-        monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
-        # Also block run + slurm so a missed error path cannot silently
-        # dispatch a real grid.
-        run_called = {'n': 0}
-        slurm_called = {'n': 0}
-        monkeypatch.setattr(
-            Grid,
-            'run',
-            lambda self, *a, **k: run_called.__setitem__('n', run_called['n'] + 1),
-        )
-        monkeypatch.setattr(
-            Grid,
-            'slurm_config',
-            lambda self, *a, **k: slurm_called.__setitem__('n', slurm_called['n'] + 1),
-        )
-        with pytest.raises(ValueError, match='BOGUS_METHOD'):
+        with pytest.raises(ValueError, match='holds NaN, which') as exc:
             grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
-        # Post-state: neither dispatch path ran (error raised before).
-        assert run_called['n'] == 0
-        assert slurm_called['n'] == 0
+        assert '"orbit.semimajoraxis"' in str(exc.value) and str(grid_path) in str(exc.value)
+        assert '"planet.mass_tot"' not in str(exc.value)
+        assert old.read_text() == 'kept\n'
 
     def test_relative_symlink_rejected(self, fake_proteus_dir):
         """Non-absolute ``symlink`` path is refused with RuntimeError.
@@ -1138,6 +1515,900 @@ class TestGridFromConfig:
         assert call_record['slurm'] == 1
         assert call_record['run'] == 0
 
+    @pytest.mark.parametrize('key', ['use_slurm', 'jax_cache'])
+    @pytest.mark.parametrize('value', ['false', 1, 0.0], ids=['string', 'int', 'float'])
+    def test_a_grid_setting_that_is_not_a_bool_is_refused(
+        self, fake_proteus_dir, monkeypatch, key, value
+    ):
+        """A quoted ``"false"``, a ``1`` or a ``0.0`` for use_slurm or jax_cache stops the
+        grid with the key and the grid file named, before the old output directory is
+        removed, instead of reading ``"false"`` as true."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        old = fake_proteus_dir / 'output' / 'unit_grid' / 'case_000000' / 'runtime_helpfile.csv'
+        old.parent.mkdir(parents=True)
+        old.write_text('kept\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            dimensions={key: value, 'planet.mass_tot': {'method': 'direct', 'values': [0.5]}},
+        )
+        calls = []
+        monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: calls.append('run'))
+        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: calls.append('slurm'))
+        with pytest.raises(
+            ValueError, match=f'{key} must be true or false, got {value!r}'
+        ) as exc:
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert str(grid_path) in str(exc.value)
+        assert calls == []
+        assert old.is_file() and old.read_text() == 'kept\n'
+
+    @pytest.mark.parametrize(
+        ('extra', 'expected'),
+        [({}, False), ({'jax_cache': True}, True), ({'jax_cache': False}, False)],
+        ids=['absent', 'true', 'false'],
+    )
+    def test_jax_cache_reaches_the_slurm_script_as_written(
+        self, fake_proteus_dir, monkeypatch, extra, expected
+    ):
+        """jax_cache = true or false reaches slurm_config as written; an absent key is false."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            use_slurm=True,
+            dimensions={**extra, 'planet.mass_tot': {'method': 'direct', 'values': [0.5]}},
+        )
+        calls = []
+        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: calls.append(k))
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert len(calls) == 1
+        assert calls[0]['jax_cache'] is expected
+
+    @pytest.mark.parametrize(
+        ('key', 'value', 'reason'),
+        [
+            ('params.out.remove_sf', 'false', "must be true or false, got 'false'"),
+            ('interior_energetics.module', 'aragogg', "'module' must be in ("),
+            ('planet.mass_tot', -1.0, "'mass_tot' must be > 0: -1.0"),
+        ],
+        ids=['quoted-bool', 'enum', 'out-of-range'],
+    )
+    def test_a_refused_axis_value_keeps_the_old_output(
+        self, fake_proteus_dir, monkeypatch, key, value, reason
+    ):
+        """A grid axis value the config refuses stops the grid before the old output is
+        removed, names the case and the key, and leaves no cfgs/, logs/ or check folder."""
+        from helpers import PROTEUS_ROOT
+
+        (fake_proteus_dir / 'base.toml').write_text(
+            (PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml').read_text()
+        )
+        old = fake_proteus_dir / 'output' / 'unit_grid' / 'case_000000' / 'runtime_helpfile.csv'
+        old.parent.mkdir(parents=True)
+        old.write_text('kept\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            dimensions={key: {'method': 'direct', 'values': [value]}},
+        )
+        calls = []
+        monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: calls.append('run'))
+        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: calls.append('slurm'))
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        before = _log_state()
+        with pytest.raises(ValueError, match='Grid case 0') as exc:
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert f'Grid case 0 ({key} = {value!r}): ' in str(exc.value)
+        assert reason in str(exc.value) and 'Attribute(' not in str(exc.value)
+        assert _log_state() == before
+        assert old.is_file() and old.read_text() == 'kept\n'
+        assert sorted(os.listdir(old.parents[1])) == ['case_000000']
+        assert os.listdir(fake_proteus_dir / 'output') == ['unit_grid']
+        assert calls == []
+
+    def test_a_valid_grid_builds_each_case_once_and_logs_its_setup(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """A valid grid writes each case config once, numbered in axis order, leaves no
+        check folder, and manager.log holds the setup lines it held before the check."""
+        from helpers import PROTEUS_ROOT
+
+        (fake_proteus_dir / 'base.toml').write_text(
+            (PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml').read_text()
+        )
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            dimensions={'planet.mass_tot': {'method': 'direct', 'values': [1.0, 0.5]}},
+        )
+        sets = []
+        real_setattr = gm.recursive_setattr
+        monkeypatch.setattr(
+            gm, 'recursive_setattr', lambda o, k, v: sets.append(v) or real_setattr(o, k, v)
+        )
+        monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: self.write_config_files())
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        outdir = fake_proteus_dir / 'output' / 'unit_grid'
+        assert sets == [0.5, 1.0]
+        assert sorted(os.listdir(outdir / 'cfgs')) == ['case_000000.toml', 'case_000001.toml']
+        masses = [read_config_object(outdir / 'cfgs' / f'case_00000{i}.toml') for i in (0, 1)]
+        assert [c.planet.mass_tot for c in masses] == [0.5, 1.0]
+        assert os.listdir(fake_proteus_dir / 'output') == ['unit_grid']
+        logged = (outdir / 'manager.log').read_text()
+        lines = (
+            "Grid 'unit_grid' initialised empty",
+            "Added new dimension 'param_000'",
+            'Grid configuration',
+            'Generating parameter grid',
+            'Flattened grid points',
+            'Writing config files',
+        )
+        assert all(line in logged for line in lines), logged
+        assert [logged.index(line) for line in lines] == sorted(logged.index(x) for x in lines)
+
+    @pytest.mark.parametrize('name', ['sub/grid', 'grid/'])
+    def test_a_grid_name_with_a_slash_runs_and_leaves_no_check_folder(
+        self, fake_proteus_dir, monkeypatch, name
+    ):
+        """An output name with a slash builds its cases as it did before the check, and no
+        check folder stays behind anywhere under output/."""
+        body = toml.load(_valid_grid(fake_proteus_dir, monkeypatch))
+        body['output'] = name
+        grid_path = fake_proteus_dir / 'g.toml'
+        grid_path.write_text(toml.dumps(body))
+        try:
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        except OSError as exc:  # the failure under test, made an assertion
+            raise AssertionError(f'grid {name!r} did not run: {exc!r}') from exc
+        cfgs = fake_proteus_dir / 'output' / name.rstrip('/') / 'cfgs'
+        assert sorted(os.listdir(cfgs)) == ['case_000000.toml', 'case_000001.toml']
+        left = [d for d, _, _ in os.walk(fake_proteus_dir / 'output') if '-check-' in d]
+        assert left == []
+
+    def test_config_loader_lines_reach_manager_log_in_order(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """A line the config loader logs while a case is read back reaches manager.log after
+        'Writing config files', as it did when the cases were written after the log existed."""
+        grid_path = _valid_grid(fake_proteus_dir, monkeypatch)
+        real = gm.read_config_object
+        loader_log = logging.getLogger('fwl.proteus.config._config')
+
+        def read(path):
+            loader_log.warning('LOADERNOTE %s', os.path.basename(str(path)))
+            return real(path)
+
+        monkeypatch.setattr(gm, 'read_config_object', read)
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        logged = (fake_proteus_dir / 'output' / 'unit_grid' / 'manager.log').read_text()
+        assert 'LOADERNOTE case_000001.toml' in logged
+        assert logged.index('Writing config files') < logged.index('LOADERNOTE case_000000')
+
+    def test_the_setup_lines_reach_manager_log_after_an_earlier_quiet_logger(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """The held setup lines reach manager.log even when the grid logger answered INFO as
+        disabled earlier in the process (the logging module caches that answer)."""
+        grid_path = _valid_grid(fake_proteus_dir, monkeypatch)
+        fwl = logging.getLogger('fwl')
+        level = fwl.level
+        fwl.setLevel(logging.WARNING)
+        try:
+            gm.log.info('dropped while fwl is at WARNING')
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        finally:
+            fwl.setLevel(level)
+        logged = (fake_proteus_dir / 'output' / 'unit_grid' / 'manager.log').read_text()
+        assert "Added new dimension 'param_000'" in logged
+        assert 'Flattened grid points' in logged
+
+    def test_a_refused_case_after_valid_ones_is_named_by_its_index(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """A refused value on the third case is reported as case 2 with its key and value."""
+        grid_path = _valid_grid(
+            fake_proteus_dir,
+            monkeypatch,
+            **{
+                'interior_energetics.module': {
+                    'method': 'direct',
+                    'values': ['aragog', 'spider', 'aragogg'],
+                }
+            },
+        )
+        with pytest.raises(ValueError) as exc:
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert "Grid case 2 (interior_energetics.module = 'aragogg'): " in str(exc.value)
+        assert not (fake_proteus_dir / 'output' / 'unit_grid').exists()
+
+    def test_a_git_folder_in_the_old_output_stops_after_the_check_and_cleans_up(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """An old output holding a Git repository is refused after the check; the check
+        folder is removed, the old output stays and the loggers are as before."""
+        grid_path = _valid_grid(fake_proteus_dir, monkeypatch)
+        git = fake_proteus_dir / 'output' / 'unit_grid' / '.git'
+        git.mkdir(parents=True)
+        before = _log_state()
+        with pytest.raises(Exception, match='contains a Git repository'):
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert git.is_dir()
+        assert os.listdir(fake_proteus_dir / 'output') == ['unit_grid']
+        assert _log_state() == before
+
+    def test_a_case_refused_at_read_back_names_the_case_not_a_missing_file(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """A case that is refused only when it is read back names its index, its values
+        and the loader's reason, and points at no cfgs/ or check-folder path, since the
+        refused grid keeps the old output."""
+        (fake_proteus_dir / 'base.toml').write_text(
+            '[interior_energetics]\nmodule = "aragog"\n'
+        )
+        old = fake_proteus_dir / 'output' / 'unit_grid' / 'cfgs' / 'kept'
+        old.parent.mkdir(parents=True)
+        old.write_text('kept\n')
+        key = 'interior_energetics.aragog.top_cell_dt_rel_dT_solid'
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml', dimensions={key: {'method': 'direct', 'values': [0.1]}}
+        )
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        with pytest.raises(ValueError) as exc:
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        message = str(exc.value)
+        assert f'Grid case 0 ({key} = 0.1): ' in message
+        assert 'must be <= top_cell_dt_rel_dT' in message and 'case_000000.toml' in message
+        assert '.grid-check-' not in message and str(old.parent) not in message
+        assert '.grid-check-' not in ''.join(traceback.format_exception(exc.value))
+        assert old.read_text() == 'kept\n'
+
+    @pytest.mark.parametrize(
+        ('fwl_level', 'handler_level'),
+        [(logging.WARNING, logging.NOTSET), (logging.INFO, logging.WARNING)],
+        ids=['logger-at-warning', 'handler-at-warning'],
+    )
+    def test_a_refused_grid_passes_on_only_the_lines_the_old_log_would_take(
+        self, fake_proteus_dir, monkeypatch, fwl_level, handler_level
+    ):
+        """After a refusal the held lines go to the restored handlers only where the
+        restored logger level and the handler level let them through, as they would have
+        without the hold: the INFO setup lines stay out, a loader WARNING gets in."""
+        grid_path = _valid_grid(
+            fake_proteus_dir,
+            monkeypatch,
+            **{'planet.mass_tot': {'method': 'direct', 'values': [0.5, -1.0]}},
+        )
+        real = gm.read_config_object
+        loader_log = logging.getLogger('fwl.proteus.config._config')
+        monkeypatch.setattr(
+            gm, 'read_config_object', lambda p: loader_log.warning('LOADERNOTE') or real(p)
+        )
+
+        class Catch(logging.Handler):
+            def emit(self, record):
+                caught.append(record)
+
+        caught, fwl = [], logging.getLogger('fwl')
+        saved = (fwl.handlers[:], fwl.level)
+        fwl.handlers, handler = [], Catch(level=handler_level)
+        fwl.addHandler(handler)
+        fwl.setLevel(fwl_level)
+        try:
+            with pytest.raises(ValueError, match='Grid case 0'):
+                grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        finally:
+            fwl.handlers = saved[0]
+            fwl.setLevel(saved[1])
+        assert [r.levelno for r in caught if r.levelno < logging.WARNING] == []
+        assert 'LOADERNOTE' in [r.getMessage() for r in caught]
+
+    @pytest.mark.parametrize('name', ['', '.', '..', '../elsewhere'])
+    def test_a_grid_name_outside_the_output_folder_is_refused_before_removal(
+        self, fake_proteus_dir, monkeypatch, name
+    ):
+        """A grid name that is output/ itself or reaches above it is refused before anything
+        is removed, so other grids' output stays."""
+        body = toml.load(_valid_grid(fake_proteus_dir, monkeypatch))
+        body['output'] = name
+        grid_path = fake_proteus_dir / 'g.toml'
+        grid_path.write_text(toml.dumps(body))
+        keep = fake_proteus_dir / 'output' / 'other_grid' / 'keep'
+        keep.parent.mkdir(parents=True)
+        keep.write_text('kept\n')
+        before = _log_state()
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert exc.type is ValueError and 'must name a folder inside' in str(exc.value), exc
+        assert keep.read_text() == 'kept\n'
+        assert _log_state() == before
+
+    @pytest.mark.parametrize(
+        'target',
+        [
+            'output',
+            'output/elsewhere',
+            'proteus',
+            'proteus-input',
+            'proteus-src',
+            'home',
+            'home-parent',
+            'link-to-output',
+        ],
+    )
+    def test_a_symlink_folder_that_would_remove_other_data_is_refused(
+        self, fake_proteus_dir, tmp_path_factory, monkeypatch, target
+    ):
+        """A symlink folder inside the PROTEUS folder (output/, input/, src/), or that is
+        PROTEUS_DIR, HOME or above either, is refused before anything is removed, also when
+        it is reached through a link; files in output/, a sibling grid and input/ stay."""
+        outside = tmp_path_factory.mktemp('outside')  # not inside the fake PROTEUS folder
+        home = outside / 'home'
+        home.mkdir()
+        monkeypatch.setenv('HOME', str(home))
+        out = fake_proteus_dir / 'output'
+        (out / 'other_grid').mkdir(parents=True)
+        (fake_proteus_dir / 'input').mkdir()
+        kept = [out / 'keep', out / 'other_grid' / 'keep', fake_proteus_dir / 'input' / 'keep']
+        for path in kept:
+            path.write_text('kept\n')
+        link = outside / 'link'
+        link.symlink_to(out)
+        folder = {
+            'output': out,
+            'output/elsewhere': out / 'elsewhere',
+            'proteus': fake_proteus_dir,
+            'proteus-input': fake_proteus_dir / 'input',
+            'proteus-src': fake_proteus_dir / 'src',
+            'home': home,
+            'home-parent': outside,
+            'link-to-output': link,
+        }[target]
+        body = toml.load(_valid_grid(fake_proteus_dir, monkeypatch))
+        body['symlink'] = str(folder)
+        grid_path = fake_proteus_dir / 'g.toml'
+        grid_path.write_text(toml.dumps(body))
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert [path.read_text() for path in kept] == ['kept\n'] * 3
+
+    def test_a_relative_symlink_folder_is_judged_by_where_it_resolves(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """Grid resolves a relative symlink folder before judging it, so a relative path to
+        PROTEUS/output is refused and a file in output/ stays."""
+        from helpers import PROTEUS_ROOT
+
+        keep = fake_proteus_dir / 'output' / 'keep'
+        keep.parent.mkdir(parents=True)
+        keep.write_text('kept\n')
+        monkeypatch.chdir(fake_proteus_dir)
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid(
+                name='rel_grid',
+                base_config_path=str(PROTEUS_ROOT / 'tests/grid/base.toml'),
+                symlink_dir='output',
+            )
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert keep.read_text() == 'kept\n'
+
+    @pytest.mark.parametrize(
+        'target', ['output-target', 'grid-in-target', 'above-target', 'grid-via-output']
+    )
+    def test_a_symlink_folder_in_a_linked_output_folder_is_refused(
+        self, fake_proteus_dir, tmp_path_factory, monkeypatch, target
+    ):
+        """With output/ a link to scratch storage (the cluster setup), a symlink folder that
+        is that storage, a grid in it, a folder above it or a grid reached through output/
+        is refused, so the other grids there stay."""
+        outside = tmp_path_factory.mktemp('outside')
+        (outside / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        storage = outside / 'scratch' / 'proteus_output'
+        keep = storage / 'other_grid' / 'keep'
+        keep.parent.mkdir(parents=True)
+        keep.write_text('kept\n')
+        body = toml.load(_valid_grid(fake_proteus_dir, monkeypatch))
+        (fake_proteus_dir / 'output').symlink_to(storage)
+        body['symlink'] = str(
+            {
+                'output-target': storage,
+                'grid-in-target': storage / 'other_grid',
+                'above-target': storage.parent,
+                'grid-via-output': fake_proteus_dir / 'output' / 'other_grid',
+            }[target]
+        )
+        grid_path = fake_proteus_dir / 'g.toml'
+        grid_path.write_text(toml.dumps(body))
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert keep.read_text() == 'kept\n'
+
+    @pytest.mark.parametrize('target', ['home', 'proteus-output'])
+    def test_a_case_variant_of_a_protected_folder_is_refused(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, target
+    ):
+        """On a case-insensitive file system (macOS) a folder spelt in another case is the
+        same folder, so HOME or PROTEUS/output in upper case is refused and its files stay."""
+        outside = tmp_path_factory.mktemp('outside')
+        home = outside / 'home'
+        home.mkdir()
+        if not os.path.exists(str(home).upper()):
+            pytest.skip(f'case-sensitive file system: {str(home).upper()} is another folder')
+        monkeypatch.setenv('HOME', str(home))
+        folder = {'home': home, 'proteus-output': fake_proteus_dir / 'output'}[target]
+        folder.mkdir(exist_ok=True)
+        (folder / 'keep').write_text('kept\n')
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=str(folder).upper())
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert (folder / 'keep').read_text() == 'kept\n'
+
+    @pytest.mark.parametrize('target', ['home-scratch', 'home-scratch-upper', 'output-sibling'])
+    def test_a_symlink_folder_beside_the_protected_ones_is_accepted(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, target
+    ):
+        """A scratch folder in HOME, in any case, and a sibling of the storage output/ links
+        to (/scratch/$USER/mygrid beside /scratch/$USER/proteus_output) stay usable."""
+        outside = tmp_path_factory.mktemp('outside')
+        home = outside / 'home'
+        home.mkdir()
+        monkeypatch.setenv('HOME', str(home))
+        storage = outside / 'scratch' / 'proteus_output'
+        storage.mkdir(parents=True)
+        (fake_proteus_dir / 'output').symlink_to(storage)
+        folder = {
+            'home-scratch': str(home / 'scratch_grid'),
+            'home-scratch-upper': str(home / 'SCRATCH_GRID'),
+            'output-sibling': str(storage.parent / 'mygrid'),
+        }[target]
+        g = Grid('g', str(base_config_path), symlink_dir=folder, prepare_output=False)
+        g.release_log()
+        assert g.symlink_dir == folder
+        guarded = str(storage if target == 'output-sibling' else home)
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=guarded, prepare_output=False)
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+
+    @pytest.mark.parametrize('state', ['live', 'dangling'])
+    def test_an_old_output_link_is_unlinked_and_its_target_kept(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, state
+    ):
+        """An old output folder that is a link (left by a grid with a symlink folder) is
+        unlinked, not followed: the folder it points to keeps its files."""
+        monkeypatch.setattr(gm, 'setup_logger', lambda **_k: None)
+        target = tmp_path_factory.mktemp('old_storage')
+        (target / 'keep').write_text('kept\n')
+        (fake_proteus_dir / 'output').mkdir()
+        link = fake_proteus_dir / 'output' / 'g'
+        link.symlink_to(target if state == 'live' else target / 'gone')
+        try:
+            g = Grid('g', str(base_config_path))
+        except Exception as exc:  # noqa: BLE001 -- a raise here is a test failure
+            pytest.fail(f'old output link not replaced: {exc!r}')
+        assert not os.path.islink(g.outdir.rstrip('/')) and os.path.isdir(g.outdir)
+        assert sorted(os.listdir(target)) == ['keep']
+
+    def test_a_grid_name_through_a_link_in_output_is_refused(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory
+    ):
+        """A grid name whose parent is a link out of output/ would remove a folder outside
+        it, so it is refused and that folder keeps its files."""
+        elsewhere = tmp_path_factory.mktemp('elsewhere')
+        keep = elsewhere / 'sub' / 'keep'
+        keep.parent.mkdir()
+        keep.write_text('kept\n')
+        (fake_proteus_dir / 'output').mkdir()
+        (fake_proteus_dir / 'output' / 'lnk').symlink_to(elsewhere)
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('lnk/sub', str(base_config_path))
+        assert exc.type is ValueError and 'must name a folder inside' in str(exc.value), exc
+        assert keep.read_text() == 'kept\n'
+
+    def test_the_symlink_folder_is_checked_again_before_removal(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch
+    ):
+        """prepare_output checks the symlink folder again, so a folder that became HOME's
+        parent after the grid was set up is refused there and keeps its files."""
+        outside = tmp_path_factory.mktemp('outside')
+        folder = outside / 'store'
+        folder.mkdir()
+        (folder / 'keep').write_text('kept\n')
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        g = Grid('g', str(base_config_path), symlink_dir=str(folder), prepare_output=False)
+        (folder / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(folder / 'home'))
+        try:
+            with pytest.raises(Exception) as exc:  # another type fails the assert below
+                g.prepare_output()
+        finally:
+            g.release_log()
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert (folder / 'keep').read_text() == 'kept\n'
+
+    @pytest.mark.parametrize('held', ['grid-file', 'base-config'])
+    def test_a_symlink_folder_holding_the_grid_inputs_is_refused(
+        self, fake_proteus_dir, tmp_path_factory, monkeypatch, held
+    ):
+        """A symlink folder that holds the grid file or the base config is refused, since
+        emptying it would remove the inputs of the grid itself."""
+        from helpers import PROTEUS_ROOT
+
+        outside = tmp_path_factory.mktemp('outside')
+        monkeypatch.setenv('HOME', str(tmp_path_factory.mktemp('home')))
+        inputs = outside / 'inputs'
+        inputs.mkdir()
+        base = inputs / 'base.toml'
+        base.write_text((PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml').read_text())
+        grid_file = inputs / 'g.toml'
+        grid_file.write_text('')
+        folder = inputs if held == 'grid-file' else outside
+        if held == 'base-config':
+            grid_file = outside.parent / f'{outside.name}-g.toml'
+            grid_file.write_text('')
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base), symlink_dir=str(folder), grid_config=str(grid_file))
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert base.is_file() and grid_file.is_file()
+
+    @pytest.mark.parametrize('under', ['home', 'proteus'])
+    def test_a_dot_dot_after_a_link_is_judged_as_the_folder_it_removes(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, under
+    ):
+        """A symlink folder L/.. with L linking elsewhere names the folder that holds L, the
+        one the grid would empty, so under HOME or PROTEUS_DIR it is refused."""
+        outside = tmp_path_factory.mktemp('outside')
+        home = outside / 'home'
+        home.mkdir()
+        monkeypatch.setenv('HOME', str(home))
+        (outside / 'else' / 'deep').mkdir(parents=True)
+        parent = {'home': home, 'proteus': fake_proteus_dir}[under]
+        (parent / 'keep').write_text('kept\n')
+        (parent / 'L').symlink_to(outside / 'else' / 'deep')
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=str(parent / 'L' / '..'))
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert (parent / 'keep').read_text() == 'kept\n'
+
+    @pytest.mark.parametrize('state', ['new', 'old'])
+    def test_symlink_mode_links_the_output_to_the_symlink_folder(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, state
+    ):
+        """With a symlink folder, new or holding old files, the grid output is a link to it
+        and the grid writes its files there."""
+        outside = tmp_path_factory.mktemp('outside')
+        home = outside / 'home'
+        home.mkdir()
+        monkeypatch.setenv('HOME', str(home))
+        folder = home / 'scratch_grid'
+        if state == 'old':
+            folder.mkdir()
+            (folder / 'old').write_text('old\n')
+        try:
+            Grid('g', str(base_config_path), symlink_dir=str(folder))
+        except Exception as exc:  # noqa: BLE001 -- a raise here is a test failure
+            pytest.fail(f'symlink mode failed: {exc!r}')
+        out = fake_proteus_dir / 'output' / 'g'
+        assert out.is_symlink() and os.path.samefile(out, folder)
+        assert (folder / 'ref_config.toml').is_file() and not (folder / 'old').exists()
+
+    @pytest.mark.parametrize('target', ['root', 'in-root', 'above-root'])
+    def test_the_run_output_root_is_protected(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, target
+    ):
+        """With PROTEUS_OUTPUT_PATH set, where every run writes, a symlink folder that is that
+        root, lies in it or holds it is refused and the runs there keep their files."""
+        outside = tmp_path_factory.mktemp('outside')
+        (outside / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        root = outside / 'scratch' / 'proteus_output'
+        keep = root / 'run1' / 'keep'
+        keep.parent.mkdir(parents=True)
+        keep.write_text('kept\n')
+        monkeypatch.setenv('PROTEUS_OUTPUT_PATH', str(root))
+        folder = {'root': root, 'in-root': root / 'run1', 'above-root': root.parent}[target]
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=str(folder))
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert keep.read_text() == 'kept\n'
+
+    def test_a_sibling_of_the_run_output_root_is_accepted(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch
+    ):
+        """A folder beside the PROTEUS_OUTPUT_PATH root stays usable as a symlink folder."""
+        outside = tmp_path_factory.mktemp('outside')
+        (outside / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        root = outside / 'scratch' / 'proteus_output'
+        root.mkdir(parents=True)
+        monkeypatch.setenv('PROTEUS_OUTPUT_PATH', str(root))
+        folder = str(root.parent / 'mygrid')
+        g = Grid('g', str(base_config_path), symlink_dir=folder, prepare_output=False)
+        g.release_log()
+        assert g.symlink_dir == folder
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=str(root), prepare_output=False)
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+
+    @pytest.mark.parametrize('old', [True, False])
+    def test_the_grid_name_is_checked_again_before_removal(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, old
+    ):
+        """prepare_output checks the grid name again, so a link made in output/ after the
+        grid was set up takes neither the removal nor the new output out of output/."""
+        victim = tmp_path_factory.mktemp('victim')
+        if old:
+            (victim / 'b').mkdir()
+            (victim / 'b' / 'keep').write_text('kept\n')
+        before = sorted(str(f.relative_to(victim)) for f in victim.rglob('*'))
+        (fake_proteus_dir / 'output').mkdir()
+        g = Grid('a/b', str(base_config_path), prepare_output=False)
+        (fake_proteus_dir / 'output' / 'a').symlink_to(victim)
+        try:
+            with pytest.raises(Exception) as exc:  # another type fails the assert below
+                g.prepare_output()
+        finally:
+            g.release_log()
+        assert exc.type is ValueError and 'must name a folder inside' in str(exc.value), exc
+        assert sorted(str(f.relative_to(victim)) for f in victim.rglob('*')) == before
+
+    def test_refuses_to_clean_outdir_holding_a_git_file(
+        self, fake_proteus_dir, base_config_path
+    ):
+        """A .git file (a worktree or a submodule) marks a repository too, so the folder stays."""
+        outdir = fake_proteus_dir / 'output' / 'has_git'
+        outdir.mkdir(parents=True)
+        (outdir / '.git').write_text('gitdir: /elsewhere\n')
+        with pytest.raises(Exception, match='Git repository'):
+            Grid(name='has_git', base_config_path=str(base_config_path))
+        assert (outdir / '.git').is_file()
+
+    def test_the_symlink_folder_is_checked_after_the_wait(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch
+    ):
+        """The guard runs after the wait before a removal, so a folder that comes to hold
+        HOME during the wait is refused and keeps its files."""
+        outside = tmp_path_factory.mktemp('outside')
+        folder = outside / 'store'
+        folder.mkdir()
+        (folder / 'keep').write_text('kept\n')
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+
+        def _home_moves_in(*_args, **_kwargs):
+            (folder / 'home').mkdir(exist_ok=True)
+            monkeypatch.setenv('HOME', str(folder / 'home'))
+
+        monkeypatch.setattr(gm.time, 'sleep', _home_moves_in)
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=str(folder))
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert (folder / 'keep').read_text() == 'kept\n'
+
+    def test_a_symlink_folder_that_is_a_link_is_refused(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch
+    ):
+        """A symlink folder that is itself a link is refused with a clear message, and the
+        folder it points to keeps its files."""
+        outside = tmp_path_factory.mktemp('outside')
+        (outside / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        real = outside / 'real'
+        real.mkdir()
+        (real / 'keep').write_text('kept\n')
+        (outside / 'lnk').symlink_to(real)
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=str(outside / 'lnk'))
+        assert exc.type is ValueError and 'is a link' in str(exc.value), exc
+        assert (real / 'keep').read_text() == 'kept\n'
+
+    def test_the_grid_name_is_checked_after_the_wait(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch
+    ):
+        """A link put in output/ during the wait before the old output is removed is refused,
+        so the folder it points to keeps its files."""
+        victim = tmp_path_factory.mktemp('victim')
+        (victim / 'b').mkdir()
+        (victim / 'b' / 'keep').write_text('kept\n')
+        out = fake_proteus_dir / 'output'
+        (out / 'a' / 'b').mkdir(parents=True)
+        g = Grid('a/b', str(base_config_path), prepare_output=False)
+
+        def _link_during_wait(*_args, **_kwargs):
+            (out / 'a').rename(fake_proteus_dir / 'moved_a')
+            (out / 'a').symlink_to(victim)
+
+        monkeypatch.setattr(gm.time, 'sleep', _link_during_wait)
+        try:
+            with pytest.raises(Exception) as exc:  # another type fails the assert below
+                g.prepare_output()
+        finally:
+            g.release_log()
+        assert exc.type is ValueError and 'must name a folder inside' in str(exc.value), exc
+        assert (victim / 'b' / 'keep').read_text() == 'kept\n'
+
+    @pytest.mark.parametrize('which', ['grid_file', 'base_config'])
+    def test_a_grid_output_holding_a_grid_input_is_refused(
+        self, fake_proteus_dir, base_config_path, which
+    ):
+        """A grid run again from the copies in its own output is refused before the old
+        output, with the input in it, is removed."""
+        old = fake_proteus_dir / 'output' / 'g'
+        old.mkdir(parents=True)
+        (old / 'case_000000').mkdir()
+        (old / 'case_000000' / 'keep').write_text('kept\n')
+        grid_file = old / 'copy.grid.toml'
+        ref = old / 'ref_config.toml'
+        grid_file.write_text('# grid\n')
+        ref.write_text('# fake base config\n')
+        conf, grid = {
+            'grid_file': (str(base_config_path), str(grid_file)),
+            'base_config': (str(ref), ''),
+        }[which]
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', conf, grid_config=grid)
+        assert exc.type is ValueError and 'holds the grid file' in str(exc.value), exc
+        assert grid_file.is_file() and ref.is_file()
+        assert (old / 'case_000000' / 'keep').read_text() == 'kept\n'
+
+    @pytest.mark.parametrize('named', ['through_the_link', 'by_its_target'])
+    def test_a_linked_old_output_refuses_a_grid_file_named_through_it(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, named
+    ):
+        """A linked old output is only unlinked, so a grid file in its target named by the
+        target's path is copied, while one named through the link is refused first."""
+        target = tmp_path_factory.mktemp('target')
+        (target / 'grid.toml').write_text('# grid\n')
+        out = fake_proteus_dir / 'output'
+        out.mkdir()
+        (out / 'g').symlink_to(target)
+        grid_file = (out / 'g' if named == 'through_the_link' else target) / 'grid.toml'
+        if named == 'through_the_link':
+            with pytest.raises(Exception) as exc:  # another type fails the assert below
+                Grid('g', str(base_config_path), grid_config=str(grid_file))
+            assert exc.type is ValueError and 'holds the grid file' in str(exc.value), exc
+            assert (out / 'g').is_symlink()
+        else:
+            try:
+                g = Grid('g', str(base_config_path), grid_config=str(grid_file))
+            except Exception as e:
+                pytest.fail(f'a grid file named by the link target was refused: {e!r}')
+            g.release_log()
+            assert (out / 'g' / 'copy.grid.toml').read_text() == '# grid\n'
+            assert not (out / 'g').is_symlink()
+        assert (target / 'grid.toml').read_text() == '# grid\n'
+
+    def test_a_symlink_folder_holding_a_link_to_the_grid_file_is_refused(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch
+    ):
+        """A grid file reached through a link in the symlink folder would lose its link
+        before it is copied, so that folder is refused and keeps its files."""
+        outside = tmp_path_factory.mktemp('outside')
+        (outside / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        (outside / 'configs').mkdir()
+        (outside / 'configs' / 'real.toml').write_text('# grid\n')
+        folder = outside / 'store'
+        folder.mkdir()
+        (folder / 'grid.toml').symlink_to(outside / 'configs' / 'real.toml')
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid(
+                'g',
+                str(base_config_path),
+                symlink_dir=str(folder),
+                grid_config=str(folder / 'grid.toml'),
+            )
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert (folder / 'grid.toml').is_symlink()
+
+    def test_a_symlink_folder_that_is_a_file_is_refused(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch
+    ):
+        """A symlink folder that names a file is refused before anything is removed."""
+        outside = tmp_path_factory.mktemp('outside')
+        (outside / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        (outside / 'file').write_text('kept\n')
+        old = fake_proteus_dir / 'output' / 'g'
+        old.mkdir(parents=True)
+        (old / 'keep').write_text('kept\n')
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=str(outside / 'file'))
+        assert exc.type is ValueError and 'is not a folder' in str(exc.value), exc
+        assert (outside / 'file').read_text() == 'kept\n'
+        assert (old / 'keep').read_text() == 'kept\n'
+
+    @pytest.mark.parametrize('folder', ['output', 'symlink'])
+    def test_an_input_named_through_an_outside_link_into_the_folder_is_refused(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, folder
+    ):
+        """A grid file named through a link outside the folder that leads into it is found
+        by its resolved file, so the folder that holds it is refused and keeps it."""
+        outside = tmp_path_factory.mktemp('outside')
+        (outside / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        held = fake_proteus_dir / 'output' / 'g' if folder == 'output' else outside / 'store'
+        held.mkdir(parents=True)
+        (held / 'grid.toml').write_text('# grid\n')
+        (outside / 'lnk').symlink_to(held)
+        kwargs = {'symlink_dir': str(held)} if folder == 'symlink' else {}
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid(
+                'g',
+                str(base_config_path),
+                grid_config=str(outside / 'lnk' / 'grid.toml'),
+                **kwargs,
+            )
+        message = 'holds the grid file' if folder == 'output' else 'symlink folder'
+        assert exc.type is ValueError and message in str(exc.value), exc
+        assert (held / 'grid.toml').read_text() == '# grid\n'
+
+    @pytest.mark.parametrize('folder', ['./', '..', 'store', './store/..'])
+    def test_a_relative_symlink_folder_is_refused(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, folder
+    ):
+        """Grid takes only an absolute symlink folder, as grid_from_config does, so a
+        relative one never empties the working folder or a folder above it."""
+        work = tmp_path_factory.mktemp('outside') / 'work'
+        (work / 'store').mkdir(parents=True)
+        (work / 'keep').write_text('kept\n')
+        (work / 'store' / 'keep').write_text('kept\n')
+        monkeypatch.chdir(work)
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=folder)
+        assert exc.type is ValueError and 'must be an absolute path' in str(exc.value), exc
+        assert (work / 'keep').read_text() == 'kept\n'
+        assert (work / 'store' / 'keep').read_text() == 'kept\n'
+
+    @pytest.mark.parametrize(
+        ('start', 'step'), [(float('nan'), 0.1), (0.5, float('nan')), (0.5, 0.0)]
+    )
+    def test_an_arange_axis_without_points_names_the_key(
+        self, fake_proteus_dir, monkeypatch, start, step
+    ):
+        """An arange axis with a NaN or a zero step stops the grid with an error that names
+        the dotted key, before the old output is removed."""
+        dims = {
+            'planet.mass_tot': {'method': 'arange', 'start': start, 'stop': 1.0, 'step': step}
+        }
+        grid_path = _valid_grid(fake_proteus_dir, monkeypatch, **dims)
+        keep = fake_proteus_dir / 'output' / 'unit_grid' / 'keep'
+        keep.parent.mkdir(parents=True)
+        keep.write_text('kept\n')
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert exc.type is ValueError and 'planet.mass_tot (arange)' in str(exc.value), exc
+        assert keep.read_text() == 'kept\n'
+
+    def test_the_cases_are_checked_in_a_folder_under_output(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """The case configs are checked in a folder of their own under PROTEUS/output, the
+        file system of the output, before they move into cfgs/."""
+        grid_path = _valid_grid(fake_proteus_dir, monkeypatch)
+        folders, real = [], Grid.write_cases
+        monkeypatch.setattr(
+            Grid,
+            'write_cases',
+            lambda self, folder: folders.append(folder) or real(self, folder),
+        )
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert len(folders) == 1
+        assert os.path.dirname(folders[0]) == str(fake_proteus_dir / 'output')
+        assert os.path.basename(folders[0]).startswith('.grid-check-')
+
+    def test_a_missing_use_slurm_names_the_key_and_the_grid_file(self, fake_proteus_dir):
+        """A grid file without use_slurm stops with a KeyError that names the key and
+        the file."""
+        grid_path = _write_grid_toml(fake_proteus_dir / 'g.toml')
+        body = toml.load(grid_path)
+        del body['use_slurm']
+        grid_path.write_text(toml.dumps(body))
+        with pytest.raises(KeyError, match='use_slurm') as exc:
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert str(grid_path) in str(exc.value)
+
     def test_run_branch_calls_run(self, fake_proteus_dir, monkeypatch):
         """``use_slurm = false`` dispatches to ``Grid.run`` instead of
         ``Grid.slurm_config``.
@@ -1227,7 +2498,10 @@ class TestGridFromConfig:
         # Discriminating: 2 x 3 x 4 x 3 (arange 0.3, 0.4, 0.5) = 72 points
         # (arange appends 0.5 explicitly since np.arange may stop before).
         # The four methods all produced non-empty value lists.
-        assert all(len(v) > 0 for v in g.dim_avars.values())
+        assert g.dim_avars['param_000'] == [0.5, 1.0]
+        np.testing.assert_allclose(g.dim_avars['param_001'], [100.0, 150.0, 200.0])
+        np.testing.assert_allclose(g.dim_avars['param_002'], [1.0, 10.0, 100.0, 1000.0])
+        np.testing.assert_allclose(g.dim_avars['param_003'], [0.3, 0.4, 0.5])
         # And the dimension count is exactly four:
         assert len(g.dim_names) == 4
         # Size is the product of the lengths
@@ -1275,3 +2549,339 @@ class TestGridFromConfig:
         # Post-state: dispatch was blocked before reaching run or slurm.
         assert run_called['n'] == 0
         assert slurm_called['n'] == 0
+
+
+_UNSET = (1e-8, 1e-10)
+
+
+@pytest.mark.parametrize(
+    ('base', 'dims', 'expected'),
+    [
+        ('', {}, _UNSET),
+        ('rtol = -1.0', {}, _UNSET),
+        ('num_tolerance = -1.0', {}, _UNSET),
+        ('[interior_energetics.spider]\ntolerance_rel = -1.0', {}, _UNSET),
+        ('rtol = 3e-9', {}, (3e-9, 3e-9)),
+        ('num_tolerance = 3e-9', {}, (3e-9, 3e-9)),
+        ('[interior_energetics.spider]\ntolerance_rel = 3e-9', {}, (3e-9, 3e-9)),
+        ('', {'interior_energetics.rtol': [1e-6]}, (1e-6, 1e-6)),
+        (
+            '[interior_energetics.spider]\ntolerance_rel = 3e-9',
+            {'interior_energetics.rtol': [1e-6]},
+            (1e-6, 1e-6),
+        ),
+        ('num_tolerance = 3e-9', {'interior_energetics.rtol': [1e-6]}, (1e-6, 1e-6)),
+        ('[interior_energetics.spider]\ntolerance_rel = 0.0', {}, _UNSET),
+    ],
+)
+def test_write_config_files_gives_each_module_its_default_rtol(
+    fake_proteus_dir, tmp_path, monkeypatch, base, dims, expected
+):
+    """A grid over the interior module writes each case the rtol default of its own
+    module unless the base config or the grid sets rtol or an alias; cases reload."""
+    cfg = tmp_path / 'base_ie.toml'
+    cfg.write_text(f'[interior_energetics]\n{base}\n')
+    g = Grid(name='rtol_grid', base_config_path=str(cfg))
+    dims = {'interior_energetics.module': ['aragog', 'spider'], **dims}
+    for i, (key, values) in enumerate(dims.items()):
+        g.add_dimension(f'd{i}', key)
+        g.set_dimension_direct(f'd{i}', values)
+    g.generate()
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    g.write_config_files()
+    paths = {
+        toml.load(p)['interior_energetics']['module']: p for p in map(g._get_tmpcfg, range(2))
+    }
+    got = [toml.load(paths[m])['interior_energetics']['rtol'] for m in ('aragog', 'spider')]
+    loaded = [
+        read_config_object(paths[m]).interior_energetics.rtol for m in ('aragog', 'spider')
+    ]
+    assert got == pytest.approx(expected, rel=1e-12)
+    assert loaded == pytest.approx(expected, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('base', 'dims', 'error'),
+    [
+        ('', {'top_cell_dt_rel_dT': 0.05, 'top_cell_dt_rel_dT_solid': 0.05}, None),
+        ('', {'top_cell_dt_rel_dT_solid': 0.05, 'top_cell_dt_rel_dT': 0.05}, None),
+        ('', {'top_cell_dt_rel_dT': 0.12, 'top_cell_dt_rel_dT_solid': 0.12}, None),
+        ('', {'top_cell_dt_rel_dT_solid': 0.12, 'top_cell_dt_rel_dT': 0.12}, None),
+        ('', {'top_cell_dt_rel_dT': 0.05}, 'must be <= top_cell_dt_rel_dT'),
+        ('limit', {'surface_bc_mode': 'grey_body', 'top_cell_dt_limit': False}, None),
+        ('limit', {'top_cell_dt_limit': False, 'surface_bc_mode': 'grey_body'}, None),
+        ('limit', {'surface_bc_mode': 'grey_body'}, 'top_cell_dt_limit = true cannot be used'),
+        ('limit', {'module': 'spider', 'surface_bc_mode': 'grey_body'}, None),
+        ('limit', {'surface_bc_mode': 'grey_body', 'module': 'spider'}, None),
+    ],
+)
+def test_write_config_files_cross_field_rules_checked_when_a_case_is_read(
+    fake_proteus_dir, tmp_path, monkeypatch, base, dims, error
+):
+    """A grid sets the fields of each case one at a time; the Aragog cross-field rules do not
+    depend on that order, and the grid reads each case back so an invalid one stops it."""
+    cfg = tmp_path / 'base_ie.toml'
+    limit = '[interior_energetics.aragog]\ntop_cell_dt_limit = true\n' if base else ''
+    cfg.write_text(f'[interior_energetics]\nmodule = "aragog"\n{limit}')
+    g = Grid(name='pair_grid', base_config_path=str(cfg))
+    ie_keys = ('surface_bc_mode', 'module')
+    for i, (key, value) in enumerate(dims.items()):
+        section = 'interior_energetics' if key in ie_keys else 'interior_energetics.aragog'
+        g.add_dimension(f'd{i}', f'{section}.{key}')
+        g.set_dimension_direct(f'd{i}', [value])
+    g.generate()
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    case = g._get_tmpcfg(0)
+    if error:
+        where = ', '.join(f'{k} = {v!r}' for k, v in g.flat[0].items())
+        with pytest.raises(ValueError, match=re.escape(f'Grid case 0 ({where}): ')):
+            g.write_config_files()
+        # The load error names only the class; the case's own table gives the cause.
+        from proteus.config._interior import Aragog, Interior
+
+        table = toml.load(case)['interior_energetics']
+        with pytest.raises(ValueError, match=error):
+            Interior(
+                **{k: v for k, v in table.items() if k != 'aragog'},
+                aragog=Aragog(**table['aragog']),
+            )
+        return
+    try:
+        g.write_config_files()
+        ie = read_config_object(case).interior_energetics
+    except ValueError as exc:
+        pytest.fail(f'valid grid case {dims} was refused: {exc}')
+    for key, value in dims.items():
+        got = getattr(ie if key in ie_keys else ie.aragog, key)
+        assert got == (pytest.approx(value, rel=1e-12) if isinstance(value, float) else value)
+
+
+@pytest.mark.unit
+def test_write_config_files_stops_at_the_first_invalid_case(
+    fake_proteus_dir, tmp_path, monkeypatch
+):
+    """A grid with one invalid case among valid ones raises at generation and names that case;
+    every written case is read back once with the config loader."""
+    cfg = tmp_path / 'base_ie.toml'
+    cfg.write_text('[interior_energetics]\nmodule = "aragog"\n')
+    g = Grid(name='mixed_grid', base_config_path=str(cfg))
+    key = 'interior_energetics.aragog.top_cell_dt_rel_dT_solid'
+    g.add_dimension('d0', key)
+    g.set_dimension_direct('d0', [0.05, 0.10])  # rel_dT keeps its default 0.08
+    g.add_dimension('d1', 'interior_energetics.aragog.top_cell_dt_limit')
+    g.set_dimension_direct('d1', [False, True])
+    g.generate()
+    bad = [i for i, gp in enumerate(g.flat) if gp[key] > 0.08]
+    assert len(bad) == 2 and 0 < bad[0] < g.size - 1, (g.flat, bad)
+    k = bad[0]
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    read_back = []
+    real = gm.read_config_object
+    monkeypatch.setattr(gm, 'read_config_object', lambda p: read_back.append(str(p)) or real(p))
+    where = ', '.join(f'{name} = {v!r}' for name, v in g.flat[k].items())
+    with pytest.raises(ValueError, match=re.escape(f'Grid case {k} ({where}): ')):
+        g.write_config_files()
+    assert read_back[1:] == [g._get_tmpcfg(i) for i in range(k + 1)]
+    for i in range(k):
+        solid = read_config_object(g._get_tmpcfg(i)).interior_energetics.aragog
+        assert solid.top_cell_dt_rel_dT_solid == pytest.approx(g.flat[i][key], rel=1e-12)
+    for i in range(k + 1, g.size):
+        assert not os.path.exists(g._get_tmpcfg(i))
+
+
+def test_all_options_grid_over_the_module_gives_each_its_default_rtol(
+    fake_proteus_dir, monkeypatch
+):
+    """input/all_options.toml leaves rtol unset, so a grid over the interior module writes
+    1e-8 for Aragog and 1e-10 for SPIDER."""
+    from helpers import PROTEUS_ROOT
+
+    g = Grid(
+        name='opts_grid', base_config_path=str(PROTEUS_ROOT / 'input' / 'all_options.toml')
+    )
+    g.add_dimension('d0', 'interior_energetics.module')
+    g.set_dimension_direct('d0', ['aragog', 'spider'])
+    g.generate()
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    g.write_config_files()
+    got = {
+        c['interior_energetics']['module']: c['interior_energetics']['rtol']
+        for c in (toml.load(g._get_tmpcfg(i)) for i in range(2))
+    }
+    assert got == pytest.approx({'aragog': 1e-8, 'spider': 1e-10}, rel=1e-12)
+
+
+@pytest.mark.parametrize(
+    'alias', ['interior_energetics.num_tolerance', 'interior_energetics.spider.tolerance_rel']
+)
+def test_add_dimension_rejects_a_deprecated_tolerance_alias(fake_proteus_dir, tmp_path, alias):
+    """A grid over a deprecated rtol alias is refused at setup, naming the key to use."""
+    cfg = tmp_path / 'base_ie.toml'
+    cfg.write_text('')
+    g = Grid(name='alias_grid', base_config_path=str(cfg))
+    with pytest.raises(ValueError, match='interior_energetics.rtol'):
+        g.add_dimension('tol', alias)
+    assert g.dim_names == []
+
+
+_DIM = {'method': 'direct', 'values': [1.0]}
+_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.parametrize(
+    ('key', 'value', 'reason'),
+    [
+        ('struct_mass_tot', _DIM, 'not a grid setting or a configuration field'),
+        ('jax_cahce', True, 'not a grid setting or a configuration field'),
+        ('planet.mass_totl', _DIM, 'not a grid setting or a configuration field'),
+        ('planet.mass_tot.x', _DIM, 'not a grid setting or a configuration field'),
+        ('planet', _DIM, 'a configuration section, not a single field'),
+        ('orbit.semimajoraxis', 1.0, 'without a dimension table holding a method'),
+        (
+            'orbit.semimajoraxis',
+            {'values': [1.0]},
+            'without a dimension table holding a method',
+        ),
+        ('orbit.semimajoraxis', [_DIM], 'without a dimension table holding a method'),
+        ('orbit.semimajoraxis', {'method': 'lnspace'}, 'whose method is not one of'),
+        ('orbit.semimajoraxis', {'method': ['direct'], 'values': [1.0]}, 'whose method is not'),
+        (
+            'orbit.semimajoraxis',
+            {'method': 'arange', 'start': 0, 'stop': 1},
+            'its method reads',
+        ),
+    ],
+)
+def test_unaccounted_grid_key_is_refused_before_any_case(fake_proteus_dir, key, value, reason):
+    """A key that is no grid setting and no single schema field stops the grid at load,
+    named together with the grid file, before any output is created."""
+    (fake_proteus_dir / 'base.toml').write_text('# base\n')
+    grid_path = _write_grid_toml(
+        fake_proteus_dir / 'g.toml', dimensions={'planet.mass_tot': _DIM, key: value}
+    )
+    with pytest.raises(UnknownConfigKeyError, match=re.escape(f'"{key}"')) as exc:
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+    assert str(grid_path) in str(exc.value) and reason in str(exc.value)
+    assert not (fake_proteus_dir / 'output').exists()
+
+
+def test_grid_dimension_keys_skips_settings_and_keeps_file_order():
+    """Grid settings are not dimensions; every schema field path is, in file order."""
+    config = {
+        'planet.mass_tot': _DIM,
+        'output': 'g',
+        'interior_struct.core_frac': _DIM,
+        'config_version': '3.0',
+        'orbit.semimajoraxis': _DIM,
+        'jax_cache': True,
+    }
+    expected = ['planet.mass_tot', 'interior_struct.core_frac', 'orbit.semimajoraxis']
+    assert grid_dimension_keys(config, 'g.toml') == expected
+    assert grid_dimension_keys({'output': 'g'}, 'g.toml') == []
+
+
+def test_grid_dimension_keys_names_every_refused_key_with_its_reason():
+    """Several bad keys are refused together, each named under its reason."""
+    config = {
+        'output': 'g',
+        'jax_cahce': True,
+        'planet.mass_totl': _DIM,
+        'planet': _DIM,
+        'orbit.semimajoraxis': 1.0,
+    }
+    with pytest.raises(UnknownConfigKeyError) as exc:
+        grid_dimension_keys(config, 'g.toml')
+    msg = str(exc.value)
+    assert 'not a grid setting or a configuration field: "jax_cahce", "planet.mass_totl"' in msg
+    assert 'a configuration section, not a single field' in msg and '"planet"' in msg
+    assert 'without a dimension table holding a method: "orbit.semimajoraxis"' in msg
+
+
+def test_grid_from_config_numbers_dimensions_in_file_order(fake_proteus_dir, monkeypatch):
+    """Only dimensions take a number: param_000 onwards, in the order of the grid file."""
+    (fake_proteus_dir / 'base.toml').write_text('# base\n')
+    grid_path = fake_proteus_dir / 'g.toml'
+    grid_path.write_text(
+        toml.dumps(
+            {
+                'output': 'unit_grid',
+                'planet.mass_tot': _DIM,
+                'symlink': '',
+                'use_slurm': False,
+                'interior_struct.core_frac': _DIM,
+                'max_jobs': 2,
+                'max_days': 1,
+                'max_mem': 3,
+                'ref_config': 'base.toml',
+            }
+        )
+    )
+    captured = {}
+    monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: captured.setdefault('g', self))
+    monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
+    monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+    assert captured['g'].dim_names == ['param_000', 'param_001']
+    assert captured['g'].dim_param == ['planet.mass_tot', 'interior_struct.core_frac']
+
+
+_SHIPPED_GRIDS = sorted(
+    str(p.relative_to(_ROOT))
+    for p in [*(_ROOT / 'input').rglob('*grid*.toml'), _ROOT / 'tests/grid/dummy.grid.toml']
+)
+
+
+@pytest.mark.parametrize('rel_path', _SHIPPED_GRIDS)
+def test_shipped_grid_files_pass_the_key_check(rel_path):
+    """Every grid file in the repository has only settings and complete dimension tables."""
+    config = toml.load(_ROOT / rel_path)
+    dims = grid_dimension_keys(config, rel_path)
+    assert dims
+    assert set(dims).isdisjoint(gm.GRID_SETTINGS)
+
+
+def test_grid_settings_match_the_keys_grid_from_config_reads(fake_proteus_dir, monkeypatch):
+    """GRID_SETTINGS holds the settings grid_from_config reads plus config_version,
+    which it only accepts; the post_processing table is read to check it at launch."""
+
+    class Recorder(dict):
+        def __getitem__(self, key):
+            read.add(key)
+            return super().__getitem__(key)
+
+        def get(self, key, default=None):
+            read.add(key)
+            return super().get(key, default)
+
+    read = set()
+    config = toml.load(_write_grid_toml(fake_proteus_dir / 'g.toml', dimensions={}))
+    config.update({'jax_cache': False, 'planet.mass_tot': _DIM})
+    monkeypatch.setattr(gm.toml, 'load', lambda f: Recorder(config))
+    monkeypatch.setattr(gm, 'Grid', mock.MagicMock(return_value=mock.MagicMock(size=1)))
+    grid_from_config(str(fake_proteus_dir / 'g.toml'), test_run=True, check_interval=0.0)
+    assert 'planet.mass_tot' in read
+    assert read - {'planet.mass_tot'} == gm.GRID_SETTINGS - {'config_version'}
+
+
+# ---------------------------------------------------------------------------
+# Grid setters and the shared axis builders (proteus.grid.dimensions)
+# ---------------------------------------------------------------------------
+
+
+class TestDimensionValues:
+    """Grid setters use the axis builders shared with the grid analysis."""
+
+    def test_grid_setter_and_dimension_values_agree(self, grid_with_mocks):
+        """A Grid axis and dimension_values build identical values for one table,
+        so the grid run and its analysis see the same swept values.
+        """
+        g = grid_with_mocks
+        g.add_dimension('e', 'orbit.eccentricity')
+        g.set_dimension_logspace('e', 1e-3, 1e-1, 3)
+        expected = dimension_values(
+            {'method': 'logspace', 'start': 1e-3, 'stop': 1e-1, 'count': 3}
+        )
+        assert g.dim_avars['e'] == expected
+        assert expected == pytest.approx([1e-3, 1e-2, 1e-1])  # correct endpoints/spacing

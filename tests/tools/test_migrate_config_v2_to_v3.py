@@ -78,26 +78,149 @@ _DROP_PREFIXES = (
 # decision: pin it (OVERRIDES) or certify it neutral (add it here).
 _REVIEWED_NEUTRAL = frozenset(
     {
+        # Solid-phase volatile trapping. Inert on a migrated config:
+        # trap_mode defaults to 'none', so the partition coefficients and
+        # the front parameters are never read and behaviour is unchanged.
+        'outgas.trap_phi_min',
+        'outgas.trap_mush_log10visc',
+        'outgas.trap_n_front_min',
+        'outgas.trap_max_front_fraction',
+        'outgas.trap_mode',
+        'outgas.D_const_CH4',
+        'outgas.D_const_CO',
+        'outgas.D_const_CO2',
+        'outgas.D_const_H2',
+        'outgas.D_const_H2O',
+        'outgas.D_const_H2S',
+        'outgas.D_const_N2',
+        'outgas.D_const_NH3',
+        'outgas.D_const_O2',
+        'outgas.D_const_S2',
+        'outgas.D_const_SO2',
+        # prevent_desaturation defaults to false: condensates re-equilibrate each
+        # solve, as before the flag existed, so behaviour is unchanged.
+        'outgas.prevent_desaturation',
+        # Accretion defaults to inactive with zero impactor budgets, zero
+        # loss fractions, and unread dummy/morrigan sub-blocks.
+        'accretion.atmloss_frac',
+        'accretion.atmloss_law',
+        'accretion.atmloss_module',
+        'accretion.dummy.eccentricity',
+        'accretion.dummy.timeline_path',
+        'accretion.dummy.impact_parameter',
+        'accretion.dummy.mass_accreted',
+        'accretion.dummy.num_impacts',
+        'accretion.dummy.time_last',
+        'accretion.dummy.timescale',
+        'accretion.timeline.timeline_path',
+        'accretion.impactor_volatiles',
+        'accretion.impactor_C_ppmw',
+        'accretion.impactor_H_ppmw',
+        'accretion.impactor_N_ppmw',
+        'accretion.impactor_O_ppmw',
+        'accretion.impactor_S_ppmw',
+        'accretion.morrigan.density',
+        'accretion.morrigan.eccentricity_init',
+        'accretion.morrigan.evolution_time',
+        'accretion.morrigan.impact_angle',
+        'accretion.morrigan.inner_cutoff',
+        'accretion.morrigan.inner_edge',
+        'accretion.morrigan.mass_equal',
+        'accretion.morrigan.masses',
+        'accretion.morrigan.num_planets',
+        'accretion.morrigan.seed',
+        'accretion.morrigan.selector',
+        'accretion.morrigan.selector_value',
+        'accretion.morrigan.spacing',
+        'accretion.remelt',
+        'accretion.time_offset',
         'atmos_clim.aerosols_enabled',
+        'atmos_clim.agni.aerosol_r_eff',
+        'atmos_clim.agni.aerosol_sigma_g',
         'atmos_clim.agni.grey_opacity_lw',
         'atmos_clim.agni.grey_opacity_sw',
+        'atmos_clim.agni.hydrograv_constg',
+        'atmos_clim.agni.hydrograv_hilldr',
+        'atmos_clim.agni.hydrograv_maxdr',
+        'atmos_clim.agni.hydrograv_mindr',
+        'atmos_clim.agni.hydrograv_ming',
+        'atmos_clim.agni.hydrograv_selfg',
+        'atmos_clim.agni.hydrograv_steps',
+        # The default loads every gas of the spectral file, as 2.0 did.
+        'atmos_clim.agni.load_all_opacities',
         'atmos_clim.agni.spectral_file',
+        'atmos_clim.agni.tau_obs',
+        'atmos_clim.agni.wl_obs',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
+        # VULCAN options keep the values it ran with, except dttry and dt_min (100x smaller,
+        # the adaptive step's start and floor); r_p acts only with use_condense.
+        'atmos_chem.vulcan.atol',
+        'atmos_chem.vulcan.conv_step',
+        'atmos_chem.vulcan.dt_min',
+        'atmos_chem.vulcan.dttry',
+        'atmos_chem.vulcan.flux_atol',
+        'atmos_chem.vulcan.mtol',
+        'atmos_chem.vulcan.mtol_conv',
+        'atmos_chem.vulcan.post_conden_rtol',
+        'atmos_chem.vulcan.r_p',
+        'atmos_chem.vulcan.rtol',
+        'atmos_chem.vulcan.runtime',
+        'atmos_chem.vulcan.st_factor',
+        'atmos_chem.vulcan.use_condense',
+        'atmos_chem.vulcan.use_settling',
+        'atmos_chem.vulcan.use_vm_mol',
+        'atmos_chem.vulcan.yconv_min',
+        # Inert while escape.hill_clamp is pinned off for migrated configs.
+        'escape.hill_clamp_frac',
+        # The per-step escape cap and its step floor apply at their measured
+        # defaults, so a migrated config needs no explicit value for either.
+        'escape.step_dt_floor_frac',
+        'escape.step_max_frac',
         'interior_energetics.adams_williamson_beta',
         'interior_energetics.adams_williamson_rhos',
         'interior_energetics.adiabatic_bulk_modulus',
+        'interior_energetics.aragog.allow_resume_law_change',
         'interior_energetics.aragog.atol_temperature_equivalent',
         'interior_energetics.aragog.backend',
         'interior_energetics.aragog.core_bc',
+        # The core budget is read only when core_bc = "core_module",
+        # and a migrated config keeps core_bc at its default, so none of
+        # these values reaches the run.
+        'interior_energetics.aragog.core_module.alpha',
+        'interior_energetics.aragog.core_module.alpha_c',
+        'interior_energetics.aragog.core_module.c_light',
+        'interior_energetics.aragog.core_module.c_p',
+        'interior_energetics.aragog.core_module.depression',
+        'interior_energetics.aragog.core_module.ds_fusion',
+        'interior_energetics.aragog.core_module.f_ohm',
+        'interior_energetics.aragog.core_module.flux_geometry',
+        'interior_energetics.aragog.core_module.k_core',
+        'interior_energetics.aragog.core_module.layer_base_fraction',
+        'interior_energetics.aragog.core_module.layer_g_mix',
+        'interior_energetics.aragog.core_module.layer_k_mix',
+        'interior_energetics.aragog.core_module.light_element_fraction',
+        'interior_energetics.aragog.core_module.melting_curve',
+        'interior_energetics.aragog.core_module.q_radio',
+        'interior_energetics.aragog.core_module.ra_crit_cmb',
+        'interior_energetics.aragog.core_module.stratification',
+        'interior_energetics.aragog.core_module.t_m0',
+        'interior_energetics.aragog.core_module.t_m1',
+        'interior_energetics.aragog.core_module.t_m2',
         'interior_energetics.aragog.entropy_step_cap',
         'interior_energetics.aragog.phase_boundary_entropy_margin',
+        'interior_energetics.aragog.phase_boundary_cap',
         'interior_energetics.aragog.phase_smoothing',
         'interior_energetics.aragog.phi_step_cap',
         'interior_energetics.aragog.scalar_gravity_override',
+        'interior_energetics.aragog.separation_buoyancy',
+        'interior_energetics.aragog.separation_viscosity',
         'interior_energetics.aragog.solver_method',
         'interior_energetics.aragog.temperature_step_cap',
         'interior_energetics.aragog.tolerance_struct',
+        'interior_energetics.aragog.top_cell_dt_limit',
+        'interior_energetics.aragog.top_cell_dt_rel_dT',
+        'interior_energetics.aragog.top_cell_dt_rel_dT_solid',
         'interior_energetics.boundary.T_liquidus',
         'interior_energetics.boundary.T_solidus',
         'interior_energetics.boundary.activation_energy',
@@ -109,7 +232,9 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.boundary.logging',
         'interior_energetics.boundary.nusselt_exponent',
         'interior_energetics.boundary.silicate_density',
+        'interior_energetics.boundary.core_bulk',
         'interior_energetics.boundary.core_density',
+        'interior_energetics.boundary.core_shear',
         'interior_energetics.boundary.silicate_heat_capacity',
         'interior_energetics.boundary.thermal_conductivity',
         'interior_energetics.boundary.thermal_diffusivity',
@@ -126,6 +251,8 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.const_properties',
         'interior_energetics.const_rho',
         'interior_energetics.core_tfac_avg',
+        # Deprecated and ignored; the dummy interior derives its density.
+        'interior_energetics.dummy.mantle_rho',
         'interior_energetics.eddy_diffusivity_chemical',
         'interior_energetics.eddy_diffusivity_thermal',
         'interior_energetics.latent_heat_of_fusion',
@@ -151,6 +278,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_struct.zalmoxis.global_miscibility',
         'interior_struct.zalmoxis.lookup_nP',
         'interior_struct.zalmoxis.lookup_nS',
+        'interior_struct.zalmoxis.lowt_extension',
         'interior_struct.zalmoxis.miscibility_max_iter',
         'interior_struct.zalmoxis.miscibility_tol',
         'interior_struct.zalmoxis.mushy_zone_factor',
@@ -173,6 +301,94 @@ _REVIEWED_NEUTRAL = frozenset(
         'observe.reference_pressure',
         'observe.source',
         'observe.spectrum_type',
+        # orbit.evolve/orbit.satellite (2.0 bools) are handled dynamically by
+        # _handle_orbit_dispatch, not a static OVERRIDES pin, so their 3.0
+        # destinations land here rather than in mig.OVERRIDES.
+        'orbit.star_planet_model',
+        'orbit.planet_satellite_model',
+        'orbit.perturber',
+        'orbit.satellite.include_satellite',
+        'orbit.satellite.mass_sat',
+        'orbit.satellite.radius_sat',
+        'orbit.satellite.semimajoraxis_sat',
+        'orbit.satellite.eccentricity_sat',
+        'orbit.satellite.evection_angle',
+        'orbit.satellite.c_factor_sat',
+        'orbit.satellite.axial_period_sat',
+        'orbit.satellite.love_number_sat',
+        # The prescribed migration track (orbit.parameterized.*) is new in
+        # 3.0 and defaults to migration = "none" with no endpoints set, so a
+        # migrated config keeps a fixed orbit until the user opts in.
+        'orbit.parameterized.migration',
+        'orbit.parameterized.sma_final',
+        'orbit.parameterized.time_migration',
+        'orbit.parameterized.tau_migration',
+        # Obliqua (orbit.obliqua.*) has no 2.0 analogue at all; every field
+        # is new and stays at its 3.0 default for a migrated config.
+        'orbit.obliqua.store_3D',
+        'orbit.obliqua.enforce_ec',
+        'orbit.obliqua.optimize_scales',
+        'orbit.obliqua.solid_shell',
+        'orbit.obliqua.cap_LN',
+        'orbit.obliqua.min_frac',
+        'orbit.obliqua.visc_lus',
+        'orbit.obliqua.visc_sus',
+        'orbit.obliqua.n',
+        'orbit.obliqua.m',
+        'orbit.obliqua.k_min',
+        'orbit.obliqua.k_max',
+        'orbit.obliqua.evection_padding_factor',
+        'orbit.obliqua.material_mu',
+        'orbit.obliqua.material_k',
+        'orbit.obliqua.alpha',
+        'orbit.obliqua.verbosity',
+        'orbit.obliqua.module_solid',
+        'orbit.obliqua.module_mushy',
+        'orbit.obliqua.module_fluid',
+        'orbit.obliqua.solid.ncalc',
+        'orbit.obliqua.solid.dr_min',
+        'orbit.obliqua.solid.dr_max',
+        'orbit.obliqua.solid.core',
+        'orbit.obliqua.solid.core_props',
+        'orbit.obliqua.solid.inertial_terms',
+        'orbit.obliqua.solid.bulk_l',
+        'orbit.obliqua.solid.porosity_thresh',
+        'orbit.obliqua.solid.dbulk_power',
+        'orbit.obliqua.mushy.b_width',
+        'orbit.obliqua.mushy.t_width',
+        'orbit.obliqua.fluid.sigma_R',
+        'orbit.obliqua.fluid.sigma_R_factor',
+        'orbit.obliqua.fluid.sigma_R_prf',
+        'orbit.obliqua.fluid.H_R',
+        'orbit.obliqua.fluid.efficiency',
+        # orbit.solver.* has no 2.0 analogue: the adaptive-substep
+        # controller and its shared solve_ivp tolerances did not exist as
+        # config in 2.0 at all.
+        'orbit.solver.method',
+        'orbit.solver.rtol',
+        'orbit.solver.atol',
+        'orbit.solver.dt0_yr',
+        'orbit.solver.dt_max_yr',
+        'orbit.solver.growth',
+        'orbit.solver.shrink',
+        'orbit.solver.max_rel_da',
+        'orbit.solver.max_rel_de',
+        'orbit.solver.max_rel_dOmega',
+        'orbit.solver.de_floor',
+        'orbit.solver.max_substeps',
+        'orbit.solver.resonance_margin_enter',
+        'orbit.solver.resonance_margin_exit',
+        'orbit.solver.resonance_margin_approach',
+        'orbit.solver.fine_csv_target_rel_dt',
+        # params.stop.satellite has no 2.0 analogue; stays at its 3.0
+        # default (disabled) for a migrated config.
+        'params.stop.satellite.enabled',
+        'params.stop.satellite.sma_max',
+        'params.stop.disint_sat.enabled',
+        'params.stop.disint_sat.roche_enabled',
+        'params.stop.disint_sat.offset_roche',
+        'params.stop.disint_sat.spin_enabled',
+        'params.stop.disint_sat.offset_spin',
         'outgas.atmodeller.eos_CH4',
         'outgas.atmodeller.eos_CO',
         'outgas.atmodeller.eos_CO2',
@@ -198,12 +414,31 @@ _REVIEWED_NEUTRAL = frozenset(
         'outgas.calliope.nsolve',
         'outgas.calliope.p_guess_max',
         'outgas.h2_binodal',
+        'outgas.lavatmos.P_melt',
+        'outgas.lavatmos.T_min',
+        'outgas.lavatmos.fO2_buffer_model',
+        'outgas.lavatmos.melt_comp_name',
+        'outgas.lavatmos.xatol',
+        'outgas.vapourise',
         'params.dt.hysteresis_iters',
         'params.dt.hysteresis_sfinc',
+        # The giant-impact landing-step cap defaults to 0 (disabled), and a
+        # migrated config schedules no impacts, so it never engages.
+        'params.dt.impact_maximum',
         'params.dt.max_growth_factor',
         'params.dt.mushy_maximum',
         'params.dt.mushy_upper',
+        'params.dt.evection_maximum',
+        'params.dt.evection_target_rel_de',
+        'params.dt.evection_de_floor',
+        'params.dt.evection_rate_window',
+        'params.dt.evection_growth_factor',
+        'params.dt.evection_cooldown_iters',
         'params.dt.scale_decr',
+        # The unconverged-atmosphere criterion applies at its measured
+        # default, so a migrated config needs no explicit value for it.
+        'params.stop.stall.enabled',
+        'params.stop.stall.maximum',
         'params.dt.scale_incr',
         'params.dt.window',
         'params.out.dt_write_rel',
@@ -236,7 +471,7 @@ def _unhandled_v2_fields(paths):
             continue
         if path in mig.RENAMES or path in interior_targets:
             continue
-        if path in mig._ELEMENT_FIELDS or path in mig._IC_FIELDS:
+        if path in mig._ELEMENT_FIELDS or path in mig._IC_FIELDS or path in mig._ORBIT_FIELDS:
             continue
         if path in atmos_shared_src:
             continue
@@ -244,12 +479,25 @@ def _unhandled_v2_fields(paths):
             continue
         if path in mig.REMOVED:
             continue
-        if path == 'observe.synthesis':
+        if path == 'observe.synthesis' or path == mig._CHEM_WHEN:
             continue
         if path.startswith(_DROP_PREFIXES) or path == 'struct.zalmoxis':
             continue
         unhandled.append(path)
     return unhandled
+
+
+def test_the_migrated_config_check_refuses_a_string_for_a_bool_field():
+    """The schema check of a migrated config refuses ``"false"`` for a bool field,
+    naming it, instead of reading it as true; minimal.toml as written passes."""
+    from proteus.config import _error_lines, read_config
+
+    nested = read_config(Path(__file__).resolve().parents[2] / 'input' / 'minimal.toml')
+    mig._validate(nested)
+    nested.setdefault('params', {}).setdefault('out', {})['remove_sf'] = 'false'
+    with pytest.raises(Exception) as err:
+        mig._validate(nested)
+    assert "params.out.remove_sf: must be true or false, got 'false'" in _error_lines(err.value)
 
 
 def test_map_completeness():
@@ -304,6 +552,8 @@ def _compute_pm(v3_defaults):
         'planet.volatile_mode',
         'planet.R_int_override',
         'interior_struct.core_frac_mode',
+        'atmos_chem.mode',
+        'atmos_chem.times',
         'config_version',
     }
     return set(v3_defaults) - landed
@@ -324,15 +574,71 @@ def test_new_field_classified():
         f'new (unclassified): {sorted((pm - overridden) - _REVIEWED_NEUTRAL)}; '
         f'stale allowlist entries: {sorted(_REVIEWED_NEUTRAL - (pm - overridden))}'
     )
-    # The two known behaviour-changing new fields are pinned, not neutral.
+    # The known behaviour-changing new fields are pinned, not neutral.
     assert 'interior_energetics.kappah_floor' in overridden
     assert 'params.dt.maximum_rel' in overridden
+    assert 'interior_energetics.tmagma_tides_step' in overridden
 
 
 def test_kappah_floor_and_maximum_rel_overrides():
     """kappah_floor pins 0.0 (no floor) and maximum_rel pins 0.0 (strict dt cap)."""
     assert mig.OVERRIDES['interior_energetics.kappah_floor'] == 0.0
     assert mig.OVERRIDES['params.dt.maximum_rel'] == 0.0
+
+
+def test_hill_clamp_override_reproduces_unclipped_2_0_escape():
+    """2.0 sized escape from the unmodified XUV radius; the 3.0 default clips
+    it to the Hill radius. The override pins the clip off, so a migrated
+    config keeps its 2.0 escape rates rather than silently gaining the bound.
+    """
+    assert mig.OVERRIDES['escape.hill_clamp'] is False
+    # The live 3.0 default is the opposite; that difference is what the pin
+    # exists to bridge, so it is asserted here too.
+    from proteus.config._escape import Escape
+
+    assert Escape(module='zephyrus').hill_clamp is True
+
+
+def test_bol_scale_window_override_reproduces_unwindowed_2_0_scaling():
+    """2.0 had no time-gating on bol_scale: a non-unity factor applied for
+    the whole run. The live 3.0 default (bol_scale_start=None) disables
+    scaling outright regardless of bol_scale, so a naive migration would
+    silently turn off any bol_scale a 2.0 config had set. The override
+    must pin an always-open window: start at t=0 and a duration far
+    longer than any plausible run.
+    """
+    assert mig.OVERRIDES['star.bol_scale_start'] == pytest.approx(0.0)
+    # Discrimination: the duration must be large enough that no
+    # realistic stellar age (even the ~13.8 Gyr age of the universe)
+    # falls outside the window; a duration comparable to a typical run
+    # length (e.g. 1-10 Gyr) would silently reintroduce a cutoff 2.0
+    # never had.
+    assert mig.OVERRIDES['star.bol_scale_duration'] > 20.0
+
+    v3_defaults, _ = _v3()
+    # The pin is doing the work: the live 3.0 schema default disables
+    # scaling entirely, so letting the field default (rather than pinning
+    # it) would silently change a migrated run's stellar flux.
+    assert v3_defaults['star.bol_scale_start'] is None
+
+
+def test_tmagma_tides_step_override_reproduces_hardcoded_2_0_cap():
+    """2.0 hardcoded a 4.0 K poststep-change cap whenever tidal heating was
+    active (not user-configurable). The live 3.0 default of 10.0 K would
+    relax that cap for a migrated tidal-heating run, so the override must
+    pin the field to the stricter 2.0 value rather than let it default.
+    """
+    assert mig.OVERRIDES['interior_energetics.tmagma_tides_step'] == pytest.approx(4.0)
+    # Discrimination: the pin must be strictly tighter than the live 3.0
+    # default; a regression that pinned the 3.0 default value itself (a
+    # no-op override) would still satisfy an unconstrained equality check
+    # but relax the tidal-heating dT cap for migrated 2.0 runs.
+    v3_defaults, _ = _v3()
+    assert v3_defaults['interior_energetics.tmagma_tides_step'] == pytest.approx(10.0)
+    assert (
+        mig.OVERRIDES['interior_energetics.tmagma_tides_step']
+        < v3_defaults['interior_energetics.tmagma_tides_step']
+    )
 
 
 def _translate(v2_dict):
@@ -425,6 +731,24 @@ def test_spider_interior_split_and_renames():
     assert flat['interior_energetics.num_levels'] == 190
     assert flat['interior_energetics.mixing_length'] == 'constant'  # 2 -> "constant"
     assert flat['interior_energetics.flux_guess'] == pytest.approx(1000.0)
+
+
+def test_dummy_mantle_rho_is_dropped():
+    """A 2.0 dummy interior's mantle_rho is dropped, because 3.0 derives the density.
+
+    An explicit value is reported as dropped and reaches no 3.0 field: const_rho keeps
+    its 3.0 default (4000), not the 2.0 value (3300) or the 2.0 default (4550).
+    """
+    v2 = _minimal_spider_v2()
+    # The SPIDER structure needs a mantle mass from the interior, which the dummy lacks.
+    v2['struct']['module'] = 'dummy'
+    v2['interior']['module'] = 'dummy'
+    v2['interior']['dummy'] = {'mantle_rho': 3300.0}
+    flat, report = _translate(v2)
+    assert flat['interior_energetics.module'] == 'dummy'
+    assert not any(key.endswith('mantle_rho') for key in flat)
+    assert 'interior.dummy.mantle_rho' in report.dropped_removed
+    assert flat.get('interior_energetics.const_rho', 4000.0) == pytest.approx(4000.0)
 
 
 def test_tolerance_atol_rtol_not_swapped():
@@ -606,21 +930,79 @@ def test_radius_int_converts_earth_radii_to_metres():
     assert any('radius-specified' in w for w in report.warnings)
 
 
+def test_orbit_satellite_sma_converts_metres_to_earth_radii():
+    """A 2.0 orbit.semimajoraxis_sat (metres) converts to 3.0's R_earth-valued
+    orbit.satellite.semimajoraxis_sat, not AU.
+
+    2.0 consumes semimajoraxis_sat as a metre quantity; 3.0's
+    orbit.satellite.semimajoraxis_sat is in R_earth (see the Satellite class
+    docstring in src/proteus/config/_orbit.py and its use as
+    ``semimajoraxis_sat * R_earth`` in src/proteus/orbit/wrapper.py). Dividing
+    by AU instead of R_earth would be off by a factor of AU/R_earth (~23600x).
+    """
+    v2 = _minimal_spider_v2()
+    v2['orbit']['satellite'] = True
+    v2['orbit']['mass_sat'] = 7.347e22  # kg
+    v2['orbit']['semimajoraxis_sat'] = 3.0e8  # m
+    flat, report = _translate(v2)
+
+    assert flat['orbit.satellite.semimajoraxis_sat'] == pytest.approx(47.35268, rel=1e-5)
+    # Discrimination guard: the stale AU-divisor result (3e8 / 1.495978707e11)
+    # differs from the correct R_earth-divisor result by more than four orders
+    # of magnitude, so a regression to the old divisor cannot pass silently.
+    au_divisor_result = 3.0e8 / 1.495978707e11
+    assert abs(flat['orbit.satellite.semimajoraxis_sat'] - au_divisor_result) > 1.0
+
+    # mass_sat's M_earth conversion is unaffected by this fix and stays pinned.
+    assert flat['orbit.satellite.mass_sat'] == pytest.approx(0.01230241, rel=1e-5)
+    assert flat['orbit.satellite.include_satellite'] is True
+
+
+def test_albedo_lookup_table_is_dropped_with_a_warning():
+    """A 2.0 config whose ``albedo_pl`` names a CSV lookup table migrates to a
+    valid 3.0 config, leaving the field at its default and saying so.
+
+    2.0 accepted either a constant or a path; 3.0 narrowed the field to a float
+    and removed the lookup. Copying the path through would emit a 3.0 config
+    that fails validation, and quietly substituting a number would change the
+    physics without telling the user. Edge case: a numeric ``albedo_pl`` is
+    unaffected and must still be copied verbatim.
+    """
+    v2 = _minimal_spider_v2()
+    v2['atmos_clim']['albedo_pl'] = 'surface_albedos/lookup.csv'
+    flat, report = _translate(v2)
+
+    # The emitted config is valid: the field is absent, so 3.0 supplies its own
+    # default rather than inheriting a string.
+    assert 'atmos_clim.albedo_pl' not in flat
+    # The user is told, by name, what was dropped and what to do about it.
+    albedo_warnings = [w for w in report.warnings if 'albedo_pl' in w]
+    assert len(albedo_warnings) == 1
+    assert 'surface_albedos/lookup.csv' in albedo_warnings[0]
+    assert 'constant' in albedo_warnings[0]
+
+    # Discrimination: a numeric albedo is a different case and must survive
+    # unchanged, so the branch keys on the value type and not on the field name.
+    numeric = _minimal_spider_v2()
+    numeric['atmos_clim']['albedo_pl'] = 0.3
+    flat_numeric, report_numeric = _translate(numeric)
+    assert flat_numeric['atmos_clim.albedo_pl'] == pytest.approx(0.3, rel=1e-12)
+    assert [w for w in report_numeric.warnings if 'albedo_pl' in w] == []
+    # Limit input: zero is a legitimate albedo and must not be confused with
+    # "unset" by the keep filter.
+    zero = _minimal_spider_v2()
+    zero['atmos_clim']['albedo_pl'] = 0.0
+    flat_zero, _ = _translate(zero)
+    assert flat_zero['atmos_clim.albedo_pl'] == pytest.approx(0.0, abs=1e-15)
+
+
 def test_clean_spider_config_warns_only_about_legacy_observe_synthesis():
     """A clean SPIDER config only warns about the legacy observe.synthesis field."""
     _, report = _translate(_minimal_spider_v2())
     assert report.warnings == ['Unmapped 2.0 field (left out): observe.synthesis'], (
         report.warnings
     )
-
-    # The warning is reserved for fields main's 2.0 loader actually read. A key
-    # that was never part of the 2.0 schema had no effect on the 2.0 run, so
-    # dropping it is faithful and silent; warning on it would bury the one
-    # field that does need the user's attention.
-    v2 = _minimal_spider_v2()
-    v2['interior']['ghost_field'] = 1.0
-    _, ghost_report = _translate(v2)
-    assert ghost_report.warnings == report.warnings
+    assert report.dropped_unknown == []
 
 
 def test_grid_axis_renames():
@@ -650,3 +1032,201 @@ def test_grid_axis_renames():
     assert out['ref_config'] == 'input/base.toml'  # header preserved
     assert out['planet.elements.H_budget']['step'] == pytest.approx(5e3)
     assert any('H_mode' in w for w in report.warnings)
+
+
+def test_translated_key_outside_the_schema_is_refused_by_name(monkeypatch):
+    """A 3.0 path the translation emits but the schema lacks stops the migration and is named."""
+    from proteus.config.orphans import UnknownConfigKeyError
+
+    monkeypatch.setitem(mig.OVERRIDES, 'planet.mass_totl', 2.0)
+    with pytest.raises(UnknownConfigKeyError, match=r'"planet\.mass_totl"') as exc:
+        mig.translate(_minimal_spider_v2())
+    assert 'in the migrated 3.0 config' in str(exc.value)
+
+
+def test_main_writes_nothing_when_a_translated_key_is_refused(monkeypatch, tmp_path, capsys):
+    """The command exits 1, names the key on stderr and leaves no output file."""
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(_minimal_spider_v2(), v2_path)
+    monkeypatch.setitem(mig.OVERRIDES, 'planet.mass_totl', 2.0)
+    assert mig.main([str(v2_path), '-o', str(out_path)]) == 1
+    assert not out_path.exists()
+    err = capsys.readouterr().err
+    assert '"planet.mass_totl"' in err and 'fault in the migration tables' in err
+
+
+def test_translated_scalar_on_a_section_is_refused_as_misdeclared(monkeypatch):
+    """A translated value where the schema expects a section is refused and named."""
+    from proteus.config.orphans import UnknownConfigKeyError
+
+    monkeypatch.setitem(mig.OVERRIDES, 'planet', 1.0)
+    with pytest.raises(UnknownConfigKeyError, match='Misdeclared configuration section') as exc:
+        mig.translate(_minimal_spider_v2())
+    assert '"planet"' in str(exc.value)
+
+
+def test_main_runs_without_julia(tmp_path):
+    """The command migrates a 2.0 file in a fresh interpreter that cannot import juliacall."""
+    import subprocess
+
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(_minimal_spider_v2(), v2_path)
+    root = Path(__file__).resolve().parents[2]
+    code = (
+        "import sys; sys.modules['juliacall'] = None; "
+        f'sys.path[:0] = [{str(root / "tools")!r}, {str(root / "src")!r}]; '
+        'import migrate_config_v2_to_v3 as m; '
+        f'sys.exit(m.main([{str(v2_path)!r}, "-o", {str(out_path)!r}]))'
+    )
+    run = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr[-2000:]
+    assert out_path.exists()
+
+
+def _with_zalmoxis(v2):
+    v2['struct']['module'] = 'zalmoxis'
+    v2['struct']['zalmoxis'] = {'mantle_eos': 'WolfBower2018:MgSiO3', 'ghost_field': 1.0}
+
+
+def _with_aragog(v2):
+    v2['interior']['module'] = 'aragog'
+    v2['interior']['aragog'] = {'ghost_field': 1.0}
+
+
+def _with_inactive_aragog(v2):
+    v2['interior']['aragog'] = {'ghost_field': 1.0, 'num_levels': 50}
+
+
+def _with_ghosts(v2):
+    v2['interior']['ghost_field'] = 1.0
+    v2['delivery']['volatiles'] = {'XYZ': 1.0}
+
+
+@pytest.mark.parametrize(
+    'edit, names',
+    [
+        (_with_ghosts, ['delivery.volatiles.XYZ', 'interior.ghost_field']),
+        (_with_zalmoxis, ['struct.zalmoxis.ghost_field']),
+        (_with_aragog, ['interior.aragog.ghost_field']),
+        (_with_inactive_aragog, ['interior.aragog.ghost_field']),
+    ],
+    ids=['section', 'zalmoxis', 'aragog', 'inactive_block'],
+)
+def test_unknown_2_0_key_is_left_out_and_named(edit, names):
+    """A user key outside the 2.0 schema is left out, listed by name and not warned about."""
+    clean = _minimal_spider_v2()
+    edit(clean)
+    for name in names:
+        section, _, key = name.rpartition('.')
+        node = clean
+        for part in section.split('.'):
+            node = node[part]
+        del node[key]
+    _, clean_report = _translate(clean)
+    v2 = _minimal_spider_v2()
+    edit(v2)
+    flat, report = _translate(v2)
+    assert not set(names) & set(flat)
+    assert sorted(report.dropped_unknown) == names
+    assert f'Left out (not in the 2.0 schema): {report.dropped_unknown}' in report.text()
+    assert report.warnings == clean_report.warnings
+    assert report.dropped_inactive == clean_report.dropped_inactive
+
+
+def test_main_prints_the_left_out_keys(tmp_path, capsys):
+    """The command writes the migrated file and lists the left-out keys on stdout."""
+    v2 = _minimal_spider_v2()
+    _with_ghosts(v2)
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(v2, v2_path)
+    assert mig.main([str(v2_path), '-o', str(out_path)]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "Left out (not in the 2.0 schema): ['interior.ghost_field', 'delivery.volatiles.XYZ']"
+        in out
+    )
+
+
+@pytest.mark.parametrize('field, value', [('mass', 'heavy'), ('age_ini', [1, 2])])
+def test_wrong_typed_value_is_refused_by_the_schema(field, value, tmp_path):
+    """A 2.0 field holding a value of the wrong type fails 3.0 structuring and nothing is written."""
+    import cattrs
+
+    v2 = _minimal_spider_v2()
+    v2['star'][field] = value
+    with pytest.raises(cattrs.errors.ClassValidationError):
+        mig.translate(v2)
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(v2, v2_path)
+    with pytest.raises(cattrs.errors.ClassValidationError):
+        mig.main([str(v2_path), '-o', str(out_path)])
+    assert not out_path.exists()
+
+
+@pytest.mark.parametrize(
+    ('module', 'when', 'mode', 'times'),
+    [
+        ('vulcan', 'manually', 'none', 'end'),
+        ('vulcan', 'offline', 'offline', 'end'),
+        ('vulcan', 'online', 'offline', 'all'),
+        ('none', 'offline', 'none', 'end'),
+    ],
+    ids=[
+        'manual_runs_nothing',
+        'offline_runs_at_end',
+        'online_runs_every_snapshot',
+        'no_module',
+    ],
+)
+def test_chem_when_maps_to_mode_and_times(module, when, mode, times):
+    """2.0 atmos_chem.when becomes the 3.0 mode and times pair, and is not
+    carried over itself, since 3.0 refuses it as an unknown key. Without a
+    module there is nothing to run, so mode is none whatever when said."""
+    v2 = _minimal_spider_v2()
+    v2['atmos_chem'] = {'module': module, 'when': when}
+    flat, report = _translate(v2)
+    # The emitted config leaves out a field at its 3.0 default ('none', 'end')
+    assert flat.get('atmos_chem.mode', 'none') == mode
+    assert flat.get('atmos_chem.times', 'end') == times
+    assert 'atmos_chem.when' not in flat
+    online_warnings = [w for w in report.warnings if "'online'" in w]
+    assert bool(online_warnings) is (when == 'online' and module != 'none')
+    # The warning says the post-processed results need not match the old run
+    assert all('can differ' in w for w in online_warnings)
+
+
+def test_agni_solver_keeps_its_2_0_jacobian_and_linesearch_when_migrated():
+    """2.0 finite-differenced the AGNI jacobian at every step with the
+    backtracking linesearch. The 3.0 defaults are Broyden updates with the
+    non-monotone Armijo linesearch, so a migrated config pins broyden off (a
+    new field, through OVERRIDES) and keeps the 2.0 ls_default of 2 (a changed
+    default, which the migration writes out because it differs)."""
+    v3_defaults, _ = _v3()
+    assert v3_defaults['atmos_clim.agni.broyden'] is True
+    assert v3_defaults['atmos_clim.agni.ls_default'] == 3
+    assert mig.OVERRIDES['atmos_clim.agni.broyden'] is False
+
+    v2 = _minimal_spider_v2()
+    flat, _ = _translate(v2)
+    assert flat['atmos_clim.agni.broyden'] is False
+    assert flat['atmos_clim.agni.ls_default'] == 2
+
+    # An explicit 2.0 linesearch still wins over the 2.0 default.
+    v2['atmos_clim']['agni'] = {**v2['atmos_clim'].get('agni', {}), 'ls_default': 1}
+    flat_explicit, _ = _translate(v2)
+    assert flat_explicit['atmos_clim.agni.ls_default'] == 1
+
+
+def test_vulcan_vertical_advection_is_pinned_on_for_migrated_configs():
+    """2.0 always ran VULCAN with vertical advection at updraft_const. The 3.0
+    default turns it off, so a migrated config pins it on and keeps a nonzero
+    2.0 updraft; an explicit 3.0 choice is not needed to reproduce 2.0."""
+    v3_defaults, _ = _v3()
+    assert v3_defaults['atmos_chem.vulcan.use_vz'] is False
+    assert mig.OVERRIDES['atmos_chem.vulcan.use_vz'] is True
+
+    v2 = _minimal_spider_v2()
+    v2['atmos_chem'] = {'module': 'vulcan', 'when': 'offline', 'updraft_const': 5.0}
+    flat, _ = _translate(v2)
+    assert flat['atmos_chem.vulcan.use_vz'] is True
+    assert flat['atmos_chem.updraft_const'] == pytest.approx(5.0)

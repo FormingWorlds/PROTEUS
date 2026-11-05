@@ -10,6 +10,7 @@ For topic-specific parameter guides, see the **configuration reference** pages:
 - [Interior structure and energetics](../Reference/config/interior.md)
 - [Atmosphere and chemistry](../Reference/config/atmosphere.md)
 - [Escape and outgassing](../Reference/config/escape_outgas.md)
+- [Accretion](../Reference/config/accretion.md)
 - [Synthetic observations](../Reference/config/observe.md)
 
 For worked examples, see the [Tutorials](../Tutorials/quick_start_dummy.md).
@@ -22,15 +23,29 @@ configuration schema in
 so a configuration file only needs to set the parameters whose defaults you
 want to change. Empty sections can be omitted entirely. The
 [`minimal.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/minimal.toml)
-example shows how little a working file needs: a few science-critical choices
-(planet mass, orbit, volatiles, redox), with everything else left at its
-default.
+example sets only what its case needs: the planet mass and orbit, the hydrogen
+and carbon inventories, the redox state, and four run settings. The carbon
+inventory keeps the surface pressure above 90 bar while the mantle cools. The
+step floor of 100 yr and the step tolerance set how finely the molten stage is
+resolved. The run stops when the melt fraction falls to 0.05, and the interior
+structure is solved once at the start. Every other parameter is left at its
+default. The run takes about 1 h of CPU time and reaches its stop at about
+0.84 Myr, after 92 output rows.
+[`minimal_quick.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/minimal_quick.toml)
+runs the same modules with a grey atmosphere in place of AGNI. It takes about
+45 min of CPU time and reaches its stop at about 3.55 Myr, after 122 output
+rows. The wall time of both runs is shorter on a machine with several free
+cores.
 
 **Where to find the default for each parameter.** The configuration reference
 pages listed above give the default value of every parameter in their
 `Default` column, alongside its type and description. The auto-generated
 listing further down this page is built from the same schema and shows each
 parameter's source definition, including the coded default value.
+
+**Parameters of type `bool`** take only a TOML `true` or `false`. A quoted
+`"false"`, a `0`, a `1` or any other value is refused when the configuration
+is read, with an error that names the parameter.
 
 **To see exactly which defaults applied to a run**, open the
 `init_coupler.toml` file in that run's output folder. It is a completed copy of
@@ -44,6 +59,24 @@ example, the `mors` stellar evolution module (`star.module = 'mors'`) requires
 `star.mors.age_now`, whereas the `dummy` module does not. The configuration
 loader reports an error at startup if a required parameter is missing for the
 chosen modules.
+
+**Keys outside the schema are refused.** Loading a configuration fails if the
+file contains a key that the schema does not define, and the error names every
+such key. Because each parameter has a default, a misspelled or outdated option
+name would otherwise take no effect at all: the run would proceed on the
+default while the file appears to say otherwise. The check covers nested keys,
+so `planet.elements.H_budgets` is caught as readily as a stray top-level
+section. It runs when a run configuration is loaded, which includes `proteus
+start`, the data-download commands, and the base configuration of a parameter
+grid. If a key is rejected that you expect to exist, check its spelling against
+the configuration reference pages above or against `all_options.toml`.
+
+**Sections must be written as single tables.** Writing `[[planet]]` rather than
+`[planet]` declares an array of tables, which the parser cannot map onto the
+schema: the section is discarded whole and every parameter inside it reverts to
+its default. The name itself is spelled correctly in that case, so nothing
+about it looks wrong in the file. Loading refuses such a section and names it,
+and the fix is to remove the extra brackets.
 
 See [`all_options.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/all_options.toml) for a comprehensive example. Have a look at the other [input configs](https://github.com/FormingWorlds/PROTEUS/tree/main/input) for ideas of how to set up your config in practice.
 
@@ -184,6 +217,7 @@ See [`all_options.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/inpu
         my_star_var: float
             Star variable, must be 10 or lower!
         """
+
         my_star_var: float = field(validator=attrs.validators.le(10))
     ```
 

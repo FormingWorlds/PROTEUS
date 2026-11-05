@@ -43,7 +43,8 @@ from proteus.outgas.atmodeller import (
     _populate_volatile_element_reservoirs,
     calc_surface_pressures_atmodeller,
 )
-from proteus.utils.constants import element_mmw, gas_list, secs_per_year, vol_list
+from proteus.utils.constants import element_mmw, gas_list, noble_gases, secs_per_year, vol_list
+from proteus.utils.helper import eval_gas_mmw
 
 # NOTE: do NOT importorskip('atmodeller') at module scope. The helper tests below
 # exercise only pure-Python reconstruction (`_populate_volatile_element_reservoirs`,
@@ -77,7 +78,7 @@ def test_stoich_table_covers_exactly_the_volatile_species():
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_water_split_matches_closed_form_mass_fractions():
+def test_water_split_matches_closed_form_mass_fractions(validation_plot):
     """A pure-water inventory splits into H and O by the closed-form fractions.
 
     For H2O the atomic-O mass fraction is m_O / (2 m_H + m_O) = 0.88809 and the
@@ -99,19 +100,35 @@ def test_water_split_matches_closed_form_mass_fractions():
     h_total = _element_total(hf_row, 'H')
 
     # Pinned closed-form fractions (hand-computed from IUPAC atomic masses).
-    assert o_total == pytest.approx(m_h2o * 0.88809, rel=1e-4)
-    assert h_total == pytest.approx(m_h2o * 0.11191, rel=1e-4)
+    frac_o, frac_h, equal = 0.88809, 0.11191, 0.5
+    assert o_total == pytest.approx(m_h2o * frac_o, rel=1e-4)
+    assert h_total == pytest.approx(m_h2o * frac_h, rel=1e-4)
 
     # Discrimination guard: an equal-split (0.5 each) would place H at 2.0e21 kg,
     # differing from the correct 4.47e20 kg by >> tol.
-    assert abs(h_total - m_h2o * 0.5) > 0.3 * m_h2o
+    assert abs(h_total - m_h2o * equal) > 0.3 * m_h2o
 
     # Mass conservation: the split conserves the water mass exactly.
     assert h_total + o_total == pytest.approx(m_h2o, rel=1e-12)
     # The atmospheric reservoir (the field escape reads) carries its share.
-    assert hf_row['H_kg_atm'] == pytest.approx(2.5e21 * 0.11191, rel=1e-4)
+    assert hf_row['H_kg_atm'] == pytest.approx(2.5e21 * frac_h, rel=1e-4)
     # Crucially the total slot is NOT written by the helper (escape owns it).
     assert 'H_kg_total' not in hf_row
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.bar(['O', 'H'], [o_total / m_h2o, h_total / m_h2o], width=0.5, label='Helper split')
+        ax.plot(['O', 'H'], [frac_o, frac_h], 's', mfc='none', ms=12, label='Closed form')
+        ax.axhline(equal, ls='--', label='Equal split')
+        ax.set_ylabel('Mass fraction of the water')
+        ax.set_ylim(0.0, 1.0)
+        ax.legend()
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'outgas_atmodeller_water_split')
 
 
 @pytest.mark.physics_invariant
@@ -203,7 +220,10 @@ def test_element_budget_survives_outgas_reservoir_escape():
     dt = 1.0  # yr
     esc_mass = 3.0e12 * secs_per_year * dt
     m_vols_atm = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in ('H', 'O', 'C'))
-    expected_h = h_budget - esc_mass * (hf_row['H_kg_atm'] / m_vols_atm)
+    if m_vols_atm > 0:
+        expected_h = h_budget - esc_mass * (hf_row['H_kg_atm'] / m_vols_atm)
+    else:
+        expected_h = h_budget  # No escape debit when no volatile atmosphere
 
     tgt = calc_new_elements(hf_row, dt=dt, reservoir='outgas')
 
@@ -211,14 +231,15 @@ def test_element_budget_survives_outgas_reservoir_escape():
     assert (h_budget - tgt['H']) > 0.01 * h_budget  # a real, resolvable debit
     assert tgt['H'] == pytest.approx(expected_h, rel=1e-9)
 
-    # Discrimination: with the atmospheric reservoir zeroed (the bug state), the
-    # same call collapses every element to zero instead of debiting it.
-    bug_row = dict(hf_row)
+    # An empty atmospheric reservoir provides no escape losses,
+    # preserving the planet-level budget without collapsing to zero.
+    empty_row = dict(hf_row)
     for e in element_mmw:
-        bug_row[f'{e}_kg_atm'] = 0.0
-    tgt_bug = calc_new_elements(bug_row, dt=dt, reservoir='outgas')
-    assert tgt_bug['H'] == 0.0
-    assert all(v == 0.0 for v in tgt_bug.values())
+        empty_row[f'{e}_kg_atm'] = 0.0
+    tgt_empty = calc_new_elements(empty_row, dt=dt, reservoir='outgas')
+    assert (h_budget - tgt_empty['H']) == pytest.approx(0.0, abs=1e-6)
+    assert tgt_empty['H'] == pytest.approx(h_budget, rel=1e-12)
+    assert tgt_empty['H'] > 1.0e20  # discriminates against the zero collapse
 
 
 @pytest.mark.physics_invariant
@@ -259,13 +280,19 @@ def test_o2_endpoint_keeps_live_budget_no_false_desiccation():
     # the O2 endpoint.
     assert tgt['O'] > 0.99 * 9.0e21
 
-    # Discrimination: the pre-fix state (no O reservoir) collapses the budget,
-    # which is the false-refusal / livelock the fix removes.
-    bug_row = dict(hf_row)
+    # With no atmospheric oxygen, escape draws nothing and preserves
+    # the total oxygen budget against false refusal.
+    o_budget = hf_row['O_kg_total']
+    empty_row = dict(hf_row)
     for e in element_mmw:
-        bug_row[f'{e}_kg_atm'] = 0.0
-    tgt_bug = calc_new_elements(bug_row, dt=1.0, reservoir='outgas')
-    assert tgt_bug['O'] == 0.0
+        empty_row[f'{e}_kg_atm'] = 0.0
+    tgt_empty = calc_new_elements(empty_row, dt=1.0, reservoir='outgas')
+    assert (o_budget - tgt_empty['O']) == pytest.approx(0.0, abs=1e-6)
+    assert tgt_empty['O'] == pytest.approx(o_budget, rel=1e-12)
+    assert tgt_empty['O'] > 8.0e21  # discriminates against the zero collapse
+    # rel=1e-4 because the debit is a 3e10 kg difference between two 9e21 kg
+    # totals, where double precision resolves only about 2e6 kg (rel 6e-5).
+    assert (o_budget - tgt['O']) == pytest.approx(1.0e3 * secs_per_year * 1.0, rel=1e-4)
 
 
 def test_model_cache_builds_once_per_species_network():
@@ -598,12 +625,12 @@ def test_atm_mass_falls_back_to_thin_atm_recon_when_gas_mass_absent(caplog):
 
 
 @pytest.mark.physics_invariant
-def test_condensed_mass_enters_solid_reservoir_and_closes_carbon():
-    """Condensed (graphite) carbon is routed to C_kg_solid so C still closes.
+def test_condensed_mass_enters_condensed_reservoir_and_closes_carbon():
+    """Condensed (graphite) carbon is routed to C_kg_condensed so C still closes.
 
     atmodeller reports condensed-phase mass separately (``element_C.
     condensed_mass``); the gas-species inventory does not carry it. Without
-    folding it into the solid reservoir, ``C_kg_atm + C_kg_liquid + C_kg_solid``
+    its own ``C_kg_condensed`` reservoir, ``C_kg_atm + C_kg_liquid + C_kg_solid``
     would under-count the carbon budget exactly like the SO2 atmospheric drop.
     Here graphite holds part of the carbon budget; the split must still close.
     """
@@ -642,10 +669,11 @@ def test_condensed_mass_enters_solid_reservoir_and_closes_carbon():
         calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
     _MODEL_CACHE.clear()
 
-    # The condensed carbon lands in the solid reservoir.
-    assert hf_row['C_kg_solid'] == pytest.approx(condensed_C, rel=1e-9)
-    # Full closure: atmosphere + melt + solid == the carbon budget.
-    c_split = sum(float(hf_row[f'C_kg_{r}']) for r in ('atm', 'liquid', 'solid'))
+    # The condensed carbon lands in its own reservoir, not the solid mantle.
+    assert hf_row['C_kg_condensed'] == pytest.approx(condensed_C, rel=1e-9)
+    assert hf_row['C_kg_solid'] == 0.0
+    # Full closure: atmosphere + melt + solid + condensed == the carbon budget.
+    c_split = sum(float(hf_row[f'C_kg_{r}']) for r in ('atm', 'liquid', 'solid', 'condensed'))
     assert c_split == pytest.approx(C_BUDGET, rel=1e-9), (
         f'C split {c_split:.6e} != budget {C_BUDGET:.6e}'
     )
@@ -654,3 +682,588 @@ def test_condensed_mass_enters_solid_reservoir_and_closes_carbon():
     c_gas_liquid = float(hf_row['C_kg_atm']) + float(hf_row['C_kg_liquid'])
     assert c_gas_liquid == pytest.approx(0.3 * C_BUDGET, rel=1e-6)
     assert abs(c_gas_liquid - C_BUDGET) > 0.5 * C_BUDGET
+
+
+def _carbon_only_condensate_case():
+    """Config and helpfile row for a carbon-only solve with condensates enabled."""
+    config = _make_user_constant_config(0.0)
+    config.outgas.atmodeller.include_condensates = True
+    hf_row = _hf_row_with_HS_budget()
+    hf_row['H_kg_total'] = 0.0
+    hf_row['S_kg_total'] = 0.0
+    hf_row['C_kg_total'] = 5.0e21
+    return config, hf_row
+
+
+def test_graphite_creation_failure_warns_and_drops_condensate(caplog):
+    """A failure to build graphite is logged, and the solve runs without it.
+
+    With ``include_condensates`` on, the run must not quietly lose graphite: the
+    warning names the condensate and carries the underlying error, and the
+    species network handed to atmodeller holds no condensed species.
+    """
+    import logging
+
+    atmodeller = pytest.importorskip('atmodeller')
+    config, hf_row = _carbon_only_condensate_case()
+
+    out = MagicMock()
+    out.quick_look.return_value = {'CO2_g': np.array(20.0), 'O2_g': np.array(1.0e-6)}
+    out.total_pressure.return_value = np.array(20.0)
+    out.asdict.return_value = {}
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.atmodeller'):
+        with (
+            patch.object(
+                atmodeller.ChemicalSpecies,
+                'create_condensed',
+                side_effect=RuntimeError('no C_cd data'),
+            ),
+            patch('atmodeller.EquilibriumModel', return_value=fake_model) as model_cls,
+        ):
+            calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    assert any(
+        'Could not add condensate C_cd' in r.getMessage() and 'no C_cd data' in r.getMessage()
+        for r in caplog.records
+    ), 'graphite creation failure was not logged'
+    network = model_cls.call_args.args[0]
+    assert network.condensed_species_names == ()
+
+
+def test_graphite_activity_logged_each_solve(caplog):
+    """The graphite activity and condensed mass are logged at INFO when C_cd is solved for.
+
+    The species, solve-input, result and surface-pressure summaries of the same
+    solve are logged at DEBUG only.
+    """
+    import logging
+
+    pytest.importorskip('atmodeller')
+    config, hf_row = _carbon_only_condensate_case()
+
+    out = MagicMock()
+    out.quick_look.return_value = {'CO2_g': np.array(20.0), 'O2_g': np.array(1.0e-6)}
+    out.total_pressure.return_value = np.array(20.0)
+    out.asdict.return_value = {
+        'C_cd': {'activity': np.array(0.25), 'total_mass': np.array(3.0e-6)},
+        'O2_g': {'log10dIW_1_bar': np.array(-0.1), 'gas_mass': np.array(1.0e10)},
+    }
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with caplog.at_level(logging.DEBUG, logger='fwl.proteus.outgas.atmodeller'):
+        with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+            calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    graphite_lines = [
+        (r.levelno, r.getMessage())
+        for r in caplog.records
+        if r.getMessage().startswith('Condensate C:')
+    ]
+    assert graphite_lines == [
+        (logging.INFO, 'Condensate C: activity=0.250, condensed mass=3.00e-06 kg')
+    ]
+    # The per-solve species, inputs, result and surface summaries are debug-only, so
+    # the condensate line is the one atmodeller record an INFO log shows each solve.
+    summaries = (
+        'Atmodeller species:',
+        'Atmodeller solve:',
+        'Atmodeller result:',
+        'Atmodeller: P_surf=',
+    )
+    summary_levels = {
+        prefix: [r.levelno for r in caplog.records if r.getMessage().startswith(prefix)]
+        for prefix in summaries
+    }
+    assert summary_levels == {prefix: [logging.DEBUG] for prefix in summaries}
+    assert hf_row['C_cd_activity'] == pytest.approx(0.25, rel=1e-12)
+    assert hf_row['C_cd_kg'] == pytest.approx(3.0e-6, rel=1e-12)
+
+
+def test_unavailable_condensate_values_log_as_na(caplog):
+    """A non-finite activity and a missing mass log as n/a and record zero.
+
+    Edge case: the float formats of the condensate line reject None, so without
+    the guard the record cannot be formatted and logging prints a traceback.
+    """
+    import logging
+
+    pytest.importorskip('atmodeller')
+    config, hf_row = _carbon_only_condensate_case()
+
+    out = MagicMock()
+    out.quick_look.return_value = {'CO2_g': np.array(20.0), 'O2_g': np.array(1.0e-6)}
+    out.total_pressure.return_value = np.array(20.0)
+    out.asdict.return_value = {
+        'C_cd': {'activity': np.array(np.nan)},
+        'O2_g': {'log10dIW_1_bar': np.array(-0.1), 'gas_mass': np.array(1.0e10)},
+    }
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.outgas.atmodeller'):
+        with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+            calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    graphite_lines = [
+        r.getMessage() for r in caplog.records if r.getMessage().startswith('Condensate C:')
+    ]
+    assert graphite_lines == ['Condensate C: activity=n/a, condensed mass=n/a kg']
+    assert hf_row['C_cd_activity'] == 0.0
+    assert hf_row['C_cd_kg'] == 0.0
+
+
+def test_condensate_tables_hold_every_atmodeller_condensate_of_the_outgassing_elements():
+    """include_condensates adds all of atmodeller's condensates the chemistry can form.
+
+    A condensate can only join a solve when every element it holds has a budget,
+    so the ones that can are those built from the volatile elements and noble
+    gases. The list PROTEUS writes helpfile columns for must be exactly those: a
+    condensate added to atmodeller's data would otherwise be left out without any
+    notice, and one PROTEUS lists that atmodeller lacks could never join.
+    """
+    pytest.importorskip('atmodeller')
+    from atmodeller import ChemicalSpecies, SpeciesNetwork
+
+    from proteus.utils.constants import (
+        condensate_conductivity,
+        condensate_density,
+        condensate_names,
+        vol_element_list,
+    )
+
+    allowed = set(vol_element_list) | set(noble_gases)
+    available = [
+        s[: -len('_cd')] for s in SpeciesNetwork.available_species() if s.endswith('_cd')
+    ]
+    reachable = {
+        f
+        for f in available
+        if set(ChemicalSpecies.create_condensed(f).data.elements) <= allowed
+    }
+    # Discrimination: atmodeller also has condensates of rock-forming elements
+    # (e.g. FeO, SiO2), which the element filter must leave out.
+    assert len(available) > len(reachable)
+    assert reachable == set(condensate_density)
+    # The condensates are the keys of condensate_density; the other tables match them
+    assert set(condensate_names) == set(condensate_conductivity) == set(condensate_density)
+
+
+def test_condensates_need_their_elements_and_their_data_range():
+    """Only condensates whose elements have budgets and whose data cover T_magma join.
+
+    With H and C budgets at 2200 K: graphite (data to 6000 K) joins; water is built
+    from H, which has a budget, but its data stop at 600 K, so it is left out
+    rather than extrapolated; sulfur and sulfuric acid need S, which has none.
+    """
+    pytest.importorskip('atmodeller')
+    config, hf_row = _carbon_only_condensate_case()
+    hf_row['H_kg_total'] = _H_BUDGET
+    assert hf_row['T_magma'] == pytest.approx(2200.0, rel=1e-12)
+
+    out = MagicMock()
+    out.quick_look.return_value = {'CO2_g': np.array(20.0), 'O2_g': np.array(1.0e-6)}
+    out.total_pressure.return_value = np.array(20.0)
+    out.asdict.return_value = {}
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model) as model_cls:
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    network = model_cls.call_args.args[0]
+    assert network.condensed_species_names == ('C_cd',)
+    # Discrimination: the gas network does carry H, so water was refused on its range.
+    assert 'H2O_g' in [s.name for s in network.data]
+
+
+@pytest.mark.parametrize('source', ['from_O_budget', 'user_constant'])
+def test_no_budget_left_resets_every_condensate_column_to_zero(source):
+    """With no budget above threshold every condensate column reads 0.
+
+    Under ``from_O_budget`` no solve runs; under ``user_constant`` the O2-only
+    network is solved against the buffer and carries no condensate. Edge case: stale
+    values from an earlier solve, which must not survive the step and leak into the
+    element closure.
+    """
+    pytest.importorskip('atmodeller')
+    from proteus.utils.constants import condensate_density, vol_element_list
+
+    config, hf_row = _carbon_only_condensate_case()
+    config.planet.fO2_source = source
+    hf_row['C_kg_total'] = 0.0  # every element, O included, now below threshold
+    hf_row['O_kg_total'] = 0.0
+    stale = [f'{c}_cd_{q}' for c in condensate_density for q in ('activity', 'kg')]
+    stale += [f'{e}_kg_condensed' for e in vol_element_list]
+    hf_row.update(dict.fromkeys(stale, 1.0e20))
+
+    out = MagicMock()
+    out.quick_look.return_value = {'O2_g': np.array(1.0e-6)}
+    out.total_pressure.return_value = np.array(1.0e-6)
+    out.asdict.return_value = {'O2_g': {'gas_mass': np.array(1.0e10)}}
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model) as model_cls:
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    assert [hf_row[k] for k in stale] == [0.0] * len(stale)
+    if source == 'from_O_budget':
+        assert not model_cls.called
+    else:
+        assert model_cls.call_args.args[0].condensed_species_names == ()
+
+
+@pytest.mark.physics_invariant
+def test_condensed_columns_present_and_zero_when_condensates_disabled():
+    """Every volatile element has a condensed column, held at 0 without condensates.
+
+    The helpfile always carries ``{e}_kg_condensed``. With
+    ``include_condensates`` off, the wrapper writes 0 to each of them even if
+    the solver output reports a condensed mass, so a stale or spurious value
+    cannot enter the element closure; the carbon split then closes on
+    atmosphere and melt alone.
+    """
+    pytest.importorskip('atmodeller')
+    from proteus.utils.constants import vol_element_list
+    from proteus.utils.coupler import GetHelpfileKeys
+
+    keys = set(GetHelpfileKeys())
+    assert {f'{e}_kg_condensed' for e in vol_element_list} <= keys
+
+    config, hf_row = _carbon_only_condensate_case()
+    config.outgas.atmodeller.include_condensates = False
+    for e in vol_element_list:
+        hf_row[f'{e}_kg_condensed'] = 1.0e20  # stale value from an earlier step
+
+    c_frac_co2 = element_mmw['C'] / (element_mmw['C'] + 2 * element_mmw['O'])
+    co2_total = hf_row['C_kg_total'] / c_frac_co2
+    out = MagicMock()
+    out.quick_look.return_value = {'CO2_g': np.array(20.0), 'O2_g': np.array(1.0e-6)}
+    out.total_pressure.return_value = np.array(20.0)
+    out.asdict.return_value = {
+        'CO2_g': {'gas_mass': np.array(co2_total), 'dissolved_mass': np.array(0.0)},
+        'O2_g': {'log10dIW_1_bar': np.array(-0.1), 'gas_mass': np.array(1.0e10)},
+        'element_C': {'condensed_mass': np.array(4.0e21)},  # ignored without condensates
+    }
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    assert [hf_row[f'{e}_kg_condensed'] for e in vol_element_list] == [0.0] * len(
+        vol_element_list
+    )
+    c_split = sum(float(hf_row[f'C_kg_{r}']) for r in ('atm', 'liquid', 'solid', 'condensed'))
+    assert c_split == pytest.approx(hf_row['C_kg_total'], rel=1e-9)
+
+
+@pytest.mark.physics_invariant
+def test_mol_columns_written_across_solve_noble_and_excluded_species():
+    """The ``{sp}_mol_*`` columns are populated in each of the three species branches.
+
+    ``PROTEUS/#842``: the helpfile schema declares ``{sp}_mol_atm`` /
+    ``_mol_liquid`` / ``_mol_total`` / ``_mol_solid`` for every gas species, but
+    the atmodeller wrapper only ever wrote the ``_kg_*`` columns, leaving the
+    mole-count columns at their zeroed default regardless of the solve. Pins
+    the mole-count write in each of the three branches the species loop takes.
+    ``_mol_solid`` is set to 0.0 for every species in every branch, matching
+    ``_kg_solid``; this test pins that value rather than leaving it unchecked.
+
+    * H2O is in the solve output: its mole counts are read directly from
+      atmodeller's own ``gas_number`` / ``dissolved_number`` / ``total_number``,
+      pinned independently of the mass values so a mass-derived mole count
+      (dividing by a molar mass) would not accidentally satisfy this test.
+    * He is an inactive noble gas absent from the solve output: its
+      atmospheric and dissolved moles are zero, and its total moles are
+      recovered from the escape-owned ``He_kg_total`` budget via the element
+      molar mass (the species and the element are the same monatomic entity).
+    * NH3 is a reactive species outside the solve: its atmosphere mass and every
+      mole column are 0, as CALLIOPE reports them.
+    """
+    pytest.importorskip('atmodeller')
+    config = _make_user_constant_config(0.0)
+    hf_row = _hf_row_with_HS_budget()
+
+    he_kg_total = 1.0e19
+    nh3_kg_atm = 3.0e18
+    hf_row['He_kg_total'] = he_kg_total
+    hf_row['NH3_kg_atm'] = nh3_kg_atm
+
+    h2o_total_mass, h2o_dissolved_mass, h2o_gas_mass = 5.0e20, 1.0e20, 4.0e20
+    h2o_total_mol, h2o_dissolved_mol, h2o_gas_mol = 2.7e22, 5.0e21, 2.0e22
+
+    out = MagicMock()
+    out.quick_look.return_value = {
+        'H2O_g': np.array(40.0),
+        'O2_g': np.array(1.0e-6),
+    }
+    out.total_pressure.return_value = np.array(40.0)
+    out.asdict.return_value = {
+        'H2O_g': {
+            'gas_mass': np.array(h2o_gas_mass),
+            'dissolved_mass': np.array(h2o_dissolved_mass),
+            'total_mass': np.array(h2o_total_mass),
+            'gas_number': np.array(h2o_gas_mol),
+            'dissolved_number': np.array(h2o_dissolved_mol),
+            'total_number': np.array(h2o_total_mol),
+        },
+        'O2_g': {'log10dIW_1_bar': np.array(-0.1), 'gas_mass': np.array(1.0e10)},
+    }
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    # H2O: in-solve species, mole counts read directly from atmodeller's own
+    # gas_number / dissolved_number / total_number, independent of the kg split.
+    assert hf_row['H2O_mol_liquid'] == pytest.approx(h2o_dissolved_mol, rel=1e-9)
+    assert hf_row['H2O_mol_atm'] == pytest.approx(h2o_gas_mol, rel=1e-9)
+    assert hf_row['H2O_mol_total'] == pytest.approx(h2o_total_mol, rel=1e-9)
+    assert hf_row['H2O_mol_solid'] == 0.0
+
+    # He: inactive noble gas absent from the solve output. Atmospheric and
+    # dissolved moles are zero; total moles come from the escape-owned kg
+    # budget via the element molar mass.
+    assert hf_row['He_mol_liquid'] == 0.0
+    assert hf_row['He_mol_atm'] == 0.0
+    assert hf_row['He_mol_total'] == pytest.approx(he_kg_total / eval_gas_mmw('He'), rel=1e-9)
+    assert hf_row['He_mol_solid'] == 0.0
+
+    # NH3: a reactive species outside the solve reports 0 atmosphere mass and 0 in
+    # every mole column, as CALLIOPE does.
+    assert hf_row['NH3_kg_atm'] == 0.0
+    for col in ('liquid', 'atm', 'total', 'solid'):
+        assert hf_row[f'NH3_mol_{col}'] == 0.0
+
+
+@pytest.mark.physics_invariant
+def test_mol_columns_derived_from_kg_when_solve_omits_mole_count():
+    """An in-solve species with a mass output but no mole count falls back to kg.
+
+    ``PROTEUS/#842`` follow-up: the in-solve branch reads mole counts directly
+    from atmodeller's own ``gas_number`` / ``dissolved_number`` / ``total_number``
+    output. If a future atmodeller version reports ``total_mass`` for a species
+    without also reporting ``total_number``, the mole columns must still be
+    populated, matching the fallback convention already used by the noble-gas
+    and excluded-species branches: divide the kg values just written by the
+    species' own molar mass.
+    """
+    pytest.importorskip('atmodeller')
+    config = _make_user_constant_config(0.0)
+    hf_row = _hf_row_with_HS_budget()
+
+    co2_total_mass, co2_dissolved_mass, co2_gas_mass = 6.0e20, 2.0e20, 4.0e20
+    hf_row['C_kg_total'] = co2_total_mass * element_mmw['C'] / eval_gas_mmw('CO2')
+
+    out = MagicMock()
+    out.quick_look.return_value = {
+        'H2O_g': np.array(40.0),
+        'O2_g': np.array(1.0e-6),
+    }
+    out.total_pressure.return_value = np.array(40.0)
+    out.asdict.return_value = {
+        'CO2_g': {
+            'gas_mass': np.array(co2_gas_mass),
+            'dissolved_mass': np.array(co2_dissolved_mass),
+            'total_mass': np.array(co2_total_mass),
+        },
+        'O2_g': {'log10dIW_1_bar': np.array(-0.1), 'gas_mass': np.array(1.0e10)},
+    }
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    co2_mmw = eval_gas_mmw('CO2')
+    assert hf_row['CO2_kg_liquid'] == pytest.approx(co2_dissolved_mass, rel=1e-9)
+    assert hf_row['CO2_kg_atm'] == pytest.approx(co2_gas_mass, rel=1e-9)
+    assert hf_row['CO2_kg_total'] == pytest.approx(co2_total_mass, rel=1e-9)
+    assert hf_row['CO2_mol_liquid'] == pytest.approx(co2_dissolved_mass / co2_mmw, rel=1e-9)
+    assert hf_row['CO2_mol_atm'] == pytest.approx(co2_gas_mass / co2_mmw, rel=1e-9)
+    assert hf_row['CO2_mol_total'] == pytest.approx(co2_total_mass / co2_mmw, rel=1e-9)
+    assert hf_row['CO2_mol_solid'] == 0.0
+
+
+_CALLIOPE_SPECIES_FIELDS = ('bar', 'vmr', 'kg_atm', 'kg_liquid', 'kg_solid', 'kg_total',
+                            'mol_atm', 'mol_liquid', 'mol_solid', 'mol_total')  # fmt: skip
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('with_output', [('H2O', 'S2'), ('S2',), ('H2O',)])
+def test_a_species_that_leaves_the_solve_reports_zero_in_every_field(with_output):
+    """Every species carried from an earlier call without output from this solve (N2 and
+    NH3 with N now below mass_thresh, and each species with no output entry, H2O and S2
+    included in turn) reports 0 in every field CALLIOPE zero-initialises, except that a
+    noble gas keeps its kg_total with the matching mol_total; the N atmosphere mass is 0,
+    the mixing ratios sum to 1 and the partial pressures to P_surf."""
+    pytest.importorskip('atmodeller')
+    config = _make_user_constant_config(0.0)
+    hf_row = _hf_row_with_HS_budget()
+    carried = [s for s in vol_list + noble_gases if s not in with_output + ('O2',)]
+    for k, sp in enumerate(carried):
+        hf_row.update({f'{sp}_{f}': 1.0e10 * (10 * k + i + 1)
+                       for i, f in enumerate(_CALLIOPE_SPECIES_FIELDS)})  # fmt: skip
+    hf_row['N_kg_atm'] = 8.8e15
+    noble_kg = {g: hf_row[f'{g}_kg_total'] for g in noble_gases}
+    assign = {'H2O': ('H', _H_BUDGET, 0.5), 'S2': ('S', _S_BUDGET, 0.5)}
+    out, _ = _build_conserving_output({sp: assign[sp] for sp in with_output})
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    [(solved, *_)] = _MODEL_CACHE
+    _MODEL_CACHE.clear()
+
+    assert 'H2O_g' in solved and not {'N2_g', 'H3N_g'} & set(solved)
+    stale = {
+        f'{sp}_{f}': hf_row[f'{sp}_{f}']
+        for sp in carried
+        for f in _CALLIOPE_SPECIES_FIELDS
+        if not (sp in noble_gases and f in ('kg_total', 'mol_total'))
+    }
+    assert stale == dict.fromkeys(stale, 0.0)
+    assert {g: hf_row[f'{g}_kg_total'] for g in noble_gases} == noble_kg
+    mol = {g: hf_row[f'{g}_mol_total'] for g in noble_gases}
+    assert mol == pytest.approx(
+        {g: noble_kg[g] / eval_gas_mmw(g) for g in noble_gases}, rel=1e-12
+    )
+    assert hf_row['N_kg_atm'] == 0.0
+    assert sum(hf_row[f'{s}_vmr'] for s in gas_list) == pytest.approx(1.0, rel=1e-12)
+    assert sum(hf_row[f'{s}_bar'] for s in gas_list) == pytest.approx(
+        hf_row['P_surf'], rel=1e-12
+    )
+
+
+@pytest.mark.physics_invariant
+def test_noble_gas_without_total_mass_reports_zero_atmosphere():
+    """A noble gas in quick_look with no output entry ends with 0 in its pressure,
+    mixing ratio, atmosphere, melt and solid columns, not the quick_look values, keeps
+    its escape-owned kg_total and derives mol_total from it."""
+    pytest.importorskip('atmodeller')
+    config = _make_user_constant_config(0.0)
+    hf_row = _hf_row_with_HS_budget()
+    he_kg_total = 1.0e19
+    hf_row['He_kg_total'] = he_kg_total
+    seeded = ('kg_liquid', 'kg_solid', 'mol_atm', 'mol_liquid', 'mol_solid')
+    hf_row.update({f'He_{f}': 1.0e10 for f in seeded})
+
+    out = MagicMock()
+    out.quick_look.return_value = {
+        'H2O_g': np.array(40.0),
+        'He_g': np.array(10.0),
+        'O2_g': np.array(1.0e-6),
+    }
+    out.total_pressure.return_value = np.array(50.0)
+    out.asdict.return_value = {
+        'H2O_g': {
+            'gas_mass': np.array(4.0e20),
+            'dissolved_mass': np.array(1.0e20),
+            'total_mass': np.array(5.0e20),
+        },
+        'O2_g': {'log10dIW_1_bar': np.array(-0.1), 'gas_mass': np.array(1.0e10)},
+    }
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    zeroed = ('bar', 'vmr', 'kg_atm', *seeded)
+    assert {f: hf_row[f'He_{f}'] for f in zeroed} == dict.fromkeys(zeroed, 0.0)
+    assert hf_row['He_kg_total'] == he_kg_total
+    assert hf_row['He_mol_total'] == pytest.approx(he_kg_total / eval_gas_mmw('He'), rel=1e-12)
+
+
+def _solve_with_solver_status(status, hf_row: dict) -> None:
+    """Run the wrapper on the reducing scenario, with ``status`` as atmodeller's
+    solver status (``None`` leaves it out of the output)."""
+    pytest.importorskip('atmodeller')  # patches atmodeller.EquilibriumModel below
+    config = _make_user_constant_config(-2.0)
+    fake_out, _ = _build_conserving_output(_REGRESSION_SCENARIOS['reducing_IWm2']['assign'])
+    if status is not None:
+        fake_out.asdict.return_value['solver'] = {'status': np.array(status)}
+    fake_model = MagicMock()
+    fake_model.output = fake_out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    try:
+        with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+            calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    finally:
+        _MODEL_CACHE.clear()
+
+
+def test_a_solve_that_did_not_converge_raises_and_writes_nothing():
+    """An atmodeller release that does not raise on its own keeps the start guess as
+    the output when no attempt converges, with solver status False. The wrapper
+    refuses it, naming the attempt budget, before any of it reaches the row."""
+    hf_row = _hf_row_with_HS_budget()
+    before = dict(hf_row)
+    with pytest.raises(RuntimeError, match=r'did not converge.*solver_multistart = 1 '):
+        _solve_with_solver_status([False], hf_row)
+    assert hf_row == before
+
+    # Discrimination: the same output with status True is written to the row.
+    _solve_with_solver_status([True], hf_row)
+    assert hf_row['H2_kg_atm'] > 0.0
+
+
+def test_a_solve_without_a_solver_status_warns_and_is_written(caplog):
+    """Edge case: an output without the solver status cannot be checked. The solve is
+    still written, and a warning says its convergence was not checked."""
+    import logging
+
+    hf_row = _hf_row_with_HS_budget()
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.atmodeller'):
+        _solve_with_solver_status(None, hf_row)
+    assert any('convergence not checked' in r.getMessage() for r in caplog.records)
+    assert hf_row['H2_kg_atm'] > 0.0

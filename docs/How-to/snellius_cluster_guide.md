@@ -4,15 +4,13 @@
 
 1. Connect via SSH. See instructions from SURF [here](https://servicedesk.surf.nl/wiki/display/WIKI/SSH+public-key+authentication).
 
-2. Set up your working environment. You have to load some modules and set up the environment variables prior to the installation. To facilitate this, we suggest that you copy the following lines into your `~/.bashrc` file.
+2. Set up your working environment. You have to load some modules prior to the installation. To facilitate this, we suggest that you copy the following lines into your `~/.bashrc` file. The installer sets `FWL_DATA` and `RAD_DIR` in the conda environment, so they do not go there.
 
     ```console
     module load 2024
     module load MPICH/4.2.2-GCC-13.3.0
     export LD_LIBRARY_PATH=""
     module load netCDF-Fortran/4.6.1-gompi-2024a
-    export RAD_DIR="$HOME/SOCRATES/"
-    export FWL_DATA="$HOME/FWL_DATA/"
     ```
     **You must then logout**.
 

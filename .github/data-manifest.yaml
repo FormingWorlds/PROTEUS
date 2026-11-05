@@ -1,9 +1,10 @@
 # PROTEUS data manifest -- explicit version pins for the datasets CI caches.
 #
 # The CI composite action (.github/actions/setup-proteus/action.yml) hashes
-# this file to key the FWL_DATA cache. The cache invalidates only when this
-# manifest changes; CI runs that don't change the manifest reuse the
-# previously cached FWL_DATA tree.
+# this file together with src/proteus/data/proteus_manifest.toml (the fwl-io
+# dataset pins) to key the FWL_DATA cache. The cache invalidates when either
+# descriptor changes; CI runs that change neither reuse the previously cached
+# FWL_DATA tree.
 #
 # Bump a version string in this file when:
 #   * a new dataset becomes a hard requirement of a tier the CI runs;

@@ -1,0 +1,158 @@
+name: Install from the docs (Linux)
+
+# Runs the commands of docs/How-to/installation.md (Debian / Ubuntu tab); the
+# deviations are listed in .github/docs-install-linux-substitutions.toml.
+# Outside the page, the data folder of the installer is a cache that both machines share.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - docs/How-to/installation.md
+      - install.sh
+      - tools/docs_install_steps.py
+      - tools/check_further_modules.py
+      - tools/_get_common.sh
+      - tools/get_*.sh
+      - .github/docs-install-linux-substitutions.toml
+      - .github/workflows/docs-install-linux.yml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: Install (${{ matrix.machine }})
+    runs-on: ubuntu-latest
+    container: ${{ matrix.container }}
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The hosted runner image, which ships many developer tools.
+          - machine: hosted runner
+            container: ''
+          # A bare Ubuntu image, the closest to a machine with nothing installed.
+          - machine: bare ubuntu 24.04
+            container: ubuntu:24.04
+    env:
+      PAGE: docs/How-to/installation.md
+      TAB: Debian / Ubuntu
+      SUBSTITUTIONS: .github/docs-install-linux-substitutions.toml
+    steps:
+      - name: Prepare the bare image
+        # Not part of the page: sudo for its apt command, git for the checkout,
+        # python3 for the tool that reads the page, zstd for the data cache.
+        if: matrix.container != ''
+        run: |
+          apt-get update
+          apt-get install -y sudo git python3 ca-certificates zstd
+          echo "Machine preparation outside the page: apt-get install -y sudo git python3 ca-certificates zstd" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check out the commit under test
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore the data folder of the installer
+        # Not part of the page: the data folder is a cache inside the workspace, so both machines
+        # unpack it at the same place; a run downloads only what the cache lacks. Raise v1 in the
+        # key to replace a cache that lacks files.
+        id: data-cache
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: fwl-data-cache
+          key: docs-install-data-v1-${{ hashFiles('.github/data-manifest.yaml', 'src/proteus/data/proteus_manifest.toml') }}
+          restore-keys: |
+            docs-install-data-v1-
+
+      - name: Link the data folder of the installer to the cache
+        env:
+          RESTORED_KEY: ${{ steps.data-cache.outputs.cache-matched-key || 'none' }}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/fwl-data-cache"
+          ln -sfn "$GITHUB_WORKSPACE/fwl-data-cache" "$HOME/FWL_DATA"
+          echo "Machine preparation outside the page: ~/FWL_DATA is a link to a folder that is restored from a cache (restored key: $RESTORED_KEY) and saved after a complete run." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Print the plan
+        shell: bash
+        run: |
+          python3 tools/docs_install_steps.py "$PAGE" --tab "$TAB" \
+            --substitutions "$SUBSTITUTIONS" --format table | tee "$RUNNER_TEMP/plan.md"
+          {
+            echo "## Install plan"
+            echo
+            cat "$RUNNER_TEMP/plan.md"
+            echo
+            echo "Optional steps skipped:"
+            echo
+            echo '```'
+            python3 tools/docs_install_steps.py "$PAGE" --tab "$TAB" --list-skipped
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Generate the install script
+        run: |
+          python3 tools/docs_install_steps.py "$PAGE" --tab "$TAB" \
+            --substitutions "$SUBSTITUTIONS" --format script \
+            --timing "$GITHUB_WORKSPACE/install-artifacts/install_timing.tsv" > "$RUNNER_TEMP/install_steps.sh"
+          bash -n "$RUNNER_TEMP/install_steps.sh"
+
+      - name: Run the commands of the page
+        # Run from the home directory: the page clones PROTEUS into the current
+        # directory, and the checkout of this commit sits in the workspace.
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/install-artifacts"
+          cd "$HOME"
+          bash -e "$RUNNER_TEMP/install_steps.sh" 2>&1 | tee "$GITHUB_WORKSPACE/install-artifacts/install_full.log"
+
+      - name: Save the data folder of the installer
+        # Only after a complete run and without an exact key hit: a partial folder is never saved.
+        if: success() && steps.data-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: fwl-data-cache
+          key: ${{ steps.data-cache.outputs.cache-primary-key }}
+
+      - name: Check that the four further modules are usable
+        # Not part of the page: the installer goes on when the setup of a further module fails.
+        shell: bash
+        run: |
+          source "$HOME/miniforge3/etc/profile.d/conda.sh"
+          conda activate proteus
+          cd "$HOME/PROTEUS"
+          python tools/check_further_modules.py --root "$HOME/PROTEUS"
+
+      - name: Add the timing table to the summary
+        if: always()
+        run: |
+          {
+            echo "## Wall time per command"
+            echo
+            echo "| Page line | Seconds | Exit code | Command |"
+            echo "|---|---|---|---|"
+            if [ -f "$GITHUB_WORKSPACE/install-artifacts/install_timing.tsv" ]; then
+              awk -F '\t' 'NR > 1 { gsub(/\|/, "\\|", $4); printf "| %s | %s | %s | `%s` |\n", $1, $2, $3, $4 }' \
+                "$GITHUB_WORKSPACE/install-artifacts/install_timing.tsv"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the full log of the installer
+        if: always()
+        run: cp "$HOME"/PROTEUS/install_*.log "$GITHUB_WORKSPACE/install-artifacts/" || true
+
+      - name: Upload the timing and the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-install-linux-${{ strategy.job-index }}
+          path: install-artifacts
+          if-no-files-found: warn

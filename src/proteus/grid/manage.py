@@ -11,7 +11,7 @@ import multiprocessing
 import os
 import shutil
 import subprocess
-import sys
+import tempfile
 import time
 from copy import deepcopy
 from datetime import datetime
@@ -20,65 +20,115 @@ from getpass import getuser
 import numpy as np
 import toml
 
-from proteus.config import Config, read_config_object
+from proteus.config import (
+    Config,
+    UnknownConfigKeyError,
+    field_path_kind,
+    read_config,
+    read_config_object,
+)
+from proteus.config._interior import _TOL_UNSET, default_rtol, rtol_is_set
+from proteus.grid.analyse_options import check_post_processing_table
+from proteus.grid.dimensions import (
+    DIMENSION_METHODS,
+    dimension_arange,
+    dimension_direct,
+    dimension_linspace,
+    dimension_logspace,
+    direct_values_error,
+)
+from proteus.utils.coupler import get_output_root
 from proteus.utils.helper import get_proteus_dir, recursive_setattr
+from proteus.utils.logs import setup_logger
 
 PROTEUS_DIR = get_proteus_dir()
 
+
+class _HeldRecords(logging.Handler):
+    """Take the place of the fwl handlers and keep the records until manager.log exists."""
+
+    def __init__(self, fwl: logging.Logger):
+        super().__init__()
+        self.records, self.saved = [], (fwl.handlers[:], fwl.level)
+
+    def emit(self, record):
+        self.records.append(record)
+
+
 log = logging.getLogger('fwl.' + __name__)
+_FWL = logging.getLogger('fwl')
 
 
-# Custom logger instance
-def setup_logger(logpath: str = 'new.log', level=1, logterm=True):
-    # https://stackoverflow.com/a/61457119
+def _output_root() -> str:
+    """Return PROTEUS/output, the folder that holds the output of every grid."""
+    return os.path.join(PROTEUS_DIR, 'output')
 
-    custom_logger = logging.getLogger()
-    custom_logger.handlers.clear()
 
-    if os.path.exists(logpath):
-        os.remove(logpath)
+def _within(path: str, folder: str) -> bool:
+    """Whether ``path`` is ``folder`` or lies below it, links resolved; folders are
+    compared by identity, so a case variant on a case-insensitive file system matches."""
+    try:
+        target = os.stat(folder)
+    except OSError:
+        return False
+    p = os.path.realpath(path)
+    while True:
+        try:
+            if os.path.samestat(os.stat(p), target):
+                return True
+        except OSError:
+            pass  # a part that cannot be stat'ed (missing or unreadable) is no match; go up
+        if os.path.dirname(p) == p:
+            return False
+        p = os.path.dirname(p)
 
-    fmt = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
-    level_code = logging.INFO
-    match level:
-        case 0:
-            level_code = logging.DEBUG
-        case 2:
-            level_code = logging.WARNING
-        case 3:
-            level_code = logging.ERROR
-        case 4:
-            level_code = logging.CRITICAL
+def _holds(folder: str, paths, resolved: bool = True) -> bool:
+    """Whether removing ``folder`` takes one of ``paths``: by name, also through a link
+    inside it, or with ``resolved`` by the file the path resolves to."""
+    f = os.path.abspath(folder)
+    return any(
+        os.path.commonpath([os.path.abspath(p), f]) == f or (resolved and _within(p, folder))
+        for p in paths
+    )
 
-    # Add terminal output to logger
-    if logterm:
-        sh = logging.StreamHandler(sys.stdout)
-        sh.setFormatter(fmt)
-        sh.setLevel(level_code)
-        custom_logger.addHandler(sh)
 
-    # Add file output to logger
-    fh = logging.FileHandler(logpath)
-    fh.setFormatter(fmt)
-    fh.setLevel(level)
-    custom_logger.addHandler(fh)
-    custom_logger.setLevel(level_code)
-
-    # Capture unhandled exceptions
-    # https://stackoverflow.com/a/16993115
-    def handle_exception(exc_type, exc_value, exc_traceback):
-        if issubclass(exc_type, KeyboardInterrupt):
-            custom_logger.error('KeyboardInterrupt')
-            sys.__excepthook__(exc_type, exc_value, exc_traceback)
-            return
-        custom_logger.critical(
-            'Uncaught exception', exc_info=(exc_type, exc_value, exc_traceback)
+def _check_symlink_dir(folder: str, inputs: tuple = ()):
+    """Refuse a symlink folder that is a link, that is or lies in PROTEUS_DIR, the output
+    folder (where output/ links to included) or the run output root (PROTEUS_OUTPUT_PATH),
+    or that is or holds HOME, one of those or one of ``inputs`` (the grid file and base
+    config, also through a link)."""
+    if os.path.islink(folder):
+        raise ValueError(f'symlink folder {folder} is a link: name the folder it points to')
+    if os.path.exists(folder) and not os.path.isdir(folder):
+        raise ValueError(f'symlink folder {folder} is not a folder')
+    protected = (PROTEUS_DIR, _output_root(), get_output_root(PROTEUS_DIR))
+    if (
+        any(_within(folder, p) for p in protected)
+        or any(_within(p, folder) for p in (*protected, os.path.expanduser('~')))
+        or _holds(folder, inputs)
+    ):
+        raise ValueError(
+            f'symlink folder {folder} (resolved {os.path.realpath(folder)}) lies in the '
+            'PROTEUS or output folder, or holds HOME, one of them or a grid input: '
+            'choose another folder'
         )
 
-    sys.excepthook = handle_exception
 
-    return
+def _refuse_git(folder: str):
+    """Refuse to empty a folder that holds a Git repository."""
+    if any(f.name.lower() == '.git' for f in os.scandir(folder)):
+        raise Exception('Not emptying directory - it contains a Git repository!')
+
+
+def _replay(records: list):
+    """Pass held records to the handlers the fwl logger has now, through the logger and
+    handler levels as a live record would pass; not to root, which saw them live."""
+    level = _FWL.getEffectiveLevel()
+    for record in records:
+        for handler in _FWL.handlers:
+            if record.levelno >= max(level, handler.level):
+                handler.handle(record)
 
 
 # Thread target
@@ -103,7 +153,24 @@ class Grid:
         base_config_path: str,
         symlink_dir: str = '_UNSET',
         grid_config: str = '',
+        prepare_output: bool = True,
     ):
+        """Set up the grid; with ``prepare_output=False`` the old output stays until
+        `prepare_output` runs, and the fwl log lines are held until then: the caller must
+        call `prepare_output` or `release_log`, or the fwl logger stays held.
+
+        Raises
+        ------
+        ValueError
+            If ``name`` resolves to PROTEUS/output itself or outside it (also through a
+            link in output/) or names a folder that holds the grid file or the base
+            config, if ``symlink_dir`` is not an absolute path, or if ``symlink_dir``
+            would remove other data (see `_check_symlink_dir`).
+        RuntimeError
+            If another grid holds the log.
+        Exception
+            If the base config file does not exist or ``symlink_dir`` is blank.
+        """
         # Grid's own name (for versioning, etc.)
         self.name = str(name).strip()
         self.outdir = PROTEUS_DIR + '/output/' + self.name + '/'
@@ -114,66 +181,22 @@ class Grid:
         self.symlink_dir = symlink_dir
         if self.symlink_dir in ['', '.']:
             raise Exception('Symlinked directory is set to a blank path')
+        self._inputs = tuple(p for p in (self.conf, grid_config) if p)
+        if self.symlink_dir not in ('_UNSET', None):
+            if not os.path.isabs(self.symlink_dir):
+                raise ValueError(f'symlink folder {symlink_dir} must be an absolute path')
+            self.symlink_dir = os.path.abspath(self.symlink_dir)  # the folder that is emptied
+            _check_symlink_dir(self.symlink_dir, self._inputs)
 
         # Paths
         self.outdir = os.path.abspath(self.outdir) + '/'
+        self._check_outdir()
         self.cfgdir = os.path.join(self.outdir, 'cfgs') + '/'
         self.logdir = os.path.join(self.outdir, 'logs') + '/'
 
-        # Remove old output location
-        if os.path.exists(self.outdir):
-            if os.path.islink(self.outdir):
-                os.unlink(self.outdir)
-            if os.path.isdir(self.outdir):
-                print("Removing old files at '%s'" % self.outdir)
-                subfolders = [
-                    f.path.split('/')[-1].lower() for f in os.scandir(self.outdir) if f.is_dir()
-                ]
-                if '.git' in subfolders:
-                    raise Exception('Not emptying directory - it contains a Git repository!')
-                time.sleep(4.0)
-                shutil.rmtree(self.outdir)
-
-        # Create new output location
-        if self.symlink_dir in ['_UNSET', None]:
-            # Not using symlink
-            self.using_symlink = False
-            os.makedirs(self.outdir)
-        else:
-            # Will be using symlink
-            self.using_symlink = True
-            self.symlink_dir = os.path.abspath(self.symlink_dir)
-            if os.path.exists(self.symlink_dir):
-                print("Removing old files at '%s'" % self.symlink_dir)
-                subfolders = [
-                    f.path.split('/')[-1].lower()
-                    for f in os.scandir(self.symlink_dir)
-                    if f.is_dir()
-                ]
-                if '.git' in subfolders:
-                    raise Exception('Not emptying directory - it contains a Git repository!')
-                time.sleep(4.0)
-                shutil.rmtree(self.symlink_dir)
-            os.makedirs(self.symlink_dir)
-            os.symlink(self.symlink_dir, self.outdir)
-
-        # Make subdirectories
-        for dir in [self.cfgdir, self.logdir]:
-            if os.path.exists(dir):
-                shutil.rmtree(dir)
-            os.makedirs(dir)
-
-        # Make copy of GRID config file, if there is one
-        if grid_config:
-            shutil.copyfile(grid_config, os.path.join(self.outdir, 'copy.grid.toml'))
-
-        # Make copy of REFERENCE config file
-        shutil.copyfile(self.conf, os.path.join(self.outdir, 'ref_config.toml'))
-
-        # Setup logging
-        setup_logger(logpath=os.path.join(self.outdir, 'manager.log'), logterm=True, level=1)
-
-        log.info("Grid '%s' initialised empty" % self.name)
+        self.grid_config = grid_config
+        self._held = None  # log records held until the output exists
+        self._cfgs_adopted = False  # cfgs/ already holds the cases from adopt_cases
 
         # List of dimension names and parameter names
         self.dim_names = []  # String
@@ -186,10 +209,127 @@ class Grid:
         self.flat = []  # List of grid points, each is a dictionary
         self.size = 0  # Total size of grid
 
+        if prepare_output:
+            self.prepare_output()
+        else:
+            if any(isinstance(h, _HeldRecords) for h in _FWL.handlers):
+                raise RuntimeError('another grid holds the log until its output exists')
+            self._held = _HeldRecords(_FWL)
+            _FWL.handlers = [self._held]
+            _FWL.setLevel(logging.INFO)  # the level setup_logger sets; clears the level cache
+
+    def _check_outdir(self):
+        """Refuse a grid output that is PROTEUS/output itself or lies outside it, also
+        through a link in output/, or that holds the grid file or the base config (a
+        linked old output only by name, since it is only unlinked)."""
+        root = os.path.abspath(_output_root())
+        parent = os.path.dirname(self.outdir.rstrip('/'))
+        if (
+            os.path.commonpath([root, self.outdir]) != root
+            or self.outdir == root + '/'
+            or (os.path.exists(root) and not _within(parent, root))  # a link in the name
+        ):
+            raise ValueError(f"grid output '{self.name}' must name a folder inside {root}")
+        out = self.outdir.rstrip('/')
+        if _holds(out, self._inputs, resolved=not os.path.islink(out)):
+            raise ValueError(
+                f"grid output '{self.name}' holds the grid file or the base config: "
+                'copy it out of the output folder first'
+            )
+
+    def _check_paths(self):
+        """Check the grid output and the symlink folder against the folders they may not
+        remove."""
+        self._check_outdir()
+        if self.symlink_dir not in ('_UNSET', None):
+            _check_symlink_dir(self.symlink_dir, self._inputs)
+
+    def _empty(self, folder: str):
+        """Remove ``folder`` after a wait, with the path checks run again right before."""
+        print("Removing old files at '%s'" % folder)
+        time.sleep(4.0)
+        self._check_paths()
+        _refuse_git(folder)
+        shutil.rmtree(folder)
+
+    def prepare_output(self):
+        """Remove the old output, create the output folders, copy the configs and start
+        manager.log, then log there the lines held since the grid was set up."""
+        self._check_paths()
+
+        # Remove old output location; a trailing slash would follow an old output link
+        out = self.outdir.rstrip('/')
+        if os.path.islink(out):
+            os.unlink(out)
+        if os.path.isdir(out):
+            self._empty(out)
+
+        # Create new output location
+        if self.symlink_dir in ['_UNSET', None]:
+            # Not using symlink
+            self.using_symlink = False
+            os.makedirs(self.outdir)
+        else:
+            # Will be using symlink
+            self.using_symlink = True
+            if os.path.exists(self.symlink_dir):
+                self._empty(self.symlink_dir)
+            os.makedirs(self.symlink_dir)
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+            os.symlink(self.symlink_dir, out)
+
+        # Make subdirectories
+        for dir in [self.cfgdir, self.logdir]:
+            if os.path.exists(dir):
+                shutil.rmtree(dir)
+            os.makedirs(dir)
+
+        # Make copy of GRID config file, if there is one
+        if self.grid_config:
+            shutil.copyfile(self.grid_config, os.path.join(self.outdir, 'copy.grid.toml'))
+
+        # Make copy of REFERENCE config file
+        shutil.copyfile(self.conf, os.path.join(self.outdir, 'ref_config.toml'))
+
+        # Setup logging. Keep the plain timestamped layout the grid manager has
+        # always written to manager.log, via the shared setup_logger.
+        setup_logger(
+            logpath=os.path.join(self.outdir, 'manager.log'),
+            logterm=True,
+            level='INFO',
+            fmt='[%(asctime)s] %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S',
+        )
+
+        held = self._unhold_log()
+        log.info("Grid '%s' initialised empty" % self.name)
+        _replay(held)
+
+    def release_log(self):
+        """Stop holding log lines and pass the held ones on, once."""
+        _replay(self._unhold_log())
+
+    def _unhold_log(self) -> list:
+        """Stop holding log lines; return the held records (none once released)."""
+        held, self._held = self._held, None
+        if held is None:
+            return []
+        if held in _FWL.handlers:  # setup_logger has not replaced them
+            _FWL.handlers = held.saved[0]
+            _FWL.setLevel(held.saved[1])
+        return held.records
+
     # Add a new empty dimension to the Grid
     def add_dimension(self, name: str, var: str):
         if name in self.dim_names:
             raise Exception("Dimension '%s' cannot be added twice" % name)
+        if var in (
+            'interior_energetics.num_tolerance',
+            'interior_energetics.spider.tolerance_rel',
+        ):
+            raise ValueError(
+                f'{var} is a deprecated alias; sweep interior_energetics.rtol instead'
+            )
 
         log.info("Added new dimension '%s' " % name)
         log.debug(
@@ -209,18 +349,14 @@ class Grid:
 
     # Set a dimension by linspace
     def set_dimension_linspace(self, name: str, start: float, stop: float, count: int):
-        self.dim_avars[name] = list(np.linspace(start, stop, count))
-        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        self.dim_avars[name] = dimension_linspace(start, stop, count)
         log.debug(
             "Dimension '%s' linspace: %d points in [%.6g, %.6g]", name, count, start, stop
         )
 
     # Set a dimension by arange (inclusive of endpoint)
     def set_dimension_arange(self, name: str, start: float, stop: float, step: float):
-        self.dim_avars[name] = list(np.arange(start, stop, step))
-        if not np.isclose(self.dim_avars[name][-1], stop):
-            self.dim_avars[name].append(stop)
-        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        self.dim_avars[name] = dimension_arange(start, stop, step)
         log.debug(
             "Dimension '%s' arange: %d points in [%.6g, %.6g] (step=%.6g)",
             name,
@@ -232,22 +368,21 @@ class Grid:
 
     # Set a dimension by logspace
     def set_dimension_logspace(self, name: str, start: float, stop: float, count: int):
-        self.dim_avars[name] = list(np.logspace(np.log10(start), np.log10(stop), count))
-        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        self.dim_avars[name] = dimension_logspace(start, stop, count)
         log.debug(
             "Dimension '%s' logspace: %d points in [%.6g, %.6g]", name, count, start, stop
         )
 
     # Set a dimension directly
     def set_dimension_direct(self, name: str, values: list, sort: bool = True):
-        the_list = list(set(values))  # remove duplicates
-        if (not isinstance(values[0], str)) and sort:  # sort if numeric
-            the_list = sorted(the_list)
-        self.dim_avars[name] = the_list
+        why = direct_values_error(values)
+        if why:
+            raise ValueError(f"direct dimension '{name}' {why}")
+        self.dim_avars[name] = dimension_direct(values, sort)
         log.debug(
             "Dimension '%s' direct: %d values (deduplicated from %d)",
             name,
-            len(the_list),
+            len(self.dim_avars[name]),
             len(values),
         )
 
@@ -316,26 +451,63 @@ class Grid:
         log.info(' ')
 
     def write_config_files(self):
-        """Write config files."""
-        # Read base config file
-        base_config = read_config_object(self.conf)
+        """Write the config file of each case into cfgs/ and read it back with the config
+        loader, unless `adopt_cases` has already placed the checked ones there.
 
-        # Loop over grid points to write config files
+        Raises
+        ------
+        ValueError
+            As `write_cases`.
+        """
+        if not self._cfgs_adopted:
+            self.write_cases(self.cfgdir)
+
+    def adopt_cases(self, tmpdir: str):
+        """Move the case configs checked in ``tmpdir`` into the output's cfgs folder."""
+        for name in os.listdir(tmpdir):
+            shutil.move(os.path.join(tmpdir, name), os.path.join(self.cfgdir, name))
+        self._cfgs_adopted = True
+
+    def write_cases(self, folder: str):
+        """Write each case config into ``folder`` and read it back with the config loader.
+
+        Raises
+        ------
+        ValueError
+            If a value is refused when it is set, as 'Grid case i (key = value): reason',
+            or if a written case does not load, as 'Grid case i (key = value, ...): ' and
+            the loader's message, which names the case file without its folder.
+        """
         log.info('Writing config files')
+        base_config = read_config_object(self.conf)
+        # A module set per case takes that module's default rtol when nothing sets one.
+        rtol_unset = not rtol_is_set(read_config(self.conf).get('interior_energetics', {}))
         for i, gp in enumerate(self.flat):
-            # Create new config
             thisconf: Config = deepcopy(base_config)
-
-            # Set case dir relative to PROTEUS/output/
             thisconf.params.out.path = self.name + '/' + str(self.CONFIG_BASENAME % i) + '/'
-
-            # Set other parameters in Config object
             for key in gp.keys():
-                recursive_setattr(thisconf, key, gp[key])
+                try:
+                    recursive_setattr(thisconf, key, gp[key])
+                except (TypeError, ValueError) as exc:
+                    reason = exc.args[0] if exc.args and isinstance(exc.args[0], str) else exc
+                    raise ValueError(f'Grid case {i} ({key} = {gp[key]!r}): {reason}') from None
+            if 'interior_energetics.rtol' in gp:  # a base alias would conflict on reload
+                ie = thisconf.interior_energetics
+                ie.num_tolerance = ie.spider.tolerance_rel = _TOL_UNSET
+            elif rtol_unset and 'interior_energetics.module' in gp:
+                ie = thisconf.interior_energetics
+                ie.rtol = default_rtol(ie.module)
 
-            # Write this configuration file
-            thisconf.write(self._get_tmpcfg(i))
+            # Write this configuration file and read it back, so an invalid case stops here
+            case_path = os.path.join(folder, os.path.basename(self._get_tmpcfg(i)))
+            thisconf.write(case_path)
             os.sync()
+            try:
+                read_config_object(case_path)
+            except ValueError as exc:
+                where = ', '.join(f'{k} = {v!r}' for k, v in gp.items())
+                reason = str(exc).replace(case_path, os.path.basename(case_path))
+                raise ValueError(f'Grid case {i} ({where}): {reason}') from None
 
     def run(
         self,
@@ -532,8 +704,8 @@ class Grid:
         self,
         max_jobs: int,
         test_run: bool = False,
-        max_days: int = 1,
-        max_mem: int = 12,
+        max_days: float = 1.0,
+        max_mem: float = 12.0,
         jax_cache: bool = False,
     ):
         """Write slurm config file.
@@ -547,9 +719,9 @@ class Grid:
             Maximum number of jobs to run
         test_run : bool
             If true, generate dummy commands to test the code.
-        max_days : int
+        max_days : float
             Maximum number of days to run
-        max_mem : int
+        max_mem : float
             Maximum memory per CPU in GB
         jax_cache : bool
             If true, the generated script enables a bounded JAX persistent
@@ -560,12 +732,12 @@ class Grid:
             are written and the script behaves exactly as before.
         """
 
-        max_days = int(max_days)  # ensure integer
+        max_days = max(0.001, max_days)  # do not request negative days
         max_jobs = min(max_jobs, self.size)  # do not request more jobs than we need
 
         log.info("Generating PROTEUS slurm config for parameter grid '%s'" % self.name)
-        log.info('Will run for up to %d days per job' % max_days)
-        log.info('Will use up to %d GB of memory per job' % max_mem)
+        log.info('Will run for up to %.1f days per job' % max_days)
+        log.info('Will use up to %.1f GB of memory per job' % max_mem)
         log.info(' ')
 
         log.info("Output path: '%s'" % self.outdir)
@@ -581,6 +753,15 @@ class Grid:
             command = 'proteus start --offline --config'
 
         log_file = os.path.join(self.logdir, 'proteus-%A_%a.log')
+
+        # Split days into days/hours/minutes for the Slurm time format
+        time_d = int(np.floor(max_days))
+        time_h = int(np.floor((max_days - time_d) * 24))
+        time_m = int(np.floor(((max_days - time_d) * 24 - time_h) * 60))
+        time_s = f'{time_d}-{time_h:02d}:{time_m:02d}:00'
+
+        # Convert GB into MB for Slurm memory format
+        max_mem_m = int(max_mem * 1024)
 
         # Optional bounded JAX persistent compilation cache. The size bound uses
         # JAX's own LRU eviction so the cache plateaus instead of growing without
@@ -601,8 +782,8 @@ class Grid:
         string = f"""#!/bin/sh
 #SBATCH -J proteus.grid.array
 #SBATCH --export=ALL
-#SBATCH --time={max_days}-00
-#SBATCH --mem-per-cpu={max_mem}G
+#SBATCH --time={time_s}
+#SBATCH --mem-per-cpu={max_mem_m}M
 #SBATCH -i /dev/null
 #SBATCH -o {log_file}
 #SBATCH --array=0-{self.size - 1}%{max_jobs}
@@ -625,7 +806,7 @@ done
         user = getuser()
         log.info('')
         log.info('Submit to Slurm using:')
-        log.info('    `sbatch %s`', slurm_path)
+        log.info('    `sbatch --export=ALL %s`', slurm_path)
         log.info('')
         log.info('To look at the Slurm queue:')
         log.info('    `squeue` or `squeue -u %s`', user)
@@ -636,12 +817,113 @@ done
         time.sleep(2.0)
 
 
+# Top-level keys of a grid file that set up the grid; every other key names a dimension.
+# `post_processing` is the optional table read by `proteus grid-analyse`; `proteus grid`
+# checks it at launch, so a typo stops the grid before any case runs.
+GRID_SETTINGS = frozenset(
+    {
+        'output',
+        'ref_config',
+        'symlink',
+        'use_slurm',
+        'max_jobs',
+        'max_days',
+        'max_mem',
+        'jax_cache',
+        'config_version',
+        'post_processing',
+    }
+)
+
+
+def _dimension_kind(key: str, value) -> str:
+    """Classify a non-setting grid key; ``'field'`` means a complete dimension table."""
+    kind = field_path_kind(key)
+    if kind != 'field':
+        return kind
+    if not (isinstance(value, dict) and 'method' in value):
+        return 'value'
+    method = value['method']
+    if not isinstance(method, str) or method not in DIMENSION_METHODS:
+        return 'method'
+    return 'field' if all(arg in value for arg in DIMENSION_METHODS[method]) else 'incomplete'
+
+
+def grid_dimension_keys(config: dict, config_fpath: str) -> list[str]:
+    """Return the dimension keys of a grid config, refusing any key it cannot account for.
+
+    A top-level key is either one of ``GRID_SETTINGS`` or a dimension: the path of a
+    single configuration field in the PROTEUS schema, given as a table with one of the
+    ``DIMENSION_METHODS`` and the keys that method reads. Whether a key is a field is
+    decided by the schema, not by a dot.
+
+    Parameters
+    ----------
+    config:
+        The grid config as parsed from TOML.
+    config_fpath:
+        Path of the grid file, quoted back in the error.
+
+    Returns
+    -------
+    list[str]
+        The dimension keys, in file order.
+
+    Raises
+    ------
+    UnknownConfigKeyError
+        If a key is neither a grid setting nor a schema field, names a whole section
+        rather than one field, or does not hold a table with a known ``method`` and the
+        keys it reads.
+    """
+    dims = [key for key in config if key not in GRID_SETTINGS]
+    kinds = {key: _dimension_kind(key, config[key]) for key in dims}
+    reasons = {
+        'unknown': 'not a grid setting or a configuration field',
+        'section': 'a configuration section, not a single field (quote a dotted table '
+        'header, as in ["planet.mass_tot"])',
+        'value': 'a configuration field without a dimension table holding a method',
+        'method': f'a dimension table whose method is not one of {", ".join(DIMENSION_METHODS)}',
+        'incomplete': 'a dimension table without a key its method reads ('
+        + '; '.join(f'{m}: {", ".join(args)}' for m, args in DIMENSION_METHODS.items())
+        + ')',
+    }
+    lines = []
+    for kind, reason in reasons.items():
+        keys = ', '.join(f'"{key}"' for key in dims if kinds[key] == kind)
+        if keys:
+            lines.append(f'  {reason}: {keys}')
+    if lines:
+        lines.insert(0, f'Grid config {config_fpath} has keys the grid cannot account for:')
+        lines.append(
+            f'  A key is a grid setting ({", ".join(sorted(GRID_SETTINGS))}) or the path '
+            'of one configuration field to sweep, such as "planet.mass_tot".'
+        )
+        raise UnknownConfigKeyError('\n'.join(lines))
+    return dims
+
+
+def _grid_bool(value, key: str, fpath: str) -> bool:
+    """Return a grid setting that must be a TOML true or false; refuse any other value."""
+    if not isinstance(value, bool):
+        raise ValueError(
+            f'grid file {fpath}: grid setting {key} must be true or false, got {value!r}'
+        )
+    return value
+
+
 def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: float = 15.0):
     """Run GridPROTEUS using the parameters in a config file (xxx.grid.toml)"""
 
     # Load configuration from TOML file
     with open(config_fpath, 'r') as file:
         config = toml.load(file)
+    dimension_keys = grid_dimension_keys(config, config_fpath)
+    for key in dimension_keys:
+        why = config[key]['method'] == 'direct' and direct_values_error(config[key]['values'])
+        if why:
+            raise ValueError(f'grid file {config_fpath}: the direct axis "{key}" {why}')
+    check_post_processing_table(config.get('post_processing', {}))
 
     # Output folder name, created inside `PROTEUS/output/`
     folder = str(config['output'])
@@ -665,66 +947,60 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
             raise RuntimeError('Path for symbolic link must be absolute.\n\tGot: ' + symlink)
 
     # Use SLURM?
-    use_slurm = bool(config['use_slurm'])
+    if 'use_slurm' not in config:
+        raise KeyError(f'grid file {config_fpath}: the grid setting use_slurm is missing')
+    use_slurm = _grid_bool(config['use_slurm'], 'use_slurm', config_fpath)
 
     # Execution limits
     max_jobs = int(config['max_jobs'])  # maximum number of concurrent tasks (e.g. 300)
-    max_days = int(config['max_days'])  # maximum number of days to run (e.g. 1)
-    max_mem = int(config['max_mem'])  # maximum memory per CPU in GB (e.g. 3)
+    max_days = float(config['max_days'])  # maximum number of days to run (e.g. 1.0)
+    max_mem = float(config['max_mem'])  # maximum memory per CPU in GB (e.g. 3)
 
     # Optional bounded JAX persistent compilation cache (Slurm runs only).
     # Absent or false leaves the generated script cache-free.
-    jax_cache = bool(config.get('jax_cache', False))
+    jax_cache = _grid_bool(config.get('jax_cache', False), 'jax_cache', config_fpath)
 
     # Base config file
     cfg_base = os.path.join(PROTEUS_DIR, str(config['ref_config']))
 
-    # Initialise grid object
-    pg = Grid(folder, cfg_base, symlink_dir=symlink, grid_config=config_fpath)
+    # Set up the grid, and check every case config before the old output is removed
+    pg = Grid(
+        folder, cfg_base, symlink_dir=symlink, grid_config=config_fpath, prepare_output=False
+    )
+    try:
+        # Add dimensions to grid by looping over keys
+        for dim, key in enumerate(dimension_keys):
+            name = 'param_%03d' % dim
+            pg.add_dimension(name, key)
 
-    # Add dimensions to grid by looping over keys
-    dim = -1
-    for key in config.keys():
-        # Skip those without dots, since they aren't config variables
-        if '.' not in key:
-            continue
+            table = config[key]
+            setter = getattr(pg, f'set_dimension_{table["method"]}')
+            try:
+                setter(name, *(table[arg] for arg in DIMENSION_METHODS[table['method']]))
+            except (ValueError, ZeroDivisionError) as exc:
+                raise ValueError(f'grid dimension {key} ({table["method"]}): {exc}') from None
 
-        # Add dimension
-        dim += 1
-        name = 'param_%03d' % dim
-        pg.add_dimension(name, key)
+        # Print information
+        pg.print_setup()
+        pg.generate()
 
-        # Handle each possible method for setting this dimension
-        table = config[key]
-        method = table['method']
-        if method == 'direct':
-            pg.set_dimension_direct(name, list(table['values']))
+        # Sanity check grid size (cannot allow larger values due to format of file paths)
+        if pg.size > 999999:
+            raise ValueError('Number of grid points is too large')
 
-        elif method == 'linspace':
-            pg.set_dimension_linspace(name, table['start'], table['stop'], table['count'])
-
-        elif method == 'logspace':
-            pg.set_dimension_logspace(name, table['start'], table['stop'], table['count'])
-
-        elif method == 'arange':
-            pg.set_dimension_arange(name, table['start'], table['stop'], table['step'])
-
+        # Print each grid point if the number of points isn't too large
+        if pg.size < 1e4:
+            pg.print_grid()
         else:
-            raise ValueError(f'Invalid method for setting dimension: {method}')
+            log.warning('Number of grid points exceeds 10000. Will not print them here.')
 
-    # Print information
-    pg.print_setup()
-    pg.generate()
-
-    # Sanity check grid size (cannot allow larger values due to format of file paths)
-    if pg.size > 999999:
-        raise ValueError('Number of grid points is too large')
-
-    # Print each grid point if the number of points isn't too large
-    if pg.size < 1e4:
-        pg.print_grid()
-    else:
-        log.warning('Number of grid points exceeds 10000. Will not print them here.')
+        os.makedirs(_output_root(), exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=_output_root(), prefix='.grid-check-') as tmpdir:
+            pg.write_cases(tmpdir)
+            pg.prepare_output()
+            pg.adopt_cases(tmpdir)
+    finally:
+        pg.release_log()
 
     # Run the grid
     if use_slurm:

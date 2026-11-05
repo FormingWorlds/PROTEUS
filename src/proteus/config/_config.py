@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 import tomlkit
 from attrs import asdict, define, field
@@ -10,7 +11,7 @@ from ._atmos_chem import AtmosChem
 from ._atmos_clim import AtmosClim
 from ._converters import dict_replace_none
 from ._escape import Escape
-from ._interior import Interior
+from ._interior import _STEP_CAP_FIELDS, Interior
 from ._observe import Observe
 from ._orbit import Orbit
 from ._outgas import Outgas
@@ -23,8 +24,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def spada_zephyrus(instance, attribute, value):
-    # using zephyrus
-    #     zephyrus requires MORS + Spada
+    """ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks."""
     if (instance.escape.module == 'zephyrus') and not (
         (instance.star.module == 'mors') and (instance.star.mors.tracks == 'spada')
     ):
@@ -32,31 +32,156 @@ def spada_zephyrus(instance, attribute, value):
 
 
 def instmethod_dummy(instance, attribute, value):
-    # Instellation method 'inst' only support for dummy star module
+    """Instellation method 'inst' is only available with the dummy star module."""
     if (instance.orbit.instellation_method == 'inst') and not (instance.star.module == 'dummy'):
         raise ValueError("Instellation method can only be 'inst' when star.module=dummy ")
 
 
 def instmethod_evolve(instance, attribute, value):
-    # Orbital evolution not supported when installation_method is 'inst'
-    if (instance.orbit.instellation_method == 'inst') and instance.orbit.evolve:
+    """Orbital evolution cannot be combined with instellation method 'inst'.
+
+    'inst' derives the semi-major axis from the flux, while every star-planet
+    model, a prescribed track included, starts from orbit.semimajoraxis.
+    """
+    if (instance.orbit.instellation_method == 'inst') and (
+        instance.orbit.star_planet_model is not None
+    ):
         raise ValueError(
-            "Planet orbital evolution not supported for `instellation_method='inst'`"
+            "Planet orbital evolution not supported for `instellation_method='inst'`: "
+            f'orbit.star_planet_model = {instance.orbit.star_planet_model!r} starts from '
+            "orbit.semimajoraxis, so set instellation_method = 'distance'"
         )
 
 
 def satellite_evolve(instance, attribute, value):
-    # Planetary orbital evolution not supported when also modelling satellite
-    if instance.orbit.satellite and instance.orbit.evolve:
+    """Star-planet orbital evolution and the planet-satellite model are mutually exclusive."""
+    if (
+        instance.orbit.star_planet_model is not None
+        and instance.orbit.planet_satellite_model is not None
+    ):
         raise ValueError(
             'Planet orbital evolution cannot be used simultaneously with a satellite'
         )
 
 
 def tides_enabled_orbit(instance, attribute, value):
-    # Tides in interior requires orbit module to not be None
+    """Interior tidal heating requires an tides module to be enabled."""
     if (instance.interior_energetics.heat_tidal) and (instance.orbit.module is None):
-        raise ValueError('Interior tidal heating requires an orbit module to be enabled')
+        raise ValueError('Interior tidal heating requires a tides module to be enabled')
+
+
+def obliqua_requires_perturber(instance, attribute, value):
+    """The Obliqua tidal-response module requires an explicit perturber."""
+    if instance.orbit.module == 'obliqua' and instance.orbit.perturber is None:
+        raise ValueError(
+            "orbit.module = 'obliqua' requires orbit.perturber to be explicitly set to "
+            "'star' or 'satellite' (it has no default tidal-forcing body to fall back on)"
+        )
+
+
+def sp0d_obliqua_degree_mismatch(instance, attribute, value):
+    """sp0d's closed-form is by definition the n=2 Love number. Obliqua can compute
+    arbitrary tidal degree(s), block the mismatch.
+    """
+    if instance.orbit.module == 'obliqua' and instance.orbit.star_planet_model == 'sp0d':
+        if instance.orbit.obliqua.n != [2]:
+            raise ValueError(
+                "orbit.star_planet_model = 'sp0d' requires orbit.obliqua.n == [2]: "
+                'set orbit.obliqua.n = [2] to use sp0d with Obliqua, or use'
+                "orbit.star_planet_model = 'sp1d' instead."
+            )
+        log.warning(
+            "orbit.star_planet_model = 'sp0d' with orbit.module = 'obliqua': Imk2 is "
+            "the mean of Obliqua's per-mode Im(k2) spectrum collapsed to a single "
+            'scalar, which discards the eccentricity-dependent mode weighting sp1d '
+            'uses directly. This is an approximation, least accurate at high or '
+            "rapidly-changing eccentricity. Prefer orbit.star_planet_model = 'sp1d'"
+            ' when using Obliqua.'
+        )
+
+
+def orbit_requires_tides(instance, attribute, value):
+    """sp1d, ps1d, and ps1d_evec require at least Lovepy, but ideally the Obliqua
+    tidal-response module: all three read the full per-mode spectrum in
+    ``tides_o``, which ``dummy`` never populates. ``sp0d``/``ps0d`` read the
+    scalar ``Imk2`` instead (which ``dummy`` does provide), so they are
+    unrestricted here; see "Compatibility between orbit models and tidal
+    modules" in docs/Explanations/orbit.md.
+    """
+    needs_full_spectrum = instance.orbit.star_planet_model == 'sp1d' or (
+        instance.orbit.planet_satellite_model in ('ps1d', 'ps1d_evec')
+    )
+    if needs_full_spectrum and instance.orbit.module not in ('obliqua', 'lovepy'):
+        raise ValueError(
+            "orbit.star_planet_model = 'sp1d' or orbit.planet_satellite_model = "
+            "'ps1d'/'ps1d_evec' requires orbit.module = 'obliqua' or 'lovepy'"
+        )
+
+
+def parameterized_excludes_tides(instance, attribute, value):
+    """The parameterized model prescribes the orbit as a closed-form track
+    and exchanges no energy with the interior, so no tides module can run
+    alongside it; see "Star-planet models" in docs/Explanations/orbit.md.
+    """
+    if (
+        instance.orbit.star_planet_model == 'parameterized'
+        and instance.orbit.module is not None
+    ):
+        raise ValueError(
+            "orbit.star_planet_model = 'parameterized' requires orbit.module = 'none' "
+            f'(got {instance.orbit.module!r}): a prescribed migration track computes no tides'
+        )
+
+
+def spinless_orbit_keeps_spin_synchronous(instance, attribute, value):
+    """sp0d and parameterized evolve no spin, so the planet stays synchronous
+    and orbit.axial_period must be unset; see "Star-planet models" in
+    docs/Explanations/orbit.md.
+    """
+    model = instance.orbit.star_planet_model
+    if model in ('sp0d', 'parameterized') and instance.orbit.axial_period is not None:
+        raise ValueError(
+            f'orbit.star_planet_model = {model!r} evolves no spin, so the planet is kept '
+            "synchronous with its orbit and requires orbit.axial_period = 'none' "
+            f'(got {instance.orbit.axial_period!r})'
+        )
+
+
+def parameterized_high_ecc_inward(instance, attribute, value):
+    """The high-eccentricity law circularises at fixed orbital angular momentum,
+    which can only shrink the orbit, so its final semi-major axis must not
+    exceed the initial one, orbit.semimajoraxis.
+    """
+    params = instance.orbit.parameterized
+    if (
+        instance.orbit.star_planet_model == 'parameterized'
+        and params.migration == 'high_ecc'
+        and params.sma_final is not None
+        and params.sma_final > instance.orbit.semimajoraxis
+    ):
+        raise ValueError(
+            'High-eccentricity migration is inward only and requires '
+            'orbit.parameterized.sma_final <= orbit.semimajoraxis, got '
+            f'semimajoraxis={instance.orbit.semimajoraxis} and sma_final={params.sma_final}'
+        )
+
+
+def parameterized_excludes_accretion(instance, attribute, value):
+    """Reject giant impacts with the parameterized star-planet model.
+
+    After the migration epoch the track sets the semi-major axis every step,
+    so an impact's new semi-major axis would be lost while its eccentricity
+    change persisted; see "Star-planet models" in docs/Explanations/orbit.md.
+    """
+    if (
+        instance.orbit.star_planet_model == 'parameterized'
+        and instance.accretion.module is not None
+    ):
+        raise ValueError(
+            "orbit.star_planet_model = 'parameterized' requires accretion.module = 'none' "
+            f'(got {instance.accretion.module!r}): the prescribed track overwrites the '
+            'semi-major axis an impact sets but keeps its eccentricity change'
+        )
 
 
 CURRENT_CONFIG_VERSION = '3.0'
@@ -81,30 +206,36 @@ def check_module_dependencies(instance, attribute, value):
             instance.outgas.module == 'calliope',
             'calliope',
             'outgas.module = "calliope" requires the calliope package. '
-            'Install with: git clone git@github.com:FormingWorlds/CALLIOPE && pip install -e CALLIOPE/.',
+            'Install with: bash tools/get_python_module.sh CALLIOPE',
         ),
         'atmodeller': (
             instance.outgas.module == 'atmodeller',
             'atmodeller',
-            'outgas.module = "atmodeller" requires the optional atmodeller package '
-            '(GPL-3.0 licensed). The standard outgassing backend is calliope and '
-            'needs no extra install. '
-            'Install atmodeller with: pip install "fwl-proteus[atmodeller]" '
-            '(or pip install "atmodeller>=1.0.0").',
+            'outgas.module = "atmodeller" needs the atmodeller package (GPL-3.0 licensed), '
+            'which is not installed. bash install.sh sets it up; to add it alone, run '
+            'bash tools/get_atmodeller.sh in the PROTEUS folder, or pip install '
+            '"fwl-proteus[atmodeller]".',
         ),
         'vulcan': (
             instance.atmos_chem.module == 'vulcan',
             'vulcan',
-            'atmos_chem.module = "vulcan" requires the optional VULCAN package '
-            '(GPL-3.0 licensed). VULCAN is not needed for a standard PROTEUS run. '
-            'Install it with: pip install "fwl-proteus[vulcan]" '
-            '(or bash tools/get_vulcan.sh for an editable checkout).',
+            'atmos_chem.module = "vulcan" needs the VULCAN package (GPL-3.0 licensed), '
+            'which is not installed. bash install.sh sets it up; to add it alone, run '
+            'bash tools/get_vulcan.sh in the PROTEUS folder, or pip install '
+            '"fwl-proteus[vulcan]".',
         ),
         'boreas': (
             instance.escape.module == 'boreas',
             'boreas',
             'escape.module = "boreas" requires the optional boreas package. '
             'Install it with: bash tools/get_boreas.sh',
+        ),
+        'morrigan': (
+            instance.accretion.module == 'morrigan',
+            'morrigan',
+            'accretion.module = "morrigan" needs the morrigan package, which is not installed. '
+            'bash install.sh sets it up; to add it alone, run bash tools/get_morrigan.sh '
+            'in the PROTEUS folder, or pip install "fwl-proteus[morrigan]".',
         ),
     }
 
@@ -116,6 +247,167 @@ def check_module_dependencies(instance, attribute, value):
                 raise ImportError(f'{msg}\n  Original error: {e}') from e
 
 
+# Interiors that cannot carry a giant impact, and the reason each cannot, keyed
+# by `interior_energetics.module`. One entry per line so a new interior adds a
+# line rather than editing a sentence.
+_ACCRETION_INCOMPATIBLE_INTERIORS = {
+    'spider': 'SPIDER has no supported re-melt path',
+    'boundary': (
+        'the boundary interior does not forward its interior state object to '
+        'the time-stepper, so the step cannot be shortened to land on a '
+        'scheduled impact'
+    ),
+}
+
+
+def check_accretion_interior_compatibility(instance, attribute, value):
+    """Reject accretion runs on an interior that cannot apply an impact.
+
+    A giant impact re-melts the mantle and has to be applied at the state the
+    timeline places it at. An interior that cannot do both is refused here at
+    configuration load rather than at the first impact, which can be many hours
+    into a run. SPIDER keeps its state in a restart file written by the external
+    binary; the boundary interior never forwards its interior state object to the
+    time-stepper, so the step cannot be capped to land on the impact and impacts
+    would be applied late by an unbounded amount, or several would collapse onto
+    the end of one long step. Furthermore, interior_struct.module == 'spider' is
+    refused because SPIDER structure solves do not support non-thermal solves
+    during giant impacts.
+    """
+    if instance.accretion.module is None:
+        return
+
+    interior = instance.interior_energetics.module
+    reason = _ACCRETION_INCOMPATIBLE_INTERIORS.get(interior)
+    if reason is not None:
+        raise ValueError(
+            "accretion.module = '"
+            + str(instance.accretion.module)
+            + "' cannot run with interior_energetics.module = '"
+            + str(interior)
+            + "': a giant impact re-melts the mantle and has to be applied where "
+            'the timeline places it, but '
+            + reason
+            + ". Use interior_energetics.module = 'aragog' (or 'dummy' for a test)."
+        )
+
+    struct_module = getattr(getattr(instance, 'interior_struct', None), 'module', None)
+    if struct_module == 'spider':
+        raise ValueError(
+            f"accretion.module = '{instance.accretion.module}' cannot run with "
+            "interior_struct.module = 'spider': SPIDER structure solve does not "
+            'support non-thermal solves during giant impacts.'
+        )
+
+
+def check_accretion_remelt_source(instance, attribute, value):
+    """Reject accretion.remelt = 'computed' without a module that reports a melt fraction.
+
+    Morrigan reports the melt mass fraction of each merger and a timeline file can
+    carry it as a column; the analytical module and no module have none to apply.
+    """
+    acc = instance.accretion
+    if acc.remelt == 'computed' and acc.module not in ('morrigan', 'timeline'):
+        raise ValueError(
+            "accretion.remelt = 'computed' needs an accretion module that reports a melt "
+            "fraction: 'morrigan', or 'timeline' with an f_melt column; got "
+            f'accretion.module = {acc.module!r}'
+        )
+
+
+def check_accretion_vapourise_compatibility(instance, attribute, value):
+    """Reject accretion runs that also vapourise rock into the atmosphere.
+
+    The two models keep incompatible books on the rock-forming elements. Rock
+    vapourisation moves rock mass into the atmosphere without debiting it from
+    the interior, which is why those elements are deliberately left out of
+    ``M_ele`` and the whole-planet mass. An impact, in contrast, grows the
+    planet's rock through the structure solve and conserves the per-element
+    volatile budgets across that growth, and it sizes both the atmosphere it
+    strips and the volatiles the impactor delivers from those same per-element
+    columns. Run together, the vapour column would be stripped and delivered as
+    though it were a tracked volatile budget while the mass it stands for is
+    accounted nowhere, so the combination is refused at configuration load.
+    """
+    if instance.accretion.module is not None and instance.outgas.vapourise:
+        raise ValueError(
+            "accretion.module = '"
+            + str(instance.accretion.module)
+            + "' cannot run with outgas.vapourise = true: rock vapour adds "
+            'rock-forming mass to the atmosphere that the whole-planet mass does '
+            'not track, and an impact sizes its atmospheric stripping and volatile '
+            'delivery from budgets that do. Disable one of the two.'
+        )
+
+
+def check_accretion_core_stratification_compatibility(instance, attribute, value):
+    """Reject accretion runs with a stratified Aragog core_module core.
+
+    An impact refits the core and books the heat of its temperature lift from the
+    full-core heat content, while a stratified core evolves only its convecting
+    volume, so the booked lift would not be the heat the solver integrates.
+    """
+    interior = instance.interior_energetics
+    if (
+        instance.accretion.module is not None
+        and interior.module == 'aragog'
+        and interior.aragog.core_bc == 'core_module'
+        and interior.aragog.core_module.stratification
+    ):
+        raise ValueError(
+            f"accretion.module = '{instance.accretion.module}' cannot run with "
+            'interior_energetics.aragog.core_module.stratification = true: the core heat '
+            'booked at an impact is the full-core content, while a stratified core evolves '
+            'only its convecting volume. Disable one of the two.'
+        )
+
+
+def check_core_module_requirements(instance, attribute, value):
+    """Reject an Aragog core_module core that its structure or solver cannot serve.
+
+    The core profile is fitted to the core mass and the central pressure, which only the
+    Zalmoxis structure provides, its CMB flux needs the entropy EOS tables, and Aragog
+    refuses the resolved shell of a stratified core on Radau. A stratified core cannot be
+    carried across a structure update, because Aragog gives no heat content for a
+    stratified budget, so it needs a structure that is solved once: no dynamic update and
+    no baseline re-solve after the start.
+    """
+    interior = instance.interior_energetics
+    if interior.module != 'aragog' or interior.aragog.core_bc != 'core_module':
+        return
+    if instance.interior_struct.module != 'zalmoxis':
+        raise ValueError(
+            "interior_energetics.aragog.core_bc = 'core_module' needs "
+            f"interior_struct.module = 'zalmoxis', not '{instance.interior_struct.module}': "
+            'the core profile is fitted to the core mass and the central pressure of the '
+            'Zalmoxis structure.'
+        )
+    if interior.const_properties:
+        raise ValueError(
+            "interior_energetics.aragog.core_bc = 'core_module' needs "
+            'interior_energetics.const_properties = false: the CMB flux of the core model '
+            'is computed with the entropy EOS tables, which constant properties do not load.'
+        )
+    if not interior.aragog.core_module.stratification:
+        return
+    if interior.aragog.solver_method == 'radau':
+        raise ValueError(
+            'interior_energetics.aragog.core_module.stratification = true needs '
+            "interior_energetics.aragog.solver_method = 'cvode' or 'bdf', not 'radau'."
+        )
+    if (
+        instance.interior_struct.zalmoxis.update_interval > 0
+        or instance.planet.temperature_mode != 'liquidus_super'
+    ):
+        raise ValueError(
+            'interior_energetics.aragog.core_module.stratification = true needs a structure '
+            'that is solved once: interior_struct.zalmoxis.update_interval = 0 and '
+            "planet.temperature_mode = 'liquidus_super'. The core is carried across a "
+            'structure update with its heat content, which Aragog does not give for a '
+            'stratified core.'
+        )
+
+
 def boreas_requires_atmosphere(instance, attribute, value):
     """BOREAS escape requires a radiative atmosphere (not dummy)."""
     if (instance.escape.module == 'boreas') and (instance.atmos_clim.module == 'dummy'):
@@ -125,14 +417,102 @@ def boreas_requires_atmosphere(instance, attribute, value):
         )
 
 
+def front_trapping_requires_aragog(instance, attribute, value):
+    """Front trapping reads the freezing front the Aragog interior resolves."""
+    trap_mode = getattr(instance.outgas, 'trap_mode', 'none')
+    interior = instance.interior_energetics.module
+    if trap_mode == 'front' and interior != 'aragog':
+        raise ValueError(
+            'outgas.trap_mode = "front" requires interior_energetics.module = "aragog", '
+            f'not "{interior}". The front scheme reads the melt fraction, density and '
+            'pressure profiles that only the Aragog interior exports.'
+        )
+
+
+def prevent_desaturation_warns_without_condensates(instance, attribute, value):
+    """prevent_desaturation holds nothing unless atmodeller forms condensates."""
+    outgas = instance.outgas
+    if getattr(outgas, 'prevent_desaturation', False) is not True:
+        return
+    if outgas.module != 'atmodeller':
+        log.warning(
+            'outgas.prevent_desaturation = true has no effect with outgas.module = '
+            '"%s": only atmodeller forms condensates',
+            outgas.module,
+        )
+    elif not outgas.atmodeller.include_condensates:
+        log.warning(
+            'outgas.prevent_desaturation = true has no effect with '
+            'outgas.atmodeller.include_condensates = false'
+        )
+
+
+def saturation_skin_warns_without_condensates(instance, attribute, value):
+    """A skin from saturation stays fixed unless atmodeller forms condensates."""
+    if instance.atmos_clim.surface_d != 'saturation':
+        return
+    outgas = instance.outgas
+    if outgas.module != 'atmodeller':
+        log.warning(
+            "atmos_clim.surface_d = 'saturation' keeps the surface fixed with "
+            'outgas.module = "%s": only atmodeller forms condensates',
+            outgas.module,
+        )
+    elif not outgas.atmodeller.include_condensates:
+        log.warning(
+            "atmos_clim.surface_d = 'saturation' keeps the surface fixed with "
+            'outgas.atmodeller.include_condensates = false'
+        )
+
+
+def lowt_extension_requires_aragog(instance, attribute, value):
+    """The low-temperature solid extension is run only with the Aragog interior."""
+    zalmoxis = getattr(instance.interior_struct, 'zalmoxis', None)
+    interior = instance.interior_energetics.module
+    if getattr(zalmoxis, 'lowt_extension', False) is True and interior != 'aragog':
+        why = (
+            'the extension gives the solid P-S table more entropy nodes than the melt table'
+            if interior == 'spider'
+            else f'the "{interior}" interior reads no P-S tables, so the extension has no effect'
+        )
+        raise ValueError(
+            'interior_struct.zalmoxis.lowt_extension = true requires '
+            f'interior_energetics.module = "aragog", not "{interior}": {why}.'
+        )
+
+
+def lowt_extension_requires_ps_tables(instance, attribute, value):
+    """The low-temperature solid extension acts on the P-S tables that the zalmoxis and dummy
+    structures build from the standard PALEOS solid table."""
+    from proteus.utils.helper import energetics_eos_key, lowt_extension_unsupported
+
+    struct = instance.interior_struct
+    zalmoxis = getattr(struct, 'zalmoxis', None)
+    if getattr(zalmoxis, 'lowt_extension', False) is not True:
+        return
+    if struct.module not in ('zalmoxis', 'dummy'):
+        raise ValueError(
+            'interior_struct.zalmoxis.lowt_extension = true requires interior_struct.module = '
+            f'"zalmoxis" or "dummy", not "{struct.module}": only these structures build the P-S '
+            'tables the extension acts on.'
+        )
+    key = energetics_eos_key(zalmoxis.mantle_eos)
+    if lowt_extension_unsupported(key):
+        raise ValueError(
+            'interior_struct.zalmoxis.lowt_extension = true does not support the mantle EOS '
+            f'{key} (mantle_eos = "{zalmoxis.mantle_eos}"): the extension continues the grid of '
+            'the standard PALEOS solid table.'
+        )
+
+
 def observe_resolved_atmosphere(instance, attribute, value):
-    # Synthetic observations require a spatially resolved atmosphere profile
+    """Synthetic observations require a spatially resolved atmosphere (not dummy)."""
     if (instance.observe.module is not None) and (instance.atmos_clim.module == 'dummy'):
         raise ValueError('Observational synthesis requires that atmos_clim != dummy')
 
 
 def janus_escape_atmosphere(instance, attribute, value):
-    # Using escape.zephyrus with JANUS requires params.stop.escape to be True
+    """ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled."""
     if (
         (instance.escape.module == 'zephyrus')
         and (instance.atmos_clim.module == 'janus')
@@ -163,6 +543,101 @@ def planet_oxygen_mode_explicit(instance, attribute, value):
     # itself. This function remains as a hook for cross-field checks
     # (e.g. fO2_source compatibility) that reference O_mode.
     pass
+
+
+def planet_liquidus_super_needs_tables(instance, attribute, value):
+    """Require a P-S table route for ``temperature_mode = "liquidus_super"``.
+
+    The spider and aragog interior modules build the ``liquidus_super``
+    initial condition on interior P-S tables, which the interior wrapper
+    supplies for the ``"zalmoxis"``, ``"spider"`` and ``"dummy"`` structure
+    modules. With no structure module, no table set is provided
+    and the initial condition has nothing to solve on.
+    """
+    if value.temperature_mode != 'liquidus_super':
+        return
+    if instance.interior_energetics.module not in ('spider', 'aragog'):
+        return
+    if instance.interior_struct.module is None:
+        raise ValueError(
+            "planet.temperature_mode = 'liquidus_super' has no valid route with "
+            'interior_struct.module = None under interior_energetics.module = '
+            f"'{instance.interior_energetics.module}': no P-S table set is provided. "
+            "Set interior_struct.module to 'spider', 'dummy' or 'zalmoxis', or "
+            'choose another planet.temperature_mode.'
+        )
+
+
+def energetics_needs_a_thermal_mantle_eos(instance, attribute, value):
+    """Require a PALEOS or temperature-dependent energetics key for SPIDER or Aragog.
+
+    Under the Zalmoxis structure the energetics read the tables and melting
+    curves of the mantle's energetics key; a Seager2007, Chabrier or analytic
+    key has none, so the run would read another set as a stand-in.
+    """
+    from proteus.utils.constants import PALEOS_EOS_PREFIXES, TDEP_EOS_PREFIXES
+    from proteus.utils.helper import energetics_eos_key
+
+    struct = instance.interior_struct
+    zc = struct.zalmoxis if struct.module == 'zalmoxis' else None
+    if value.module not in ('spider', 'aragog') or zc is None:
+        return
+    key = energetics_eos_key(zc.mantle_eos)
+    if not (key or '').startswith(PALEOS_EOS_PREFIXES + TDEP_EOS_PREFIXES):
+        raise ValueError(
+            f"interior_energetics.module = '{value.module}' with mantle_eos="
+            f"'{zc.mantle_eos}' has no energetics tables (energetics key: {key}). "
+            'Use a PALEOS, WolfBower2018 or RTPress100TPa mantle EOS, or an MgSiO3 component '
+            'of one of them in a mixture.'
+        )
+
+
+def aragog_needs_melting_curves(instance, attribute, value):
+    """Require ``interior_struct.melting_dir`` for Aragog without a PALEOS table set.
+
+    Aragog reads a solidus and a liquidus in every mode, from the generated
+    PALEOS set or from ``melting_dir``. SPIDER is checked when the run starts
+    instead: a resumed run continues on its kept P-S tables, and a
+    ``const_properties`` run reads no curves.
+    """
+    from proteus.utils.helper import generates_paleos_tables
+
+    if value.module != 'aragog' or instance.interior_struct.melting_dir is not None:
+        return
+    if generates_paleos_tables(instance.interior_struct):
+        return
+    raise ValueError(
+        "interior_energetics.module = 'aragog' needs interior_struct.melting_dir unless Zalmoxis "
+        'generates a PALEOS table set (a PALEOS mantle EOS under the Zalmoxis structure; a mixture '
+        'follows its MgSiO3 component). The dummy structure requires it with any mantle EOS. '
+        'Set melting_dir to a melting curve name (e.g. "Monteux-600").'
+    )
+
+
+def dummy_struct_mantle_eos(instance, attribute, value):
+    """Check the mantle EOS that the dummy structure hands to SPIDER or Aragog.
+
+    A mixture with two MgSiO3 sources has no energetics key and is rejected. With a
+    PALEOS energetics key the solve uses the PALEOS P-S set and its curves, so a set
+    ``melting_dir`` is passed to Aragog but does not change the solve; one warning says so.
+    """
+    from proteus.utils.constants import PALEOS_REGISTRY_KEYS
+    from proteus.utils.helper import energetics_eos_key
+
+    struct = instance.interior_struct
+    if struct.module != 'dummy' or struct.zalmoxis is None:
+        return
+    if value.module not in ('spider', 'aragog'):
+        return
+    key = energetics_eos_key(struct.zalmoxis.mantle_eos)
+    if struct.melting_dir is not None and key in PALEOS_REGISTRY_KEYS:
+        log.warning(
+            'interior_struct.melting_dir=%r does not change the solve: with module = "dummy" '
+            'and the PALEOS mantle EOS %s, %s uses the PALEOS P-S set and its curves.',
+            struct.melting_dir,
+            struct.zalmoxis.mantle_eos,
+            value.module,
+        )
 
 
 def planet_fO2_source_compat(instance, attribute, value):
@@ -280,6 +755,23 @@ def boundary_requires_fixed_surface_state(instance, attribute, value):
         )
 
 
+def spider_struct_needs_mass_from_interior(instance, attribute, value):
+    """Refuse the SPIDER structure with an interior that takes its mass from the structure.
+
+    The SPIDER structure finds the interior radius from the mantle mass that the
+    energetics module returns for each trial radius. The dummy and boundary
+    interiors take their mantle mass from the structure (M_int - M_core), so the
+    radius solve would have no mantle mass to work with.
+    """
+    struct_module = instance.interior_struct.module
+    energetics = instance.interior_energetics.module
+    if struct_module == 'spider' and energetics in ('dummy', 'boundary'):
+        raise ValueError(
+            "interior_struct.module = 'spider' is incompatible with "
+            f"interior_energetics.module = '{energetics}'."
+        )
+
+
 @define
 class Config:
     """Root config parameters.
@@ -317,7 +809,18 @@ class Config:
     params: Params = field(factory=Params)
     star: Star = field(factory=Star)
     orbit: Orbit = field(
-        factory=Orbit, validator=(instmethod_dummy, instmethod_evolve, satellite_evolve)
+        factory=Orbit,
+        validator=(
+            instmethod_dummy,
+            instmethod_evolve,
+            satellite_evolve,
+            obliqua_requires_perturber,
+            sp0d_obliqua_degree_mismatch,
+            orbit_requires_tides,
+            parameterized_excludes_tides,
+            parameterized_high_ecc_inward,
+            spinless_orbit_keeps_spin_synchronous,
+        ),
     )
     planet: Planet = field(
         factory=Planet,
@@ -325,6 +828,7 @@ class Config:
             planet_mass_valid,
             planet_oxygen_mode_explicit,
             planet_fO2_source_compat,
+            planet_liquidus_super_needs_tables,
         ),
     )
     interior_struct: Struct = field(factory=Struct)
@@ -333,10 +837,24 @@ class Config:
         validator=(
             tides_enabled_orbit,
             boundary_requires_fixed_surface_state,
+            energetics_needs_a_thermal_mantle_eos,
+            aragog_needs_melting_curves,
+            dummy_struct_mantle_eos,
+            lowt_extension_requires_aragog,
+            lowt_extension_requires_ps_tables,
+            spider_struct_needs_mass_from_interior,
         ),
     )
-    outgas: Outgas = field(factory=Outgas)
-    atmos_clim: AtmosClim = field(factory=AtmosClim)
+    outgas: Outgas = field(
+        factory=Outgas,
+        validator=(
+            front_trapping_requires_aragog,
+            prevent_desaturation_warns_without_condensates,
+        ),
+    )
+    atmos_clim: AtmosClim = field(
+        factory=AtmosClim, validator=(saturation_skin_warns_without_condensates,)
+    )
     atmos_chem: AtmosChem = field(factory=AtmosChem)
     escape: Escape = field(
         factory=Escape,
@@ -347,12 +865,31 @@ class Config:
 
     config_version: str = field(
         default='3.0',
-        validator=(valid_config_version, check_module_dependencies),
+        validator=(
+            valid_config_version,
+            check_module_dependencies,
+            check_accretion_interior_compatibility,
+            check_accretion_remelt_source,
+            check_accretion_vapourise_compatibility,
+            check_accretion_core_stratification_compatibility,
+            check_core_module_requirements,
+            parameterized_excludes_accretion,
+        ),
     )
 
-    def write(self, out: str):
+    def write(self, out: str, overrides: dict | None = None):
         """
         Write configuration to a new TOML file.
+
+        Parameters
+        ----------
+        out
+            Output path for the TOML file.
+        overrides
+            Dotted-path values to substitute in the written file, e.g.
+            ``{'interior_energetics.aragog.phi_step_cap': 0.1}``. Lets a
+            caller record a resolved value (one a module derives from a
+            config default at runtime) without mutating this Config object.
         """
 
         # Convert to dictionary
@@ -361,6 +898,63 @@ class Config:
         # Replace None with "none"
         cfg = dict_replace_none(cfg)
 
-        # Write to TOML file
-        with open(out, 'w') as hdl:
-            tomlkit.dump(cfg, hdl)
+        # Apply any resolved-value overrides
+        if overrides:
+            # Imported here to avoid a module-level import cycle: orphans
+            # imports Config from this module.
+            from .orphans import UnknownConfigKeyError
+
+            for dotted_key, value in overrides.items():
+                segments = dotted_key.split('.')
+                *parents, leaf = segments
+                node = cfg
+                for depth, key in enumerate(parents):
+                    if not isinstance(node, dict) or key not in node:
+                        failing = '.'.join(segments[: depth + 1])
+                        raise UnknownConfigKeyError(
+                            f"Override key '{dotted_key}' does not match the schema: "
+                            f"no config section '{failing}'."
+                        )
+                    node = node[key]
+                if not isinstance(node, dict) or leaf not in node:
+                    raise UnknownConfigKeyError(
+                        f"Override key '{dotted_key}' does not match the schema: "
+                        f"no config field '{dotted_key}'."
+                    )
+                if isinstance(node[leaf], dict):
+                    raise UnknownConfigKeyError(
+                        f"Override key '{dotted_key}' targets a config section, "
+                        f'not a field; refusing to replace the whole section.'
+                    )
+                # Route None through the same None -> "none" handling used above,
+                # so a None override does not reach tomlkit as a bare None.
+                node[leaf] = 'none' if value is None else value
+
+        # An Aragog step cap still at its 0.0 schema default (no override
+        # replaced it above) is ambiguous with an explicit, disabling 0.0
+        # once written to TOML, so omit the key and let a reload fall back
+        # to the same schema default it already carries here.
+        interior_energetics = cfg.get('interior_energetics')
+        if (
+            isinstance(interior_energetics, dict)
+            and interior_energetics.get('module') == 'aragog'
+        ):
+            aragog = interior_energetics.get('aragog')
+            if isinstance(aragog, dict):
+                for field_name in _STEP_CAP_FIELDS:
+                    if aragog.get(field_name) == 0.0:
+                        del aragog[field_name]
+
+        # Write a temporary file next to out and move it into place, so a write that stops
+        # part-way (a full disk) leaves the previous file whole.
+        tmp = f'{out}.tmp'
+        try:
+            with open(tmp, 'w') as hdl:
+                tomlkit.dump(cfg, hdl)
+            os.replace(tmp, out)
+        except BaseException:
+            try:  # the cleanup must not hide the error of the write
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise

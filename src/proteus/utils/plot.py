@@ -10,7 +10,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.utils.archive import archive_exists
-from proteus.utils.helper import mol_to_ele
+from proteus.utils.constants import vap_list
+from proteus.utils.helper import mol_to_ele, parse_subyear_time
+from proteus.utils.plot_quantities import PRESET_QUANTITIES
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -32,6 +34,12 @@ _preset_colours = {
     'SO2': '#00008B',
     'H2S': '#2eff90',
     'NH3': '#675200',
+    'SiO': '#b2df8a',
+    'MgO': '#a6cee3',
+    'SiO2': '#1b9e77',
+    'FeO': '#7f0000',
+    'TiO': '#9C45BC',
+    'TiO2': '#421e39',
     # Volatile elements
     'H': '#0000cc',
     'C': '#ff0000',
@@ -44,6 +52,11 @@ _preset_colours = {
     'Si': '#aa2277',
     'Mg': '#996633',
     'Na': '#ccff00',
+    'Ti': '#0d2959',
+    'V': '#ff6600',
+    'K': '#2e8b57',
+    'Al': '#5e2172',
+    'Ca': '#167A9B',
     # Noble gases (each is both a gas species and an element)
     'He': '#7f7f7f',
     'Ne': '#e6550d',
@@ -91,6 +104,109 @@ _preset_colours = {
     'naclflm': '#fca1ff',
     'nacljet': '#ee29f5',
 }
+
+
+def get_label(quant: str) -> str:
+    """Return a display-ready plot label for a grid quantity.
+
+    Parameters
+    ----------
+    quant : str
+        Grid config path (input parameter) or helpfile column (output).
+
+    Returns
+    -------
+    str
+        The preset label, or the last dotted component of ``quant`` when no
+        preset exists (so an unlabelled quantity still reads sensibly).
+    """
+    if quant in PRESET_QUANTITIES:
+        return PRESET_QUANTITIES[quant].label
+    return quant.split('.')[-1]
+
+
+def get_scale(quant: str) -> float:
+    """Return the multiplicative plot scale for a grid quantity (1.0 if unset)."""
+    if quant in PRESET_QUANTITIES:
+        return PRESET_QUANTITIES[quant].scale
+    return 1.0
+
+
+def get_log_scale(quant: str) -> bool:
+    """Return whether a grid quantity is plotted on a log axis.
+
+    A quantity without a preset follows ``utils.coupler.variable_is_logarithmic``,
+    the convention the inference tools use (for example any ``*_vmr`` column).
+    """
+    if quant in PRESET_QUANTITIES:
+        return PRESET_QUANTITIES[quant].log
+    # Imported here because proteus.utils.coupler imports this module.
+    from proteus.utils.coupler import variable_is_logarithmic
+
+    return variable_is_logarithmic(quant)
+
+
+# Default colour map for grid parameter values: a Crameri scientific colour map
+# (perceptually uniform, colour-blind friendly), as used across the PROTEUS plots.
+DEFAULT_COLOURMAP = 'batlowK_r'
+
+
+def register_proteus_mpl_colourmaps() -> None:
+    """Register the proteus-mpl colour maps with matplotlib, when it is installed.
+
+    proteus-mpl registers 'proteus', 'proteus_div', 'proteus_phase' and their '_r'
+    forms only inside ``proteus_mpl.use()``. Calling it inside ``rc_context`` makes
+    the maps available whatever the plot style: the colour map registry outlives
+    the context, while the style settings are restored on exit.
+    """
+    import matplotlib as mpl
+    import matplotlib.pyplot as plt
+
+    if 'proteus' in mpl.colormaps:
+        return
+    try:
+        import proteus_mpl
+    except ImportError:
+        return
+    with plt.rc_context():
+        proteus_mpl.use()
+
+
+def get_colourmap(name: str | None = None):
+    """Return a matplotlib Colormap for colouring grid parameter values.
+
+    ``name`` may be a Crameri scientific colour map from cmcrameri (for example
+    'batlowK_r', 'batlow', 'vik'; the 'cmc.' prefix is optional), a proteus-mpl
+    colour map (for example 'proteus') when proteus-mpl is installed, or any colour
+    map registered with matplotlib (for example 'viridis'). Falls back to
+    ``DEFAULT_COLOURMAP`` when ``name`` is empty or not recognised.
+
+    Parameters
+    ----------
+    name : str or None
+        Requested colour map name.
+
+    Returns
+    -------
+    matplotlib.colors.Colormap
+        The resolved colour map.
+    """
+    import cmcrameri.cm  # noqa: F401  (registers the 'cmc.<name>' colour maps)
+    import matplotlib as mpl
+
+    register_proteus_mpl_colourmaps()
+
+    def _lookup(key):
+        for candidate in (key, f'cmc.{key}'):
+            if candidate in mpl.colormaps:
+                return mpl.colormaps[candidate]
+        return None
+
+    cmap = _lookup(name or DEFAULT_COLOURMAP)
+    if cmap is None:
+        log.warning("Unknown colourmap '%s'; falling back to '%s'", name, DEFAULT_COLOURMAP)
+        cmap = _lookup(DEFAULT_COLOURMAP)
+    return cmap
 
 
 def _generate_colour(gas: str):
@@ -143,6 +259,36 @@ def _generate_colour(gas: str):
     return colour
 
 
+# Fades that give the greys '#444444' and '#808080' in the default (black on white) style.
+FADE_DARK_GREY = 0x44 / 0xFF
+FADE_MID_GREY = 0x80 / 0xFF
+
+
+def style_neutral(fade: float = 0.0) -> tuple[float, float, float]:
+    """Neutral colour of the active matplotlib style, read when it is called.
+
+    Parameters
+    ----------
+    fade : float
+        Position between the text colour (0) and the axes face colour (1) of the
+        style, mixed linearly in RGB. A transparent axes face stands for the
+        figure face colour.
+
+    Returns
+    -------
+    tuple of float
+        RGB colour: black, grey and white in the default style, and their
+        counterparts in a dark style.
+    """
+    from matplotlib import colors, rcParams
+
+    face = colors.to_rgba(rcParams['axes.facecolor'])
+    if face[3] == 0.0:
+        face = colors.to_rgba(rcParams['figure.facecolor'])
+    text = colors.to_rgb(rcParams['text.color'])
+    return tuple(t + fade * (f - t) for t, f in zip(text, face))
+
+
 def get_colour(thing: str):
     """
     Get a colour for something which needs one (e.g. for plotting a particular gas)
@@ -157,6 +303,17 @@ def get_colour(thing: str):
         colour = _generate_colour(thing)
 
     return colour
+
+
+def get_linestyle(thing: str):
+    """
+    Get a linestyle for something which needs one (e.g. for plotting a particular gas)
+    """
+
+    if thing in vap_list:
+        return 'dashed'
+    else:
+        return 'solid'
 
 
 def latexify(gas: str):
@@ -263,6 +420,13 @@ def latex_float(f):
         return float_str
 
 
+def profile_sample_tmin(times: list) -> float:
+    """Earliest time [yr] to sample profile snapshots from: 1e3 yr once a run passes it."""
+    if len(times) > 0 and np.amax(times) > 1e3:
+        return 1e3
+    return 1.0
+
+
 def sample_times(times: list, nsamp: int, tmin: float = 1.0):
     from proteus.utils.helper import find_nearest
 
@@ -279,19 +443,19 @@ def sample_times(times: list, nsamp: int, tmin: float = 1.0):
     tmax = max(tmin + 1, np.amax(times))
 
     # do not allow times outside range
-    allowed_times = [int(x) for x in times if tmin <= x <= tmax]
+    allowed_times = [float(x) for x in times if tmin <= x <= tmax]
 
     # get samples on log-time scale
     sample_t = []
     sample_i = []
     for s in np.logspace(np.log10(tmin), np.log10(tmax), nsamp):  # Sample on log-scale
-        remaining = [int(v) for v in set(allowed_times) - set(sample_t)]
+        remaining = [float(v) for v in set(allowed_times) - set(sample_t)]
         if len(remaining) == 0:
             break
 
         # Get next nearest time
         val, _ = find_nearest(remaining, s)
-        sample_t.append(int(val))
+        sample_t.append(float(val))
 
         # Get the index of this time in the original array
         _, idx = find_nearest(times, val)
@@ -324,7 +488,7 @@ def sample_output(
         return [], []
 
     # get times
-    times = [int(f.split('/')[-1].split(extension)[0]) for f in files]
+    times = [parse_subyear_time(f.split('/')[-1].split(extension)[0]) for f in files]
 
     out_t, out_i = sample_times(times, nsamp, tmin=tmin)
     out_f = [files[i] for i in out_i]

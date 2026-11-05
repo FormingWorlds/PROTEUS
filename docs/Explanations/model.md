@@ -45,10 +45,13 @@ atmosphere), enabling hierarchical model intercomparison.
 | Star | [MORS](https://proteus-framework.org/MORS/), dummy | Stellar evolution and spectrum |
 | Escape | [ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS), dummy | Atmospheric escape |
 | Outgassing | [CALLIOPE](https://proteus-framework.org/CALLIOPE/), [atmodeller](https://github.com/djbower/atmodeller), dummy | Volatile exchange between interior and atmosphere |
-| Orbit | [Obliqua](https://github.com/FormingWorlds/Obliqua), dummy | Orbital evolution and tidal heating |
+| Tides | [Obliqua](https://proteus-framework.org/Obliqua), [Lovepy](https://github.com/nichollsh/LovePy), dummy | Tidal response of the planet (Love numbers, heating) |
+| Orbit | PROTEUS (internal) | Orbital evolution (semi-major axis, eccentricity, spin) |
+| Accretion | [Morrigan](https://proteus-framework.org/Morrigan/), timeline, dummy | Protoplanet growth by giant impacts |
 | Observations | [petitRADTRANS](https://petitradtrans.readthedocs.io/), none | Synthetic transit and eclipse spectra |
 
 Each module is maintained in its own repository and can be used as a standalone package outside of PROTEUS. The following sections describe each module's physical role and how PROTEUS couples to it.
+
 
 ---
 
@@ -56,7 +59,7 @@ Each module is maintained in its own repository and can be used as a standalone 
 
 [Zalmoxis](https://proteus-framework.org/Zalmoxis/) computes the hydrostatic equilibrium structure of a differentiated planet (metallic core + silicate mantle + volatile envelope). Given a total planet mass, bulk composition, and surface temperature, Zalmoxis integrates the equations of hydrostatic equilibrium inward from the surface using a tabulated equation of state (EOS), returning radial profiles of pressure, density, temperature, and gravitational acceleration. It also computes the core radius, mantle mass, and surface gravity.
 
-Zalmoxis supports several EOS backends, including the PALEOS MgSiO$_3$ tables and the Wolf & Bower (2018) [^cite-wolf2018] parameterisation. The PALEOS mantle EOS comes in two forms: `PALEOS:MgSiO3` solves the structure on the unified table and derives the solidus from the liquidus with a fixed mushy-zone factor (the Stixrude 2014 solidus-to-liquidus ratio), while `PALEOS-2phase:MgSiO3` uses separate solid and liquid tables that set the phase boundaries directly. Both are detailed in the [interior configuration reference](../Reference/config/interior.md). The structure solution is used by PROTEUS to initialise the planet's radius and to dynamically update the structure during the simulation when the interior thermal state changes (see [Structure-interior coupling](#structure-interior-coupling) below).
+Zalmoxis supports several EOS backends, including the PALEOS MgSiO$_3$ tables and the Wolf & Bower (2018) [^cite-wolf2018] parameterisation. The PALEOS mantle EOS comes in two forms: `PALEOS:MgSiO3` solves the structure on the unified table and derives the solidus from the liquidus with a fixed mushy-zone factor (by default the Stixrude 2014 solidus-to-liquidus ratio, applied to the PALEOS liquidus), while `PALEOS-2phase:MgSiO3` uses separate solid and liquid tables for the latent-heat entropy gap across the melting curve and derives the solidus from the liquidus with the same mushy-zone factor. Both are detailed in the [interior configuration reference](../Reference/config/interior.md). The structure solution is used by PROTEUS to initialise the planet's radius and to dynamically update the structure during the simulation when the interior thermal state changes (see [Structure-interior coupling](#structure-interior-coupling) below).
 
 Config section: `[interior_struct]`. Reference: [Interior configuration](../Reference/config/interior.md).
 
@@ -64,7 +67,9 @@ Config section: `[interior_struct]`. Reference: [Interior configuration](../Refe
 
 The interior energetics module evolves the mantle temperature and melt fraction in time by solving the energy equation in the planetary interior.
 
-**[Aragog](https://proteus-framework.org/aragog/)** (Python/JAX) solves the interior energy equation in the temperature-pressure (T-P) formulation. It discretises the mantle on a radial grid and advances the temperature profile using the SUNDIALS CVODE integrator with an analytic Jacobian computed via JAX automatic differentiation. Aragog handles the full mushy-zone (partial melt) regime, including phase-dependent material properties, radiogenic heating, tidal heating, and core cooling. It is the recommended interior module for most configurations.
+**[Aragog](https://proteus-framework.org/aragog/)** (Python/JAX) solves the interior energy equation in the temperature-pressure (T-P) formulation. It discretises the mantle on a radial grid and advances the temperature profile using the SUNDIALS CVODE integrator (required unless a scipy solver is chosen explicitly) with an analytic Jacobian computed via JAX automatic differentiation. Aragog handles the full mushy-zone (partial melt) regime, including phase-dependent material properties, radiogenic heating, tidal heating, and core cooling. It is the recommended interior module for most configurations.
+
+By default the core below the Aragog mantle is a heat reservoir of fixed heat capacity. With `interior_energetics.aragog.core_bc = "core_module"` the core has its own energy budget instead: secular cooling along the core adiabat, the latent heat of a growing inner core, the gravitational energy of the light elements it rejects, and radiogenic heat. The core temperature is then a state of the solver, and the heat flux through the core-mantle boundary follows from the temperature contrast between the core and the base of the mantle across a boundary layer. See [Core evolution](../How-to/usage_core_evolution.md).
 
 **[SPIDER](https://proteus-framework.org/SPIDER/)** (C) uses the temperature-entropy (T-S) formulation [^cite-bower2018]. It discretises the mantle on a staggered radial grid and solves the entropy equation using PETSc's implicit time integrator. SPIDER provides an independent cross-check on Aragog for the same physical problem formulated in a different thermodynamic variable. It requires PETSc and is an optional installation component.
 
@@ -80,11 +85,15 @@ The atmosphere climate module solves the radiative-convective equilibrium struct
 
 **[JANUS](https://proteus-framework.org/JANUS/)** (Python) is a 1D convective atmosphere module that computes a radiative-convective profile using a band-averaged two-stream approach. JANUS is faster than AGNI but makes stronger simplifying assumptions (e.g. no iterative Newton solve; a prescribed adiabatic lower atmosphere). It is useful for parameter sweeps and initial exploration.
 
+With `surf_state = 'skin'`, a conductive skin of thickness `surface_d` and conductivity `surface_k` separates the magma from the atmosphere, and carries the flux $k\,(T_\mathrm{magma} - T_\mathrm{surf}) / d$. 
+
+Instead, setting both to `'saturation'` derives the skin from the condensates formed at the surface, such as graphite. Each condensate is spread over the surface as a layer at its density, and the layers are stacked in series: $d = \sum_i d_i$ and $k = d / \sum_i (d_i / k_i)$, with a constant conductivity per condensate (`condensate_conductivity` in `proteus.utils.constants`). 
+
 Config section: `[atmos_clim]`. Reference: [Atmosphere configuration](../Reference/config/atmosphere.md).
 
 ## Atmospheric chemistry: VULCAN
 
-**[VULCAN](https://github.com/FormingWorlds/VULCAN)** (Python) is a photochemical kinetics code that computes steady-state atmospheric mixing ratios given a temperature-pressure profile, eddy diffusion profile, and UV stellar spectrum. In PROTEUS, VULCAN can run in two modes: *online* (at each snapshot during the simulation) or *offline* (once after the simulation completes). Most configurations use the offline mode because the chemistry calculation is computationally expensive relative to the coupling timestep.
+**[VULCAN](https://github.com/FormingWorlds/VULCAN)** (Python) is a photochemical kinetics code that computes steady-state atmospheric mixing ratios given a temperature-pressure profile, eddy diffusion profile, and UV stellar spectrum. In PROTEUS, VULCAN post-processes atmosphere snapshots after the simulation: automatically at its end with `atmos_chem.mode = "offline"`, or later with `proteus offchem`. `atmos_chem.times` selects the snapshots (the final state, all of them, or a list of times). The chemistry does not feed back on the evolution; coupled (online) chemistry is not yet implemented. See [Postprocessing and chemistry](../How-to/usage_postprocessing.md#atmospheric-chemistry-with-vulcan).
 
 Config section: `[atmos_chem]`. Reference: [Atmosphere configuration](../Reference/config/atmosphere.md).
 
@@ -108,15 +117,158 @@ The outgassing module computes the thermodynamic equilibrium partitioning of vol
 
 **[CALLIOPE](https://proteus-framework.org/CALLIOPE/)** (Python) solves for the equilibrium partial pressures and dissolved volatile concentrations given the mantle temperature, melt fraction, and total element inventories for H, C, N, S, and O [^cite-bower2019]. It uses parameterised solubility laws and an fO2 buffer (configurable as an IW offset) to compute the redox state [^cite-nicholls2024]. CALLIOPE handles the full set of major volcanic gases (H$_2$O, CO$_2$, H$_2$, CO, N$_2$, SO$_2$, S$_2$, CH$_4$).
 
-**[atmodeller](https://github.com/djbower/atmodeller)** (Python/JAX) is an alternative outgassing backend that uses a real-gas equation of state and a more detailed thermochemical treatment [^cite-bower2025]. atmodeller provides an independent cross-check on CALLIOPE for the same volatile partitioning problem.
+**[atmodeller](https://github.com/djbower/atmodeller)** (Python/JAX) is an alternative outgassing module that uses a real-gas equation of state and a more detailed thermochemical treatment [^cite-bower2025]. atmodeller provides an independent cross-check on CALLIOPE for the same volatile partitioning problem. Each solve may take up to `outgas.atmodeller.solver_multistart` attempts, a failed start being perturbed and tried again; a solve in which no attempt converges stops the run with an error, rather than writing the solver's start guess to the helpfile.
+When no H, C, N or S inventory is above `outgas.mass_thresh` and no noble gas remains, atmodeller solves for a pure O$_2$ atmosphere: at the IW buffer offset under `planet.fO2_source = "user_constant"`, and against the O budget under `"from_O_budget"`. CALLIOPE also keeps a pure O$_2$ atmosphere at the buffer offset in this case, but each module uses its own parameterisation of the IW buffer, so at the same offset and temperature the two give different O$_2$ pressures (log fO$_2$ differs by up to 0.30 dex between 1500 and 4000 K). Under `"from_O_budget"` with the O budget also at or below the threshold, atmodeller skips the solve and writes an empty atmosphere that keeps the last mixing ratios, as after desiccation.
+
+**[LavAtmos](https://github.com/FormingWorlds/LavAtmos)** (Python) is an optional addition, enabled with `outgas.vapourise = true`, that computes the thermodynamic vapourisation equilibrium of the surface melt [^cite-vanbuchem2023] and adds the resulting rock-vapour species to the volatile outgassing [^cite-vanbuchem2025]. Vapourisation is a distinct process from outgassing. It uses the FastChem equilibrium chemistry solver and requires [ThermoEngineLite](https://github.com/FormingWorlds/ThermoEngineLite) for melt thermodynamics. 
 
 Config section: `[outgas]`. Reference: [Escape and outgassing configuration](../Reference/config/escape_outgas.md).
 
-## Orbital evolution: Obliqua
+For the order of the volatile steps in each iteration, the species-to-element split, the H$_2$ binodal, rock vapour and the trapping of volatiles in the freezing mantle, see [Outgassing, rock vapour and volatile trapping](outgas.md).
 
-**[Obliqua](https://github.com/FormingWorlds/Obliqua)** (Julia) evolves the orbital semi-major axis and eccentricity under the influence of tidal dissipation. The tidal response of the planet is computed from its interior structure and rheology using a viscoelastic love-number solver (LovePy). Tidal heating power is distributed radially across the mantle and fed back into the interior energy equation. Obliqua also computes the spin-orbit evolution and checks for dynamical stability (Roche limit, Hill sphere).
+### Volatile outgassing and rock vapourisation are combined
 
-Config section: `[orbit]`. Reference: [Star and orbit configuration](../Reference/config/star_orbit.md).
+With `outgas.vapourise = true` the following steps run sequentially, at each PROTEUS iteration:
+
+- The volatile outgassing backend runs first on its own
+- The vapourisation step then re-equilibrates the volatile atmosphere **together with** the rock vapour
+- Returns one combined composition
+
+```text
+ reset rock-vapour species and rock element reservoirs; M_vaps = 0
+                          |
+                          v
+ [1] run_outgassing  (CALLIOPE / atmodeller / dummy)
+     volatile equilibrium at fO2 = IW + outgas.fO2_shift_IW
+     -> <gas>_bar, <gas>_vmr, <gas>_kg_*, atm_kg_per_mol
+     -> P_surf = volatile total ;  P_vol = P_surf ;  P_vap = 0
+     -> M_atm  = sum over gases of <gas>_kg_atm
+     -> fO2_shift_IW_derived                       (volatile redox column)
+                          |
+          Phi_global < params.stop.solid.phi_crit ? ---- yes ---> stop here
+                          | no                                   (no vapour)
+                          v
+ [2] run_vapourisation  (LavAtmos + FastChem)
+     input  = melt at T = max(T_magma, outgas.lavatmos.T_min),
+              P_volatile = P_vol from [1],
+              element number fractions of: 
+              (H, C, N, S, O + noble gases, from <e>_kg_atm),
+              fO2 initial guess = 10 ** fO2_vapourise_derived (previous step)
+     output = FastChem boa_chem: total pressure Pbar, mean mass mu,
+              mixing ratios of ALL species
+                          |
+                          v
+ [3] combine, in this order:
+     P_vap  = max(Pbar - P_vol_from_[1], 0)        rock-vapour part
+     P_surf = Pbar                                 combined total
+     P_vol  = P_surf - P_vap                       volatile part (identity holds)
+     M_atm  = Pbar * 4*pi*R_int^2 / gravity        hydrostatic column
+     atm_kg_per_mol = mu                           combined MMW
+     per gas:      <gas>_bar    = vmr * Pbar
+                   <gas>_kg_atm = vmr * M_atm * W_gas / mu
+                   <gas>_kg_total = 0 for rock-vapour species (kept in M_vaps),
+                                    else atm + liquid + solid
+     per element:  <e>_kg_atm = frac_e * M_atm * W_e / mmw_elements
+                   O_kg_atm stays at the volatile-step
+                   value and the vapour-derived excess goes to O_vapourised_kg
+                   rock-forming elements accumulate into M_vaps
+     fO2_vapourise_derived          = log10( vmr_O2 * (P_vol + P_vap) )
+                                      absolute, log10 bar
+     fO2_vapourise_shift_IW_derived = fO2_vapourise_derived - IW(T_magma)
+                                      relative to the buffer, dex
+```
+
+Some notable consequences of step 3:
+
+- **Pressures add, compositions do not.** `P_surf = P_vol + P_vap`, with `P_vap` defined as the excess of the combined FastChem total. The per-gas and per-element amounts are taken from the combined equilibrium, not summed across the two steps since adding them would count the volatile inventory twice.
+
+- **The vapourisation step reports its redox state twice**, absolute and buffer-relative. The two must not be used interchangeably:
+
+    | Column | Meaning | Units |
+    |---|---|---|
+    | `fO2_vapourise_derived` | **Absolute** fO2 of the combined atmosphere: the FastChem O2 mixing ratio times the total pressure `P_vol + P_vap`. Zero means 1 bar of O2. | log$_{10}$ bar |
+    | `fO2_vapourise_shift_IW_derived` | **Relative** to the iron-wustite buffer at `T_magma`: `fO2_vapourise_derived - IW(T_magma)`. Zero means "exactly on the buffer", so it moves as `T_magma` evolves, even at fixed absolute fO2. | dex |
+
+    The absolute value is fed back to LavAtmos as the fO2 initial guess for the next iteration's LavAtmos call.
+
+- **The vapourisation fO2 is separate from the volatile-chemistry fO2.**  `fO2_shift_IW_derived` is the redox buffer offset obtained from the volatile step (e.g. CALLIOPE or atmodeller rather than by LavAtmos). It is not expected
+  to equal `fO2_vapourise_shift_IW_derived` since the two come from different solvers.
+
+### Whole-planet mass is not conserved when vapourisation is enabled
+
+- **Rock vapour is added to the atmosphere without being removed from the interior.** The vapourised rock mass is accumulated into `M_vaps` and enters `M_atm`, but no matching mass is subtracted from the interior: `M_int`, `M_mantle`.
+- **Rock-vapour elements dilute the escape outflow but are not depleted by it.**  Rock-forming elements take part in the unfractionated escape partitioning and reduce the escape rate available to H/C/N/O/S. This applies when `escape.reservoir = "outgas"`, where the partitioning weights are atmospheric masses. With `escape.reservoir = "bulk"` the rock-forming whole-planet totals are reset to zero on every outgassing step, so they carry no weight and do not dilute the outflow.
+
+`utils.coupler.assert_mass_conservation` therefore checks two things separately. `M_atm <= M_planet` is enforced under `outgas.vapourise = false`. `M_vol_atm` equals the sum of the per-species atmospheric masses; rock vapour is excluded from `M_vol_atm` by definition.
+
+## Tidal evolution: Obliqua, Lovepy
+
+**[Obliqua](https://proteus-framework.org/Obliqua)** (Julia) computes the multi-phase tidal response of the planet. The tidal love-numbers of the planet is computed from its interior structure and rheology using various viscoelastic rheological models. Tidal heating power is distributed radially across the mantle and fed back into the interior energy equation. The model is valid for arbitrary eccentricity and spin-orbit misalignment, as it models arbitrary tidal degrees and modes.
+
+**[Lovepy](https://github.com/nichollsh/LovePy)** (Julia) computes the solid-only tidal response of the planet using a Maxwell rheology. Tidal heating power is distributed radially across the mantle and fed back into the interior energy equation. It assumes spin-orbit synchronisation and a small eccentricity, as only the dominant degree-2 tidal modes are considered.
+
+## Orbital evolution: PROTEUS (internal)
+
+**[Orbital evolution](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/orbit)** (Python) computes the time evolution of the independent orbital parameters (semi-major axis, eccentricity, spin, apsidal precession) under the influence of tidal dissipation in both the primary and the perturbing body. The model combines spin-orbit dynamics with eccentricity evolution, based on a vectorial approach expressed in Hansen coefficients. The model allows for angular momentum draining through the evection resonance, but conserves it in all other cases.
+
+Config section: `[orbit]`. Reference: [Star and orbit configuration](../Reference/config/star_orbit.md). For the full set of star-planet and planet-satellite models (sp0d/sp1d/parameterized/ps0d/ps1d/ps1d_evec), the evection resonance, and the satellite Love-number lookup workflow, see [Orbital dynamics and tides](orbit.md).
+
+## Accretion: Morrigan
+
+The accretion module supplies the giant impacts a planet experiences after the disk disperses, and PROTEUS applies each one to the planet it is evolving.
+
+**[Morrigan](https://proteus-framework.org/Morrigan/)** (Python) follows a system of planetary embryos through the secular eccentricity oscillations, orbit crossings, scatterings, ejections and giant impacts by which they accrete, until the system settles into a Hill-stable configuration. It implements the semi-analytical Monte Carlo model of Kimura et al. (2025) [^cite-kimura2025], which predicts when a system goes unstable and resolves each instability with prescriptions calibrated against N-body simulations, rather than integrating the orbits. That makes one system cheap enough to run inside a coupled framework, at the cost of any single history being a statistical realisation rather than a trajectory: ensemble statistics are the meaningful comparison. PROTEUS follows one survivor of that system, chosen by the configured selector, and takes its impact history.
+
+Each impact is applied at the timestep it falls in. The impactor's rock grows the planet and the interior structure is re-solved at the new mass, so radius, gravity and the core-mantle split follow the growth. The impactor's volatiles are delivered while the same collision fraction strips the target's atmosphere and the impactor's own, so a small impactor striking a heavily-clothed planet can leave it lighter than before. The impact also re-melts part of the mantle, set by `accretion.remelt` (see [how much of the mantle an impact melts](#how-much-of-the-mantle-an-impact-melts)). The orbit takes the collision's change in semi-major axis and eccentricity, clamped to a bound orbit.
+
+Two further implementations take an impact history rather than derive one. `timeline` replays a table of impacts from a file, which reproduces a published history or drives PROTEUS from one computed elsewhere. `dummy` builds a history from scaling laws: the planet approaches an asymptotic mass exponentially, impacts are evenly spaced in time, and each delivers the mass the law accretes over its interval, so the increments decay and the largest impact is the first. With no accretion module selected the impact list is empty and the planet's mass is set by its initial condition alone.
+
+Config section: `[accretion]`. Reference: [Accretion configuration](../Reference/config/accretion.md).
+
+### How much of the mantle an impact melts
+
+How much of the mantle does a giant impact melt, and where in the mantle does the melt go?
+
+Each impact melts a fraction $f$ of the mantle mass, the melt mass fraction.
+The melt fills the mantle from the surface down.
+The Aragog interior solver divides the mantle into cells, thin spherical shells.
+The outermost cells that hold this mass rise to the run's temperature-mode initial condition, and the deeper mantle keeps its state before the impact.
+
+The setting `accretion.remelt` sets $f$:
+
+- `full` gives $f = 1$: the whole mantle rises.
+- `computed`, the default with Morrigan, takes the $f$ that Morrigan reports for each merger, or an `f_melt` column of a timeline file.
+- Without a setting, a run with Morrigan uses `computed` and every other run `full`.
+- An $f$ that is not a finite number from 0 to 1 is an error, also in an `f_melt` column.
+
+The mantle mass here is the structural mass of the mantle before the impact.
+Parts of the mantle that are already hotter than the initial condition keep their state.
+
+For example, take a mantle of uniform density between the core-mantle boundary at $r_c$ = 3500 km and the surface at $R$ = 6400 km, and $f = 0.3$.
+The melt front $r_f$ then follows from the mass of the outer shell, $r_f = (R^3 - f (R^3 - r_c^3))^{1/3}$:
+
+$r_f^3 = 2.62144 \times 10^{11} - 0.3 \times (2.62144 \times 10^{11} - 4.2875 \times 10^{10}) = 1.963633 \times 10^{11}$ km$^3$, so $r_f$ = 5812 km.
+
+The melt front lies 588 km below the surface.
+A fill linear in radius would put it at $R - f (R - r_c)$ = 5530 km, 870 km deep and 282 km too deep, because the outer cells hold more mass per unit radius.
+
+The cell at the melt front holds only the share $w$ of the melt, its weight, and takes the mass-weighted mean entropy of its melted and unmelted parts.
+Its entropy therefore moves the share $w$ of the way from its entropy before the impact to the entropy of the initial condition; that distance is its jump (see the [terms of the re-melt validation page](../Validation/interior_energetics/remelt.md#what-this-page-checks)).
+
+The rule has no memory of earlier melt.
+Each impact fills its share from the surface down, also where the cells are already at the initial condition.
+So two impacts of $f = 0.3$ in one step melt 0.3 of the mantle plus up to a quarter of the cell at the melt front, since the second impact moves that cell the share $w$ again.
+For example, in a mantle of 4 equal cells the first impact melts the top cell in full and the next cell by $w = 0.2$.
+The second impact melts the same share again, so that cell then holds $1 - 0.8^2 = 0.36$ of its jump instead of 0.2.
+The extra share is $w (1 - w)$, at most 1/4 at $w = 0.5$.
+
+The dummy interior carries one mantle temperature.
+At each impact it moves that temperature the share $f$ of the way to the initial temperature, so its impacts compound.
+The boundary interior and SPIDER cannot apply an impact, so an accretion run with either is refused when the configuration is loaded.
+
+The tutorial [Giant impacts with a partial re-melt](../Tutorials/giant_impact_remelt.md) runs a full and a partial re-melt and reads their impact rows.
+
+**Where this is checked.** [Partial giant-impact re-melt](../Validation/interior_energetics/remelt.md) on the Validation tab.
 
 ## Synthetic observations: petitRADTRANS
 
@@ -163,10 +315,14 @@ architecture and for quick parameter exploration.
 | Star | Fixed effective temperature and luminosity; Planck-function spectrum at a user-specified $T_\mathrm{eff}$ |
 | Escape | Constant bulk mass loss rate (user-specified kg/s), distributed proportionally across elements |
 | Outgassing | Melt-fraction-dependent volatile partitioning with fixed stoichiometry, no equilibrium chemistry |
-| Orbit | Fixed semi-major axis and eccentricity; configurable parameterised tidal heating |
+| Orbit & Tides | Fixed semi-major axis and eccentricity; configurable parameterised tidal heating |
+| Accretion | Exponential approach to an asymptotic mass, delivered as evenly spaced impacts; Noack & Lasbleis (2020) [^cite-noack2020] radii and momentum-conserving mergers |
 
-The [Quick start tutorial](../Tutorials/quick_start_dummy.md) runs PROTEUS
-with all modules set to dummy.
+
+The [Quick start tutorial](../Tutorials/quick_start_dummy.md) runs PROTEUS with
+every physics module set to dummy. Accretion is left out of that configuration,
+so the planet keeps the mass its initial condition gives it; add an
+`[accretion]` section with `module = "dummy"` to let it grow.
 
 ---
 
@@ -210,8 +366,14 @@ Only the interior and star modules have an explicit notion of time-evolution. Al
 
  [^cite-nicholls2024]: Nicholls, H., Lichtenberg, T., Bower, D.J. & Pierrehumbert, R., *[Magma ocean evolution at arbitrary redox state](https://doi.org/10.1029/2024JE008576)*, Journal of Geophysical Research: Planets, 129, e2024JE008576, 2024. [SciX](https://scixplorer.org/abs/2024JGRE..12908576N/abstract).
 
+ [^cite-vanbuchem2023]: van Buchem, C.P.A., Miguel, Y., Zilinskas, M. & van Westrenen, W., *[LavAtmos: An open-source chemical equilibrium vaporization code for lava worlds](https://doi.org/10.1111/maps.13994)*, Meteoritics & Planetary Science, 58, 1149-1161, 2023.
+
+ [^cite-vanbuchem2025]: van Buchem, C.P.A., Zilinskas, M., Miguel, Y. & van Westrenen, W., *[LavAtmos 2.0: Incorporating volatile species in vaporisation models](https://doi.org/10.1051/0004-6361/202450992)*, Astronomy & Astrophysics, 695, A154, 2025. 
+
  [^cite-spada2013]: Spada, F., Demarque, P., Kim, Y.C. & Sills, A., *[The radius discrepancy in low-mass stars: single versus binaries](https://doi.org/10.1088/0004-637X/776/2/87)*, The Astrophysical Journal, 776, 87, 2013. [SciX](https://scixplorer.org/abs/2013ApJ...776...87S/abstract).
 
  [^cite-baraffe2015]: Baraffe, I., Homeier, D., Allard, F. & Chabrier, G., *[New evolutionary models for pre-main sequence and main sequence low-mass stars down to the hydrogen-burning limit](https://doi.org/10.1051/0004-6361/201425481)*, Astronomy & Astrophysics, 577, A42, 2015. [SciX](https://scixplorer.org/abs/2015A%26A...577A..42B/abstract).
 
  [^cite-noack2020]: Noack, L. & Lasbleis, M., *[Parameterisations of interior properties of rocky planets](https://doi.org/10.1051/0004-6361/202037723)*, Astronomy & Astrophysics, 638, A129, 2020. [SciX](https://scixplorer.org/abs/2020A%26A...638A.129N/abstract).
+
+ [^cite-kimura2025]: Kimura, T., Hoshino, H., Kokubo, E., Matsumoto, Y. & Ikoma, M., *[Semi-analytical model for the dynamical evolution of planetary systems via giant impacts](https://doi.org/10.3847/1538-4357/ade992)*, The Astrophysical Journal, 989, 109, 2025.

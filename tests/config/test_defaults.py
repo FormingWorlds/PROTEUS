@@ -59,12 +59,12 @@ def test_dt_params_defaults():
 
     Verifies time-stepping defaults are set for stable integration:
     - method: adaptive (safest for general use)
-    - limits: 3e2 yr to 1e7 yr (covers typical geological timescales)
+    - limits: 1e2 yr to 1e7 yr (covers typical geological timescales)
     - adaptive tolerance: 10% change per step (standard stability/speed trade-off)
     """
     dt = TimeStepParams()
     assert dt.method == 'adaptive'
-    assert dt.minimum == pytest.approx(1e4, rel=1e-12)  # Minimum step 300 years
+    assert dt.minimum == pytest.approx(1e2, rel=1e-12)  # Minimum step 100 years
     assert dt.minimum_rel == pytest.approx(1e-5, rel=1e-12)  # Relative minimum precision
     assert dt.maximum == pytest.approx(1e7, rel=1e-12)  # Maximum step 10 Myr
     assert dt.initial == pytest.approx(3e1, rel=1e-12)  # Start with 1000 years
@@ -73,6 +73,39 @@ def test_dt_params_defaults():
     assert dt.propconst == pytest.approx(52.0, rel=1e-12)
     assert dt.atol == pytest.approx(0.02, rel=1e-12)
     assert dt.rtol == pytest.approx(0.10, rel=1e-12)
+
+    # Evection dt-cap trio: opt-in, disabled by default via None rather
+    # than a numeric 0 (which would be behaviourally indistinguishable
+    # from disabled but pass the >0 validator's exclusion silently).
+    assert dt.evection_maximum is None
+    assert dt.evection_growth_factor is None
+    assert dt.evection_cooldown_iters is None
+
+
+@pytest.mark.unit
+def test_dt_params_evection_trio_accepts_none_string_and_rejects_non_positive():
+    """The evection dt-cap trio (evection_maximum/evection_growth_factor/
+    evection_cooldown_iters) must accept the TOML string sentinel
+    ``'none'`` (structured to Python ``None`` by the ``none_if_none``
+    converter, the same mechanism ``rot_period``/``phoenix_radius`` use)
+    and a strictly positive value, but reject both a zero and a negative
+    value -- 0 is deliberately NOT a valid opt-out spelling any more (it
+    was, before this test), only ``None``/``'none'`` disables the
+    mechanism.
+    """
+    for field_name in ('evection_maximum', 'evection_growth_factor', 'evection_cooldown_iters'):
+        # 'none' string (TOML spelling) structures to Python None.
+        assert getattr(TimeStepParams(**{field_name: 'none'}), field_name) is None
+        # A genuine positive value is accepted and passed through untouched.
+        assert getattr(TimeStepParams(**{field_name: 5}), field_name) == 5
+
+        # Discrimination: 0 (the OLD opt-out spelling) and a negative
+        # value must both now be rejected, not silently accepted as
+        # another way to disable the mechanism.
+        with pytest.raises(ValueError):
+            TimeStepParams(**{field_name: 0})
+        with pytest.raises(ValueError):
+            TimeStepParams(**{field_name: -1})
 
 
 @pytest.mark.unit
@@ -147,7 +180,7 @@ def test_interior_defaults():
 
     Checks default physics settings for the interior layer:
     - radiogenic/tidal heating: Enabled by default (energy sources)
-    - grain size: 0.1 m (standard crystal size)
+    - grain size: 1e-3 m (standard crystal size)
     - Initial flux: 1000 W/m^2 (hot start)
     """
     # Interior requires module argument
@@ -158,7 +191,7 @@ def test_interior_defaults():
     assert i.spider == spider_cfg
     assert i.heat_radiogenic is True  # Heating terms on
     assert i.heat_tidal is False
-    assert i.grain_size == pytest.approx(0.1, rel=1e-12)  # 10 cm crystals
+    assert i.grain_size == pytest.approx(1e-3, rel=1e-12)  # 1 mm crystals
     assert i.flux_guess == -1  # Auto-detect
 
     # Sub-modules defaults
@@ -216,16 +249,18 @@ def test_aragog_defaults():
     a = Aragog()
     assert a.mass_coordinates is True
     assert a.backend == 'jax'
+    assert a.separation_viscosity == 'mixture'
+    assert a.separation_buoyancy == 'mixture'
+    assert a.allow_resume_law_change is False
     assert not hasattr(a, 'jax')
     assert not hasattr(a, 'use_jax_jacobian')
     assert not hasattr(a, 'dilatation'), (
         'dilatation slot must be removed; existing TOMLs setting '
         'this field should now fail to load.'
     )
-    # Per-call step caps: schema defaults 0.0 keep existing behaviour and the
-    # non-zalmoxis bit-parity invariant (the wrapper auto-enables non-zero
-    # values only for the zalmoxis stack). -1.0 is the single off sentinel;
-    # any other negative, NaN, or infinity is rejected at load.
+    # Per-call step caps: schema defaults 0.0, which the wrapper reads as off
+    # (no cap) on every interior. -1.0 is the single off sentinel; any other
+    # negative, NaN, or infinity is rejected at load.
     assert a.phi_step_cap == pytest.approx(0.0)
     assert a.temperature_step_cap == pytest.approx(0.0)
     assert a.entropy_step_cap == pytest.approx(0.0)
@@ -271,3 +306,587 @@ def test_aragog_defaults():
     # field. ``TypeError`` from attrs' ``__init__``.
     with _pt.raises(TypeError):
         Aragog(dilatation=True)
+
+
+def test_aragog_core_module_defaults_and_mode_validator():
+    """Verify core-module sub-config defaults and validator bounds."""
+    from proteus.config._interior import AragogCoreModule
+
+    aragog = Aragog()
+    cm = aragog.core_module
+    assert not hasattr(cm, 'rho_cen')
+    assert not hasattr(cm, 'length_scale')
+    with pytest.raises(TypeError):
+        AragogCoreModule(rho_cen=12500.0)
+    with pytest.raises(TypeError):
+        AragogCoreModule(length_scale=7272e3)
+    assert cm.melting_curve == 'iron'
+    assert cm.light_element_fraction == pytest.approx(0.0)  # pure iron
+    assert cm.q_radio == pytest.approx(0.0)
+    assert cm.ds_fusion == pytest.approx(172.8, rel=1e-6)  # 1.16 k_B/atom of Fe
+
+    assert Aragog(core_bc='core_module').core_bc == 'core_module'
+    with pytest.raises(ValueError):
+        Aragog(core_bc='core_reservoir')
+    with pytest.raises(ValueError):
+        AragogCoreModule(light_element_fraction=1.0)  # bound is exclusive
+    with pytest.raises(ValueError):
+        AragogCoreModule(melting_curve='cubic')
+
+    # Diagnostics fields: Nimmo (2015) conductivity default, ohmic
+    # fraction bounded on (0, 1], and the two printed CHR09 geometries.
+    assert cm.k_core == pytest.approx(130.0)
+    assert cm.f_ohm == pytest.approx(1.0)
+    assert cm.flux_geometry == 'const_flux'
+    with pytest.raises(ValueError):
+        AragogCoreModule(k_core=0.0)
+    with pytest.raises(ValueError):
+        AragogCoreModule(f_ohm=1.5)  # bound is inclusive at 1
+    with pytest.raises(ValueError):
+        AragogCoreModule(f_ohm=0.0)  # bound is exclusive at 0
+    with pytest.raises(ValueError):
+        AragogCoreModule(flux_geometry='spherical_cow')
+
+    # CMB boundary-layer critical Rayleigh number: Thiriet et al. (2019) Table 2 default.
+    assert cm.ra_crit_cmb == pytest.approx(450.0)
+    assert AragogCoreModule(ra_crit_cmb=1000.0).ra_crit_cmb == pytest.approx(1000.0)
+    for bad in (0.0, float('inf'), float('nan')):
+        with pytest.raises(ValueError):
+            AragogCoreModule(ra_crit_cmb=bad)
+
+
+def test_aragog_phase_boundary_cap_defaults_to_rate_and_rejects_other_values():
+    """The schema default is 'rate'; 'fixed' is kept; anything else is rejected at load."""
+    assert Aragog().phase_boundary_cap == 'rate'
+    assert Aragog(phase_boundary_cap='fixed').phase_boundary_cap == 'fixed'
+    for bad in ('Rate', '', 'adaptive'):
+        with pytest.raises(ValueError, match='phase_boundary_cap'):
+            Aragog(phase_boundary_cap=bad)
+
+
+@pytest.mark.parametrize(
+    ('module', 'expected'),
+    [('aragog', 1e-8), ('spider', 1e-10), ('dummy', 1e-10), ('boundary', 1e-10)],
+)
+def test_unset_interior_rtol_resolves_per_module(module, expected):
+    """An unset rtol resolves to 1e-8 for Aragog and 1e-10 otherwise; an explicit value is kept."""
+    assert Interior(module=module).rtol == pytest.approx(expected)
+    assert Interior(module=module, rtol=3e-9).rtol == pytest.approx(3e-9)
+
+
+def test_deprecated_rtol_alias_overrides_the_aragog_default():
+    """num_tolerance still copies into rtol for Aragog, with its deprecation warning."""
+    with pytest.warns(DeprecationWarning, match='num_tolerance'):
+        assert Interior(module='aragog', num_tolerance=1e-6).rtol == pytest.approx(1e-6)
+
+
+@pytest.mark.parametrize(
+    ('curve', 'fraction', 'depression', 'refused'),
+    [
+        ('iron', 0.1, 9.9, False),
+        ('iron', 0.0, 50.0, False),
+        ('iron', 0.1, 10.0, True),
+        ('iron', 0.5, 3.0, True),
+        ('iron', 0.0, float('inf'), True),
+        ('quadratic', 0.5, 3.0, False),
+    ],
+)
+def test_an_iron_melting_curve_depressed_to_zero_is_refused_at_config_load(
+    curve, fraction, depression, refused
+):
+    """The iron melting curve scales with 1 - depression * light_element_fraction, so a
+    product of 1 or more, or one that is not a number, is refused when the config is
+    built; the quadratic curve does not read the two keys."""
+    from proteus.config._interior import AragogCoreModule
+
+    kwargs = dict(melting_curve=curve, light_element_fraction=fraction, depression=depression)
+    if refused:
+        with pytest.raises(ValueError, match='must be below 1'):
+            AragogCoreModule(**kwargs)
+    else:
+        assert AragogCoreModule(**kwargs).depression == depression
+
+
+def test_a_change_of_one_melting_curve_key_is_not_checked_against_the_old_other_key():
+    """A grid sets the keys of a config one by one, so the product is checked when the
+    config is built, not at each change: the step from (0.4, 2.0) to (0.1, 5.0) passes
+    through a pair above 1 and must not stop."""
+    from proteus.config._interior import AragogCoreModule
+
+    core = AragogCoreModule(light_element_fraction=0.4, depression=2.0)
+    core.depression = 5.0
+    core.light_element_fraction = 0.1
+    assert core.depression * core.light_element_fraction == pytest.approx(0.5)
+    with pytest.raises(ValueError, match='must be below 1'):
+        AragogCoreModule(light_element_fraction=0.4, depression=5.0)
+
+
+@pytest.mark.parametrize(
+    ('struct', 'core_bc', 'stratified', 'solver', 'interval', 'ic', 'refused'),
+    [
+        ('zalmoxis', 'core_module', False, 'cvode', 1.0e9, 'adiabatic', None),
+        ('zalmoxis', 'core_module', True, 'bdf', 0.0, 'liquidus_super', None),
+        ('dummy', 'energy_balance', True, 'radau', 1.0e9, 'adiabatic', None),
+        ('zalmoxis', 'energy_balance', False, 'const', 0.0, 'liquidus_super', None),
+        ('zalmoxis', 'core_module', False, 'const', 0.0, 'liquidus_super', 'const_properties'),
+        (
+            'dummy',
+            'core_module',
+            False,
+            'cvode',
+            0.0,
+            'liquidus_super',
+            'needs interior_struct',
+        ),
+        ('spider', 'core_module', False, 'cvode', 0.0, 'liquidus_super', "not 'spider'"),
+        ('zalmoxis', 'core_module', True, 'radau', 0.0, 'liquidus_super', "not 'radau'"),
+        ('zalmoxis', 'core_module', True, 'bdf', 300.0, 'liquidus_super', 'solved once'),
+        ('zalmoxis', 'core_module', True, 'bdf', 0.0, 'adiabatic', 'solved once'),
+    ],
+)
+def test_core_module_requirements_are_checked_at_config_load(
+    struct, core_bc, stratified, solver, interval, ic, refused
+):
+    """The core_module core needs the Zalmoxis structure, which provides the core mass and
+    the central pressure of its profile fit, and its resolved shell does not run on Radau.
+    A stratified core needs a structure that is solved once: structure updates off and the
+    initial condition that has no baseline re-solve, because the core is carried across a
+    structure update with a heat content that a stratified budget does not give. Constant
+    properties (the solver name 'const' here) load no entropy tables, which the CMB flux
+    of the core model needs. Another core boundary is not checked."""
+    from types import SimpleNamespace
+
+    from proteus.config._config import check_core_module_requirements
+
+    instance = SimpleNamespace(
+        planet=SimpleNamespace(temperature_mode=ic),
+        interior_struct=SimpleNamespace(
+            module=struct, zalmoxis=SimpleNamespace(update_interval=interval)
+        ),
+        interior_energetics=SimpleNamespace(
+            module='aragog',
+            const_properties=solver == 'const',
+            aragog=SimpleNamespace(
+                core_bc=core_bc,
+                solver_method=solver,
+                core_module=SimpleNamespace(stratification=stratified),
+            ),
+        ),
+    )
+    if refused:
+        with pytest.raises(ValueError, match=refused):
+            check_core_module_requirements(instance, None, None)
+    else:
+        assert check_core_module_requirements(instance, None, None) is None
+    instance.interior_energetics.module = 'spider'
+    assert check_core_module_requirements(instance, None, None) is None
+
+
+def test_a_core_module_core_without_the_zalmoxis_structure_is_refused_when_built():
+    """Building a configuration runs the core_module check: the dummy structure is refused,
+    the Zalmoxis structure builds, and a light-element mass fraction of 1 is out of range."""
+    import attrs
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+    from proteus.config._interior import AragogCoreModule
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'all_options.toml')
+    aragog = attrs.evolve(cfg.interior_energetics.aragog, core_bc='core_module')
+    interior = attrs.evolve(cfg.interior_energetics, module='aragog', aragog=aragog)
+    built = attrs.evolve(cfg, interior_energetics=interior)
+    assert built.interior_struct.module == 'zalmoxis'
+    with pytest.raises(ValueError, match="needs interior_struct.module = 'zalmoxis'"):
+        dummy = attrs.evolve(cfg.interior_struct, module='dummy', melting_dir='Monteux-600')
+        attrs.evolve(built, interior_struct=dummy)
+    assert AragogCoreModule(c_light=0.046).c_light == pytest.approx(0.046)
+    with pytest.raises(ValueError):
+        AragogCoreModule(c_light=1.0)
+
+
+@pytest.mark.unit
+def test_the_default_redox_state_is_two_log_units_above_iron_wustite():
+    """``outgas.fO2_shift_IW`` defaults to IW+2. ``all_options.toml``,
+    ``minimal.toml``, ``minimal_quick.toml`` and the Earth and Venus tutorials set that value, the 5
+    CHILI intercomparison cases keep the protocol's IW+4, and a user value is
+    accepted on [-12, 12] and refused half a unit beyond either end."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+    from proteus.config._outgas import Outgas
+
+    assert Outgas().fO2_shift_IW == pytest.approx(2.0)
+    want = {f: 2.0 for f in ('all_options.toml', 'minimal.toml', 'minimal_quick.toml')}
+    want |= {f'tutorials/tutorial_{p}.toml': 2.0 for p in ('earth', 'venus')}
+    want |= {
+        f'chili/intercomp/{c}.toml': 4.0 for c in ('earth', 'venus', 'tr1b', 'tr1e', 'tr1a')
+    }
+    for name, shift in want.items():
+        cfg = read_config_object(PROTEUS_ROOT / 'input' / name)
+        assert cfg.outgas.fO2_shift_IW == pytest.approx(shift), name
+    # Edge and error contract: both bounds are inclusive.
+    for edge in (-12.0, 12.0):
+        assert Outgas(fO2_shift_IW=edge).fO2_shift_IW == pytest.approx(edge)
+    for beyond in (-12.5, 12.5):
+        with pytest.raises(ValueError):
+            Outgas(fO2_shift_IW=beyond)
+
+
+@pytest.mark.unit
+def test_the_time_limits_of_the_tutorials():
+    """The Venus tutorial stops at 3 Myr, the Earth and Moon tutorial at 0.8 Myr
+    and the Earth tutorial at 5 Gyr, each with the energy-balance stop on."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    want = {'venus': 3.0e6, 'earth_moon': 8.0e5, 'earth': 5.0e9}
+    for name, limit in want.items():
+        cfg = read_config_object(PROTEUS_ROOT / 'input' / 'tutorials' / f'tutorial_{name}.toml')
+        assert cfg.params.stop.time.maximum == pytest.approx(limit, rel=1e-12), name
+        assert cfg.params.stop.radeqm.enabled is True, name
+
+
+@pytest.mark.unit
+def test_a_config_without_the_redox_key_loads_the_default(tmp_path):
+    """``input/minimal.toml`` with its ``fO2_shift_IW`` line removed loads IW+2."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    lines = (PROTEUS_ROOT / 'input' / 'minimal.toml').read_text().splitlines(keepends=True)
+    kept = [line for line in lines if 'fO2_shift_IW' not in line]
+    assert len(kept) == len(lines) - 1
+    (tmp_path / 'minimal.toml').write_text(''.join(kept))
+    assert read_config_object(tmp_path / 'minimal.toml').outgas.fO2_shift_IW == pytest.approx(
+        2.0
+    )
+
+
+@pytest.mark.unit
+def test_the_minimal_examples_set_the_keys_their_runs_need():
+    """``input/minimal.toml`` and ``input/minimal_quick.toml`` set the keys that keep
+    their runs sound: carbon keeps the atmosphere, the step floor and the static
+    structure resolve the molten stage, and the stop is at a melt fraction of 0.05. The
+    quick file also names the grey atmosphere of its run. The carbon mode, the stop,
+    the structure interval and the grey atmosphere differ from their defaults, so a file
+    that loses one of those keys fails here."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    cfgs = {
+        n: read_config_object(PROTEUS_ROOT / 'input' / n)
+        for n in ('minimal.toml', 'minimal_quick.toml')
+    }
+    for name, cfg in cfgs.items():
+        assert cfg.planet.elements.C_mode == 'kg', name
+        assert cfg.planet.elements.C_budget > 0.0, name
+        assert cfg.params.dt.minimum == pytest.approx(100.0), name
+        assert cfg.params.stop.solid.phi_crit == pytest.approx(0.05), name
+        assert cfg.interior_struct.zalmoxis.update_interval == pytest.approx(0.0), name
+    assert cfgs['minimal.toml'].atmos_clim.module == 'agni'
+    quick = cfgs['minimal_quick.toml'].atmos_clim
+    assert (quick.module, quick.rayleigh) == ('dummy', False)
+    assert quick.dummy.gamma == pytest.approx(0.8)
+
+
+@pytest.mark.unit
+def test_aragog_top_cell_dt_limit_defaults_and_validators():
+    """Aragog top_cell_dt_limit defaults to False, rel_dT to 0.08, and rel_dT_solid to 0.08.
+
+    Validators reject non-boolean top_cell_dt_limit, values outside (0, 0.15] for
+    top_cell_dt_rel_dT, and values outside (0, top_cell_dt_rel_dT] for top_cell_dt_rel_dT_solid.
+    """
+    from proteus.config._interior import Aragog
+
+    cfg = Aragog()
+    assert cfg.top_cell_dt_limit is False
+    assert cfg.top_cell_dt_rel_dT == pytest.approx(0.08)
+    assert cfg.top_cell_dt_rel_dT_solid == pytest.approx(0.08)
+
+    cfg_on = Aragog(
+        top_cell_dt_limit=True,
+        top_cell_dt_rel_dT=0.10,
+        top_cell_dt_rel_dT_solid=0.03,
+    )
+    assert cfg_on.top_cell_dt_limit is True
+    assert cfg_on.top_cell_dt_rel_dT == pytest.approx(0.10)
+    assert cfg_on.top_cell_dt_rel_dT_solid == pytest.approx(0.03)
+
+    edge = Aragog(top_cell_dt_rel_dT=0.15, top_cell_dt_rel_dT_solid=0.15)
+    assert edge.top_cell_dt_rel_dT == pytest.approx(0.15)
+    assert edge.top_cell_dt_rel_dT_solid == pytest.approx(0.15)
+
+    with pytest.raises(TypeError):
+        Aragog(top_cell_dt_limit='yes')  # type: ignore[arg-type]
+
+    for bad in (0.0, -0.01, 0.16, 0.30, 0.5):
+        with pytest.raises(ValueError):
+            Aragog(top_cell_dt_rel_dT=bad)
+
+    # The field's own validator refuses a non-positive value set after construction.
+    cfg_set = Aragog()
+    for bad in (0.0, -0.01):
+        with pytest.raises(ValueError):
+            cfg_set.top_cell_dt_rel_dT = bad
+
+    for bad_solid in (0.0, -0.01, 0.09, 0.16):
+        with pytest.raises(ValueError):
+            Aragog(top_cell_dt_rel_dT=0.08, top_cell_dt_rel_dT_solid=bad_solid)
+
+    with pytest.raises(ValueError):
+        Aragog(top_cell_dt_rel_dT=0.15, top_cell_dt_rel_dT_solid=0.16)
+
+    from proteus.config._interior import Interior
+
+    ie_flux = Interior(
+        module='aragog',
+        surface_bc_mode='flux',
+        aragog=Aragog(top_cell_dt_limit=True),
+    )
+    assert ie_flux.aragog.top_cell_dt_limit is True
+    assert ie_flux.surface_bc_mode == 'flux'
+
+    ie_grey_off = Interior(
+        module='aragog',
+        surface_bc_mode='grey_body',
+        aragog=Aragog(top_cell_dt_limit=False),
+    )
+    assert ie_grey_off.surface_bc_mode == 'grey_body'
+
+    ie_spider_grey = Interior(
+        module='spider',
+        surface_bc_mode='grey_body',
+        aragog=Aragog(top_cell_dt_limit=True),
+    )
+    assert ie_spider_grey.module == 'spider'
+
+    with pytest.raises(ValueError, match='top_cell_dt_limit') as exc_init:
+        Interior(
+            module='aragog',
+            surface_bc_mode='grey_body',
+            aragog=Aragog(top_cell_dt_limit=True),
+        )
+    assert 'grey_body' in str(exc_init.value)
+
+    # An assignment is not checked against the rule; building the object again is.
+    import attrs
+
+    ie_flux.surface_bc_mode = 'grey_body'
+    ie_spider_grey.module = 'aragog'
+    ie_grey_off.aragog = Aragog(top_cell_dt_limit=True)
+    for ie in (ie_flux, ie_spider_grey, ie_grey_off):
+        with pytest.raises(ValueError, match='top_cell_dt_limit = true cannot be used'):
+            attrs.evolve(ie)
+    ie_flux.surface_bc_mode = 'flux'
+
+    # The module field keeps its own validator when assigned after construction.
+    ie_flux.module = 'spider'
+    assert ie_flux.module == 'spider'
+    with pytest.raises(ValueError, match="got 'mystery'"):
+        ie_flux.module = 'mystery'
+
+    from pathlib import Path
+
+    assert 'and the step does not exceed tau_drain' in (Interior.__doc__ or '')
+    interior_md = (
+        Path(__file__).resolve().parents[2] / 'docs' / 'Reference' / 'config' / 'interior.md'
+    ).read_text(encoding='utf-8')
+    assert 'and the step does not exceed tau_drain' in interior_md
+    assert (
+        'cp_chord = min(cp_eff, T_top * (S_top - S_trial) / (T_top - T_trial)) in the T_top form'
+        in interior_md
+    )
+    assert (
+        "bounding the linearized unresupplied top-cell drop under the step's linearization "
+        'dS = q / T_top with q = cp_chord * dT_allow. A lookahead trial that reaches or spans '
+        'the flat part of the PALEOS solid table (T held at T_sol from the last node below '
+        'S_sol) can give a step that exceeds dT_allow; this is shown on constructed slice '
+        'states, and no step of the coupled runs exceeded dT_allow.' in interior_md
+    )
+    assert (
+        'Using T_mean = 0.5 * (T_top + T_trial) in the chord numerator would reduce cp_chord '
+        'by the fraction (T_top - T_trial) / (2 * T_top)' in interior_md
+    )
+    assert (
+        'bounding the linearized unresupplied top-cell temperature drop '
+        'T_top - T(P_top, S_top - q / T_top) <= dT_allow' in interior_md
+    )
+    assert (
+        'in the T_top form. A lookahead trial that reaches or spans the flat part of the '
+        'PALEOS solid table (T held at T_sol from the last node below S_sol) can give a step '
+        'that exceeds dT_allow; this is shown on constructed slice states, and no step of the '
+        'coupled runs exceeded dT_allow.' in interior_md
+    )
+    assert 'low-entropy clamp at P_top can give' not in interior_md
+    assert 'except when' not in interior_md
+    assert 'must lie in (0, 0.15\\]' in interior_md
+    assert 'must lie in (0, top_cell_dt_rel_dT\\] (up to 0.15)' in interior_md
+    assert (
+        'See docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations.'
+        in interior_md
+    )
+    for forbidden in ('075fcb05', '372c2e2', 'late drops', 'phi_top about 0.79', '2 to 2.6'):
+        assert forbidden not in interior_md
+    all_opts_txt = (
+        Path(__file__).resolve().parents[2] / 'input' / 'all_options.toml'
+    ).read_text(encoding='utf-8')
+    assert 'in (0, 0.15]' in all_opts_txt
+    assert 'in (0, 0.30]' not in all_opts_txt
+
+
+@pytest.mark.unit
+def test_aragog_top_cell_dt_rel_dT_pair_checked_at_load_in_any_order():
+    """rel_dT_solid <= rel_dT is checked when the config is built, so the order of the two
+    assignments does not matter; each allowance keeps its own range on assignment."""
+    import math
+
+    import attrs
+    from hypothesis import example, given, settings
+    from hypothesis import strategies as st
+
+    pair = ('top_cell_dt_rel_dT', 'top_cell_dt_rel_dT_solid')
+    for value in (0.05, 0.12):
+        for order in (pair, pair[::-1]):
+            cfg = Aragog()
+            try:
+                for name in order:
+                    setattr(cfg, name, value)
+                rebuilt = attrs.evolve(cfg)
+            except ValueError as exc:
+                pytest.fail(f'{order} set to {value} was refused: {exc}')
+            assert rebuilt.top_cell_dt_rel_dT == pytest.approx(value, rel=1e-12)
+            assert rebuilt.top_cell_dt_rel_dT_solid == pytest.approx(value, rel=1e-12)
+
+    lowered = Aragog()
+    lowered.top_cell_dt_rel_dT = 0.05  # rel_dT_solid keeps its default 0.08
+    with pytest.raises(ValueError, match='must be <= top_cell_dt_rel_dT'):
+        attrs.evolve(lowered)
+    with pytest.raises(ValueError, match='must be <= top_cell_dt_rel_dT'):
+        Aragog(top_cell_dt_rel_dT=0.05)
+    with pytest.raises(ValueError, match='must be <= top_cell_dt_rel_dT'):
+        Interior(aragog=lowered)  # building the parent checks the pair as well
+
+    for name in pair:
+        with pytest.raises(ValueError, match=f"'{name}' must be <= 0.15"):
+            setattr(Aragog(), name, 0.5)
+    lowered.top_cell_dt_rel_dT = '0.06'  # converted on assignment
+    assert lowered.top_cell_dt_rel_dT == pytest.approx(0.06, rel=1e-12)
+
+    @settings(derandomize=True, max_examples=60)
+    @given(
+        rel=st.floats(min_value=1e-3, max_value=0.15, allow_nan=False),
+        solid=st.floats(min_value=1e-3, max_value=0.15, allow_nan=False),
+        solid_first=st.booleans(),
+    )
+    @example(rel=0.15, solid=0.15, solid_first=True)
+    @example(rel=0.1, solid=math.nextafter(0.1, 1.0), solid_first=False)
+    def _any_order(rel, solid, solid_first):
+        cfg = Aragog()
+        steps = [('top_cell_dt_rel_dT', rel), ('top_cell_dt_rel_dT_solid', solid)]
+        try:
+            for name, value in steps[::-1] if solid_first else steps:
+                setattr(cfg, name, value)
+            built = attrs.evolve(cfg) if solid <= rel else None
+        except ValueError as exc:
+            pytest.fail(f'rel {rel}, solid {solid}, solid first {solid_first}: {exc}')
+        if built is None:
+            with pytest.raises(ValueError, match='top_cell_dt_rel_dT_solid'):
+                attrs.evolve(cfg)
+        else:
+            assert built.top_cell_dt_rel_dT_solid == solid
+
+    _any_order()
+
+
+@pytest.mark.unit
+def test_aragog_top_cell_dt_limit_grey_body_checked_at_load_in_any_order(tmp_path):
+    """Switching a limit-on Aragog config to grey_body and the limit off is accepted in both
+    orders; grey_body with the limit on is refused when the TOML is read."""
+    import attrs
+
+    from proteus.config import read_config_object
+
+    for grey_first in (True, False):
+        ie = Interior(
+            module='aragog', surface_bc_mode='flux', aragog=Aragog(top_cell_dt_limit=True)
+        )
+        try:
+            if grey_first:
+                ie.surface_bc_mode = 'grey_body'
+            ie.aragog.top_cell_dt_limit = False
+            if not grey_first:
+                ie.surface_bc_mode = 'grey_body'
+            rebuilt = attrs.evolve(ie)
+        except ValueError as exc:
+            pytest.fail(f'grey_body first {grey_first} was refused: {exc}')
+        assert (rebuilt.surface_bc_mode, rebuilt.aragog.top_cell_dt_limit) == (
+            'grey_body',
+            False,
+        )
+
+    cfg = tmp_path / 'grey_limit.toml'
+    cfg.write_text(
+        '[interior_energetics]\nmodule = "aragog"\nsurface_bc_mode = "grey_body"\n'
+        '[interior_energetics.aragog]\ntop_cell_dt_limit = true\n'
+    )
+    with pytest.raises(ValueError, match='top_cell_dt_limit = true cannot be used'):
+        read_config_object(cfg)
+
+
+@pytest.mark.unit
+def test_aragog_top_cell_dt_rel_property():
+    """Property check over valid (0, 0.15] and invalid cross-field solid allowance bounds."""
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    from proteus.config._interior import Aragog
+
+    seen: list[tuple[float, float]] = []
+    rejected: list[tuple[float, float]] = []
+
+    @settings(derandomize=True)
+    @given(
+        rel_dt=st.floats(min_value=1e-4, max_value=0.15, allow_nan=False, allow_infinity=False),
+        solid_frac=st.floats(
+            min_value=1e-3, max_value=1.0, allow_nan=False, allow_infinity=False
+        ),
+    )
+    def _check_valid(rel_dt, solid_frac):
+        rel_dt_solid = max(1e-7, rel_dt * solid_frac)
+        inst = Aragog(top_cell_dt_rel_dT=rel_dt, top_cell_dt_rel_dT_solid=rel_dt_solid)
+        assert 0.0 < inst.top_cell_dt_rel_dT <= 0.15
+        assert 0.0 < inst.top_cell_dt_rel_dT_solid <= inst.top_cell_dt_rel_dT
+        seen.append((inst.top_cell_dt_rel_dT, inst.top_cell_dt_rel_dT_solid))
+
+    @settings(derandomize=True)
+    @given(
+        rel_dt=st.floats(
+            min_value=1e-4, max_value=0.149, allow_nan=False, allow_infinity=False
+        ),
+        excess=st.floats(min_value=1e-4, max_value=0.15, allow_nan=False, allow_infinity=False),
+    )
+    def _check_invalid(rel_dt, excess):
+        bad_solid = rel_dt + excess
+        with pytest.raises(ValueError, match='top_cell_dt_rel_dT_solid'):
+            Aragog(top_cell_dt_rel_dT=rel_dt, top_cell_dt_rel_dT_solid=bad_solid)
+        rejected.append((rel_dt, bad_solid))
+
+    @settings(derandomize=True)
+    @given(
+        bad_rel_dt=st.floats(
+            min_value=0.1501, max_value=1.0, allow_nan=False, allow_infinity=False
+        ),
+    )
+    def _check_above_max(bad_rel_dt):
+        with pytest.raises(ValueError, match='top_cell_dt_rel_dT'):
+            Aragog(top_cell_dt_rel_dT=bad_rel_dt, top_cell_dt_rel_dT_solid=0.08)
+
+    _check_valid()
+    _check_invalid()
+    _check_above_max()
+    assert len(seen) >= 10
+    assert len(rejected) >= 10
+    assert all(0.0 < solid_val <= dt_val <= 0.15 for dt_val, solid_val in seen)
+    assert all(solid_val > dt_val for dt_val, solid_val in rejected)

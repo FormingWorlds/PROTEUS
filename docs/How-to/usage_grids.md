@@ -21,19 +21,22 @@ The top-level settings are:
 |---|---|
 | `ref_config` | Base ("reference") config file, relative to the PROTEUS root. Every case starts from this file and overrides only the swept parameters. |
 | `output` | Output folder name created inside `output/`. Use `"auto"` for a timestamped `grid_YYYYMMDD_HHMMSS_xxxx` name, or any fixed string. |
-| `symlink` | Absolute path used to redirect the output to alternative storage (for example a scratch disk); set to `""` to disable. |
+| `symlink` | Absolute path used to redirect the output to alternative storage (for example a scratch disk); set to `""` to disable. The grid empties this folder, so it may not lie inside the PROTEUS folder or inside `output/`, also where `output/` links to (for example `/scratch/$USER/proteus_output`); it may not lie inside the run output root that `PROTEUS_OUTPUT_PATH` names; it may not be your home folder, the PROTEUS folder, `output/` (or its link target) or the run output root, or a folder above one of them; it may not hold the grid file or the base config, also through a link inside it, and it may not itself be a link or a file. A sibling such as `/scratch/$USER/mygrid` is fine. On a file system that ignores letter case (macOS), a path in another case is the same folder. |
 | `use_slurm` | Whether to dispatch through Slurm (see below). |
 | `max_jobs` | Maximum number of cases running concurrently. |
 | `max_days`, `max_mem` | Per-job walltime (days) and memory (GB) limits, used when dispatching through Slurm. |
 | `jax_cache` | Share a JAX compilation cache across Slurm array tasks (see below). Default `false`; only affects Slurm dispatch. |
+| `config_version` | Config format version, for example `"3.0"`. Accepted so that a grid file can state it; the grid manager does not read it. |
 
-Each parameter axis is a TOML table whose **name is the dotted path of the config field to vary**. For example, `["planet.mass_tot"]` sweeps `config.planet.mass_tot`, and `["outgas.fO2_shift_IW"]` sweeps the mantle redox offset. Any field documented in `input/all_options.toml` (or the [configuration reference](config.md)) can serve as an axis. The grid manager treats every top-level key containing a dot as an axis, and every key without one as a setting, so axis names must always be given as the full dotted path.
+`use_slurm` and `jax_cache` take only a TOML `true` or `false`; a quoted `"false"`, a `0` or a `1` stops the grid at load with an error that names the setting and the grid file.
+
+Each parameter axis is a TOML table whose **name is the dotted path of the config field to vary**. For example, `["planet.mass_tot"]` sweeps `config.planet.mass_tot`, and `["outgas.fO2_shift_IW"]` sweeps the mantle redox offset. Any field documented in `input/all_options.toml` (or the [configuration reference](config.md)) can serve as an axis. Every top-level key must be accounted for: it is either one of the settings above or the path of one configuration field, given as a table with one of the methods below and the keys that method requires. Any other key, a path that names a whole section, an unquoted dotted header such as `[planet.mass_tot]` (TOML reads it as the section `planet`), an axis table with an unknown method or a missing required key, or a `direct` axis whose `values` is not a non-empty list of numbers and booleans or of strings (an empty list, a NaN, a single value without brackets, a nested array or table) stops the grid at load, before an earlier output folder is removed, with an error that names the key and the grid file. The grid manager then builds every case config and reads it back with the config loader before it removes an earlier output folder of the same name; a value the configuration refuses (an unknown module, a value out of its range, a quoted boolean) stops the grid there with the case index, the key and the value. This check runs in a hidden folder `output/.grid-check-*` that the grid removes when the check ends; a check that is killed (for example at a time limit) can leave that folder behind, and it is safe to remove.
 
 Each axis declares a `method` that controls how its values are generated:
 
 | `method` | Required keys | Values produced |
 |---|---|---|
-| `direct` | `values = [...]` | Exactly the listed values. Numeric lists are sorted and de-duplicated; string lists are kept as written. |
+| `direct` | `values = [...]` | Exactly the listed values, all of one type (the TOML parser refuses an array that mixes types, so write `[1.0, 2.5]`, not `[1, 2.5]`). Duplicates are removed at their first occurrence. Lists of numbers or booleans are then sorted; string lists keep their written order. |
 | `arange` | `start`, `stop`, `step` | Evenly stepped values from `start` to `stop`, **including** the `stop` endpoint. |
 | `linspace` | `start`, `stop`, `count` | `count` values evenly spaced between `start` and `stop` (both endpoints included). |
 | `logspace` | `start`, `stop`, `count` | `count` values logarithmically spaced between `start` and `stop`. Here `start` and `stop` are the actual endpoint values, not their base-10 exponents. |
@@ -125,7 +128,7 @@ output/<grid name>/
 └── ...
 ```
 
-Each `case_NNNNNN/` folder is a complete PROTEUS run directory, numbered in the same order as the grid points listed in `manager.log`. Because the reference config and grid definition are copied into the output folder, an ensemble can be regenerated or extended from its output directory alone. The per-case output files are described on the [Running and output](usage_running.md#output-and-results) page.
+Each `case_NNNNNN/` folder is a complete PROTEUS run directory, numbered in the same order as the grid points listed in `manager.log`. Because the reference config and grid definition are copied into the output folder, an ensemble can be regenerated or extended from its output directory alone. To run a grid again from these copies, copy them out of the output folder first: a grid whose output folder or symlink folder holds its grid file or base config, also through a link, stops before anything is removed. The per-case output files are described on the [Running and output](usage_running.md#output-and-results) page.
 
 ## Viewing grid status
 
@@ -148,6 +151,55 @@ Use the CLI to package the results of a grid into a zip file; for example to sha
 ```console
 proteus grid-pack -o output/grid_demo/
 ```
+
+## Post-processing a grid
+
+Once a grid has run, `proteus grid-analyse` extracts each case's final-row results into summary CSV files and makes overview plots. It is configured by an optional `[post_processing]` table in the same `.grid.toml` used to run the grid (so a grid needs only one config file). Point it at the grid's output folder:
+
+```console
+proteus grid-analyse -o output/<grid folder>
+```
+
+With `-o` alone, the options come from `copy.grid.toml` in that folder (the copy of the grid file saved when the grid was launched). Add `-c <grid file>` to analyse the folder with the `[post_processing]` options of that file instead, for example after changing the plotted outputs. `-c` alone also works when the grid file's `output` names a fixed folder; with `output = "auto"` the folder name is generated at launch, so pass it with `-o`.
+
+The swept axes are always read from `copy.grid.toml` when the folder has one, so editing the grid file afterwards does not change them. If that copy no longer passes the current grid-file checks (for example a grid launched with an older PROTEUS), the analysis stops with an error naming the rejected keys; update them in the copy, or remove it to use the axes of the file passed with `-c`.
+
+The `[post_processing]` table is checked when the grid is launched with `proteus grid` and again by `proteus grid-analyse`: an unknown key, a value of the wrong type, an unknown colour map, style or plot format stops the command with an error before any case runs.
+
+The `[post_processing]` table accepts:
+
+| Key | Meaning |
+|---|---|
+| `update_csv` | Rebuild the summary CSVs from the case folders before plotting (default `true`). Set `false` to plot from existing CSVs. |
+| `plot_status` | Make the status-summary bar plot (default `true`). |
+| `plot_ecdf` | Make the ECDF grid plot (default `true`). |
+| `colormap` | Colour map for a parameter with more values than the colour cycle of the plot style: a Crameri scientific colour map from `cmcrameri` (for example `"batlowK_r"`, `"batlow"`, `"vik"`), a `proteus-mpl` colour map (`"proteus"`, `"proteus_div"`, `"proteus_phase"` and their `_r` forms, whatever the `style`) when `proteus-mpl` is installed, or any matplotlib colour map (`colourmap` is also accepted). Defaults to `batlowK_r`. |
+| `output_variables` | List of `runtime_helpfile.csv` columns to plot, plus the derived `solidification_time`. Defaults to `solidification_time`, `Phi_global`, `T_surf`, `P_surf` and `atm_kg_per_mol`. |
+| `plot_format` | Image format (`"png"` or `"pdf"`); defaults to the base config's `params.out.plot_fmt`, then `"png"`. |
+| `style` | `"light"` or `"dark"` draws the plots in that variant of the [`proteus-mpl`](https://pypi.org/project/proteus-mpl/) style of the documentation figures (needs `pip install proteus-mpl`, included in the `develop` and `docs` extras); `"matplotlib"` keeps the active matplotlib style. Unset, the plots use `"light"` when `proteus-mpl` is installed and the matplotlib style otherwise. |
+
+`solidification_time` is computed by the analysis as the first time a case's `Phi_global` is at or below its `params.stop.solid.phi_crit` (the solidification stop criterion). It is computed the same way when that stop criterion (`params.stop.solid.enabled`) is disabled, for example in a grid that runs every case to a fixed end time, and is empty (NaN) only for a case that never reached `phi_crit`.
+
+The outputs are written under the grid's output folder:
+
+```text
+output/<grid name>/post_processing/
+├── extracted_data/
+│   ├── final_extracted_data_all.csv            # every case
+│   ├── final_extracted_data_completed.csv      # completed cases
+│   └── final_extracted_data_running_error.csv  # running, errored or unknown-status cases
+└── grid_plots/
+    ├── summary_grid_statuses.<fmt>             # case count per final status
+    └── ecdf_grid_plot.<fmt>                    # ECDF per (parameter, output) panel
+```
+
+The CSVs are tab-separated (like other PROTEUS output), one row per started case, holding the case number, status, status category (`Completed`, `Running`, `Error`, or `Unknown` when the status file is missing, unreadable or holds an unrecognised code), `config_source`, the swept parameter values, every helpfile column at the final row, and `solidification_time`. The swept values come from the case's `init_coupler.toml`; a case that stopped before writing it (for example on a configuration error) takes them from `cfgs/case_<N>.toml`, the config the grid wrote for it, and `config_source` names the file used.
+
+The plots take their colours from the plot style: the series colours from its colour cycle, the greys from its text and face colours, and the ticks, spines and grid from the style itself.
+
+The status-summary plot has one horizontal bar per final status, plus a `Not started` bar for grid cases that have no case folder yet (for example still queued on SLURM). Completed, running and errored statuses take the colour of the style's cycle nearest to green, blue and red; unknown and not-started cases are grey.
+
+The ECDF grid plot uses the completed cases. It has one row per swept parameter and one column per requested output; curves are coloured by the parameter value. A parameter with no more values than the colour cycle of the style takes the cycle colours and a legend; one with more takes the colour map, trimmed at each end until its colours stand out against the face colour of the style, and a colourbar with a tick at each swept value (string values get a legend). A numeric parameter is coloured on a log scale when its default plot setting is logarithmic and its values span at least a factor of 10. The layout follows Figure 5 of [Nicholls et al. (2024)](https://arxiv.org/abs/2411.19137). Each curve is a percentage of all completed cases with that parameter value, so it levels off below 100 % when some cases have no value for the output (for example cases that never solidified). Outputs whose default plot setting is logarithmic (for example `P_surf`) are drawn on a log axis when their values are all positive and span at least a factor of 10. When some cases have a zero value (for example a surface pressure of 0 bar after the atmosphere escaped), the axis is a 0 + log axis: a short linear segment from 0 to the decade below the smallest positive value, then logarithmic, so those cases appear at 0. Over a narrower range the axis is linear.
 
 ---
 

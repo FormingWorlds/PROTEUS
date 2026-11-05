@@ -47,25 +47,24 @@ guide pages.
 
     Follow the prompts, then restart your terminal or run `source ~/.zshrc`.
 
-5. macOS Catalina (10.15) and later uses `zsh` as the default shell.
-   Replace `.bashrc` with `.zshrc` throughout the installation instructions
-   if you are using the default shell.
+5. macOS Catalina (10.15) and later uses `zsh` as the default shell. The
+   installer sets the PROTEUS variables in the conda environment, not in a shell
+   start file such as `~/.zshrc`.
 
 ## Debian / Ubuntu Linux
 
 1. Install the required system libraries:
 
     ```console
+    sudo apt update
     sudo apt install libnetcdff-dev gfortran build-essential cmake unzip curl wget git
     ```
 
-2. Install [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux):
+2. Install [miniforge](https://github.com/conda-forge/miniforge):
 
     ```console
-    mkdir -p ~/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-    bash ~/miniconda3/miniconda.sh
-    rm ~/miniconda3/miniconda.sh
+    curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+    bash Miniforge3-$(uname)-$(uname -m).sh
     ```
 
     Choose an install folder where you have plenty of disk space. Follow
@@ -77,16 +76,14 @@ guide pages.
 
     ```console
     sudo dnf install gcc gcc-gfortran gcc-c++ netcdf netcdf-fortran netcdf-fortran-devel \
-        lapack lapack-devel lapack-static cmake unzip curl wget git
+        lapack lapack-devel lapack-static make cmake unzip curl wget git
     ```
 
-2. Install [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux):
+2. Install [miniforge](https://github.com/conda-forge/miniforge):
 
     ```console
-    mkdir -p ~/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-    bash ~/miniconda3/miniconda.sh
-    rm ~/miniconda3/miniconda.sh
+    curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+    bash Miniforge3-$(uname)-$(uname -m).sh
     ```
 
 ## Microsoft Windows

@@ -10,7 +10,13 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import gas_list
-from proteus.utils.plot import get_colour, latexify
+from proteus.utils.plot import (
+    FADE_DARK_GREY,
+    get_colour,
+    get_linestyle,
+    latexify,
+    style_neutral,
+)
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -20,7 +26,12 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def plot_global(
-    hf_all: pd.DataFrame, output_dir: str, config: Config, logt: bool = True, tmin: float = 1e3
+    hf_all: pd.DataFrame,
+    output_dir: str,
+    config: Config,
+    logt: bool = True,
+    tmin: float = 1e3,
+    pressure_floor: float = 1e-5,
 ):
     if np.amax(hf_all['Time']) < 3:
         log.debug('Insufficient data to make plot_global')
@@ -61,19 +72,26 @@ def plot_global(
 
     for vol in gas_list:
         # Check vmr for presence
-        this_vmr = np.array(hf[vol + '_vmr'])
+        this_bar = np.array(hf[vol + '_bar'])
         vol_present[vol] = True
 
-        if np.amax(this_vmr) < 1.0e-10:
+        if np.amax(this_bar) < 1.0e-10:
             vol_present[vol] = False
             continue
-        vol_vmr[vol] = this_vmr
 
         # Do other variables
         vol_bars[vol] = np.array(hf[vol + '_bar'])
         vol_mol_atm[vol] = np.array(hf[vol + '_mol_atm'])
         vol_mol_tot[vol] = np.array(hf[vol + '_mol_total'])
         vol_mol_int[vol] = vol_mol_tot[vol] - vol_mol_atm[vol]
+
+        Psurf = np.array(hf['P_surf'])
+
+        vol_vmr[vol] = np.zeros_like(this_bar, dtype=float)
+        mask = (
+            Psurf > 1e-30
+        )  # only divide by Psurf if it is larger than 1e-30 -> avoids by zero division
+        vol_vmr[vol][mask] = this_bar[mask] / Psurf[mask]
 
         # Volatile partitioning into the interior
         # Requires special treatment for when moles=0, which occurs when atmosphere escapes.
@@ -95,7 +113,7 @@ def plot_global(
     axs = (ax_tl, ax_cl, ax_bl, ax_tr, ax_cr, ax_br)  # flatten
 
     # Set y-labels
-    ax_tl.set_ylabel('Upward flux [W m$^{-2}$]')
+    ax_tl.set_ylabel('Upward flux\n[W m$^{-2}$]')
     ax_cl.set_ylabel(r'$T_\mathrm{s}$ [K]')
     ax_bl.set_ylabel('Planet fraction')
     ax_tr.set_ylabel(r'$p_{\mathrm{i}}$ [bar]')
@@ -104,7 +122,8 @@ def plot_global(
 
     # Set x-labels
     for ax in (ax_bl, ax_br):
-        ax.set_xlabel('Time [yr]')
+        t_ini = config.star.age_ini * 1e3
+        ax.set_xlabel(r'Planet age [yr], after $t_0^\text{star}=$' + f'{t_ini:g} Myr')
 
     # Set titles
     ax_titles = [
@@ -115,18 +134,9 @@ def plot_global(
         '(d) Surface gas mole fraction',
         '(f) Volatile partitioning into interior',
     ]
-    for i, ax in enumerate(axs):
-        ax.text(
-            0.011,
-            0.015,
-            ax_titles[i],
-            transform=ax.transAxes,
-            horizontalalignment='left',
-            verticalalignment='bottom',
-            fontsize=11,
-            zorder=20,
-            bbox=dict(fc='white', ec='white', alpha=0.5, pad=0.1, boxstyle='round'),
-        )
+    grey = style_neutral(FADE_DARK_GREY)
+    for ax, title in zip(axs, ax_titles):
+        ax.set_title(title, loc='left', fontsize=11)
 
     # Move right subplots y-axes to right side
     for ax in (ax_tr, ax_cr, ax_br):
@@ -143,7 +153,6 @@ def plot_global(
         for ax in axs:
             ax.set_xscale('log')
     ax_tl.set_yscale('symlog', linthresh=0.1)
-    ax_tr.set_yscale('log')
 
     # Set xlim
     xmin = max(tmin, 1.0)
@@ -177,7 +186,7 @@ def plot_global(
     ax_tl.plot(
         hf['Time'],
         hf['F_atm'],
-        color=get_colour('atm'),
+        color=grey,
         lw=lw * 1.5,
         alpha=al,
         label='Net (atm.)',
@@ -188,7 +197,7 @@ def plot_global(
     ax_tl.plot(
         hf['Time'], F_asf, color=get_colour('ASF'), lw=lw, alpha=al, label='ASF', ls='dashed'
     )
-    ax_tl.legend(loc='center left', **leg_kwargs)
+    ax_tl.legend(loc='best', ncol=2, **leg_kwargs)
     ymin, ymax = 0.0, 100.0
     for k in ('F_int', 'F_atm', 'F_olr', 'F_tidal', 'F_radio', F_asf):
         if type(k) is str:
@@ -203,7 +212,7 @@ def plot_global(
     min_temp = np.amin(hf['T_surf'])
     max_temp = np.amax(hf['T_magma'])
     ax_cl.plot(hf['Time'], hf['T_magma'], ls='dashed', lw=lw, alpha=al, color=get_colour('int'))
-    ax_cl.plot(hf['Time'], hf['T_surf'], ls='-', lw=lw, alpha=al, color=get_colour('atm'))
+    ax_cl.plot(hf['Time'], hf['T_surf'], ls='-', lw=lw, alpha=al, color=grey)
     ax_cl.set_ylim(min(1000.0, min_temp - 25), max(3500.0, max_temp + 25))
 
     # PLOT ax_bl
@@ -227,36 +236,47 @@ def plot_global(
     ax_bl.plot(
         hf['Time'],
         hf['Phi_global'],
-        color=get_colour('atm'),
+        color=grey,
         linestyle=':',
         lw=lw,
         alpha=al,
         label=r'Melt fraction',
     )
 
-    ax_bl.legend(loc='center left', **leg_kwargs)
+    ax_bl.legend(loc='best', **leg_kwargs)
     ax_bl.set_ylim(0.0, 1.01)
 
     # PLOT ax_tr
     ax_tr.plot(
-        hf['Time'], hf['P_surf'], color='black', linestyle='dashed', lw=lw * 1.5, label=r'Total'
+        hf['Time'],
+        hf['P_surf'],
+        color=style_neutral(),
+        linestyle='dashed',
+        lw=lw * 1.5,
+        label=r'Total',
     )
     bar_min, bar_max = 0.1, 1.0
     bar_max = max(bar_max, np.amax(hf['P_surf']))
     for vol in gas_list:
+        # skip species with no presence
         if not vol_present[vol]:
+            continue
+        # skip species with partial pressure less than floor
+        if np.amax(vol_bars[vol]) < pressure_floor:
             continue
         ax_tr.plot(
             hf['Time'],
             vol_bars[vol],
             color=get_colour(vol),
+            ls=get_linestyle(vol),
             lw=lw,
             alpha=al,
             label=latexify(vol),
         )
         bar_min = min(bar_min, np.amin(vol_bars[vol]))
-    ax_tr.set_ylim(max(1.0e-5, min(bar_min, 1.0e-1)), bar_max * 2.0)
-    ax_tr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5))
+    ax_tr.set_yscale('symlog', linthresh=max(pressure_floor, min(bar_min, 1.0e-1)))
+    ax_tr.set_ylim(0, bar_max * 2.0)
+    # ax_tr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5))
 
     # PLOT ax_cr
     for vol in gas_list:
@@ -266,6 +286,7 @@ def plot_global(
             hf['Time'],
             vol_vmr[vol] * 100.0,
             color=get_colour(vol),
+            ls=get_linestyle(vol),
             lw=lw,
             alpha=al,
             label=latexify(vol),
@@ -280,15 +301,35 @@ def plot_global(
             hf['Time'],
             vol_intpart[vol] * 100.0,
             color=get_colour(vol),
+            ls=get_linestyle(vol),
             lw=lw,
             alpha=al,
             label=latexify(vol),
         )
     ax_br.set_ylim(0, 101)
-    ax_br.legend(loc='center left', ncol=2, **leg_kwargs).set_zorder(20)
+
+    # legend with gas names
+    leg_length = np.sum([vol_present[vol] for vol in gas_list])
+    if leg_length > 12:
+        # big legend -> place below plot
+        ncol = leg_length // 4
+        leg = ax_br.legend(
+            loc='upper right', ncol=ncol, bbox_to_anchor=(1.0, -0.3), fontsize=10, **leg_kwargs
+        )
+    else:
+        # small legend -> keep inside axis
+        ncol = 1 if leg_length <= 6 else 2
+        leg = ax_br.legend(loc='best', ncol=ncol, fontsize=10, **leg_kwargs)
+    leg.set_zorder(999)
 
     # Save plot
-    fig.subplots_adjust(wspace=0.05, hspace=0.1)
+    fig.subplots_adjust(wspace=0.05, hspace=0.2)
+
+    # Turn the x tick labels at the inner edges of the two columns away from each other
+    for ax, side, ha in ((ax_bl, 1, 'right'), (ax_br, 0, 'left')):
+        for label in ax.get_xticklabels():
+            if np.isclose(label.get_position()[0], ax.get_xlim()[side]):
+                label.set_horizontalalignment(ha)
     plt_name = 'plot_global'
     if logt:
         plt_name += '_log'

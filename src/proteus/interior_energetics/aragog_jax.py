@@ -19,7 +19,13 @@ import jax.numpy as jnp
 import netCDF4 as nc
 import numpy as np
 
+from proteus.accretion.common import snap_to_impact
+from proteus.interior_energetics.aragog_phase import (
+    build_jax_phase_params,
+    check_solver_buoyancy,
+)
 from proteus.interior_energetics.common import Interior_t
+from proteus.utils.helper import format_subyear_time
 
 jax.config.update('jax_enable_x64', True)
 
@@ -67,7 +73,6 @@ class AragogJAXRunner:
     def _build_jax_components(self, config: Config, interior_o: Interior_t):
         """Build JAX EOS, params, and BCs from the numpy solver."""
         from aragog.jax.eos import EntropyEOS_JAX
-        from aragog.jax.phase import PhaseParams
         from aragog.jax.solver import BoundaryParams
 
         # EOS: load from the same directory as numpy solver
@@ -78,36 +83,11 @@ class AragogJAXRunner:
             raise FileNotFoundError(
                 f'PALEOS P-S tables not found for JAX solver: {spider_eos_dir}'
             )
+        # Phase parameters from config, checked before any JAX state is kept.
+        params = build_jax_phase_params(config)
+        check_solver_buoyancy(config, jax_params=params)
         interior_o._jax_eos = eos_jax
-
-        # Phase parameters from config.
-        # `bottom_up_grav_sep=True` enables the SPIDER-analogue cubic
-        # Hermite Jgrav smoothing (see aragog/jax/phase.py::compute_fluxes
-        # and aragog/solver/entropy_state.py for the scipy path
-        # equivalent). With it off, the JAX path shows a spurious CMB
-        # drain at first crystallisation. There is no PROTEUS config knob
-        # to disable it in production; the flag exists only so regression
-        # tests can exercise the uncorrected behaviour.
-        interior_o._jax_params = PhaseParams(
-            phi_rheo=config.interior_energetics.rfront_loc,
-            phi_width=config.interior_energetics.rfront_wid,
-            viscosity_solid=10.0 ** float(config.interior_energetics.solid_log10visc),
-            viscosity_liquid=10.0 ** float(config.interior_energetics.melt_log10visc),
-            grain_size=config.interior_energetics.grain_size,
-            k_solid=float(config.interior_energetics.solid_cond),
-            k_liquid=float(config.interior_energetics.melt_cond),
-            conduction=config.interior_energetics.trans_conduction,
-            convection=config.interior_energetics.trans_convection,
-            grav_sep=config.interior_energetics.trans_grav_sep,
-            mixing=config.interior_energetics.trans_mixing,
-            eddy_diff_thermal=float(config.interior_energetics.eddy_diffusivity_thermal),
-            eddy_diff_chemical=float(config.interior_energetics.eddy_diffusivity_chemical),
-            kappah_floor=config.interior_energetics.kappah_floor,
-            matprop_smooth_width=float(config.interior_energetics.spider.matprop_smooth_width),
-            bottom_up_grav_sep=True,
-            phase_smoothing=config.interior_energetics.aragog.phase_smoothing,
-            phase_smoothing_width=0.01,
-        )
+        interior_o._jax_params = params
 
         # Boundary conditions
         bc_cfg = self.aragog_solver.parameters.boundary_conditions
@@ -241,7 +221,8 @@ class AragogJAXRunner:
         # (temporarily set the numpy solver's solution to match JAX result)
         # Instead, compute output directly from JAX results
         out = self._extract_output(result, hf_row, interior_o)
-        sim_time = result.t_final
+        # A step aimed at an impact ends on it, so the snapshot is named like the row.
+        sim_time = snap_to_impact(result.t_final, getattr(interior_o, 't_next_impact', np.inf))
 
         # Write NetCDF (skipped when dt_write suppresses this step)
         if write_data:
@@ -263,6 +244,11 @@ class AragogJAXRunner:
 
         T_magma = float(T[-1])
         T_core = float(T[0])
+        # Temperature of the CMB basic node (index 0), distinct from the bottom cell T[0].
+        S_basic = np.asarray(mesh.quantity_matrix @ jnp.asarray(S))
+        T_cmb_node = float(
+            np.asarray(eos.temperature(mesh.P_basic[:1], jnp.asarray(S_basic[:1])))[0]
+        )
         mass = rho * vol
         M_mantle = float(mass.sum())
         # Mass-weighted melt fraction = M_mantle_liquid / M_mantle.
@@ -344,6 +330,7 @@ class AragogJAXRunner:
             'Phi_global_vol': Phi_global,  # simplified (same as mass-weighted)
             'T_pot': T_magma,
             'T_cmb': T_core,
+            'T_cmb_node': T_cmb_node,
             'E_th_mantle': E_th,
             'Cp_eff': Cp_eff,
             'F_radio': F_radio,
@@ -361,7 +348,7 @@ class AragogJAXRunner:
         phi = np.asarray(eos.melt_fraction(P, S))
         rho = np.asarray(eos.density(P, S))
 
-        fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
+        fpath = os.path.join(output_dir, 'data', format_subyear_time(time) + '_int.nc')
         ds = nc.Dataset(fpath, mode='w')
         ds.description = 'Aragog JAX entropy solver output'
 

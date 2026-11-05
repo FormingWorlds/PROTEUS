@@ -1,11 +1,7 @@
-"""Visualization utilities for asynchronous Bayesian optimization.
+"""Plots of the optimiser's own data: worker timelines, convergence, and the
+objective and observables of every sample against the parameters.
 
-This module provides functions to visualize worker execution timelines,
-timing distributions, and optimization performance metrics.
-
-Functions:
-    plot_times: Plot per-worker task timelines and histograms of timing metrics.
-    plot_res: Plot regret and best observed value vs. time and iteration.
+The best-fit comparisons with the targets and the truth are in `plot_fit`.
 """
 
 from __future__ import annotations
@@ -26,7 +22,11 @@ from matplotlib.ticker import MaxNLocator
 from proteus import Proteus
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.plot import plot_dispatch
-from proteus.utils.coupler import variable_is_logarithmic
+from proteus.utils.coupler import (
+    HelpfileFormatError,
+    read_helpfile_table,
+    variable_is_logarithmic,
+)
 from proteus.utils.helper import recursive_get
 
 log = logging.getLogger('fwl.' + __name__)
@@ -456,7 +456,7 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
     ymin = min(0.0, np.amin(Y)) - 0.1
 
     # Plot
-    fig, axs = plt.subplots(2, d, figsize=(2.7 * d, 3.2))
+    fig, axs = plt.subplots(2, d, figsize=(2.7 * d, 3.2), squeeze=False)
     axs[0, 0].set_ylabel('Histogram')
     axs[1, 0].set_ylabel(ylbl)
 
@@ -562,14 +562,21 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
     par_keys = list(pars.keys())
     obs_keys = list(obs.keys())
 
-    # Get directories for all cases of interest
-    cases = sorted((Path(directory) / 'workers').glob('w_*/i_*'))
+    # Get directories for all cases of interest. Filtered to directories only:
+    # a worker's `_console.log` capture file (or any other stray sibling) also
+    # matches the `i_*` glob but is not a case directory.
+    cases = sorted(p for p in (Path(directory) / 'workers').glob('w_*/i_*') if p.is_dir())
 
     # Extract parameters and observables
     X, Y = [], []
     for c in cases:
-        # Read config
-        conf = toml.load(c / 'init_coupler.toml')
+        # A case that died during start-up has a folder but did not get as far
+        # as writing its resolved config, and so has nothing to plot.
+        conf_path = c / 'init_coupler.toml'
+        if not conf_path.is_file():
+            log.warning(f'Missing init_coupler.toml for {c}')
+            continue
+        conf = toml.load(conf_path)
 
         # Check success
         hf_path = c / 'runtime_helpfile.csv'
@@ -578,7 +585,11 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
             continue
 
         # Read helpfile for observables
-        help = pd.read_csv(c / 'runtime_helpfile.csv', delimiter=r'\s+')
+        try:
+            help = read_helpfile_table(hf_path, min_rows=1)
+        except (OSError, HelpfileFormatError) as err:
+            log.warning(f'Unreadable helpfile for {c}: {err}')
+            continue
 
         # Get parameters and observables
         xx = [recursive_get(conf, k.split('.')) for k in par_keys]
@@ -587,26 +598,20 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
         # Store these
         X.append(xx)
         Y.append(yy)
-    X = np.array(X, dtype=float)
-    Y = np.array(Y, dtype=float)
-
     # Axes
     n_par = len(par_keys)
     n_obs = len(obs_keys)
 
+    # Shaped explicitly, so that a study in which no case produced output still
+    # has a column per parameter and observable to index.
+    X = np.array(X, dtype=float).reshape(-1, n_par)
+    Y = np.array(Y, dtype=float).reshape(-1, n_obs)
+
     # Make plot
-    fig, axs = plt.subplots(n_obs, n_par, figsize=(2.7 * n_par, 2.7 * n_obs))
+    fig, axs = plt.subplots(n_obs, n_par, figsize=(2.7 * n_par, 2.7 * n_obs), squeeze=False)
     for i in range(n_par):
         for j in range(n_obs):
-            # handle axis
-            if n_par == 1 and n_obs == 1:
-                ax = axs
-            elif n_par == 1:
-                ax = axs[j]
-            elif n_obs == 1:
-                ax = axs[i]
-            else:
-                ax = axs[j, i]
+            ax = axs[j, i]
 
             # plot data
             xx = X[:, i]
@@ -625,30 +630,17 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
             if variable_is_logarithmic(par_keys[i]):
                 ax.set_xscale('log')
 
-            # hide tick labels
-            if i >= 1:
-                ax.set_yticklabels([])
-            if j < n_obs - 1:
-                ax.set_xticklabels([])
+            # label the outer panels, hide tick labels elsewhere
+            if i == 0:
+                ax.set_ylabel(obs_keys[j], fontsize=10)
+            else:
+                ax.tick_params(axis='y', which='both', labelleft=False)
+            if j == n_obs - 1:
+                ax.set_xlabel(par_keys[i], fontsize=10)
+            else:
+                ax.tick_params(axis='x', which='both', labelbottom=False)
 
-    # Legend
-    if n_obs == 1 or n_par == 1:
-        axs[0].legend()
-    else:
-        axs[0, 0].legend()
-
-    # Axis labels
-    if n_par == 1 or n_obs == 1:
-        axs[0].set_xlabel(par_keys[0], fontsize=10)
-    else:
-        for i in range(n_par):
-            axs[-1, i].set_xlabel(par_keys[i], fontsize=10)
-
-    if n_obs == 1 or n_par == 1:
-        axs[0].set_ylabel(obs_keys[0], fontsize=10)
-    else:
-        for j in range(n_obs):
-            axs[j, 0].set_ylabel(obs_keys[j], fontsize=10)
+    axs[0, 0].legend()
 
     # Decorate
     fig.subplots_adjust(wspace=0.02, hspace=0.02)

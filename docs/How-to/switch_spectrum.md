@@ -20,6 +20,9 @@ each option and when to use it.
 When in doubt, use `"phoenix"`. It covers the widest range of stellar
 parameters and is downloaded automatically.
 
+With `spectrum_source = "none"`, PROTEUS looks up `star_name` in MUSCLES, then
+solar, then the named-star spectra (for example `toi561`).
+
 ---
 
 ## Option 1: Solar spectrum

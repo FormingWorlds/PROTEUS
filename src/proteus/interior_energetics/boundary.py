@@ -43,10 +43,9 @@ class BoundaryRunner:
         )
         self.iteration = 1 if hf_all is None else len(hf_all)
 
+        # The structure module writes R_int, R_core, M_int and M_core into hf_row.
         self.planet_radius = hf_row['R_int']
-        self.planet_mass = hf_row.get(
-            'M_int', 0.0
-        )  # Use M_planet if available, otherwise will be calculated from core and mantle masses
+        self.planet_mass = float(hf_row['M_int'])
         self.core_mass = hf_row['M_core']
         self.m_atm = hf_row.get('M_atm', ATM_MASS_MIN)  # Atmospheric mass
         self.f_atm = hf_row['F_atm']
@@ -88,42 +87,19 @@ class BoundaryRunner:
             else:
                 self.atmosphere_heat_capacity = float(np.average(cp_arr, weights=ma_arr))
 
-        # Prefer Zalmoxis-derived CMB radius when available.
-        # Otherwise interpret `core_frac` according to the configured mode.
-        if 'R_core' in hf_row:
-            core_radius = hf_row['R_core']
-        elif config.interior_struct.core_frac_mode == 'radius':
-            core_radius = config.interior_struct.core_frac * self.planet_radius
-        elif config.interior_struct.core_frac_mode == 'mass':
-            core_density = hf_row.get('core_density', config.interior_struct.core_density)
-            if core_density == 'self':
-                core_density = hf_row.get(
-                    'core_density', config.interior_energetics.boundary.core_density
-                )
-            core_radius = (
-                3.0 * float(self.core_mass) / (4.0 * np.pi * float(core_density))
-            ) ** (1.0 / 3.0)
-        else:
-            raise ValueError(
-                "interior_struct.core_frac_mode must be 'mass' or 'radius'; "
-                f'got {config.interior_struct.core_frac_mode!r}'
-            )
-
-        self.core_radius = float(core_radius)
+        self.core_radius = float(hf_row['R_core'])
         self.core_frac = self.core_radius / self.planet_radius
 
         self.mantle_radius = self.planet_radius - self.core_radius
         self.mantle_volume = (4 / 3) * np.pi * (self.planet_radius**3 - self.core_radius**3)
 
-        if config.interior_struct.module == 'self':
-            self.mantle_mass = (
-                self.mantle_volume * config.interior_energetics.boundary.silicate_density
+        self.mantle_mass = self.planet_mass - self.core_mass
+        if not self.mantle_mass > 0.0:
+            raise ValueError(
+                'The boundary interior needs M_int > M_core from the structure module; '
+                f'got M_int = {self.planet_mass:.4e} kg and M_core = {self.core_mass:.4e} kg.'
             )
-            self.mantle_bulk_density = config.interior_energetics.boundary.silicate_density
-            self.planet_mass = self.core_mass + self.mantle_mass
-        else:
-            self.mantle_mass = self.planet_mass - self.core_mass
-            self.mantle_bulk_density = self.mantle_mass / self.mantle_volume
+        self.mantle_bulk_density = self.mantle_mass / self.mantle_volume
 
         log.debug(
             f'Initialized BoundaryRunner with planet mass {self.planet_mass:.2e} kg, bulk density {self.mantle_bulk_density:.2f} kg/m^3, mantle mass {self.mantle_mass:.2e} kg'
@@ -221,7 +197,7 @@ class BoundaryRunner:
             return 0.0
         else:
             step_sf = 1.0  # dt scale factor
-            return next_step(config, dirs, hf_row, hf_all, step_sf)
+            return next_step(config, dirs, hf_row, hf_all, step_sf, interior_o=interior_o)
 
     def viscosity_aggregate_model(self, phi: float) -> float:
         """

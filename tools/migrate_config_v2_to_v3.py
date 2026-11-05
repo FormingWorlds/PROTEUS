@@ -4,10 +4,9 @@
 The 2.0 to 3.0 change is a structural refactor, not a value tweak: the interior
 splits into ``[interior_struct]`` and ``[interior_energetics]``, the volatile
 inventory moves under ``[planet]``, several fields are renamed, and a number of
-schema defaults change. The config loader ignores unknown keys, so a naive
-rename pass silently reverts moved or omitted fields to a 3.0 default that may
-differ from the 2.0 value, producing a file that loads cleanly but simulates a
-different planet.
+schema defaults change. A naive rename pass silently reverts omitted fields to a
+3.0 default that may differ from the 2.0 value, producing a file that loads
+cleanly but simulates a different planet.
 
 This tool avoids that failure mode with a materialise-map-emit engine:
 
@@ -24,8 +23,10 @@ This tool avoids that failure mode with a materialise-map-emit engine:
    divergent default, whether at an identical path or a renamed one, is therefore
    pinned automatically.
 
-The result is validated by structuring it through the 3.0 ``Config`` schema; a
-structural error is raised rather than written. The unit test
+The result is validated against the 3.0 ``Config`` schema: a key or section the
+schema cannot accept, or a structural error, is raised rather than written. A user
+key outside the 2.0 schema is left out, as the 2.0 loader ignored it, and listed in
+the report. The unit test
 (``tests/tools/test_migrate_config_v2_to_v3.py``) checks map completeness,
 new-field classification, and per-field regression. A separate developer harness
 resolves each 2.0 input through main's loader and the 3.0 output through this
@@ -213,7 +214,6 @@ INTERIOR_RENAMES = {
     },
     'dummy': {
         'interior.dummy.mantle_cp': 'interior_energetics.dummy.mantle_cp',
-        'interior.dummy.mantle_rho': 'interior_energetics.dummy.mantle_rho',
         'interior.dummy.mantle_tliq': 'interior_energetics.dummy.mantle_tliq',
         'interior.dummy.mantle_tsol': 'interior_energetics.dummy.mantle_tsol',
         'interior.dummy.H_radio': 'interior_energetics.dummy.heat_internal',
@@ -241,6 +241,7 @@ TRANSFORMS = {
 # silent.
 REMOVED = {
     'outgas.atmodeller.some_parameter',  # 2.0 placeholder, no 3.0 analogue
+    'interior.dummy.mantle_rho',  # 3.0 derives the density from the structure
 }
 
 # New-in-3.0 fields whose 3.0 default changes behaviour relative to a 2.0 run
@@ -254,6 +255,22 @@ OVERRIDES = {
     # 3.0 adds dt.maximum + maximum_rel * Time with a default maximum_rel of 1.0,
     # a time-growing cap 2.0 lacked. Pin 0.0 to recover the strict 2.0 cap.
     'params.dt.maximum_rel': 0.0,
+    # 2.0 had no time-gating on bol_scale
+    'star.bol_scale_start': 0.0,
+    'star.bol_scale_duration': 100.0,
+    # 2.0 sized escape from the unmodified XUV radius; the 3.0 default clips
+    # it to the Hill radius. Pin off so migrated runs reproduce 2.0 rates.
+    'escape.hill_clamp': False,
+    # 2.0 hardcoded a 4.0 K poststep-change cap when tidal heating was active
+    # (not configurable); the 3.0 default of 10.0 K would relax that cap for
+    # migrated tidal-heating runs. Pin 4.0 to reproduce 2.0 behaviour.
+    'interior_energetics.tmagma_tides_step': 4.0,
+    # 2.0 always ran VULCAN with vertical advection at updraft_const; the 3.0
+    # default turns it off, which would drop a nonzero 2.0 updraft.
+    'atmos_chem.vulcan.use_vz': True,
+    # 2.0 finite-differenced the AGNI jacobian at every step; the 3.0 default
+    # updates it with Broyden's method in between.
+    'atmos_clim.agni.broyden': False,
 }
 
 # Element-budget fields consumed by the element handler (not mapped directly).
@@ -279,6 +296,28 @@ _IC_FIELDS = {
     'interior.aragog.ini_tmagma',
     'interior.dummy.ini_tmagma',
 }
+
+# Chemistry scheduling field consumed by the chemistry-schedule handler. The
+# current schema replaced `when` with `mode` (whether) and `times` (which snapshots).
+_CHEM_WHEN = 'atmos_chem.when'
+
+# Orbit-evolution fields consumed by the orbit-dispatch handler: 2.0's bool
+# flags do not reduce to a single rename, since 3.0 replaced each with a
+# string-valued model choice (and split the satellite block out under
+# [orbit.satellite]).
+_ORBIT_FIELDS = {
+    'orbit.evolve',
+    'orbit.satellite',
+    'orbit.mass_sat',
+    'orbit.semimajoraxis_sat',
+}
+
+# Earth mass [kg] / astronomical unit [m]. 2.0 orbit.mass_sat and
+# orbit.semimajoraxis_sat are in kg/m; 3.0's orbit.satellite.mass_sat and
+# .semimajoraxis_sat are in M_earth/AU. Hard-coded to keep the value
+# transform independent of an importable proteus at call time; verified
+# against proteus.utils.constants.M_earth / AU.
+_M_EARTH_KG = 5.972e24
 
 # Volatiles partial-pressure block: delivery.volatiles.X -> planet.gas_prs.X.
 _VOLATILE_SPECIES = ('H2O', 'CO2', 'N2', 'S2', 'SO2', 'H2S', 'NH3', 'H2', 'CH4', 'CO')
@@ -348,6 +387,7 @@ class MigrationReport:
         self.overridden = []
         self.dropped_inactive = []
         self.dropped_removed = set()
+        self.dropped_unknown = []
         self.warnings = []
 
     def text(self):
@@ -364,6 +404,8 @@ class MigrationReport:
             lines += [f'  - {p} = {v!r}' for p, v in sorted(self.overridden)]
         if self.dropped_removed:
             lines.append(f'Dropped (removed in 3.0): {sorted(self.dropped_removed)}')
+        if self.dropped_unknown:
+            lines.append(f'Left out (not in the 2.0 schema): {self.dropped_unknown}')
         if self.dropped_inactive:
             lines.append(f'Dropped inactive-module fields: {len(self.dropped_inactive)}')
         return '\n'.join(lines)
@@ -379,14 +421,19 @@ def _load_v2_defaults():
         return json.load(f)
 
 
-def _v3_defaults():
-    """Return the live 3.0 schema defaults as a flat dict (stub-import safe)."""
+def _stub_pipeline():
+    """Stand in for ``proteus.proteus`` so importing ``proteus.config`` does not start Julia."""
     import types
 
     if 'proteus.proteus' not in sys.modules:
         stub = types.ModuleType('proteus.proteus')
         stub.Proteus = object
         sys.modules['proteus.proteus'] = stub
+
+
+def _v3_defaults():
+    """Return the live 3.0 schema defaults as a flat dict (stub-import safe)."""
+    _stub_pipeline()
     import typing
 
     import attr
@@ -612,6 +659,69 @@ def _handle_temperature_mode(eff_v2, explicit, v3, active, report):
             )
 
 
+def _handle_chem_schedule(eff_v2, v3, report):
+    """Map 2.0 atmos_chem.when onto 3.0 atmos_chem.mode and atmos_chem.times.
+
+    'manually' ran nothing and 'offline' ran once on the final state.
+    'online' ran on each snapshot from inside the main loop while the planet
+    was not desiccated. mode 'offline' with times 'all' runs on the same
+    snapshots after the simulation, and on the final state too. The results
+    can differ: the climate-profile initial composition was read upside down
+    before, and is now read the right way up.
+    """
+    when = eff_v2.get(_CHEM_WHEN, 'manually')
+    module = eff_v2.get('atmos_chem.module')
+    if (when == 'manually') or (module in (None, 'none')):
+        v3['atmos_chem.mode'] = 'none'
+        v3['atmos_chem.times'] = 'end'
+    elif when == 'offline':
+        v3['atmos_chem.mode'] = 'offline'
+        v3['atmos_chem.times'] = 'end'
+    else:
+        v3['atmos_chem.mode'] = 'offline'
+        v3['atmos_chem.times'] = 'all'
+        report.warnings.append(
+            "atmos_chem.when = 'online' became mode = 'offline' with times = 'all': "
+            'every snapshot with an atmosphere is post-processed after the '
+            'simulation, not during it, and the results can differ from the old ones.'
+        )
+
+
+def _handle_orbit_dispatch(eff_v2, explicit, v3, report):
+    """Map 2.0's boolean orbit.evolve/orbit.satellite flags to 3.0's
+    string-valued star_planet_model/planet_satellite_model dispatch.
+
+    2.0 had exactly one orbital-evolution model and one satellite model;
+    3.0 offers several per family (sp0d/sp1d; ps0d/ps1d/ps1d_evec). The
+    simplest 3.0 model in each family (sp0d, ps0d) is the closest analogue
+    to what 2.0 actually ran, so a set 2.0 flag maps to that rather than a
+    guess at which richer 3.0 model the user would have wanted.
+    """
+    if eff_v2.get('orbit.evolve'):
+        v3['orbit.star_planet_model'] = 'sp0d'
+        if 'orbit.evolve' in explicit:
+            report.warnings.append(
+                'orbit.evolve mapped to orbit.star_planet_model="sp0d" (the '
+                'simplest 3.0 orbital-evolution model); review whether sp1d '
+                'better matches the intended run.'
+            )
+    if eff_v2.get('orbit.satellite'):
+        v3['orbit.planet_satellite_model'] = 'ps0d'
+        v3['orbit.satellite.include_satellite'] = True
+        mass_sat = eff_v2.get('orbit.mass_sat')
+        if mass_sat not in (None, 'none'):
+            v3['orbit.satellite.mass_sat'] = float(mass_sat) / _M_EARTH_KG
+        sma_sat = eff_v2.get('orbit.semimajoraxis_sat')
+        if sma_sat not in (None, 'none'):
+            v3['orbit.satellite.semimajoraxis_sat'] = float(sma_sat) / _R_EARTH_M
+        if 'orbit.satellite' in explicit:
+            report.warnings.append(
+                'orbit.satellite mapped to orbit.planet_satellite_model="ps0d" '
+                '(the simplest 3.0 satellite model); review whether ps1d or '
+                'ps1d_evec better matches the intended run.'
+            )
+
+
 def translate(v2_toml: dict):
     """Translate a parsed 2.0 config dict into a validated 3.0 config dict.
 
@@ -626,6 +736,11 @@ def translate(v2_toml: dict):
         The 3.0 config as a nested dict, validated through the 3.0 schema.
     report : MigrationReport
         What the translation renamed, pinned, overrode, dropped, and warned on.
+
+    Raises
+    ------
+    UnknownConfigKeyError
+        If the translation produces a key or section the 3.0 schema cannot accept.
     """
     report = MigrationReport()
     v2_defaults = _load_v2_defaults()
@@ -666,12 +781,20 @@ def translate(v2_toml: dict):
     atmos_hoist_src = {f'atmos_clim.{active["atmos_clim"]}.{field}' for field in _ATMOS_SHARED}
     for v2_path, val in eff_v2.items():
         # consumed by special handlers
-        if v2_path in _ELEMENT_FIELDS or v2_path in _IC_FIELDS or v2_path in atmos_hoist_src:
+        if (
+            v2_path in _ELEMENT_FIELDS
+            or v2_path in _IC_FIELDS
+            or v2_path in atmos_hoist_src
+            or v2_path in _ORBIT_FIELDS
+            or v2_path == _CHEM_WHEN
+        ):
             continue
         if v2_path.startswith('delivery.volatiles.'):
             sp = v2_path.split('.')[-1]
             if sp in _VOLATILE_SPECIES:
                 emit(f'planet.gas_prs.{sp}', val, v2_path)
+            elif v2_path in explicit and v2_path not in v2_defaults:
+                report.dropped_unknown.append(v2_path)
             continue
         if v2_path in REMOVED:
             if v2_path in explicit:
@@ -679,7 +802,21 @@ def translate(v2_toml: dict):
             continue
         if v2_path.startswith(inactive) or v2_path in inactive_bare:
             if v2_path in explicit:
-                report.dropped_inactive.append(v2_path)
+                known = v2_path in v2_defaults
+                (report.dropped_inactive if known else report.dropped_unknown).append(v2_path)
+            continue
+        if v2_path == 'atmos_clim.albedo_pl' and isinstance(val, str):
+            # 2.0 accepted either a constant or a path to a CSV lookup table;
+            # 3.0 narrowed the field to a float and removed the lookup. Copying
+            # the path through would emit a 3.0 config that fails validation, and
+            # substituting a number would silently change the physics, so leave
+            # the field at its 3.0 default and say so.
+            report.warnings.append(
+                'atmos_clim.albedo_pl was a lookup-table path in 2.0 '
+                f'({val!r}); 3.0 accepts a constant only and the lookup has '
+                'been removed. Left at the 3.0 default. Set a constant bond '
+                'albedo by hand to approximate the 2.0 run.'
+            )
             continue
         # transform value if a transform is registered
         tval = TRANSFORMS[v2_path](val) if v2_path in TRANSFORMS else val
@@ -691,14 +828,13 @@ def translate(v2_toml: dict):
         elif v2_path in v3_defaults:  # identical path in 3.0
             dst = v2_path
         else:
-            # No 3.0 home. Warn only when the field was set by the user AND is
-            # part of main's 2.0 schema (so it actually affected the 2.0 run) AND
-            # is not in a redesigned block (zalmoxis/aragog get one summary
-            # warning instead of per-field noise). A field absent from main's
-            # schema was ignored by the 2.0 loader, so dropping it is faithful.
-            redesigned = v2_path.startswith(('struct.zalmoxis.', 'interior.aragog.'))
-            if v2_path in explicit and v2_path in v2_defaults and not redesigned:
-                report.warnings.append(f'Unmapped 2.0 field (left out): {v2_path}')
+            # No 3.0 home: a key outside the 2.0 schema is listed, a 2.0 field is warned about
+            # unless its redesigned zalmoxis/aragog block already has one summary warning.
+            if v2_path in explicit:
+                if v2_path not in v2_defaults:
+                    report.dropped_unknown.append(v2_path)
+                elif not v2_path.startswith(('struct.zalmoxis.', 'interior.aragog.')):
+                    report.warnings.append(f'Unmapped 2.0 field (left out): {v2_path}')
             continue
         emit(dst, tval, v2_path)
         if v2_path != dst:
@@ -708,6 +844,8 @@ def translate(v2_toml: dict):
     _handle_elements(eff_v2, explicit, v3, report)
     _handle_atmos_hoist(eff_v2, explicit, v3, active, report)
     _handle_temperature_mode(eff_v2, explicit, v3, active, report)
+    _handle_orbit_dispatch(eff_v2, explicit, v3, report)
+    _handle_chem_schedule(eff_v2, v3, report)
 
     # derived fields with no 2.0 source
     if v3.get('interior_struct.module') == 'spider':
@@ -781,18 +919,29 @@ def translate(v2_toml: dict):
 
 
 def _validate(nested_v3):
-    """Structure the nested 3.0 dict through the schema; raise on failure."""
-    import types
+    """Account for every key of the nested 3.0 dict, then structure it through the schema.
 
-    if 'proteus.proteus' not in sys.modules:
-        stub = types.ModuleType('proteus.proteus')
-        stub.Proteus = object
-        sys.modules['proteus.proteus'] = stub
-    import cattrs
-
+    Raises
+    ------
+    UnknownConfigKeyError
+        If the translation produced a key or section the 3.0 schema cannot accept;
+        ``cattrs`` would otherwise drop it and the field would sit at its default.
+    """
+    _stub_pipeline()
+    from proteus.config import converter
     from proteus.config._config import Config
+    from proteus.config.orphans import (
+        UnknownConfigKeyError,
+        find_key_problems,
+        format_orphan_message,
+    )
 
-    cattrs.structure(nested_v3, Config)
+    orphans, mistyped = find_key_problems(nested_v3)
+    if orphans or mistyped:
+        raise UnknownConfigKeyError(
+            format_orphan_message(orphans, 'the migrated 3.0 config', mistyped)
+        )
+    converter.structure(nested_v3, Config)
 
 
 # ----------------------------------------------------------------------------
@@ -885,10 +1034,18 @@ def main(argv=None):
     with open(args.input, 'rb') as f:
         data = tomllib.load(f)
 
-    if args.grid:
-        nested, report = translate_grid(data)
-    else:
-        nested, report = translate(data)
+    _stub_pipeline()
+    from proteus.config.orphans import UnknownConfigKeyError
+
+    try:
+        nested, report = translate_grid(data) if args.grid else translate(data)
+    except UnknownConfigKeyError as exc:
+        print(
+            f'Not written: the migration of {args.input} produced keys the 3.0 schema '
+            f'rejects. This is a fault in the migration tables, not in the input.\n{exc}',
+            file=sys.stderr,
+        )
+        return 1
 
     out = args.output or args.input.with_suffix('.v3.toml')
     _dump_toml(nested, out)

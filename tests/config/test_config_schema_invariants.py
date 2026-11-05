@@ -2,7 +2,7 @@
 Schema invariant tests: every validator catches its target invalid input,
 and every default backend is importable on a stock CI runner.
 
-Anti-happy-path discipline (per .github/.claude/rules/proteus-tests.md):
+Anti-happy-path discipline (per tests/AGENTS.md):
 
 - Every validator under test gets a positive AND negative test. The negative
   test asserts a specific exception type AND a specific error-message regex,
@@ -15,12 +15,12 @@ Anti-happy-path discipline (per .github/.claude/rules/proteus-tests.md):
   match the schema; if a new module is added without updating this list,
   the assert in test_module_field_inventory_matches_schema fires.
 
-- The slow-tier hypothesis test fuzzes the cross-product of module enum
-  values for the eight backend fields, asserting every combination either
-  validates and yields a usable Config OR raises with a specific message.
-  Catastrophic exceptions (TypeError, AttributeError, KeyError) fail the
-  test. The cross-product covers ~5000 combinations; hypothesis samples
-  200 by default; derandomize=True so CI is reproducible.
+- The cross-product test sweeps the module enum values for the eight
+  backend fields, asserting every combination either validates and yields
+  a usable Config OR raises with a specific message. Catastrophic
+  exceptions (TypeError, AttributeError, KeyError) fail the test. The
+  sweep is exhaustive over all 5184 combinations and needs no seed to be
+  reproducible.
 
 The original failure that motivated this file: outgas.module defaulted to
 "atmodeller" while atmodeller is not in pyproject hard deps; CI runners
@@ -32,6 +32,7 @@ validator had ZERO test coverage at the time.
 from __future__ import annotations
 
 import importlib
+import re
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -42,21 +43,30 @@ from proteus.config._config import (
     boreas_requires_atmosphere,
     boundary_requires_fixed_surface_state,
     check_module_dependencies,
+    front_trapping_requires_aragog,
     instmethod_evolve,
+    orbit_requires_tides,
+    parameterized_excludes_accretion,
+    parameterized_excludes_tides,
+    parameterized_high_ecc_inward,
     planet_fO2_source_compat,
     planet_mass_valid,
     planet_oxygen_mode_explicit,
+    prevent_desaturation_warns_without_condensates,
     satellite_evolve,
+    saturation_skin_warns_without_condensates,
+    sp0d_obliqua_degree_mismatch,
+    spider_struct_needs_mass_from_interior,
+    spinless_orbit_keeps_spin_synchronous,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-# Every test here is unit tier, including the 5184-combo cross-product, which
-# sweeps in ~2.5 s. Keep it that way: a second tier marker on any function in
-# this file would combine with the module mark above, and the tier filters are
-# mutually exclusive (`unit and not slow` against `slow and not unit`), so a
-# doubly-marked test is selected by neither and silently stops running. A test
-# that outgrows the 30 s ceiling belongs in its own single-tier file.
+# Every test here is unit tier, including the 5184-combo cross-product. Keep it
+# that way: a second tier marker on any function combines with the module mark
+# above, and the unit and slow filters exclude each other (`unit and not slow`
+# against `slow and not unit`), so a test carrying both runs in neither. The
+# cross-product runs far longer than its neighbours, so it sets its own budget.
 
 # ---------------------------------------------------------------------------
 # Schema enum inventory: kept here so a schema change that adds a backend
@@ -69,7 +79,7 @@ ATMOS_CLIM_BACKENDS = ('dummy', 'agni', 'janus')
 ATMOS_CHEM_BACKENDS = (None, 'vulcan', 'dummy')
 ESCAPE_BACKENDS = (None, 'dummy', 'zephyrus', 'boreas')
 STAR_BACKENDS = (None, 'mors', 'dummy')
-ORBIT_BACKENDS = (None, 'dummy', 'lovepy')
+ORBIT_BACKENDS = (None, 'dummy', 'lovepy', 'obliqua')
 INTERIOR_STRUCT_BACKENDS = (None, 'dummy', 'spider', 'zalmoxis')
 
 # Backends whose Python package is in the PROTEUS hard dependency set
@@ -212,6 +222,7 @@ def _make_config_instance(**overrides):
     that is the cross-product test's job.
     """
     base = SimpleNamespace(
+        accretion=SimpleNamespace(module=None),
         outgas=SimpleNamespace(module='calliope', fO2_shift_IW=0.0),
         escape=SimpleNamespace(module='zephyrus'),
         atmos_chem=SimpleNamespace(module=None),
@@ -229,8 +240,8 @@ def _make_config_instance(**overrides):
         orbit=SimpleNamespace(
             module='dummy',
             instellation_method='separation',
-            evolve=False,
-            satellite=False,
+            star_planet_model=None,
+            planet_satellite_model=None,
         ),
         params=SimpleNamespace(stop=SimpleNamespace(escape=SimpleNamespace(enabled=True))),
         planet=SimpleNamespace(
@@ -277,16 +288,47 @@ def test_check_module_dependencies_raises_when_atmodeller_missing():
     with patch('importlib.import_module', side_effect=_fake_import):
         with pytest.raises(ImportError, match=r'fwl-proteus\[atmodeller\]') as excinfo:
             check_module_dependencies(instance, None, None)
-    # The hint must name the GPL-3.0 license of the optional backend, since the
-    # PROTEUS core is Apache-2.0 and the licensing difference matters to users.
+    # The hint must name the GPL-3.0 license and setup script before pip install.
     msg = str(excinfo.value)
-    assert 'GPL-3.0' in msg and 'outgas.module' in msg
+    assert 'outgas.module = "atmodeller"' in msg
+    assert 'needs the atmodeller package (GPL-3.0 licensed), which is not installed.' in msg
+    assert 'bash install.sh sets it up;' in msg
+    assert msg.index('bash tools/get_atmodeller.sh in the PROTEUS folder') < msg.index(
+        'pip install "fwl-proteus[atmodeller]"'
+    )
+    assert 'optional' not in msg
+    assert 'backend' not in msg
     # Discrimination: the original ImportError must be chained as __cause__ so
     # users see the "No module named 'atmodeller'" detail. A regression that
     # re-raised a bare ImportError without `raise ... from e` would lose the
     # chain and trip this check.
     assert excinfo.value.__cause__ is not None
     assert 'atmodeller' in str(excinfo.value.__cause__)
+
+
+@pytest.mark.unit
+def test_check_module_dependencies_names_the_calliope_install_command():
+    """If outgas.module = calliope and the package is unavailable, the hint is the
+    PROTEUS command that clones CALLIOPE at its release tag, not a bare git clone
+    of the default branch, and the original error is chained.
+    """
+    instance = _make_config_instance(**{'outgas.module': 'calliope'})
+
+    real_import = importlib.import_module
+
+    def _fake_import(name):
+        if name == 'calliope':
+            raise ImportError("No module named 'calliope'")
+        return real_import(name)
+
+    with patch('importlib.import_module', side_effect=_fake_import):
+        with pytest.raises(ImportError, match=r'outgas\.module = "calliope"') as excinfo:
+            check_module_dependencies(instance, None, None)
+    msg = str(excinfo.value)
+    assert 'Install with: bash tools/get_python_module.sh CALLIOPE' in msg
+    assert 'git clone' not in msg
+    assert 'pip install -e CALLIOPE' not in msg
+    assert "No module named 'calliope'" in str(excinfo.value.__cause__)
 
 
 @pytest.mark.unit
@@ -309,11 +351,45 @@ def test_check_module_dependencies_raises_when_vulcan_missing():
     # The message must name atmos_chem.module (not, e.g., outgas) so the vulcan
     # branch is the one that fired, and must carry the GPL-3.0 license notice.
     msg = str(excinfo.value)
-    assert 'atmos_chem.module' in msg and 'vulcan' in msg
-    assert 'GPL-3.0' in msg
+    assert 'atmos_chem.module = "vulcan"' in msg
+    assert 'needs the VULCAN package (GPL-3.0 licensed), which is not installed.' in msg
+    assert 'bash install.sh sets it up;' in msg
+    assert msg.index('bash tools/get_vulcan.sh in the PROTEUS folder') < msg.index(
+        'pip install "fwl-proteus[vulcan]"'
+    )
+    assert 'optional' not in msg
+    assert 'backend' not in msg
     # The chained cause preserves the underlying import failure detail.
     assert excinfo.value.__cause__ is not None
     assert 'vulcan' in str(excinfo.value.__cause__)
+
+
+@pytest.mark.unit
+def test_check_module_dependencies_raises_when_morrigan_missing():
+    """Raise ImportError naming install hint when Morrigan is unavailable."""
+    instance = _make_config_instance(**{'accretion.module': 'morrigan'})
+
+    real_import = importlib.import_module
+
+    def _fake_import(name):
+        if name == 'morrigan':
+            raise ImportError("No module named 'morrigan'")
+        return real_import(name)
+
+    with patch('importlib.import_module', side_effect=_fake_import):
+        with pytest.raises(ImportError, match=r'fwl-proteus\[morrigan\]') as excinfo:
+            check_module_dependencies(instance, None, None)
+    msg = str(excinfo.value)
+    assert 'accretion.module = "morrigan"' in msg
+    assert 'needs the morrigan package, which is not installed.' in msg
+    assert 'bash install.sh sets it up;' in msg
+    assert msg.index('bash tools/get_morrigan.sh in the PROTEUS folder') < msg.index(
+        'pip install "fwl-proteus[morrigan]"'
+    )
+    assert 'optional' not in msg
+    assert 'backend' not in msg
+    assert excinfo.value.__cause__ is not None
+    assert 'morrigan' in str(excinfo.value.__cause__)
 
 
 @pytest.mark.unit
@@ -702,16 +778,59 @@ def test_boundary_requires_fixed_surface_state_passes_with_fixed():
     assert instance.atmos_clim.surf_state == 'fixed'
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize('energetics', ['dummy', 'boundary'])
+def test_spider_struct_rejects_an_interior_that_takes_its_mass_from_the_structure(energetics):
+    """The SPIDER structure solves for the radius from the energetics module's mantle mass;
+    the dummy and boundary interiors take that mass from the structure, so the pair is refused.
+    """
+    instance = _make_config_instance(
+        **{'interior_struct.module': 'spider', 'interior_energetics.module': energetics}
+    )
+    expected = (
+        "interior_struct.module = 'spider' is incompatible with "
+        f"interior_energetics.module = '{energetics}'."
+    )
+    with pytest.raises(ValueError, match=re.escape(expected)) as excinfo:
+        spider_struct_needs_mass_from_interior(instance, None, None)
+    # The whole message names both modules, so the user sees which pair was refused.
+    assert str(excinfo.value) == expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'struct,energetics',
+    [
+        pytest.param('spider', 'spider', id='spider_struct_spider_interior'),
+        pytest.param('spider', 'aragog', id='spider_struct_aragog_interior'),
+        pytest.param('dummy', 'dummy', id='dummy_struct_dummy_interior'),
+        pytest.param('zalmoxis', 'boundary', id='zalmoxis_struct_boundary_interior'),
+    ],
+)
+def test_spider_struct_check_accepts_pairs_with_a_mantle_mass(struct, energetics):
+    """Each pair where one side supplies the mantle mass passes the check silently."""
+    instance = _make_config_instance(
+        **{'interior_struct.module': struct, 'interior_energetics.module': energetics}
+    )
+    assert spider_struct_needs_mass_from_interior(instance, None, None) is None
+    # The instance still holds the pair under test, so the pass is not vacuous.
+    assert (instance.interior_struct.module, instance.interior_energetics.module) == (
+        struct,
+        energetics,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Orbit-coupling validators: instmethod_evolve and satellite_evolve
 # ---------------------------------------------------------------------------
 @pytest.mark.unit
 def test_instmethod_evolve_rejects_inst_with_orbit_evolve():
-    """instellation_method='inst' is incompatible with orbit.evolve=True."""
+    """instellation_method='inst' is incompatible with a star-planet
+    evolution model being enabled."""
     instance = _make_config_instance(
         **{
             'orbit.instellation_method': 'inst',
-            'orbit.evolve': True,
+            'orbit.star_planet_model': 'sp0d',
         }
     )
     with pytest.raises(ValueError, match=r"instellation_method='inst'") as excinfo:
@@ -719,100 +838,448 @@ def test_instmethod_evolve_rejects_inst_with_orbit_evolve():
     # Discrimination: the message must mention orbital evolution as the
     # incompatible-with feature, so the user knows which of the two settings
     # to change. A regression with just "instellation_method='inst' is bad"
-    # that did not name the conflicting evolve flag would fail.
+    # that did not name the conflicting evolution model would fail.
     msg = str(excinfo.value).lower()
     assert 'evolution' in msg or 'evolve' in msg
 
 
 @pytest.mark.unit
-def test_instmethod_evolve_passes_with_inst_and_no_evolve():
-    """instellation_method='inst' is OK when orbit.evolve is False."""
+def test_instmethod_evolve_rejects_inst_with_a_prescribed_track():
+    """A prescribed track starts from orbit.semimajoraxis, while 'inst' would
+    derive a second starting orbit from the flux, so the pair is refused
+    and the message points at the setting that resolves it."""
     instance = _make_config_instance(
         **{
             'orbit.instellation_method': 'inst',
-            'orbit.evolve': False,
+            'orbit.star_planet_model': 'parameterized',
+        }
+    )
+    with pytest.raises(ValueError, match=r"instellation_method='inst'") as excinfo:
+        instmethod_evolve(instance, None, None)
+    msg = str(excinfo.value)
+    assert "'parameterized'" in msg
+    assert "instellation_method = 'distance'" in msg
+
+    instance.orbit.instellation_method = 'distance'
+    assert instmethod_evolve(instance, None, None) is None
+
+
+@pytest.mark.unit
+def test_instmethod_evolve_passes_with_inst_and_no_evolve():
+    """instellation_method='inst' is OK when star_planet_model is None."""
+    instance = _make_config_instance(
+        **{
+            'orbit.instellation_method': 'inst',
+            'orbit.star_planet_model': None,
         }
     )
     result = instmethod_evolve(instance, None, None)
-    assert result is None  # contract: inst + evolve=False is the canonical compatible combo
-    # Discriminating check: evolve=True with inst would have raised; only the
-    # evolve=False branch can produce a silent pass under inst.
+    assert (
+        result is None
+    )  # contract: inst + star_planet_model=None is the canonical compatible combo
+    # Discriminating check: star_planet_model='sp0d' with inst would have
+    # raised; only the None branch can produce a silent pass under inst.
     assert instance.orbit.instellation_method == 'inst'
-    assert instance.orbit.evolve is False
+    assert instance.orbit.star_planet_model is None
 
 
 @pytest.mark.unit
 def test_instmethod_evolve_passes_with_separation_and_evolve():
-    """orbit.evolve is fine when instellation_method != 'inst'."""
+    """A star-planet evolution model is fine when instellation_method != 'inst'."""
     instance = _make_config_instance(
         **{
             'orbit.instellation_method': 'separation',
-            'orbit.evolve': True,
+            'orbit.star_planet_model': 'sp0d',
         }
     )
     result = instmethod_evolve(instance, None, None)
     assert result is None  # contract: non-inst method permits orbital evolution
-    # Discriminating check: evolve=True with inst would have raised; only the
-    # non-inst branch can produce a silent pass with evolve=True.
+    # Discriminating check: star_planet_model set with inst would have
+    # raised; only the non-inst branch can produce a silent pass with it set.
     assert instance.orbit.instellation_method != 'inst'
-    assert instance.orbit.evolve is True
+    assert instance.orbit.star_planet_model == 'sp0d'
 
 
 @pytest.mark.unit
 def test_satellite_evolve_rejects_satellite_with_evolve():
-    """orbit.satellite=True with orbit.evolve=True must raise."""
+    """A planet-satellite model with a star-planet evolution model
+    simultaneously enabled must raise."""
     instance = _make_config_instance(
         **{
-            'orbit.satellite': True,
-            'orbit.evolve': True,
+            'orbit.planet_satellite_model': 'ps0d',
+            'orbit.star_planet_model': 'sp0d',
         }
     )
     with pytest.raises(ValueError, match=r'satellite') as excinfo:
         satellite_evolve(instance, None, None)
     # Discrimination: the message must also mention orbital evolution; the
-    # incompatibility is between satellite=True AND evolve=True. A regression
-    # that only named 'satellite' without naming the conflicting evolve flag
-    # would leave users guessing which side to flip.
+    # incompatibility is between planet_satellite_model AND star_planet_model
+    # both being set. A regression that only named 'satellite' without naming
+    # the conflicting evolution model would leave users guessing which side
+    # to flip.
     msg = str(excinfo.value).lower()
     assert 'evolution' in msg or 'evolve' in msg
 
 
 @pytest.mark.unit
 def test_satellite_evolve_passes_with_satellite_and_no_evolve():
-    """A satellite with a fixed orbit is allowed."""
+    """A satellite with a fixed star-planet orbit is allowed."""
     instance = _make_config_instance(
         **{
-            'orbit.satellite': True,
-            'orbit.evolve': False,
+            'orbit.planet_satellite_model': 'ps0d',
+            'orbit.star_planet_model': None,
         }
     )
     result = satellite_evolve(instance, None, None)
-    assert result is None  # contract: satellite=True + evolve=False is the accepted combo
-    # Discriminating check: satellite=True + evolve=True would have raised; only
-    # the evolve=False branch can produce a silent pass under satellite=True.
-    assert instance.orbit.satellite is True
-    assert instance.orbit.evolve is False
+    assert result is None  # contract: satellite set + star_planet_model=None is accepted
+    # Discriminating check: both set would have raised; only star_planet_model=None
+    # can produce a silent pass with planet_satellite_model set.
+    assert instance.orbit.planet_satellite_model == 'ps0d'
+    assert instance.orbit.star_planet_model is None
 
 
 @pytest.mark.unit
 def test_satellite_evolve_passes_without_satellite():
-    """orbit.evolve alone (no satellite) is allowed."""
+    """A star-planet evolution model alone (no satellite) is allowed."""
     instance = _make_config_instance(
         **{
-            'orbit.satellite': False,
-            'orbit.evolve': True,
+            'orbit.planet_satellite_model': None,
+            'orbit.star_planet_model': 'sp0d',
         }
     )
     result = satellite_evolve(instance, None, None)
     assert result is None  # contract: no-satellite path accepts orbital evolution
-    # Discriminating check: satellite=False is the path that allows evolve=True;
-    # the validator's other branch (satellite=True + evolve=True) would have raised.
-    assert instance.orbit.satellite is False
-    assert instance.orbit.evolve is True
+    # Discriminating check: planet_satellite_model=None is the path that
+    # allows star_planet_model to be set; the validator's other branch (both
+    # set) would have raised.
+    assert instance.orbit.planet_satellite_model is None
+    assert instance.orbit.star_planet_model == 'sp0d'
 
 
 # ---------------------------------------------------------------------------
-# Slow-tier hypothesis cross-product over module enums
+# orbit_requires_tides: sp1d/ps1d/ps1d_evec consume a per-mode Love-number
+# spectrum, which only lovepy or Obliqua can supply.
+# ---------------------------------------------------------------------------
+# model -> the orbit.* field it is actually assigned to: sp1d lives on
+# star_planet_model, while ps1d/ps1d_evec live on planet_satellite_model --
+# the two are never set at the same time (see satellite_evolve above).
+_TIDES_REQUIRED_MODELS = [
+    ('sp1d', 'star_planet_model'),
+    ('ps1d', 'planet_satellite_model'),
+    ('ps1d_evec', 'planet_satellite_model'),
+]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('model,model_field', _TIDES_REQUIRED_MODELS)
+@pytest.mark.parametrize('module', ['dummy', 'none'])
+def test_orbit_requires_tides_rejects_non_tidal_module(model, model_field, module):
+    """sp1d/ps1d/ps1d_evec need a real tidal-response spectrum, so pairing
+    any of them with a non-tides module (dummy tides or tides disabled
+    entirely) must raise rather than silently running with no Love numbers.
+
+    Regression guard: ps1d/ps1d_evec are ``orbit.planet_satellite_model``
+    values, not ``orbit.star_planet_model`` values -- a validator that only
+    ever inspected ``star_planet_model`` (as this one once did) would never
+    fire for either, silently letting ``dummy`` + ps1d/ps1d_evec through.
+    """
+    instance = _make_config_instance(
+        **{
+            'orbit.module': module,
+            f'orbit.{model_field}': model,
+        }
+    )
+    with pytest.raises(ValueError, match=model) as excinfo:
+        orbit_requires_tides(instance, None, None)
+    msg = str(excinfo.value)
+    # Discrimination: the message must name both accepted modules, not just
+    # reject blindly, so the user knows what to switch to.
+    assert 'obliqua' in msg
+    assert 'lovepy' in msg
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('model,model_field', _TIDES_REQUIRED_MODELS)
+@pytest.mark.parametrize('module', ['obliqua', 'lovepy'])
+def test_orbit_requires_tides_passes_for_either_tidal_module(model, model_field, module):
+    """Either Obliqua or lovepy supplies a real per-mode spectrum, so both
+    are accepted for every model that requires one."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': module,
+            f'orbit.{model_field}': model,
+        }
+    )
+    orbit_requires_tides(instance, None, None)
+    assert instance.orbit.module == module  # unmodified by the validator
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'model,model_field', [('sp0d', 'star_planet_model'), ('ps0d', 'planet_satellite_model')]
+)
+def test_orbit_requires_tides_passes_for_0d_models_regardless_of_module(model, model_field):
+    """sp0d/ps0d read the scalar Imk2 rather than the per-mode tides_o
+    spectrum (dummy provides Imk2 too), so the restriction is specific to
+    the *1d models and must not fire for either 0d model even on dummy."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': 'dummy',
+            f'orbit.{model_field}': model,
+        }
+    )
+    orbit_requires_tides(instance, None, None)
+
+
+# ---------------------------------------------------------------------------
+# parameterized_excludes_tides: no tides module alongside a prescribed track
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('module', ['dummy', 'lovepy', 'obliqua'])
+def test_parameterized_excludes_tides_rejects_every_tides_module(module):
+    """Pairing the prescribed track with any tides module must raise, since
+    the tidal dispatch in run_orbit would otherwise compute a tidal response
+    the model documents it never produces. The message names the offending
+    module and the required setting, so the user knows what to change."""
+    instance = _make_config_instance(
+        **{'orbit.module': module, 'orbit.star_planet_model': 'parameterized'}
+    )
+    with pytest.raises(ValueError, match='parameterized') as excinfo:
+        parameterized_excludes_tides(instance, None, None)
+    msg = str(excinfo.value)
+    assert repr(module) in msg
+    assert "orbit.module = 'none'" in msg
+
+
+@pytest.mark.unit
+def test_parameterized_excludes_tides_passes_without_a_tides_module():
+    """With tides disabled (``'none'`` converts to ``None`` on load) the
+    prescribed track is valid, and the validator leaves the config as is."""
+    instance = _make_config_instance(
+        **{'orbit.module': None, 'orbit.star_planet_model': 'parameterized'}
+    )
+    parameterized_excludes_tides(instance, None, None)
+    assert instance.orbit.module is None
+    assert instance.orbit.star_planet_model == 'parameterized'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('model', ['sp0d', 'sp1d'])
+def test_parameterized_excludes_tides_ignores_tidal_orbit_models(model):
+    """The restriction is specific to the prescribed track: the tidal orbit
+    models need a tides module, so the validator must not fire for them."""
+    instance = _make_config_instance(
+        **{'orbit.module': 'lovepy', 'orbit.star_planet_model': model}
+    )
+    parameterized_excludes_tides(instance, None, None)
+    assert instance.orbit.module == 'lovepy'
+    assert instance.orbit.star_planet_model == model
+
+
+# ---------------------------------------------------------------------------
+# spinless_orbit_keeps_spin_synchronous: no fixed spin without spin dynamics
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize('model', ['sp0d', 'parameterized'])
+def test_spinless_orbit_rejects_a_configured_axial_period(model):
+    """sp0d and the prescribed track evolve no spin, so a fixed day length
+    would decouple the spin from the orbit it is locked to. The message names
+    the model and the setting to use."""
+    instance = _make_config_instance(
+        **{'orbit.star_planet_model': model, 'orbit.axial_period': 24.0}
+    )
+    with pytest.raises(ValueError, match='evolves no spin') as excinfo:
+        spinless_orbit_keeps_spin_synchronous(instance, None, None)
+    msg = str(excinfo.value)
+    assert repr(model) in msg
+    assert "orbit.axial_period = 'none'" in msg
+
+    instance.orbit.axial_period = None
+    assert spinless_orbit_keeps_spin_synchronous(instance, None, None) is None
+
+
+@pytest.mark.parametrize('model', [None, 'sp1d'], ids=['no_orbit_model', 'sp1d'])
+def test_spinless_orbit_allows_a_configured_spin_where_it_means_something(model):
+    """Positive counterpart: sp1d evolves the spin from its configured start,
+    and a static orbit holds it, so both keep a configured axial period. The
+    same day length under sp0d is refused, so the rule tells the models apart."""
+    instance = _make_config_instance(
+        **{'orbit.star_planet_model': model, 'orbit.axial_period': 24.0}
+    )
+    assert spinless_orbit_keeps_spin_synchronous(instance, None, None) is None
+
+    instance.orbit.star_planet_model = 'sp0d'
+    with pytest.raises(ValueError, match='evolves no spin'):
+        spinless_orbit_keeps_spin_synchronous(instance, None, None)
+
+
+def test_spinless_orbit_rule_is_enforced_on_config_load(tmp_path):
+    """The spin rule is registered on the Config: a prescribed track with a
+    fixed day length is refused at load, the same file with the spin unset
+    loads, and a fixed day length without a star-planet model loads."""
+    from pathlib import Path
+
+    base = (Path(__file__).resolve().parents[2] / 'input' / 'minimal.toml').read_text()
+
+    def _write(name, orbit_lines):
+        path = tmp_path / f'{name}.toml'
+        path.write_text(base.replace('[orbit]\n', '[orbit]\n' + orbit_lines, 1))
+        return path
+
+    track = '    star_planet_model = "parameterized"\n'
+    with pytest.raises(ValueError, match='evolves no spin'):
+        read_config_object(_write('fixed', track + '    axial_period = 24.0\n'))
+
+    locked = read_config_object(_write('locked', track + '    axial_period = "none"\n'))
+    assert locked.orbit.star_planet_model == 'parameterized'
+    assert locked.orbit.axial_period is None
+
+    static = read_config_object(_write('static', '    axial_period = 24.0\n'))
+    assert static.orbit.star_planet_model is None
+    assert static.orbit.axial_period == pytest.approx(24.0, rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# parameterized_excludes_accretion: no impacts on a prescribed track
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('module', ['dummy', 'timeline', 'morrigan'])
+def test_parameterized_excludes_accretion_rejects_every_accretion_module(module):
+    """Every accretion module applies its impacts through apply_impact, which
+    rewrites the configured orbit. Under the prescribed track that keeps the
+    eccentricity change and drops the semi-major axis change, so the pairing
+    must raise, naming the module and the setting to change."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': None,
+            'orbit.star_planet_model': 'parameterized',
+            'accretion.module': module,
+        }
+    )
+    with pytest.raises(ValueError, match='parameterized') as excinfo:
+        parameterized_excludes_accretion(instance, None, None)
+    msg = str(excinfo.value)
+    assert repr(module) in msg
+    assert "accretion.module = 'none'" in msg
+
+
+@pytest.mark.unit
+def test_parameterized_excludes_accretion_passes_without_accretion():
+    """With accretion disabled (``'none'`` converts to ``None``) the prescribed
+    track is valid, and the validator leaves the config as is."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': None,
+            'orbit.star_planet_model': 'parameterized',
+            'accretion.module': None,
+        }
+    )
+    parameterized_excludes_accretion(instance, None, None)
+    assert instance.accretion.module is None
+    assert instance.orbit.star_planet_model == 'parameterized'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('model', [None, 'sp0d', 'sp1d'])
+def test_parameterized_excludes_accretion_ignores_other_orbit_models(model):
+    """A fixed or tidally evolved orbit carries the impact's new orbit forward
+    from the running row, so accretion stays allowed there and the validator
+    must not fire."""
+    instance = _make_config_instance(
+        **{'orbit.star_planet_model': model, 'accretion.module': 'dummy'}
+    )
+    parameterized_excludes_accretion(instance, None, None)
+    assert instance.accretion.module == 'dummy'
+    assert instance.orbit.star_planet_model == model
+
+
+# ---------------------------------------------------------------------------
+# sp0d_obliqua_degree_mismatch: sp0d's scalar Imk2 is only ever meaningful
+# for Obliqua's degree-2 output; run_orbit zeroes it for any other degree.
+# ---------------------------------------------------------------------------
+@pytest.mark.unit
+def test_sp0d_obliqua_degree_mismatch_rejects_higher_degree():
+    """sp0d + Obliqua configured for a non-degree-2 spectrum must raise:
+    run_orbit would silently zero hf_row['Imk2'] every iteration, freezing
+    sp0d's eccentricity evolution rather than reflecting the requested
+    degree(s)."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': 'obliqua',
+            'orbit.star_planet_model': 'sp0d',
+        }
+    )
+    instance.orbit.obliqua = SimpleNamespace(n=[2, 3])
+    with pytest.raises(ValueError, match=r'sp0d') as excinfo:
+        sp0d_obliqua_degree_mismatch(instance, None, None)
+    # Discrimination: the message must name obliqua.n == [2] as the reason,
+    # not just "sp0d is bad", so the user knows what to change (n, or the
+    # model), and must name sp1d as the alternative to switch to.
+    msg = str(excinfo.value).lower()
+    assert 'n == [2]' in msg
+    assert 'sp1d' in msg  # names the model to switch to
+
+
+@pytest.mark.unit
+def test_sp0d_obliqua_degree_mismatch_warns_but_passes_for_degree_two(caplog):
+    """sp0d + Obliqua configured for exactly n=[2] is accepted (Imk2 is a
+    real, non-zeroed value in this case), but still logs a warning: even at
+    n=[2], sp0d collapses Obliqua's per-mode spectrum to a single mean
+    scalar, an approximation sp1d avoids by consuming the per-mode data
+    directly."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': 'obliqua',
+            'orbit.star_planet_model': 'sp0d',
+        }
+    )
+    instance.orbit.obliqua = SimpleNamespace(n=[2])
+    with caplog.at_level('WARNING'):
+        sp0d_obliqua_degree_mismatch(instance, None, None)
+    assert any('sp1d' in rec.message.lower() for rec in caplog.records)
+
+
+@pytest.mark.unit
+def test_sp0d_obliqua_degree_mismatch_passes_for_sp1d_regardless_of_degree():
+    """The restriction is sp0d-specific: sp1d consumes Obliqua's per-mode
+    Love-number spectrum directly (not a collapsed scalar Imk2), so a
+    non-degree-2 configuration is fine there. Discriminates that the
+    validator keys on star_planet_model=='sp0d', not merely on
+    module=='obliqua'."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': 'obliqua',
+            'orbit.star_planet_model': 'sp1d',
+        }
+    )
+    instance.orbit.obliqua = SimpleNamespace(n=[2, 3])
+    sp0d_obliqua_degree_mismatch(instance, None, None)
+    assert instance.orbit.star_planet_model == 'sp1d'
+
+
+@pytest.mark.unit
+def test_sp0d_obliqua_degree_mismatch_passes_when_module_is_not_obliqua():
+    """sp0d with a non-Obliqua tides module (e.g. lovepy) never reads
+    orbit.obliqua.n at all -- must not raise regardless of its value,
+    confirming the check is gated on module=='obliqua' first."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': 'lovepy',
+            'orbit.star_planet_model': 'sp0d',
+        }
+    )
+    instance.orbit.obliqua = SimpleNamespace(n=[2, 3])  # would fail if module were obliqua
+    sp0d_obliqua_degree_mismatch(instance, None, None)
+    assert instance.orbit.module == 'lovepy'
+
+
+# ---------------------------------------------------------------------------
+# Exhaustive cross-product over module enums
 # ---------------------------------------------------------------------------
 # Every importable module backend × every importable module backend × ...
 # Either the Config validates and is usable, or a validator raises with a
@@ -824,7 +1291,7 @@ HYPOTHESIS_ATMOS_CLIM = ('agni', 'janus', 'dummy')
 HYPOTHESIS_ATMOS_CHEM = (None, 'dummy')  # vulcan excluded (optional)
 HYPOTHESIS_ESCAPE = (None, 'dummy', 'zephyrus')  # boreas excluded (optional)
 HYPOTHESIS_STAR = (None, 'mors', 'dummy')
-HYPOTHESIS_ORBIT = (None, 'dummy', 'lovepy')
+HYPOTHESIS_ORBIT = (None, 'dummy', 'lovepy', 'obliqua')
 HYPOTHESIS_INTERIOR_STRUCT = (None, 'dummy', 'spider', 'zalmoxis')
 
 
@@ -866,6 +1333,7 @@ def _make_combo_toml(combo, tmp_path):
     return p
 
 
+@pytest.mark.timeout(120)
 def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
     """Exhaustive cross-product over the importable backend combinations.
 
@@ -887,17 +1355,17 @@ def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
 
     Notes on tooling choice:
     - hypothesis would be the natural tool but adds strategy-driven
-      sampling overhead per example. Cattrs+IO for one combo is ~0.4 ms,
-      so an exhaustive sweep finishes in well under 5 s. Deterministic
-      itertools.product is reproducible without a seed and exercises every
-      combo every time.
+      sampling overhead per example. Deterministic itertools.product is
+      reproducible without a seed and exercises every combo every time.
     - We only enumerate combos with backends in the hard-dep set; the
       check_module_dependencies positive/negative logic (atmodeller, boreas
       missing) is covered by the explicit tests above.
-    - The sweep runs in ~2.5 s, so it sits at unit tier with the rest of this
-      file rather than waiting for the nightly. It is over the 100 ms unit
-      target but far inside the 30 s ceiling, and an exhaustive validator
-      sweep is worth that on every pull request.
+    - One combo costs about 0.5 ms, so the sweep takes around 2.5 s here and
+      roughly twice that under coverage. The test carries its own 120 s
+      timeout in place of the file-level 30 s unit ceiling, which keeps a
+      runner several times slower than this one from failing it on elapsed
+      time rather than on a schema fault. It stays at unit tier because an
+      exhaustive validator sweep is worth those seconds on every pull request.
     """
     import itertools
 
@@ -955,3 +1423,531 @@ def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
         f'validator is silent (dead-validator pattern) or the schema enums '
         f'in this test are too narrow.'
     )
+
+
+# front_trapping_requires_aragog: positive + negative
+@pytest.mark.unit
+def test_front_trapping_requires_the_aragog_interior():
+    """The front scheme locates the freezing front on the melt-fraction,
+    density and pressure profiles only the Aragog interior exports, so front
+    trapping with any other interior is refused when the config loads, with a
+    message naming both settings, instead of running a scheme that cannot
+    find a front."""
+    spider = _make_config_instance(
+        **{'outgas.trap_mode': 'front', 'interior_energetics.module': 'spider'}
+    )
+    with pytest.raises(ValueError, match=r'interior_energetics.module = "aragog"') as excinfo:
+        front_trapping_requires_aragog(spider, None, None)
+    # Discrimination: the message echoes the rejected interior, so a generic
+    # failure from another validator could not pass for this one.
+    assert '"spider"' in str(excinfo.value)
+    assert 'trap_mode = "front"' in str(excinfo.value)
+
+    # The Aragog interior is accepted.
+    aragog = _make_config_instance(
+        **{'outgas.trap_mode': 'front', 'interior_energetics.module': 'aragog'}
+    )
+    assert front_trapping_requires_aragog(aragog, None, None) is None
+    assert aragog.interior_energetics.module == 'aragog'
+
+    # Edge case: with trapping off, any interior is fine, including a config
+    # that never declared a trapping mode at all.
+    off = _make_config_instance(
+        **{'outgas.trap_mode': 'none', 'interior_energetics.module': 'dummy'}
+    )
+    assert front_trapping_requires_aragog(off, None, None) is None
+    undeclared = _make_config_instance(**{'interior_energetics.module': 'dummy'})
+    assert not hasattr(undeclared.outgas, 'trap_mode')
+    assert front_trapping_requires_aragog(undeclared, None, None) is None
+
+
+def _desaturation_config(module: str, include_condensates: bool, prevent: bool):
+    """Stand-in config carrying the outgassing settings the condensate rule reads."""
+    instance = _make_config_instance(
+        **{'outgas.module': module, 'outgas.prevent_desaturation': prevent}
+    )
+    instance.outgas.atmodeller = SimpleNamespace(include_condensates=include_condensates)
+    return instance
+
+
+# prevent_desaturation_warns_without_condensates: accepted, warned when it holds nothing
+@pytest.mark.unit
+@pytest.mark.parametrize('include_condensates', [True, False], ids=['cd-on', 'cd-off'])
+@pytest.mark.parametrize('module', ['calliope', 'dummy'])
+def test_prevent_desaturation_warns_with_other_outgassing_backends(
+    module, include_condensates, caplog
+):
+    """The flag is accepted with an outgassing backend other than atmodeller, with one
+    warning that names the backend. Such a backend forms no condensed mass, so the flag
+    holds nothing, whatever the atmodeller condensate setting says."""
+    instance = _desaturation_config(module, include_condensates, prevent=True)
+    with caplog.at_level('WARNING', logger='fwl.proteus.config._config'):
+        assert prevent_desaturation_warns_without_condensates(instance, None, None) is None
+    warnings = [
+        r.getMessage() for r in caplog.records if 'prevent_desaturation' in r.getMessage()
+    ]
+    assert len(warnings) == 1
+    assert f'outgas.module = "{module}"' in warnings[0]
+    # Discrimination: the backend is the reason, not the atmodeller setting it ignores.
+    assert 'include_condensates' not in warnings[0]
+
+
+@pytest.mark.unit
+def test_prevent_desaturation_warns_with_atmodeller_condensates_off(caplog):
+    """With atmodeller and its condensates off the flag holds nothing. That is accepted
+    with a warning rather than refused, so one grid can switch condensates on and off
+    against a base config that holds them."""
+    instance = _desaturation_config('atmodeller', False, prevent=True)
+    with caplog.at_level('WARNING', logger='fwl.proteus.config._config'):
+        assert prevent_desaturation_warns_without_condensates(instance, None, None) is None
+    warnings = [
+        r.getMessage() for r in caplog.records if 'prevent_desaturation' in r.getMessage()
+    ]
+    assert len(warnings) == 1
+    assert 'include_condensates = false' in warnings[0]
+
+
+@pytest.mark.unit
+def test_prevent_desaturation_accepted_with_atmodeller_condensates_or_when_off(caplog):
+    """The flag is accepted silently with atmodeller and condensates on, and any
+    outgassing setup is accepted while the flag is off, including a config that never
+    declared it."""
+    on = _desaturation_config('atmodeller', True, prevent=True)
+    with caplog.at_level('WARNING', logger='fwl.proteus.config._config'):
+        assert prevent_desaturation_warns_without_condensates(on, None, None) is None
+    assert not any('prevent_desaturation' in r.getMessage() for r in caplog.records)
+    off = _desaturation_config('calliope', False, prevent=False)
+    assert prevent_desaturation_warns_without_condensates(off, None, None) is None
+    undeclared = _make_config_instance(**{'outgas.module': 'calliope'})
+    assert not hasattr(undeclared.outgas, 'prevent_desaturation')
+    assert prevent_desaturation_warns_without_condensates(undeclared, None, None) is None
+
+
+@pytest.mark.parametrize(
+    'migration',
+    ['instant', 'sigmoid', 'high_ecc'],
+    ids=['instant_step', 'sigmoid_ramp', 'high_eccentricity'],
+)
+def test_parameterized_requires_a_destination_for_a_migrating_law(migration):
+    """Negative: a law that moves the planet needs sma_final, and the schema
+    says so at config time rather than at the first orbit step, which is
+    after the structure solve and the first interior step. The start is
+    orbit.semimajoraxis, which always has a value."""
+    from proteus.config._orbit import Parameterized
+
+    with pytest.raises(ValueError, match='requires sma_final') as excinfo:
+        Parameterized(migration=migration)
+    # The message names the law, so the user knows which setting asked for it.
+    assert repr(migration) in str(excinfo.value)
+
+    accepted = Parameterized(migration=migration, sma_final=0.8)
+    assert accepted.sma_final == pytest.approx(0.8, rel=1e-12)
+
+
+@pytest.mark.parametrize('sma_final', [None, 0.8], ids=['no_destination', 'destination'])
+def test_parameterized_static_regime_needs_no_destination(sma_final):
+    """Positive counterpart: the static regime never moves the planet, so
+    it accepts a missing or a set destination. Without this a blanket
+    requirement would break every non-migrating config."""
+    from proteus.config._orbit import Parameterized
+
+    params = Parameterized(migration='none', sma_final=sma_final)
+
+    assert params.migration == 'none'
+    assert params.sma_final == sma_final
+
+
+def _high_ecc_instance(migration, semimajoraxis, sma_final):
+    """Config stand-in for the high-eccentricity direction rule."""
+    from proteus.config._orbit import Parameterized
+
+    return _make_config_instance(
+        **{
+            'orbit.star_planet_model': 'parameterized',
+            'orbit.semimajoraxis': semimajoraxis,
+            'orbit.parameterized': Parameterized(migration=migration, sma_final=sma_final),
+        }
+    )
+
+
+def test_parameterized_rejects_an_outward_high_eccentricity_track():
+    """Negative: high-eccentricity circularisation conserves orbital
+    angular momentum, so it can only shrink the orbit. Its inward
+    solution needs a non-negative 1 - sma_final / orbit.semimajoraxis."""
+    with pytest.raises(ValueError, match='inward only') as excinfo:
+        parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 0.8, 2.0), None, None)
+    # The message names both orbits, so the user can see which one to change.
+    assert 'semimajoraxis=0.8' in str(excinfo.value)
+    assert 'sma_final=2.0' in str(excinfo.value)
+
+    # Positive: the mirrored inward track and the degenerate equal-endpoint
+    # case both validate, so the check is not rejecting every high_ecc config.
+    assert (
+        parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 2.0, 0.8), None, None)
+        is None
+    )
+    assert (
+        parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 2.0, 2.0), None, None)
+        is None
+    )
+    # Boundary: one part in a million outward is already refused, which a
+    # rule with any slack factor on the start would let through.
+    with pytest.raises(ValueError, match='inward only'):
+        parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 2.0, 2.000002), None, None)
+
+
+@pytest.mark.parametrize(
+    'migration', ['none', 'instant', 'sigmoid'], ids=['static', 'instant_step', 'sigmoid_ramp']
+)
+def test_parameterized_allows_outward_migration_for_the_direction_free_laws(migration):
+    """The inward-only restriction belongs to high_ecc alone. Both the step
+    and the ramp are defined in either direction, so a config that migrates
+    a planet outward must validate rather than being caught by a rule
+    written for a different law."""
+    instance = _high_ecc_instance(migration, 0.8, 2.0)
+
+    assert parameterized_high_ecc_inward(instance, None, None) is None
+    assert instance.orbit.parameterized.sma_final > instance.orbit.semimajoraxis
+    # The same orbits are refused for high_ecc, so the acceptance above is
+    # specific to the direction-free laws.
+    with pytest.raises(ValueError, match='inward only'):
+        parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 0.8, 2.0), None, None)
+
+
+@pytest.mark.parametrize(
+    'model', [None, 'sp0d', 'sp1d'], ids=['no_orbit_model', 'sp0d', 'sp1d']
+)
+def test_parameterized_high_ecc_direction_is_silent_for_other_models(model):
+    """The block is read only by the parameterized model, so a leftover
+    outward high_ecc block under another star-planet model is not refused,
+    while the same block under parameterized is."""
+    instance = _high_ecc_instance('high_ecc', 0.8, 2.0)
+    instance.orbit.star_planet_model = model
+
+    assert parameterized_high_ecc_inward(instance, None, None) is None
+    assert instance.orbit.parameterized.sma_final > instance.orbit.semimajoraxis
+
+    instance.orbit.star_planet_model = 'parameterized'
+    with pytest.raises(ValueError, match='inward only'):
+        parameterized_high_ecc_inward(instance, None, None)
+
+
+def test_parameterized_high_ecc_direction_is_enforced_on_config_load(tmp_path):
+    """The direction rule is registered on the Config, so an outward
+    high_ecc track in a real file is refused at load, and the inward one
+    loads with the track starting from orbit.semimajoraxis."""
+    from pathlib import Path
+
+    base = (Path(__file__).resolve().parents[2] / 'input' / 'minimal.toml').read_text()
+
+    def _write(sma_final):
+        path = tmp_path / f'track_{sma_final}.toml'
+        path.write_text(
+            base.replace('[orbit]\n', '[orbit]\n    star_planet_model = "parameterized"\n', 1)
+            + '\n[orbit.parameterized]\nmigration = "high_ecc"\n'
+            + f'sma_final = {sma_final}\n'
+        )
+        return path
+
+    with pytest.raises(ValueError, match='inward only'):
+        read_config_object(_write(2.0))
+
+    cfg = read_config_object(_write(0.5))
+    assert cfg.orbit.star_planet_model == 'parameterized'
+    assert cfg.orbit.parameterized.sma_final == pytest.approx(0.5, rel=1e-12)
+    assert cfg.orbit.parameterized.sma_final < cfg.orbit.semimajoraxis
+
+
+# lowt_extension_requires_aragog: positive + negative
+@pytest.mark.unit
+def test_lowt_extension_requires_the_aragog_interior():
+    """The low-temperature solid extension adds entropy nodes to the solid P-S table only, so the
+    solid and melt tables differ in size; only the Aragog interior is run with such tables, and the
+    switch with another interior is refused when the config loads."""
+    from proteus.config._config import lowt_extension_requires_aragog
+
+    def make(module, lowt):
+        cfg = _make_config_instance(**{'interior_energetics.module': module})
+        cfg.interior_struct.zalmoxis = SimpleNamespace(lowt_extension=lowt)
+        return cfg
+
+    with pytest.raises(ValueError, match=r'interior_energetics.module = "aragog"') as excinfo:
+        lowt_extension_requires_aragog(make('spider', True), None, None)
+    assert '"spider"' in str(excinfo.value) and 'more entropy nodes' in str(excinfo.value)
+    for module in ('dummy', 'boundary'):
+        with pytest.raises(ValueError, match='reads no P-S tables') as excinfo:
+            lowt_extension_requires_aragog(make(module, True), None, None)
+        assert f'"{module}"' in str(excinfo.value) and 'entropy nodes' not in str(excinfo.value)
+    assert lowt_extension_requires_aragog(make('aragog', True), None, None) is None
+    for module in ('spider', 'dummy', 'aragog'):
+        assert lowt_extension_requires_aragog(make(module, False), None, None) is None
+
+
+@pytest.mark.unit
+def test_lowt_extension_requires_aragog_property_over_modules_and_values():
+    """Over every energetics module and any switch value, the check refuses exactly the switch
+    set to True with a module other than aragog, and gives the reason of that module."""
+    hypothesis = pytest.importorskip('hypothesis')
+    st = pytest.importorskip('hypothesis.strategies')
+
+    from proteus.config._config import lowt_extension_requires_aragog
+
+    values = st.one_of(
+        st.booleans(), st.integers(), st.floats(), st.none(), st.text(max_size=5)
+    )
+
+    @hypothesis.settings(max_examples=200, deadline=None)
+    @hypothesis.given(st.sampled_from(['spider', 'aragog', 'dummy', 'boundary']), values)
+    @hypothesis.example('dummy', True)
+    @hypothesis.example('spider', 1)
+    def check(module, lowt):
+        cfg = _make_config_instance(**{'interior_energetics.module': module})
+        cfg.interior_struct.zalmoxis = SimpleNamespace(lowt_extension=lowt)
+        refused = lowt is True and module != 'aragog'
+        try:
+            lowt_extension_requires_aragog(cfg, None, None)
+        except ValueError as exc:
+            assert refused, f'refused {module!r} with {lowt!r}'
+            reason = 'more entropy nodes' if module == 'spider' else 'reads no P-S tables'
+            assert reason in str(exc) and f'"{module}"' in str(exc)
+        else:
+            assert not refused, f'accepted {module!r} with {lowt!r}'
+
+    check()
+
+
+@pytest.mark.unit
+def test_lowt_extension_requires_a_structure_that_builds_the_ps_tables():
+    """The switch acts where PROTEUS builds the P-S tables, which the SPIDER structure skips; with
+    interior_struct.module = 'spider' the switch is refused, with zalmoxis or dummy it is kept."""
+    from proteus.config._config import lowt_extension_requires_ps_tables
+
+    def make(struct, lowt):
+        cfg = _make_config_instance(**{'interior_energetics.module': 'aragog'})
+        cfg.interior_struct = SimpleNamespace(
+            module=struct,
+            zalmoxis=SimpleNamespace(lowt_extension=lowt, mantle_eos='PALEOS:MgSiO3'),
+        )
+        return cfg
+
+    for struct in ('spider', None):
+        with pytest.raises(ValueError, match='requires interior_struct.module') as excinfo:
+            lowt_extension_requires_ps_tables(make(struct, True), None, None)
+        assert f'"{struct}"' in str(excinfo.value)
+    for struct in ('zalmoxis', 'dummy'):
+        assert lowt_extension_requires_ps_tables(make(struct, True), None, None) is None
+    for struct in ('zalmoxis', 'dummy', 'spider'):
+        assert lowt_extension_requires_ps_tables(make(struct, False), None, None) is None
+
+
+# Mantle EOS strings whose energetics key the extension does not continue, and ones it accepts
+LOWT_REFUSED_MANTLES = [
+    'PALEOS-API:MgSiO3',
+    'PALEOS-API-2phase:MgSiO3',
+    'PALEOS-API:H2O',
+    'PALEOS-API:MgSiO3:0.7+PALEOS:H2O:0.3',
+    'PALEOS:H2O:0.7+PALEOS-API:MgSiO3:0.3',
+    'PALEOS-2phase:MgSiO3-highres',
+    'PALEOS:H2O:0.7+PALEOS-2phase:MgSiO3-highres:0.3',
+]
+LOWT_ACCEPTED_MANTLES = [
+    'PALEOS:MgSiO3',
+    'PALEOS-2phase:MgSiO3',
+    'PALEOS:H2O',
+    'PALEOS:MgSiO3:0.7+PALEOS:H2O:0.3',
+    'PALEOS:MgSiO3:0.7+PALEOS-API:H2O:0.3',
+    'WolfBower2018:MgSiO3',
+    'RTPress100TPa:MgSiO3',
+    'Seager2007:MgSiO3',
+]
+
+
+@pytest.mark.unit
+def test_lowt_extension_ps_tables_property_refuses_exactly_the_unsupported_cases():
+    """Over any structure module, mantle EOS and switch value, the check refuses exactly the switch
+    set to True with a structure other than zalmoxis or dummy or with a mantle whose energetics key
+    is PALEOS-API or -highres, and a missing Zalmoxis section passes; every mantle of both lists
+    runs with zalmoxis and dummy and the switch on."""
+    hypothesis = pytest.importorskip('hypothesis')
+    example, given, settings = hypothesis.example, hypothesis.given, hypothesis.settings
+    st = pytest.importorskip('hypothesis.strategies')
+
+    from proteus.config._config import lowt_extension_requires_ps_tables
+
+    lowt_values = st.one_of(
+        st.booleans(), st.integers(), st.floats(allow_nan=True), st.text(), st.none()
+    )
+    modules = st.one_of(st.sampled_from(['spider', 'zalmoxis', 'dummy', None]), st.text())
+    mantles = st.sampled_from(LOWT_REFUSED_MANTLES + LOWT_ACCEPTED_MANTLES)
+
+    @settings(max_examples=400, deadline=None)
+    @given(modules, mantles, lowt_values, st.booleans())
+    @example('spider', 'PALEOS:MgSiO3', 1, True)
+    @example('spider', 'PALEOS:MgSiO3', 1.0, True)
+    @example('spider', 'PALEOS:MgSiO3', 'true', True)
+    @example('spider', 'PALEOS:MgSiO3', True, False)
+    @example('dummy', 'PALEOS:MgSiO3', True, True)
+    @example('zalmoxis', 'PALEOS-API:MgSiO3', 1, True)
+    def _check(module, mantle, lowt, has_section):
+        _decide(module, mantle, lowt, has_section)
+
+    def _decide(module, mantle, lowt, has_section):
+        zalmoxis = SimpleNamespace(lowt_extension=lowt, mantle_eos=mantle)
+        cfg = SimpleNamespace(
+            interior_struct=SimpleNamespace(
+                module=module, zalmoxis=zalmoxis if has_section else None
+            )
+        )
+        refused = (
+            has_section
+            and lowt is True
+            and (module not in ('zalmoxis', 'dummy') or mantle in LOWT_REFUSED_MANTLES)
+        )
+        if refused:
+            with pytest.raises(ValueError, match='lowt_extension = true'):
+                lowt_extension_requires_ps_tables(cfg, None, None)
+        else:
+            try:
+                result = lowt_extension_requires_ps_tables(cfg, None, None)
+            except ValueError as exc:
+                pytest.fail(f'refused {module!r} {mantle!r} with {lowt!r}: {exc}')
+            assert result is None
+
+    _check()
+    for module in ('zalmoxis', 'dummy'):
+        for mantle in LOWT_REFUSED_MANTLES + LOWT_ACCEPTED_MANTLES:
+            _decide(module, mantle, True, True)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('mantle', LOWT_REFUSED_MANTLES)
+def test_lowt_extension_refuses_a_paleos_api_or_highres_mantle_when_a_config_file_is_read(
+    tmp_path, mantle
+):
+    """The extension continues the grid of the standard PALEOS solid table: reading a TOML file
+    with the switch on and a PALEOS-API or -highres mantle refuses it by name before any table
+    is built; the same file with the standard mantle loads."""
+    from pathlib import Path
+
+    base = (Path(__file__).parents[2] / 'input' / 'all_options.toml').read_text()
+    for line in (
+        '        lowt_extension        = false',
+        '        mantle_eos            = "PALEOS:MgSiO3"',
+    ):
+        assert base.count(line) == 1
+    text = base.replace(
+        '        lowt_extension        = false', '        lowt_extension        = true'
+    )
+    path = tmp_path / 'cfg.toml'
+    path.write_text(text)
+    assert read_config_object(path).interior_struct.zalmoxis.lowt_extension is True
+    path.write_text(
+        text.replace(
+            '        mantle_eos            = "PALEOS:MgSiO3"',
+            f'        mantle_eos            = "{mantle}"',
+        )
+    )
+    with pytest.raises(ValueError, match='does not support the mantle EOS') as excinfo:
+        read_config_object(path)
+    assert mantle.split(':')[0] in str(excinfo.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('lowt', [True, False])
+def test_lowt_extension_structure_check_runs_when_a_config_file_is_read(tmp_path, lowt):
+    """Reading input/tutorials/tutorial_earth_moon.toml (SPIDER structure, no chemistry module)
+    with the Aragog interior refuses the switch on by name; with the switch off it loads."""
+    import tomllib
+    from pathlib import Path
+
+    import tomlkit
+
+    src = Path(__file__).parents[2] / 'input' / 'tutorials' / 'tutorial_earth_moon.toml'
+    raw = tomllib.loads(src.read_text())
+    assert raw['interior_struct']['module'] == 'spider' and 'atmos_chem' not in raw
+    raw['interior_energetics']['module'] = 'aragog'
+    raw['interior_struct'].setdefault('zalmoxis', {})['lowt_extension'] = lowt
+    path = tmp_path / 'cfg.toml'
+    path.write_text(tomlkit.dumps(raw))
+    if lowt:
+        with pytest.raises(ValueError, match='requires interior_struct.module'):
+            read_config_object(path)
+    else:
+        cfg = read_config_object(path)
+        assert cfg.interior_struct.module == 'spider'
+        assert cfg.interior_energetics.module == 'aragog'
+        assert cfg.interior_struct.zalmoxis.lowt_extension is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('module', 'ok'), [('aragog', True), ('spider', False), ('dummy', False)]
+)
+def test_lowt_extension_check_runs_when_a_config_file_is_read(tmp_path, module, ok):
+    """The Aragog-only check of lowt_extension is registered on the config: reading a TOML file
+    with the switch on refuses every interior except Aragog."""
+    from pathlib import Path
+
+    base = (Path(__file__).parents[2] / 'input' / 'all_options.toml').read_text()
+    for line in (
+        '        lowt_extension        = false',
+        '    module                    = "aragog"     # aragog | spider | dummy',
+    ):
+        assert base.count(line) == 1
+    text = base.replace(
+        '        lowt_extension        = false', '        lowt_extension        = true'
+    )
+    text = text.replace(
+        '    module                    = "aragog"     # aragog | spider | dummy',
+        f'    module                    = "{module}"',
+    )
+    path = tmp_path / 'cfg.toml'
+    path.write_text(text)
+    if ok:
+        assert read_config_object(path).interior_struct.zalmoxis.lowt_extension is True
+    else:
+        with pytest.raises(ValueError, match='lowt_extension = true requires'):
+            read_config_object(path)
+
+
+# saturation_skin_warns_without_condensates: accepted, warned when no layer can form
+def _saturation_skin_config(module, include_condensates, surface_d='saturation'):
+    """Config stand-in with the skin from saturation and the given outgassing backend."""
+    instance = _make_config_instance(**{'outgas.module': module})
+    instance.outgas.atmodeller = SimpleNamespace(include_condensates=include_condensates)
+    instance.atmos_clim.surface_d = surface_d
+    return instance
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('module', 'include_condensates', 'reason'),
+    [
+        ('calliope', True, 'outgas.module = "calliope"'),
+        ('atmodeller', False, 'include_condensates = false'),
+    ],
+    ids=['calliope-forms-no-condensate', 'atmodeller-condensates-off'],
+)
+def test_saturation_skin_warns_when_no_condensate_can_form(
+    module, include_condensates, reason, caplog
+):
+    """A skin from saturation is accepted without condensates, with one warning that
+    the surface then stays fixed, naming the reason."""
+    instance = _saturation_skin_config(module, include_condensates)
+    with caplog.at_level('WARNING', logger='fwl.proteus.config._config'):
+        assert saturation_skin_warns_without_condensates(instance, None, None) is None
+    warnings = [r.getMessage() for r in caplog.records if 'saturation' in r.getMessage()]
+    assert len(warnings) == 1
+    assert reason in warnings[0]
+    assert 'fixed' in warnings[0]
+
+
+@pytest.mark.unit
+def test_saturation_skin_is_silent_with_atmodeller_condensates_or_a_numeric_skin(caplog):
+    """No warning with atmodeller condensates on, or with a numeric skin thickness."""
+    on = _saturation_skin_config('atmodeller', True)
+    numeric = _saturation_skin_config('calliope', False, surface_d=0.01)
+    with caplog.at_level('WARNING', logger='fwl.proteus.config._config'):
+        assert saturation_skin_warns_without_condensates(on, None, None) is None
+        assert saturation_skin_warns_without_condensates(numeric, None, None) is None
+    assert not any('saturation' in r.getMessage() for r in caplog.records)

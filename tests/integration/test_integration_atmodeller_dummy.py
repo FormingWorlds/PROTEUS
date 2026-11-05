@@ -20,12 +20,12 @@ chemistry:
   volatile budget; exercises the upper-oxidation branch and a higher P_surf
   regime than the nominal Earth anchor.
 
-Per ``proteus-tests.md`` §1, the file also includes a sibling
+Per ``tests/AGENTS.md``, the file also includes a sibling
 error-contract test that exercises the atmodeller solver_mode validator.
 
 Invariants asserted per scenario:
 - Per-element mass closure ``atm + liquid + solid == total`` for H, C, N, S, O
-  at the final row (conservation invariant carve-out, §2).
+  at the final row (conservation invariant; tests/AGENTS.md, Discriminating values).
 - Sign guards on every reservoir mass.
 - Sign + scale guards on P_surf.
 - ``Phi_global`` bounded to [0, 1].
@@ -115,7 +115,7 @@ def test_atmodeller_dummy_two_timesteps(proteus_multi_timestep_run, scenario):
     final = hf.iloc[-1]
 
     # Per-element mass closure: the conservation invariant. Discriminates
-    # exponent / factor errors via the equality form per §2 carve-out.
+    # exponent / factor errors via the equality form (tests/AGENTS.md, Discriminating values).
     for elt in ('H', 'C', 'N', 'S', 'O'):
         atm_key = f'{elt}_kg_atm'
         liq_key = f'{elt}_kg_liquid'
@@ -180,7 +180,7 @@ def test_atmodeller_dummy_two_timesteps(proteus_multi_timestep_run, scenario):
 
 
 # ---------------------------------------------------------------------------
-# Error-contract path per proteus-tests.md §1 clause 2.
+# Error-contract path per tests/AGENTS.md.
 # ---------------------------------------------------------------------------
 
 
