@@ -372,39 +372,3 @@ def test_get_proteus_dir_returns_directory_containing_pyproject_toml():
     assert os.path.isfile(pyproject)
     with open(pyproject, encoding='utf-8') as fh:
         assert 'fwl-proteus' in fh.read()
-
-
-# ---------------------------------------------------------------------------
-# create_tmp_folder uses TMPDIR when valid
-# ---------------------------------------------------------------------------
-
-
-def test_create_tmp_folder_respects_tmpdir_when_present(tmp_path, monkeypatch):
-    """If ``TMPDIR`` points at a real directory, the created folder is
-    placed under it. Discrimination: the returned path must start with
-    the supplied TMPDIR, not the global ``/tmp``.
-    """
-    from proteus.utils.helper import create_tmp_folder, safe_rm
-
-    monkeypatch.setenv('TMPDIR', str(tmp_path))
-    created = create_tmp_folder()
-    try:
-        assert created.startswith(str(tmp_path))
-        assert os.path.isdir(created)
-    finally:
-        safe_rm(created)
-
-
-def test_create_tmp_folder_falls_back_to_slash_tmp_when_tmpdir_invalid(monkeypatch):
-    """When ``TMPDIR`` is empty or points at a missing path, the folder
-    is created under ``/tmp``.
-    """
-    from proteus.utils.helper import create_tmp_folder, safe_rm
-
-    monkeypatch.setenv('TMPDIR', '/nonexistent/path/that/should/not/exist')
-    created = create_tmp_folder()
-    try:
-        assert created.startswith('/tmp/')
-        assert os.path.isdir(created)
-    finally:
-        safe_rm(created)

@@ -39,6 +39,8 @@ See also:
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -696,3 +698,47 @@ def test_run_janus_picks_the_solver_from_the_saturation_skin(
     assert calls == [solver]
     # The configured surf_state alone would pick the conductive lid in both cases
     assert (solver == 'MCPA_CBL') is (thickness > 0)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('solver_fails', [False, True], ids=['solve-succeeds', 'solver-raises'])
+def test_run_janus_removes_its_socrates_folder_and_restores_cwd(
+    monkeypatch, tmp_path, solver_fails
+):
+    """SOCRATES runs in a folder under ``dirs['temp']`` that is gone after the call.
+
+    The working directory is restored and the folder removed whether the solve
+    returns or raises; a raise used to leave the process inside the folder and
+    the folder on disk.
+    """
+    run_temp = tmp_path / 'run_temp'
+    run_temp.mkdir()
+    seen = {}
+
+    def _solver(*a, **kw):
+        seen['cwd'] = os.getcwd()
+        # SOCRATES leaves working files in the current directory
+        open('currentsw.mtx', 'w').close()
+        if solver_fails:
+            raise RuntimeError('SOCRATES failed')
+        return _build_run_atm(g_surf=9.81, z_obs_height=5.0e4, stale_grav=9.81)
+
+    monkeypatch.setattr('janus.modules.MCPA', _solver)
+    monkeypatch.setattr(janus_mod, 'UpdateStateAtm', lambda *a, **kw: None)
+    monkeypatch.setattr(
+        janus_mod, 'get_oarr_from_parr', lambda p_arr, o_arr, val: (0, o_arr[-1])
+    )
+    hf_row = {'Time': 100.0, 'R_int': 6.371e6, 'gravity': 9.81, 'p_xuv': 1e-3, 'T_surf': 1400.0}
+    dirs = {'output': str(tmp_path / 'out'), 'temp': str(run_temp)}
+    cwd_before = os.getcwd()
+
+    if solver_fails:
+        with pytest.raises(RuntimeError, match='SOCRATES failed'):
+            RunJANUS(SimpleNamespace(), dirs, _build_run_config(), hf_row, None)
+    else:
+        _, output = RunJANUS(SimpleNamespace(), dirs, _build_run_config(), hf_row, None)
+        assert output['T_surf'] == pytest.approx(1400.0, rel=1e-12)
+
+    assert Path(seen['cwd']).parent == run_temp.resolve()
+    assert os.getcwd() == cwd_before
+    assert os.listdir(run_temp) == []

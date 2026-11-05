@@ -883,10 +883,7 @@ def _setup_cached_spectral_run(monkeypatch, tmp_path, cache_dir, verbosity=1, lo
     base_sf.write_text('base spectral file, no star inserted', encoding='utf-8')
 
     scratch = tmp_path / 'scratch'
-
-    def _fake_tmp_folder():
-        scratch.mkdir(parents=True, exist_ok=True)
-        return str(scratch)
+    scratch.mkdir()
 
     config = _build_greygas_config()
     config.atmos_clim.agni.spectral_file = None
@@ -901,11 +898,15 @@ def _setup_cached_spectral_run(monkeypatch, tmp_path, cache_dir, verbosity=1, lo
     monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
     monkeypatch.setattr(agni_mod, 'require_spfile_path', lambda *_a, **_k: str(base_sf))
-    monkeypatch.setattr(agni_mod, 'create_tmp_folder', _fake_tmp_folder)
 
     return SimpleNamespace(
         fake_agni=fake_agni,
-        dirs={'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(fwl_dir)},
+        dirs={
+            'output': str(output_dir),
+            'temp': str(scratch),
+            'agni': '/fake/agni',
+            'fwl': str(fwl_dir),
+        },
         config=config,
         hf_row={
             'F_ins': 1000.0,
@@ -968,6 +969,32 @@ def test_spectral_cache_is_filled_from_the_folder_agni_wrote_in(
     # file, so a harvest pointed there would find nothing and cache nothing.
     quiet_output_is_empty = not (ctx.output_dir / 'runtime.sf').is_file()
     assert quiet_output_is_empty == (work_dir == 'scratch')
+
+
+@pytest.mark.unit
+def test_rebuild_after_stellar_update_reuses_the_run_temp_folder(monkeypatch, tmp_path):
+    """A stellar-spectrum update rebuilds the spectral file in the run's one temp folder.
+
+    Each rebuild used to get a new folder that was never removed, so a run left
+    one prepared spectral file behind per update. Both builds must use
+    ``dirs['temp']`` and create nothing else under the system temp directory.
+    """
+    system_tmp = tmp_path / 'system_tmp'
+    system_tmp.mkdir()
+    monkeypatch.setattr('tempfile.tempdir', str(system_tmp))
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, tmp_path / 'cache')
+
+    init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row)
+    first_io_dir = ctx.fake_agni.last_setup_kwargs['IO_DIR']
+
+    # The wrapper rebuilds from the newest spectrum, without the cache
+    (ctx.sflux.parent / '200.sflux').write_text('400.0 3.0\n500.0 4.0\n', encoding='utf-8')
+    init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, use_cache=False)
+
+    assert first_io_dir == ctx.dirs['temp']
+    assert ctx.fake_agni.last_setup_kwargs['IO_DIR'] == ctx.dirs['temp']
+    assert (ctx.scratch / 'runtime.sf').read_text() == 'prepared from 200.sflux'
+    assert os.listdir(system_tmp) == []
 
 
 @pytest.mark.unit

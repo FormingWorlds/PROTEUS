@@ -4203,8 +4203,8 @@ def test_set_directories_errors_without_fwl_data(monkeypatch):
 
 
 @pytest.mark.unit
-def test_set_directories_auto_path_and_debug_temp(monkeypatch):
-    """Cover set_directories auto-output branch and DEBUG temp-dir behavior."""
+def test_set_directories_auto_path(monkeypatch):
+    """An 'auto' output path resolves to a timestamped run name."""
     cfg = types.SimpleNamespace(
         params=types.SimpleNamespace(out=types.SimpleNamespace(path='auto', logging='DEBUG')),
         atmos_clim=types.SimpleNamespace(module='dummy'),
@@ -4217,7 +4217,7 @@ def test_set_directories_auto_path_and_debug_temp(monkeypatch):
 
     assert cfg.params.out.path.startswith('run_')
     assert cfg.params.out.path.endswith('_beef')
-    assert dirs['temp'] == dirs['output']
+    assert dirs['output'].endswith(f'/output/{cfg.params.out.path}/')
     assert dirs['fwl'].endswith('/tmp/fwl_data/')
 
 
@@ -4231,7 +4231,6 @@ def test_set_directories_requires_rad_dir_for_agni(monkeypatch):
     monkeypatch.setattr('proteus.utils.coupler.get_proteus_dir', lambda: '/tmp/proteus')
     monkeypatch.setenv('FWL_DATA', '/tmp/fwl_data')
     monkeypatch.delenv('RAD_DIR', raising=False)
-    monkeypatch.setattr('proteus.utils.coupler.create_tmp_folder', lambda: '/tmp/tmpwork')
 
     with patch('proteus.utils.coupler.UpdateStatusfile') as mock_update:
         with pytest.raises(EnvironmentError, match='RAD_DIR'):
@@ -4240,8 +4239,12 @@ def test_set_directories_requires_rad_dir_for_agni(monkeypatch):
 
 
 @pytest.mark.unit
-def test_set_directories_sets_rad_and_temp_for_non_debug(monkeypatch):
-    """Cover set_directories success path with AGNI and non-DEBUG temp folder."""
+def test_set_directories_sets_rad_and_creates_no_temp_folder(monkeypatch, tmp_path):
+    """Resolving directories for AGNI sets RAD_DIR and allocates no temporary folder.
+
+    The temporary folder belongs to a run (`Proteus.start`), so a runner that is
+    only constructed, or whose config is refused, leaves nothing in TMPDIR.
+    """
     cfg = types.SimpleNamespace(
         params=types.SimpleNamespace(out=types.SimpleNamespace(path='run3', logging='INFO')),
         atmos_clim=types.SimpleNamespace(module='agni'),
@@ -4249,12 +4252,13 @@ def test_set_directories_sets_rad_and_temp_for_non_debug(monkeypatch):
     monkeypatch.setattr('proteus.utils.coupler.get_proteus_dir', lambda: '/tmp/proteus')
     monkeypatch.setenv('FWL_DATA', '/tmp/fwl_data')
     monkeypatch.setenv('RAD_DIR', '/tmp/rad_dir')
-    monkeypatch.setattr('proteus.utils.coupler.create_tmp_folder', lambda: '/tmp/tmpwork')
+    monkeypatch.setattr('tempfile.tempdir', str(tmp_path))
 
     dirs = set_directories(cfg)
 
     assert dirs['rad'].endswith('/tmp/rad_dir/')
-    assert dirs['temp'].endswith('/tmp/tmpwork/')
+    assert 'temp' not in dirs
+    assert os.listdir(tmp_path) == []
     assert dirs['output'].endswith('/tmp/proteus/output/run3/')
 
 

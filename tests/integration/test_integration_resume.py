@@ -53,8 +53,6 @@ See also:
 
 from __future__ import annotations
 
-import shutil
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -137,29 +135,11 @@ PARITY_SKIP = ('runtime',)
 MIN_COLUMNS_COMPARED = 400
 
 
-# Scratch directories created by Proteus construction, cleared after each
-# test. ``set_directories`` allocates one unconditionally and nothing in the
-# framework removes it, so a file that builds a dozen runners would otherwise
-# leave a dozen empty directories behind on every run.
-_RUNNER_TEMP_DIRS: list[str] = []
-
-
-@pytest.fixture(autouse=True)
-def _remove_runner_temp_dirs():
-    """Delete the scratch directories this file's runners allocate."""
-    _RUNNER_TEMP_DIRS.clear()
-    yield
-    for path in _RUNNER_TEMP_DIRS:
-        shutil.rmtree(path, ignore_errors=True)
-    _RUNNER_TEMP_DIRS.clear()
-
-
 def _config_with_output_path(output_dir):
     """Write a copy of the dummy config with the output path already set.
 
     Building the runner straight from a config that names its output
-    directory avoids a second ``init_directories`` call, and with it a second
-    scratch directory per runner.
+    directory avoids a second ``init_directories`` call.
     """
     text = CONFIG.read_text()
     patched = text.replace('path = "auto"', f'path = "{output_dir}"', 1)
@@ -197,7 +177,6 @@ def _make_runner(output_dir, stop_time, *, iters_max=None, min_time=MIN_STOP_TIM
         Configured runner; the caller starts it.
     """
     runner = Proteus(config_path=_config_with_output_path(output_dir))
-    _RUNNER_TEMP_DIRS.append(runner.directories['temp'])
 
     runner.config.params.dt.initial = DT_INITIAL
     runner.config.params.dt.minimum = DT_MINIMUM

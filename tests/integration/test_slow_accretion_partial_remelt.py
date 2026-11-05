@@ -21,8 +21,6 @@ Contract clauses checked:
 
 from __future__ import annotations
 
-import shutil
-
 import numpy as np
 import pytest
 from helpers import PROTEUS_ROOT
@@ -90,10 +88,7 @@ def _cooled_runner(output_dir, core_bc):
         download_sufficient_data(cfg)
     finally:
         cfg.params.offline = True
-    try:
-        runner.start(resume=False, offline=True)
-    finally:
-        shutil.rmtree(runner.directories['temp'], ignore_errors=True)
+    runner.start(resume=False, offline=True)
     return runner
 
 

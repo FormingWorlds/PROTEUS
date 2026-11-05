@@ -156,6 +156,10 @@ def _make_runner(tmpdir: str, *, spectral_file, surf_greyalbedo: float):
     cfg.params.out.plot_mod = 0
     cfg.params.out.write_mod = 0
     runner.init_directories()
+    # Proteus.start provides the temporary folder; this test calls AGNI directly
+    temp = Path(tmpdir) / 'temp'
+    temp.mkdir()
+    runner.directories['temp'] = str(temp)
     return runner
 
 

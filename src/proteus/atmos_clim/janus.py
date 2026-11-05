@@ -5,6 +5,7 @@ import glob
 import logging
 import os
 import shutil
+import tempfile
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -15,7 +16,7 @@ from proteus.atmos_clim.surface_skin import (
     effective_surf_state,
 )
 from proteus.utils.constants import vap_list, vol_list, gas_list
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, format_subyear_time
+from proteus.utils.helper import UpdateStatusfile, format_subyear_time
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -167,73 +168,8 @@ def write_atmos_ncdf(atm, dirs: dict, time: float):
     atm.write_ncdf(nc_fpath)
 
 
-def RunJANUS(
-    atm,
-    dirs: dict,
-    config: Config,
-    hf_row: dict,
-    hf_all: pd.DataFrame,
-    write_in_tmp_dir=True,
-    search_method=0,
-    rtol=1.0e-4,
-    write_data: bool = True,
-):
-    """Run JANUS.
-
-    Calculates the temperature structure of the atmosphere and the fluxes, etc.
-    Stores the new flux boundary condition to be provided to SPIDER. Limits flux
-    change if required.
-
-    Parameters
-    ----------
-        atm : atmos
-            Atmosphere object
-        dirs : dict
-            Dictionary containing paths to directories
-        config : Config
-            Configuration options and other variables
-        hf_row : dict
-            Dictionary containing simulation variables for current iteration
-        hf_all : pd.DataFrame
-            Dataframe containing simulation variables (now and historic)
-        write_in_tmp_dir : bool
-            Write temporary files in a local folder within /tmp, rather than in the output folder
-        search_method : int
-            Root finding method used by JANUS
-        rtol : float
-            Relative tolerance on solution for root finding method
-        write_data : bool
-            Whether to write the atmosphere NetCDF file this iteration.
-    Returns
-    ----------
-        atm : atmos
-            The solved atmosphere. This is not the object passed in: the
-            adiabat solve copies that one before integrating and returns a
-            copy resampled onto the radiative grid, and only the copy carries
-            a profile and fluxes on one common grid. The object passed in is
-            left holding the surface boundary condition alone and remains the
-            seed for the next call.
-        output : dict
-            Output variables, as a dict
-
-    """
-
-    # Runtime info
-    log.debug('Running JANUS...')
-    time = hf_row['Time']
-
-    # Update atmosphere with current variables
-    UpdateStateAtm(atm, config, hf_row, config.atmos_clim.janus.tropopause)
-
-    # Change dir
-    cwd = os.getcwd()
-    tmp_dir = dirs['output']
-    if write_in_tmp_dir:
-        tmp_dir = create_tmp_folder()
-    log.debug("Will run socrates inside '%s'" % tmp_dir)
-    os.chdir(tmp_dir)
-
-    # Prepare to calculate temperature structure w/ General Adiabat
+def _solve_janus(atm, dirs, config, hf_row, hf_all, time, search_method, rtol):
+    """Solve the JANUS atmosphere for the effective surface state; returns the solved atmosphere."""
     trppD = config.atmos_clim.janus.tropopause == 'dynamic'
     rscatter = config.atmos_clim.rayleigh
 
@@ -282,15 +218,86 @@ def RunJANUS(
         UpdateStatusfile(dirs, 20)
         raise Exception('Invalid surface state chosen for JANUS')
 
-    # Clean up run directory
-    for file in glob.glob(tmp_dir + '/current??.????'):
-        os.remove(file)
-    for file in glob.glob(tmp_dir + '/profile.*'):
-        os.remove(file)
-    os.chdir(cwd)
-    if write_in_tmp_dir:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+    return atm
 
+
+def RunJANUS(
+    atm,
+    dirs: dict,
+    config: Config,
+    hf_row: dict,
+    hf_all: pd.DataFrame,
+    write_in_tmp_dir=True,
+    search_method=0,
+    rtol=1.0e-4,
+    write_data: bool = True,
+):
+    """Run JANUS.
+
+    Calculates the temperature structure of the atmosphere and the fluxes, etc.
+    Stores the new flux boundary condition to be provided to SPIDER. Limits flux
+    change if required.
+
+    Parameters
+    ----------
+        atm : atmos
+            Atmosphere object
+        dirs : dict
+            Dictionary containing paths to directories
+        config : Config
+            Configuration options and other variables
+        hf_row : dict
+            Dictionary containing simulation variables for current iteration
+        hf_all : pd.DataFrame
+            Dataframe containing simulation variables (now and historic)
+        write_in_tmp_dir : bool
+            Run SOCRATES in a folder under `dirs['temp']`, removed afterwards, rather than in the output folder
+        search_method : int
+            Root finding method used by JANUS
+        rtol : float
+            Relative tolerance on solution for root finding method
+        write_data : bool
+            Whether to write the atmosphere NetCDF file this iteration.
+    Returns
+    ----------
+        atm : atmos
+            The solved atmosphere. This is not the object passed in: the
+            adiabat solve copies that one before integrating and returns a
+            copy resampled onto the radiative grid, and only the copy carries
+            a profile and fluxes on one common grid. The object passed in is
+            left holding the surface boundary condition alone and remains the
+            seed for the next call.
+        output : dict
+            Output variables, as a dict
+
+    """
+
+    # Runtime info
+    log.debug('Running JANUS...')
+    time = hf_row['Time']
+
+    # Update atmosphere with current variables
+    UpdateStateAtm(atm, config, hf_row, config.atmos_clim.janus.tropopause)
+
+    # SOCRATES writes its working files into the current directory
+    cwd = os.getcwd()
+    tmp_dir = dirs['output']
+    if write_in_tmp_dir:
+        tmp_dir = tempfile.mkdtemp(prefix='janus_', dir=dirs['temp'])
+    log.debug("Will run socrates inside '%s'" % tmp_dir)
+    os.chdir(tmp_dir)
+    try:
+        atm = _solve_janus(atm, dirs, config, hf_row, hf_all, time, search_method, rtol)
+    finally:
+        for file in glob.glob(tmp_dir + '/current??.????'):
+            os.remove(file)
+        for file in glob.glob(tmp_dir + '/profile.*'):
+            os.remove(file)
+        os.chdir(cwd)
+        if write_in_tmp_dir:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    any_cloud = np.any(np.array(atm.clfr) > 1.0e-20)
     any_cloud = np.any(np.array(atm.clfr) > 1.0e-20)
     log.info('Water clouds have formed = %s' % (str(any_cloud)))
     log.info(

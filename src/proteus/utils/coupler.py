@@ -35,7 +35,6 @@ from proteus.utils.constants import (
 )
 from proteus.utils.helper import (
     UpdateStatusfile,
-    create_tmp_folder,
     format_subyear_time,
     get_proteus_dir,
     parse_subyear_time,
@@ -2816,13 +2815,6 @@ def set_directories(config: Config) -> dict[str, str]:
             )
         else:
             dirs['rad'] = os.environ.get('RAD_DIR')
-
-    # Temporary directory
-    if config.params.out.logging == 'DEBUG':
-        dirs['temp'] = dirs['output']
-    else:
-        dirs['temp'] = create_tmp_folder()
-    log.debug(f'Temporary-file working dir: {dirs["temp"]}')
 
     # Get abspaths
     for key in dirs.keys():
