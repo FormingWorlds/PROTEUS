@@ -208,6 +208,8 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.aragog.core_module.t_m1',
         'interior_energetics.aragog.core_module.t_m2',
         'interior_energetics.aragog.entropy_step_cap',
+        # Off by default, so a migrated config runs without the lid.
+        'interior_energetics.aragog.lid_mush_base',
         'interior_energetics.aragog.phase_boundary_entropy_margin',
         'interior_energetics.aragog.phase_boundary_cap',
         'interior_energetics.aragog.phase_smoothing',

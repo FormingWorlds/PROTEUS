@@ -5609,6 +5609,22 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.lid_mush_base",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Run the sub-grid lid with its base at the solidus (needs the rheology on).",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.core_module.alpha",
       "toml_section": "interior_energetics.aragog.core_module",
       "class": "AragogCoreModule",
@@ -12596,6 +12612,18 @@
         "params.stop.escape.enabled"
       ],
       "doc": "ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled."
+    },
+    {
+      "validator": "lid_requires_the_skin_atmosphere",
+      "module": "_config.py",
+      "attached_to": [
+        "atmos_clim"
+      ],
+      "touches": [
+        "atmos_clim",
+        "interior_energetics"
+      ],
+      "doc": "A live Aragog lid acts on the atmosphere only through the skin of AGNI or the dummy."
     },
     {
       "validator": "lowt_extension_requires_aragog",
