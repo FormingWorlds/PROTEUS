@@ -37,7 +37,7 @@ from proteus.grid.dimensions import (
     dimension_logspace,
     direct_values_error,
 )
-from proteus.grid.slurm import array_layout, dispatch_script, max_array_size, slurm_time
+from proteus.grid.slurm import array_layout, dispatch_script, max_array_size
 from proteus.utils.coupler import get_output_root
 from proteus.utils.helper import get_proteus_dir, recursive_setattr
 from proteus.utils.logs import setup_logger
@@ -797,9 +797,10 @@ class Grid:
             cores_per_job=cores_per_job,
             jobs=jobs,
             throttle=throttle,
-            time=slurm_time(max_days * waves),
+            days=max_days * waves,
             mem_per_case_mb=int(max_mem * 1024),
             command=command,
+            casedir=None if test_run else self.outdir.rstrip('/'),
             env=jax_env,
         )
 

@@ -88,9 +88,10 @@ def dispatch_script(
     cores_per_job: int,
     jobs: int,
     throttle: int,
-    time: str,
+    days: float,
     mem_per_case_mb: int,
     command: str,
+    casedir: str | None = None,
     env: str = '',
 ) -> str:
     """Return the sbatch script that runs the cases of a grid as a job array.
@@ -98,10 +99,17 @@ def dispatch_script(
     Array task ``j`` runs the cases ``j, j + jobs, j + 2 jobs, ...``, ``cores_per_job``
     at a time with ``xargs -P``; a core takes the next case when its case ends. Each
     case is a job step of one core and its own memory, named after the case, so
-    ``sacct`` reports its peak memory, and writes its output to
-    ``<logdir>/case_NNNNNN.log``. A case that fails, also by a signal, does not stop
-    the other cases; the job then exits non-zero. The job is not requeued, since a
-    requeued job would start its finished cases again.
+    ``sacct`` reports its peak memory; it writes its output to
+    ``<logdir>/case_NNNNNN.log`` and its temporary files to its own folder under
+    ``$TMPDIR``, removed when the case ends. A case that fails, also by a signal, does
+    not stop the other cases; the job then exits non-zero.
+
+    A case that ends with its status file still at 0 or 1 (running), or without one,
+    was killed before PROTEUS could write a final status (SIGKILL, out of memory, a
+    crash in compiled code); the script then writes status 25. Slurm sends SIGTERM to
+    the cases 5 minutes before the wall time, a tenth of it for short jobs, so they can
+    end with a status. The job is not requeued, since a requeued job would start its
+    finished cases again.
 
     Parameters
     ----------
@@ -115,30 +123,53 @@ def dispatch_script(
         Tasks in the job array.
     throttle : int
         Array tasks running at the same time.
-    time : str
-        Wall time per job, in the Slurm time format.
+    days : float
+        Wall time per job [days].
     mem_per_case_mb : int
         Memory per core, so per case [MB].
     command : str
         Command that runs one case; the config path follows it.
+    casedir : str or None
+        Folder that holds the case output folders; None writes no status.
     env : str
         Shell lines run before the cases, such as exports.
     """
+    signal_s = min(300, round(days * 86400) // 10)
     return f"""#!/bin/bash
 #SBATCH -J proteus.grid.array
 #SBATCH --export=ALL
 #SBATCH --no-requeue
-#SBATCH --time={time}
+#SBATCH --time={slurm_time(days)}
+#SBATCH --signal=TERM@{signal_s}
 #SBATCH --cpus-per-task={cores_per_job}
 #SBATCH --mem-per-cpu={mem_per_case_mb}M
 #SBATCH -i /dev/null
 #SBATCH -o {logdir}/proteus-%A_%a.log
 #SBATCH --array=0-{jobs - 1}%{throttle}
 
-{env}export cfgs={shlex.quote(cfgdir)} logs={shlex.quote(logdir)}
+{env}export cfgs={shlex.quote(cfgdir)} logs={shlex.quote(logdir)} cases={shlex.quote(casedir or '')}
+
+# One case: $1 is its name, case_NNNNNN
+run_case='
+echo "running $1"
+TMPDIR="${{TMPDIR:-/tmp}}/$1"
+export TMPDIR
+mkdir -p "$TMPDIR"
+srun --job-name="$1" --ntasks=1 --cpus-per-task=1 --mem-per-cpu={mem_per_case_mb}M --exact \\
+    {command} "$cfgs/$1.toml" > "$logs/$1.log" 2>&1
+code=$?
+rm -rf "$TMPDIR"
+if [ -n "$cases" ]; then
+    case "$(head -n 1 "$cases/$1/status" 2>/dev/null)" in
+        ""|0|1)
+            echo "$1 ended without a final status"
+            mkdir -p "$cases/$1"
+            printf "25\\nError (died, or exit requested by user)\\n" > "$cases/$1/status" ;;
+    esac
+fi
+[ "$code" -eq 0 ] || {{ echo "$1 failed with exit code $code"; exit 1; }}
+'
 
 printf 'case_%06d\\n' $(seq $SLURM_ARRAY_TASK_ID {jobs} {n_cases - 1}) |
-    xargs -n 1 -P {cores_per_job} sh -c \\
-    'echo "running $1"; srun --job-name="$1" --ntasks=1 --cpus-per-task=1 --mem-per-cpu={mem_per_case_mb}M --exact \\
-        {command} "$cfgs/$1.toml" > "$logs/$1.log" 2>&1 || {{ echo "$1 failed"; exit 1; }}' sh
+    xargs -n 1 -P {cores_per_job} sh -c "$run_case" sh
 """
