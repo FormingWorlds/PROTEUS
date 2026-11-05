@@ -65,7 +65,8 @@ max_mem   = 12              # per-CPU memory [GB] (Slurm)
     `output`, `symlink`, `use_slurm`, `max_jobs`, `max_days`, and `max_mem` are
     all read unconditionally, even for local (non-Slurm) runs. Omitting any of
     them raises a `KeyError` before the grid starts. `use_slurm`, and the optional
-    `jax_cache`, take only `true` or `false`, without quotes.
+    `jax_cache`, take only `true` or `false`, without quotes. The optional
+    `cores_per_job` takes an integer of at least 1.
 
 ### Sweep methods
 
@@ -222,14 +223,15 @@ For large grids on HPC clusters, set `use_slurm = true` and raise the limits:
 
 ```toml
 use_slurm = true
-max_jobs  = 500      # max concurrent Slurm array tasks
+max_jobs  = 500      # max cases running at once
 max_days  = 2        # walltime per case [days]
-max_mem   = 12       # memory per CPU [GB]
+max_mem   = 12       # memory per case [GB]
+cores_per_job = 1    # cores per Slurm job, one case per core
 jax_cache = true     # share compiled JAX kernels across array tasks
 ```
 
 The grid manager then writes a Slurm job-array script and prints the `sbatch`
-command to submit it. Each case runs as an independent array task. See the
+command to submit it. Each array task runs `cores_per_job` cases at a time. See the
 cluster guides ([Habrok](../How-to/habrok_cluster_guide.md), [Snellius](../How-to/snellius_cluster_guide.md)).
 
 Setting `jax_cache = true` makes the dispatch script export `JAX_COMPILATION_CACHE_DIR` (a `jax_cache/` subdirectory of the grid output) so array tasks reuse each other's compiled interior-solver kernels rather than recompiling per task. The cache is bounded at 80 GiB (`JAX_COMPILATION_CACHE_MAX_SIZE`), with a 1 s minimum compile time and a 4 KiB minimum entry size. These exports are added to the Slurm script only; local runs (`use_slurm = false`) do not set them.
