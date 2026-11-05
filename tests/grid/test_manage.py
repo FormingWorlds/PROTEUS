@@ -932,6 +932,49 @@ class TestWriteConfigFiles:
 class TestSlurmConfig:
     """slurm_config: writes a sbatch script with the right knobs."""
 
+    @pytest.fixture(autouse=True)
+    def _no_scontrol(self, monkeypatch):
+        """Give the array limit of a cluster without calling scontrol."""
+        monkeypatch.setattr(gm, 'max_array_size', lambda: 1001)
+
+    def test_packed_jobs_get_their_cores_and_the_memory_per_case(
+        self, grid_with_mocks, monkeypatch
+    ):
+        """Five cases at two cores per job make three jobs of two cores, each core with
+        the memory of one case, and max_jobs = 5 cases at a time allows two jobs."""
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0, 2.0, 3.0, 4.0])
+        g.generate()
+        monkeypatch.setattr(g, 'write_config_files', lambda: None)
+
+        g.slurm_config(max_jobs=5, test_run=True, max_days=1, max_mem=3, cores_per_job=2)
+        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        # ceil(5 / 2) = 3 jobs; 5 // 2 = 2 at a time (5 would exceed max_jobs cases)
+        assert '--array=0-2%2' in contents
+        assert '--cpus-per-task=2' in contents
+        assert '--mem-per-cpu=3072M' in contents
+        assert '--mem-per-cpu=6144M' not in contents  # memory per job, not per case
+        assert 'seq $SLURM_ARRAY_TASK_ID 3 4' in contents
+
+    def test_array_limit_stretches_the_wall_time_by_the_waves(
+        self, grid_with_mocks, monkeypatch
+    ):
+        """With room for only two jobs, five single-core cases need three cases per core
+        in turn, so the wall time is three times max_days."""
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0, 2.0, 3.0, 4.0])
+        g.generate()
+        monkeypatch.setattr(g, 'write_config_files', lambda: None)
+        monkeypatch.setattr(gm, 'max_array_size', lambda: 2)
+
+        g.slurm_config(max_jobs=5, test_run=True, max_days=0.5, max_mem=3)
+        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        assert '--array=0-1%2' in contents
+        assert '--time=1-12:00:00' in contents  # 3 waves of half a day
+        assert '--time=0-12:00:00' not in contents
+
     def test_slurm_script_contents_test_run(self, grid_with_mocks, monkeypatch, tmp_path):
         """``slurm_config(..., test_run=True)`` writes a slurm_dispatch.sh
         with the echo-stub command. The SBATCH array bound matches size.
@@ -1082,7 +1125,7 @@ class TestSlurmConfig:
         assert 'JAX_COMPILATION_CACHE_DIR' not in contents
         assert 'JAX_COMPILATION_CACHE_MAX_SIZE' not in contents
         # The dispatch body is still emitted, so this is a real script.
-        assert 'i=$SLURM_ARRAY_TASK_ID' in contents
+        assert 'seq $SLURM_ARRAY_TASK_ID' in contents
 
     def test_slurm_script_includes_bounded_jax_cache_when_enabled(
         self, grid_with_mocks, monkeypatch
@@ -1121,7 +1164,7 @@ class TestSlurmConfig:
         assert 'export JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS=1' in contents
         assert 'export JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES=4096' in contents
         # The work loop still follows the env block.
-        assert 'i=$SLURM_ARRAY_TASK_ID' in contents
+        assert 'seq $SLURM_ARRAY_TASK_ID' in contents
 
 
 # ---------------------------------------------------------------------------
@@ -1565,6 +1608,58 @@ class TestGridFromConfig:
         grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
         assert len(calls) == 1
         assert calls[0]['jax_cache'] is expected
+
+    @pytest.mark.parametrize(
+        ('extra', 'expected'),
+        [({}, 1), ({'cores_per_job': 16}, 16)],
+        ids=['absent', 'one-eighth-rome-node'],
+    )
+    def test_cores_per_job_reaches_the_slurm_script(
+        self, fake_proteus_dir, monkeypatch, extra, expected
+    ):
+        """cores_per_job reaches slurm_config as written; an absent key is one core."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            use_slurm=True,
+            dimensions={**extra, 'planet.mass_tot': {'method': 'direct', 'values': [0.5]}},
+        )
+        calls = []
+        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: calls.append(k))
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert len(calls) == 1
+        assert calls[0]['cores_per_job'] == expected
+
+    @pytest.mark.parametrize(
+        'value', [0, -16, 1.5, True, '16'], ids=['zero', 'negative', 'float', 'bool', 'string']
+    )
+    def test_a_cores_per_job_that_is_not_a_positive_integer_is_refused(
+        self, fake_proteus_dir, monkeypatch, value
+    ):
+        """A cores_per_job below 1 or not an integer stops the grid with the key and the
+        grid file named, before the old output is removed and before any dispatch."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        old = fake_proteus_dir / 'output' / 'unit_grid' / 'case_000000' / 'runtime_helpfile.csv'
+        old.parent.mkdir(parents=True)
+        old.write_text('kept\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            use_slurm=True,
+            dimensions={
+                'cores_per_job': value,
+                'planet.mass_tot': {'method': 'direct', 'values': [0.5]},
+            },
+        )
+        calls = []
+        monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: calls.append('run'))
+        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: calls.append('slurm'))
+        with pytest.raises(ValueError, match='cores_per_job must be an integer of at least 1'):
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert calls == []
+        assert old.read_text() == 'kept\n'
 
     @pytest.mark.parametrize(
         ('key', 'value', 'reason'),
