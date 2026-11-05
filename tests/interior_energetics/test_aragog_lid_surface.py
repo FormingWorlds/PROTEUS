@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from scipy.optimize import brentq
 
 from proteus.atmos_clim.common import lid_boundary, lid_open_flux
 from proteus.interior_energetics.aragog import _lid_surface_of_row, _surface_flux_of_step
@@ -101,3 +102,23 @@ def test_the_two_parts_sum_to_the_balance_of_the_atmosphere():
 def test_open_flux_without_a_lid_is_the_flux_of_the_atmosphere():
     assert lid_open_flux(_cfg(), {'F_atm': 42.0}) == 42.0
     assert lid_open_flux(_cfg(), _row(0.0, F_atm=42.0)) == 42.0
+
+
+@pytest.mark.parametrize('w', [0.01, 0.2, 0.5, 0.9, 1.0])
+def test_coupled_budget_of_a_step_closes_at_every_weight(w):
+    """The balance of the atmosphere, the boundary value and the booked flux of one step.
+
+    The interior loses ``w G_lid (T_b - T) + (1 - w) F_open``, the rule of the Aragog lid. At a
+    state that does not change within the step, ``F_int`` equals ``F_atm``.
+    """
+    sigma, T_eq = 5.670374419e-8, 255.0
+    cfg = _cfg()
+    row = _row(w, Time=100.0)
+    G, T_melt = lid_boundary(cfg, row)
+    T = brentq(lambda v: sigma * (v**4 - T_eq**4) - G * (T_melt - v), T_eq, T_melt)
+    row.update(T_surf=T, F_atm=sigma * (T**4 - T_eq**4))
+    loss = w * 4.0 * (1400.0 - T) + (1.0 - w) * lid_open_flux(cfg, row)
+    r, dt = 6.4e6, 10.0
+    out = _out(w, dE=-loss * 4.0 * np.pi * r**2 * dt * YEAR, r=r)
+    F_int = _surface_flux_of_step(out, row, 'flux', 100.0 + dt)
+    assert F_int - row['F_atm'] == pytest.approx(0.0, abs=1e-9 * row['F_atm'])
