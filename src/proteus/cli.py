@@ -4,6 +4,7 @@ import importlib.util
 import logging
 import os
 import shlex
+import signal
 import sys
 from difflib import get_close_matches
 from pathlib import Path
@@ -209,6 +210,12 @@ cli.add_command(plot)
 # ----------------
 
 
+def _exit_on_sigterm(signum, frame):
+    """Turn SIGTERM (SLURM at its time limit, scancel) into SystemExit, so that
+    `Proteus.start` records status 25 before the process ends."""
+    sys.exit(128 + signum)
+
+
 @click.command()
 @config_option
 @click.option(
@@ -241,6 +248,7 @@ cli.add_command(plot)
 )
 def start(config_path: Path, resume: bool, offline: bool, deterministic: bool):
     """Start proteus run"""
+    signal.signal(signal.SIGTERM, _exit_on_sigterm)
     if deterministic and os.environ.get(_PROTEUS_DETERMINISTIC_SENTINEL) != '1':
         click.secho(
             '[!] --deterministic was requested but the env-var re-exec did not '

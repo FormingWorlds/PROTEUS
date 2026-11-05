@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import types
@@ -4270,3 +4271,35 @@ def test_grid_analyse_takes_a_grid_folder_and_needs_c_or_o(monkeypatch, tmp_path
     assert res.exit_code == 2
     assert '-o' in res.output
     assert len(calls) == 2
+
+
+def test_start_turns_sigterm_into_exit_code_143(monkeypatch, tmp_path):
+    """SLURM sends SIGTERM at the time limit and on scancel. `proteus start` turns it into
+    SystemExit(143) inside the run, so `Proteus.start` can record status 25 before the
+    process ends; without the handler the signal kills Python before any cleanup runs."""
+    cfg = tmp_path / 'stub.toml'
+    cfg.write_text('# stub\n')
+    seen = {}
+
+    class FakeProteus:
+        def __init__(self, config_path):
+            pass
+
+        def start(self, resume, offline):
+            try:
+                os.kill(os.getpid(), signal.SIGTERM)
+            except BaseException as exc:
+                seen['exc'] = exc
+                raise
+
+    monkeypatch.setattr(cli, 'Proteus', FakeProteus)
+    before = signal.getsignal(signal.SIGTERM)
+    # Without the handler under test, this one catches the signal instead of pytest dying.
+    signal.signal(signal.SIGTERM, lambda *_: seen.setdefault('unhandled', True))
+    try:
+        res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
+    finally:
+        signal.signal(signal.SIGTERM, before)
+    assert 'unhandled' not in seen
+    assert type(seen.get('exc')) is SystemExit
+    assert res.exit_code == 128 + signal.SIGTERM == 143
