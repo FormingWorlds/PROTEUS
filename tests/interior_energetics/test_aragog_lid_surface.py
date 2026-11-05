@@ -31,6 +31,15 @@ def test_flux_mode_without_a_lid_books_the_flux_of_the_atmosphere():
     assert _surface_flux_of_step(_out(0.0), hf, 'flux', 110.0) == 42.0
 
 
+def test_an_output_without_lid_fields_reads_as_no_lid():
+    """An Aragog without the sub-grid lid has no lid fields: its step books ``F_atm``."""
+    out = SimpleNamespace(step_dE_F_int_J=-1.0e24, r_basic=np.array([3.0e6, 6.4e6]))
+    assert _surface_flux_of_step(out, {'F_atm': 42.0, 'Time': 100.0}, 'flux', 110.0) == 42.0
+    assert (
+        _surface_flux_of_step(_out(0.7), {'F_atm': 42.0, 'Time': 100.0}, 'flux', 110.0) != 42.0
+    )
+
+
 def test_grey_body_mode_books_the_surface_node():
     assert (
         _surface_flux_of_step(_out(1.0), {'F_atm': 42.0, 'Time': 0.0}, 'grey_body', 5.0) == 7.0
@@ -95,6 +104,20 @@ def test_boundary_is_the_skin_without_a_lid_and_a_parallel_sum_with_one():
     G = k / d
     assert G == pytest.approx(0.5 * 4.0 + 0.5 * 200.0, rel=1e-14)
     assert G * T == pytest.approx(0.5 * 4.0 * 1400.0 + 0.5 * 200.0 * 1500.0, rel=1e-14)
+
+
+def test_call_caps_the_lid_conductance_at_the_skin():
+    """In the call a lid conducts at most like the skin, so a thin lid never takes more than
+    the open surface would."""
+    d, k, T = lid_boundary(_row(1.0, G=400.0))
+    assert k / d == pytest.approx(200.0, rel=1e-14)
+    assert T == pytest.approx(1400.0, rel=1e-14)
+    d, k, T = lid_boundary(_row(0.5, G=400.0))
+    assert k / d == pytest.approx(200.0, rel=1e-14)
+    assert (k / d) * T == pytest.approx(0.5 * 200.0 * 1400.0 + 0.5 * 200.0 * 1500.0, rel=1e-14)
+    # at the skin value and below it the lid conductance passes unchanged
+    assert lid_boundary(_row(1.0, G=200.0))[0] == pytest.approx(0.01, rel=1e-14)
+    assert lid_boundary(_row(1.0, G=199.0))[0] == pytest.approx(2.0 / 199.0, rel=1e-14)
 
 
 def test_boundary_reads_the_skin_of_the_columns():

@@ -538,6 +538,14 @@ def _lid_surface_of_row(hf_row: dict, surface_bc_mode: str, lid_on: bool) -> flo
     return T_surf if lid_on and surface_bc_mode == 'flux' and T_surf > 0.0 else None
 
 
+def _lid_out(out, name: str) -> float:
+    """Lid value ``name`` of a solver output as a float, 0 where it is NaN or absent.
+
+    An Aragog without the sub-grid lid has no lid fields; its rows then read as no lid.
+    """
+    return float(np.nan_to_num(float(getattr(out, name, np.nan))))
+
+
 def _surface_flux_of_step(
     out, hf_row: dict, surface_bc_mode: str, t_end: float | None
 ) -> float:
@@ -564,7 +572,7 @@ def _surface_flux_of_step(
     if surface_bc_mode == 'grey_body':
         return float(out.heat_flux[-1])
     dt_yr = 0.0 if t_end is None else float(t_end) - float(hf_row['Time'])
-    if not float(np.nan_to_num(out.lid_weight)) > 0.0 or dt_yr <= 0.0:
+    if not _lid_out(out, 'lid_weight') > 0.0 or dt_yr <= 0.0:
         return float(hf_row['F_atm'])
     area = 4.0 * np.pi * float(out.r_basic[-1]) ** 2
     return -float(out.step_dE_F_int_J) / (area * dt_yr * secs_per_year)
@@ -1650,7 +1658,9 @@ class AragogRunner:
                     # source and CMB boundary-layer Ra_crit; None/0 in every other mode.
                     core_module_budget=getattr(solver, '_core_module_budget', None),
                     core_module_q_radio=float(getattr(solver, '_core_module_q_radio', 0.0)),
-                    lid_params=solver.jax_lid_params() if solver._lid_on else None,
+                    lid_params=(
+                        solver.jax_lid_params() if getattr(solver, '_lid_on', False) else None
+                    ),
                     core_module_ra_crit_cmb=getattr(solver, '_core_module_ra_crit_cmb', None),
                 )
                 return rhs_fn, jac_fn
@@ -2136,8 +2146,8 @@ class AragogRunner:
         bc_now = solver.parameters.boundary_conditions
         bc_now.lid_surface_temperature = _lid_surface_of_row(
             hf_row,
-            'flux' if bc_now.outer_boundary_condition == 4 else 'grey_body',
-            bc_now.lid_mush_base,
+            'flux' if getattr(bc_now, 'outer_boundary_condition', None) == 4 else 'grey_body',
+            getattr(bc_now, 'lid_mush_base', False),
         )
 
         # Update equilibrium temperature (tracks stellar luminosity evolution).
@@ -2916,10 +2926,10 @@ class AragogRunner:
             'M_mantle': out.M_mantle,
             'M_core': hf_row.get('M_core', 0.0),
             'T_magma': out.T_magma,
-            'lid_weight': float(np.nan_to_num(out.lid_weight)),
-            'lid_conductance': float(np.nan_to_num(out.lid_conductance)),
-            'lid_T_surface': float(np.nan_to_num(out.lid_T_surface)),
-            'lid_T_base': float(np.nan_to_num(out.lid_T_base)),
+            'lid_weight': _lid_out(out, 'lid_weight'),
+            'lid_conductance': _lid_out(out, 'lid_conductance'),
+            'lid_T_surface': _lid_out(out, 'lid_T_surface'),
+            'lid_T_base': _lid_out(out, 'lid_T_base'),
             'lid_T_node': float(out.T_basic[-1]),
             'lid_F_diff': (
                 _surface_flux_of_step(out, hf_row, surface_bc_mode, t_end) - hf_row['F_atm']

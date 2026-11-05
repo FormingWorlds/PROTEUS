@@ -45,6 +45,7 @@ from proteus.config._config import (
     check_module_dependencies,
     front_trapping_requires_aragog,
     instmethod_evolve,
+    lid_requires_the_skin_atmosphere,
     orbit_requires_tides,
     parameterized_excludes_accretion,
     parameterized_excludes_tides,
@@ -1951,3 +1952,35 @@ def test_saturation_skin_is_silent_with_atmodeller_condensates_or_a_numeric_skin
         assert saturation_skin_warns_without_condensates(on, None, None) is None
         assert saturation_skin_warns_without_condensates(numeric, None, None) is None
     assert not any('saturation' in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.unit
+def test_live_lid_requires_the_skin_surface_of_agni_or_the_dummy():
+    """The atmosphere sees the Aragog lid only through the skin of AGNI or the dummy, so a
+    live lid with JANUS or with another surface state is refused when the config loads."""
+
+    def cfg(module, state, mush=True, interior='aragog'):
+        return SimpleNamespace(
+            atmos_clim=SimpleNamespace(module=module, surf_state=state),
+            interior_energetics=SimpleNamespace(
+                module=interior, aragog=SimpleNamespace(lid_mush_base=mush)
+            ),
+        )
+
+    for module in ('agni', 'dummy'):
+        assert lid_requires_the_skin_atmosphere(cfg(module, 'skin'), None, None) is None
+    with pytest.raises(ValueError, match=r'atmos_clim.module = "janus"') as excinfo:
+        lid_requires_the_skin_atmosphere(cfg('janus', 'skin'), None, None)
+    assert 'lid_mush_base' in str(excinfo.value)
+    for state in ('fixed', 'mixed_layer'):
+        with pytest.raises(ValueError, match=r'surf_state') as excinfo:
+            lid_requires_the_skin_atmosphere(cfg('agni', state), None, None)
+        assert repr(state) in str(excinfo.value)
+    # without the lid, or with another interior, every atmosphere passes
+    assert (
+        lid_requires_the_skin_atmosphere(cfg('janus', 'fixed', mush=False), None, None) is None
+    )
+    assert (
+        lid_requires_the_skin_atmosphere(cfg('janus', 'fixed', interior='spider'), None, None)
+        is None
+    )

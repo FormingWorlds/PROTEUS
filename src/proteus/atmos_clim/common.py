@@ -422,8 +422,9 @@ def lid_boundary(hf_row: dict) -> tuple[float, float, float]:
     """Skin and melt temperature for the surface balance of the atmosphere.
 
     The lid and the open surface act in parallel on one surface temperature:
-    ``F = w G_lid (T_b - T) + (1 - w) G_skin (T_node - T) = k / d (T_melt - T)``. Without a lid
-    the columns and ``T_magma`` pass unchanged.
+    ``F = w G_lid (T_b - T) + (1 - w) G_skin (T_node - T) = k / d (T_melt - T)``, with
+    ``G_lid`` at most ``G_skin``, so that a lid never conducts more than the open surface.
+    Without a lid the columns and ``T_magma`` pass unchanged.
 
     Parameters
     ----------
@@ -444,6 +445,7 @@ def lid_boundary(hf_row: dict) -> tuple[float, float, float]:
     if not (w > 0.0 and G_lid > 0.0):
         return d, k, float(hf_row['T_magma'])
     G_skin = _lid_skin_conductance(hf_row)
+    G_lid = min(G_lid, G_skin)
     G = w * G_lid + (1.0 - w) * G_skin
     T_melt = w * G_lid * float(hf_row['lid_T_base']) + (1.0 - w) * G_skin * float(
         hf_row['lid_T_node']
