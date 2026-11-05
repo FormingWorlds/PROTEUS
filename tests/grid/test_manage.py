@@ -949,7 +949,7 @@ class TestSlurmConfig:
         monkeypatch.setattr(g, 'write_config_files', lambda: None)
 
         g.slurm_config(max_jobs=5, test_run=True, max_days=1, max_mem=3, cores_per_job=2)
-        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
         # ceil(5 / 2) = 3 jobs; 5 // 2 = 2 at a time (5 would exceed max_jobs cases)
         assert '--array=0-2%2' in contents
         assert '--cpus-per-task=2' in contents
@@ -970,7 +970,7 @@ class TestSlurmConfig:
         monkeypatch.setattr(gm, 'max_array_size', lambda: 2)
 
         g.slurm_config(max_jobs=5, test_run=True, max_days=0.5, max_mem=3)
-        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
         assert '--array=0-1%2' in contents
         assert '--time=1-12:00:00' in contents  # 3 waves of half a day
         assert '--time=0-12:00:00' not in contents
@@ -1001,7 +1001,7 @@ class TestSlurmConfig:
         g.slurm_config(max_jobs=4, test_run=True, max_days=2, max_mem=8)
         slurm_path = os.path.join(g.outdir, 'slurm_dispatch.sh')
         assert os.path.isfile(slurm_path)
-        contents = open(slurm_path).read()
+        contents = Path(slurm_path).read_text()
         # Discriminating: test_run picks the echo stub, not the real CLI.
         assert '/bin/echo' in contents
         assert 'proteus start' not in contents
@@ -1035,7 +1035,7 @@ class TestSlurmConfig:
         monkeypatch.setattr(gm.os, 'sync', lambda: None)
 
         g.slurm_config(max_jobs=4, test_run=True, max_days=1.5, max_mem=2.5)
-        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
         # Half a day is 12 hours; 2.5 GB is 2.5 * 1024 = 2560 MB
         assert '--time=1-12:00:00' in contents
         assert '--mem-per-cpu=2560M' in contents
@@ -1064,7 +1064,7 @@ class TestSlurmConfig:
 
         g.slurm_config(max_jobs=1, test_run=False, max_days=1, max_mem=4)
         slurm_path = os.path.join(g.outdir, 'slurm_dispatch.sh')
-        contents = open(slurm_path).read()
+        contents = Path(slurm_path).read_text()
         # Discriminating against the test_run branch:
         assert 'proteus start --offline --config' in contents
         assert '/bin/echo' not in contents
@@ -1093,7 +1093,7 @@ class TestSlurmConfig:
         # Caller asks for 99 jobs but only 2 points exist.
         g.slurm_config(max_jobs=99, test_run=True, max_days=1, max_mem=4)
         slurm_path = os.path.join(g.outdir, 'slurm_dispatch.sh')
-        contents = open(slurm_path).read()
+        contents = Path(slurm_path).read_text()
         # Discriminating: throttle is 2 (the size), not 99.
         assert '%2' in contents
         assert '%99' not in contents
@@ -1120,7 +1120,7 @@ class TestSlurmConfig:
         monkeypatch.setattr(gm.os, 'sync', lambda: None)
 
         g.slurm_config(max_jobs=2, test_run=True, max_days=1, max_mem=4)
-        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
         # No cache env vars at all on the default path.
         assert 'JAX_COMPILATION_CACHE_DIR' not in contents
         assert 'JAX_COMPILATION_CACHE_MAX_SIZE' not in contents
@@ -1153,7 +1153,7 @@ class TestSlurmConfig:
         monkeypatch.setattr(gm.os, 'sync', lambda: None)
 
         g.slurm_config(max_jobs=2, test_run=True, max_days=1, max_mem=4, jax_cache=True)
-        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
         expected_dir = os.path.join(g.outdir, 'jax_cache')
         # Cache directory lives under the grid outdir (self-contained).
         assert f'export JAX_COMPILATION_CACHE_DIR={expected_dir}' in contents
