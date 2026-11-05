@@ -966,8 +966,39 @@ class TestSlurmConfig:
         assert '--array=0-1' in contents
         # max_days propagated:
         assert '--time=2-00' in contents
-        # max_mem propagated:
-        assert '--mem-per-cpu=8G' in contents
+        # max_mem propagated, converted from GB to MB: 8 GB is 8192 MB
+        assert '--mem-per-cpu=8192M' in contents
+
+    def test_slurm_script_converts_non_integer_days_and_memory(
+        self, grid_with_mocks, monkeypatch
+    ):
+        """A non-integer allocation of 1.5 days and 2.5 GB is written as the Slurm time
+        1-12:00:00 and the memory 2560M, not truncated to whole days or whole GB."""
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+
+            def write(self, path):
+                with open(path, 'w') as h:
+                    h.write('')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        g.slurm_config(max_jobs=4, test_run=True, max_days=1.5, max_mem=2.5)
+        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        # Half a day is 12 hours; 2.5 GB is 2.5 * 1024 = 2560 MB
+        assert '--time=1-12:00:00' in contents
+        assert '--mem-per-cpu=2560M' in contents
+        # Truncating to whole days or whole GB would give these instead
+        assert '--time=1-00:00:00' not in contents
+        assert '--mem-per-cpu=2048M' not in contents
 
     def test_slurm_script_real_run_uses_proteus(self, grid_with_mocks, monkeypatch):
         """When ``test_run=False`` the dispatch command is the real CLI."""

@@ -2172,7 +2172,7 @@ def _remelt_aragog(
             molten_out,
             hf_row,
             interior_o=interior_o,
-            surface_d=config.atmos_clim.surface_d,
+            surface_d=hf_row['boundary_layer_thickness'],
             surface_bc_mode=config.interior_energetics.surface_bc_mode,
         )
         # T_cmb and T_cmb_node keep the impact row consistent; the T_core jump guard
@@ -2531,7 +2531,13 @@ def run_interior(
             interior_o._spider_cumulative_time += dtswitch
             interior_o.dt = dtswitch
             return
-        sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
+        sim_time, output = ReadSPIDER(
+            dirs,
+            config,
+            hf_row['R_int'],
+            interior_o,
+            surface_d=hf_row['boundary_layer_thickness'],
+        )
 
     elif config.interior_energetics.module == 'aragog':
         from proteus.interior_energetics.aragog import AragogRunner, InteriorStalledError

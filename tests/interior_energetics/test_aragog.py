@@ -1532,7 +1532,14 @@ def test_a_failed_call_leaves_the_solver_with_the_state_it_started_from(
     interior_o = SimpleNamespace(
         aragog_solver=solver, aragog_step_progress=[], _last_entropy=None, tides=None, **ledger
     )
-    hf_row = {'Time': 202.0, 'T_cmb': 5000.0, 'F_atm': 1.0e3, 'T_eqm': 255.0}
+    hf_row = {
+        'boundary_layer_thickness': 0.01,
+        'boundary_layer_conductivity': 2.0,
+        'Time': 202.0,
+        'T_cmb': 5000.0,
+        'F_atm': 1.0e3,
+        'T_eqm': 255.0,
+    }
     dirs = {'output': str(tmp_path)}
     in_columns = entry == 'columns'
     side_effect = error if in_columns else None
@@ -3754,7 +3761,12 @@ def test_run_solver_writes_the_resume_state_every_step(tmp_path, core_bc):
     interior_o = SimpleNamespace(
         aragog_solver=_StateSolver(-5.254e-08 if core_bc == 'energy_balance' else 4100.0)
     )
-    hf_row = {'Time': 202.0, 'T_surf': 3000.0}
+    hf_row = {
+        'boundary_layer_thickness': 0.01,  # m, written by the skin step
+        'boundary_layer_conductivity': 2.0,  # W m-1 K-1
+        'Time': 202.0,
+        'T_surf': 3000.0,
+    }
     sim_time, _ = runner.run_solver(hf_row, interior_o, {'output': str(tmp_path)})
     assert sim_time == pytest.approx(282.0, rel=1e-15)
     # The 7 profiles land on interior_o unchanged; the radius stays in metres.
@@ -3777,7 +3789,12 @@ def test_run_solver_writes_the_resume_state_every_step(tmp_path, core_bc):
     assert status == 'ok' and P_mesh == pytest.approx(8.12e8, rel=1e-15, abs=0.0)
     # Limit input: a suppressed write (dt_write) leaves no snapshot behind.
     runner.run_solver(
-        {'Time': 282.0, 'T_surf': 3000.0},
+        {
+            'boundary_layer_thickness': 0.01,
+            'boundary_layer_conductivity': 2.0,
+            'Time': 282.0,
+            'T_surf': 3000.0,
+        },
         interior_o,
         {'output': str(tmp_path)},
         write_data=False,
@@ -3808,7 +3825,14 @@ def test_a_step_ending_short_of_an_impact_writes_its_snapshot_at_the_impact_time
     runner._build_helpfile_output = lambda *a, **k: {}
     interior_o = SimpleNamespace(aragog_solver=_StateSolver(4100.0), t_next_impact=t_impact)
     sim_time, _ = runner.run_solver(
-        {'Time': 1.0e3, 'T_surf': 3000.0}, interior_o, {'output': str(tmp_path)}
+        {
+            'boundary_layer_thickness': 0.01,
+            'boundary_layer_conductivity': 2.0,
+            'Time': 1.0e3,
+            'T_surf': 3000.0,
+        },
+        interior_o,
+        {'output': str(tmp_path)},
     )
     assert 1.0e3 + out.dt_actual < t_impact
     assert sim_time == t_impact
@@ -4006,7 +4030,15 @@ def test_final_snapshot_skipped_on_the_diffrax_path(tmp_path, monkeypatch):
     config.interior_energetics.write_flux_diagnostics = False
     interior_o = MagicMock()
     interior_o.aragog_solver = _StateSolver(-2.2e-11)
-    dirs, row = {'output': str(tmp_path)}, {'Time': 282.0, 'T_surf': 3000.0}
+    dirs, row = (
+        {'output': str(tmp_path)},
+        {
+            'boundary_layer_thickness': 0.01,
+            'boundary_layer_conductivity': 2.0,
+            'Time': 282.0,
+            'T_surf': 3000.0,
+        },
+    )
     monkeypatch.setattr(flag, True)
     write_final_snapshot(config, interior_o, dirs, row)
     assert list((tmp_path / 'data').glob('*_int.nc')) == []
@@ -4479,7 +4511,12 @@ def test_run_solver_invokes_core_module_diagnostics_when_active(tmp_path):
         output['core_flux'] = 12.34
 
     interior_o = SimpleNamespace(aragog_solver=_StateSolver(4500.0))
-    hf_row = {'Time': 300.0, 'T_surf': 2800.0}
+    hf_row = {
+        'boundary_layer_thickness': 0.01,
+        'boundary_layer_conductivity': 2.0,
+        'Time': 300.0,
+        'T_surf': 2800.0,
+    }
 
     with (
         patch(f'{_CORE}.write_core_diagnostics', _mock_write_diag),
@@ -4523,12 +4560,28 @@ def test_run_solver_writes_the_core_impact_heat_booked_at_the_reset(tmp_path):
         patch(f'{_CORE}.write_core_diagnostics'),
         patch(f'{_CORE}_impact.core_call_heat', return_value=0.0) as heat,
     ):
-        _, output = runner.run_solver({'Time': 300.0}, interior_o, {'output': str(tmp_path)})
+        _, output = runner.run_solver(
+            {
+                'boundary_layer_thickness': 0.01,
+                'boundary_layer_conductivity': 2.0,
+                'Time': 300.0,
+            },
+            interior_o,
+            {'output': str(tmp_path)},
+        )
         assert output['step_dE_impact_core_J'] == pytest.approx(1.79e30)
         assert output['step_dE_impact_core_refit_J'] == pytest.approx(5.2e29)
         assert (interior_o._core_impact_booked, interior_o._core_t_end) == (None, 4500.0)
         assert heat.call_args.kwargs == {'lift': pytest.approx(1.79e30 + 5.2e29)}
-        _, output = runner.run_solver({'Time': 375.0}, interior_o, {'output': str(tmp_path)})
+        _, output = runner.run_solver(
+            {
+                'boundary_layer_thickness': 0.01,
+                'boundary_layer_conductivity': 2.0,
+                'Time': 375.0,
+            },
+            interior_o,
+            {'output': str(tmp_path)},
+        )
     assert output['step_dE_impact_core_J'] == pytest.approx(0.0)
     assert heat.call_args.kwargs == {'lift': 0.0}
 
@@ -5021,7 +5074,12 @@ def test_the_radiogenic_heat_is_sampled_at_the_end_of_the_step(tmp_path):
     runner._solve_with_retry = lambda hf_row, interior_o, S0: _solver_output(500.0)
     runner._store_profiles = lambda interior_o, out: None
     interior_o = SimpleNamespace(aragog_solver=solver, dt=20.0, tides=np.zeros(3))
-    hf_row = {'Time': 1000.0, 'F_atm': 1.0e5}
+    hf_row = {
+        'boundary_layer_thickness': 0.01,
+        'boundary_layer_conductivity': 2.0,
+        'Time': 1000.0,
+        'F_atm': 1.0e5,
+    }
 
     with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
         sim_time, output = runner.run_solver(
@@ -5595,3 +5653,33 @@ def test_aragog_runner_resume_top_cell_dt_limit_off_no_recompute():
 
     assert mock_dt.call_count == 1
     assert populated_solver.parameters.solver.end_time == pytest.approx(3202.5, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_run_solver_builds_the_row_with_the_skin_thickness_in_effect(tmp_path):
+    """``run_solver`` builds the helpfile output with the boundary_layer_thickness the
+    skin step left in the row (5.9 m), whatever the configured surface_d says."""
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    (tmp_path / 'data').mkdir()
+    runner = AragogRunner.__new__(AragogRunner)
+    runner._use_jax = False
+    runner._config = MagicMock()
+    runner._config.interior_energetics.aragog.core_bc = 'bower2018'
+    runner._config.interior_energetics.write_flux_diagnostics = False
+    runner._config.atmos_clim.surface_d = 0.01  # m, not what the row holds
+    out = _snapshot_output()
+    out.dt_actual = 80.0
+    runner._solve_with_retry = lambda hf_row, interior_o, S0_entry: out
+    captured = {}
+    runner._build_helpfile_output = lambda *a, **k: captured.update(k) or {}
+    interior_o = SimpleNamespace(aragog_solver=_StateSolver(4100.0))
+    hf_row = {'Time': 202.0, 'T_surf': 3000.0}
+    hf_row.update(boundary_layer_thickness=5.9, boundary_layer_conductivity=2.89)
+
+    runner.run_solver(hf_row, interior_o, {'output': str(tmp_path)}, write_data=False)
+
+    assert captured['surface_d'] == pytest.approx(5.9, rel=1e-12)
+    assert abs(captured['surface_d'] - 0.01) > 1.0  # not the config value

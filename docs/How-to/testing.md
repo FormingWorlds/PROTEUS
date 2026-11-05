@@ -84,6 +84,7 @@ from proteus.utils.helper import my_function
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+
 def test_my_function_returns_expected_value():
     """Verify my_function computes the correct result for standard input."""
     result = my_function(input_value=10)
@@ -109,6 +110,7 @@ Unit tests mock external calls (SOCRATES, AGNI, SPIDER, file I/O):
 
 ```python
 from unittest.mock import patch, MagicMock
+
 
 @pytest.mark.unit
 def test_run_atmosphere_dispatches_to_agni():

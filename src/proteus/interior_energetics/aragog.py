@@ -2248,7 +2248,7 @@ class AragogRunner:
                 out,
                 hf_row,
                 interior_o=interior_o,
-                surface_d=self._config.atmos_clim.surface_d,
+                surface_d=hf_row['boundary_layer_thickness'],
                 surface_bc_mode=self._config.interior_energetics.surface_bc_mode,
                 t_end=sim_time,
             )

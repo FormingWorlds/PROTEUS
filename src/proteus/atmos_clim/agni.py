@@ -18,6 +18,9 @@ from proteus.atmos_clim.common import (
     require_spfile_path,
 )
 from proteus.atmos_clim.spectral_cache import cache_key, seed_from_cache, store_in_cache
+from proteus.atmos_clim.surface_skin import (
+    agni_sol_type,
+)
 from proteus.data import (
     REFRACTIVE,
     SCATTERING,
@@ -799,9 +802,6 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
         check_integrity=False,  # don't check thermo files every time
         # convection
         mlt_criterion=convert(jl.Char, config.atmos_clim.agni.mlt_criterion),
-        # surface CBL
-        skin_d=config.atmos_clim.surface_d,
-        skin_k=config.atmos_clim.surface_k,
         # temperatures
         tmp_magma=hf_row['T_surf'],
         tmp_floor=config.atmos_clim.tmp_minimum,
@@ -826,6 +826,11 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
         transspec_ref_wl=config.atmos_clim.agni.wl_obs,
     )
     setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
+
+    # Surface CBL; setup! refuses a zero skin, so a fixed surface keeps AGNI's defaults
+    if hf_row['boundary_layer_thickness'] > 0:
+        setup_kwargs['skin_d'] = float(hf_row['boundary_layer_thickness'])
+        setup_kwargs['skin_k'] = float(hf_row['boundary_layer_conductivity'])
 
     succ = jl.AGNI.atmosphere.setup_b(
         atmos,
@@ -1163,6 +1168,10 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     atmos.tmp_surf = float(hf_row['T_surf'])
     atmos.tmp_magma = float(hf_row['T_magma'])
 
+    # Surface CBL
+    atmos.skin_d = float(hf_row['boundary_layer_thickness'])
+    atmos.skin_k = float(hf_row['boundary_layer_conductivity'])
+
     # ---------------------
     # Transparent mode?
     if hf_row['P_surf'] < config.atmos_clim.agni.psurf_thresh:
@@ -1215,7 +1224,9 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     return atmos
 
 
-def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
+def _solve_energy(
+    atmos, loops_total: int, dirs: dict, config: Config, sol_type: int | None = None
+):
     """Use AGNI to solve for energy-conserving solution.
 
     Parameters
@@ -1228,6 +1239,9 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
             Dictionary containing paths to directories
         config : Config
             Configuration options and other variables
+        sol_type : int or None
+            AGNI surface boundary condition for this iteration; None uses the
+            configured `surf_state`.
 
     Returns
     ----------
@@ -1242,6 +1256,9 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
     modplot = 0
     if config.params.out.logging == 'DEBUG':
         modplot = 1
+
+    if sol_type is None:
+        sol_type = config.atmos_clim.surf_state_int
 
     # tracking
     agni_success = False  # success?
@@ -1311,7 +1328,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
         try:
             agni_success = jl.AGNI.solver.solve_energy_b(
                 atmos,
-                sol_type=int(config.atmos_clim.surf_state_int),
+                sol_type=int(sol_type),
                 method=int(1),
                 chem=chemistry,
                 conduct=config.atmos_clim.agni.conduction,
@@ -1448,7 +1465,7 @@ def _solve_once(atmos, config: Config):
     return atmos
 
 
-def _solve_transparent(atmos, config: Config):
+def _solve_transparent(atmos, config: Config, sol_type: int | None = None):
     """
     Use AGNI to solve for the surface temperature under a transparent atmosphere
 
@@ -1458,6 +1475,9 @@ def _solve_transparent(atmos, config: Config):
             Atmosphere struct
         config : Config
             PROTEUS config object
+        sol_type : int or None
+            AGNI surface boundary condition for this iteration; None uses the
+            configured `surf_state`.
 
     Returns
     ----------
@@ -1468,10 +1488,12 @@ def _solve_transparent(atmos, config: Config):
     atol = float(config.atmos_clim.agni.solution_atol)
     rtol = float(config.atmos_clim.agni.solution_rtol)
     max_steps = 120
+    if sol_type is None:
+        sol_type = config.atmos_clim.surf_state_int
 
     jl.AGNI.solver.solve_transparent_b(
         atmos,
-        sol_type=int(config.atmos_clim.surf_state_int),
+        sol_type=int(sol_type),
         conv_atol=atol,
         conv_rtol=rtol,
         max_steps=int(max_steps),
@@ -1537,12 +1559,15 @@ def run_agni(
     # True and override only in the energy branch.
     agni_converged = True
 
+    # Surface state for this iteration: a saturation skin is 'fixed' until a layer forms
+    sol_type = agni_sol_type(config, hf_row)
+
     # Transparent case
     if bool(atmos.transparent):
         log.info('Using transparent solver')
         atmos.transspec_ref_p = float(atmos.p_boa)
         photosphere_setby = 'prs'  # set photosphere as surface pressure
-        atmos = _solve_transparent(atmos, config)
+        atmos = _solve_transparent(atmos, config, sol_type=sol_type)
 
     # Opaque case
     else:
@@ -1556,7 +1581,9 @@ def run_agni(
         # full solver
         if config.atmos_clim.agni.solve_energy:
             log.info('Using nonlinear solver to conserve fluxes')
-            atmos, agni_converged = _solve_energy(atmos, loops_total, dirs, config)
+            atmos, agni_converged = _solve_energy(
+                atmos, loops_total, dirs, config, sol_type=sol_type
+            )
 
         # simplified T(p)
         else:

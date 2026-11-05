@@ -216,7 +216,11 @@ for name in ('full', 'f03', 'f00'):
     t = tables[name]
     i = int(t.index[t['Time'] == 1000.0][0])
     print(f'--- {name}')
-    print(t.loc[[0, i - 1, i, i + 1, len(t) - 1], cols].to_string(float_format=lambda v: f'{v:.6g}'))
+    print(
+        t.loc[[0, i - 1, i, i + 1, len(t) - 1], cols].to_string(
+            float_format=lambda v: f'{v:.6g}'
+        )
+    )
 ```
 
 On our run this printed:
@@ -284,8 +288,11 @@ At the impact the full and the $f = 0.3$ runs jump to 4000 K, the full run also 
 Compare `Phi_global` on the impact row of the runs with $f = 0.3$ and $f = 0$.
 
 ```python
-phi = {name: float(tables[name].loc[tables[name]['Time'] == 1000.0, 'Phi_global'].iloc[0]) for name in ('f03', 'f00')}
-print(f"Phi_global at the impact: f = 0.3 {phi['f03']:.6f}, f = 0 {phi['f00']:.6f}")
+phi = {
+    name: float(tables[name].loc[tables[name]['Time'] == 1000.0, 'Phi_global'].iloc[0])
+    for name in ('f03', 'f00')
+}
+print(f'Phi_global at the impact: f = 0.3 {phi["f03"]:.6f}, f = 0 {phi["f00"]:.6f}')
 ```
 
 On our run this printed:
@@ -322,7 +329,11 @@ The mantle evolves further until the impact at 1000 yr, so the table does not sh
 ```python
 t = tables['dummy_f03']
 i = int(t.index[t['Time'] == 1000.0][0])
-print(t.loc[[i - 1, i, i + 1], ['Time', 'f_remelt', 'T_magma', 'Phi_global']].to_string(float_format=lambda v: f'{v:.6g}'))
+print(
+    t.loc[[i - 1, i, i + 1], ['Time', 'f_remelt', 'T_magma', 'Phi_global']].to_string(
+        float_format=lambda v: f'{v:.6g}'
+    )
+)
 ```
 
 On our run this printed:

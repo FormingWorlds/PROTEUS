@@ -1009,3 +1009,29 @@ def test_interior_t_single_layer_dummy_interior():
     assert len(interior.tides) == 1
     assert len(interior.phi) == 1
     assert len(interior.radius) == 2  # One more radius point than layers
+
+
+@pytest.mark.unit
+def test_run_dummy_int_leaves_the_skin_thickness_to_the_skin_step():
+    """The dummy interior writes no boundary_layer_thickness, so the skin step that
+    runs after outgassing is the only writer of the skin columns; this holds for a
+    numeric and for a saturation skin."""
+    hf_row = {
+        'F_atm': 100.0,
+        'R_int': 6e6,
+        'M_core': 2e24,
+        'P_surf': 1e5,
+        'Time': 0.0,
+        'T_magma': 0.0,
+        'boundary_layer_thickness': 5.9,  # m
+        'boundary_layer_conductivity': 2.89,  # W m-1 K-1
+    }
+    for surface_d in ('saturation', 0.01):
+        config = _create_mock_config(tsurf_init=3000.0)
+        config.atmos_clim.surface_d = surface_d
+        interior_o = Interior_t(nlev_b=2)
+        interior_o.ic = 1
+        interior_o.tides = [0.0]
+        _, output = run_dummy_int(config, {}, dict(hf_row), pd.DataFrame(), interior_o)
+        assert 'boundary_layer_thickness' not in output
+        assert output['T_magma'] == pytest.approx(3000.0)

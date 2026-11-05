@@ -1280,9 +1280,18 @@ def RunSPIDER(
         )
 
 
-def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t):
+def ReadSPIDER(
+    dirs: dict,
+    config: Config,
+    R_int: float,
+    interior_o: Interior_t,
+    surface_d: float | None = None,
+):
     """
     Read variables from last SPIDER output JSON file into a dictionary
+
+    `surface_d` is the conductive skin thickness in effect [m], recorded as
+    `boundary_layer_thickness`; None takes the configured value.
     """
 
     # Store variables in this dict
@@ -1456,8 +1465,10 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     # interior_energetics.wrapper.run_interior so all backends share one
     # limiter path.
 
-    # Boundary layer thickness (constant value from config)
-    output['boundary_layer_thickness'] = config.atmos_clim.surface_d
+    # Boundary layer thickness: the conductive skin in effect
+    if surface_d is None:
+        surface_d = config.atmos_clim.surface_d
+    output['boundary_layer_thickness'] = surface_d
 
     # Check NaNs
     if np.isnan(output['T_magma']):

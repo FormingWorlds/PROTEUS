@@ -173,18 +173,43 @@ vap_element_list = ['Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K', 'V']
 # Construct element list from all three sources (with duplicates removed)
 element_list = list(dict.fromkeys(vol_element_list + vap_element_list + noble_gases))
 
-# Condensates the atmodeller outgassing module includes, by Hill formula:
-# graphite, sulfur, water, and sulfuric acid. These are all the condensates
-# atmodeller provides that are built only from the volatile elements above;
-# tests/outgas/test_atmodeller.py checks the list against atmodeller's data.
-condensate_list = ['C', 'S', 'H2O', 'H2O4S']
+# Condensates the atmodeller outgassing module includes, by Hill formula
 condensate_names = {'C': 'Graphite', 'S': 'Sulfur', 'H2O': 'Water', 'H2O4S': 'Sulfuric acid'}
 
-# Approximate condensate densities [kg m-3] near ambient conditions, used only
-# to estimate the thickness of a condensed layer; no T or P dependence and no
-# porosity. Graphite ~2260, crystalline sulfur ~2070, liquid water ~1000,
-# liquid sulfuric acid ~1830.
-condensate_density = {'C': 2260.0, 'S': 2070.0, 'H2O': 1000.0, 'H2O4S': 1830.0}
+# Condensate densities [kg m-3]
+condensate_density = {
+    # https://material-properties.org/graphite-density-strength-hardness-melting-point/
+    'C': 2260.0,
+    # https://en.wikipedia.org/wiki/Sulfur?useskin=vector
+    'S': 2070.0,
+    # STP density of water [kg m-3]
+    'H2O': 1000.0,
+    # https://www.engineeringtoolbox.com/indsulfuric-acid-density-d_2163.html
+    'H2O4S': 1792.2,
+}
+
+# Condensate thermal conductivities [W m-1 K-1]
+condensate_conductivity = {
+    # polycrystalline graphite, https://www.eastcarb.com/graphite-thermal-conductivity/
+    'C': 100.0,
+    # https://material-properties.org/Sulfur-thermal-properties-melting-point-thermal-conductivity-expansion/
+    'S': 0.269,
+    # https://www.engineeringtoolbox.com/thermal-conductivity-liquids-d_1260.html
+    'H2O': 0.609,
+    'H2O4S': 0.3,
+}
+
+# Activity at and above which a condensate counts as saturated (stable) [1]
+CONDENSATE_SATURATED_ACTIVITY = 0.999
+
+# Condensed mass above which a condensate carries a real layer [kg]. Below saturation the
+# solver reports only a floor of order 1e-6 kg; a larger mass at lower activity is a layer
+# held by outgas.prevent_desaturation.
+CONDENSATE_HELD_MASS_KG = 1.0
+
+# Thermal resistance of the condensed stack below which it is negligible and the surface
+# stays fixed [m2 K W-1]; the skin then lowers T_surf by F * 1e-5 K, about 1 K at 1e5 W m-2.
+SKIN_RESISTANCE_MIN = 1.0e-5
 
 # Molar masses of elements [kg mol-1], from https://iupac.qmul.ac.uk/AtWt/
 element_mmw = {

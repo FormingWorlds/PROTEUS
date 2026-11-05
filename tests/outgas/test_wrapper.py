@@ -706,10 +706,10 @@ def _condensate_config(prevent: bool):
 
 def _graphite_row(total: float = 1.0e20, layer: float = 4.0e19) -> dict:
     """A row whose carbon holds a graphite layer from earlier steps."""
-    from proteus.utils.constants import condensate_list, vol_element_list
+    from proteus.utils.constants import condensate_density, vol_element_list
 
     hf_row = {f'{e}_kg_{r}': 0.0 for e in vol_element_list for r in ('total', 'condensed')}
-    hf_row.update({f'{c}_cd_kg': 0.0 for c in condensate_list})
+    hf_row.update({f'{c}_cd_kg': 0.0 for c in condensate_density})
     hf_row.update(C_kg_total=total, C_kg_condensed=layer, C_cd_kg=layer)
     return hf_row
 

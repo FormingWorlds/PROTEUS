@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.atmos_clim.common import clip_radius_to_hill
+from proteus.atmos_clim.surface_skin import effective_surf_state
 from proteus.utils.constants import const_R, const_sigma, gas_list
 from proteus.utils.helper import UpdateStatusfile
 
@@ -64,8 +65,9 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     albedo_pl = float(hf_row['albedo_pl'])
     inst_sf = config.orbit.s0_factor
     albedo_s = config.atmos_clim.surf_greyalbedo
-    skin_d = config.atmos_clim.surface_d
-    skin_k = config.atmos_clim.surface_k
+    skin_d = float(hf_row['boundary_layer_thickness'])
+    skin_k = float(hf_row['boundary_layer_conductivity'])
+    surf_state = effective_surf_state(config, hf_row)
 
     # Copy variables
     T_magma = float(hf_row['T_magma'])
@@ -88,7 +90,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
         return {'fl_U_LW': fl_U_LW, 'fl_D_SW': fl_D_SW, 'fl_U_SW': fl_U_SW, 'fl_N': fl_N}
 
     # fixed T_Surf
-    if config.atmos_clim.surf_state == 'fixed':
+    if surf_state == 'fixed':
         log.info('Calculating fluxes with dummy atmosphere')
         if config.interior_energetics.module == 'boundary':
             T_surf_atm = hf_row['T_surf']
@@ -97,7 +99,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
         fluxes = _calc_fluxes(T_surf_atm)
 
     # conductive lid
-    elif config.atmos_clim.surf_state == 'skin':
+    elif surf_state == 'skin':
         log.info('Calculating fluxes with dummy atmosphere and CBL')
         from scipy.optimize import root_scalar
 

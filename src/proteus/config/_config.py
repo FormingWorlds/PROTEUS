@@ -447,6 +447,24 @@ def prevent_desaturation_warns_without_condensates(instance, attribute, value):
         )
 
 
+def saturation_skin_warns_without_condensates(instance, attribute, value):
+    """A skin from saturation stays fixed unless atmodeller forms condensates."""
+    if instance.atmos_clim.surface_d != 'saturation':
+        return
+    outgas = instance.outgas
+    if outgas.module != 'atmodeller':
+        log.warning(
+            "atmos_clim.surface_d = 'saturation' keeps the surface fixed with "
+            'outgas.module = "%s": only atmodeller forms condensates',
+            outgas.module,
+        )
+    elif not outgas.atmodeller.include_condensates:
+        log.warning(
+            "atmos_clim.surface_d = 'saturation' keeps the surface fixed with "
+            'outgas.atmodeller.include_condensates = false'
+        )
+
+
 def lowt_extension_requires_aragog(instance, attribute, value):
     """The low-temperature solid extension is run only with the Aragog interior."""
     zalmoxis = getattr(instance.interior_struct, 'zalmoxis', None)
@@ -834,7 +852,9 @@ class Config:
             prevent_desaturation_warns_without_condensates,
         ),
     )
-    atmos_clim: AtmosClim = field(factory=AtmosClim)
+    atmos_clim: AtmosClim = field(
+        factory=AtmosClim, validator=(saturation_skin_warns_without_condensates,)
+    )
     atmos_chem: AtmosChem = field(factory=AtmosChem)
     escape: Escape = field(
         factory=Escape,

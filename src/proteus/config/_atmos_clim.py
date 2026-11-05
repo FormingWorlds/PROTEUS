@@ -68,6 +68,35 @@ def valid_p_obs(instance, attribute, value):
         raise ValueError('`p_obs` must be > 0')
 
 
+def valid_surface_skin(instance, attribute, value):
+    """surface_d and surface_k are each a positive number, or both 'saturation'.
+
+    'saturation' derives the skin from the saturated condensate layers and needs
+    `surf_state = 'skin'`, which then falls back to 'fixed' while no layer has formed.
+    """
+    name = attribute.name
+    if value == 'saturation':
+        other = 'surface_k' if name == 'surface_d' else 'surface_d'
+        if getattr(instance, other) != 'saturation':
+            raise ValueError(f"`{name}='saturation'` requires `{other}='saturation'`")
+        if instance.surf_state != 'skin':
+            raise ValueError(f"`{name}='saturation'` requires `surf_state='skin'`")
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0:
+        raise ValueError(f"`{name}` must be a positive number or 'saturation', got {value!r}")
+
+
+def surf_state_to_int(surf_state: str) -> int:
+    """Return the AGNI integer surface boundary condition for a surface state."""
+    match surf_state:
+        case 'fixed':
+            return 1
+        case 'skin':
+            return 2
+        case _:
+            raise ValueError(f"Invalid surf_state for AGNI: '{surf_state}'")
+
+
 def check_overlap(instance, attribute, value):
     _overlaps = ('ro', 'ee', 'rorr')
     if value not in _overlaps:
@@ -426,10 +455,15 @@ class AtmosClim:
         `agni.wl_obs`); AGNI only.
     overlap_method: str
         Gas overlap method. Choices: 'ro', 'rorr', 'ee'.
-    surface_d: float
-        Conductive skin thickness [m].
-    surface_k: float
-        Conductive skin thermal conductivity [W m-1 K-1].
+    surface_d: float | str
+        Conductive skin thickness [m], or 'saturation' (together with `surface_k`)
+        to use the total thickness of the saturated condensate layers, such as
+        graphite, that float on the surface. 'saturation' needs `surf_state='skin'`;
+        while the layers are negligible the surface is fixed (T_surf = T_magma).
+    surface_k: float | str
+        Conductive skin thermal conductivity [W m-1 K-1], or 'saturation' to combine
+        the conductivities of the stacked condensate layers in series,
+        k = d / sum(d_i / k_i).
     aerosols_enabled: bool
         Enable aerosol radiative effects.
     cloud_enabled: bool
@@ -473,8 +507,8 @@ class AtmosClim:
 
     # Radiative and surface properties
     surf_state: str = field(default='skin', validator=(in_(('mixed_layer', 'fixed', 'skin')),))
-    surface_d: float = field(default=0.01, validator=gt(0))
-    surface_k: float = field(default=2.0, validator=gt(0))
+    surface_d = field(default=0.01, validator=valid_surface_skin)
+    surface_k = field(default=2.0, validator=valid_surface_skin)
     aerosols_enabled: bool = field(default=False, validator=valid_aerosols_enabled)
     cloud_enabled: bool = field(default=False, validator=warn_if_dummy)
     cloud_alpha: float = field(default=0.0, validator=(ge(0), le(1)))
@@ -486,13 +520,7 @@ class AtmosClim:
     @property
     def surf_state_int(self) -> int:
         """Return integer surface boundary condition for agni."""
-        match self.surf_state:
-            case 'fixed':
-                return 1
-            case 'skin':
-                return 2
-            case _:
-                raise ValueError(f"Invalid surf_state for AGNI: '{self.surf_state}'")
+        return surf_state_to_int(self.surf_state)
 
 
 # Thematic grouping for the generated configuration reference. Each entry is
