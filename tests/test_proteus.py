@@ -5148,3 +5148,37 @@ def test_proteus_start_gives_modules_a_temp_dir_and_removes_it(tmp_path, monkeyp
     assert Path(seen['temp']).parent == system_tmp
     assert seen['is_dir']
     assert os.listdir(system_tmp) == []
+
+
+def test_a_temp_dir_that_cannot_be_removed_is_reported_not_raised(
+    tmp_path, monkeypatch, caplog
+):
+    """A failed removal logs a warning naming the folder and keeps the run's result.
+
+    The run itself succeeded, so a busy or vanished folder must not turn it into
+    a failure.
+    """
+    from proteus.proteus import _run_temp_dir
+
+    _system_tmp(tmp_path, monkeypatch)
+    runner = _TempDirRunner(tmp_path / 'out')
+    seen = {}
+
+    def _refuse(path):
+        raise OSError(16, 'Device or resource busy', path)
+
+    monkeypatch.setattr('proteus.proteus.shutil.rmtree', _refuse)
+
+    @_run_temp_dir
+    def start(self):
+        seen['temp'] = self.directories['temp'].rstrip('/')
+        return 'done'
+
+    with caplog.at_level(logging.WARNING, logger='fwl'):
+        assert start(runner) == 'done'
+
+    assert f'Could not remove temporary folder {seen["temp"]}' in caplog.text
+    assert 'Device or resource busy' in caplog.text
+    # The warning about removing files of a failed run is not given here
+    assert "'DEBUG'" not in caplog.text
+    assert 'temp' not in runner.directories

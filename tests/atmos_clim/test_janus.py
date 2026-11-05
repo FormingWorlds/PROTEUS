@@ -45,6 +45,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from proteus.atmos_clim import janus as janus_mod
@@ -742,3 +743,123 @@ def test_run_janus_removes_its_socrates_folder_and_restores_cwd(
     assert Path(seen['cwd']).parent == run_temp.resolve()
     assert os.getcwd() == cwd_before
     assert os.listdir(run_temp) == []
+
+
+def _run_janus_hf_row(time):
+    """Helpfile row with the fields RunJANUS reads, for an Earth-sized planet."""
+    return {'Time': time, 'R_int': 6.371e6, 'gravity': 9.81, 'p_xuv': 1e-3, 'T_surf': 1400.0}
+
+
+def _patch_run_janus_helpers(monkeypatch):
+    """Mock the state push and the observed-level lookup, covered by their own tests."""
+    monkeypatch.setattr(janus_mod, 'UpdateStateAtm', lambda *a, **kw: None)
+    monkeypatch.setattr(
+        janus_mod, 'get_oarr_from_parr', lambda p_arr, o_arr, val: (0, o_arr[-1])
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('prevent_warming', 't_surf_max'),
+    [(False, -1.0), (True, 1850.0)],
+    ids=['interior-may-warm', 'interior-warming-capped'],
+)
+def test_run_janus_conductive_lid_starts_from_the_previous_step(
+    monkeypatch, tmp_path, prevent_warming, t_surf_max
+):
+    """After the first step the conductive-lid solve starts from the previous T_surf.
+
+    The root-finding tolerance is rtol * |F_atm| + 1e-5 W m-2 from the previous
+    row, the initial guess is 1 K below the previous T_surf, and with
+    prevent_warming the previous T_surf caps the solution so the interior does
+    not heat up.
+    """
+    seen = {}
+
+    def _mcpa_cbl(*a, **kw):
+        seen.update(kw)
+        return _build_run_atm(g_surf=9.81, z_obs_height=5.0e4, stale_grav=9.81)
+
+    monkeypatch.setattr('janus.modules.MCPA_CBL', _mcpa_cbl)
+    _patch_run_janus_helpers(monkeypatch)
+    config = _build_run_config()
+    config.atmos_clim.surf_state = 'skin'
+    config.planet.prevent_warming = prevent_warming
+    # A cooling planet: negative net flux, so a missing abs() gives a negative tolerance
+    hf_all = pd.DataFrame({'T_surf': [1900.0, 1850.0], 'F_atm': [-300.0, -250.0]})
+
+    RunJANUS(
+        SimpleNamespace(),
+        {'output': str(tmp_path)},
+        config,
+        _run_janus_hf_row(1e3),
+        hf_all,
+        write_in_tmp_dir=False,
+    )
+
+    assert seen['atol'] == pytest.approx(1e-4 * 250.0 + 1e-5, rel=1e-12)
+    assert seen['atol'] > 0
+    # Discrimination: the first-step tolerance of 0.1 W m-2 is 4x larger
+    assert seen['atol'] != pytest.approx(0.1, rel=0.5)
+    assert seen['T_surf_guess'] == pytest.approx(1849.0, rel=1e-12)
+    assert seen['T_surf_max'] == pytest.approx(t_surf_max, rel=1e-12)
+    # The cap, when set, is the last row's T_surf and not an earlier one
+    assert seen['T_surf_max'] != pytest.approx(1900.0, rel=1e-6)
+
+
+@pytest.mark.unit
+def test_run_janus_refuses_an_unknown_surface_state_and_cleans_up(monkeypatch, tmp_path):
+    """A surface state JANUS cannot solve writes status 20 and raises.
+
+    The SOCRATES folder is removed and the working directory restored even so.
+    """
+    run_temp = tmp_path / 'run_temp'
+    run_temp.mkdir()
+    _patch_run_janus_helpers(monkeypatch)
+    status = []
+    monkeypatch.setattr(janus_mod, 'UpdateStatusfile', lambda dirs, code: status.append(code))
+    config = _build_run_config()
+    config.atmos_clim.surf_state = 'mixed_layer'
+    dirs = {'output': str(tmp_path / 'out'), 'temp': str(run_temp)}
+    cwd_before = os.getcwd()
+
+    with pytest.raises(Exception, match='Invalid surface state'):
+        RunJANUS(SimpleNamespace(), dirs, config, _run_janus_hf_row(1e3), None)
+
+    assert status == [20]
+    assert os.getcwd() == cwd_before
+    assert os.listdir(run_temp) == []
+
+
+@pytest.mark.unit
+def test_run_janus_in_the_output_folder_removes_only_socrates_files(monkeypatch, tmp_path):
+    """Without a temporary folder JANUS runs in the output folder and removes only
+    the SOCRATES work files (current??.???? and profile.*) afterwards."""
+    keep = ['current.nc', 'currentsw.fluxes', '100_atm.nc', 'runtime.sf']
+    socrates = ['currentsw.uflx', 'currentlw.dflx', 'profile.tstar', 'profile.t']
+    for name in keep:
+        (tmp_path / name).write_text('keep')
+
+    seen = {}
+
+    def _solver(*a, **kw):
+        seen['cwd'] = os.getcwd()
+        for name in socrates:
+            open(name, 'w').close()
+        return _build_run_atm(g_surf=9.81, z_obs_height=5.0e4, stale_grav=9.81)
+
+    monkeypatch.setattr('janus.modules.MCPA', _solver)
+    _patch_run_janus_helpers(monkeypatch)
+
+    RunJANUS(
+        SimpleNamespace(),
+        {'output': str(tmp_path)},
+        _build_run_config(),
+        _run_janus_hf_row(1e3),
+        None,
+        write_in_tmp_dir=False,
+    )
+
+    assert Path(seen['cwd']) == tmp_path.resolve()
+    assert sorted(os.listdir(tmp_path)) == sorted(keep)
