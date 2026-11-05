@@ -199,3 +199,49 @@ def test_the_solver_boundary_takes_the_held_surface_and_its_cap(obc, mush, held)
     assert bc.lid_surface_flux_cap == (pytest.approx(2000.0) if held else None)
     _set_lid_surface(bc, _row(0.0, T_surf=900.0))
     assert bc.lid_surface_flux_cap is None
+
+
+def _resumed_row(tmp_path, drop, **cols):
+    """Last row of a stored helpfile without ``drop``, read as a resumed run reads it."""
+    import pandas as pd
+
+    from proteus.utils.coupler import ReadHelpfileFromCSV, ZeroHelpfileRow
+
+    row = ZeroHelpfileRow()
+    row.update(T_surf=900.0, T_magma=1450.0, F_atm=42.0, boundary_layer_thickness=0.01)
+    row.update(boundary_layer_conductivity=2.0, **cols)
+    for key in drop:
+        del row[key]
+    pd.DataFrame([row, row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+    return ReadHelpfileFromCSV(str(tmp_path)).iloc[-1].to_dict()
+
+
+def test_a_run_stored_without_the_lid_columns_resumes_as_no_lid(tmp_path):
+    """The resumed row of a helpfile without the lid columns acts as a surface without a lid."""
+    from proteus.utils.coupler import GetHelpfileKeys
+
+    lid_keys = [k for k in GetHelpfileKeys() if k.startswith('lid_')]
+    assert len(lid_keys) == 7
+    hf = _resumed_row(tmp_path, lid_keys)
+    assert all(hf[k] == 0.0 for k in lid_keys)
+    assert lid_boundary(hf) == (0.01, 2.0, 1450.0)
+    assert lid_open_flux(hf) == 42.0
+    assert lid_flux_cap(hf) is None
+    bc = SimpleNamespace(outer_boundary_condition=4, lid_mush_base=True)
+    _set_lid_surface(bc, hf)
+    assert (bc.lid_surface_temperature, bc.lid_surface_flux_cap) == (900.0, None)
+
+
+def test_a_lid_resumed_without_the_skin_conductivity_is_refused_with_its_cause(tmp_path):
+    """A stored lid row without boundary_layer_conductivity resumes with k = 0; the cap refuses it."""
+    hf = _resumed_row(
+        tmp_path,
+        ['boundary_layer_conductivity'],
+        lid_weight=1.0,
+        lid_conductance=100.0,
+        lid_T_base=1400.0,
+    )
+    assert hf['boundary_layer_conductivity'] == 0.0
+    bc = SimpleNamespace(outer_boundary_condition=4, lid_mush_base=True)
+    with pytest.raises(ValueError, match='boundary_layer_conductivity'):
+        _set_lid_surface(bc, hf)

@@ -414,7 +414,10 @@ def _lid_skin_conductance(hf_row: dict) -> float:
         float(hf_row['boundary_layer_conductivity']),
     )
     if not (d > 0.0 and k > 0.0):
-        raise ValueError(f'a live Aragog lid needs a skin with a thickness and k, got {d}, {k}')
+        raise ValueError(
+            f'a live Aragog lid needs a skin with a thickness and k, got {d}, {k}; '
+            'a helpfile without boundary_layer_conductivity resumes with k = 0'
+        )
     return k / d
 
 
