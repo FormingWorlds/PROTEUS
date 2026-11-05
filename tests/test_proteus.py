@@ -745,7 +745,7 @@ def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(
     """Missing reference data raised at the start check or mid-run, here from the
     structure solve, leaves status 20, so the run does not read as still running: a
     Zalmoxis EOS table, a melting curve or a SPIDER P-S table, each from its real raise
-    site. Other errors leave the status as is."""
+    site, as does any other error."""
     from types import SimpleNamespace as NS
 
     import proteus.interior_energetics.spider as spider
@@ -792,7 +792,90 @@ def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(
         with pytest.raises(Exception, match='pair|x|not found'):
             p.start(resume=False, offline=True)
     status = (tmp_path / 'status').read_text().splitlines()[0]
-    assert status == ('0' if error == 'other' else '20')
+    assert status == '20'
+
+
+def _stop_with(exc, code_first=None):
+    """A start-up step that raises `exc`, after writing its own stop code if given."""
+
+    def step(dirs, *_args, **_kwargs):
+        if code_first is not None:
+            from proteus.utils.helper import UpdateStatusfile
+
+            UpdateStatusfile(dirs, code_first)
+        raise exc
+
+    return step
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'exc, code_first, expected',
+    [
+        (FileNotFoundError(2, 'cwd is gone'), None, '20'),
+        (OSError(28, 'No space left on device'), None, '20'),
+        (KeyboardInterrupt(), None, '25'),
+        (SystemExit(143), None, '25'),
+        (RuntimeError('AGNI deadlock'), 22, '22'),
+    ],
+    ids=['startup-error', 'disk-full', 'ctrl-c', 'system-exit', 'own-stop-code-kept'],
+)
+def test_a_run_stopped_after_the_output_is_cleaned_records_why(
+    tmp_path, exc, code_first, expected
+):
+    """A fresh run that stops between cleaning its output folder and the main loop leaves
+    a stop code, not a missing status file (#778): 20 for an error, 25 for an interrupt or
+    a requested exit, and the code the raise site wrote itself when it wrote one. The
+    output folder is cleaned for real, so a status written before the clean would be gone."""
+    p = _make_proteus_instance(tmp_path)
+    p.directories.update(
+        {k: str(tmp_path / k) for k in ('output/observe', 'output/offchem', 'output/plots')}
+    )
+    (tmp_path / 'status').write_text('13\nCompleted (target time)\n')
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.print_module_configuration',
+                side_effect=_stop_with(exc, code_first),
+            )
+        )
+        with pytest.raises(type(exc)):
+            p.start(resume=False, offline=True)
+    lines = (tmp_path / 'status').read_text().splitlines()
+    assert lines[0] == expected
+    assert lines[1].startswith('Error (')
+
+
+@pytest.mark.unit
+def test_a_fresh_run_reads_started_while_it_initialises(tmp_path):
+    """The status written at start-up survives the cleaning of the output folder, so a
+    run killed during initialisation (SIGKILL, out of memory), where no handler runs,
+    reads 0 (Started) rather than a stale code or no file at all."""
+    from proteus.utils.helper import ReadStatus
+
+    p = _make_proteus_instance(tmp_path)
+    p.directories.update(
+        {k: str(tmp_path / k) for k in ('output/observe', 'output/offchem', 'output/plots')}
+    )
+    (tmp_path / 'status').write_text('13\nCompleted (target time)\n')
+    seen = []
+
+    def _record(dirs, *_args, **_kwargs):
+        seen.append(ReadStatus(dirs['output']))
+        raise KeyboardInterrupt
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch('proteus.utils.coupler.print_module_configuration', side_effect=_record)
+        )
+        with pytest.raises(KeyboardInterrupt):
+            p.start(resume=False, offline=True)
+    assert seen == [0]
+    assert ReadStatus(tmp_path) == 25
 
 
 @pytest.mark.unit
@@ -1495,6 +1578,8 @@ def _resume_at_helpfile_load(p, *, read_effect=None):
     their call history after the patches are lifted, plus the exception the
     run ended on.
     """
+    from proteus.utils.helper import UpdateStatusfile
+
     with ExitStack() as stack:
         for target in _START_PATCHES:
             stack.enter_context(patch(target))
@@ -1514,7 +1599,9 @@ def _resume_at_helpfile_load(p, *, read_effect=None):
                 side_effect=_StopAfterHelpfileLoad,
             )
         )
-        mock_status = stack.enter_context(patch('proteus.proteus.UpdateStatusfile'))
+        mock_status = stack.enter_context(
+            patch('proteus.proteus.UpdateStatusfile', wraps=UpdateStatusfile)
+        )
 
         with pytest.raises(Exception) as excinfo:
             p.start(resume=True, offline=True)

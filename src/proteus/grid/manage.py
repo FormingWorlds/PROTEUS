@@ -38,7 +38,13 @@ from proteus.grid.dimensions import (
     direct_values_error,
 )
 from proteus.utils.coupler import get_output_root
-from proteus.utils.helper import get_proteus_dir, recursive_setattr
+from proteus.utils.helper import (
+    STATUS_MISSING,
+    ReadStatus,
+    UpdateStatusfile,
+    get_proteus_dir,
+    recursive_setattr,
+)
 from proteus.utils.logs import setup_logger
 
 PROTEUS_DIR = get_proteus_dir()
@@ -671,28 +677,15 @@ class Grid:
             step += 1
             # / end while loop
 
-        # Check all cases' status files
+        # A case that exited while its status reads running, or before writing one, died
         if not test_run:
             for i in range(self.size):
-                # find file
-                status_path = os.path.join(self.outdir, self.CONFIG_BASENAME % i, 'status')
-                if not os.path.exists(status_path):
-                    raise Exception("Cannot find status file at '%s'" % status_path)
-
-                # read file
-                with open(status_path, 'r') as hdl:
-                    lines = hdl.readlines()
-                this_stat = int(lines[0])
-
-                # if still marked as running, it must have died at some point
-                if 0 <= this_stat <= 9:
-                    log.warning(
-                        'Case %06d has status=running but it is not alive. Setting status=died.'
-                        % i
-                    )
-                    with open(status_path, 'w') as hdl:
-                        hdl.write('25\n')
-                        hdl.write('Error (died)\n')
+                case_dir = os.path.join(self.outdir, self.CONFIG_BASENAME % i)
+                code = ReadStatus(case_dir)
+                if code == STATUS_MISSING or 0 <= code <= 9:
+                    found = 'no status file' if code == STATUS_MISSING else f'status={code}'
+                    log.warning('Case %06d exited with %s. Setting status=died.', i, found)
+                    UpdateStatusfile({'output': case_dir}, 25)
 
         time_end = datetime.now()
         log.info('All processes finished at: ' + str(time_end.strftime('%Y-%m-%d_%H:%M:%S')))

@@ -29,6 +29,7 @@ import math
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import types
@@ -1888,6 +1889,7 @@ def test_get_git_revision_with_mock():
             assert isinstance(result, str)
             mock_check_output.assert_called_once_with(
                 ['git', 'rev-parse', 'HEAD'],
+                cwd=tmpdir,
                 stderr=subprocess.DEVNULL,
                 timeout=5,
             )
@@ -3549,10 +3551,9 @@ def test_assert_surface_pressure_consistency_skips_pre_ic():
 # ---------------------------------------------------------------------------
 
 
-def test_get_git_revision_returns_unknown_when_chdir_fails():
-    """When the target directory does not exist (or cannot be entered),
-    _get_git_revision must return the literal 'unknown' string and the
-    caller's CWD must be preserved.
+def test_get_git_revision_returns_unknown_when_dir_is_missing():
+    """When the target directory does not exist, _get_git_revision must
+    return the literal 'unknown' string and the caller's CWD must be preserved.
 
     Discriminating: assert the returned value is exactly 'unknown'
     (not None, not the empty string, not a partial git hash). A
@@ -3565,10 +3566,52 @@ def test_get_git_revision_returns_unknown_when_chdir_fails():
     result = _get_git_revision(bogus_dir)
     cwd_after = os.getcwd()
     assert result == 'unknown'
-    # Side-effect guard: the helper must not strand the caller in a
-    # different directory. A regression that returned before the
-    # finally-block chdir-back would leave cwd somewhere else.
+    # Side-effect guard: the helper must not strand the caller in a different directory.
     assert cwd_after == cwd_before
+
+
+def test_get_git_revision_works_when_the_working_directory_is_gone(tmp_path):
+    """A process whose working directory was removed (os.getcwd raises
+    FileNotFoundError) still gets the hash of a repository named by path.
+    This stopped a grid case at start-up before it wrote a status file (#778)."""
+    from proteus.utils.coupler import _get_git_revision
+
+    repo = tmp_path / 'repo'
+    repo.mkdir()
+    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+    env = {'GIT_AUTHOR_NAME': 't', 'GIT_AUTHOR_EMAIL': 't@t', 'GIT_COMMITTER_NAME': 't'}
+    env['GIT_COMMITTER_EMAIL'] = 't@t'
+    subprocess.run(
+        [
+            'git',
+            '-C',
+            str(repo),
+            '-c',
+            'commit.gpgsign=false',
+            'commit',
+            '-q',
+            '--allow-empty',
+            '-m',
+            'x',
+        ],
+        check=True,
+        env={**os.environ, **env},
+    )
+    head = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True)
+
+    gone = tmp_path / 'gone'
+    gone.mkdir()
+    cwd_before = os.getcwd()
+    os.chdir(gone)
+    gone.rmdir()
+    try:
+        with pytest.raises(FileNotFoundError):
+            os.getcwd()
+        result = _get_git_revision(str(repo))
+    finally:
+        os.chdir(cwd_before)
+    assert result == head.strip()
+    assert len(result) == 40
 
 
 def test_get_git_revision_returns_unknown_on_subprocess_failure():

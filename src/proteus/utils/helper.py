@@ -647,8 +647,7 @@ def UpdateStatusfile(dirs: dict, status: int):
         hdl.write('%s\n' % desc)
 
 
-# Status written by PROTEUS before its output folder is cleaned, and never
-# rewritten until the main loop starts.
+# Status of a run with no readable status file: it stopped before `Proteus.start`.
 STATUS_MISSING = -1
 
 
@@ -662,9 +661,8 @@ def ReadStatus(out_abs: Path | str) -> int:
     Returns
     ----------
     - int: The status code, or `STATUS_MISSING` when no readable status file
-      exists. A missing file is itself diagnostic: PROTEUS deletes the status
-      it writes at start-up when it cleans the output folder, and does not
-      write another until the main loop begins.
+      exists. A missing file is itself diagnostic: the run stopped before
+      `Proteus.start` wrote its first status, for example on a config error.
     """
     try:
         with open(Path(out_abs) / 'status', 'r') as f:
