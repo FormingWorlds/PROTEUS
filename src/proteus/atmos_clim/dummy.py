@@ -65,7 +65,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     albedo_pl = float(hf_row['albedo_pl'])
     inst_sf = config.orbit.s0_factor
     albedo_s = config.atmos_clim.surf_greyalbedo
-    skin_G, T_melt = lid_boundary(config, hf_row)
+    skin_d, skin_k, T_melt = lid_boundary(hf_row)
     surf_state = effective_surf_state(config, hf_row)
 
     # Copy variables
@@ -105,7 +105,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
         # We need to solve for the state where fl_N = f_skn
         # This function takes T_surf_atm as the input value, and returns fl_N - f_skn
         def _resid(x):
-            F_skn = skin_G * (T_melt - x)
+            F_skn = skin_k / skin_d * (T_melt - x)
             _f = _calc_fluxes(x)
             return _f['fl_N'] - F_skn
 

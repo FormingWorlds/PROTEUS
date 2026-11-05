@@ -432,7 +432,7 @@ def run_atmosphere(
     # Copy special cases
     hf_row['rho_obs'] = 3 * hf_row['M_planet'] / (4 * pi * hf_row['R_obs'] ** 3)
     hf_row['F_net'] = hf_row['F_int'] - hf_row['F_atm']
-    hf_row['lid_F_open'] = lid_open_flux(config, hf_row)
+    hf_row['lid_F_open'] = lid_open_flux(hf_row)
     hf_row['bond_albedo'] = atm_output['albedo']
 
     # Calculate bolometric observables (measured at infinite distance)

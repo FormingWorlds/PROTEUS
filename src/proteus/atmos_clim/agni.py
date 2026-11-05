@@ -1167,13 +1167,9 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     # Update surface temperature(s)
     _validate_surface_state(hf_row, dirs)
     atmos.tmp_surf = float(hf_row['T_surf'])
-    skin_G, T_melt = lid_boundary(config, hf_row)
-    atmos.tmp_magma = T_melt
-    atmos.skin_d = config.atmos_clim.surface_k / skin_G
 
     # Surface CBL
-    atmos.skin_d = float(hf_row['boundary_layer_thickness'])
-    atmos.skin_k = float(hf_row['boundary_layer_conductivity'])
+    atmos.skin_d, atmos.skin_k, atmos.tmp_magma = lid_boundary(hf_row)
 
     # ---------------------
     # Transparent mode?

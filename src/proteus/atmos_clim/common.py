@@ -389,43 +389,73 @@ def require_spfile_path(dirs: dict, config: Config) -> str:
     return path
 
 
-def lid_boundary(config: Config, hf_row: dict) -> tuple[float, float]:
-    """Conductance and temperature of the melt side for the surface balance of the atmosphere.
-
-    The lid and the open surface act in parallel on one surface temperature:
-    ``F = w G_lid (T_b - T) + (1 - w) G_skin (T_node - T) = G (T_melt - T)``.
+def _lid_skin_conductance(hf_row: dict) -> float:
+    """Conductance [W m-2 K-1] of the skin in the helpfile columns, positive under a lid.
 
     Parameters
     ----------
-    config : Config
-        Model configuration.
     hf_row : dict
-        Current helpfile row. A lid acts with ``lid_weight``, ``lid_conductance``,
-        ``lid_T_base`` and ``lid_T_node``.
+        Current helpfile row, with ``boundary_layer_thickness`` and
+        ``boundary_layer_conductivity``.
+
+    Returns
+    -------
+    float
+        ``k / d`` of the skin.
+
+    Raises
+    ------
+    ValueError
+        If the skin has no resistance: the parallel sum has no open path without a skin, as
+        with ``surface_d = 'saturation'`` and no condensate layer.
+    """
+    d, k = (
+        float(hf_row['boundary_layer_thickness']),
+        float(hf_row['boundary_layer_conductivity']),
+    )
+    if not (d > 0.0 and k > 0.0):
+        raise ValueError(f'a live Aragog lid needs a skin with a thickness and k, got {d}, {k}')
+    return k / d
+
+
+def lid_boundary(hf_row: dict) -> tuple[float, float, float]:
+    """Skin and melt temperature for the surface balance of the atmosphere.
+
+    The lid and the open surface act in parallel on one surface temperature:
+    ``F = w G_lid (T_b - T) + (1 - w) G_skin (T_node - T) = k / d (T_melt - T)``. Without a lid
+    the columns and ``T_magma`` pass unchanged.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row, with the skin columns and ``T_magma``. A lid acts with
+        ``lid_weight``, ``lid_conductance``, ``lid_T_base`` and ``lid_T_node``.
 
     Returns
     -------
     tuple of float
-        ``G`` [W m-2 K-1] and ``T_melt`` [K]; the skin and ``T_magma`` without a lid.
+        Skin thickness ``d`` [m], skin conductivity ``k`` [W m-1 K-1] and ``T_melt`` [K].
     """
-    G_skin = config.atmos_clim.surface_k / config.atmos_clim.surface_d
+    d, k = (
+        float(hf_row['boundary_layer_thickness']),
+        float(hf_row['boundary_layer_conductivity']),
+    )
     w, G_lid = float(hf_row.get('lid_weight', 0.0)), float(hf_row.get('lid_conductance', 0.0))
     if not (w > 0.0 and G_lid > 0.0):
-        return G_skin, float(hf_row['T_magma'])
+        return d, k, float(hf_row['T_magma'])
+    G_skin = _lid_skin_conductance(hf_row)
     G = w * G_lid + (1.0 - w) * G_skin
     T_melt = w * G_lid * float(hf_row['lid_T_base']) + (1.0 - w) * G_skin * float(
         hf_row['lid_T_node']
     )
-    return G, T_melt / G
+    return k / G, k, T_melt / G
 
 
-def lid_open_flux(config: Config, hf_row: dict) -> float:
+def lid_open_flux(hf_row: dict) -> float:
     """Flux [W m-2] of the surface without a lid, the boundary value of the interior.
 
     Parameters
     ----------
-    config : Config
-        Model configuration.
     hf_row : dict
         Current helpfile row after the atmosphere step, with ``T_surf`` and ``F_atm``.
 
@@ -436,8 +466,9 @@ def lid_open_flux(config: Config, hf_row: dict) -> float:
     """
     if not (float(hf_row.get('lid_weight', 0.0)) > 0.0):
         return float(hf_row['F_atm'])
-    G_skin = config.atmos_clim.surface_k / config.atmos_clim.surface_d
-    return G_skin * (float(hf_row['lid_T_node']) - float(hf_row['T_surf']))
+    return _lid_skin_conductance(hf_row) * (
+        float(hf_row['lid_T_node']) - float(hf_row['T_surf'])
+    )
 
 
 def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:

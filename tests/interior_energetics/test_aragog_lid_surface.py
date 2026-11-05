@@ -69,39 +69,64 @@ def test_the_lid_takes_the_surface_of_the_atmosphere_only_in_flux_mode(row, mode
     assert _lid_surface_of_row(row, mode, on) == want
 
 
-def _cfg(k=2.0, d=0.01):
-    return SimpleNamespace(atmos_clim=SimpleNamespace(surface_k=k, surface_d=d))
-
-
 def _row(w, G=4.0, T_b=1400.0, T_node=1500.0, **kw):
     return dict(
-        lid_weight=w, lid_conductance=G, lid_T_base=T_b, lid_T_node=T_node, T_magma=1450.0, **kw
+        lid_weight=w,
+        lid_conductance=G,
+        lid_T_base=T_b,
+        lid_T_node=T_node,
+        T_magma=1450.0,
+        boundary_layer_thickness=kw.pop('d', 0.01),
+        boundary_layer_conductivity=kw.pop('k', 2.0),
+        **kw,
     )
 
 
 def test_boundary_is_the_skin_without_a_lid_and_a_parallel_sum_with_one():
-    cfg = _cfg()
-    assert lid_boundary(cfg, {'T_magma': 1450.0}) == (200.0, 1450.0)
-    assert lid_boundary(cfg, _row(0.0)) == (200.0, 1450.0)
-    assert lid_boundary(cfg, _row(1.0)) == (4.0, 1400.0)
-    G, T = lid_boundary(cfg, _row(0.5))
+    no_lid = {
+        'T_magma': 1450.0,
+        'boundary_layer_thickness': 0.01,
+        'boundary_layer_conductivity': 2.0,
+    }
+    assert lid_boundary(no_lid) == (0.01, 2.0, 1450.0)
+    assert lid_boundary(_row(0.0)) == (0.01, 2.0, 1450.0)
+    assert lid_boundary(_row(1.0)) == (2.0 / 4.0, 2.0, 1400.0)
+    d, k, T = lid_boundary(_row(0.5))
+    G = k / d
     assert G == pytest.approx(0.5 * 4.0 + 0.5 * 200.0, rel=1e-14)
     assert G * T == pytest.approx(0.5 * 4.0 * 1400.0 + 0.5 * 200.0 * 1500.0, rel=1e-14)
 
 
+def test_boundary_reads_the_skin_of_the_columns():
+    """A skin from the columns, as from condensate layers, sets the open branch."""
+    d, k, T = lid_boundary(_row(0.5, d=0.1, k=1.0))
+    assert k / d == pytest.approx(0.5 * 4.0 + 0.5 * 10.0, rel=1e-14)
+    assert (k / d) * T == pytest.approx(0.5 * 4.0 * 1400.0 + 0.5 * 10.0 * 1500.0, rel=1e-14)
+    assert lid_open_flux(_row(0.5, d=0.1, k=1.0, T_surf=900.0)) == pytest.approx(10.0 * 600.0)
+
+
+def test_a_zero_skin_passes_without_a_lid_and_is_refused_with_one():
+    """Without a lid the zero columns of a fixed surface pass unchanged; a live lid refuses."""
+    assert lid_boundary(_row(0.0, d=0.0, k=0.0)) == (0.0, 0.0, 1450.0)
+    assert lid_open_flux(_row(0.0, d=0.0, k=0.0, F_atm=42.0)) == 42.0
+    with pytest.raises(ValueError, match='needs a skin'):
+        lid_boundary(_row(0.5, d=0.0, k=0.0))
+    with pytest.raises(ValueError, match='needs a skin'):
+        lid_open_flux(_row(0.5, d=0.0, k=0.0, T_surf=900.0))
+
+
 def test_the_two_parts_sum_to_the_balance_of_the_atmosphere():
-    cfg = _cfg()
     row = _row(0.3, T_surf=900.0, F_atm=1.0)
-    G, T_melt = lid_boundary(cfg, row)
+    d, k, T_melt = lid_boundary(row)
     F_lid = 4.0 * (1400.0 - 900.0)
-    F_open = lid_open_flux(cfg, row)
+    F_open = lid_open_flux(row)
     assert F_open == pytest.approx(200.0 * (1500.0 - 900.0), rel=1e-14)
-    assert 0.3 * F_lid + 0.7 * F_open == pytest.approx(G * (T_melt - 900.0), rel=1e-12)
+    assert 0.3 * F_lid + 0.7 * F_open == pytest.approx(k / d * (T_melt - 900.0), rel=1e-12)
 
 
 def test_open_flux_without_a_lid_is_the_flux_of_the_atmosphere():
-    assert lid_open_flux(_cfg(), {'F_atm': 42.0}) == 42.0
-    assert lid_open_flux(_cfg(), _row(0.0, F_atm=42.0)) == 42.0
+    assert lid_open_flux({'F_atm': 42.0}) == 42.0
+    assert lid_open_flux(_row(0.0, F_atm=42.0)) == 42.0
 
 
 @pytest.mark.parametrize('w', [0.01, 0.2, 0.5, 0.9, 1.0])
@@ -112,12 +137,11 @@ def test_coupled_budget_of_a_step_closes_at_every_weight(w):
     state that does not change within the step, ``F_int`` equals ``F_atm``.
     """
     sigma, T_eq = 5.670374419e-8, 255.0
-    cfg = _cfg()
     row = _row(w, Time=100.0)
-    G, T_melt = lid_boundary(cfg, row)
-    T = brentq(lambda v: sigma * (v**4 - T_eq**4) - G * (T_melt - v), T_eq, T_melt)
+    d, k, T_melt = lid_boundary(row)
+    T = brentq(lambda v: sigma * (v**4 - T_eq**4) - k / d * (T_melt - v), T_eq, T_melt)
     row.update(T_surf=T, F_atm=sigma * (T**4 - T_eq**4))
-    loss = w * 4.0 * (1400.0 - T) + (1.0 - w) * lid_open_flux(cfg, row)
+    loss = w * 4.0 * (1400.0 - T) + (1.0 - w) * lid_open_flux(row)
     r, dt = 6.4e6, 10.0
     out = _out(w, dE=-loss * 4.0 * np.pi * r**2 * dt * YEAR, r=r)
     F_int = _surface_flux_of_step(out, row, 'flux', 100.0 + dt)
