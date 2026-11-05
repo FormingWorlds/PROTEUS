@@ -126,15 +126,15 @@ def test_dispatch_script_asks_for_the_cores_and_one_step_per_case(tmp_path):
 
 @pytest.mark.parametrize(
     ('days', 'lead'),
-    [(1.0, 300), (1 / 24, 300), (0.02, 172), (0.001, 8)],
+    [(1.0, 300), (1 / 24, 300), (0.02, 174), (0.001, 6)],
     ids=['day', 'hour', 'half-hour', 'shortest'],
 )
 def test_signal_comes_five_minutes_early_or_at_nine_tenths_of_a_short_job(tmp_path, days, lead):
     """The early SIGTERM is 300 s before the wall time, but at most a tenth of it: a
-    job of 0.02 days (1728 s) gets it 172 s early, not at its start."""
+    job of 0.02 days (29 min as written, 1740 s) gets it 174 s early, not at its start."""
     text = _script(tmp_path, n_cases=4, cores=2, jobs=2, command='x', days=days)
     assert f'#SBATCH --signal=TERM@{lead}\n' in text
-    assert lead <= 0.1 * days * 86400 + 1
+    assert lead <= 0.1 * round(days * 1440) * 60
 
 
 @pytest.mark.skipif(
@@ -213,3 +213,32 @@ def test_dispatch_script_runs_each_case_once_and_survives_failed_cases(tmp_path)
         7: '10',
         8: '10',
     }
+
+
+@pytest.mark.skipif(
+    not all(shutil.which(tool) for tool in ('bash', 'seq', 'xargs')),
+    reason='needs bash, seq and xargs',
+)
+def test_dispatch_script_starts_no_case_after_the_early_signal(tmp_path):
+    """A job with no time left before its early SIGTERM (a zero wall time) starts none
+    of its cases: they keep no status folder, as not started, and the job exits
+    non-zero."""
+    bindir = tmp_path / 'bin'
+    bindir.mkdir()
+    marker = tmp_path / 'started'
+    (bindir / 'srun').write_text(f'#!/bin/sh\ntouch "{marker}"\n')
+    os.chmod(bindir / 'srun', 0o755)
+    os.makedirs(tmp_path / 'my grid' / 'logs')
+    script = tmp_path / 'slurm_dispatch.sh'
+    script.write_text(_script(tmp_path, n_cases=3, cores=2, jobs=1, command='x', days=0.0))
+    env = dict(
+        os.environ,
+        PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}',
+        TMPDIR=str(tmp_path),
+        SLURM_ARRAY_TASK_ID='0',
+    )
+    done = subprocess.run(['bash', str(script)], env=env, capture_output=True, timeout=20)
+    assert done.returncode != 0
+    assert not marker.exists()
+    assert not any((tmp_path / 'my grid').glob('case_*'))
+    assert done.stdout.decode().count('not started') == 3

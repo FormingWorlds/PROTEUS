@@ -108,8 +108,9 @@ def dispatch_script(
     was killed before PROTEUS could write a final status (SIGKILL, out of memory, a
     crash in compiled code); the script then writes status 25. Slurm sends SIGTERM to
     the cases 5 minutes before the wall time, a tenth of it for short jobs, so they can
-    end with a status. The job is not requeued, since a requeued job would start its
-    finished cases again.
+    end with a status; from then on the job starts no further case, so those stay
+    without a status folder, as not started. The job is not requeued, since a
+    requeued job would start its finished cases again.
 
     Parameters
     ----------
@@ -134,7 +135,8 @@ def dispatch_script(
     env : str
         Shell lines run before the cases, such as exports.
     """
-    signal_s = min(300, round(days * 86400) // 10)
+    wall_s = round(days * 24 * 60) * 60  # as slurm_time writes it
+    signal_s = min(300, wall_s // 10)
     return f"""#!/bin/bash
 #SBATCH -J proteus.grid.array
 #SBATCH --export=ALL
@@ -148,9 +150,14 @@ def dispatch_script(
 #SBATCH --array=0-{jobs - 1}%{throttle}
 
 {env}export cfgs={shlex.quote(cfgdir)} logs={shlex.quote(logdir)} cases={shlex.quote(casedir or '')}
+export stop_at=$(( $(date +%s) + {wall_s - signal_s} ))
 
 # One case: $1 is its name, case_NNNNNN
 run_case='
+if [ "$(date +%s)" -ge "$stop_at" ]; then
+    echo "$1 not started: the job is within {signal_s} s of its walltime"
+    exit 1
+fi
 echo "running $1"
 TMPDIR="${{TMPDIR:-/tmp}}/$1"
 export TMPDIR
