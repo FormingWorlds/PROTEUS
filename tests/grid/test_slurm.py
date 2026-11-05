@@ -92,7 +92,7 @@ def test_max_array_size_falls_back_to_the_slurm_default(outcome):
     assert slurm.DEFAULT_MAX_ARRAY_SIZE == 1001
 
 
-def _script(tmp_path, n_cases, cores, jobs, command):
+def _script(tmp_path, n_cases, cores, jobs, command, days=1.0):
     return slurm.dispatch_script(
         cfgdir=str(tmp_path / 'my grid' / 'cfgs'),
         logdir=str(tmp_path / 'my grid' / 'logs'),
@@ -100,25 +100,41 @@ def _script(tmp_path, n_cases, cores, jobs, command):
         cores_per_job=cores,
         jobs=jobs,
         throttle=jobs,
-        time='1-00:00:00',
+        days=days,
         mem_per_case_mb=3072,
         command=command,
+        casedir=str(tmp_path / 'my grid'),
     )
 
 
 def test_dispatch_script_asks_for_the_cores_and_one_step_per_case(tmp_path):
     """The job asks for its cores and the memory per core; each case is a one-core job
-    step with that memory, and the job is not requeued."""
+    step with that memory, the job is not requeued and gets SIGTERM 5 minutes early."""
     text = _script(tmp_path, n_cases=100, cores=16, jobs=7, command='proteus start --config')
     assert '#SBATCH --cpus-per-task=16\n' in text
     assert '#SBATCH --mem-per-cpu=3072M\n' in text
     assert '#SBATCH --array=0-6%7\n' in text
     assert '#SBATCH --no-requeue\n' in text
+    assert '#SBATCH --time=1-00:00:00\n' in text
+    assert '#SBATCH --signal=TERM@300\n' in text
     assert 'xargs -n 1 -P 16 ' in text
     assert (
         'srun --job-name="$1" --ntasks=1 --cpus-per-task=1 --mem-per-cpu=3072M --exact' in text
     )
     assert 'seq $SLURM_ARRAY_TASK_ID 7 99' in text
+
+
+@pytest.mark.parametrize(
+    ('days', 'lead'),
+    [(1.0, 300), (1 / 24, 300), (0.02, 172), (0.001, 8)],
+    ids=['day', 'hour', 'half-hour', 'shortest'],
+)
+def test_signal_comes_five_minutes_early_or_at_nine_tenths_of_a_short_job(tmp_path, days, lead):
+    """The early SIGTERM is 300 s before the wall time, but at most a tenth of it: a
+    job of 0.02 days (1728 s) gets it 172 s early, not at its start."""
+    text = _script(tmp_path, n_cases=4, cores=2, jobs=2, command='x', days=days)
+    assert f'#SBATCH --signal=TERM@{lead}\n' in text
+    assert lead <= 0.1 * days * 86400 + 1
 
 
 @pytest.mark.skipif(
@@ -128,8 +144,10 @@ def test_dispatch_script_asks_for_the_cores_and_one_step_per_case(tmp_path):
 def test_dispatch_script_runs_each_case_once_and_survives_failed_cases(tmp_path):
     """Run the script for every array task, with srun replaced by a pass-through. Nine
     cases in three jobs of two cores (two waves) run once each, in a folder with a
-    space; the case that exits 255 and the one killed by a signal do not stop the
-    case queued behind them in their job, and only those jobs exit non-zero."""
+    space, each with its own temporary folder that is gone afterwards. The case that
+    exits 255 and the one killed by a signal do not stop the case queued behind them
+    in their job, and only those jobs exit non-zero. A case left at status 1 or
+    without a status file gets status 25; a final status stays."""
     bindir = tmp_path / 'bin'
     bindir.mkdir()
     # srun stand-in: drop the options, run the command
@@ -137,23 +155,32 @@ def test_dispatch_script_runs_each_case_once_and_survives_failed_cases(tmp_path)
         '#!/bin/sh\nwhile [ "${1#-}" != "$1" ]; do shift; done\nexec "$@"\n'
     )
     record = tmp_path / 'ran.txt'
-    # case 0 exits 255 and case 4 is killed by a signal; either stops a bare xargs
+    # case 0 exits 255 before writing a status and case 4 is killed by a signal while
+    # running, either of which stops a bare xargs; case 3 returns while still running
     (bindir / 'fakecase').write_text(
         '#!/bin/sh\n'
-        f'echo "$(basename "$1")" >> "{record}"\n'
-        'case "$1" in\n'
-        '  *case_000000.toml) exit 255 ;;\n'
-        '  *case_000004.toml) kill -9 $$ ;;\n'
-        'esac\necho "output of $1"\n'
+        'n=$(basename "$1" .toml); out="$(dirname "$(dirname "$1")")/$n"\n'
+        f'[ -d "$TMPDIR" ] && echo "$n $TMPDIR" >> "{record}"\n'
+        'case "$n" in\n'
+        '  case_000000) exit 255 ;;\n'
+        '  case_000003) mkdir -p "$out"; echo 1 > "$out/status"; exit 0 ;;\n'
+        '  case_000004) mkdir -p "$out"; echo 1 > "$out/status"; kill -9 $$ ;;\n'
+        'esac\n'
+        'mkdir -p "$out"; printf "10\\nCompleted\\n" > "$out/status"\n'
+        'echo "output of $1"\n'
     )
     for tool in ('srun', 'fakecase'):
         os.chmod(bindir / tool, 0o755)
     os.makedirs(tmp_path / 'my grid' / 'logs')
+    scratch = tmp_path / 'scratch'
+    scratch.mkdir()
     n_cases, cores = 9, 2
     jobs, waves = slurm.array_layout(n_cases, cores, max_array=3)
     script = tmp_path / 'slurm_dispatch.sh'
     script.write_text(_script(tmp_path, n_cases, cores, jobs, command='fakecase'))
-    env = dict(os.environ, PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}')
+    env = dict(
+        os.environ, PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}', TMPDIR=str(scratch)
+    )
 
     codes = {}
     for task in range(jobs):
@@ -162,11 +189,27 @@ def test_dispatch_script_runs_each_case_once_and_survives_failed_cases(tmp_path)
             ['bash', str(script)], env=env, capture_output=True, timeout=20
         ).returncode
 
-    ran = sorted(record.read_text().split())
-    assert ran == [f'case_{i:06d}.toml' for i in range(n_cases)]
+    ran = sorted(line.split(' ', 1) for line in record.read_text().splitlines())
+    assert ran == [[f'case_{i:06d}', f'{scratch}/case_{i:06d}'] for i in range(n_cases)]
+    assert list(scratch.iterdir()) == []
     assert (jobs, waves) == (3, 2)
     # strided: task 0 runs 0, 3, 6 (6 waits for a free core); task 1 runs 1, 4, 7
     assert codes[2] == 0
     assert codes[0] != 0 and codes[1] != 0
     log6 = (tmp_path / 'my grid' / 'logs' / 'case_000006.log').read_text()
     assert 'output of' in log6 and 'cfgs/case_000006.toml' in log6
+    first = {
+        i: (tmp_path / 'my grid' / f'case_{i:06d}' / 'status').read_text().split('\n')[0]
+        for i in range(n_cases)
+    }
+    assert first == {
+        0: '25',
+        1: '10',
+        2: '10',
+        3: '25',
+        4: '25',
+        5: '10',
+        6: '10',
+        7: '10',
+        8: '10',
+    }
