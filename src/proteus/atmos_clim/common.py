@@ -453,6 +453,32 @@ def lid_boundary(hf_row: dict) -> tuple[float, float, float]:
     return k / G, k, T_melt / G
 
 
+def lid_flux_cap(hf_row: dict) -> float | None:
+    """Largest surface flux [W m-2] of the lid in the next interior step, or None.
+
+    It is the lid branch of the last atmosphere balance, ``G (T_b - T_surf)`` with the
+    conductance of the call (at most ``G_skin``), so that the lid loses at most what the
+    atmosphere gave it.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row after the atmosphere step, with ``T_surf`` and the lid columns.
+
+    Returns
+    -------
+    float or None
+        The cap, or None without a lid or for a surface at or above ``T_b``.
+    """
+    w, G_lid = float(hf_row.get('lid_weight', 0.0)), float(hf_row.get('lid_conductance', 0.0))
+    if not (w > 0.0 and G_lid > 0.0):
+        return None
+    C = min(G_lid, _lid_skin_conductance(hf_row)) * (
+        float(hf_row['lid_T_base']) - float(hf_row['T_surf'])
+    )
+    return C if C > 0.0 else None
+
+
 def lid_open_flux(hf_row: dict) -> float:
     """Flux [W m-2] of the surface without a lid, the boundary value of the interior.
 

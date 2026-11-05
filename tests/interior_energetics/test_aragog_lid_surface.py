@@ -8,8 +8,12 @@ import numpy as np
 import pytest
 from scipy.optimize import brentq
 
-from proteus.atmos_clim.common import lid_boundary, lid_open_flux
-from proteus.interior_energetics.aragog import _lid_surface_of_row, _surface_flux_of_step
+from proteus.atmos_clim.common import lid_boundary, lid_flux_cap, lid_open_flux
+from proteus.interior_energetics.aragog import (
+    _lid_surface_of_row,
+    _set_lid_surface,
+    _surface_flux_of_step,
+)
 
 pytestmark = pytest.mark.unit
 YEAR = 3.15576e7
@@ -169,3 +173,29 @@ def test_coupled_budget_of_a_step_closes_at_every_weight(w):
     out = _out(w, dE=-loss * 4.0 * np.pi * r**2 * dt * YEAR, r=r)
     F_int = _surface_flux_of_step(out, row, 'flux', 100.0 + dt)
     assert F_int - row['F_atm'] == pytest.approx(0.0, abs=1e-9 * row['F_atm'])
+
+
+def test_cap_is_the_flux_the_call_gave_the_lid():
+    """The cap is the lid branch of the atmosphere balance: G_call (T_b - T_surf)."""
+    assert lid_flux_cap(_row(1.0, T_surf=900.0)) == pytest.approx(4.0 * 500.0, rel=1e-14)
+    assert lid_flux_cap(_row(0.4, T_surf=900.0)) == pytest.approx(4.0 * 500.0, rel=1e-14)
+    # a lid above the skin conductance gets the capped conductance of the call
+    assert lid_flux_cap(_row(1.0, G=400.0, T_surf=900.0)) == pytest.approx(200.0 * 500.0)
+    # no lid, or a surface at or above the base: no cap
+    assert lid_flux_cap(_row(0.0, T_surf=900.0)) is None
+    assert lid_flux_cap(_row(1.0, G=0.0, T_surf=900.0)) is None
+    assert lid_flux_cap(_row(1.0, T_surf=1400.0)) is None
+    with pytest.raises(ValueError, match='needs a skin'):
+        lid_flux_cap(_row(0.5, d=0.0, k=0.0, T_surf=900.0))
+
+
+@pytest.mark.parametrize(
+    'obc, mush, held', [(4, True, True), (4, False, False), (1, True, False)]
+)
+def test_the_solver_boundary_takes_the_held_surface_and_its_cap(obc, mush, held):
+    bc = SimpleNamespace(outer_boundary_condition=obc, lid_mush_base=mush)
+    _set_lid_surface(bc, _row(1.0, T_surf=900.0))
+    assert bc.lid_surface_temperature == (900.0 if held else None)
+    assert bc.lid_surface_flux_cap == (pytest.approx(2000.0) if held else None)
+    _set_lid_surface(bc, _row(0.0, T_surf=900.0))
+    assert bc.lid_surface_flux_cap is None

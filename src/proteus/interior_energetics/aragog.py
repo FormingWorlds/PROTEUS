@@ -31,6 +31,7 @@ from aragog.parser import (
     _SolverParameters,
 )
 from proteus.accretion.common import snap_to_impact
+from proteus.atmos_clim.common import lid_flux_cap
 from proteus.interior_energetics import aragog_core, aragog_resume
 from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
 from proteus.interior_energetics.aragog_phase import (
@@ -544,6 +545,27 @@ def _lid_out(out, name: str) -> float:
     An Aragog without the sub-grid lid has no lid fields; its rows then read as no lid.
     """
     return float(np.nan_to_num(float(getattr(out, name, np.nan))))
+
+
+def _set_lid_surface(bc, hf_row: dict) -> None:
+    """Hold the lid surface of the next interior step at the atmosphere surface, with its cap.
+
+    Parameters
+    ----------
+    bc : object
+        Boundary parameters of the Aragog solver; ``lid_surface_temperature`` and
+        ``lid_surface_flux_cap`` are set on it.
+    hf_row : dict
+        Current helpfile row after the atmosphere step.
+    """
+    bc.lid_surface_temperature = _lid_surface_of_row(
+        hf_row,
+        'flux' if getattr(bc, 'outer_boundary_condition', None) == 4 else 'grey_body',
+        getattr(bc, 'lid_mush_base', False),
+    )
+    bc.lid_surface_flux_cap = (
+        lid_flux_cap(hf_row) if bc.lid_surface_temperature is not None else None
+    )
 
 
 def _surface_flux_of_step(
@@ -2143,12 +2165,7 @@ class AragogRunner:
             if float(hf_row.get('lid_weight', 0.0)) > 0.0
             else hf_row['F_atm']
         )
-        bc_now = solver.parameters.boundary_conditions
-        bc_now.lid_surface_temperature = _lid_surface_of_row(
-            hf_row,
-            'flux' if getattr(bc_now, 'outer_boundary_condition', None) == 4 else 'grey_body',
-            getattr(bc_now, 'lid_mush_base', False),
-        )
+        _set_lid_surface(solver.parameters.boundary_conditions, hf_row)
 
         # Update equilibrium temperature (tracks stellar luminosity evolution).
         # SPIDER receives fresh T_eqm at every call via -teqm (spider.py:748).
