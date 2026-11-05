@@ -57,19 +57,40 @@ def test_summarise_raises_when_grid_directory_missing(tmp_path, caplog):
     assert 'Statistics' not in caplog.text
 
 
-def test_summarise_raises_when_case_status_file_missing(tmp_path):
-    """If a case_NNNNNN folder exists but has no ``status`` file, the
-    function raises FileNotFoundError. Discrimination against silent
-    skip: every case must have a status file to be analysable; the
-    error message must name the specific case directory so an operator
-    can locate the broken case.
+@pytest.mark.parametrize(
+    'content',
+    [None, '', 'not-a-code\n'],
+    ids=['no-status-file', 'empty-status-file', 'unparseable-status-file'],
+)
+def test_summarise_counts_a_case_without_a_readable_status_as_unknown(
+    tmp_path, caplog, content
+):
+    """A case folder whose status file is missing, empty or unparseable (the run
+    stopped before PROTEUS wrote a status) counts as unknown, and the summary still
+    gives the statistics of the other cases instead of stopping at that case.
     """
-    grid = tmp_path / 'grid'
-    grid.mkdir()
-    (grid / 'case_000000').mkdir()  # no status file
-    with pytest.raises(FileNotFoundError, match='Cannot find status file') as exc:
-        summarise_mod.summarise(str(grid))
-    assert 'case_000000' in str(exc.value)
+    grid = _make_grid(tmp_path, statuses=[10, 10, 20])
+    status = grid / 'case_000001' / 'status'
+    if content is None:
+        status.unlink()
+    else:
+        status.write_text(content, encoding='utf-8')
+
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        result = summarise_mod.summarise(str(grid), tgt_status='code=-1')
+
+    assert result is True
+    assert 'Found 3 cases' in caplog.text
+    # One case of three in each row: 33 %.
+    assert '1     (33%) Unknown (no readable status file)' in caplog.text
+    assert '1     (33%) Completed (solidified)' in caplog.text
+    assert '1     (33%) Error (generic case, or configuration issue)' in caplog.text
+    # The unknown case is listed by its own index, not by a neighbour's.
+    listed = caplog.text.split('Code -1 cases:')[1]
+    assert 'Case 1     : Code -1 - Unknown (no readable status file)' in listed
+    assert 'UNHANDLED' not in caplog.text
+    assert 'Case 0    ' not in listed
+    assert 'Case 2    ' not in listed
 
 
 # ---------------------------------------------------------------------------
@@ -228,22 +249,6 @@ def test_summarise_handles_noncontiguous_case_folders(tmp_path, caplog):
     # The error case is at real index 5, never at a contiguous index 2.
     assert 'Case 5    ' in code20_section
     assert 'Case 2    ' not in code20_section
-
-
-def test_summarise_raises_on_empty_status_file(tmp_path):
-    """A present-but-empty status file (a truncated or partial write) raises
-    ValueError, distinct from the FileNotFoundError raised when the file is
-    absent entirely. Discrimination: reading lines[0] of an empty file would
-    otherwise raise an opaque IndexError rather than a named condition.
-    """
-    grid = tmp_path / 'grid'
-    grid.mkdir()
-    (grid / 'case_000000').mkdir()
-    (grid / 'case_000000' / 'status').write_text('', encoding='utf-8')
-
-    with pytest.raises(ValueError, match='Status file is empty') as exc:
-        summarise_mod.summarise(str(grid))
-    assert 'case_000000' in str(exc.value)
 
 
 # ---------------------------------------------------------------------------

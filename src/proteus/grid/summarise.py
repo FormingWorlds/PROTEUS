@@ -7,7 +7,7 @@ import os
 
 import numpy as np
 
-from proteus.utils.helper import CommentFromStatus
+from proteus.utils.helper import STATUS_MISSING, CommentFromStatus, ReadStatus
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -40,6 +40,13 @@ def status_category(code: int) -> str:
     return 'Unknown'
 
 
+def _comment(code: int) -> str:
+    """Description of a status code, including the code of a case without a status."""
+    if code == STATUS_MISSING:
+        return 'Unknown (no readable status file)'
+    return CommentFromStatus(code)
+
+
 def summarise(pgrid_dir: str, tgt_status: str = None):
     """
     Summarise current status of grid.
@@ -61,7 +68,8 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
     # its name. Keying by the real index means a non-contiguous set of case
     # folders (for example after a failed case has been deleted) is handled
     # correctly, rather than assuming the folders are numbered 0..N-1.
-    # Check `utils.helper.CommentFromStatus` for information on error codes.
+    # Check `utils.helper.CommentFromStatus` for information on error codes. A case
+    # without a readable status file counts as unknown (STATUS_MISSING).
     log.info('Checking statuses...')
     case_status = {}
     for case_dir in case_dirs:
@@ -71,14 +79,7 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
         except ValueError:
             log.warning("Ignoring folder with unexpected name '%s'", name)
             continue
-        status_path = os.path.join(case_dir, 'status')
-        if not os.path.exists(status_path):
-            raise FileNotFoundError("Cannot find status file at '%s'" % status_path)
-        with open(status_path, 'r') as hdl:
-            lines = hdl.readlines()
-        if not lines:
-            raise ValueError("Status file is empty: '%s'" % status_path)
-        case_status[idx] = int(lines[0].strip())
+        case_status[idx] = ReadStatus(case_dir)
 
     # Sorted indices and the matching array of status codes
     indices = sorted(case_status.keys())
@@ -91,12 +92,8 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
         count = int(np.count_nonzero(codes == i))
         if count == 0:
             continue
-        if i == -1:
-            comment = 'Uncategorised'
-        else:
-            comment = CommentFromStatus(i)
         pct = float(count) / N * 100.0
-        log.info('  %-5d (%2d%%) %s', count, pct, comment)
+        log.info('  %-5d (%2d%%) %s', count, pct, _comment(i))
 
     # Check options
     gen_cases = {
@@ -144,7 +141,7 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
         for idx in indices:
             if case_status[idx] == code:
                 e_any = True
-                log.info('  Case %-5d : Code %-2d - %s', idx, code, CommentFromStatus(code))
+                log.info('  Case %-5d : Code %-2d - %s', idx, code, _comment(code))
         if not e_any:
             log.info('  (None)')
 
