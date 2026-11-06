@@ -849,7 +849,8 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `C_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
 | `N_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
 | `S_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
-| `seal_active` | `1` | whether the lid seal holds the melt inventory | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
+| `seal_active` | `1` | whether the lid seal holds the melt inventory | `outgas/lid_seal.py` | always | outgas |
+| `seal_path` | `1` | path that closed the seal: 0 open, 1 mesh crust, 2 sub-grid lid | `outgas/lid_seal.py` | always | outgas |
 | `seal_t_close` | `yr` | time the seal last closed | `outgas/lid_seal.py` | always | main loop |
 | `seal_delta` | `m` | crust thickness the seal reads | `outgas/lid_seal.py` | always |   |
 | `seal_phi_top` | `1` | melt fraction of the top mesh cell | `outgas/lid_seal.py` | always |   |
@@ -857,51 +858,51 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `seal_volc_capped` | `1` | whether crust_rate dt was cut to the melt mass | `outgas/lid_seal.py` | always |   |
 | `seal_open_kg` | `kg` | sealed mass returned to the melt on an opening step | `outgas/lid_seal.py` | always | outgas |
 | `seal_leak_kg_cum` | `kg` | mass leaked to the atmosphere since the run began | `outgas/lid_seal.py` | always | outgas |
-| `H2O_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `H2O_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `CO2_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `CO2_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `O2_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `O2_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `H2_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `H2_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `CH4_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `CH4_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `CO_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `CO_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `N2_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `N2_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `NH3_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `NH3_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `S2_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `S2_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `SO2_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `SO2_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `H2S_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `H2S_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `He_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
-| `He_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `Ne_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
-| `Ne_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `Ar_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
-| `Ar_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `Kr_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
-| `Kr_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `Xe_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
-| `Xe_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
-| `H_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
+| `H2O_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `H2O_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `CO2_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `CO2_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `O2_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `O2_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `H2_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `H2_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `CH4_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `CH4_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `CO_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `CO_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `N2_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `N2_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `NH3_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `NH3_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `S2_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `S2_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `SO2_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `SO2_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `H2S_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `H2S_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `He_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas, utils |
+| `He_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `Ne_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas, utils |
+| `Ne_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `Ar_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas, utils |
+| `Ar_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `Kr_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas, utils |
+| `Kr_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `Xe_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas, utils |
+| `Xe_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `H_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas, utils |
 | `H_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
 | `H_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
-| `O_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
+| `O_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas, utils |
 | `O_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
 | `O_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
-| `C_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
+| `C_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas, utils |
 | `C_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
 | `C_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
-| `N_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
+| `N_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas, utils |
 | `N_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
 | `N_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
-| `S_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
+| `S_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas, utils |
 | `S_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
 | `S_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
 | `He_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |

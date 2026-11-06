@@ -169,11 +169,11 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
     ('outgas/lid_seal.py', 'reset_step_columns', '<?>_kg_leak_tau'): _TRAPPED_ELEMENTS,
     ('outgas/lid_seal.py', 'reset_step_columns', '<?>_kg_leak_volc'): _TRAPPED_ELEMENTS,
     ('outgas/lid_seal.py', 'restore_seal_state', '<?>_kg_sealed'): _TRAPPED,
+    ('outgas/lid_seal.py', 'clear_seal', '<?>_kg_sealed'): _TRAPPED,
+    ('outgas/lid_seal.py', 'clear_seal', '<?>_mol_sealed'): _TRAPPED_SPECIES,
     ('outgas/lid_seal.py', 'assert_sealed_row', '<?>_kg_sealed'): _TRAPPED,
     ('outgas/lid_seal.py', 'assert_sealed_row', '<?>_kg_liquid'): _TRAPPED,
     ('outgas/lid_seal.py', 'sealed_mass', '<?>_kg_sealed'): _TRAPPED_ELEMENTS,
-    ('outgas/wrapper.py', 'run_desiccated', '<?>_kg_sealed'): _TRAPPED,
-    ('outgas/wrapper.py', 'run_desiccated', '<?>_mol_sealed'): _TRAPPED_SPECIES,
 }
 
 # Dynamic-key writes that are not producers: save/restore of overridden

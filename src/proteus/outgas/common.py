@@ -76,8 +76,6 @@ def set_element_ratios(hf_row: dict) -> None:
     A ratio whose numerator or denominator is below 1e-30 kg is set to 0; a ratio
     column absent from the row is left absent.
     """
-    from proteus.utils.constants import element_list
-
     for e1 in element_list:
         for e2 in element_list:
             key = f'{e2}/{e1}_atm'

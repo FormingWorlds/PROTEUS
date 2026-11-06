@@ -349,12 +349,13 @@ delta_close = 1e4     # crust thickness at which the seal closes [m]
 tau_leak = 1e5        # relaxation time of the held volatiles [yr]
 ```
 
-It cannot be combined with `params.stop.solid.freeze_volatiles = true`, which also freezes the melt inventory, or with `outgas.vapourise = true`. Front trapping (`outgas.trap_mode = "front"`) can run with it: it buries volatiles while the seal is open and stops while the seal holds.
+It needs `outgas.module = "calliope"`, an escape reservoir of `"outgas"` or `"bulk"`, and, with the Zalmoxis structure, `interior_struct.zalmoxis.dry_mantle = true`. It cannot be combined with `params.stop.solid.freeze_volatiles = true`, which also freezes the melt inventory, or with `outgas.vapourise = true`. Front trapping (`outgas.trap_mode = "front"`) can run with it. While the seal holds, the melt columns are empty, so trapping buries nothing; mass that a remelt releases from the solid joins the held mass.
 
 These output columns show what the seal does ([full list](../Reference/output.md)):
 
 - `seal_active` \[1\]: 1 while the seal holds, else 0.
-- `seal_delta` \[m\] and `seal_phi_top` \[1\]: the crust thickness and the melt fraction of the top mesh cell that the seal reads in the step.
+- `seal_delta` \[m\] and `seal_phi_top` \[1\]: the crust thickness and the melt fraction of the top mesh cell that the seal reads in the step. On the mesh, `seal_delta` counts the cells below `phi_solid` while the seal is open and those below `phi_open` while it holds, so it can jump at the closing step.
+- `seal_path` \[1\]: the path that closed the seal: 1 for the crust on the mesh, 2 for the sub-grid lid, 0 while open.
 - `{sp}_kg_sealed`, `{sp}_mol_sealed` and `{e}_kg_sealed`: the held mass of each species and element.
 - `{e}_kg_leak_tau` and `{e}_kg_leak_volc` \[kg\]: the mass of each element that leaked in the step by relaxation and by volcanism.
 - `seal_leak_kg_cum` \[kg\]: the leaked mass since the start of the run.
@@ -372,12 +373,12 @@ Where $\delta$ comes from depends on the state of the crust:
 | State of the crust | Thickness $\delta$ | What decides the closure |
 |---|---|---|
 | Aragog sub-grid lid acts (`lid_weight > 0`) | `lid_delta`, the lid above the top mesh cell | both $\delta$ and $\phi_\mathrm{top}$ |
-| crust on the mesh (no sub-grid lid) | depth of the top run of mesh cells with a melt fraction below `phi_solid` | $\delta$; $\phi_\mathrm{top}$ is near 0 |
+| crust on the mesh (no sub-grid lid) | depth of the top run of mesh cells with a melt fraction below `phi_solid` (below `phi_open` while the seal holds) | $\delta$ |
 | no crust | 0 | the seal stays open |
 
 The seal closes when $\delta \ge$ `delta_close` and $\phi_\mathrm{top} <$ `phi_close`. It closes after the chemistry solve of that step, so it holds the melt inventory of the state where the rule fires. A thin crust over a molten top cell does not close the seal.
 
-A closed seal opens when $\phi_\mathrm{top} \ge$ `phi_open` (default `phi_close + 0.05`), when $\delta <$ `delta_open` (default `0.5 delta_close`), or on a giant-impact step. The gap between the close and the open values stops a seal that would otherwise open and close in each step. On the mesh, a closed seal counts every top cell with a melt fraction below `phi_open` as crust, and an open seal only those below `phi_solid`; so a top cell that crosses `phi_solid` does not open the seal. On opening, the held mass returns to the melt, and the chemistry solve of the same step takes it. The atmosphere then gets the dissolved gas of the melt at once.
+A closed seal opens when $\phi_\mathrm{top} \ge$ `phi_open` (default `phi_close + 0.05`), when $\delta <$ `delta_open` (default `0.5 delta_close`), or on a giant-impact step. The gap between the close and the open values stops a seal that would otherwise open and close in each step. On the mesh, a closed seal counts every top cell with a melt fraction below `phi_open` as crust, and an open seal only those below `phi_solid`; so a top cell that crosses `phi_solid` does not open the seal. A closed seal keeps reading the path that closed it: a seal closed on the mesh ignores a sub-grid lid that appears later, and a seal closed by the sub-grid lid reads the mesh band once its lid is handed over. On a coarse mesh, `phi_close` and `delta_open` do not act on the mesh path: a crust on the mesh means a solid top cell, which is below `phi_close`, and a held mesh crust is at least one cell thick, which is above the default `delta_open`. There the seal opens only when the top cell holds `phi_open` of melt, or on an impact. On opening, the held mass returns to the melt, and the chemistry solve of the same step takes it. The atmosphere then gets the dissolved gas of the melt at once.
 
 The default `delta_close` is 10 km. On a crust that grows on the mesh, a coarse mesh moves the thickness in steps of one cell: on the 79-cell mesh of the [tutorial](../Tutorials/lid_seal.md) the top cell is 65.8 km thick (the mesh is not uniform in radius). The seal then closes when the top cell freezes, for any `delta_close` below that cell. A thin chill crust, with `delta_close` near 0.3 m, closes only through the sub-grid lid.
 

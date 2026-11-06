@@ -457,13 +457,16 @@ def lid_seal_requirements(instance, attribute, value):
             'outgas.lid_seal.enabled = true requires outgas.module = "calliope", not '
             f'"{instance.outgas.module}": the leak rebuilds the pressures as CALLIOPE does.'
         )
-    if instance.escape.reservoir not in ('outgas', 'bulk'):
+    if instance.escape.module is not None and instance.escape.reservoir not in (
+        'outgas',
+        'bulk',
+    ):
         raise ValueError(
             'outgas.lid_seal.enabled = true requires escape.reservoir = "outgas" or "bulk", '
             f'not "{instance.escape.reservoir}": a held step applies unfractionated escape.'
         )
     zalmoxis = instance.interior_struct.module == 'zalmoxis'
-    if zalmoxis and not instance.interior_struct.zalmoxis.dry_mantle:
+    if zalmoxis and not getattr(instance.interior_struct.zalmoxis, 'dry_mantle', True):
         raise ValueError(
             'outgas.lid_seal.enabled = true cannot be combined with '
             'interior_struct.zalmoxis.dry_mantle = false: the structure reads the melt '

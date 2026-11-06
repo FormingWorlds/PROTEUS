@@ -12732,10 +12732,11 @@
         "outgas"
       ],
       "touches": [
+        "escape.module",
         "escape.reservoir",
         "interior_energetics.module",
         "interior_struct.module",
-        "interior_struct.zalmoxis.dry_mantle",
+        "interior_struct.zalmoxis",
         "outgas.module",
         "outgas.vapourise",
         "params.stop.solid.freeze_volatiles"

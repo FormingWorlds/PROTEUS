@@ -11,12 +11,7 @@ from proteus.escape.wrapper import readable_total
 from proteus.interior_struct.common import record_volatile_change
 from proteus.outgas.common import EMPTY_ATMOSPHERE_KEPT_KEYS, expected_keys, set_element_ratios
 from proteus.outgas.lavatmos import run_vapourisation
-from proteus.outgas.lid_seal import (
-    SEALED_ELEMENTS,
-    SEALED_SPECIES,
-    reset_step_columns,
-    sealed_mass,
-)
+from proteus.outgas.lid_seal import clear_seal, sealed_mass
 from proteus.outgas.trapping import (
     escapable_inventory,
     locked_condensed_mass,
@@ -682,6 +677,7 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     # atmospheric mass stale and larger than the total.
     for s in gas_list:
         hf_row[f'{s}_kg_atm'] = hf_row.get(f'{s}_kg_atm', 0.0) * retained
+        hf_row[f'{s}_mol_atm'] = hf_row.get(f'{s}_mol_atm', 0.0) * retained
         hf_row[f'{s}_bar'] = hf_row.get(f'{s}_bar', 0.0) * retained
     # Element reservoirs whose symbol is not also a species name. The loop above
     # already scales the rock formers and noble gases through the species they
@@ -771,13 +767,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     for k in expected_keys():
         if k not in EMPTY_ATMOSPHERE_KEPT_KEYS and not k.endswith(held):
             hf_row[k] = 0.0
-    # A sealed rest below mass_thresh leaves with the atmosphere, and the seal opens.
-    for n in (*SEALED_SPECIES, *SEALED_ELEMENTS):
-        hf_row[f'{n}_kg_sealed'] = 0.0
-        if n in SEALED_SPECIES:
-            hf_row[f'{n}_mol_sealed'] = 0.0
-    reset_step_columns(hf_row)
-    hf_row['seal_active'] = 0.0
+    clear_seal(hf_row)  # a sealed rest below mass_thresh leaves with the atmosphere
     for n, total in totals.items():
         if not np.isfinite(total):
             hf_row[f'{n}_kg_total'] = total

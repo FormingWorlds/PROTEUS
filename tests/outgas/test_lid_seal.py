@@ -142,8 +142,8 @@ def test_closure_state_reads_the_sub_grid_lid_only_while_it_acts():
     interior = _interior([0.6, 0.25])
     acting = closure_state(cfg, {'lid_weight': 1.0, 'lid_delta': 0.31}, interior)
     hidden = closure_state(cfg, {'lid_weight': 0.0, 'lid_delta': 0.487}, interior)
-    assert acting == (0.31, 0.25)
-    assert hidden == (0.0, 0.25)
+    assert acting == (0.31, 0.25, 2)
+    assert hidden == (0.0, 0.25, 1)
     with pytest.raises(KeyError, match='lid_delta'):
         closure_state(cfg, {'lid_weight': 0.5}, interior)
     with pytest.raises(ValueError, match='not finite'):
@@ -660,7 +660,7 @@ def test_restore_seal_state_reads_the_row_and_refuses_stranded_mass():
     row = _sealed_row()
     row['seal_active'] = 1.0
     assert restore_seal_state(_config(), row) is True
-    assert restore_seal_state(_config(), dict(row, seal_active=0.0)) is False
+    assert restore_seal_state(_config(), dict(_row(), seal_active=0.0)) is False
     off = SimpleNamespace(outgas=SimpleNamespace(lid_seal=LidSeal()))
     with pytest.raises(ValueError, match='lid_seal.enabled'):
         restore_seal_state(off, row)

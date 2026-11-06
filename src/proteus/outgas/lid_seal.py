@@ -101,14 +101,17 @@ def crust_thickness(phi: np.ndarray, radius: np.ndarray, phi_solid: float) -> fl
 
 
 def closure_state(
-    config: Config, hf_row: dict, interior_o, sealed: bool = False
-) -> tuple[float, float]:
-    """Crust thickness [m] and top-cell melt fraction [1] that the seal reads.
+    config: Config, hf_row: dict, interior_o, path: int = 0
+) -> tuple[float, float, int]:
+    """Crust thickness [m], top-cell melt fraction [1] and the path that gives them.
 
-    The thickness is ``hf_row['lid_delta']`` while the Aragog sub-grid lid is
-    active, else the mesh crust of :func:`crust_thickness`. The mesh crust is 0
-    or whole cells, so a closed seal counts cells below ``phi_open`` as crust and
-    one that is open counts cells below ``phi_solid``: that is the band on the mesh.
+    Path 2 is the Aragog sub-grid lid ``hf_row['lid_delta']``, read while the lid is
+    active (``lid_weight > 0``); path 1 is the mesh crust of :func:`crust_thickness`.
+    An open seal (``path = 0``) reads the lid when it is active and the mesh crust
+    below ``phi_solid`` otherwise. A closed seal keeps the path that closed it: a
+    lid-closed seal reads its lid while it is active, and every other closed seal
+    reads the mesh crust below ``phi_open``. The mesh crust is 0 or whole cells, so
+    that threshold is the band on the mesh.
 
     Raises
     ------
@@ -117,21 +120,22 @@ def closure_state(
     ValueError
         If the thickness or the melt fraction is not finite.
     """
+    seal = config.outgas.lid_seal
     phi_top = float(np.asarray(interior_o.phi, dtype=float)[-1])
-    if float(hf_row.get('lid_weight', 0.0)) > 0.0:
+    lid = float(hf_row.get('lid_weight', 0.0)) > 0.0
+    if lid and path in (0, 2):
         if 'lid_delta' not in hf_row:
             raise KeyError('The lid seal needs lid_delta [m] while the sub-grid lid is active')
-        delta = float(hf_row['lid_delta'])
+        delta, used = float(hf_row['lid_delta']), 2
     else:
-        seal = config.outgas.lid_seal
-        phi_crust = seal.phi_open_value if sealed else seal.phi_solid
-        delta = crust_thickness(interior_o.phi, interior_o.radius, phi_crust)
+        phi_crust = seal.phi_solid if path == 0 else seal.phi_open_value
+        delta, used = crust_thickness(interior_o.phi, interior_o.radius, phi_crust), path or 1
     if not (np.isfinite(delta) and np.isfinite(phi_top)):
         raise ValueError(
             f'Lid seal: crust thickness {delta} m or top-cell melt fraction {phi_top} '
             'is not finite'
         )
-    return delta, phi_top
+    return delta, phi_top, used
 
 
 def _checked(value, label: str) -> float:
@@ -310,27 +314,47 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
     Raises
     ------
     ValueError
-        If the row holds sealed mass and the seal is off, since nothing could open it.
+        If the flag or a sealed mass is not finite, if the row holds sealed mass
+        under an open flag, or if it holds sealed mass with the seal off, since
+        nothing could open it then.
     """
-    if seal_enabled(config):
-        return bool(hf_row.get('seal_active', 0.0))
-    held = [
-        n
-        for n in (*SEALED_SPECIES, *SEALED_ELEMENTS)
-        if float(hf_row.get(f'{n}_kg_sealed', 0.0)) > 0.0
-    ]
-    if held:
+    masses = {
+        n: float(hf_row.get(f'{n}_kg_sealed', 0.0)) for n in (*SEALED_SPECIES, *SEALED_ELEMENTS)
+    }
+    bad = [f'{n}_kg_sealed' for n, m in masses.items() if not (np.isfinite(m) and m >= 0.0)]
+    flag = float(hf_row.get('seal_active', 0.0))
+    if not np.isfinite(flag):
+        bad.insert(0, 'seal_active')
+    if bad:
+        raise ValueError(f'Resume: unreadable seal state in the last row: {", ".join(bad[:4])}')
+    held = [n for n, m in masses.items() if m > 0.0]
+    if held and not seal_enabled(config):
         raise ValueError(
             f'Resume: the last row holds sealed mass ({", ".join(held[:4])}) but '
             'outgas.lid_seal.enabled = false; resume with the seal on.'
         )
-    return False
+    if held and flag < 0.5:
+        raise ValueError(
+            f'Resume: seal_active is 0 but the last row holds sealed mass ({held[0]})'
+        )
+    return seal_enabled(config) and flag >= 0.5
 
 
 def sealed_mass(hf_row: dict, element: str) -> float:
     """Mass of one element [kg] held in the sealed reservoir, 0 when unreadable."""
     mass = float(hf_row.get(f'{element}_kg_sealed', 0.0))
     return mass if np.isfinite(mass) and mass > 0.0 else 0.0
+
+
+def clear_seal(hf_row: dict) -> None:
+    """Empty the sealed reservoir and zero every seal column, as a desiccation does."""
+    for n in (*SEALED_SPECIES, *SEALED_ELEMENTS):
+        hf_row[f'{n}_kg_sealed'] = 0.0
+    for n in SEALED_SPECIES:
+        hf_row[f'{n}_mol_sealed'] = 0.0
+    reset_step_columns(hf_row)
+    for k in ('seal_active', 'seal_path', 'seal_delta', 'seal_phi_top'):
+        hf_row[k] = 0.0
 
 
 def reset_step_columns(hf_row: dict) -> None:
@@ -362,6 +386,7 @@ def run_lid_seal_step(
     otherwise escape is applied to the atmosphere as on a crystallized mantle and
     the sealed reservoir leaks over ``dt`` [yr].
     """
+    from proteus.outgas.trapping import remelt_returned_mass
     from proteus.outgas.wrapper import (
         check_ic_oxygen_budget,
         run_crystallized,
@@ -370,7 +395,10 @@ def run_lid_seal_step(
 
     seal = config.outgas.lid_seal
     reset_step_columns(hf_row)
-    delta, phi_top = closure_state(config, hf_row, interior_o, sealed)
+    path = int(hf_row.get('seal_path', 0.0)) if sealed else 0
+    if sealed and path == 0:  # a sealed row without its path reads the source it has now
+        path = 2 if float(hf_row.get('lid_weight', 0.0)) > 0.0 else 1
+    delta, phi_top, used = closure_state(config, hf_row, interior_o, path)
     hf_row['seal_delta'], hf_row['seal_phi_top'] = delta, phi_top
     impact = bool(getattr(interior_o, 'impact_reset', False))
     if sealed and (impact or phi_top >= seal.phi_open_value or delta < seal.delta_open_value):
@@ -382,9 +410,10 @@ def run_lid_seal_step(
             impact,
             open_seal(hf_row),
         )
-        sealed = False
+        sealed, used = False, 0
     if sealed:
-        close_seal(hf_row)  # mass a remelt released from the solid is under the crust too
+        if remelt_returned_mass(hf_row):
+            close_seal(hf_row)  # a release this step is under the crust too
         run_crystallized(config, hf_row, dt)
         leak_step(config, hf_row, dt)
         assert_sealed_row(hf_row)
@@ -405,5 +434,7 @@ def run_lid_seal_step(
                 moved,
             )
             sealed = True
-    hf_row['seal_active'] = float(sealed)
+        else:
+            used = 0
+    hf_row['seal_active'], hf_row['seal_path'] = float(sealed), float(used)
     return sealed

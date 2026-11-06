@@ -21579,9 +21579,22 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "seal_path",
+      "unit": "1",
+      "description": "path that closed the seal: 0 open, 1 mesh crust, 2 sub-grid lid",
+      "group": "Quantities for each element",
+      "origin": "literal",
+      "producers": [
         {
-          "file": "src/proteus/outgas/wrapper.py",
+          "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
         }
       ],
@@ -21711,10 +21724,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -21731,10 +21740,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -21753,10 +21758,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -21773,10 +21774,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -21795,10 +21792,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -21815,10 +21808,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -21837,10 +21826,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -21857,10 +21842,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -21879,10 +21860,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -21899,10 +21876,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -21921,10 +21894,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -21941,10 +21910,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -21963,10 +21928,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -21983,10 +21944,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -22005,10 +21962,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -22025,10 +21978,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -22047,10 +21996,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -22067,10 +22012,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -22089,10 +22030,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -22109,10 +22046,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -22131,10 +22064,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -22152,10 +22081,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -22172,10 +22097,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -22195,10 +22116,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -22215,10 +22132,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -22238,10 +22151,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -22258,10 +22167,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -22281,10 +22186,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -22301,10 +22202,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -22324,10 +22221,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -22344,10 +22237,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -22367,10 +22256,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -22387,10 +22272,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -22440,10 +22321,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -22491,10 +22368,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
@@ -22544,10 +22417,6 @@
         {
           "file": "src/proteus/outgas/lid_seal.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
-          "condition": "always"
         }
       ],
       "consumers": [
@@ -22595,10 +22464,6 @@
       "producers": [
         {
           "file": "src/proteus/outgas/lid_seal.py",
-          "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
       ],
