@@ -457,10 +457,7 @@ def lid_seal_requirements(instance, attribute, value):
             'outgas.lid_seal.enabled = true requires outgas.module = "calliope", not '
             f'"{instance.outgas.module}": the leak rebuilds the pressures as CALLIOPE does.'
         )
-    if instance.escape.module is not None and instance.escape.reservoir not in (
-        'outgas',
-        'bulk',
-    ):
+    if instance.escape.reservoir not in ('outgas', 'bulk'):
         raise ValueError(
             'outgas.lid_seal.enabled = true requires escape.reservoir = "outgas" or "bulk", '
             f'not "{instance.escape.reservoir}": a held step applies unfractionated escape.'

@@ -52,6 +52,8 @@ SEALED_SPECIES = (*vol_list, *noble_gases)
 SEALED_ELEMENTS = tuple(vol_element_list)
 LEAK_ELEMENTS = (*vol_element_list, *noble_gases)
 
+# seal_path: the path that closed the seal.
+PATH_OPEN, PATH_MESH, PATH_LID = 0, 1, 2
 # Relative round-off allowed in the ledger checks of one step.
 _LEDGER_RTOL = 1e-12
 # Mass fraction of each sealed element in each sealed species [1].
@@ -123,13 +125,13 @@ def closure_state(
     seal = config.outgas.lid_seal
     phi_top = float(np.asarray(interior_o.phi, dtype=float)[-1])
     lid = float(hf_row.get('lid_weight', 0.0)) > 0.0
-    if lid and path in (0, 2):
+    if lid and path in (PATH_OPEN, PATH_LID):
         if 'lid_delta' not in hf_row:
             raise KeyError('The lid seal needs lid_delta [m] while the sub-grid lid is active')
         delta, used = float(hf_row['lid_delta']), 2
     else:
-        phi_crust = seal.phi_solid if path == 0 else seal.phi_open_value
-        delta, used = crust_thickness(interior_o.phi, interior_o.radius, phi_crust), path or 1
+        phi_crust = seal.phi_solid if path == PATH_OPEN else seal.phi_open_value
+        delta, used = crust_thickness(interior_o.phi, interior_o.radius, phi_crust), PATH_MESH
     if not (np.isfinite(delta) and np.isfinite(phi_top)):
         raise ValueError(
             f'Lid seal: crust thickness {delta} m or top-cell melt fraction {phi_top} '
@@ -311,33 +313,38 @@ def assert_sealed_row(hf_row: dict) -> None:
 def restore_seal_state(config: Config, hf_row: dict) -> bool:
     """Whether a resumed run starts sealed, from ``seal_active`` of its last row.
 
+    With the seal off and nothing held, a stale flag and path in the row are zeroed.
+
     Raises
     ------
     ValueError
-        If the flag or a sealed mass is not finite, if the row holds sealed mass
-        under an open flag, or if it holds sealed mass with the seal off, since
-        nothing could open it then.
+        If the flag, the path or a sealed mass is not readable, if the row holds
+        sealed mass under an open flag, or if it holds sealed mass with the seal
+        off, since nothing could open it then.
     """
-    masses = {
-        n: float(hf_row.get(f'{n}_kg_sealed', 0.0)) for n in (*SEALED_SPECIES, *SEALED_ELEMENTS)
-    }
-    bad = [f'{n}_kg_sealed' for n, m in masses.items() if not (np.isfinite(m) and m >= 0.0)]
-    flag = float(hf_row.get('seal_active', 0.0))
-    if not np.isfinite(flag):
-        bad.insert(0, 'seal_active')
+    on = seal_enabled(config)
+    names = (*SEALED_SPECIES, *SEALED_ELEMENTS)
+    values = [('seal_active', float(hf_row.get('seal_active', 0.0)))]
+    values += [('seal_path', float(hf_row.get('seal_path', PATH_OPEN)))]
+    values += [(f'{n}_kg_sealed', float(hf_row.get(f'{n}_kg_sealed', 0.0))) for n in names]
+    bad = [k for k, v in values if not (np.isfinite(v) and v >= 0.0)]
+    if values[1][1] not in (PATH_OPEN, PATH_MESH, PATH_LID):
+        bad.append('seal_path')
     if bad:
         raise ValueError(f'Resume: unreadable seal state in the last row: {", ".join(bad[:4])}')
-    held = [n for n, m in masses.items() if m > 0.0]
-    if held and not seal_enabled(config):
+    held = [k for k, v in values[2:] if v > 0.0]
+    if held and not on:
         raise ValueError(
             f'Resume: the last row holds sealed mass ({", ".join(held[:4])}) but '
             'outgas.lid_seal.enabled = false; resume with the seal on.'
         )
-    if held and flag < 0.5:
+    if held and values[0][1] < 0.5:
         raise ValueError(
             f'Resume: seal_active is 0 but the last row holds sealed mass ({held[0]})'
         )
-    return seal_enabled(config) and flag >= 0.5
+    if not on:
+        hf_row['seal_active'] = hf_row['seal_path'] = 0.0
+    return on and values[0][1] >= 0.5
 
 
 def sealed_mass(hf_row: dict, element: str) -> float:
@@ -395,9 +402,9 @@ def run_lid_seal_step(
 
     seal = config.outgas.lid_seal
     reset_step_columns(hf_row)
-    path = int(hf_row.get('seal_path', 0.0)) if sealed else 0
+    path = int(hf_row.get('seal_path', PATH_OPEN)) if sealed else PATH_OPEN
     if sealed and path == 0:  # a sealed row without its path reads the source it has now
-        path = 2 if float(hf_row.get('lid_weight', 0.0)) > 0.0 else 1
+        path = PATH_LID if float(hf_row.get('lid_weight', 0.0)) > 0.0 else PATH_MESH
     delta, phi_top, used = closure_state(config, hf_row, interior_o, path)
     hf_row['seal_delta'], hf_row['seal_phi_top'] = delta, phi_top
     impact = bool(getattr(interior_o, 'impact_reset', False))
@@ -410,7 +417,7 @@ def run_lid_seal_step(
             impact,
             open_seal(hf_row),
         )
-        sealed, used = False, 0
+        sealed, used = False, PATH_OPEN
     if sealed:
         if remelt_returned_mass(hf_row):
             close_seal(hf_row)  # a release this step is under the crust too
@@ -435,6 +442,6 @@ def run_lid_seal_step(
             )
             sealed = True
         else:
-            used = 0
+            used = PATH_OPEN
     hf_row['seal_active'], hf_row['seal_path'] = float(sealed), float(used)
     return sealed

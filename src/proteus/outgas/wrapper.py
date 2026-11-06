@@ -676,9 +676,14 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     # escape step that debits the noble total would leave the noble
     # atmospheric mass stale and larger than the total.
     for s in gas_list:
-        hf_row[f'{s}_kg_atm'] = hf_row.get(f'{s}_kg_atm', 0.0) * retained
-        hf_row[f'{s}_mol_atm'] = hf_row.get(f'{s}_mol_atm', 0.0) * retained
+        kg, mol = hf_row.get(f'{s}_kg_atm', 0.0), hf_row.get(f'{s}_mol_atm', 0.0)
+        hf_row[f'{s}_kg_atm'], hf_row[f'{s}_mol_atm'] = kg * retained, mol * retained
         hf_row[f'{s}_bar'] = hf_row.get(f'{s}_bar', 0.0) * retained
+        # The species totals lose what escaped; an element-named species total is debited by escape.
+        if f'{s}_mol_total' in hf_row:
+            hf_row[f'{s}_mol_total'] -= mol * (1.0 - retained)
+        if s not in element_list and f'{s}_kg_total' in hf_row:
+            hf_row[f'{s}_kg_total'] -= kg * (1.0 - retained)
     # Element reservoirs whose symbol is not also a species name. The loop above
     # already scales the rock formers and noble gases through the species they
     # share a symbol with; H, O, C, N and S have no such twin, and escape sizes
