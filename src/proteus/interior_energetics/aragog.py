@@ -819,6 +819,7 @@ class AragogRunner:
                             aragog_core.snapshot_core_state(interior_o, solver),
                         )
                     solver.set_initial_entropy(S_snap)
+                    restore_lid_start(solver, dirs['output'], hf_row['Time'])
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
                         float(np.mean(S_snap)),
@@ -3115,6 +3116,7 @@ class AragogRunner:
                 ('dSdr_cmb_state', dSdr_cmb, 'J kg-1 K-1 m-1'),
                 ('T_core_state', T_core, 'K'),
                 ('mesh_surface_pressure', mesh_surface_pressure, 'Pa'),
+                *lid_snapshot_fields(out),
                 *aragog_core.frozen_profile_fields(core_profile),
             ):
                 if value is None:
@@ -3382,6 +3384,79 @@ def _snapshot_scalar(output_dir: str, time: float, name: str) -> tuple[float | N
             return None, 'absent'
         value = float(np.asarray(raw).item())
     return (value, 'ok') if np.isfinite(value) else (None, 'not finite')
+
+
+def lid_snapshot_fields(out) -> list[tuple[str, float, str]]:
+    """Sub-grid lid state of a solver output as snapshot scalars.
+
+    Parameters
+    ----------
+    out : SolverOutput
+        Aragog output; ``lid_delta`` is NaN with the lid off and 0 for a lid
+        handed over to the mesh.
+
+    Returns
+    -------
+    list of (name, value, units)
+        ``lid_delta_state`` [m] and ``lid_E_state`` [J m-2], with
+        ``lid_handover_time_state`` [yr] when the hand-over time is known;
+        empty with the lid off.
+    """
+    delta = float(getattr(out, 'lid_delta', float('nan')))
+    if np.isnan(delta):
+        return []
+    fields = [
+        ('lid_delta_state', delta, 'm'),
+        ('lid_E_state', float(getattr(out, 'lid_E', float('nan'))), 'J m-2'),
+    ]
+    t_ho = float(getattr(out, 'lid_handover_time', float('nan')))
+    if np.isfinite(t_ho):
+        fields.append(('lid_handover_time_state', t_ho, 'yr'))
+    return fields
+
+
+def restore_lid_start(solver, output_dir: str, time: float) -> None:
+    """Hand the sub-grid lid of the snapshot at ``time`` to the solver on resume.
+
+    A solver with the lid off takes nothing. A snapshot without a finite lid
+    thickness and energy starts the phantom lid at ``lid_delta_lo`` and says
+    so at WARNING.
+
+    Parameters
+    ----------
+    solver : EntropySolver
+        Aragog solver of the resumed run.
+    output_dir : str
+        Run output directory.
+    time : float
+        Time of the snapshot [yr].
+
+    Raises
+    ------
+    ValueError
+        For a stored lid that ``set_initial_lid`` refuses: a thickness at or
+        below 0 other than the handed-over ``(0, 0)``, a negative hand-over
+        time, or a hand-over time with a live lid.
+    """
+    if not getattr(solver, '_n_lid', 0):
+        return
+    delta, status_d = _snapshot_scalar(output_dir, time, 'lid_delta_state')
+    E_lid, status_e = _snapshot_scalar(output_dir, time, 'lid_E_state')
+    if delta is None or E_lid is None:
+        log.warning(
+            'Snapshot lid thickness is %s and lid energy is %s; the sub-grid lid '
+            'restarts as the phantom lid at lid_delta_lo.',
+            status_d,
+            status_e,
+        )
+        return
+    t_ho, _ = _snapshot_scalar(output_dir, time, 'lid_handover_time_state')
+    try:
+        solver.set_initial_lid(delta, E_lid, float('nan') if t_ho is None else t_ho)
+    except ValueError as e:
+        raise ValueError(
+            f'Resume: the lid of the snapshot at t = {time} yr is refused: {e}'
+        ) from e
 
 
 def get_all_output_times(output_dir: str):

@@ -4688,7 +4688,7 @@ def test_setup_or_update_solver_restores_the_core_temperature_on_resume(
     config = _make_aragog_config(struct_module='zalmoxis')
     config.params.resume = True
     config.interior_energetics.aragog.core_bc = 'core_module'
-    solver = MagicMock(_n_stag=20)
+    solver = MagicMock(_n_stag=20, _n_lid=0)
     interior_o = MagicMock(
         aragog_solver=None, _last_T_core=last_t_core, _last_T_core_status='absent'
     )
@@ -4740,7 +4740,7 @@ def test_a_resume_of_another_core_boundary_sets_no_core_start(core_bc):
     config = _make_aragog_config(struct_module='zalmoxis')
     config.params.resume = True
     config.interior_energetics.aragog.core_bc = core_bc
-    solver = MagicMock(_n_stag=20)
+    solver = MagicMock(_n_stag=20, _n_lid=0)
     interior_o = MagicMock(aragog_solver=None, _last_T_core=5280.0, _last_dSdr_cmb=-2e-11)
     interior_o._last_entropy = np.full(20, 4000.0)
 
@@ -4774,7 +4774,7 @@ def test_a_failed_core_carry_on_a_resume_raises_before_the_entropy_is_set():
     config = _make_aragog_config(struct_module='zalmoxis')
     config.params.resume = True
     config.interior_energetics.aragog.core_bc = 'core_module'
-    solver = MagicMock(_n_stag=20)
+    solver = MagicMock(_n_stag=20, _n_lid=0)
     interior_o = MagicMock(aragog_solver=None, _last_T_core=5280.0)
     interior_o._last_entropy = np.full(20, 4000.0)
     dirs = {'output': '.'}
@@ -5291,7 +5291,7 @@ def _first_call(pending, S_snap=_S_SNAP):
 
     S_snap = None if S_snap is None else np.array(S_snap)
     solver = MagicMock()
-    solver._n_stag = 3
+    solver._n_stag, solver._n_lid = 3, 0
     interior_o = SimpleNamespace(
         aragog_solver=None, _last_entropy=S_snap, _last_dSdr_cmb=-6.2e-9, ic=2
     )

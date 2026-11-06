@@ -17,6 +17,7 @@ step-by-step guide or the advice below,
 | `interior_energetics.aragog.separation_... but the run was written with` or `... is not recorded in`, after `Resume refused:` | [Resume stops on a separation law](#resume-stops-on-a-separation-law) |
 | `Resume: the interior snapshot at t = ... is on an earlier structure` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
 | `Resume: a structure update was pending at the stop` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
+| `the sub-grid lid restarts as the phantom lid` / `Resume: the lid of the snapshot at t = ... yr is refused` | [A resumed run with the sub-grid lid](#a-resumed-run-with-the-sub-grid-lid) |
 | Simulation fails to converge (general) | [Stabilise a simulation](stabilise_run.md) |
 | `Aragog needs the SUNDIALS CVODE solver` / `scikits_odes_sundials.cvode cannot be imported` | [Aragog stops at setup](#aragog-stops-at-setup-cvode-cannot-be-imported) |
 | `Permission denied (publickey)` | [SSH keys](#cannot-clone-module-or-permission-denied-publickey) |
@@ -122,6 +123,16 @@ Resume: a structure update was pending at the stop. With core_bc = 'core_module'
 ```
 
 The first appears when no mesh file of the earlier structure is left. The second appears for a core boundary condition other than `energy_balance`, and when a giant impact landed between the snapshot and the row. In both cases, the run continues on the structure of its row: the first resumed step records no compression work, and the entropy is handed over by node. The resumed run then differs from the uninterrupted one from that step on. A structure update that moves both radii by less than 1 m is not detected and is handled in the same way, without a warning. A snapshot with no entropy profile on the node count of the run gives neither warning: the run starts from a fresh initial condition on its row, as on any resume with such a snapshot. If the solver is built on the earlier structure and the snapshot entropy does not fit its cells, the resume stops with an error, and the run must start again from t = 0.
+
+### A resumed run with the sub-grid lid {#a-resumed-run-with-the-sub-grid-lid}
+
+With the Aragog sub-grid lid on (`interior_energetics.aragog.lid_mush_base = true`), each interior snapshot `data/<time>_int.nc` holds the lid thickness `lid_delta_state` [m] and the lid energy `lid_E_state` [J m-2], and for a lid handed over to the mesh its hand-over time `lid_handover_time_state` [yr]. A resume starts the lid from these values. A snapshot without them, or with a value that is not finite, gives the warning
+
+```text
+Snapshot lid thickness is absent and lid energy is absent; the sub-grid lid restarts as the phantom lid at lid_delta_lo.
+```
+
+The lid then starts at `lid_delta_lo` with a linear temperature profile, and the resumed run differs from the uninterrupted one. A stored lid that Aragog refuses stops the resume with `Resume: the lid of the snapshot at t = ... yr is refused`: a thickness at or below 0 other than the handed-over lid (thickness and energy both 0), a negative hand-over time, or a hand-over time with a live lid. Run the configuration again from t = 0.
 
 ### Cannot clone module, or Permission denied (publickey) {#cannot-clone-module-or-permission-denied-publickey}
 
