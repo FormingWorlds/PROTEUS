@@ -140,6 +140,8 @@ def test_a_zero_skin_passes_without_a_lid_and_is_refused_with_one():
         lid_boundary(_row(0.5, d=0.0, k=0.0))
     with pytest.raises(ValueError, match='needs a skin'):
         lid_open_flux(_row(0.5, d=0.0, k=0.0, T_surf=900.0))
+    with pytest.raises(ValueError, match='needs a skin'):
+        lid_boundary(_row(0.5, d=0.0, k=2.0))
 
 
 def test_the_two_parts_sum_to_the_balance_of_the_atmosphere():
@@ -313,6 +315,18 @@ def test_an_explicit_lid_onset_thickness_is_used_and_warned_beyond_10_percent(ca
     assert not caplog.records
     with pytest.raises(ValueError, match='lid_delta_on'):
         lid_delta_on_of(_skin_config('saturation', 'saturation'))
+
+
+@pytest.mark.parametrize(
+    ('delta_on', 'warns'), [(0.0219, False), (0.0181, False), (0.0221, True), (0.0179, True)]
+)
+def test_the_lid_onset_warning_starts_at_10_percent_from_the_skin(caplog, delta_on, warns):
+    """Values 9.5 % from the 0.02 m skin value pass quietly, values 10.5 % away warn."""
+    from proteus.interior_energetics.aragog import lid_delta_on_of
+
+    with caplog.at_level('WARNING'):
+        assert lid_delta_on_of(_skin_config(delta_on=delta_on)) == delta_on
+    assert any('lid_delta_on' in r.getMessage() for r in caplog.records) is warns
 
 
 @pytest.mark.parametrize(('lid', 'want'), [(True, 0.02), (False, 0.0)])
