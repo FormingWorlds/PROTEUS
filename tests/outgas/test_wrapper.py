@@ -2215,6 +2215,9 @@ def test_run_crystallized_escape_debits_atmosphere():
         'atm_kg_per_mol': 0.025,
         'H2O_mol_atm': 4440.0,
         'CO2_mol_atm': 454.0,
+        'H2O_mol_total': 9000.0,
+        'H2O_kg_total': 162.0,
+        'CO2_mol_total': 700.0,
     }
     run_crystallized(_cryst_cfg(), hf_row, dt)
 
@@ -2223,6 +2226,10 @@ def test_run_crystallized_escape_debits_atmosphere():
     assert hf_row['CO2_mol_atm'] / hf_row['CO2_kg_atm'] == pytest.approx(
         454.0 / 20.0, rel=1e-12
     )
+    # The escaped moles and mass leave the species totals too: 444 mol, 8 kg of H2O.
+    assert hf_row['H2O_mol_total'] == pytest.approx(9000.0 - 444.0, rel=1e-12)
+    assert hf_row['H2O_kg_total'] == pytest.approx(162.0 - 8.0, rel=1e-12)
+    assert hf_row['CO2_mol_total'] == pytest.approx(700.0 - 45.4, rel=1e-12)
     # 10 kg of 100 escaped -> 90 retained.
     assert hf_row['M_atm'] == pytest.approx(90.0, rel=1e-9)
     # Discrimination: a no-op (the reservoirs-preserved branch) would leave

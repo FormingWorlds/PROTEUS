@@ -121,10 +121,7 @@ def test_crust_thickness_refuses_a_malformed_mesh(phi, radius):
     """A mesh with the wrong face count or a falling radius is refused."""
     with pytest.raises(ValueError, match='crust_thickness'):
         crust_thickness(np.array(phi), np.array(radius), 1e-3)
-    phi_in, radius_in = np.array(phi), np.array(radius)
-    with pytest.raises(ValueError):
-        crust_thickness(phi_in, radius_in, 1e-3)
-    np.testing.assert_array_equal(radius_in, np.array(radius))  # input left unchanged
+    assert crust_thickness(np.array([0.0]), np.array([1.0, 3.0]), 1e-3) == pytest.approx(2.0)
 
 
 def _interior(phi, radius=None):
@@ -730,8 +727,11 @@ def test_a_seal_keeps_reading_the_path_that_closed_it():
     assert mesh_first == [(True, 1.0), (True, 1.0), (True, 1.0)]
     lid = _lid_seq([(1.0, 0.35, 0.2), (1.0, 0.2, 0.2), (1.0, 0.14, 0.2)], delta_close=0.3)
     assert lid == [(True, 2.0), (True, 2.0), (False, 0.0)]
-    hand = _lid_seq([(1.0, 0.35, 0.2), (0.0, 0.0, 5e-4), (0.0, 0.0, 2e-3)], delta_close=0.3)
-    assert hand == [(True, 2.0), (True, 2.0), (True, 2.0)]
+    hand = _lid_seq(
+        [(1.0, 0.35, 0.2), (0.0, 0.0, 5e-4), (0.0, 0.0, 2e-3), (1.0, 0.1, 5e-4)],
+        delta_close=0.3,
+    )
+    assert hand == [(True, 2.0), (True, 1.0), (True, 1.0), (True, 1.0)]  # on the mesh for good
 
 
 def test_mesh_band_counts_cells_between_phi_close_and_phi_open():
@@ -751,8 +751,10 @@ def test_mesh_band_counts_cells_between_phi_close_and_phi_open():
         (0.0, 3.0e20, 'seal_active'),
         (float('nan'), 0.0, 'seal_active'),
         (1.0, float('nan'), 'H2O_kg_sealed'),
+        (1.0, float('inf'), 'H2O_kg_sealed'),
+        (1.0, -1.0, 'H2O_kg_sealed'),
     ],
-    ids=['open-with-sealed-mass', 'nan-flag', 'nan-mass'],
+    ids=['open-with-sealed-mass', 'nan-flag', 'nan-mass', 'inf-mass', 'negative-mass'],
 )
 def test_restore_seal_state_refuses_a_row_whose_flag_and_masses_disagree(
     active, sealed_kg, match
@@ -763,3 +765,57 @@ def test_restore_seal_state_refuses_a_row_whose_flag_and_masses_disagree(
     with pytest.raises(ValueError, match=match):
         restore_seal_state(_config(), row)
     assert restore_seal_state(_config(), {**_row(), 'seal_active': 0.0}) is False
+
+
+@pytest.mark.physics_invariant
+def test_a_release_a_leak_and_escape_in_one_held_step_keep_the_water_ledger():
+    """A remelt release, the leak and escape in one held step: the water lost is
+    exactly the escaped share of the atmosphere, and the sealed water is the
+    held plus released mass times the exact leak factor."""
+    import pandas as pd
+
+    from proteus.outgas.trapping import run_trapping
+
+    row = {**_sealed_row(phi=0.3), 'lid_weight': 1.0, 'lid_delta': 0.5}
+    row.update(
+        {
+            'H2O_kg_solid': 2.0e19,
+            'H2O_kg_trapped': 2.0e19,
+            'H2O_mol_solid': 2.0e19 / eval_gas_mmw('H2O'),
+        }
+    )
+    row['H_kg_solid'] = row['H_kg_trapped'] = element_masses_from_species({'H2O': 2.0e19})['H']
+    m_el = sum(row[f'{e}_kg_atm'] for e in SEALED_ELEMENTS)
+    row.update({'esc_rate_total': 1.0, 'esc_step_kg': 0.1 * m_el})
+    atm0 = row['H2O_kg_atm']
+    total0 = row['H2O_kg_sealed'] + row['H2O_kg_solid'] + atm0
+    hf_all = pd.DataFrame([{**row, 'Phi_global': 0.2, 'Time': row['Time'] - 10.0}])
+    cfg = SimpleNamespace(
+        outgas=SimpleNamespace(trap_mode='front', D_const_H2O=0.0017, mass_thresh=1e16),
+        interior_energetics=SimpleNamespace(rfront_loc=0.5),
+    )
+    released = -run_trapping(cfg, row, hf_all, None).total_trapped
+    state, _ = _step(row, _interior([0.6, 0.2]), True, delta_close=0.3, tau_leak=1.0e3)
+    keep = np.exp(-10.0 / 1.0e3)
+    assert state is True and row['H2O_kg_liquid'] == 0.0
+    assert row['H2O_kg_sealed'] == pytest.approx((MELT['H2O'] + released) * keep, rel=1e-12)
+    total1 = row['H2O_kg_sealed'] + row['H2O_kg_solid'] + row['H2O_kg_atm']
+    assert total1 == pytest.approx(total0 - 0.1 * atm0, rel=1e-12)
+
+
+@pytest.mark.parametrize('path', [float('nan'), 3.0, -1.0], ids=['nan', 'unknown', 'negative'])
+def test_restore_seal_state_refuses_an_unknown_seal_path(path):
+    """A sealed row must name a known path (0, 1 or 2)."""
+    row = {**_sealed_row(), 'seal_active': 1.0, 'seal_path': path}
+    with pytest.raises(ValueError, match='seal_path'):
+        restore_seal_state(_config(), row)
+    assert restore_seal_state(_config(), dict(row, seal_path=2.0)) is True
+
+
+def test_restore_with_the_seal_off_clears_stale_seal_flags():
+    """With the seal off and nothing held, a resume zeroes a stale seal flag and
+    path, so later rows do not report a seal."""
+    off = SimpleNamespace(outgas=SimpleNamespace(lid_seal=LidSeal()))
+    row = {**_row(), 'seal_active': 1.0, 'seal_path': 2.0}
+    assert restore_seal_state(off, row) is False
+    assert row['seal_active'] == row['seal_path'] == 0.0

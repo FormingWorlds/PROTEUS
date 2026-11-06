@@ -303,10 +303,8 @@ def test_lid_seal_cross_field_rules(tmp_path):
         load(lambda c: c['interior_energetics'].update(module='spider'))
     with pytest.raises(ValueError, match='lid_seal.*escape.reservoir'):
         load(lambda c: c['escape'].update(reservoir='pxuv'))
-    assert (
-        load(lambda c: c['escape'].update(module='none', reservoir='pxuv')).escape.reservoir
-        == 'pxuv'
-    )
+    with pytest.raises(ValueError, match='lid_seal.*escape.reservoir'):
+        load(lambda c: c['escape'].update(module='none', reservoir='pxuv'))
     assert load(lambda c: c['escape'].update(reservoir='bulk')).escape.reservoir == 'bulk'
     with pytest.raises(ValueError, match='lid_seal.*outgas.module'):
         load(lambda c: c['outgas'].update(module='atmodeller'))
