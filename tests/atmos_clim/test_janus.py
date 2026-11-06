@@ -419,11 +419,11 @@ def test_run_janus_gobs_inverse_square_of_robs(monkeypatch, tmp_path):
         'p_xuv': 1e-3,  # bar
         'T_surf': 1400.0,
     }
-    dirs = {'output': str(tmp_path)}
+    dirs = {'output': str(tmp_path), 'temp': str(tmp_path)}
 
     # Run JANUS. The solved column comes back alongside the outputs; it is what
     # a snapshot must be written from, so the caller can reach it.
-    solved, output = RunJANUS(seed_atm, dirs, config, hf_row, None, write_in_tmp_dir=False)
+    solved, output = RunJANUS(seed_atm, dirs, config, hf_row, None)
 
     # Discrimination: the seed and the solved column are different objects, so
     # handing back the seed, which is what the caller used to be left holding,
@@ -492,11 +492,10 @@ def test_run_janus_failed_hydrostatic_falls_back_to_surface_values(monkeypatch, 
 
     _, output = RunJANUS(
         SimpleNamespace(),
-        {'output': str(tmp_path)},
+        {'output': str(tmp_path), 'temp': str(tmp_path)},
         config,
         hf_row,
         None,
-        write_in_tmp_dir=False,
     )
 
     # Surface fallbacks on both levels, not values read off the failed column.
@@ -606,11 +605,10 @@ def test_run_janus_clips_the_xuv_radius_to_the_hill_radius(monkeypatch, tmp_path
 
     _, output = RunJANUS(
         SimpleNamespace(),
-        {'output': str(tmp_path)},
+        {'output': str(tmp_path), 'temp': str(tmp_path)},
         config,
         hf_row,
         None,
-        write_in_tmp_dir=False,
     )
 
     assert output['R_xuv'] == pytest.approx(6.4e6, rel=1e-12)
@@ -694,7 +692,13 @@ def test_run_janus_picks_the_solver_from_the_saturation_skin(
         'boundary_layer_conductivity': 2.89 if thickness > 0 else 0.0,  # W m-1 K-1
     }
 
-    RunJANUS(SimpleNamespace(), {'output': str(tmp_path)}, config, hf_row, None, False)
+    RunJANUS(
+        SimpleNamespace(),
+        {'output': str(tmp_path), 'temp': str(tmp_path)},
+        config,
+        hf_row,
+        None,
+    )
 
     assert calls == [solver]
     # The configured surf_state alone would pick the conductive lid in both cases
@@ -791,11 +795,10 @@ def test_run_janus_conductive_lid_starts_from_the_previous_step(
 
     RunJANUS(
         SimpleNamespace(),
-        {'output': str(tmp_path)},
+        {'output': str(tmp_path), 'temp': str(tmp_path)},
         config,
         _run_janus_hf_row(1e3),
         hf_all,
-        write_in_tmp_dir=False,
     )
 
     assert seen['atol'] == pytest.approx(1e-4 * 250.0 + 1e-5, rel=1e-12)
@@ -833,33 +836,44 @@ def test_run_janus_refuses_an_unknown_surface_state_and_cleans_up(monkeypatch, t
 
 
 @pytest.mark.unit
-def test_run_janus_in_the_output_folder_removes_only_socrates_files(monkeypatch, tmp_path):
-    """Without a temporary folder JANUS runs in the output folder and removes only
-    the SOCRATES work files (current??.???? and profile.*) afterwards."""
-    keep = ['current.nc', 'currentsw.fluxes', '100_atm.nc', 'runtime.sf']
-    socrates = ['currentsw.uflx', 'currentlw.dflx', 'profile.tstar', 'profile.t']
-    for name in keep:
-        (tmp_path / name).write_text('keep')
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('time', 'with_history'),
+    [(0.0, True), (1e3, False)],
+    ids=['first-step', 'no-history'],
+)
+def test_run_janus_conductive_lid_first_step_uses_fixed_tolerance(
+    monkeypatch, tmp_path, time, with_history
+):
+    """At Time = 0, or without earlier rows, the conductive-lid solve has nothing to start from.
 
+    It then uses a fixed 0.1 W m-2 tolerance, an initial guess of -2 K (the
+    unset previous temperature of -1 K, minus 1 K) and no warming cap, even
+    with prevent_warming set.
+    """
     seen = {}
 
-    def _solver(*a, **kw):
-        seen['cwd'] = os.getcwd()
-        for name in socrates:
-            open(name, 'w').close()
+    def _mcpa_cbl(*a, **kw):
+        seen.update(kw)
         return _build_run_atm(g_surf=9.81, z_obs_height=5.0e4, stale_grav=9.81)
 
-    monkeypatch.setattr('janus.modules.MCPA', _solver)
+    monkeypatch.setattr('janus.modules.MCPA_CBL', _mcpa_cbl)
     _patch_run_janus_helpers(monkeypatch)
+    config = _build_run_config()
+    config.atmos_clim.surf_state = 'skin'
+    config.planet.prevent_warming = True
+    hf_all = pd.DataFrame({'T_surf': [1850.0], 'F_atm': [-250.0]}) if with_history else None
 
     RunJANUS(
         SimpleNamespace(),
-        {'output': str(tmp_path)},
-        _build_run_config(),
-        _run_janus_hf_row(1e3),
-        None,
-        write_in_tmp_dir=False,
+        {'output': str(tmp_path), 'temp': str(tmp_path)},
+        config,
+        _run_janus_hf_row(time),
+        hf_all,
     )
 
-    assert Path(seen['cwd']) == tmp_path.resolve()
-    assert sorted(os.listdir(tmp_path)) == sorted(keep)
+    assert seen['atol'] == pytest.approx(0.1, rel=1e-12)
+    assert seen['T_surf_guess'] == pytest.approx(-2.0, rel=1e-12)
+    assert seen['T_surf_max'] == pytest.approx(-1.0, rel=1e-12)
+    # Discrimination: the history-based tolerance would be 1e-4 * 250 + 1e-5
+    assert seen['atol'] != pytest.approx(0.02501, rel=0.5)

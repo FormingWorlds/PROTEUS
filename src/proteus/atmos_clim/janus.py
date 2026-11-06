@@ -1,7 +1,6 @@
 # Functions used to handle atmosphere thermodynamics (running JANUS, etc.)
 from __future__ import annotations  # noqa: I001
 
-import glob
 import logging
 import os
 import shutil
@@ -227,7 +226,6 @@ def RunJANUS(
     config: Config,
     hf_row: dict,
     hf_all: pd.DataFrame,
-    write_in_tmp_dir=True,
     search_method=0,
     rtol=1.0e-4,
     write_data: bool = True,
@@ -250,8 +248,6 @@ def RunJANUS(
             Dictionary containing simulation variables for current iteration
         hf_all : pd.DataFrame
             Dataframe containing simulation variables (now and historic)
-        write_in_tmp_dir : bool
-            Run SOCRATES in a folder under `dirs['temp']`, removed afterwards, rather than in the output folder
         search_method : int
             Root finding method used by JANUS
         rtol : float
@@ -281,21 +277,14 @@ def RunJANUS(
 
     # SOCRATES writes its working files into the current directory
     cwd = os.getcwd()
-    tmp_dir = dirs['output']
-    if write_in_tmp_dir:
-        tmp_dir = tempfile.mkdtemp(prefix='janus_', dir=dirs['temp'])
+    tmp_dir = tempfile.mkdtemp(prefix='janus_', dir=dirs['temp'])
     log.debug("Will run socrates inside '%s'" % tmp_dir)
     os.chdir(tmp_dir)
     try:
         atm = _solve_janus(atm, dirs, config, hf_row, hf_all, time, search_method, rtol)
     finally:
-        for file in glob.glob(tmp_dir + '/current??.????'):
-            os.remove(file)
-        for file in glob.glob(tmp_dir + '/profile.*'):
-            os.remove(file)
         os.chdir(cwd)
-        if write_in_tmp_dir:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
     any_cloud = np.any(np.array(atm.clfr) > 1.0e-20)
     log.info('Water clouds have formed = %s' % (str(any_cloud)))

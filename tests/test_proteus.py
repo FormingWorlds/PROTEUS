@@ -5184,7 +5184,7 @@ def test_run_folder_follows_tmpdir_for_habrok(tmp_path, system_tmp, monkeypatch)
     """With only $TMPDIR set, the run's temporary folder is created under it.
 
     This supports Habrok, which sets $TMPDIR for jobs: runs there must use it,
-    not /tmp or a fixed folder. Snellius also sets $TMPDIR per job.
+    not /tmp or a fixed folder.
     """
     from proteus.proteus import _run_temp_dir
 
