@@ -251,6 +251,7 @@ def test_relaxation_matches_the_exponential_and_not_the_step_length(validation_p
     def figure():
         import matplotlib.pyplot as plt
 
+        plt.rcParams['svg.fonttype'] = 'none'  # text as SVG text, not glyph paths
         fig, (ax, ax2) = plt.subplots(2, 1, figsize=(6, 5), sharex=True, height_ratios=[3, 1])
         x = np.linspace(0.0, 1.0, 101)
         ax.plot(x, np.exp(-x), label='closed form')
@@ -316,6 +317,7 @@ def test_volcanic_rate_closes_the_mass_balance_of_the_sealed_reservoir(validatio
     def figure():
         import matplotlib.pyplot as plt
 
+        plt.rcParams['svg.fonttype'] = 'none'  # text as SVG text, not glyph paths
         fig, ax = plt.subplots(figsize=(6, 4))
         x = np.linspace(0.01, 1.0, 200)
         for d, marker in zip(curves, ('o', 's', '^', 'D')):
