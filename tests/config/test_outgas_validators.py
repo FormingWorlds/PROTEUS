@@ -193,7 +193,17 @@ def test_lid_seal_refuses_values_outside_each_domain(field, bad):
     phi_close read the other fields (defaults 1e4 m and 0.3)."""
     with pytest.raises(ValueError, match=rf'^{field} must'):
         _seal(**{field: bad})
-    assert _seal().delta_close == 1e4  # a refusal leaves the defaults loadable
+    valid = {
+        'delta_close': 2.0,
+        'phi_close': 0.4,
+        'tau_leak': 1.0,
+        'chi_d': 0.5,
+        'crust_rate': 1.0,
+        'phi_solid': 0.1,
+        'delta_open': 1.0,
+        'phi_open': 0.5,
+    }
+    assert getattr(_seal(**{field: valid[field]}), field) == pytest.approx(valid[field])
 
 
 def test_lid_seal_refuses_a_derived_phi_open_at_or_above_one():
@@ -202,6 +212,29 @@ def test_lid_seal_refuses_a_derived_phi_open_at_or_above_one():
         _seal(phi_close=0.95)
     assert _seal(phi_close=0.949).phi_open_value == pytest.approx(0.999, rel=1e-12)
     assert _seal(phi_close=0.95, phi_open=0.99).phi_open_value == 0.99
+
+
+def test_lid_seal_validator_reads_a_missing_zalmoxis_table_as_dry():
+    """A Struct built in code with no zalmoxis table counts as a dry mantle."""
+    from types import SimpleNamespace
+
+    from proteus.config._config import lid_seal_requirements
+
+    inst = SimpleNamespace(
+        outgas=SimpleNamespace(
+            lid_seal=_seal(enabled=True), vapourise=False, module='calliope'
+        ),
+        interior_energetics=SimpleNamespace(module='aragog'),
+        params=SimpleNamespace(
+            stop=SimpleNamespace(solid=SimpleNamespace(freeze_volatiles=False))
+        ),
+        escape=SimpleNamespace(module='zephyrus', reservoir='outgas'),
+        interior_struct=SimpleNamespace(module='zalmoxis', zalmoxis=None),
+    )
+    assert lid_seal_requirements(inst, None, None) is None
+    inst.interior_struct.zalmoxis = SimpleNamespace(dry_mantle=False)
+    with pytest.raises(ValueError, match='dry_mantle'):
+        lid_seal_requirements(inst, None, None)
 
 
 def test_lid_seal_accepts_the_limits_and_both_regimes():
@@ -270,6 +303,10 @@ def test_lid_seal_cross_field_rules(tmp_path):
         load(lambda c: c['interior_energetics'].update(module='spider'))
     with pytest.raises(ValueError, match='lid_seal.*escape.reservoir'):
         load(lambda c: c['escape'].update(reservoir='pxuv'))
+    assert (
+        load(lambda c: c['escape'].update(module='none', reservoir='pxuv')).escape.reservoir
+        == 'pxuv'
+    )
     assert load(lambda c: c['escape'].update(reservoir='bulk')).escape.reservoir == 'bulk'
     with pytest.raises(ValueError, match='lid_seal.*outgas.module'):
         load(lambda c: c['outgas'].update(module='atmodeller'))

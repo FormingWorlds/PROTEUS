@@ -2213,9 +2213,16 @@ def test_run_crystallized_escape_debits_atmosphere():
         'CO2_vmr': 0.2,
         'P_surf': 10.0,
         'atm_kg_per_mol': 0.025,
+        'H2O_mol_atm': 4440.0,
+        'CO2_mol_atm': 454.0,
     }
     run_crystallized(_cryst_cfg(), hf_row, dt)
 
+    # The moles scale with the masses, so the molar mass of each species holds.
+    assert hf_row['H2O_mol_atm'] == pytest.approx(3996.0, rel=1e-12)
+    assert hf_row['CO2_mol_atm'] / hf_row['CO2_kg_atm'] == pytest.approx(
+        454.0 / 20.0, rel=1e-12
+    )
     # 10 kg of 100 escaped -> 90 retained.
     assert hf_row['M_atm'] == pytest.approx(90.0, rel=1e-9)
     # Discrimination: a no-op (the reservoirs-preserved branch) would leave
@@ -2988,6 +2995,7 @@ def test_sealed_mass_blocks_desiccation_and_a_desiccation_empties_the_rest():
     row.update({'H_kg_total': 1e15, 'H_kg_sealed': 1e15, 'H2O_kg_sealed': 8.9e15})
     row['H2O_mol_sealed'] = 5e17
     row.update({'H_kg_leak_tau': 3e12, 'seal_crust_rate': 5e10, 'seal_active': 1.0})
+    row.update({'seal_delta': 6e4, 'seal_phi_top': 2e-4, 'seal_path': 1.0})
     assert check_desiccation(config, row) is True
     with patch('proteus.outgas.wrapper.record_volatile_change'):
         run_desiccated({}, config, row, False)
@@ -2995,3 +3003,4 @@ def test_sealed_mass_blocks_desiccation_and_a_desiccation_empties_the_rest():
     assert row['H_kg_total'] == 0.0
     assert row['M_desiccated'] == pytest.approx(1e15, rel=1e-12)
     assert row['H_kg_leak_tau'] == row['seal_crust_rate'] == row['seal_active'] == 0.0
+    assert row['seal_delta'] == row['seal_phi_top'] == row['seal_path'] == 0.0

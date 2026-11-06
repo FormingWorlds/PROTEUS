@@ -19,6 +19,7 @@ import pytest
 
 from proteus.config._outgas import LidSeal
 from proteus.outgas.common import element_masses_from_species
+from proteus.outgas.compaction import BRANCH_REMELT
 from proteus.outgas.lid_seal import (
     SEALED_ELEMENTS,
     SEALED_SPECIES,
@@ -120,7 +121,10 @@ def test_crust_thickness_refuses_a_malformed_mesh(phi, radius):
     """A mesh with the wrong face count or a falling radius is refused."""
     with pytest.raises(ValueError, match='crust_thickness'):
         crust_thickness(np.array(phi), np.array(radius), 1e-3)
-    assert crust_thickness(np.array([0.0]), np.array([1.0, 2.0]), 1e-3) == 1.0
+    phi_in, radius_in = np.array(phi), np.array(radius)
+    with pytest.raises(ValueError):
+        crust_thickness(phi_in, radius_in, 1e-3)
+    np.testing.assert_array_equal(radius_in, np.array(radius))  # input left unchanged
 
 
 def _interior(phi, radius=None):
@@ -496,6 +500,7 @@ def test_leak_step_moves_species_masses_and_moles_together():
         )
 
 
+@pytest.mark.physics_invariant
 def test_a_step_that_drains_the_reservoir_passes_the_ledger_check():
     """A step much longer than tau drains the sealed mass; round-off in the 2
     leak parts must not trip the ledger check, and no sealed mass is negative."""
@@ -561,14 +566,7 @@ def test_seal_band_edges(phi_top, delta, sealed, expected):
     interior = _interior([0.6, phi_top])
     row = _sealed_row() if sealed else _row()
     row.update({'lid_weight': 1.0, 'lid_delta': delta, 'esc_rate_total': 0.0})
-    cfg = _config(delta_close=0.3, phi_open=0.35)
-    with (
-        patch('proteus.outgas.wrapper.run_outgassing_and_vapourisation'),
-        patch('proteus.outgas.wrapper.check_ic_oxygen_budget'),
-    ):
-        state = run_lid_seal_step(
-            {}, cfg, row, interior, sealed, first_iter=False, init_stage=False, dt=1.0
-        )
+    state, _ = _step(row, interior, sealed, delta_close=0.3, phi_open=0.35)
     assert state is expected
     assert row['seal_active'] == float(expected)
 
@@ -589,6 +587,7 @@ def _mesh(phi_top):
     return _interior(phi, radius=np.linspace(R_INT - 3.0e5, R_INT, 11))
 
 
+@pytest.mark.physics_invariant
 def test_mesh_crust_seal_holds_while_the_top_cell_wanders_around_phi_solid():
     """On the mesh the crust is 0 or whole cells; a sealed crust must not open
     when the top cell crosses phi_solid, only once it holds phi_open of melt."""
@@ -608,6 +607,7 @@ def test_mesh_crust_seal_holds_while_the_top_cell_wanders_around_phi_solid():
     assert row['H2O_kg_liquid'] == MELT['H2O']
 
 
+@pytest.mark.physics_invariant
 def test_a_held_step_applies_escape_then_the_leak():
     """While sealed, escape scales the atmosphere down (as on a frozen mantle)
     and then the sealed mass leaks into it, by the exact exponential."""
@@ -624,14 +624,19 @@ def test_a_held_step_applies_escape_then_the_leak():
     assert row['P_surf'] == pytest.approx(
         row['M_atm'] * GRAVITY / (4 * np.pi * R_INT**2) / 1e5, rel=1e-14
     )
+    n = {s: row[f'{s}_kg_atm'] / eval_gas_mmw(s) for s in ATM}
+    assert row['atm_kg_per_mol'] == pytest.approx(row['M_atm'] / sum(n.values()), rel=1e-12)
+    assert row['H2O_vmr'] == pytest.approx(n['H2O'] / sum(n.values()), rel=1e-12)
 
 
+@pytest.mark.physics_invariant
 def test_a_release_into_the_melt_while_sealed_joins_the_sealed_reservoir():
     """Trapped mass that a remelt returns to the melt while the seal holds is
     under the crust too: the held step moves it to the sealed reservoir."""
     row = {**_sealed_row(), 'lid_weight': 1.0, 'lid_delta': 0.5, 'esc_rate_total': 0.0}
     row['H2O_kg_liquid'], row['H2O_mol_liquid'] = 1.0e18, 1.0e18 / eval_gas_mmw('H2O')
     row['H_kg_liquid'] = element_masses_from_species({'H2O': 1.0e18})['H']
+    row.update({'trap_branch': float(BRANCH_REMELT), 'trap_kg_step': -1.0e18})
     state, _ = _step(row, _interior([0.6, 0.2]), True, delta_close=0.3)
     assert state is True
     assert row['H2O_kg_liquid'] == 0.0 and row['H_kg_liquid'] == 0.0
@@ -660,3 +665,101 @@ def test_restore_seal_state_reads_the_row_and_refuses_stranded_mass():
     with pytest.raises(ValueError, match='lid_seal.enabled'):
         restore_seal_state(off, row)
     assert restore_seal_state(off, _row()) is False
+
+
+def test_melt_mass_on_a_held_step_without_a_release_fails_the_ledger_check():
+    """Only a trapping release may put melt mass under a closed seal; any other
+    melt mass on a held step is a ledger fault and stops the run."""
+    row = {**_sealed_row(), 'lid_weight': 1.0, 'lid_delta': 0.5, 'esc_rate_total': 0.0}
+    row['CO2_kg_liquid'] = 5.0e18
+    with pytest.raises(RuntimeError, match='CO2_kg_liquid'):
+        _step(row, _interior([0.6, 0.2]), True, delta_close=0.3)
+    assert row['CO2_kg_sealed'] == MELT['CO2']
+
+
+@pytest.mark.physics_invariant
+def test_a_remelt_release_under_the_seal_reaches_the_sealed_reservoir():
+    """A real trapping step that remelts buried water while the seal holds hands
+    it to the held step, which puts it under the crust: no melt mass is left and
+    the water mass is conserved across trapped, sealed and atmosphere."""
+    import pandas as pd
+
+    from proteus.outgas.trapping import run_trapping
+
+    row = {**_sealed_row(phi=0.3), 'lid_weight': 1.0, 'lid_delta': 0.5, 'esc_rate_total': 0.0}
+    row.update(
+        {
+            'H2O_kg_solid': 2.0e19,
+            'H2O_kg_trapped': 2.0e19,
+            'H2O_mol_solid': 2.0e19 / eval_gas_mmw('H2O'),
+        }
+    )
+    row.update({'H_kg_solid': element_masses_from_species({'H2O': 2.0e19})['H']})
+    row['H_kg_trapped'] = row['H_kg_solid']
+    total0 = row['H2O_kg_sealed'] + row['H2O_kg_solid'] + row['H2O_kg_atm']
+    hf_all = pd.DataFrame([{**row, 'Phi_global': 0.2, 'Time': row['Time'] - 10.0}])
+    cfg = SimpleNamespace(
+        outgas=SimpleNamespace(trap_mode='front', D_const_H2O=0.0017, mass_thresh=1e16),
+        interior_energetics=SimpleNamespace(rfront_loc=0.5),
+    )
+    step = run_trapping(cfg, row, hf_all, None)
+    assert step is not None and step.total_trapped < 0.0
+    released = -step.total_trapped
+    state, _ = _step(row, _interior([0.6, 0.2]), True, delta_close=0.3)
+    assert state is True and row['H2O_kg_liquid'] == 0.0
+    total1 = row['H2O_kg_sealed'] + row['H2O_kg_solid'] + row['H2O_kg_atm']
+    assert total1 == pytest.approx(total0, rel=1e-12)
+    assert row['H2O_kg_sealed'] == pytest.approx(MELT['H2O'] + released, rel=1e-12)
+
+
+def _lid_seq(steps, **seal):
+    """Run a sequence of (lid_weight, lid_delta, phi_top) steps; return the states."""
+    row, sealed, out = {**_row(), 'esc_rate_total': 0.0}, False, []
+    for w, d, phi_top in steps:
+        row.update({'lid_weight': w, 'lid_delta': d})
+        sealed, _ = _step(row, _mesh(phi_top), sealed, **seal)
+        out.append((sealed, row['seal_path']))
+    return out
+
+
+def test_a_seal_keeps_reading_the_path_that_closed_it():
+    """A mesh-closed seal ignores a thin sub-grid lid that appears later; a
+    lid-closed seal opens when its lid thins below delta_open, and reads the
+    mesh band once its lid is handed over."""
+    mesh_first = _lid_seq([(0.0, 0.0, 5e-4), (1.0, 2.0e3, 2e-3), (1.0, 2.0e3, 2e-3)])
+    assert mesh_first == [(True, 1.0), (True, 1.0), (True, 1.0)]
+    lid = _lid_seq([(1.0, 0.35, 0.2), (1.0, 0.2, 0.2), (1.0, 0.14, 0.2)], delta_close=0.3)
+    assert lid == [(True, 2.0), (True, 2.0), (False, 0.0)]
+    hand = _lid_seq([(1.0, 0.35, 0.2), (0.0, 0.0, 5e-4), (0.0, 0.0, 2e-3)], delta_close=0.3)
+    assert hand == [(True, 2.0), (True, 2.0), (True, 2.0)]
+
+
+def test_mesh_band_counts_cells_between_phi_close_and_phi_open():
+    """A sealed top cell holding 0.32 melt (above phi_close, below phi_open) is
+    still crust for the open test, so the seal holds; at phi_open it opens."""
+    row = {**_row(), 'esc_rate_total': 0.0}
+    sealed, _ = _step(row, _mesh(5e-4), False)
+    held, _ = _step(row, _mesh(0.32), sealed)
+    assert held is True and row['seal_delta'] == pytest.approx(9.0e4, rel=1e-12)
+    opened, _ = _step(row, _mesh(0.35), held)
+    assert opened is False
+
+
+@pytest.mark.parametrize(
+    ('active', 'sealed_kg', 'match'),
+    [
+        (0.0, 3.0e20, 'seal_active'),
+        (float('nan'), 0.0, 'seal_active'),
+        (1.0, float('nan'), 'H2O_kg_sealed'),
+    ],
+    ids=['open-with-sealed-mass', 'nan-flag', 'nan-mass'],
+)
+def test_restore_seal_state_refuses_a_row_whose_flag_and_masses_disagree(
+    active, sealed_kg, match
+):
+    """Resume with the seal on: sealed mass under an open flag, a non-finite flag
+    or a non-finite sealed mass is refused."""
+    row = {**_row(), 'seal_active': active, 'H2O_kg_sealed': sealed_kg}
+    with pytest.raises(ValueError, match=match):
+        restore_seal_state(_config(), row)
+    assert restore_seal_state(_config(), {**_row(), 'seal_active': 0.0}) is False
