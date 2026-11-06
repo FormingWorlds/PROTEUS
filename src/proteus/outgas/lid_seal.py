@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.outgas.common import element_masses_from_species
+from proteus.outgas.common import element_masses_from_species, set_element_ratios
 from proteus.utils.constants import (
     gas_list,
     noble_gases,
@@ -100,11 +100,15 @@ def crust_thickness(phi: np.ndarray, radius: np.ndarray, phi_solid: float) -> fl
     return float(radius[-1] - radius[base])
 
 
-def closure_state(config: Config, hf_row: dict, interior_o) -> tuple[float, float]:
+def closure_state(
+    config: Config, hf_row: dict, interior_o, sealed: bool = False
+) -> tuple[float, float]:
     """Crust thickness [m] and top-cell melt fraction [1] that the seal reads.
 
     The thickness is ``hf_row['lid_delta']`` while the Aragog sub-grid lid is
-    active, else the mesh crust of :func:`crust_thickness`.
+    active, else the mesh crust of :func:`crust_thickness`. The mesh crust is 0
+    or whole cells, so a closed seal counts cells below ``phi_open`` as crust and
+    one that is open counts cells below ``phi_solid``: that is the band on the mesh.
 
     Raises
     ------
@@ -119,9 +123,9 @@ def closure_state(config: Config, hf_row: dict, interior_o) -> tuple[float, floa
             raise KeyError('The lid seal needs lid_delta [m] while the sub-grid lid is active')
         delta = float(hf_row['lid_delta'])
     else:
-        delta = crust_thickness(
-            interior_o.phi, interior_o.radius, config.outgas.lid_seal.phi_solid
-        )
+        seal = config.outgas.lid_seal
+        phi_crust = seal.phi_open_value if sealed else seal.phi_solid
+        delta = crust_thickness(interior_o.phi, interior_o.radius, phi_crust)
     if not (np.isfinite(delta) and np.isfinite(phi_top)):
         raise ValueError(
             f'Lid seal: crust thickness {delta} m or top-cell melt fraction {phi_top} '
@@ -218,7 +222,7 @@ def leak_rates(config: Config, hf_row: dict, dt: float) -> tuple[dict, float, bo
 
 
 def _refresh_atmosphere(hf_row: dict) -> None:
-    """Partial pressures, mixing ratios and column masses from the species masses."""
+    """Partial pressures, mixing ratios, element ratios and column masses from the masses."""
     area = 4.0 * np.pi * float(hf_row['R_int']) ** 2
     m_atm = sum(float(hf_row.get(f'{s}_kg_atm', 0.0)) for s in gas_list)
     mol = {s: float(hf_row.get(f'{s}_mol_atm', 0.0)) for s in gas_list}
@@ -233,6 +237,7 @@ def _refresh_atmosphere(hf_row: dict) -> None:
     hf_row['M_atm'] = m_atm
     hf_row['M_vol_atm'] = sum(float(hf_row.get(f'{s}_kg_atm', 0.0)) for s in vol_gas_list)
     hf_row['atm_kg_per_mol'] = m_atm / n_atm if n_atm > 0.0 else 0.0
+    set_element_ratios(hf_row)
 
 
 def _check(cond: bool, message: str) -> None:
@@ -270,25 +275,21 @@ def leak_step(config: Config, hf_row: dict, dt: float) -> None:
         hf_row[f'{s}_kg_atm'] = float(hf_row.get(f'{s}_kg_atm', 0.0)) + leaked
         hf_row[f'{s}_mol_atm'] = float(hf_row.get(f'{s}_mol_atm', 0.0)) + mol * (1.0 - keep)
 
-    leak_kg = 0.0
-    for e, weights in _WEIGHTS.items():
-        held = sum(w * before[s] for s, w in weights.items())
-        sealed_e = float(hf_row.get(f'{e}_kg_sealed', 0.0)) / held if held > 0.0 else 0.0
-        hf_row[f'{e}_kg_leak_tau'] = sealed_e * sum(w * tau_part[s] for s, w in weights.items())
-        hf_row[f'{e}_kg_leak_volc'] = sealed_e * sum(
-            w * volc_part[s] for s, w in weights.items()
-        )
+    leak_kg = sum(tau_part[g] + volc_part[g] for g in noble_gases)
     for g in noble_gases:
-        hf_row[f'{g}_kg_leak_tau'] = tau_part[g]
-        hf_row[f'{g}_kg_leak_volc'] = volc_part[g]
-    for e in SEALED_ELEMENTS:
-        out = hf_row[f'{e}_kg_leak_tau'] + hf_row[f'{e}_kg_leak_volc']
-        before = float(hf_row.get(f'{e}_kg_sealed', 0.0))
-        _check(out <= before * (1.0 + _LEDGER_RTOL), f'{e} leaks {out} kg of {before} kg')
-        hf_row[f'{e}_kg_sealed'] = max(before - out, 0.0)
+        hf_row[f'{g}_kg_leak_tau'], hf_row[f'{g}_kg_leak_volc'] = tau_part[g], volc_part[g]
+    for e, weights in _WEIGHTS.items():
+        sealed_e = float(hf_row.get(f'{e}_kg_sealed', 0.0))
+        held = sum(w * before[s] for s, w in weights.items())
+        share = sealed_e / held if held > 0.0 else 0.0
+        by_tau = share * sum(w * tau_part[s] for s, w in weights.items())
+        by_volc = share * sum(w * volc_part[s] for s, w in weights.items())
+        out = by_tau + by_volc
+        _check(out <= sealed_e * (1.0 + _LEDGER_RTOL), f'{e} leaks {out} kg of {sealed_e} kg')
+        hf_row[f'{e}_kg_leak_tau'], hf_row[f'{e}_kg_leak_volc'] = by_tau, by_volc
+        hf_row[f'{e}_kg_sealed'] = max(sealed_e - out, 0.0)
         hf_row[f'{e}_kg_atm'] = float(hf_row.get(f'{e}_kg_atm', 0.0)) + out
         leak_kg += out
-    leak_kg += sum(tau_part[g] + volc_part[g] for g in noble_gases)
     hf_row['seal_leak_kg_cum'] = float(hf_row.get('seal_leak_kg_cum', 0.0)) + leak_kg
     if leak_kg > 0.0:
         _refresh_atmosphere(hf_row)
@@ -303,14 +304,37 @@ def assert_sealed_row(hf_row: dict) -> None:
         _check(liquid == 0.0, f'{name}_kg_liquid = {liquid} kg while sealed')
 
 
+def restore_seal_state(config: Config, hf_row: dict) -> bool:
+    """Whether a resumed run starts sealed, from ``seal_active`` of its last row.
+
+    Raises
+    ------
+    ValueError
+        If the row holds sealed mass and the seal is off, since nothing could open it.
+    """
+    if seal_enabled(config):
+        return bool(hf_row.get('seal_active', 0.0))
+    held = [
+        n
+        for n in (*SEALED_SPECIES, *SEALED_ELEMENTS)
+        if float(hf_row.get(f'{n}_kg_sealed', 0.0)) > 0.0
+    ]
+    if held:
+        raise ValueError(
+            f'Resume: the last row holds sealed mass ({", ".join(held[:4])}) but '
+            'outgas.lid_seal.enabled = false; resume with the seal on.'
+        )
+    return False
+
+
 def sealed_mass(hf_row: dict, element: str) -> float:
     """Mass of one element [kg] held in the sealed reservoir, 0 when unreadable."""
     mass = float(hf_row.get(f'{element}_kg_sealed', 0.0))
     return mass if np.isfinite(mass) and mass > 0.0 else 0.0
 
 
-def _reset_step_columns(hf_row: dict) -> None:
-    """Zero the per-step seal columns before a step writes them."""
+def reset_step_columns(hf_row: dict) -> None:
+    """Zero the per-step seal columns before a step writes them, and after a desiccation."""
     hf_row['seal_open_kg'] = 0.0
     hf_row['seal_crust_rate'] = 0.0
     hf_row['seal_volc_capped'] = 0.0
@@ -345,8 +369,8 @@ def run_lid_seal_step(
     )
 
     seal = config.outgas.lid_seal
-    _reset_step_columns(hf_row)
-    delta, phi_top = closure_state(config, hf_row, interior_o)
+    reset_step_columns(hf_row)
+    delta, phi_top = closure_state(config, hf_row, interior_o, sealed)
     hf_row['seal_delta'], hf_row['seal_phi_top'] = delta, phi_top
     impact = bool(getattr(interior_o, 'impact_reset', False))
     if sealed and (impact or phi_top >= seal.phi_open_value or delta < seal.delta_open_value):
@@ -360,6 +384,7 @@ def run_lid_seal_step(
         )
         sealed = False
     if sealed:
+        close_seal(hf_row)  # mass a remelt released from the solid is under the crust too
         run_crystallized(config, hf_row, dt)
         leak_step(config, hf_row, dt)
         assert_sealed_row(hf_row)

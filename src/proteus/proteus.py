@@ -652,7 +652,7 @@ class Proteus:
         from proteus.orbit.wrapper import init_orbit, run_orbit
 
         #   solid-phase volatile trapping, and the melt held under a closed crust
-        from proteus.outgas.lid_seal import run_lid_seal_step, seal_enabled
+        from proteus.outgas.lid_seal import restore_seal_state, run_lid_seal_step, seal_enabled
         from proteus.outgas.trapping import run_trapping
 
         #    outgassing
@@ -1069,9 +1069,7 @@ class Proteus:
                     )
 
             # The seal state is in the row; no history is replayed.
-            self.lid_sealed = seal_enabled(self.config) and bool(
-                self.hf_row.get('seal_active', 0.0)
-            )
+            self.lid_sealed = restore_seal_state(self.config, self.hf_row)
             if self.lid_sealed:
                 log.info(
                     'Resuming with the lid seal closed since t = %.3e yr',
@@ -1368,7 +1366,6 @@ class Proteus:
                 self.hf_all,
                 self.interior_o,
                 init_stage=self.init_stage,
-                held=self.lid_sealed,
             )
             # Mass a remelt returns to a desiccated planet must reach escape and outgassing.
             self.desiccated = desiccated_after_trapping(
@@ -1481,7 +1478,6 @@ class Proteus:
                 # no volatiles
                 run_desiccated(self.directories, self.config, self.hf_row, first_iter)
                 self.lid_sealed = False
-                self.hf_row['seal_active'] = 0.0
 
             elif self.crystallized:
                 # post solidification

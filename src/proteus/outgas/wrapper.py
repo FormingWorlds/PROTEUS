@@ -9,9 +9,14 @@ import numpy as np
 
 from proteus.escape.wrapper import readable_total
 from proteus.interior_struct.common import record_volatile_change
-from proteus.outgas.common import EMPTY_ATMOSPHERE_KEPT_KEYS, expected_keys
+from proteus.outgas.common import EMPTY_ATMOSPHERE_KEPT_KEYS, expected_keys, set_element_ratios
 from proteus.outgas.lavatmos import run_vapourisation
-from proteus.outgas.lid_seal import SEALED_ELEMENTS, SEALED_SPECIES, sealed_mass
+from proteus.outgas.lid_seal import (
+    SEALED_ELEMENTS,
+    SEALED_SPECIES,
+    reset_step_columns,
+    sealed_mass,
+)
 from proteus.outgas.trapping import (
     escapable_inventory,
     locked_condensed_mass,
@@ -557,16 +562,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
     # iteration rather than only after the mantle crystallises.
     hf_row['M_vol_atm'] = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_gas_list)
 
-    # Derive element mass ratios in atmosphere
-    for e1 in element_list:
-        for e2 in element_list:
-            key = f'{e2}/{e1}_atm'  # key to be set in helpfile
-            if key not in hf_row:
-                continue
-            if min(hf_row[f'{e1}_kg_atm'], hf_row[f'{e2}_kg_atm']) < 1e-30:
-                hf_row[key] = 0.0
-            else:
-                hf_row[key] = hf_row[f'{e2}_kg_atm'] / hf_row[f'{e1}_kg_atm']
+    set_element_ratios(hf_row)
 
     # print outgassed partial pressures (in order of descending abundance)
     species = [s for s in gas_list if s not in vap_list]
@@ -775,11 +771,13 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     for k in expected_keys():
         if k not in EMPTY_ATMOSPHERE_KEPT_KEYS and not k.endswith(held):
             hf_row[k] = 0.0
-    # A sealed rest below mass_thresh leaves with the atmosphere.
+    # A sealed rest below mass_thresh leaves with the atmosphere, and the seal opens.
     for n in (*SEALED_SPECIES, *SEALED_ELEMENTS):
         hf_row[f'{n}_kg_sealed'] = 0.0
         if n in SEALED_SPECIES:
             hf_row[f'{n}_mol_sealed'] = 0.0
+    reset_step_columns(hf_row)
+    hf_row['seal_active'] = 0.0
     for n, total in totals.items():
         if not np.isfinite(total):
             hf_row[f'{n}_kg_total'] = total

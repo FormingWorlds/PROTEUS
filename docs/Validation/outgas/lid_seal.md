@@ -42,7 +42,7 @@ This page checks the lid seal, `proteus.outgas.lid_seal`. When a crust closes ov
 
 It also checks the closed form $1/(D + \Phi(1 - D))$ of the scaled rate over $\Phi$ from 0.01 to 1, for $D$ = 0, 0.01, 0.1 and 1.
 
-**How we know the right answer.** The held volatile sits in the melt and, at $D > 0$, in the crystals in equilibrium with it. Mass balance then gives the melt concentration. The volcanic rate has the form of Eq. 14 and Eq. 17 of Schaefer and Sasselov (2015).
+**How we know the right answer.** The held volatile sits in the melt and, at $D > 0$, in the crystals in equilibrium with it. Mass balance then gives the melt concentration. The volcanic rate has the form of Eq. 14 and Eq. 17 of Schaefer and Sasselov (2015); replacing their melt production by $\dot M_c$ and their degree of melting by $\Phi$ is an adaptation, so the hand-written state checks the adapted formula, not a published value.
 
 **Why it matters.** With `crust_rate > 0`, this rate sets how fast the held volatiles reach the atmosphere.
 

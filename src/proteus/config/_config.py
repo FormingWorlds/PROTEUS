@@ -430,7 +430,8 @@ def front_trapping_requires_aragog(instance, attribute, value):
 
 
 def lid_seal_requirements(instance, attribute, value):
-    """The lid seal reads the Aragog mesh and freezes the chemistry while it holds."""
+    """The lid seal reads the Aragog mesh, freezes the CALLIOPE chemistry while it holds,
+    and applies unfractionated escape."""
     if not getattr(getattr(instance.outgas, 'lid_seal', None), 'enabled', False):
         return
     interior = instance.interior_energetics.module
@@ -450,6 +451,23 @@ def lid_seal_requirements(instance, attribute, value):
         raise ValueError(
             'outgas.lid_seal.enabled = true cannot be combined with outgas.vapourise = true: '
             'the leak sets the surface pressure from the volatile species alone.'
+        )
+    if instance.outgas.module != 'calliope':
+        raise ValueError(
+            'outgas.lid_seal.enabled = true requires outgas.module = "calliope", not '
+            f'"{instance.outgas.module}": the leak rebuilds the pressures as CALLIOPE does.'
+        )
+    if instance.escape.reservoir not in ('outgas', 'bulk'):
+        raise ValueError(
+            'outgas.lid_seal.enabled = true requires escape.reservoir = "outgas" or "bulk", '
+            f'not "{instance.escape.reservoir}": a held step applies unfractionated escape.'
+        )
+    zalmoxis = instance.interior_struct.module == 'zalmoxis'
+    if zalmoxis and not instance.interior_struct.zalmoxis.dry_mantle:
+        raise ValueError(
+            'outgas.lid_seal.enabled = true cannot be combined with '
+            'interior_struct.zalmoxis.dry_mantle = false: the structure reads the melt '
+            'volatiles, which the seal holds apart.'
         )
 
 

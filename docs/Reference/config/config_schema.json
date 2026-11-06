@@ -12732,11 +12732,15 @@
         "outgas"
       ],
       "touches": [
+        "escape.reservoir",
         "interior_energetics.module",
+        "interior_struct.module",
+        "interior_struct.zalmoxis.dry_mantle",
+        "outgas.module",
         "outgas.vapourise",
         "params.stop.solid.freeze_volatiles"
       ],
-      "doc": "The lid seal reads the Aragog mesh and freezes the chemistry while it holds."
+      "doc": "The lid seal reads the Aragog mesh, freezes the CALLIOPE chemistry while it holds, and applies unfractionated escape."
     },
     {
       "validator": "lowt_extension_requires_aragog",

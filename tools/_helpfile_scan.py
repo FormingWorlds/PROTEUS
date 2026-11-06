@@ -166,8 +166,9 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
     ('outgas/lid_seal.py', 'leak_step', '<?>_mol_atm'): _TRAPPED_SPECIES,
     ('outgas/lid_seal.py', 'leak_step', '<?>_kg_leak_tau'): _TRAPPED_ELEMENTS,
     ('outgas/lid_seal.py', 'leak_step', '<?>_kg_leak_volc'): _TRAPPED_ELEMENTS,
-    ('outgas/lid_seal.py', '_reset_step_columns', '<?>_kg_leak_tau'): _TRAPPED_ELEMENTS,
-    ('outgas/lid_seal.py', '_reset_step_columns', '<?>_kg_leak_volc'): _TRAPPED_ELEMENTS,
+    ('outgas/lid_seal.py', 'reset_step_columns', '<?>_kg_leak_tau'): _TRAPPED_ELEMENTS,
+    ('outgas/lid_seal.py', 'reset_step_columns', '<?>_kg_leak_volc'): _TRAPPED_ELEMENTS,
+    ('outgas/lid_seal.py', 'restore_seal_state', '<?>_kg_sealed'): _TRAPPED,
     ('outgas/lid_seal.py', 'assert_sealed_row', '<?>_kg_sealed'): _TRAPPED,
     ('outgas/lid_seal.py', 'assert_sealed_row', '<?>_kg_liquid'): _TRAPPED,
     ('outgas/lid_seal.py', 'sealed_mass', '<?>_kg_sealed'): _TRAPPED_ELEMENTS,
@@ -186,6 +187,7 @@ SUPPRESSED_DYNAMIC_WRITES = {
     # The mass-ratio loop assembles its key in a local; EXTRA_PRODUCERS
     # declares the full expansion for it.
     ('outgas/wrapper.py', 'run_outgassing'),
+    ('outgas/common.py', 'set_element_ratios'),
     # The trapped mass withheld from, and restored to, reservoirs the
     # chemistry and the trapping step already write, around each solve.
     ('outgas/trapping.py', '_shift'),
@@ -202,9 +204,9 @@ SUPPRESSED_DYNAMIC_WRITES = {
 }
 
 # Producers that assemble their key through a local variable the visitor
-# cannot follow: run_outgassing derives every element mass-ratio column.
+# cannot follow: set_element_ratios derives every element mass-ratio column.
 EXTRA_PRODUCERS = [
-    ('outgas/wrapper.py', 'run_outgassing', '<e2>/<e1>_atm'),
+    ('outgas/common.py', 'set_element_ratios', '<e2>/<e1>_atm'),
 ]
 
 

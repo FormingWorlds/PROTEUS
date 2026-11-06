@@ -805,7 +805,6 @@ def run_trapping(
     interior_o=None,
     *,
     init_stage: bool = False,
-    held: bool = False,
 ) -> TrappingStep | None:
     """Bury volatiles into the solid mantle over this crystallisation step.
 
@@ -831,9 +830,6 @@ def run_trapping(
         pressure profiles to locate the freezing front.
     init_stage : bool
         True during the initialisation stage, which traps nothing.
-    held : bool
-        True while the lid seal holds the melt inventory: the step buries and
-        releases nothing, and records a zero step.
     """
     mode = getattr(config.outgas, 'trap_mode', 'none')
     # A config that never declared a mode traps nothing: the schema restricts the
@@ -853,10 +849,6 @@ def run_trapping(
         return None
     if float(hf_row.get('Time', 0.0)) <= 0.0:
         return None
-    if held:
-        step = TrappingStep(mode=mode, dm_rm=0.0, f_tl=0.0, melt_mass=0.0)
-        _record(hf_row, step)
-        return step
 
     prev = hf_all.iloc[-1].to_dict()
     m_mantle = float(hf_row.get('M_mantle', 0.0))

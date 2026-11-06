@@ -849,7 +849,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `C_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
 | `N_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
 | `S_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
-| `seal_active` | `1` | whether the lid seal holds the melt inventory | `outgas/lid_seal.py`<br>`proteus.py` | always | main loop |
+| `seal_active` | `1` | whether the lid seal holds the melt inventory | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
 | `seal_t_close` | `yr` | time the seal last closed | `outgas/lid_seal.py` | always | main loop |
 | `seal_delta` | `m` | crust thickness the seal reads | `outgas/lid_seal.py` | always |   |
 | `seal_phi_top` | `1` | melt fraction of the top mesh cell | `outgas/lid_seal.py` | always |   |
@@ -890,206 +890,206 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `Xe_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
 | `Xe_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
 | `H_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
-| `H_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always | outgas |
-| `H_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always | outgas |
+| `H_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
+| `H_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
 | `O_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
-| `O_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always | outgas |
-| `O_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always | outgas |
+| `O_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
+| `O_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
 | `C_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
-| `C_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always | outgas |
-| `C_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always | outgas |
+| `C_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
+| `C_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
 | `N_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
-| `N_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always | outgas |
-| `N_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always | outgas |
+| `N_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
+| `N_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
 | `S_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas, utils |
-| `S_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always | outgas |
-| `S_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always | outgas |
-| `He_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always | outgas |
-| `He_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always | outgas |
-| `Ne_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always | outgas |
-| `Ne_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always | outgas |
-| `Ar_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always | outgas |
-| `Ar_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always | outgas |
-| `Kr_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always | outgas |
-| `Kr_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always | outgas |
-| `Xe_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always | outgas |
-| `Xe_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always | outgas |
+| `S_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
+| `S_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
+| `He_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
+| `He_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
+| `Ne_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
+| `Ne_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
+| `Ar_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
+| `Ar_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
+| `Kr_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
+| `Kr_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
+| `Xe_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
+| `Xe_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
 
 ### Element mass ratios in atmosphere
 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
-| `O/H_atm` | `1` | mass ratio of O to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `C/H_atm` | `1` | mass ratio of C to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `N/H_atm` | `1` | mass ratio of N to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `S/H_atm` | `1` | mass ratio of S to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Si/H_atm` | `1` | mass ratio of Si to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Mg/H_atm` | `1` | mass ratio of Mg to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Fe/H_atm` | `1` | mass ratio of Fe to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Na/H_atm` | `1` | mass ratio of Na to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Al/H_atm` | `1` | mass ratio of Al to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ti/H_atm` | `1` | mass ratio of Ti to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ca/H_atm` | `1` | mass ratio of Ca to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `K/H_atm` | `1` | mass ratio of K to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `V/H_atm` | `1` | mass ratio of V to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `He/H_atm` | `1` | mass ratio of He to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ne/H_atm` | `1` | mass ratio of Ne to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/H_atm` | `1` | mass ratio of Ar to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/H_atm` | `1` | mass ratio of Kr to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/H_atm` | `1` | mass ratio of Xe to H in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `C/O_atm` | `1` | mass ratio of C to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `N/O_atm` | `1` | mass ratio of N to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `S/O_atm` | `1` | mass ratio of S to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Si/O_atm` | `1` | mass ratio of Si to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Mg/O_atm` | `1` | mass ratio of Mg to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Fe/O_atm` | `1` | mass ratio of Fe to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Na/O_atm` | `1` | mass ratio of Na to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Al/O_atm` | `1` | mass ratio of Al to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ti/O_atm` | `1` | mass ratio of Ti to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ca/O_atm` | `1` | mass ratio of Ca to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `K/O_atm` | `1` | mass ratio of K to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `V/O_atm` | `1` | mass ratio of V to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `He/O_atm` | `1` | mass ratio of He to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ne/O_atm` | `1` | mass ratio of Ne to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/O_atm` | `1` | mass ratio of Ar to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/O_atm` | `1` | mass ratio of Kr to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/O_atm` | `1` | mass ratio of Xe to O in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `N/C_atm` | `1` | mass ratio of N to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `S/C_atm` | `1` | mass ratio of S to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Si/C_atm` | `1` | mass ratio of Si to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Mg/C_atm` | `1` | mass ratio of Mg to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Fe/C_atm` | `1` | mass ratio of Fe to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Na/C_atm` | `1` | mass ratio of Na to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Al/C_atm` | `1` | mass ratio of Al to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ti/C_atm` | `1` | mass ratio of Ti to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ca/C_atm` | `1` | mass ratio of Ca to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `K/C_atm` | `1` | mass ratio of K to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `V/C_atm` | `1` | mass ratio of V to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `He/C_atm` | `1` | mass ratio of He to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ne/C_atm` | `1` | mass ratio of Ne to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/C_atm` | `1` | mass ratio of Ar to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/C_atm` | `1` | mass ratio of Kr to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/C_atm` | `1` | mass ratio of Xe to C in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `S/N_atm` | `1` | mass ratio of S to N in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Si/N_atm` | `1` | mass ratio of Si to N in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Mg/N_atm` | `1` | mass ratio of Mg to N in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Fe/N_atm` | `1` | mass ratio of Fe to N in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Na/N_atm` | `1` | mass ratio of Na to N in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Al/N_atm` | `1` | mass ratio of Al to N in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ti/N_atm` | `1` | mass ratio of Ti to N in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ca/N_atm` | `1` | mass ratio of Ca to N in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `K/N_atm` | `1` | mass ratio of K to N in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `V/N_atm` | `1` | mass ratio of V to N in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `He/N_atm` | `1` | mass ratio of He to N in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ne/N_atm` | `1` | mass ratio of Ne to N in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/N_atm` | `1` | mass ratio of Ar to N in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/N_atm` | `1` | mass ratio of Kr to N in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/N_atm` | `1` | mass ratio of Xe to N in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Si/S_atm` | `1` | mass ratio of Si to S in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Mg/S_atm` | `1` | mass ratio of Mg to S in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Fe/S_atm` | `1` | mass ratio of Fe to S in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Na/S_atm` | `1` | mass ratio of Na to S in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Al/S_atm` | `1` | mass ratio of Al to S in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ti/S_atm` | `1` | mass ratio of Ti to S in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ca/S_atm` | `1` | mass ratio of Ca to S in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `K/S_atm` | `1` | mass ratio of K to S in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `V/S_atm` | `1` | mass ratio of V to S in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `He/S_atm` | `1` | mass ratio of He to S in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ne/S_atm` | `1` | mass ratio of Ne to S in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/S_atm` | `1` | mass ratio of Ar to S in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/S_atm` | `1` | mass ratio of Kr to S in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/S_atm` | `1` | mass ratio of Xe to S in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Mg/Si_atm` | `1` | mass ratio of Mg to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Fe/Si_atm` | `1` | mass ratio of Fe to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Na/Si_atm` | `1` | mass ratio of Na to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Al/Si_atm` | `1` | mass ratio of Al to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ti/Si_atm` | `1` | mass ratio of Ti to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ca/Si_atm` | `1` | mass ratio of Ca to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `K/Si_atm` | `1` | mass ratio of K to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `V/Si_atm` | `1` | mass ratio of V to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `He/Si_atm` | `1` | mass ratio of He to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ne/Si_atm` | `1` | mass ratio of Ne to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/Si_atm` | `1` | mass ratio of Ar to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/Si_atm` | `1` | mass ratio of Kr to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/Si_atm` | `1` | mass ratio of Xe to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Fe/Mg_atm` | `1` | mass ratio of Fe to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Na/Mg_atm` | `1` | mass ratio of Na to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Al/Mg_atm` | `1` | mass ratio of Al to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ti/Mg_atm` | `1` | mass ratio of Ti to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ca/Mg_atm` | `1` | mass ratio of Ca to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `K/Mg_atm` | `1` | mass ratio of K to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `V/Mg_atm` | `1` | mass ratio of V to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `He/Mg_atm` | `1` | mass ratio of He to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ne/Mg_atm` | `1` | mass ratio of Ne to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/Mg_atm` | `1` | mass ratio of Ar to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/Mg_atm` | `1` | mass ratio of Kr to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/Mg_atm` | `1` | mass ratio of Xe to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Na/Fe_atm` | `1` | mass ratio of Na to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Al/Fe_atm` | `1` | mass ratio of Al to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ti/Fe_atm` | `1` | mass ratio of Ti to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ca/Fe_atm` | `1` | mass ratio of Ca to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `K/Fe_atm` | `1` | mass ratio of K to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `V/Fe_atm` | `1` | mass ratio of V to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `He/Fe_atm` | `1` | mass ratio of He to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ne/Fe_atm` | `1` | mass ratio of Ne to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/Fe_atm` | `1` | mass ratio of Ar to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/Fe_atm` | `1` | mass ratio of Kr to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/Fe_atm` | `1` | mass ratio of Xe to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Al/Na_atm` | `1` | mass ratio of Al to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ti/Na_atm` | `1` | mass ratio of Ti to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ca/Na_atm` | `1` | mass ratio of Ca to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `K/Na_atm` | `1` | mass ratio of K to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `V/Na_atm` | `1` | mass ratio of V to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `He/Na_atm` | `1` | mass ratio of He to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ne/Na_atm` | `1` | mass ratio of Ne to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/Na_atm` | `1` | mass ratio of Ar to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/Na_atm` | `1` | mass ratio of Kr to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/Na_atm` | `1` | mass ratio of Xe to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ti/Al_atm` | `1` | mass ratio of Ti to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ca/Al_atm` | `1` | mass ratio of Ca to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `K/Al_atm` | `1` | mass ratio of K to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `V/Al_atm` | `1` | mass ratio of V to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `He/Al_atm` | `1` | mass ratio of He to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ne/Al_atm` | `1` | mass ratio of Ne to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/Al_atm` | `1` | mass ratio of Ar to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/Al_atm` | `1` | mass ratio of Kr to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/Al_atm` | `1` | mass ratio of Xe to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ca/Ti_atm` | `1` | mass ratio of Ca to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `K/Ti_atm` | `1` | mass ratio of K to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `V/Ti_atm` | `1` | mass ratio of V to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `He/Ti_atm` | `1` | mass ratio of He to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ne/Ti_atm` | `1` | mass ratio of Ne to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/Ti_atm` | `1` | mass ratio of Ar to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/Ti_atm` | `1` | mass ratio of Kr to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/Ti_atm` | `1` | mass ratio of Xe to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `K/Ca_atm` | `1` | mass ratio of K to Ca in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `V/Ca_atm` | `1` | mass ratio of V to Ca in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `He/Ca_atm` | `1` | mass ratio of He to Ca in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ne/Ca_atm` | `1` | mass ratio of Ne to Ca in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/Ca_atm` | `1` | mass ratio of Ar to Ca in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/Ca_atm` | `1` | mass ratio of Kr to Ca in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/Ca_atm` | `1` | mass ratio of Xe to Ca in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `V/K_atm` | `1` | mass ratio of V to K in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `He/K_atm` | `1` | mass ratio of He to K in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ne/K_atm` | `1` | mass ratio of Ne to K in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/K_atm` | `1` | mass ratio of Ar to K in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/K_atm` | `1` | mass ratio of Kr to K in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/K_atm` | `1` | mass ratio of Xe to K in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `He/V_atm` | `1` | mass ratio of He to V in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ne/V_atm` | `1` | mass ratio of Ne to V in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/V_atm` | `1` | mass ratio of Ar to V in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/V_atm` | `1` | mass ratio of Kr to V in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/V_atm` | `1` | mass ratio of Xe to V in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ne/He_atm` | `1` | mass ratio of Ne to He in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/He_atm` | `1` | mass ratio of Ar to He in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/He_atm` | `1` | mass ratio of Kr to He in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/He_atm` | `1` | mass ratio of Xe to He in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Ar/Ne_atm` | `1` | mass ratio of Ar to Ne in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/Ne_atm` | `1` | mass ratio of Kr to Ne in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/Ne_atm` | `1` | mass ratio of Xe to Ne in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Kr/Ar_atm` | `1` | mass ratio of Kr to Ar in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/Ar_atm` | `1` | mass ratio of Xe to Ar in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
-| `Xe/Kr_atm` | `1` | mass ratio of Xe to Kr in the atmosphere | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `O/H_atm` | `1` | mass ratio of O to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `C/H_atm` | `1` | mass ratio of C to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `N/H_atm` | `1` | mass ratio of N to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `S/H_atm` | `1` | mass ratio of S to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Si/H_atm` | `1` | mass ratio of Si to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Mg/H_atm` | `1` | mass ratio of Mg to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Fe/H_atm` | `1` | mass ratio of Fe to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Na/H_atm` | `1` | mass ratio of Na to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Al/H_atm` | `1` | mass ratio of Al to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ti/H_atm` | `1` | mass ratio of Ti to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ca/H_atm` | `1` | mass ratio of Ca to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `K/H_atm` | `1` | mass ratio of K to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `V/H_atm` | `1` | mass ratio of V to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `He/H_atm` | `1` | mass ratio of He to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ne/H_atm` | `1` | mass ratio of Ne to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/H_atm` | `1` | mass ratio of Ar to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/H_atm` | `1` | mass ratio of Kr to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/H_atm` | `1` | mass ratio of Xe to H in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `C/O_atm` | `1` | mass ratio of C to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `N/O_atm` | `1` | mass ratio of N to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `S/O_atm` | `1` | mass ratio of S to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Si/O_atm` | `1` | mass ratio of Si to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Mg/O_atm` | `1` | mass ratio of Mg to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Fe/O_atm` | `1` | mass ratio of Fe to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Na/O_atm` | `1` | mass ratio of Na to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Al/O_atm` | `1` | mass ratio of Al to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ti/O_atm` | `1` | mass ratio of Ti to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ca/O_atm` | `1` | mass ratio of Ca to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `K/O_atm` | `1` | mass ratio of K to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `V/O_atm` | `1` | mass ratio of V to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `He/O_atm` | `1` | mass ratio of He to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ne/O_atm` | `1` | mass ratio of Ne to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/O_atm` | `1` | mass ratio of Ar to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/O_atm` | `1` | mass ratio of Kr to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/O_atm` | `1` | mass ratio of Xe to O in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `N/C_atm` | `1` | mass ratio of N to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `S/C_atm` | `1` | mass ratio of S to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Si/C_atm` | `1` | mass ratio of Si to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Mg/C_atm` | `1` | mass ratio of Mg to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Fe/C_atm` | `1` | mass ratio of Fe to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Na/C_atm` | `1` | mass ratio of Na to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Al/C_atm` | `1` | mass ratio of Al to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ti/C_atm` | `1` | mass ratio of Ti to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ca/C_atm` | `1` | mass ratio of Ca to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `K/C_atm` | `1` | mass ratio of K to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `V/C_atm` | `1` | mass ratio of V to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `He/C_atm` | `1` | mass ratio of He to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ne/C_atm` | `1` | mass ratio of Ne to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/C_atm` | `1` | mass ratio of Ar to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/C_atm` | `1` | mass ratio of Kr to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/C_atm` | `1` | mass ratio of Xe to C in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `S/N_atm` | `1` | mass ratio of S to N in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Si/N_atm` | `1` | mass ratio of Si to N in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Mg/N_atm` | `1` | mass ratio of Mg to N in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Fe/N_atm` | `1` | mass ratio of Fe to N in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Na/N_atm` | `1` | mass ratio of Na to N in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Al/N_atm` | `1` | mass ratio of Al to N in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ti/N_atm` | `1` | mass ratio of Ti to N in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ca/N_atm` | `1` | mass ratio of Ca to N in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `K/N_atm` | `1` | mass ratio of K to N in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `V/N_atm` | `1` | mass ratio of V to N in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `He/N_atm` | `1` | mass ratio of He to N in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ne/N_atm` | `1` | mass ratio of Ne to N in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/N_atm` | `1` | mass ratio of Ar to N in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/N_atm` | `1` | mass ratio of Kr to N in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/N_atm` | `1` | mass ratio of Xe to N in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Si/S_atm` | `1` | mass ratio of Si to S in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Mg/S_atm` | `1` | mass ratio of Mg to S in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Fe/S_atm` | `1` | mass ratio of Fe to S in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Na/S_atm` | `1` | mass ratio of Na to S in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Al/S_atm` | `1` | mass ratio of Al to S in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ti/S_atm` | `1` | mass ratio of Ti to S in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ca/S_atm` | `1` | mass ratio of Ca to S in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `K/S_atm` | `1` | mass ratio of K to S in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `V/S_atm` | `1` | mass ratio of V to S in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `He/S_atm` | `1` | mass ratio of He to S in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ne/S_atm` | `1` | mass ratio of Ne to S in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/S_atm` | `1` | mass ratio of Ar to S in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/S_atm` | `1` | mass ratio of Kr to S in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/S_atm` | `1` | mass ratio of Xe to S in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Mg/Si_atm` | `1` | mass ratio of Mg to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Fe/Si_atm` | `1` | mass ratio of Fe to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Na/Si_atm` | `1` | mass ratio of Na to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Al/Si_atm` | `1` | mass ratio of Al to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ti/Si_atm` | `1` | mass ratio of Ti to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ca/Si_atm` | `1` | mass ratio of Ca to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `K/Si_atm` | `1` | mass ratio of K to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `V/Si_atm` | `1` | mass ratio of V to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `He/Si_atm` | `1` | mass ratio of He to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ne/Si_atm` | `1` | mass ratio of Ne to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/Si_atm` | `1` | mass ratio of Ar to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/Si_atm` | `1` | mass ratio of Kr to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/Si_atm` | `1` | mass ratio of Xe to Si in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Fe/Mg_atm` | `1` | mass ratio of Fe to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Na/Mg_atm` | `1` | mass ratio of Na to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Al/Mg_atm` | `1` | mass ratio of Al to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ti/Mg_atm` | `1` | mass ratio of Ti to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ca/Mg_atm` | `1` | mass ratio of Ca to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `K/Mg_atm` | `1` | mass ratio of K to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `V/Mg_atm` | `1` | mass ratio of V to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `He/Mg_atm` | `1` | mass ratio of He to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ne/Mg_atm` | `1` | mass ratio of Ne to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/Mg_atm` | `1` | mass ratio of Ar to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/Mg_atm` | `1` | mass ratio of Kr to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/Mg_atm` | `1` | mass ratio of Xe to Mg in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Na/Fe_atm` | `1` | mass ratio of Na to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Al/Fe_atm` | `1` | mass ratio of Al to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ti/Fe_atm` | `1` | mass ratio of Ti to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ca/Fe_atm` | `1` | mass ratio of Ca to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `K/Fe_atm` | `1` | mass ratio of K to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `V/Fe_atm` | `1` | mass ratio of V to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `He/Fe_atm` | `1` | mass ratio of He to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ne/Fe_atm` | `1` | mass ratio of Ne to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/Fe_atm` | `1` | mass ratio of Ar to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/Fe_atm` | `1` | mass ratio of Kr to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/Fe_atm` | `1` | mass ratio of Xe to Fe in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Al/Na_atm` | `1` | mass ratio of Al to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ti/Na_atm` | `1` | mass ratio of Ti to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ca/Na_atm` | `1` | mass ratio of Ca to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `K/Na_atm` | `1` | mass ratio of K to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `V/Na_atm` | `1` | mass ratio of V to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `He/Na_atm` | `1` | mass ratio of He to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ne/Na_atm` | `1` | mass ratio of Ne to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/Na_atm` | `1` | mass ratio of Ar to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/Na_atm` | `1` | mass ratio of Kr to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/Na_atm` | `1` | mass ratio of Xe to Na in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ti/Al_atm` | `1` | mass ratio of Ti to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ca/Al_atm` | `1` | mass ratio of Ca to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `K/Al_atm` | `1` | mass ratio of K to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `V/Al_atm` | `1` | mass ratio of V to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `He/Al_atm` | `1` | mass ratio of He to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ne/Al_atm` | `1` | mass ratio of Ne to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/Al_atm` | `1` | mass ratio of Ar to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/Al_atm` | `1` | mass ratio of Kr to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/Al_atm` | `1` | mass ratio of Xe to Al in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ca/Ti_atm` | `1` | mass ratio of Ca to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `K/Ti_atm` | `1` | mass ratio of K to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `V/Ti_atm` | `1` | mass ratio of V to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `He/Ti_atm` | `1` | mass ratio of He to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ne/Ti_atm` | `1` | mass ratio of Ne to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/Ti_atm` | `1` | mass ratio of Ar to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/Ti_atm` | `1` | mass ratio of Kr to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/Ti_atm` | `1` | mass ratio of Xe to Ti in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `K/Ca_atm` | `1` | mass ratio of K to Ca in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `V/Ca_atm` | `1` | mass ratio of V to Ca in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `He/Ca_atm` | `1` | mass ratio of He to Ca in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ne/Ca_atm` | `1` | mass ratio of Ne to Ca in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/Ca_atm` | `1` | mass ratio of Ar to Ca in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/Ca_atm` | `1` | mass ratio of Kr to Ca in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/Ca_atm` | `1` | mass ratio of Xe to Ca in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `V/K_atm` | `1` | mass ratio of V to K in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `He/K_atm` | `1` | mass ratio of He to K in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ne/K_atm` | `1` | mass ratio of Ne to K in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/K_atm` | `1` | mass ratio of Ar to K in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/K_atm` | `1` | mass ratio of Kr to K in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/K_atm` | `1` | mass ratio of Xe to K in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `He/V_atm` | `1` | mass ratio of He to V in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ne/V_atm` | `1` | mass ratio of Ne to V in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/V_atm` | `1` | mass ratio of Ar to V in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/V_atm` | `1` | mass ratio of Kr to V in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/V_atm` | `1` | mass ratio of Xe to V in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ne/He_atm` | `1` | mass ratio of Ne to He in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/He_atm` | `1` | mass ratio of Ar to He in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/He_atm` | `1` | mass ratio of Kr to He in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/He_atm` | `1` | mass ratio of Xe to He in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Ar/Ne_atm` | `1` | mass ratio of Ar to Ne in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/Ne_atm` | `1` | mass ratio of Kr to Ne in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/Ne_atm` | `1` | mass ratio of Xe to Ne in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Kr/Ar_atm` | `1` | mass ratio of Kr to Ar in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/Ar_atm` | `1` | mass ratio of Xe to Ar in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
+| `Xe/Kr_atm` | `1` | mass ratio of Xe to Kr in the atmosphere | `outgas/calliope.py`<br>`outgas/common.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" |   |
 
 ### Atmospheric escape
 

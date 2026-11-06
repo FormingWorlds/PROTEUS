@@ -597,9 +597,11 @@ def test_mesh_crust_seal_holds_while_the_top_cell_wanders_around_phi_solid():
     for i, phi_top in enumerate((5e-4, 2e-3, 5e-4, 2e-3, 0.2)):
         state, solve = _step(row, _mesh(phi_top), bool(sealed))
         if i == 0:
-            assert state is True and row['seal_delta'] == pytest.approx(9.0e4, rel=1e-12)
+            assert state is True and row['seal_delta'] == pytest.approx(6.0e4, rel=1e-12)
         sealed = state
         assert state is True, (i, phi_top)
+        if i > 0:  # a closed seal counts the cells below phi_open: 0.2, 0.0 and the top
+            assert row['seal_delta'] == pytest.approx(9.0e4, rel=1e-12)
         assert solve.call_count == (1 if i == 0 else 0)
     state, solve = _step(row, _mesh(0.4), True)
     assert state is False and solve.call_count == 1

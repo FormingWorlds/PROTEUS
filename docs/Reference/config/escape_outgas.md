@@ -257,7 +257,7 @@ Cross-field constraints enforced when the config file loads:
 - BOREAS escape requires a radiative atmosphere (not dummy).
 - Front trapping reads the freezing front the Aragog interior resolves.
 - ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled.
-- The lid seal reads the Aragog mesh and freezes the chemistry while it holds.
+- The lid seal reads the Aragog mesh, freezes the CALLIOPE chemistry while it holds, and applies unfractionated escape.
 - prevent_desaturation holds nothing unless atmodeller forms condensates.
 - ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks.
 - Dummy escape requires a non-negative escape rate.

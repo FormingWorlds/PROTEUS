@@ -377,9 +377,9 @@ Where $\delta$ comes from depends on the state of the crust:
 
 The seal closes when $\delta \ge$ `delta_close` and $\phi_\mathrm{top} <$ `phi_close`. It closes after the chemistry solve of that step, so it holds the melt inventory of the state where the rule fires. A thin crust over a molten top cell does not close the seal.
 
-A closed seal opens when $\phi_\mathrm{top} \ge$ `phi_open` (default `phi_close + 0.05`), when $\delta <$ `delta_open` (default `0.5 delta_close`), or on a giant-impact step. The gap between the close and the open values stops a seal that would otherwise open and close in each step. On opening, the held mass returns to the melt, and the chemistry solve of the same step takes it. The atmosphere then gets the dissolved gas of the melt at once.
+A closed seal opens when $\phi_\mathrm{top} \ge$ `phi_open` (default `phi_close + 0.05`), when $\delta <$ `delta_open` (default `0.5 delta_close`), or on a giant-impact step. The gap between the close and the open values stops a seal that would otherwise open and close in each step. On the mesh, a closed seal counts every top cell with a melt fraction below `phi_open` as crust, and an open seal only those below `phi_solid`; so a top cell that crosses `phi_solid` does not open the seal. On opening, the held mass returns to the melt, and the chemistry solve of the same step takes it. The atmosphere then gets the dissolved gas of the melt at once.
 
-The default `delta_close` is 10 km. On a crust that grows on the mesh, a coarse mesh moves the thickness in steps of one cell: with 79 cells in an Earth-mass mantle, the top cell is about 66 km thick. The seal then closes when the top cell freezes, for any `delta_close` below that cell. A thin chill crust, with `delta_close` near 0.3 m, closes only through the sub-grid lid.
+The default `delta_close` is 10 km. On a crust that grows on the mesh, a coarse mesh moves the thickness in steps of one cell: on the 79-cell mesh of the [tutorial](../Tutorials/lid_seal.md) the top cell is 65.8 km thick (the mesh is not uniform in radius). The seal then closes when the top cell freezes, for any `delta_close` below that cell. A thin chill crust, with `delta_close` near 0.3 m, closes only through the sub-grid lid.
 
 The seal covers the whole surface at once. A planet with a molten dayside and a frozen nightside, without heat transport between them, is outside this rule.
 
@@ -404,7 +404,7 @@ The symbols are:
 - $M_\mathrm{melt} = \Phi M_\mathrm{mantle}$ and $M_\mathrm{solid} = (1 - \Phi) M_\mathrm{mantle}$: the melt and the solid mass of the mantle \[kg\], with the global melt fraction $\Phi$.
 - $D_i$: `outgas.D_const_<species>`, the crystal/melt partition coefficient \[1\].
 
-The volcanic term has the form of Eq. 14 and Eq. 17 of Schaefer and Sasselov (2015) [^cite-schaefer2015], with the melt production of plate spreading replaced by $\dot M_c$. $X_{\mathrm{melt},i}$ follows from the mass balance of the held volatile: it sits in the melt and, at $D_i > 0$, in the crystals in equilibrium with it. So the global melt fraction enters, not the melt fraction of the cells that hold melt. If half the mantle is solid and the other half holds 40 % melt, $\Phi = 0.2$, and at $D_i = 0$ the melt concentration is $M_i/(0.2\,M_\mathrm{mantle})$.
+The volcanic term has the form of Eq. 14 and Eq. 17 of Schaefer and Sasselov (2015) [^cite-schaefer2015], with the melt production of plate spreading replaced by $\dot M_c$ and their degree of melting replaced by the global melt fraction $\Phi$. This is an adaptation for a mantle under a closed crust, not a result of that paper. $X_{\mathrm{melt},i}$ follows from the mass balance of the held volatile: it sits in the melt and, at $D_i > 0$, in the crystals in equilibrium with it. So the global melt fraction enters, not the melt fraction of the cells that hold melt. If half the mantle is solid and the other half holds 40 % melt, $\Phi = 0.2$, and at $D_i = 0$ the melt concentration is $M_i/(0.2\,M_\mathrm{mantle})$.
 
 Both terms are linear in $M_i$, so the code uses the exact solution over a step of length $\Delta t$:
 
@@ -413,7 +413,7 @@ M_i(t + \Delta t) = M_i(t)\, \exp\left[-\Delta t\left(\frac{1}{\tau} + k_i\right
 \qquad k_i = \frac{\chi_d \dot M_c}{M_\mathrm{melt} + D_i M_\mathrm{solid}}.
 $$
 
-The result does not depend on the step length, and $M_i$ cannot become negative. The leaked mass splits between relaxation and volcanism in the ratio $(1/\tau) : k_i$. In one step no more melt than $M_\mathrm{melt}$ can reach the crust: a larger `crust_rate` is cut to $M_\mathrm{melt}/\Delta t$, and `seal_volc_capped` records the cut. Below `phi_solid`, no melt reaches the crust.
+The result does not depend on the step length, and $M_i$ cannot become negative. The leaked mass splits between relaxation and volcanism in the ratio $(1/\tau) : k_i$. In one step no more melt than $M_\mathrm{melt}$ can reach the crust: a larger `crust_rate` is cut to $M_\mathrm{melt}/\Delta t$, and `seal_volc_capped` records the cut. A cut step leaks a fixed share of the held mass, so in that regime the result depends on the step length; `seal_volc_capped` shows the steps where this happens. Below `phi_solid`, no melt reaches the crust.
 
 The leaked gas enters the atmosphere as the species it was held as, with no new chemistry solve. The partial pressures follow from the masses, as in CALLIOPE: the surface pressure is $M_\mathrm{atm}\, g / (4\pi R^2)$, and each species takes its mole fraction of it.
 
