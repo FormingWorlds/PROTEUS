@@ -10,6 +10,7 @@ from scipy.optimize import brentq
 
 from proteus.atmos_clim.common import lid_boundary, lid_flux_cap, lid_open_flux
 from proteus.interior_energetics.aragog import (
+    AragogRunner,
     _lid_surface_of_row,
     _set_lid_surface,
     _surface_flux_of_step,
@@ -342,3 +343,36 @@ def test_helpfile_carries_the_lid_onset_thickness(lid, want):
     solver = SimpleNamespace(parameters=SimpleNamespace(boundary_conditions=bc))
     assert _lid_onset_out(SimpleNamespace(aragog_solver=solver)) == want
     assert _lid_onset_out(None) == 0.0
+
+
+@pytest.mark.parametrize('w', [0.0, 0.4, 1.0])
+def test_update_solver_passes_the_lid_boundary_of_the_row(w):
+    """The interior takes the open-surface flux of the row under a live lid and the flux of the
+    atmosphere without one, and holds the lid surface at the row surface with the row cap."""
+    bc = SimpleNamespace(
+        outer_boundary_condition=4,
+        lid_mush_base=True,
+        outer_boundary_value=None,
+        lid_surface_temperature=-1.0,
+        lid_surface_flux_cap=-1.0,
+        equilibrium_temperature=None,
+    )
+    params = SimpleNamespace(
+        solver=SimpleNamespace(start_time=None, end_time=None),
+        boundary_conditions=bc,
+        energy=SimpleNamespace(tidal_array=None),
+    )
+    interior_o = SimpleNamespace(
+        aragog_solver=SimpleNamespace(parameters=params, solution=None), tides=np.zeros(3)
+    )
+    row = _row(w, G=21.9, T_b=1440.0, T_surf=727.3, F_atm=7000.0, lid_F_open=165000.0)
+    row.update(Time=30000.0, T_eqm=255.0)
+    AragogRunner.update_solver(25.0, row, interior_o)
+    assert params.solver.end_time == pytest.approx(30025.0, rel=1e-15)
+    assert bc.outer_boundary_value == (165000.0 if w > 0.0 else 7000.0)
+    assert bc.lid_surface_temperature == 727.3
+    if w > 0.0:
+        assert bc.lid_surface_flux_cap == pytest.approx(21.9 * (1440.0 - 727.3), rel=1e-14)
+    else:
+        assert bc.lid_surface_flux_cap is None
+    assert bc.equilibrium_temperature == 255.0
