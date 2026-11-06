@@ -238,12 +238,12 @@ def _fraction_open(instance, attribute, value):
 
 
 def _delta_open(instance, attribute, value):
-    """None, or a finite thickness in (0, delta_close]."""
+    """None, or a thickness in (0, delta_close]; delta_close is finite."""
     if value is None:
         return
-    if not (_real(value) and math.isfinite(value) and 0 < value <= instance.delta_close):
+    if not (_real(value) and 0 < value <= instance.delta_close):
         raise ValueError(
-            f'delta_open must be None or a finite number in (0, delta_close = '
+            f'delta_open must be None or a number in (0, delta_close = '
             f'{instance.delta_close}], got {value!r}'
         )
 

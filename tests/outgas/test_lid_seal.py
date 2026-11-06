@@ -472,3 +472,113 @@ def test_seal_enabled_reads_only_a_true_switch():
     assert seal_enabled(SimpleNamespace(outgas=SimpleNamespace(lid_seal=LidSeal()))) is False
     odd = SimpleNamespace(outgas=SimpleNamespace(lid_seal=SimpleNamespace(enabled=1)))
     assert seal_enabled(odd) is False
+
+
+@pytest.mark.physics_invariant
+def test_leak_step_moves_species_masses_and_moles_together():
+    """After a leak step each species keeps the same molar mass in the sealed and
+    the atmospheric reservoir: sealed moles fall by the factor of the sealed mass,
+    and the atmosphere gains exactly the leaked mass and moles."""
+    cfg = _config(tau_leak=2.0e4)
+    row = _sealed_row()
+    before = dict(row)
+    leak_step(cfg, row, 5.0e3)
+    keep = np.exp(-5.0e3 / 2.0e4)
+    for s in MELT:
+        mol0, kg0 = before[f'{s}_mol_sealed'], before[f'{s}_kg_sealed']
+        assert row[f'{s}_kg_sealed'] == pytest.approx(kg0 * keep, rel=1e-14)
+        assert row[f'{s}_mol_sealed'] == pytest.approx(mol0 * keep, rel=1e-14)
+        leaked = kg0 - row[f'{s}_kg_sealed']
+        assert row[f'{s}_kg_atm'] - before[f'{s}_kg_atm'] == pytest.approx(leaked, rel=1e-12)
+        gained = row[f'{s}_mol_atm'] - before[f'{s}_mol_atm']
+        assert gained == pytest.approx(mol0 * (1.0 - keep), rel=1e-12)
+        assert row[f'{s}_kg_atm'] / row[f'{s}_mol_atm'] == pytest.approx(
+            eval_gas_mmw(s), rel=1e-12
+        )
+
+
+def test_a_step_that_drains_the_reservoir_passes_the_ledger_check():
+    """A step much longer than tau drains the sealed mass; round-off in the 2
+    leak parts must not trip the ledger check, and no sealed mass is negative."""
+    cfg = _config(tau_leak=3.0, crust_rate=7.0e21, chi_d=0.7)
+    row = _sealed_row(phi=0.37)
+    before = dict(row)
+    leak_step(cfg, row, 1.0e4)
+    for e in SEALED_ELEMENTS:
+        out = row[f'{e}_kg_leak_tau'] + row[f'{e}_kg_leak_volc']
+        assert out == pytest.approx(before[f'{e}_kg_sealed'], rel=1e-12)
+        assert row[f'{e}_kg_sealed'] >= 0.0
+    assert row['H2O_kg_sealed'] == 0.0
+
+
+def test_hold_leaves_the_written_atmosphere_untouched():
+    """With nothing leaking, the atmosphere columns the chemistry wrote stay as
+    they are, even where they differ from what the leak would rebuild."""
+    row = _sealed_row()
+    row.update({'H2O_bar': 1.234, 'H2O_vmr': 0.5, 'P_surf': 2.468, 'atm_kg_per_mol': 0.03})
+    before = dict(row)
+    leak_step(_config(), row, 1.0e3)
+    assert {k: row[k] for k in before} == before
+    assert row['seal_leak_kg_cum'] == 0.0
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('phi', 'crust', 'dt', 'mdot', 'capped'),
+    [
+        (1e-3, 1.0e10, 1.0, 1.0e10, False),  # phi == phi_solid still makes crust
+        (1.2, 1.0e10, 1.0, 1.0e10, False),  # phi above 1 reads as 1
+        (-0.1, 1.0e10, 1.0, 0.0, False),  # phi below 0 reads as 0
+        (0.25, 1.0e24, 1.0, 1.0e24, False),  # crust_rate dt == M_melt is not capped
+        (0.0, 0.0, 1.0, 0.0, False),  # no melt, no crust, no division by zero
+    ],
+    ids=['at-phi-solid', 'phi-above-1', 'phi-below-0', 'at-the-cap', 'no-melt'],
+)
+def test_leak_rates_at_their_boundaries(phi, crust, dt, mdot, capped):
+    """Boundaries of the volcanic rate: phi_solid is inclusive, Phi is clamped to
+    [0, 1], the cap is strict, and an empty melt with no crust gives k = 0."""
+    cfg = _config(crust_rate=crust)
+    cfg.outgas.D_const_H2O = 0.0
+    rates, got_mdot, got_capped = leak_rates(cfg, {'M_mantle': M_MANTLE, 'Phi_global': phi}, dt)
+    assert (got_mdot, got_capped) == (mdot, capped)
+    phi_c = min(max(phi, 0.0), 1.0)
+    expect = 0.02 * mdot / (phi_c * M_MANTLE) if mdot > 0.0 else 0.0
+    assert rates['CO2'][1] == pytest.approx(expect, rel=1e-14, abs=0.0)
+
+
+@pytest.mark.parametrize(
+    ('phi_top', 'delta', 'sealed', 'expected'),
+    [
+        (0.35, 0.31, True, False),  # phi_top == phi_open opens
+        (0.29, 0.15, True, True),  # delta == delta_open holds
+        (0.29, 0.30, False, True),  # delta == delta_close closes
+        (0.30, 0.31, False, False),  # phi_top == phi_close does not close
+    ],
+    ids=['at-phi-open', 'at-delta-open', 'at-delta-close', 'at-phi-close'],
+)
+def test_seal_band_edges(phi_top, delta, sealed, expected):
+    """Edges of the closure rule: close at delta >= delta_close and phi_top <
+    phi_close; open at phi_top >= phi_open or delta < delta_open."""
+    interior = _interior([0.6, phi_top])
+    row = _sealed_row() if sealed else _row()
+    row.update({'lid_weight': 1.0, 'lid_delta': delta, 'esc_rate_total': 0.0})
+    cfg = _config(delta_close=0.3, phi_open=0.35)
+    with (
+        patch('proteus.outgas.wrapper.run_outgassing_and_vapourisation'),
+        patch('proteus.outgas.wrapper.check_ic_oxygen_budget'),
+    ):
+        state = run_lid_seal_step(
+            {}, cfg, row, interior, sealed, first_iter=False, init_stage=False, dt=1.0
+        )
+    assert state is expected
+    assert row['seal_active'] == float(expected)
+
+
+def test_open_refuses_an_unreadable_sealed_column_without_moving_mass():
+    """A NaN sealed mass stops the opening before any column changes."""
+    row = _sealed_row()
+    row['C_kg_sealed'] = float('nan')
+    before = dict(row)
+    with pytest.raises(RuntimeError, match='C_kg_sealed'):
+        open_seal(row)
+    assert row['H2O_kg_sealed'] == before['H2O_kg_sealed'] and row['H2O_kg_liquid'] == 0.0

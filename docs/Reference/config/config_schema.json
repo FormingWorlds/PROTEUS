@@ -13098,7 +13098,7 @@
       "touches": [
         "delta_close"
       ],
-      "doc": "None, or a finite thickness in (0, delta_close]."
+      "doc": "None, or a thickness in (0, delta_close]; delta_close is finite."
     },
     {
       "validator": "_phi_open",

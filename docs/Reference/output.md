@@ -855,7 +855,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `seal_phi_top` | `1` | melt fraction of the top mesh cell | `outgas/lid_seal.py` | always |   |
 | `seal_crust_rate` | `kg yr-1` | melt mass reaching the crust over the step | `outgas/lid_seal.py` | always |   |
 | `seal_volc_capped` | `1` | whether crust_rate dt was cut to the melt mass | `outgas/lid_seal.py` | always |   |
-| `seal_open_kg` | `kg` | sealed mass returned to the melt on an opening step | `outgas/lid_seal.py` | always |   |
+| `seal_open_kg` | `kg` | sealed mass returned to the melt on an opening step | `outgas/lid_seal.py` | always | outgas |
 | `seal_leak_kg_cum` | `kg` | mass leaked to the atmosphere since the run began | `outgas/lid_seal.py` | always | outgas |
 | `H2O_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |
 | `H2O_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py`<br>`outgas/wrapper.py` | always | outgas |

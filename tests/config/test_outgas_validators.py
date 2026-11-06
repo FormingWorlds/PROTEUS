@@ -191,7 +191,7 @@ def test_lid_seal_refuses_values_outside_each_domain(field, bad):
     """Each field refuses a bool, a string, NaN and its out-of-range values; the
     bounds phi_solid < phi_close, delta_open <= delta_close and phi_open >=
     phi_close read the other fields (defaults 1e4 m and 0.3)."""
-    with pytest.raises(ValueError, match=field):
+    with pytest.raises(ValueError, match=rf'^{field} must'):
         _seal(**{field: bad})
     assert isinstance(bad, (bool, str, float))
 
