@@ -50,6 +50,7 @@ nav:
       - Solar System CHILI intercomparison: Tutorials/chili_intercomparison.md
       - Orbit and tidal evolution: Tutorials/orbit_tides.md
       - Giant impacts with a partial re-melt: Tutorials/giant_impact_remelt.md
+      - Volatiles held under a closed crust: Tutorials/lid_seal.md
 
   - Explanations:
       - Scientific background:

@@ -1,0 +1,56 @@
+# Tutorial: volatiles held under a closed crust (docs/Tutorials/lid_seal.md).
+# An Earth-mass planet at 1 AU cools from a magma ocean with a grey (dummy) atmosphere.
+# When the top mesh cell freezes, a crust closes over the melt and the seal holds its volatiles.
+# Every option that is not set here takes its default (see all_options.toml).
+
+config_version = "3.0"
+
+[params]
+    [params.out]
+        path = "tutorial_lid_seal"
+    [params.dt]
+        minimum = 100.0              # [yr]
+        rtol    = 0.2                # relative tolerance of the adaptive step
+    [params.stop.time]
+        maximum = 140000.0           # [yr]
+    [params.stop.clock]
+        maximum = 10800.0            # [s] of wall time
+    [params.stop.escape]
+        enabled = false
+    [params.stop.solid]
+        phi_crit = 0.05              # melt fraction at which the mantle counts as solid
+
+[orbit]
+    semimajoraxis = 1.0              # [AU]
+
+[planet]
+    mass_tot      = 1.0              # [M_earth]
+    volatile_mode = "elements"
+    [planet.elements]
+        O_mode   = "ic_chemistry"
+        O_budget = 0.0
+        H_mode   = "oceans"
+        H_budget = 0.005             # [Earth oceans]
+        C_mode   = "kg"
+        C_budget = 2.73e18           # [kg]
+
+[interior_struct.zalmoxis]
+    lowt_extension = true
+    update_interval = 0.0            # [yr]; 0 keeps the structure of the initial state
+
+[interior_energetics]
+    kappah_floor = 10.0
+    write_flux_diagnostics = true
+    [interior_energetics.aragog]
+        top_cell_dt_limit = true
+
+[atmos_clim]
+    module = "dummy"
+    rayleigh = false
+
+[outgas]
+    module       = "calliope"
+    fO2_shift_IW = 2                 # [log10 units] above IW
+    [outgas.lid_seal]
+        enabled = true
+        tau_leak = 1.0e5             # [yr]; delta_close stays at its default, 10 km
