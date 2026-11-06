@@ -972,8 +972,24 @@ class TestSlurmConfig:
         g.slurm_config(max_jobs=5, test_run=True, max_days=0.5, max_mem=3)
         contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
         assert '--array=0-1%2' in contents
-        assert '--time=1-12:00:00' in contents  # 3 waves of half a day
-        assert '--time=0-12:00:00' not in contents
+        assert '--time=2160\n' in contents  # 3 waves of half a day, in minutes
+        assert '--time=720\n' not in contents  # one wave
+
+    def test_fewer_cases_at_once_than_one_job_still_allows_one_job(
+        self, grid_with_mocks, monkeypatch
+    ):
+        """max_jobs = 4 cases at a time with 16 cores per job rounds down to no job at
+        all; the throttle is raised to one job, not left at zero."""
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_linspace('m', 0.5, 4.0, 20)  # 20 cases make 2 jobs of 16 cores
+        g.generate()
+        monkeypatch.setattr(g, 'write_config_files', lambda: None)
+
+        g.slurm_config(max_jobs=4, test_run=True, max_days=1, max_mem=1.5, cores_per_job=16)
+        contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
+        assert '--array=0-1%1\n' in contents
+        assert '--array=0-1%0' not in contents  # max_jobs // cores_per_job
 
     def test_slurm_script_contents_test_run(self, grid_with_mocks, monkeypatch, tmp_path):
         """``slurm_config(..., test_run=True)`` writes a slurm_dispatch.sh
@@ -1008,7 +1024,7 @@ class TestSlurmConfig:
         # SBATCH array goes 0 to size-1; with size=2 that is 0-1.
         assert '--array=0-1' in contents
         # max_days propagated:
-        assert '--time=2-00' in contents
+        assert '--time=2880\n' in contents  # 2 days in minutes
         # max_mem propagated, converted from GB to MB: 8 GB is 8192 MB
         assert '--mem-per-cpu=8192M' in contents
 
@@ -1016,7 +1032,7 @@ class TestSlurmConfig:
         self, grid_with_mocks, monkeypatch
     ):
         """A non-integer allocation of 1.5 days and 2.5 GB is written as the Slurm time
-        1-12:00:00 and the memory 2560M, not truncated to whole days or whole GB."""
+        2160 minutes and the memory 2560M, not truncated to whole days or whole GB."""
         g = grid_with_mocks
         g.add_dimension('m', 'planet.mass_tot')
         g.set_dimension_direct('m', [0.5, 1.0])
@@ -1036,11 +1052,11 @@ class TestSlurmConfig:
 
         g.slurm_config(max_jobs=4, test_run=True, max_days=1.5, max_mem=2.5)
         contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
-        # Half a day is 12 hours; 2.5 GB is 2.5 * 1024 = 2560 MB
-        assert '--time=1-12:00:00' in contents
+        # 1.5 days is 2160 minutes; 2.5 GB is 2.5 * 1024 = 2560 MB
+        assert '--time=2160\n' in contents
         assert '--mem-per-cpu=2560M' in contents
         # Truncating to whole days or whole GB would give these instead
-        assert '--time=1-00:00:00' not in contents
+        assert '--time=1440\n' not in contents
         assert '--mem-per-cpu=2048M' not in contents
 
     def test_slurm_script_real_run_uses_proteus(self, grid_with_mocks, monkeypatch):
