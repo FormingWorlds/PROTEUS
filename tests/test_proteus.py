@@ -5178,3 +5178,27 @@ def test_a_temp_dir_that_cannot_be_removed_is_reported_not_raised(
     # The warning about removing files of a failed run is not given here
     assert "'DEBUG'" not in caplog.text
     assert 'temp' not in runner.directories
+
+
+def test_run_folder_follows_tmpdir_for_habrok(tmp_path, system_tmp, monkeypatch):
+    """With only $TMPDIR set, the run's temporary folder is created under it.
+
+    This supports Habrok, which sets $TMPDIR for jobs: runs there must use it,
+    not /tmp or a fixed folder. Snellius also sets $TMPDIR per job.
+    """
+    from proteus.proteus import _run_temp_dir
+
+    monkeypatch.setattr('tempfile.tempdir', None)
+    runner = _TempDirRunner(tmp_path / 'out')
+    seen = {}
+
+    @_run_temp_dir
+    def start(self):
+        seen['temp'] = Path(self.directories['temp'])
+        seen['listing'] = os.listdir(system_tmp)
+
+    start(runner)
+
+    assert seen['temp'].parent == system_tmp
+    assert seen['listing'] == [seen['temp'].name]
+    assert os.listdir(system_tmp) == []
