@@ -267,3 +267,64 @@ def test_helpfile_carries_the_lid_thickness(value, want):
     with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
         res = AragogRunner._build_helpfile_output(out, {'F_atm': 1e5})
     assert res['lid_delta'] == want
+
+
+def _skin_config(surface_d=0.01, surface_k=2.0, solid_cond=4.0, delta_on=None, lid=True):
+    return SimpleNamespace(
+        atmos_clim=SimpleNamespace(surface_d=surface_d, surface_k=surface_k),
+        interior_energetics=SimpleNamespace(
+            solid_cond=solid_cond,
+            aragog=SimpleNamespace(lid_delta_on=delta_on, lid_mush_base=lid),
+        ),
+    )
+
+
+def test_lid_onset_thickness_of_the_default_skin_is_the_validated_value(caplog):
+    """The schema defaults of the skin and the solid conductivity give k d / k_skin = 0.02 m
+    exactly, the onset thickness of the lid validation runs."""
+    import attrs
+
+    from proteus.config._atmos_clim import AtmosClim
+    from proteus.config._interior import Interior
+    from proteus.interior_energetics.aragog import lid_delta_on_of
+
+    atm, ie = attrs.fields(AtmosClim), attrs.fields(Interior)
+    cfg = _skin_config(atm.surface_d.default, atm.surface_k.default, ie.solid_cond.default)
+    with caplog.at_level('WARNING'):
+        assert lid_delta_on_of(cfg) == 0.02
+    assert not caplog.records
+    assert lid_delta_on_of(_skin_config(0.02, 1.0, 3.0)) == pytest.approx(0.06, rel=1e-15)
+
+
+def test_an_explicit_lid_onset_thickness_is_used_and_warned_beyond_10_percent(caplog):
+    """An explicit value is used as given; it is logged as a warning when it differs from the
+    skin value by more than 10 %, and used without a check on a saturation skin."""
+    from proteus.interior_energetics.aragog import lid_delta_on_of
+
+    with caplog.at_level('WARNING'):
+        assert lid_delta_on_of(_skin_config(delta_on=0.021)) == 0.021
+    assert not caplog.records
+    with caplog.at_level('WARNING'):
+        assert lid_delta_on_of(_skin_config(delta_on=0.5)) == 0.5
+    assert any('lid_delta_on' in r.getMessage() for r in caplog.records)
+    caplog.clear()
+    with caplog.at_level('WARNING'):
+        assert lid_delta_on_of(_skin_config('saturation', 'saturation', delta_on=0.3)) == 0.3
+    assert not caplog.records
+    with pytest.raises(ValueError, match='lid_delta_on'):
+        lid_delta_on_of(_skin_config('saturation', 'saturation'))
+
+
+@pytest.mark.parametrize(('lid', 'want'), [(True, 0.02), (False, 0.0)])
+def test_helpfile_carries_the_lid_onset_thickness(lid, want):
+    """``lid_delta_on`` [m] is a helpfile column: the onset thickness the solver uses, 0 without
+    the lid; a helpfile written without the column resumes with 0."""
+    from proteus.interior_energetics.aragog import _lid_onset_out
+    from proteus.utils.coupler import RESUMABLE_ZERO_FILL_KEYS, GetHelpfileKeys
+
+    assert 'lid_delta_on' in GetHelpfileKeys()
+    assert 'lid_delta_on' in RESUMABLE_ZERO_FILL_KEYS
+    bc = SimpleNamespace(subgrid_lid=lid, lid_delta_on=0.02)
+    solver = SimpleNamespace(parameters=SimpleNamespace(boundary_conditions=bc))
+    assert _lid_onset_out(SimpleNamespace(aragog_solver=solver)) == want
+    assert _lid_onset_out(None) == 0.0

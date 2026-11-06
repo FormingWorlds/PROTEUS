@@ -4382,6 +4382,40 @@ def test_setup_solver_passes_no_core_module_params_on_default_config(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('lid', [True, False])
+def test_setup_solver_passes_the_lid_onset_thickness_with_the_lid(tmp_path, lid):
+    """With the lid on, the boundary conditions get the onset thickness of the skin (0.02 m for
+    the default skin); without the lid they keep the Aragog default."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = _make_aragog_config(struct_module='zalmoxis')
+    config.interior_energetics.aragog.lid_mush_base = lid
+    config.interior_energetics.aragog.lid_delta_on = None
+    config.interior_energetics.solid_cond = 4.0
+    config.atmos_clim.surface_d = 0.01
+    config.atmos_clim.surface_k = 2.0
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
+    hf_row.update(R_core=3.48e6)
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch(
+            'proteus.interior_energetics.aragog._BoundaryConditionsParameters'
+        ) as mock_bc_cls,
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
+
+    kwargs = mock_bc_cls.call_args.kwargs
+    if lid:
+        assert kwargs['lid_delta_on'] == 0.02
+    else:
+        assert 'lid_delta_on' not in kwargs
+
+
+@pytest.mark.unit
 def test_core_module_snapshot_and_resume_preserves_t_core_and_gradient(tmp_path):
     """Resume with core_bc='core_module' preserves both T_core and dSdr_cmb.
 

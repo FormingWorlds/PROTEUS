@@ -1984,3 +1984,60 @@ def test_live_lid_requires_the_skin_surface_of_agni_or_the_dummy():
         lid_requires_the_skin_atmosphere(cfg('janus', 'fixed', interior='spider'), None, None)
         is None
     )
+
+
+@pytest.mark.unit
+def test_lid_delta_on_is_unset_by_default_and_refuses_bad_values():
+    """``interior_energetics.aragog.lid_delta_on`` is None by default (derived from the skin);
+    an explicit value must be a finite float above 0."""
+    from proteus.config._interior import Aragog
+
+    assert Aragog().lid_delta_on is None
+    assert Aragog(lid_delta_on=0.02).lid_delta_on == 0.02
+    for bad in (True, False, '0.02', float('nan'), float('inf'), 0.0, -0.02):
+        with pytest.raises((TypeError, ValueError), match='lid_delta_on'):
+            Aragog(lid_delta_on=bad)
+
+
+@pytest.mark.unit
+def test_lid_delta_on_accepts_exactly_the_finite_positive_floats():
+    """Property: a float is accepted if and only if it is finite and above 0."""
+    import math
+
+    hypothesis = pytest.importorskip('hypothesis')
+    st = pytest.importorskip('hypothesis.strategies')
+
+    from proteus.config._interior import Aragog
+
+    @hypothesis.settings(max_examples=200, deadline=None)
+    @hypothesis.given(st.floats(allow_nan=True, allow_infinity=True))
+    @hypothesis.example(5e-324)
+    @hypothesis.example(-0.0)
+    def check(value):
+        if math.isfinite(value) and value > 0.0:
+            assert Aragog(lid_delta_on=value).lid_delta_on == value
+        else:
+            with pytest.raises(ValueError, match='lid_delta_on'):
+                Aragog(lid_delta_on=value)
+
+    check()
+
+
+@pytest.mark.unit
+def test_live_lid_on_a_saturation_skin_needs_an_explicit_onset_thickness():
+    """With ``surface_d = 'saturation'`` the skin has no fixed thickness, so the lid onset
+    thickness cannot be derived: a live lid then needs ``lid_delta_on`` set."""
+
+    def cfg(surface_d, delta_on):
+        return SimpleNamespace(
+            atmos_clim=SimpleNamespace(module='agni', surf_state='skin', surface_d=surface_d),
+            interior_energetics=SimpleNamespace(
+                module='aragog',
+                aragog=SimpleNamespace(lid_mush_base=True, lid_delta_on=delta_on),
+            ),
+        )
+
+    with pytest.raises(ValueError, match='lid_delta_on'):
+        lid_requires_the_skin_atmosphere(cfg('saturation', None), None, None)
+    assert lid_requires_the_skin_atmosphere(cfg('saturation', 0.02), None, None) is None
+    assert lid_requires_the_skin_atmosphere(cfg(0.01, None), None, None) is None
