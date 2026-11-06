@@ -4,7 +4,7 @@ This page answers one question: **where do the volatiles of a planet go during e
 
 The short answer: in each step, a chemistry solver splits the volatiles of the planet between the atmosphere and the magma ocean. Before that solve, a trapping step can bury part of the volatiles dissolved in the melt in the mantle that froze since the last step. After the solve, an optional step adds rock vapour from the hot melt surface to the atmosphere.
 
-The first section gives the order of the steps. The later sections explain the species-to-element split, the H$_2$ binodal, rock vapour, trapping, melt drainage, the burial ledger and the limits of the trapping inputs. A section whose part of the code has a Validation case ends with a link to it. For the config keys, see [Escape and outgassing configuration](../Reference/config/escape_outgas.md#outgassing-outgas). For the output columns, see [Output format](../Reference/output.md).
+The first section gives the order of the steps. The later sections explain the species-to-element split, the H$_2$ binodal, rock vapour, trapping, melt drainage, the burial ledger, the seal of the melt under a closed crust and the limits of the trapping inputs. A section whose part of the code has a Validation case ends with a link to it. For the config keys, see [Escape and outgassing configuration](../Reference/config/escape_outgas.md#outgassing-outgas). For the output columns, see [Output format](../Reference/output.md).
 
 ## Terms used on this page
 
@@ -21,6 +21,7 @@ The first section gives the order of the steps. The later sections explain the s
 - **Oxygen fugacity** (fO$_2$): a measure of how oxidising the melt is, in the form of an effective O$_2$ pressure. PROTEUS gives it relative to the iron-wustite (IW) buffer, the fO$_2$ at which iron metal and FeO are in equilibrium. `outgas.fO2_shift_IW` ([config](../Reference/config/escape_outgas.md#outgassing-outgas)) is that shift in log10 units, so a value of 2 is 100 times the IW fO$_2$.
 - **Mass threshold**: `outgas.mass_thresh` \[kg\]. The chemistry solve treats H, C, N or S with less mass than this as absent. Escape and the desiccation check (see **Desiccated** below) also use it (see [the config reference](../Reference/config/escape_outgas.md#outgassing-outgas)).
 - **Trapping**: the step that moves volatiles from the melt into the mantle that froze in the step, set by `outgas.trap_mode`.
+- **Seal**: the state in which a closed crust holds the volatiles of the melt below it, with `outgas.lid_seal.enabled = true`; the held mass is in `_kg_sealed`. See [Volatiles held under a closed crust](#volatiles-held-under-a-closed-crust).
 - **Trapped (buried) mass**: volatile mass that moved from the melt to the solid mantle when the mantle froze, recorded in `_kg_trapped`. This page uses "trapped" and "buried" for it. See [Volatile trapping](#volatile-trapping-in-the-freezing-mantle).
 - **Desiccated**: the state of a planet that has lost its volatiles. For each volatile and noble gas, the mass that can still escape or outgas is below the mass threshold. Trapped mass, and condensed mass kept with `outgas.prevent_desaturation = true`, do not count.
 - **Rock vapour**: gas of rock-forming elements and their compounds, such as SiO, Na, Mg and Fe, above a hot melt surface.
@@ -43,7 +44,7 @@ Each iteration of the [coupling loop](coupling_loop.md#execution-order-per-itera
 5. **Outgassing** (`run_outgassing_and_vapourisation`). The chemistry solver splits the inventory between the atmosphere and the melt. If `outgas.vapourise = true`, rock vapour follows.
 6. **Atmosphere climate.** The climate solver reads the updated composition.
 
-The outgassing step takes the first of these 3 paths that applies:
+The outgassing step takes the first of these 4 paths that applies:
 
 - **Desiccated** (`run_desiccated`). This path runs when the planet is desiccated and the escape step has already removed the lost mass.
     - The atmosphere is emptied.
@@ -55,6 +56,9 @@ The outgassing step takes the first of these 3 paths that applies:
     - The melt and the atmosphere exchange no volatiles.
     - Escape still removes gas, so the code scales every atmospheric reservoir down by the same fraction. The composition does not change.
     - This path accepts only `escape.reservoir` ([config](../Reference/config/escape_outgas.md#atmospheric-escape-escape)) = `"outgas"` or `"bulk"`; any other value stops the run with an error.
+- **Lid seal** (`run_lid_seal_step`). This path needs `outgas.lid_seal.enabled = true`.
+    - While the seal is open, the chemistry solver runs as on the normal path; then the seal closes if the crust allows it.
+    - While the seal holds, escape is applied to the atmosphere as on the crystallised path, and the held volatiles leak. See [Volatiles held under a closed crust](#volatiles-held-under-a-closed-crust).
 - **Normal** (`run_outgassing`). The chemistry solver runs. This is the usual path while a magma ocean exists.
 
 On the normal path, the step does 3 things:
@@ -325,6 +329,102 @@ If the history does not account for all of the trapped mass, the rest returns in
 
 **Where this is checked.** [Burial ledger for remelting](../Validation/outgas/burial_ledger.md).
 
+## Volatiles held under a closed crust
+
+**Question.** When a crust closes over the magma ocean, can the volatiles dissolved in the melt still reach the atmosphere?
+
+**Short answer.** With `outgas.lid_seal.enabled = true`, a crust that is thick enough holds the dissolved volatiles in the melt below it: this is the **seal**. While the seal holds, the chemistry is frozen and the held volatiles reach the atmosphere only by a slow **leak**. The seal opens again when the crust thins or the melt below it grows. With the default, `false`, the seal never closes.
+
+### How to turn the seal on and read the result
+
+The seal needs the Aragog interior solver, because it reads the melt fraction and the radius of each mesh cell:
+
+```toml
+[interior_energetics]
+module = "aragog"
+
+[outgas.lid_seal]
+enabled = true
+delta_close = 1e4     # crust thickness at which the seal closes [m]
+tau_leak = 1e5        # relaxation time of the held volatiles [yr]
+```
+
+It cannot be combined with `params.stop.solid.freeze_volatiles = true`, which also freezes the melt inventory, or with `outgas.vapourise = true`. Front trapping (`outgas.trap_mode = "front"`) can run with it: it buries volatiles while the seal is open and stops while the seal holds.
+
+These output columns show what the seal does ([full list](../Reference/output.md)):
+
+- `seal_active` \[1\]: 1 while the seal holds, else 0.
+- `seal_delta` \[m\] and `seal_phi_top` \[1\]: the crust thickness and the melt fraction of the top mesh cell that the seal reads in the step.
+- `{sp}_kg_sealed`, `{sp}_mol_sealed` and `{e}_kg_sealed`: the held mass of each species and element.
+- `{e}_kg_leak_tau` and `{e}_kg_leak_volc` \[kg\]: the mass of each element that leaked in the step by relaxation and by volcanism.
+- `seal_leak_kg_cum` \[kg\]: the leaked mass since the start of the run.
+- `seal_open_kg` \[kg\]: the held mass that returned to the melt in a step where the seal opened.
+
+### When the seal closes and opens
+
+The seal reads 2 quantities in each step after the initialisation stage:
+
+- the crust thickness $\delta$ \[m\];
+- the melt fraction $\phi_\mathrm{top}$ \[1\] of the top cell of the interior mesh.
+
+Where $\delta$ comes from depends on the state of the crust:
+
+| State of the crust | Thickness $\delta$ | What decides the closure |
+|---|---|---|
+| Aragog sub-grid lid acts (`lid_weight > 0`) | `lid_delta`, the lid above the top mesh cell | both $\delta$ and $\phi_\mathrm{top}$ |
+| crust on the mesh (no sub-grid lid) | depth of the top run of mesh cells with a melt fraction below `phi_solid` | $\delta$; $\phi_\mathrm{top}$ is near 0 |
+| no crust | 0 | the seal stays open |
+
+The seal closes when $\delta \ge$ `delta_close` and $\phi_\mathrm{top} <$ `phi_close`. It closes after the chemistry solve of that step, so it holds the melt inventory of the state where the rule fires. A thin crust over a molten top cell does not close the seal.
+
+A closed seal opens when $\phi_\mathrm{top} \ge$ `phi_open` (default `phi_close + 0.05`), when $\delta <$ `delta_open` (default `0.5 delta_close`), or on a giant-impact step. The gap between the close and the open values stops a seal that would otherwise open and close in each step. On opening, the held mass returns to the melt, and the chemistry solve of the same step takes it. The atmosphere then gets the dissolved gas of the melt at once.
+
+The default `delta_close` is 10 km. On a crust that grows on the mesh, a coarse mesh moves the thickness in steps of one cell: with 79 cells in an Earth-mass mantle, the top cell is about 66 km thick. The seal then closes when the top cell freezes, for any `delta_close` below that cell. A thin chill crust, with `delta_close` near 0.3 m, closes only through the sub-grid lid.
+
+The seal covers the whole surface at once. A planet with a molten dayside and a frozen nightside, without heat transport between them, is outside this rule.
+
+### The leak
+
+While the seal holds, the held mass $M_i$ \[kg\] of each species $i$ changes as
+
+$$
+\frac{dM_i}{dt} = -\frac{M_i}{\tau} - F_{\mathrm{volc},i},
+\qquad
+F_{\mathrm{volc},i} = \chi_d\, \dot M_c\, X_{\mathrm{melt},i},
+\qquad
+X_{\mathrm{melt},i} = \frac{M_i}{M_\mathrm{melt} + D_i\, M_\mathrm{solid}}.
+$$
+
+The symbols are:
+
+- $\tau$: `tau_leak` \[yr\], the relaxation time of the held volatiles. The default, infinity, holds them.
+- $\dot M_c$: `crust_rate` \[kg yr$^{-1}$\], the mass of melt that reaches the crust per year. The default is 0.
+- $\chi_d$: `chi_d` \[1\], the fraction of the volatiles in that melt that degasses; 0.02 by default [^cite-schaefer2015].
+- $X_{\mathrm{melt},i}$: the mass fraction of species $i$ in the melt \[1\].
+- $M_\mathrm{melt} = \Phi M_\mathrm{mantle}$ and $M_\mathrm{solid} = (1 - \Phi) M_\mathrm{mantle}$: the melt and the solid mass of the mantle \[kg\], with the global melt fraction $\Phi$.
+- $D_i$: `outgas.D_const_<species>`, the crystal/melt partition coefficient \[1\].
+
+The volcanic term has the form of Eq. 14 and Eq. 17 of Schaefer and Sasselov (2015) [^cite-schaefer2015], with the melt production of plate spreading replaced by $\dot M_c$. $X_{\mathrm{melt},i}$ follows from the mass balance of the held volatile: it sits in the melt and, at $D_i > 0$, in the crystals in equilibrium with it. So the global melt fraction enters, not the melt fraction of the cells that hold melt. If half the mantle is solid and the other half holds 40 % melt, $\Phi = 0.2$, and at $D_i = 0$ the melt concentration is $M_i/(0.2\,M_\mathrm{mantle})$.
+
+Both terms are linear in $M_i$, so the code uses the exact solution over a step of length $\Delta t$:
+
+$$
+M_i(t + \Delta t) = M_i(t)\, \exp\left[-\Delta t\left(\frac{1}{\tau} + k_i\right)\right],
+\qquad k_i = \frac{\chi_d \dot M_c}{M_\mathrm{melt} + D_i M_\mathrm{solid}}.
+$$
+
+The result does not depend on the step length, and $M_i$ cannot become negative. The leaked mass splits between relaxation and volcanism in the ratio $(1/\tau) : k_i$. In one step no more melt than $M_\mathrm{melt}$ can reach the crust: a larger `crust_rate` is cut to $M_\mathrm{melt}/\Delta t$, and `seal_volc_capped` records the cut. Below `phi_solid`, no melt reaches the crust.
+
+The leaked gas enters the atmosphere as the species it was held as, with no new chemistry solve. The partial pressures follow from the masses, as in CALLIOPE: the surface pressure is $M_\mathrm{atm}\, g / (4\pi R^2)$, and each species takes its mole fraction of it.
+
+### What the seal changes elsewhere
+
+- Escape takes mass from the atmosphere only, as on a mantle frozen with `freeze_volatiles`.
+- The escape step does not count the held mass; the desiccation check does, so a planet that holds volatiles under its crust is not desiccated. If the planet desiccates, a held rest below `outgas.mass_thresh` leaves with the atmosphere.
+- The per-element mass closure includes the held mass: atmosphere + melt + solid + condensed + held = total.
+
+**Where this is checked.** [Volatiles under a closed crust](../Validation/outgas/lid_seal.md).
+
 ## Limits of the trapping inputs
 
 **Question.** Which values can the trapping inputs take?
@@ -344,6 +444,7 @@ During a run, an $F_\mathrm{tl}$ outside 0 to 1 stops the run with an error. A f
 
 **Where this is checked.** No Validation case covers these limits.
 
+[^cite-schaefer2015]: Schaefer, L. and Sasselov, D., *[The persistence of oceans on Earth-like planets: insights from the deep-water cycle](https://doi.org/10.1088/0004-637X/801/1/40)*, The Astrophysical Journal, 801, 40, 2015. Eq. 14, Eq. 17 and Table 3.
 [^cite-rogers2025]: Rogers, J.G., Young, E.D. and Schlichting, H.E., *[Redefining interiors and envelopes: hydrogen-silicate miscibility and its consequences for the structure and evolution of sub-Neptunes](https://doi.org/10.1093/mnras/staf1940)*, Monthly Notices of the Royal Astronomical Society, 544, 3496, 2025.
 [^cite-sim2024]: Sim, S.J., Hirschmann, M.M. and Hier-Majumder, S., *[Volatile and trace element storage in a crystallizing martian magma ocean](https://doi.org/10.1029/2024JE008346)*, Journal of Geophysical Research: Planets, 129, e2024JE008346, 2024. Eq. 6.
 [^cite-bower2018]: Bower, D.J., Sanan, P. and Wolf, A.S., *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49, 2018.
