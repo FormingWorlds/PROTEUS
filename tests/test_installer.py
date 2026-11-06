@@ -37,6 +37,7 @@ import subprocess
 import sys
 import tempfile
 import termios
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -738,6 +739,22 @@ class TestInstallVars:
         assert 'RAD_DIR=/r' not in result.stderr
         assert 'delete those lines by hand' in result.stderr
         assert zshrc.read_text() == text
+
+    def test_note_names_a_depot_export(self, site):
+        """The way back of a kept value starts at this line of the start file."""
+        zshrc = site['home'] / '.zshrc'
+        _write_start_file(zshrc, '# zsh\nexport JULIA_DEPOT_PATH=/data/depot\n')
+        result = self._call(site, 'note_old_shell_exports\n')
+        assert result.returncode == 0
+        assert f'{zshrc}, line 2: export JULIA_DEPOT_PATH=/data/depot' in result.stderr
+        assert 'conda env with no value of its own' in result.stderr
+
+    def test_note_on_other_variables_has_no_depot_sentence(self, site):
+        """The conda env holds the value of the other variables, so the extra line stays away."""
+        _write_start_file(site['home'] / '.zshrc', 'export FWL_DATA=/data\n')
+        result = self._call(site, 'note_old_shell_exports\n')
+        assert 'FWL_DATA' in result.stderr
+        assert 'conda env with no value of its own' not in result.stderr
 
     def test_note_reads_the_fish_ksh_bash_login_and_zshenv_files(self, site):
         """An old export in fish's config.fish, ~/.kshrc, ~/.bash_login or ~/.zshenv is named.
@@ -3014,7 +3031,8 @@ class TestAgniJuliaVersion:
         lines = INSTALL_SH.read_text().splitlines()
         start = lines.index('    info "AGNI already installed at $SCRIPT_DIR/AGNI"')
         assert lines[start + 1] == '    note_agni_julia_version "$SCRIPT_DIR/AGNI"'
-        assert lines[start + 2] == 'else'
+        assert lines[start + 2] == '    instantiate_julia_project "$SCRIPT_DIR/AGNI"'
+        assert lines[start + 3] == 'else'
 
 
 class TestNoJuliaInstall:
@@ -3165,6 +3183,7 @@ _STUB_CONDA_SH = """conda() {
     echo --- >> "$STUB_CONDA_LOG"
     : "$SOME_UNSET_NAME"
     [ "${STUB_ACTIVATE_RC:-0}" = 0 ] || return "$STUB_ACTIVATE_RC"
+    [ -z "${STUB_BOUND_DEPOT:-}" ] || export JULIA_DEPOT_PATH="$STUB_BOUND_DEPOT"
     CONDA_DEFAULT_ENV="${STUB_ACTIVATE_AS:-$2}"
     CONDA_PREFIX="$STUB_CONDA_BASE/envs/$2"
     PATH="$CONDA_PREFIX/bin:$PATH"
@@ -3362,6 +3381,105 @@ class TestSetupCondaEnv:
         calls = _conda_calls(site['log'])
         assert ['setup_julia'] in calls
         assert [c for c in calls if c[0] in ('create', 'activate')] == []
+
+    @pytest.mark.parametrize(
+        ('shell', 'bound', 'expected', 'line'),
+        [
+            ('/big/x:', '/bound:', '/bound:', True),
+            ('/bound:', '/bound:', '/bound:', False),
+            ('', '/bound:', '/bound:', False),
+            (None, '/bound:', '/bound:', False),
+            ('/big/x:', '', '/big/x:', False),
+        ],
+        ids=['shell-and-bound', 'same', 'empty', 'unset', 'nothing-bound'],
+    )
+    def test_value_bound_to_the_env_wins_over_the_shell(
+        self, site, shell, bound, expected, line
+    ):
+        """A shell value can be the leftover of another env, so only an env with no value keeps it."""
+        self._existing_env(site, 'proteus')
+        env = {} if shell is None else {'JULIA_DEPOT_PATH': shell}
+        result = self._call(
+            site,
+            after='printf "DEPOT=[%s]\\n" "${JULIA_DEPOT_PATH-unset}"\n',
+            STUB_CONDA_ENVS='proteus',
+            STUB_BOUND_DEPOT=bound,
+            **env,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert f'DEPOT=[{expected}]' in result.stdout
+        command = 'conda env config vars set -n proteus JULIA_DEPOT_PATH='
+        assert (command in result.stderr) == line
+        if line:
+            assert 'JULIA_DEPOT_PATH=/big/x: of the shell' in result.stderr
+
+    def _whole_script_stop(self, site, tmp_path, **env):
+        """Run the shipped script up to its stop; return the result and the folder of its data."""
+        _stub(site['stubs'] / 'julia', _STUB_JULIA)
+        _stub(site['stubs'] / 'juliaup', _STUB_JULIAUP)
+        _stub(site['stubs'] / 'python3', '#!/bin/sh\necho 3.12\n')
+        for tool in ('gfortran', 'git', 'make', 'cmake', 'unzip', 'nc-config', 'nf-config'):
+            _stub(site['stubs'] / tool, '#!/bin/sh\nexit 0\n')
+        root = scratch_proteus_root(tmp_path / 'proteus', [])
+        shutil.copy(INSTALL_SH, root / 'install.sh')
+        (tmp_path / 'home').mkdir()
+        data = tmp_path / 'fwl_data'
+        log = tmp_path / 'calls.log'
+        log.write_text('')
+        result = subprocess.run(
+            ['bash', 'install.sh', '--no-data'],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            env={
+                **site['env'],
+                'HOME': str(tmp_path / 'home'),
+                'FWL_DATA': str(data),
+                'STUB_LOG': str(log),
+                'STUB_JULIA_VERSION': '1.13.1',
+                'STUB_JULIAUP_CONFIG': _juliaup_config('1.13.1'),
+                **env,
+            },
+            cwd=root,
+            timeout=25,
+        )
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert 'name an absolute folder' in result.stdout
+        assert 'Installation failed at Phase 1.' in result.stdout
+        assert not data.exists()
+        assert not (root / '.proteus-env.sh').exists()
+        # What is left in the log is the read-only report of the stop itself.
+        assert set(log.read_text().splitlines()) <= {_JULIAUP_READ, 'julia --version'}
+        return result
+
+    @pytest.mark.parametrize('value', ['rel:', '~nobody/x:', '$CONDA_PREFIX/julia_depot:'])
+    def test_whole_script_stops_on_a_depot_value_before_any_change(self, site, tmp_path, value):
+        """No env, no data folder, no env file and no Julia call before the stop."""
+        result = self._whole_script_stop(site, tmp_path, JULIA_DEPOT_PATH=value)
+        assert f'JULIA_DEPOT_PATH={value}' in result.stdout
+        assert 'conda env config vars unset JULIA_DEPOT_PATH' in result.stdout
+        assert 'pixi.toml' not in result.stdout
+        assert 'create' not in [c[0] for c in _conda_calls(site['log'])]
+        assert 'activate' not in [c[0] for c in _conda_calls(site['log'])]
+
+    def test_whole_script_stops_on_a_value_bound_to_the_env(self, site, tmp_path):
+        """A bad value that activation brings stops the run before the Julia step."""
+        self._existing_env(site, 'proteus')
+        result = self._whole_script_stop(site, tmp_path, STUB_BOUND_DEPOT='rel:')
+        assert 'JULIA_DEPOT_PATH=rel:' in result.stdout
+        out = result.stdout
+        assert out.index('conda env config vars unset JULIA_DEPOT_PATH') < out.index(
+            'conda deactivate'
+        )
+        assert ['activate', 'proteus'] in _conda_calls(site['log'])
+
+    def test_whole_script_on_pixi_names_the_manifest_in_the_stop(self, site, tmp_path):
+        """A pixi value comes from pixi.toml, and no conda command changes it."""
+        result = self._whole_script_stop(
+            site, tmp_path, JULIA_DEPOT_PATH='rel:', PIXI_ENVIRONMENT_NAME='default'
+        )
+        assert 'pixi.toml' in result.stdout
+        assert 'conda env config vars' not in result.stdout
 
     def test_existing_env_keeps_the_check_for_later(self, site):
         """An existing env can hold PYTHON_JULIAPKG_EXE, so no check runs before it is active."""
@@ -4419,11 +4537,11 @@ class TestFailedStepsEndInDie:
     def test_every_logged_step_ends_in_die_warn_or_true(self):
         """Each run_logged statement is in an `if !`, or ends in `|| die`, `|| warn` or `|| true`.
 
-        Under set -e a bare failing step ends the run with no failure block. The 9
+        Under set -e a bare failing step ends the run with no failure block. The 11
         statements are counted, so a scan that finds none fails.
         """
         statements = _run_logged_statements()
-        assert len(statements) == 9
+        assert len(statements) == 11
         bare = [
             s
             for s in statements
@@ -4633,7 +4751,9 @@ class TestFurtherModulesPhase:
     def _phase_block() -> str:
         """The shipped lines of install.sh for the further modules phase."""
         lines = INSTALL_SH.read_text().splitlines()
-        start = next(i for i, ln in enumerate(lines) if ln.startswith('FAILED_MODULES=""'))
+        start = next(
+            i for i, ln in enumerate(lines) if ln == 'FAILED_MODULES="${FAILED_MODULES:-}"'
+        )
         end = (
             next(
                 i
@@ -4938,3 +5058,718 @@ class TestFurtherModulesPhase:
         ]
         for script_path in expected_scripts:
             assert (repo_root / script_path).is_file()
+
+
+_DEPOT_FUNCTIONS = (
+    'command_exists',
+    'die',
+    'collect_env_info',
+    'julia_answers_without_download',
+    'set_install_var',
+    'is_proteus_install_folder',
+    'is_gone_env_folder',
+    'julia_depot_holds_packages',
+    'instantiate_julia_project',
+    'stop_on_unusable_depot',
+    'setup_julia_depot',
+    'reinstall_moved_lovepy',
+)
+
+_LOVEPY_STEP = 'run_logged() { printf "FURTHER=%s\\n" "$*"; }\nreinstall_moved_lovepy\n'
+
+_STUB_DEPOT_JULIA = '#!/bin/sh\necho JULIA_RAN\necho "$PWD|$*|$JULIA_DEPOT_PATH|ld=[$LD_LIBRARY_PATH]" >> "$STUB_LOG"\nexit "${STUB_RC:-0}"\n'
+
+
+class TestJuliaDepot:
+    """setup_julia_depot gives each install its own Julia depot and keeps a choice of the user."""
+
+    UNSET = object()
+
+    @pytest.fixture
+    def site(self, tmp_path):
+        """A scratch HOME, conda prefix, PROTEUS root and a logging Julia stub."""
+        for name in ('home', 'prefix', 'root'):
+            (tmp_path / name).mkdir()
+        julia = _stub(tmp_path / 'stub' / 'julia', _STUB_DEPOT_JULIA)
+        log = tmp_path / 'julia.log'
+        log.write_text('')
+        return {'tmp': tmp_path, 'julia': julia, 'log': log}
+
+    @staticmethod
+    def _agni_manifest(site):
+        """Give the PROTEUS root an AGNI folder with a Manifest."""
+        (site['tmp'] / 'root' / 'AGNI').mkdir()
+        (site['tmp'] / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+
+    def _run(self, site, value=UNSET, prefix='prefix', after='', **env):
+        """Run the shipped setup_julia_depot and print the variable and the old depot it leaves."""
+        tmp = site['tmp']
+        defs = (
+            'set -euo pipefail\n'
+            + _install_sh_blocks("RED='", 'info()')
+            + 'REQUIRED_JULIA_MAJOR=1\nREQUIRED_JULIA_MINOR=13\n'
+            + f'SCRIPT_DIR={shlex.quote(str(tmp / "root"))}\n'
+            + 'PROTEUS_ENV_FILE="$SCRIPT_DIR/.proteus-env.sh"\nINSTALL_VAR_NAMES=""\n'
+            + 'FAILED_MODULES=""\n'
+            + 'LOGFILE=""\n'
+            + ''.join(
+                _install_sh_function(f) for f in (*_RUN_LOGGED_FUNCTIONS, *_DEPOT_FUNCTIONS)
+            )
+        )
+        report = (
+            'stop_on_unusable_depot\nsetup_julia_depot\n'
+            'printf "DEPOT=%s\\n" "$JULIA_DEPOT_PATH"\n' + after
+        )
+        full_env = {
+            'PATH': _SYSTEM_PATH,
+            'HOME': str(tmp / 'home'),
+            'STUB_LOG': str(site['log']),
+            'PYTHON_JULIAPKG_EXE': str(site['julia']),
+            **env,
+        }
+        full_env['CONDA_PREFIX'] = str(tmp / prefix)
+        if value is not self.UNSET:
+            full_env['JULIA_DEPOT_PATH'] = value
+        result = subprocess.run(
+            ['bash', '-c', defs + report],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=full_env,
+            timeout=25,
+        )
+        return result
+
+    def _call(self, site, value=UNSET, prefix='prefix', after='', **env):
+        """``_run`` of a call that must end with status 0."""
+        result = self._run(site, value, prefix, after, **env)
+        assert result.returncode == 0, result.stdout
+        return result
+
+    @staticmethod
+    def _marker(site):
+        """The old depot that the file in the depot names, or None with no such file."""
+        path = site['tmp'] / 'prefix' / 'julia_depot' / '.proteus-moved-from'
+        return path.read_text().strip() if path.exists() else None
+
+    @staticmethod
+    def _value(result, key='DEPOT'):
+        """The value of a report line of ``_call``."""
+        return next(ln for ln in result.stdout.splitlines() if ln.startswith(f'{key}='))[
+            len(key) + 1 :
+        ]
+
+    @pytest.mark.parametrize('value', [UNSET, ''], ids=['unset', 'empty'])
+    def test_no_value_gets_the_depot_of_the_prefix_with_the_trailing_colon(self, site, value):
+        """Unset or empty gives <prefix>/julia_depot: in the process and the exports file.
+
+        An empty value is no choice: Julia then runs with no depot at all. The trailing
+        colon keeps the bundled depots, without which each depot compiles the stdlibs again.
+        """
+        result = self._call(site, value)
+        own = f'{site["tmp"] / "prefix"}/julia_depot:'
+        assert self._value(result) == own
+        assert (site['tmp'] / 'root' / '.proteus-env.sh').is_file()
+        exports = (site['tmp'] / 'root' / '.proteus-env.sh').read_text()
+        assert f"export JULIA_DEPOT_PATH='{own}'" in exports
+        assert 'shares' not in result.stdout
+
+    def test_two_prefixes_get_two_depots(self, site):
+        """Install B does not get the depot of install A."""
+        (site['tmp'] / 'prefix2').mkdir()
+        first = self._value(self._call(site))
+        second = self._value(self._call(site, prefix='prefix2'))
+        assert first != second
+        assert second == f'{site["tmp"] / "prefix2"}/julia_depot:'
+
+    def test_own_value_stays_silent(self, site):
+        """A re-run with the value of this install changes nothing and warns of nothing."""
+        own = f'{site["tmp"] / "prefix"}/julia_depot:'
+        result = self._call(site, own)
+        assert self._value(result) == own
+        assert 'shares' not in result.stdout
+        assert 'WARN' not in result.stdout
+
+    @pytest.mark.parametrize(
+        'value',
+        ['/big/x', '/big/x:', '/big/x:/y:', ':', ':/big/x', '/big/disk/julia_depot:'],
+        ids=['plain', 'colon', 'list', 'only-colon', 'leading-colon', 'same-name-no-install'],
+    )
+    def test_value_of_the_user_stays_verbatim_and_says_it_is_shared(self, site, value):
+        """A value set by the user stays, and one line names the limit and the way out."""
+        result = self._call(site, value)
+        assert self._value(result) == value
+        assert (
+            "export JULIA_DEPOT_PATH='" + value + "'"
+            in (site['tmp'] / 'root' / '.proteus-env.sh').read_text()
+        )
+        assert 'shares' in result.stdout
+        assert 'new shell' in result.stdout
+        out = result.stdout
+        prefix = site['tmp'] / 'prefix'
+        unset = f'conda env config vars unset -p {prefix} JULIA_DEPOT_PATH'
+        order = [
+            out.find(text) for text in (unset, 'conda deactivate', f'conda activate {prefix}')
+        ]
+        assert -1 not in order
+        assert order == sorted(order)
+
+    def test_value_kept_on_pixi_names_the_manifest(self, site):
+        """A shell value and conda play no part on pixi, so the line names pixi.toml."""
+        result = self._call(site, '/big/x:', PIXI_ENVIRONMENT_NAME='default')
+        assert 'pixi.toml' in result.stdout
+        assert 'conda env config vars' not in result.stdout
+
+    def test_tilde_path_to_another_install_is_replaced(self, site):
+        """Julia expands the tilde, so the rule reads the same folder that Julia reads."""
+        (site['tmp'] / 'home' / 'other' / 'conda-meta').mkdir(parents=True)
+        result = self._call(site, '~/other/julia_depot:')
+        assert self._value(result) == f'{site["tmp"] / "prefix"}/julia_depot:'
+        assert 'another PROTEUS install' in result.stdout
+
+    def test_depot_in_the_own_tree_stays(self, site):
+        """The tree of this install is no other install, whatever env is active."""
+        root = site['tmp'] / 'root'
+        (root / 'src' / 'proteus').mkdir(parents=True)
+        (root / 'install.sh').write_text('')
+        result = self._call(site, f'{root}/julia_depot:')
+        assert self._value(result) == f'{root}/julia_depot:'
+        assert 'another PROTEUS install' not in result.stdout
+
+    @pytest.mark.parametrize(
+        'value_form', ['{new}:{full}', '{new}:{full}:'], ids=['list', 'list-colon']
+    )
+    def test_packages_in_a_later_entry_are_no_move(self, site, value_form):
+        """Julia reads every entry, so a shared later depot means nothing moves."""
+        full = site['tmp'] / 'shared'
+        (full / 'packages').mkdir(parents=True)
+        self._agni_manifest(site)
+        value = value_form.format(new=site['tmp'] / 'new', full=full)
+        result = self._call(site, value)
+        assert 'MiB' not in result.stdout
+        assert self._marker(site) is None
+
+    def test_leading_colon_reads_the_home_depot(self, site):
+        """A leading colon is ~/.julia, so its packages count and no move is announced."""
+        (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
+        self._agni_manifest(site)
+        assert 'MiB' not in self._call(site, ':').stdout
+        assert self._marker(site) is None
+
+    @pytest.mark.parametrize('form', ['abs', 'tilde', 'slash', 'dotdot', 'symlink'])
+    @pytest.mark.parametrize(
+        'parent',
+        ['other-env', 'other-tree', 'own-env', 'own-root', 'plain', 'other-gone', 'plain-gone'],
+    )
+    def test_install_script_and_doctor_agree_on_another_install(
+        self, site, monkeypatch, parent, form
+    ):
+        """One verdict from both tools, over every parent and spelling of the same folder."""
+        home = site['tmp']
+        folders = {
+            'other-env': home / 'other-env',
+            'other-tree': home / 'other-tree',
+            'own-env': home / 'prefix',
+            'own-root': home / 'root',
+            'plain': home / 'plain',
+            'other-gone': home / 'envs' / 'other-gone',
+            'plain-gone': home / 'plain-gone',
+        }
+        folder = folders[parent]
+        (home / 'envs').mkdir()
+        if not parent.endswith('-gone'):
+            folder.mkdir(exist_ok=True)
+        (home / 'prefix' / 'conda-meta').mkdir(exist_ok=True)
+        (folders['own-root'] / 'src' / 'proteus').mkdir(parents=True)
+        (folders['own-root'] / 'install.sh').write_text('')
+        if parent == 'other-env':
+            (folder / 'conda-meta').mkdir()
+        if parent == 'other-tree':
+            (folder / 'src' / 'proteus').mkdir(parents=True)
+            (folder / 'install.sh').write_text('')
+        path = {
+            'abs': str(folder),
+            'slash': str(folder),
+            'tilde': f'~/{folder.relative_to(home)}',
+            'dotdot': f'{home}/stub/../{folder.relative_to(home)}',
+            'symlink': f'{home}/link-{folder.name}',
+        }[form]
+        if form == 'symlink':
+            (home / f'link-{folder.name}').symlink_to(folder)
+        value = f'{path}/julia_depot{"/" if form == "slash" else ""}:'
+        replaced = 'another PROTEUS install' in self._call(site, value, HOME=str(home)).stdout
+        monkeypatch.setenv('HOME', str(home))
+        monkeypatch.setenv('CONDA_PREFIX', str(site['tmp'] / 'prefix'))
+        from proteus.utils.install_env import depot_of_other_install
+
+        verdict = depot_of_other_install(value, site['tmp'] / 'root')
+        assert replaced == verdict
+        # A link to a removed env names no envs folder beside the depot, so that value stays.
+        assert verdict == (
+            parent.startswith('other') and not (parent == 'other-gone' and form == 'symlink')
+        )
+
+    @pytest.mark.parametrize(
+        'marker', ['conda-meta', 'tree'], ids=['conda-or-pixi-env', 'proteus-tree']
+    )
+    def test_depot_of_another_install_is_replaced_with_a_warning(self, site, marker):
+        """A depot inherited from another env or tree is the one value that does not stay.
+
+        Conda keeps the value of the previous env when the next env has none.
+        """
+        other = site['tmp'] / 'other'
+        if marker == 'conda-meta':
+            (other / 'conda-meta').mkdir(parents=True)
+        else:
+            (other / 'src' / 'proteus').mkdir(parents=True)
+            (other / 'install.sh').write_text('')
+        result = self._call(site, f'{other}/julia_depot:')
+        assert self._value(result) == f'{site["tmp"] / "prefix"}/julia_depot:'
+        assert str(other) in result.stdout
+        assert 'another PROTEUS install' in result.stdout
+
+    def test_tree_marker_needs_both_files(self, site):
+        """A folder with install.sh alone is no PROTEUS tree, so its depot stays."""
+        other = site['tmp'] / 'other'
+        other.mkdir()
+        (other / 'install.sh').write_text('')
+        result = self._call(site, f'{other}/julia_depot:')
+        assert self._value(result) == f'{other}/julia_depot:'
+        assert 'another PROTEUS install' not in result.stdout
+
+    def test_own_depot_without_the_colon_stays(self, site):
+        """The parent is an env, but it is this env: not another install, and not shared."""
+        (site['tmp'] / 'prefix' / 'conda-meta').mkdir()
+        value = f'{site["tmp"] / "prefix"}/julia_depot'
+        result = self._call(site, value)
+        assert self._value(result) == value
+        assert 'shares' not in result.stdout
+        assert 'no trailing colon' in result.stdout
+        assert 'macOS arm64' in result.stdout
+
+    @pytest.mark.parametrize('value', ['/big/x:', '/big/x::/y', ':/big/x', ':'])
+    def test_value_with_the_bundled_depots_has_no_colon_line(self, site, value):
+        """Each of these forms keeps the compile files of Julia."""
+        result = self._call(site, value)
+        assert 'no trailing colon' not in result.stdout
+        assert self._value(result) == value
+
+    @pytest.mark.parametrize(
+        'form', ['{p}/julia_depot/:', '{p}/../prefix/julia_depot:', '{l}/julia_depot:']
+    )
+    def test_own_depot_in_another_spelling_is_not_shared(self, site, form):
+        """A slash, a .. and a link name the own depot, and it need not exist yet."""
+        prefix = site['tmp'] / 'prefix'
+        (site['tmp'] / 'link').symlink_to(prefix)
+        value = form.format(p=prefix, l=site['tmp'] / 'link')
+        result = self._call(site, value)
+        assert self._value(result) == value
+        assert 'shares' not in result.stdout
+        assert 'another PROTEUS install' not in result.stdout
+
+    @pytest.mark.parametrize('folder', ['envs/gone', '.pixi/envs/default'])
+    def test_value_of_a_removed_env_is_replaced_with_a_warning(self, site, folder):
+        """A depot that names a removed env in an envs folder would grow again in the old prefix."""
+        gone = site['tmp'] / folder / 'julia_depot'
+        gone.parent.parent.mkdir(parents=True)
+        result = self._call(site, f'{gone}:')
+        own = f'{site["tmp"] / "prefix"}/julia_depot:'
+        assert self._value(result) == own
+        warned = next(
+            ln for ln in result.stdout.splitlines() if 'another PROTEUS install' in ln
+        )
+        assert str(gone) in warned
+        assert own in warned
+        assert not gone.parent.exists()
+
+    def test_folder_in_envs_with_no_env_marker_stays(self, site):
+        """Only a folder that is gone counts: one that exists there is no env without conda-meta."""
+        (site['tmp'] / 'envs' / 'mine').mkdir(parents=True)
+        value = f'{site["tmp"] / "envs" / "mine"}/julia_depot:'
+        result = self._call(site, value)
+        assert self._value(result) == value
+        assert 'another PROTEUS install' not in result.stdout
+
+    @pytest.mark.parametrize('folder', ['scratch/me/proteus-a', 'envs/gone', 'envs_old/gone'])
+    def test_value_on_a_missing_parent_with_no_envs_folder_stays(self, site, folder):
+        """A disk that is not mounted or a folder still to come stays the choice of the user."""
+        (site['tmp'] / 'envs_old').mkdir()
+        value = f'{site["tmp"] / folder}/julia_depot:'
+        result = self._call(site, value)
+        assert self._value(result) == value
+        assert 'another PROTEUS install' not in result.stdout
+        assert 'shares' in result.stdout
+
+    @pytest.mark.parametrize(
+        'value',
+        [
+            'rel:',
+            'julia_depot:',
+            './x:',
+            '../x:',
+            '-x/julia_depot:',
+            '~nobody/x:',
+            '~nobody',
+            '$CONDA_PREFIX/julia_depot:',
+            '/a/$b:',
+            'rel',
+        ],
+    )
+    def test_value_that_depends_on_the_folder_or_the_shell_stops(self, site, value):
+        """The depot of such a value depends on the folder of each process, or holds no path."""
+        result = self._run(site, value)
+        assert result.returncode == 1
+        assert f'JULIA_DEPOT_PATH={value}' in result.stdout
+        assert 'absolute' in result.stdout
+        assert not (site['tmp'] / 'root' / '.proteus-env.sh').exists()
+        assert site['log'].read_text() == ''
+
+    @pytest.mark.parametrize(
+        'value',
+        [
+            '',
+            ':',
+            ':/x',
+            '/x',
+            '/x:',
+            '~',
+            '~:',
+            '~/d:',
+            '/x:rel',
+            'rel:',
+            '~nobody/x:',
+            '$X/y:',
+            '/a$b:',
+            './x',
+            '-x:',
+        ],
+    )
+    def test_install_script_and_doctor_agree_on_a_value_that_stops(self, site, value):
+        """One verdict from both tools over the forms of the first entry."""
+        from proteus.utils.install_env import depot_value_is_unusable
+
+        result = self._run(site, value)
+        assert (result.returncode != 0) == depot_value_is_unusable(value)
+        assert ('name an absolute folder' in result.stdout) == depot_value_is_unusable(value)
+
+    def test_move_names_size_and_stay_command_before_any_julia_runs(self, site):
+        """An old install with an empty new depot hears the cost before the download."""
+        env_project = site['tmp'] / 'prefix' / 'julia_env'
+        env_project.mkdir()
+        (env_project / 'Manifest.toml').write_text('m')
+        (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
+        result = self._call(site)
+        out = result.stdout
+        assert 'MiB' in out
+        assert 'JULIA_RAN' in out
+        assert out.index('MiB') < out.index('JULIA_RAN')
+        home = site['tmp'] / 'home'
+        prefix = site['tmp'] / 'prefix'
+        assert f'conda env config vars set -p {prefix} JULIA_DEPOT_PATH={home}/.julia:' in out
+        # Conda does not load a changed value when the same env is activated again.
+        assert 'conda deactivate' in out
+        assert out.index('conda deactivate') < out.index(f'conda activate {prefix}')
+        assert f'JULIA_DEPOT_PATH={home}/.julia: bash install.sh' not in out
+        assert 'macOS arm64' in out
+        assert self._marker(site) == f'{home}/.julia'
+        assert 'pixi.toml' not in out
+
+    def test_move_on_pixi_names_the_manifest_line(self, site):
+        """Pixi activation overrides a shell value, so the stay route is pixi.toml."""
+        self._agni_manifest(site)
+        (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
+        out = self._call(site, PIXI_ENVIRONMENT_NAME='default').stdout
+        assert 'pixi.toml' in out
+        assert 'To stay on the old depot:' not in out
+
+    def test_inherited_depot_is_the_old_depot_of_the_move(self, site):
+        """LovePy and the text follow the depot left behind, and its value cannot be the stay."""
+        other = site['tmp'] / 'other'
+        (other / 'conda-meta').mkdir(parents=True)
+        (other / 'julia_depot' / 'packages').mkdir(parents=True)
+        self._agni_manifest(site)
+        out = self._call(site, f'{other}/julia_depot:').stdout
+        assert self._marker(site) == f'{other}/julia_depot'
+        assert f'{other}/julia_depot stays as it is' in out
+        assert 'To stay on the old depot' not in out
+
+    def test_retry_of_a_fresh_install_writes_no_note(self, site):
+        """A clone with a Manifest and an old depot with no packages leaves nothing to carry."""
+        self._agni_manifest(site)
+        result = self._call(site)
+        assert self._marker(site) is None
+        assert 'To stay on the old depot' not in result.stdout
+        assert 'MiB' not in result.stdout
+        assert 'move to' not in result.stdout
+        assert 'stays as it is' not in result.stdout
+        assert 'go into' in result.stdout
+
+    def test_depot_that_cannot_hold_the_note_warns(self, site):
+        """A note that cannot be written loses the LovePy step, so the user hears it."""
+        (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
+        self._agni_manifest(site)
+        (site['tmp'] / 'prefix' / 'julia_depot').write_text('a file')
+        out = self._call(site).stdout
+        assert 'get_lovepy.sh' in out
+        assert self._marker(site) is None
+
+    def test_no_prefix_stops_with_a_message(self, site):
+        """An env with no CONDA_PREFIX has no place for the depot."""
+        tmp = site['tmp']
+        defs = (
+            'set -euo pipefail\nCURRENT_PHASE=3\nLOGFILE=""\n'
+            + _install_sh_blocks("RED='", 'info()')
+            + f'SCRIPT_DIR={shlex.quote(str(tmp / "root"))}\n'
+            + ''.join(_install_sh_function(f) for f in _DEPOT_FUNCTIONS)
+            + 'collect_env_info() { :; }\n'
+        )
+        done = subprocess.run(
+            ['bash', '-c', defs + 'setup_julia_depot\n'],
+            capture_output=True,
+            text=True,
+            env={'PATH': _SYSTEM_PATH, 'HOME': str(tmp / 'home')},
+            timeout=25,
+        )
+        assert done.returncode == 1
+        assert 'CONDA_PREFIX is not set' in done.stdout + done.stderr
+
+    def test_fresh_install_has_no_move_line(self, site):
+        """With no Manifest there is nothing to move and no Julia call."""
+        result = self._call(site)
+        assert 'MiB' not in result.stdout
+        assert self._marker(site) is None
+        assert site['log'].read_text() == ''
+
+    def test_depot_with_packages_has_no_move_line(self, site):
+        """A re-run on a filled depot prints nothing about a move and still instantiates."""
+        env_project = site['tmp'] / 'prefix' / 'julia_env'
+        env_project.mkdir()
+        (env_project / 'Manifest.toml').write_text('m')
+        (site['tmp'] / 'prefix' / 'julia_depot' / 'packages').mkdir(parents=True)
+        result = self._call(site, LD_LIBRARY_PATH='/conda/lib')
+        assert 'MiB' not in result.stdout
+        assert self._marker(site) is None
+        calls = site['log'].read_text().splitlines()
+        assert len(calls) == 1
+        assert f'--project={env_project}' in calls[0]
+        assert '--startup-file=no' in calls[0]
+        assert 'Pkg.instantiate()' in calls[0]
+        assert calls[0].endswith(f'|{site["tmp"] / "prefix"}/julia_depot:|ld=[]')
+
+    def test_tilde_value_is_read_as_the_home_folder(self, site):
+        """Julia expands a leading tilde, so the packages check must too."""
+        (site['tmp'] / 'home' / 'd' / 'packages').mkdir(parents=True)
+        self._agni_manifest(site)
+        result = self._call(site, '~/d:')
+        assert self._value(result) == '~/d:'
+        assert 'MiB' not in result.stdout
+
+    def test_failed_instantiate_warns_with_its_command_and_goes_on(self, site):
+        """No network with an empty depot: a warning that names the repeat, not a stop."""
+        env_project = site['tmp'] / 'prefix' / 'julia_env'
+        env_project.mkdir()
+        (env_project / 'Manifest.toml').write_text('m')
+        (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
+        after = 'printf "FAILED=%s\\n" "$FAILED_MODULES"\n'
+        result = self._call(site, after=after, STUB_RC='1')
+        both = result.stdout
+        assert 'Could not install the Julia packages' in both
+        assert 'Pkg.instantiate()' in both
+        assert 'LD_LIBRARY_PATH=""' in both
+        assert self._marker(site) is not None
+        failed = self._value(result, 'FAILED')
+        assert f'Julia packages of {env_project} (' in failed
+        assert f'--project="{env_project}"' in failed
+        assert 'Pkg.instantiate()' in failed
+
+    def test_failed_instantiate_of_agni_joins_the_list_of_the_end_of_the_run(self, site):
+        """The list survives to the end of the script, so the run does not end as a plain success."""
+        agni = site['tmp'] / 'root' / 'AGNI'
+        agni.mkdir()
+        (agni / 'Manifest.toml').write_text('m')
+        (site['tmp'] / 'prefix' / 'julia_depot' / 'packages').mkdir(parents=True)
+        after = f'instantiate_julia_project {shlex.quote(str(agni))}\nprintf "FAILED=%s\\n" "$FAILED_MODULES"\n'
+        result = self._call(site, after=after, STUB_RC='1')
+        assert str(agni) in self._value(result, 'FAILED')
+        lines = INSTALL_SH.read_text().splitlines()
+        assert 'FAILED_MODULES=""' not in lines
+        assert 'FAILED_MODULES="${FAILED_MODULES:-}"' in lines
+
+    def test_import_that_misses_julia_packages_names_the_repeat_and_the_page(self, tmp_path):
+        """The import stop after a move with no network says how the next run repairs it."""
+        stub = tmp_path / 'stub'
+        _stub(
+            stub / 'python3',
+            '#!/bin/sh\necho "Package PythonCall is required but does not seem to be installed" >&2\nexit 1\n',
+        )
+        defs = (
+            'set -euo pipefail\nCURRENT_PHASE=6\nLOGFILE=""\n'
+            + _install_sh_blocks("RED='", 'info()')
+            + ''.join(
+                _install_sh_function(f)
+                for f in ('command_exists', 'die', 'verify_proteus_import')
+            )
+            + 'collect_env_info() { :; }\nconda_has_mpi_netcdf() { echo MPI_STEP; return 1; }\n'
+        )
+        done = subprocess.run(
+            ['bash', '-c', defs + 'verify_proteus_import\n'],
+            capture_output=True,
+            text=True,
+            env={
+                'PATH': f'{stub}:{_SYSTEM_PATH}',
+                'HOME': str(tmp_path),
+                'JULIA_DEPOT_PATH': '/d:',
+            },
+            timeout=25,
+        )
+        out = done.stdout + done.stderr
+        assert done.returncode == 1
+        assert 'bash install.sh' in out
+        assert 'PROTEUS/How-to/troubleshooting.html#julia-depot-with-no-packages' in out
+        assert 'MPI_STEP' not in out
+        anchor = (INSTALL_SH.parent / 'docs' / 'How-to' / 'troubleshooting.md').read_text()
+        assert '{#julia-depot-with-no-packages}' in anchor
+
+    def test_julia_calls_before_the_depot_read_no_startup_file(self):
+        """A start file of the user can write to ~/.julia before the depot is set."""
+        text = INSTALL_SH.read_text()
+        before = text[text.index('\nsetup_conda_env\n') : text.index('\nsetup_julia_depot\n')]
+        calls = [ln for ln in before.splitlines() if '"$PYTHON_JULIAPKG_EXE" ' in ln]
+        assert len(calls) == 2
+        assert all('--startup-file=no' in ln for ln in calls)
+
+    @pytest.mark.parametrize(
+        ('text', 'called'),
+        [('LovePy = "abc"\n', True), ('Other = "abc"\n', False), (None, False)],
+        ids=['has-lovepy', 'other-package', 'no-environment'],
+    )
+    def test_lovepy_of_the_old_default_environment_comes_along(self, site, text, called):
+        """LovePy lives in the default environment of the depot, so a move leaves it behind.
+
+        The step names the script by its full path, and success removes the note of the move.
+        """
+        self._agni_manifest(site)
+        (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
+        if text:
+            env_dir = site['tmp'] / 'home' / '.julia' / 'environments' / 'v1.13'
+            env_dir.mkdir(parents=True)
+            (env_dir / 'Project.toml').write_text(text)
+        after = _LOVEPY_STEP
+        out = self._call(site, after=after).stdout
+        script = f'{site["tmp"] / "root"}/tools/get_lovepy.sh'
+        assert (f'bash {script}\n' in out and 'FURTHER=' in out) is called
+        assert self._marker(site) is None
+
+    @pytest.mark.parametrize(
+        ('text', 'named', 'obliqua'),
+        [
+            (
+                '[deps]\nLovePy = "a"\nDataFrames = "b"\n[sources]\nLovePy = {rev = "main"}\n',
+                'DataFrames',
+                False,
+            ),
+            ('[deps]\nObliqua = "a"\nExample = "b"\n', 'Example Obliqua', True),
+            ('[deps]\nLovePy = "a"\n', None, False),
+            ('name = "x"\n[compat]\nJulia = "1"\n', None, False),
+            (None, None, False),
+        ],
+        ids=['other', 'obliqua', 'lovepy-only', 'no-deps', 'no-environment'],
+    )
+    def test_move_names_the_packages_it_does_not_carry_over(self, site, text, named, obliqua):
+        """Only LovePy comes back, so the run names the rest of the old default environment."""
+        home = site['tmp'] / 'home'
+        (home / '.julia' / 'packages').mkdir(parents=True)
+        if text is not None:
+            (home / '.julia' / 'environments' / 'v1.13').mkdir(parents=True)
+            (home / '.julia' / 'environments' / 'v1.13' / 'Project.toml').write_text(text)
+        self._agni_manifest(site)
+        out = self._call(site, after=_LOVEPY_STEP).stdout
+        lines = [ln for ln in out.splitlines() if 'not carried over' in ln]
+        if named is None:
+            assert lines == []
+        else:
+            assert lines[0].endswith(f': {named}')
+        assert ('get_obliqua.sh --register' in out) == obliqua
+
+    def test_move_reads_the_default_environment_of_the_required_julia_only(self, site):
+        """Packages of another Julia version were never in use, so they are not named or set up."""
+        home = site['tmp'] / 'home'
+        (home / '.julia' / 'packages').mkdir(parents=True)
+        for version, text in (
+            ('v1.11', 'Older = "a"\nLovePy = "b"\n'),
+            ('v1.13', 'Used = "c"\n'),
+        ):
+            (home / '.julia' / 'environments' / version).mkdir(parents=True)
+            (home / '.julia' / 'environments' / version / 'Project.toml').write_text(
+                '[deps]\n' + text
+            )
+        self._agni_manifest(site)
+        out = self._call(site, after=_LOVEPY_STEP).stdout
+        line = next(ln for ln in out.splitlines() if 'not carried over' in ln)
+        assert line.endswith(': Used')
+        assert 'FURTHER=' not in out
+
+    def test_failed_lovepy_step_warns_and_goes_on(self, site):
+        """A failed LovePy step names its repeat and does not stop the install."""
+        self._agni_manifest(site)
+        (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
+        env_dir = site['tmp'] / 'home' / '.julia' / 'environments' / 'v1.13'
+        env_dir.mkdir(parents=True)
+        (env_dir / 'Project.toml').write_text('LovePy = "abc"\n')
+        after = 'run_logged() { return 3; }\nreinstall_moved_lovepy\necho WENT_ON\n'
+        out = self._call(site, after=after).stdout
+        assert 'To repeat the step: bash' in out
+        assert 'tools/get_lovepy.sh' in out
+        assert 'WENT_ON' in out
+        assert self._marker(site) is not None
+
+    def test_move_stopped_before_lovepy_sets_it_up_on_the_next_run(self, site):
+        """The first run fills packages and stops; the note in the depot still names the move."""
+        depot = site['tmp'] / 'prefix' / 'julia_depot'
+        (depot / 'packages').mkdir(parents=True)
+        home = site['tmp'] / 'home'
+        (depot / '.proteus-moved-from').write_text(f'{home}/.julia\n')
+        (home / '.julia' / 'packages').mkdir(parents=True)
+        env_dir = home / '.julia' / 'environments' / 'v1.13'
+        env_dir.mkdir(parents=True)
+        (env_dir / 'Project.toml').write_text('LovePy = "abc"\n')
+        after = _LOVEPY_STEP
+        assert 'tools/get_lovepy.sh' in self._call(site, after=after).stdout
+        assert self._marker(site) is None
+
+    def test_no_move_keeps_lovepy_alone(self, site):
+        """With no move the old depot is not read, and LovePy needs no step."""
+        env_dir = site['tmp'] / 'home' / '.julia' / 'environments' / 'v1.13'
+        env_dir.mkdir(parents=True)
+        (env_dir / 'Project.toml').write_text('LovePy = "abc"\n')
+        after = _LOVEPY_STEP
+        assert 'FURTHER=' not in self._call(site, after=after).stdout
+        assert self._marker(site) is None
+
+    def test_order_in_the_script(self):
+        """The depot is set before AGNI and the first import, and AGNI keeps its Manifest."""
+        text = INSTALL_SH.read_text()
+        main = text[text.index('phase 3 "Environment variables"') :]
+        assert main.count('\nsetup_julia_depot\n') == 1
+        assert main.count('\nreinstall_moved_lovepy\n') == 1
+        depot = main.index('\nsetup_julia_depot\n')
+        assert depot < main.index('tools/get_agni.sh')
+        assert depot < main.index('\nverify_proteus_import\n')
+        assert main.index('set_install_var PYTHON_JULIAPKG_EXE') < depot
+        branch = main[main.index('AGNI already installed') : main.index('tools/get_agni.sh')]
+        assert 'instantiate_julia_project "$SCRIPT_DIR/AGNI"' in branch
+        lovepy = main.index('\nreinstall_moved_lovepy\n')
+        assert main.index('phase 5 "AGNI') < lovepy < main.index('phase 6 "Python submodules"')
+
+    def test_pixi_manifest_sets_the_depot_with_the_colon(self):
+        """pixi run does not source the exports file, so its activation holds the value."""
+        text = (PROTEUS_ROOT / 'pixi.toml').read_text()
+        depot = tomllib.loads(text)['activation']['env']['JULIA_DEPOT_PATH']
+        assert depot == '$CONDA_PREFIX/julia_depot:'
+        assert text.count('[activation.env]') == 1
+
+    def test_failure_report_names_both_depot_variables(self):
+        """The environment block of a failed install prints the depot variables."""
+        block = _install_sh_function('collect_env_info')
+        assert 'JULIA_DEPOT_PATH' in block
+        assert 'JULIAUP_DEPOT_PATH' in block

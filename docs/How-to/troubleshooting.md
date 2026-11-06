@@ -25,6 +25,7 @@ step-by-step guide or the advice below,
 | Slow Zenodo downloads | [Data downloads](#data-download-errors-or-slow-zenodo-downloads) |
 | `libudev.so.1` not found | [libudev](#libudevso1-not-found) |
 | `OpenSSL_jll` / Julia error | [Julia compatibility](#julia-compatibility-error) |
+| `PythonCall ... is required but does not seem to be installed` / `failed to find source of parent package` | [Julia depot with no packages](#julia-depot-with-no-packages) |
 | PETSc fails on Apple Silicon | [PETSc Apple Silicon](#petsc-compilation-fails-on-apple-silicon) |
 | `x86-pad-for-align` / SOCRATES | [SOCRATES compilation](#errors-during-the-socrates-compilation) |
 | `libcrypto.3.dylib` not found | [netCDF error](#python-netcdf-library-error) |
@@ -233,6 +234,17 @@ First, check that you are in the correct directory when running `make` or `./con
 ### `libudev.so.1` not found {#libudevso1-not-found}
 
 This happens when compiling SPIDER within a Python environment that is incompatible with PETSc. Try compiling SPIDER (and/or PETSc) in your system's base Python environment, and ensure that you are not using Python >= 3.13, as SPIDER is only supported for Python versions <= 3.12 currently.
+
+### Julia depot with no packages {#julia-depot-with-no-packages}
+
+`import juliacall` stops with `Package PythonCall ... is required but does not seem to be installed`, or `using AGNI` stops with `failed to find source of parent package`. The project of Julia records its packages, but the folder in `JULIA_DEPOT_PATH` does not hold them. This happens when the value changed by hand, or when a move to a new depot had no network; the installer then stops at its import check, or earlier at a Python package it cannot download. Run `bash install.sh` again with network, or install the packages of each project from the PROTEUS folder; this changes no `Manifest.toml`:
+
+```console
+LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --project="$CONDA_PREFIX/julia_env" -e 'using Pkg; Pkg.instantiate()'
+LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --project=AGNI -e 'using Pkg; Pkg.instantiate()'
+```
+
+A project that you set yourself with `PYTHON_JULIAPKG_PROJECT` needs the same command; the installer leaves it alone.
 
 ### Julia compatibility error {#julia-compatibility-error}
 

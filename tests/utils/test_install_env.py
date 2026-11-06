@@ -9,17 +9,26 @@ conda env gets the variables without a single quote in their value in one
 
 from __future__ import annotations
 
+import re
+import runpy
 import subprocess
+import tomllib
 from pathlib import Path
 
+import helpers
 import pytest
+from helpers import julia_problem
 
 from proteus.utils import install_env
 from proteus.utils.install_env import (
     ENV_FILE_NAME,
     active_conda_prefix,
     bind_to_conda_env,
+    depot_of_other_install,
+    depot_value_is_unusable,
     export_install_vars,
+    julia_depot_entries,
+    missing_julia_packages,
     quoted_names,
     reload_instruction,
     write_env_file,
@@ -209,3 +218,277 @@ class TestReloadInstruction:
         assert reload_instruction(True) == 'conda deactivate && conda activate /envs/p'
         monkeypatch.delenv('CONDA_PREFIX')
         assert reload_instruction(True) == 'conda deactivate && conda activate <env>'
+
+
+@pytest.mark.parametrize(
+    ('value', 'expected'),
+    [
+        (None, ['~/.julia']),
+        ('', []),
+        (':', ['~/.julia']),
+        ('/x', ['/x']),
+        ('/x:', ['/x']),
+        ('/x::', ['/x']),
+        ('/x:/y:', ['/x', '/y']),
+        (':/x', ['~/.julia', '/x']),
+        ('/x:/x', ['/x']),
+        ('~/d:', ['~/d']),
+    ],
+)
+def test_julia_depot_entries_follow_julia(monkeypatch, tmp_path, value, expected):
+    """The entries equal what Julia 1.13 reads, the bundled depots left out."""
+    monkeypatch.setenv('HOME', str(tmp_path))
+    entries = julia_depot_entries(value)
+    assert entries == [e.replace('~', str(tmp_path)) for e in expected]
+    assert not any('~' in e for e in entries)
+
+
+def test_julia_depot_entries_hold_for_any_value():
+    """Any value gives distinct non-empty folders, and only the empty value gives none."""
+    hypothesis = pytest.importorskip('hypothesis')
+    strategies = pytest.importorskip('hypothesis.strategies')
+    parts = strategies.sampled_from(['/a', '/b', ':', ' ', '~', 'é'])
+
+    @hypothesis.settings(max_examples=200)
+    @hypothesis.given(strategies.lists(parts, max_size=12).map(''.join))
+    def check(value):
+        entries = julia_depot_entries(value)
+        assert all(entries)
+        assert len(entries) == len(set(entries))
+        assert not any(':' in e for e in entries)
+        assert (entries == []) == (value == '')
+
+    check()
+
+
+@pytest.mark.parametrize('value', [None, '', ':', '/x:', '/x/other:'])
+def test_no_depot_named_julia_depot_is_no_other_install(tmp_path, value):
+    """Only the name of the installer can mark the depot of an install."""
+    assert depot_of_other_install(value, tmp_path) is False
+    (tmp_path / 'conda-meta').mkdir()
+    assert depot_of_other_install(value, tmp_path) is False
+
+
+def test_other_install_needs_a_marker_beside_the_depot(monkeypatch, tmp_path):
+    """The same name on a big disk stays the choice of the user; an env beside it does not."""
+    monkeypatch.delenv('CONDA_PREFIX', raising=False)
+    big = tmp_path / 'big'
+    assert depot_of_other_install(f'{big}/julia_depot:', tmp_path) is False
+    big.mkdir()
+    assert depot_of_other_install(f'{big}/julia_depot:', tmp_path) is False
+    (big / 'conda-meta').mkdir()
+    assert depot_of_other_install(f'{big}/julia_depot:', tmp_path) is True
+    assert depot_of_other_install(f'{big}/julia_depot:', big) is False
+
+
+def test_missing_parent_counts_as_gone_only_in_an_envs_folder(monkeypatch, tmp_path):
+    """An env removed from an envs folder is gone; any other missing folder can still come."""
+    monkeypatch.delenv('CONDA_PREFIX', raising=False)
+    gone = tmp_path / 'envs' / 'gone'
+    assert depot_of_other_install(f'{gone}/julia_depot:', tmp_path) is False
+    gone.parent.mkdir()
+    assert depot_of_other_install(f'{gone}/julia_depot:', tmp_path) is True
+    assert 'is gone' in install_env.other_depot_words(f'{gone}/julia_depot:')
+    gone.mkdir()
+    assert depot_of_other_install(f'{gone}/julia_depot:', tmp_path) is False
+    (gone / 'conda-meta').mkdir()
+    assert 'another PROTEUS install' in install_env.other_depot_words(f'{gone}/julia_depot:')
+
+
+@pytest.mark.parametrize(
+    ('value', 'expected'),
+    [
+        (None, False),
+        ('', False),
+        (':', False),
+        (':rel', False),
+        ('/x', False),
+        ('/x:rel', False),
+        ('~', False),
+        ('~/d:', False),
+        ('rel', True),
+        ('rel:/x', True),
+        ('./x:', True),
+        ('~nobody/x:', True),
+        ('~nobody', True),
+        ('$CONDA_PREFIX/julia_depot:', True),
+        ('/a$b:', True),
+        ('~/a$b:', True),
+    ],
+)
+def test_depot_value_is_unusable_reads_the_first_entry(value, expected):
+    """A relative entry, another user's home and a literal $ give no fixed folder."""
+    assert depot_value_is_unusable(value) is expected
+    assert depot_value_is_unusable(f'{value or ""}:/later') is expected
+
+
+def _write_project(folder, project, manifest):
+    """Write the Project.toml and Manifest.toml of a Julia project."""
+    folder.mkdir()
+    (folder / 'Project.toml').write_text(project)
+    (folder / 'Manifest.toml').write_text(manifest)
+
+
+def test_missing_packages_are_the_direct_dependencies_with_a_tree_hash(tmp_path):
+    """A stdlib and a dev'd path have no folder under packages and do not count."""
+    project = tmp_path / 'p'
+    _write_project(
+        project,
+        '[deps]\nFoo = "1"\nBar = "2"\nLinearAlgebra = "3"\nDev = "4"\nNotInManifest = "5"\n'
+        '[weakdeps]\nWeak = "6"\n',
+        'manifest_format = "2.0"\n'
+        '[[deps.Foo]]\ngit-tree-sha1 = "a"\n'
+        '[[deps.Bar]]\ngit-tree-sha1 = "b"\n'
+        '[[deps.LinearAlgebra]]\nuuid = "3"\n'
+        '[[deps.Dev]]\npath = "../dev"\n'
+        '[[deps.Weak]]\ngit-tree-sha1 = "w"\n'
+        '[[deps.Indirect]]\ngit-tree-sha1 = "i"\n',
+    )
+    (tmp_path / 'd1' / 'packages' / 'Foo').mkdir(parents=True)
+    assert missing_julia_packages(project, [str(tmp_path / 'd1')]) == ['Bar']
+    (tmp_path / 'd2' / 'packages' / 'Bar').mkdir(parents=True)
+    assert missing_julia_packages(project, [str(tmp_path / 'd1'), str(tmp_path / 'd2')]) == []
+
+
+def test_missing_packages_read_the_old_manifest_format(tmp_path):
+    """Before format 2 the packages are top-level tables."""
+    project = tmp_path / 'p'
+    _write_project(project, '[deps]\nFoo = "1"\n', '[[Foo]]\ngit-tree-sha1 = "a"\n')
+    assert missing_julia_packages(project, [str(tmp_path)]) == ['Foo']
+    (tmp_path / 'packages' / 'Foo').mkdir(parents=True)
+    assert missing_julia_packages(project, [str(tmp_path)]) == []
+
+
+def test_project_with_no_manifest_needs_nothing(tmp_path):
+    """No Manifest: the project is not set up, as for an install with no AGNI."""
+    assert missing_julia_packages(tmp_path / 'none', [str(tmp_path)]) == []
+    (tmp_path / 'none').mkdir()
+    (tmp_path / 'none' / 'Project.toml').write_text('[deps]\nFoo = "1"\n')
+    assert missing_julia_packages(tmp_path / 'none', [str(tmp_path)]) == []
+
+
+@pytest.mark.parametrize(
+    ('project', 'manifest'),
+    [('[deps', 'manifest_format = "2.0"\n'), ('[deps]\n', 'not toml [')],
+    ids=['project', 'manifest'],
+)
+def test_project_that_cannot_be_read_is_named(tmp_path, project, manifest):
+    """A broken file gives a failure that names it, and no pass."""
+    folder = tmp_path / 'p'
+    _write_project(folder, project, manifest)
+    with pytest.raises(ValueError, match='cannot be read') as caught:
+        missing_julia_packages(folder, [str(tmp_path)])
+    assert str(folder) in str(caught.value)
+    assert isinstance(caught.value.__cause__, tomllib.TOMLDecodeError)
+
+
+def test_bytes_that_are_not_utf8_cannot_be_read(tmp_path):
+    """The locale of the shell plays no part: a file is decoded as UTF-8."""
+    folder = tmp_path / 'p'
+    _write_project(folder, '[deps]\n', 'manifest_format = "2.0"\n')
+    (folder / 'Project.toml').write_bytes(b'[deps]\nFoo = "\xff"\n')
+    with pytest.raises(ValueError, match='cannot be read') as caught:
+        missing_julia_packages(folder, [])
+    assert str(folder) in str(caught.value)
+    assert isinstance(caught.value.__cause__, UnicodeDecodeError)
+
+
+def test_project_without_a_project_file_is_named(tmp_path):
+    """A Manifest with no Project.toml has no direct dependencies to read."""
+    folder = tmp_path / 'p'
+    folder.mkdir()
+    (folder / 'Manifest.toml').write_text('manifest_format = "2.0"\n')
+    try:
+        missing_julia_packages(folder, [str(tmp_path)])
+    except Exception as exc:  # noqa: BLE001
+        assert isinstance(exc, ValueError)
+        assert 'cannot be read' in str(exc)
+    else:
+        pytest.fail('no error for a project with no Project.toml')
+
+
+def _versioned_manifest(folder, text):
+    """Write the Manifest of the required Julia beside the other files of the project."""
+    (folder / f'Manifest-v{install_env.REQUIRED_JULIA}.toml').write_text(text)
+
+
+def test_versioned_manifest_alone_is_read(tmp_path):
+    """Julia reads Manifest-v<major>.<minor>.toml, so it is no project with no Manifest."""
+    folder = tmp_path / 'p'
+    folder.mkdir()
+    (folder / 'Project.toml').write_text('[deps]\nFoo = "1"\n')
+    _versioned_manifest(folder, '[[deps.Foo]]\ngit-tree-sha1 = "a"\n')
+    assert missing_julia_packages(folder, [str(tmp_path)]) == ['Foo']
+    (tmp_path / 'packages' / 'Foo').mkdir(parents=True)
+    assert missing_julia_packages(folder, [str(tmp_path)]) == []
+
+
+def test_versioned_manifest_wins_over_the_plain_one(tmp_path):
+    """With both files Julia uses the versioned one, whatever the plain one records."""
+    folder = tmp_path / 'p'
+    _write_project(
+        folder, '[deps]\nFoo = "1"\nBar = "2"\n', '[[deps.Foo]]\ngit-tree-sha1 = "a"\n'
+    )
+    _versioned_manifest(folder, '[[deps.Bar]]\ngit-tree-sha1 = "b"\n')
+    assert missing_julia_packages(folder, [str(tmp_path)]) == ['Bar']
+    (tmp_path / 'packages' / 'Bar').mkdir(parents=True)
+    assert missing_julia_packages(folder, [str(tmp_path)]) == []
+
+
+def test_required_julia_is_the_one_of_the_install_script():
+    """The file name that doctor reads follows the version that the installer requires."""
+    text = (Path(__file__).parents[2] / 'install.sh').read_text()
+    major = re.search(r'^REQUIRED_JULIA_MAJOR=(\d+)$', text, re.M).group(1)
+    minor = re.search(r'^REQUIRED_JULIA_MINOR=(\d+)$', text, re.M).group(1)
+    assert install_env.REQUIRED_JULIA == f'{major}.{minor}'
+    page = (Path(__file__).parents[2] / 'docs' / 'How-to' / 'doctor.md').read_text()
+    assert f'Manifest-v{major}.{minor}.toml' in page
+
+
+def test_a_launcher_or_another_version_is_named_as_the_reason(tmp_path):
+    """The reason names the binary, so a CI log shows what ran, and a dead binary gives a reason."""
+    stub = tmp_path / 'julia'
+    stub.write_text('#!/bin/sh\necho "julia version 1.12.6"\n')
+    stub.chmod(0o755)
+    assert '1.12.6' in julia_problem(str(stub))
+    assert julia_problem(None) == 'no Julia binary found'
+    assert 'did not answer' in julia_problem(str(tmp_path / 'none'))
+    (tmp_path / 'juliaup').write_text('')
+    assert 'launcher' in julia_problem(str(stub))
+
+
+def test_a_julia_that_hangs_gives_a_reason(monkeypatch):
+    """A time limit at collection is a reason, not a collection error."""
+
+    def hang(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired('julia', 30)
+
+    monkeypatch.setattr(subprocess, 'run', hang)
+    reason = julia_problem('/bin/sh')
+    assert 'did not answer' in reason
+    assert '/bin/sh' in reason
+
+
+def _real_tests_with_no_julia(monkeypatch):
+    """Load the module of the real Julia tests on a machine with no Julia 1.13."""
+    monkeypatch.setattr(helpers, 'julia_problem', lambda _exe: 'no Julia binary found')
+    return runpy.run_path(str(Path(__file__).parents[1] / 'test_julia_depot_real.py'))
+
+
+def test_real_tests_fail_under_ci(monkeypatch):
+    """A Julia change on the runner gives a red job and not a tier of skips."""
+    monkeypatch.setenv('GITHUB_ACTIONS', 'true')
+    module = _real_tests_with_no_julia(monkeypatch)
+    assert module['_PROBLEM'] == 'no Julia binary found'
+    with pytest.raises(pytest.fail.Exception, match='no Julia binary found') as caught:
+        module['_fail_with_no_julia']()
+    assert 'no Julia binary found' in str(caught.value)
+
+
+def test_real_tests_skip_off_ci(monkeypatch):
+    """A machine with another Julia skips the tier, with the reason."""
+    monkeypatch.delenv('GITHUB_ACTIONS', raising=False)
+    with pytest.raises(pytest.skip.Exception, match='no Julia binary found') as caught:
+        _real_tests_with_no_julia(monkeypatch)
+    assert caught.value.allow_module_level is True
+    assert 'no Julia binary found' in str(caught.value)
