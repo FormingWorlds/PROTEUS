@@ -112,6 +112,7 @@ from proteus.outgas.compaction import (
     porosity_from_densities,
     volume_to_mass_fraction,
 )
+from proteus.outgas.lid_seal import sealed_mass
 from proteus.utils.constants import noble_gases, secs_per_year, vol_element_list, vol_list
 from proteus.utils.helper import eval_gas_mmw
 
@@ -412,13 +413,18 @@ def locked_condensed_mass(hf_row: dict, element: str, config: Config | None = No
 def unreachable_mass(hf_row: dict, element: str, config: Config | None = None) -> float:
     """Whole-planet mass of one element beyond the reach of escape and outgassing [kg].
 
-    The mass trapped in the solid mantle, plus the condensed reservoir when
-    condensates are kept from re-vapourising. The escape step subtracts this mass
-    from the mass available to escape, and the desiccation gate subtracts it from
-    the inventory it tests, so a planet whose atmosphere and melt have both emptied
-    still registers as desiccated.
+    The mass trapped in the solid mantle, the mass the lid seal holds, plus the
+    condensed reservoir when condensates are kept from re-vapourising. The escape
+    step subtracts this mass from the mass available to escape, and the desiccation
+    gate subtracts it from the inventory it tests, so a planet whose atmosphere and
+    melt have both emptied still registers as desiccated. The gate adds the sealed
+    mass back: a planet that holds sealed volatiles is not desiccated.
     """
-    return locked_solid_mass(hf_row, element) + locked_condensed_mass(hf_row, element, config)
+    return (
+        locked_solid_mass(hf_row, element)
+        + sealed_mass(hf_row, element)
+        + locked_condensed_mass(hf_row, element, config)
+    )
 
 
 def escapable_inventory(hf_row: dict, element: str, config: Config | None = None) -> float:
@@ -799,6 +805,7 @@ def run_trapping(
     interior_o=None,
     *,
     init_stage: bool = False,
+    held: bool = False,
 ) -> TrappingStep | None:
     """Bury volatiles into the solid mantle over this crystallisation step.
 
@@ -824,6 +831,9 @@ def run_trapping(
         pressure profiles to locate the freezing front.
     init_stage : bool
         True during the initialisation stage, which traps nothing.
+    held : bool
+        True while the lid seal holds the melt inventory: the step buries and
+        releases nothing, and records a zero step.
     """
     mode = getattr(config.outgas, 'trap_mode', 'none')
     # A config that never declared a mode traps nothing: the schema restricts the
@@ -843,6 +853,10 @@ def run_trapping(
         return None
     if float(hf_row.get('Time', 0.0)) <= 0.0:
         return None
+    if held:
+        step = TrappingStep(mode=mode, dm_rm=0.0, f_tl=0.0, melt_mass=0.0)
+        _record(hf_row, step)
+        return step
 
     prev = hf_all.iloc[-1].to_dict()
     m_mantle = float(hf_row.get('M_mantle', 0.0))

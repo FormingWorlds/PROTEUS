@@ -870,7 +870,7 @@ def assert_mass_conservation(
             continue
         parts = sum(
             float(hf_row.get(f'{e}_kg_{r}', 0.0))
-            for r in ('atm', 'liquid', 'solid', 'condensed')
+            for r in ('atm', 'liquid', 'solid', 'condensed', 'sealed')
         )
         if not np.isfinite(parts):
             continue
@@ -878,12 +878,13 @@ def assert_mass_conservation(
         if abs(parts - total) > max(closure_atol_kg, closure_tol * total):
             raise RuntimeError(
                 f'Per-element reservoir closure failed for {e}: '
-                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid+condensed='
+                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid+condensed+sealed='
                 f'{parts:.6e} kg (relative difference {rel * 100:.4f}%). '
                 f'atm={float(hf_row.get(f"{e}_kg_atm", 0.0)):.3e}, '
                 f'liquid={float(hf_row.get(f"{e}_kg_liquid", 0.0)):.3e}, '
                 f'solid={float(hf_row.get(f"{e}_kg_solid", 0.0)):.3e}, '
-                f'condensed={float(hf_row.get(f"{e}_kg_condensed", 0.0)):.3e} kg. '
+                f'condensed={float(hf_row.get(f"{e}_kg_condensed", 0.0)):.3e}, '
+                f'sealed={float(hf_row.get(f"{e}_kg_sealed", 0.0)):.3e} kg. '
                 f'A reservoir was debited without the matching credit.'
             )
 
@@ -1290,6 +1291,29 @@ def GetHelpfileKeys():
     # Element mass held in outgassing condensates (e.g. graphite), apart from the mantle
     for e in vol_element_list:
         keys.append(e + '_kg_condensed')  # mass in condensed phases at the surface [kg]
+
+    # Melt inventory held under a closed crust (outgas.lid_seal), and its leak
+    keys.append('seal_active')       # whether the lid seal holds the melt inventory [1]
+    keys.append('seal_t_close')      # time the seal last closed [yr]
+    keys.append('seal_delta')        # crust thickness the seal reads [m]
+    keys.append('seal_phi_top')      # melt fraction of the top mesh cell [1]
+    keys.append('seal_crust_rate')   # melt mass reaching the crust over the step [kg yr-1]
+    keys.append('seal_volc_capped')  # whether crust_rate dt was cut to the melt mass [1]
+    keys.append('seal_open_kg')      # sealed mass returned to the melt on an opening step [kg]
+    keys.append('seal_leak_kg_cum')  # mass leaked to the atmosphere since the run began [kg]
+    for s in vol_list:
+        keys.append(s + '_kg_sealed')   # mass held under the closed crust [kg]
+        keys.append(s + '_mol_sealed')  # number held under the closed crust [mol]
+    for s in noble_gases:
+        keys.append(s + '_kg_sealed')   # mass held under the closed crust [kg]
+        keys.append(s + '_mol_sealed')  # number held under the closed crust [mol]
+    for e in vol_element_list:
+        keys.append(e + '_kg_sealed')     # mass held under the closed crust [kg]
+        keys.append(e + '_kg_leak_tau')   # sealed mass leaked by relaxation over the step [kg]
+        keys.append(e + '_kg_leak_volc')  # sealed mass leaked by volcanism over the step [kg]
+    for s in noble_gases:
+        keys.append(s + '_kg_leak_tau')   # sealed mass leaked by relaxation over the step [kg]
+        keys.append(s + '_kg_leak_volc')  # sealed mass leaked by volcanism over the step [kg]
 
     # element mass ratios in atmosphere
     for e1 in element_list:
@@ -1862,6 +1886,26 @@ def GetHelpfileTrappingKeys():
     return [k for k in GetHelpfileKeys() if k.startswith('trap_') or k.endswith('_kg_trapped')]
 
 
+def GetHelpfileLidSealKeys():
+    """
+    Helpfile columns written by the lid seal (``outgas.lid_seal``).
+
+    A run without the seal holds zero in each, which is also the state of a run
+    written before they existed: open, nothing sealed. `ReadHelpfileFromCSV`
+    therefore reads them as zero.
+
+    Returns
+    -------
+    list of str
+        Column names, all of which are also in `GetHelpfileKeys()`.
+    """
+    return [
+        k
+        for k in GetHelpfileKeys()
+        if k.startswith('seal_') or k.endswith(('_sealed', '_kg_leak_tau', '_kg_leak_volc'))
+    ]
+
+
 def GetHelpfileCoreKeys():
     """
     Helpfile columns that a stored run must carry to be resumed.
@@ -1978,7 +2022,12 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     # per-condensate mass is zero with them, so no layer is held on resume.
     condensed_keys = {e + '_kg_condensed' for e in vol_element_list}
     condensed_keys |= {c + '_cd_kg' for c in condensate_density.keys()}
-    zero_fill = RESUMABLE_ZERO_FILL_KEYS | set(GetHelpfileTrappingKeys()) | condensed_keys
+    zero_fill = (
+        RESUMABLE_ZERO_FILL_KEYS
+        | set(GetHelpfileTrappingKeys())
+        | set(GetHelpfileLidSealKeys())
+        | condensed_keys
+    )
     fillable = [key for key in missing if key in zero_fill]
     unfillable = sorted(set(missing) - set(fillable))
 

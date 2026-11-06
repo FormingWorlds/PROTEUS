@@ -11,6 +11,7 @@ from proteus.escape.wrapper import readable_total
 from proteus.interior_struct.common import record_volatile_change
 from proteus.outgas.common import EMPTY_ATMOSPHERE_KEPT_KEYS, expected_keys
 from proteus.outgas.lavatmos import run_vapourisation
+from proteus.outgas.lid_seal import SEALED_ELEMENTS, SEALED_SPECIES, sealed_mass
 from proteus.outgas.trapping import (
     escapable_inventory,
     locked_condensed_mass,
@@ -300,7 +301,7 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
         # Mass trapped in the solid, or held in condensates kept from re-vapourising,
         # can neither escape nor outgas, so only the escapable inventory counts;
         # otherwise it would block desiccation forever.
-        reachable = escapable_inventory(hf_row, e, config)
+        reachable = escapable_inventory(hf_row, e, config) + sealed_mass(hf_row, e)
         if reachable > config.outgas.mass_thresh:
             log.info('Not desiccated, %s = %.2e kg reachable' % (e, reachable))
             return False  # return, and allow run_outgassing to proceed
@@ -774,6 +775,11 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     for k in expected_keys():
         if k not in EMPTY_ATMOSPHERE_KEPT_KEYS and not k.endswith(held):
             hf_row[k] = 0.0
+    # A sealed rest below mass_thresh leaves with the atmosphere.
+    for n in (*SEALED_SPECIES, *SEALED_ELEMENTS):
+        hf_row[f'{n}_kg_sealed'] = 0.0
+        if n in SEALED_SPECIES:
+            hf_row[f'{n}_mol_sealed'] = 0.0
     for n, total in totals.items():
         if not np.isfinite(total):
             hf_row[f'{n}_kg_total'] = total

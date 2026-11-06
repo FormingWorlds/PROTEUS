@@ -100,6 +100,16 @@ _REVIEWED_NEUTRAL = frozenset(
         # prevent_desaturation defaults to false: condensates re-equilibrate each
         # solve, as before the flag existed, so behaviour is unchanged.
         'outgas.prevent_desaturation',
+        # The lid seal defaults to off; its parameters are read only when it is on.
+        'outgas.lid_seal.chi_d',
+        'outgas.lid_seal.crust_rate',
+        'outgas.lid_seal.delta_close',
+        'outgas.lid_seal.delta_open',
+        'outgas.lid_seal.enabled',
+        'outgas.lid_seal.phi_close',
+        'outgas.lid_seal.phi_open',
+        'outgas.lid_seal.phi_solid',
+        'outgas.lid_seal.tau_leak',
         # Accretion defaults to inactive with zero impactor budgets, zero
         # loss fractions, and unread dummy/morrigan sub-blocks.
         'accretion.atmloss_frac',

@@ -2958,6 +2958,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -2996,6 +3000,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -3069,6 +3077,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -3107,6 +3119,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -3136,6 +3152,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -4182,6 +4202,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -4243,6 +4267,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -4319,6 +4347,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -4381,6 +4413,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -4463,6 +4499,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -4496,6 +4536,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -4563,6 +4607,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -4624,6 +4672,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -4700,6 +4752,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -4761,6 +4817,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -4841,6 +4901,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -4874,6 +4938,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -4941,6 +5009,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -5002,6 +5074,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -5078,6 +5154,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -5139,6 +5219,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -5219,6 +5303,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -5252,6 +5340,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -5323,6 +5415,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -5392,6 +5488,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -5476,6 +5576,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -5547,6 +5651,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -5630,6 +5738,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -5667,6 +5779,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -5734,6 +5850,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -5795,6 +5915,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -5871,6 +5995,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -5932,6 +6060,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -6012,6 +6144,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -6045,6 +6181,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -6112,6 +6252,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -6173,6 +6317,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -6249,6 +6397,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -6310,6 +6462,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -6390,6 +6546,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -6423,6 +6583,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -6490,6 +6654,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -6551,6 +6719,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -6627,6 +6799,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -6688,6 +6864,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -6768,6 +6948,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -6801,6 +6985,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -6868,6 +7056,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -6929,6 +7121,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -7005,6 +7201,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -7066,6 +7266,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -7146,6 +7350,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -7179,6 +7387,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -7246,6 +7458,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -7307,6 +7523,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -7383,6 +7603,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -7444,6 +7668,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -7524,6 +7752,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -7557,6 +7789,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -7624,6 +7860,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -7685,6 +7925,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -7761,6 +8005,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -7822,6 +8070,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -7902,6 +8154,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -7935,6 +8191,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -8002,6 +8262,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -8063,6 +8327,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -8139,6 +8407,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -8200,6 +8472,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -8280,6 +8556,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -8313,6 +8593,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -8380,6 +8664,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -8441,6 +8729,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -8521,6 +8813,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -8586,6 +8882,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -8677,6 +8977,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -8709,6 +9013,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -8776,6 +9084,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -8837,6 +9149,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -8917,6 +9233,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -8982,6 +9302,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -9073,6 +9397,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -9105,6 +9433,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -9172,6 +9504,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -9233,6 +9569,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -9313,6 +9653,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -9378,6 +9722,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -9469,6 +9817,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -9501,6 +9853,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -9568,6 +9924,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -9629,6 +9989,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -9709,6 +10073,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -9774,6 +10142,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -9865,6 +10237,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -9897,6 +10273,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -9964,6 +10344,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -10025,6 +10409,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -10105,6 +10493,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -10170,6 +10562,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -10261,6 +10657,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -10293,6 +10693,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -10613,6 +11017,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -10645,6 +11053,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -10965,6 +11377,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -10997,6 +11413,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -11340,6 +11760,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -11372,6 +11796,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -11715,6 +12143,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -11747,6 +12179,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -12090,6 +12526,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -12122,6 +12562,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -12465,6 +12909,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -12497,6 +12945,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -12817,6 +13269,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -12849,6 +13305,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -13169,6 +13629,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -13201,6 +13665,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -13544,6 +14012,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -13576,6 +14048,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -13896,6 +14372,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -13928,6 +14408,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -14271,6 +14755,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -14303,6 +14791,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -14623,6 +15115,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -14655,6 +15151,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -14975,6 +15475,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -15007,6 +15511,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -15327,6 +15835,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -15359,6 +15871,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -15702,6 +16218,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -15734,6 +16254,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -16054,6 +16578,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -16086,6 +16614,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -16406,6 +16938,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -16438,6 +16974,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -16758,6 +17298,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -16790,6 +17334,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -17110,6 +17658,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -17142,6 +17694,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -17485,6 +18041,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -17517,6 +18077,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -17837,6 +18401,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -17869,6 +18437,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -18212,6 +18784,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -18244,6 +18820,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -18564,6 +19144,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -18596,6 +19180,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -18916,6 +19504,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -18948,6 +19540,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -19268,6 +19864,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -19300,6 +19900,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -19620,6 +20224,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -19652,6 +20260,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -19972,6 +20584,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -20004,6 +20620,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -20079,6 +20699,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -20148,6 +20772,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -20231,6 +20859,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -20296,6 +20928,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -20383,6 +21019,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -20448,6 +21088,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -20531,6 +21175,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -20596,6 +21244,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -20679,6 +21331,10 @@
           "condition": "outgas.vapourise = true"
         },
         {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -20744,6 +21400,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/trapping.py",
@@ -20906,6 +21566,1263 @@
       "consumers": [
         "outgas",
         "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "seal_active",
+      "unit": "1",
+      "description": "whether the lid seal holds the melt inventory",
+      "group": "Quantities for each element",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/proteus.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "main loop"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "seal_t_close",
+      "unit": "yr",
+      "description": "time the seal last closed",
+      "group": "Quantities for each element",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "main loop"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "seal_delta",
+      "unit": "m",
+      "description": "crust thickness the seal reads",
+      "group": "Quantities for each element",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "seal_phi_top",
+      "unit": "1",
+      "description": "melt fraction of the top mesh cell",
+      "group": "Quantities for each element",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "seal_crust_rate",
+      "unit": "kg yr-1",
+      "description": "melt mass reaching the crust over the step",
+      "group": "Quantities for each element",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "seal_volc_capped",
+      "unit": "1",
+      "description": "whether crust_rate dt was cut to the melt mass",
+      "group": "Quantities for each element",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "seal_open_kg",
+      "unit": "kg",
+      "description": "sealed mass returned to the melt on an opening step",
+      "group": "Quantities for each element",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "seal_leak_kg_cum",
+      "unit": "kg",
+      "description": "mass leaked to the atmosphere since the run began",
+      "group": "Quantities for each element",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "H2O_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "H2O_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "CO2_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "CO2_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "O2_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "O2_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "H2_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "H2_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "CH4_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "CH4_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "CO_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "CO_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "N2_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "N2_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "NH3_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "NH3_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "S2_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "S2_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "SO2_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "SO2_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "H2S_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "H2S_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<gas>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "He_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "He_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<element>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Ne_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Ne_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<element>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Ar_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Ar_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<element>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Kr_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Kr_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<element>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Xe_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Xe_mol_sealed",
+      "unit": "mol",
+      "description": "number held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<element>_mol_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "H_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "H_kg_leak_tau",
+      "unit": "kg",
+      "description": "sealed mass leaked by relaxation over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_tau",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "H_kg_leak_volc",
+      "unit": "kg",
+      "description": "sealed mass leaked by volcanism over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_volc",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "O_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "O_kg_leak_tau",
+      "unit": "kg",
+      "description": "sealed mass leaked by relaxation over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_tau",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "O_kg_leak_volc",
+      "unit": "kg",
+      "description": "sealed mass leaked by volcanism over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_volc",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "C_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "C_kg_leak_tau",
+      "unit": "kg",
+      "description": "sealed mass leaked by relaxation over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_tau",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "C_kg_leak_volc",
+      "unit": "kg",
+      "description": "sealed mass leaked by volcanism over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_volc",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "N_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "N_kg_leak_tau",
+      "unit": "kg",
+      "description": "sealed mass leaked by relaxation over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_tau",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "N_kg_leak_volc",
+      "unit": "kg",
+      "description": "sealed mass leaked by volcanism over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_volc",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "S_kg_sealed",
+      "unit": "kg",
+      "description": "mass held under the closed crust",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_sealed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "S_kg_leak_tau",
+      "unit": "kg",
+      "description": "sealed mass leaked by relaxation over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_tau",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "S_kg_leak_volc",
+      "unit": "kg",
+      "description": "sealed mass leaked by volcanism over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_volc",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "He_kg_leak_tau",
+      "unit": "kg",
+      "description": "sealed mass leaked by relaxation over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_tau",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "He_kg_leak_volc",
+      "unit": "kg",
+      "description": "sealed mass leaked by volcanism over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_volc",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Ne_kg_leak_tau",
+      "unit": "kg",
+      "description": "sealed mass leaked by relaxation over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_tau",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Ne_kg_leak_volc",
+      "unit": "kg",
+      "description": "sealed mass leaked by volcanism over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_volc",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Ar_kg_leak_tau",
+      "unit": "kg",
+      "description": "sealed mass leaked by relaxation over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_tau",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Ar_kg_leak_volc",
+      "unit": "kg",
+      "description": "sealed mass leaked by volcanism over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_volc",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Kr_kg_leak_tau",
+      "unit": "kg",
+      "description": "sealed mass leaked by relaxation over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_tau",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Kr_kg_leak_volc",
+      "unit": "kg",
+      "description": "sealed mass leaked by volcanism over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_volc",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Xe_kg_leak_tau",
+      "unit": "kg",
+      "description": "sealed mass leaked by relaxation over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_tau",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "Xe_kg_leak_volc",
+      "unit": "kg",
+      "description": "sealed mass leaked by volcanism over the step",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_leak_volc",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
       ],
       "consumers_possible": []
     },
