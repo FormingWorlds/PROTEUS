@@ -1,6 +1,5 @@
 # Tutorial: volatiles held under a closed crust (docs/Tutorials/lid_seal.md).
-# An Earth-mass planet at 1 AU cools from a magma ocean with a grey (dummy) atmosphere.
-# When the top mesh cell freezes, a crust closes over the melt and the seal holds its volatiles.
+# An Earth-mass planet at 1 AU cools from a magma ocean; a crust closing over the melt holds its volatiles.
 # Every option that is not set here takes its default (see all_options.toml).
 
 config_version = "3.0"
