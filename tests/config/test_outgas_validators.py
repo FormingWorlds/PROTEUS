@@ -232,6 +232,10 @@ def test_lid_seal_validator_reads_a_missing_zalmoxis_table_as_dry():
         interior_struct=SimpleNamespace(module='zalmoxis', zalmoxis=None),
     )
     assert lid_seal_requirements(inst, None, None) is None
+    bare = SimpleNamespace(
+        outgas=SimpleNamespace(), interior_energetics=SimpleNamespace(module='spider')
+    )
+    assert lid_seal_requirements(bare, None, None) is None  # no seal table: nothing to check
     inst.interior_struct.zalmoxis = SimpleNamespace(dry_mantle=False)
     with pytest.raises(ValueError, match='dry_mantle'):
         lid_seal_requirements(inst, None, None)

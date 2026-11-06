@@ -195,10 +195,17 @@ def test_set_element_ratios_orients_and_floors_the_atmospheric_ratios():
     """{e2}/{e1}_atm is the mass of e2 over that of e1; a ratio with a side below
     1e-30 kg is 0; a ratio column absent from the row stays absent."""
     row = {f'{e}_kg_atm': 0.0 for e in element_list}
-    row.update({'C_kg_atm': 3.0e19, 'H_kg_atm': 1.0e18, 'N_kg_atm': 1.0e-31})
-    row.update({'C/H_atm': -1.0, 'H/C_atm': -1.0, 'N/H_atm': -1.0, 'H/N_atm': -1.0})
+    row.update(
+        {'C_kg_atm': 3.0e19, 'H_kg_atm': 1.0e18, 'N_kg_atm': 1.0e-31, 'S_kg_atm': 1.0e-20}
+    )
+    row.update(
+        {'C/H_atm': -1.0, 'H/C_atm': -1.0, 'N/H_atm': -1.0, 'H/N_atm': -1.0, 'S/H_atm': -1.0}
+    )
     set_element_ratios(row)
     assert row['C/H_atm'] == pytest.approx(30.0, rel=1e-15)
     assert row['H/C_atm'] == pytest.approx(1.0 / 30.0, rel=1e-15)
     assert row['N/H_atm'] == 0.0 and row['H/N_atm'] == 0.0
-    assert 'S/H_atm' not in row
+    assert row['S/H_atm'] == pytest.approx(
+        1.0e-38, rel=1e-12, abs=0.0
+    )  # 1e-20 kg is above the floor
+    assert 'O/H_atm' not in row

@@ -3011,3 +3011,35 @@ def test_sealed_mass_blocks_desiccation_and_a_desiccation_empties_the_rest():
     assert row['M_desiccated'] == pytest.approx(1e15, rel=1e-12)
     assert row['H_kg_leak_tau'] == row['seal_crust_rate'] == row['seal_active'] == 0.0
     assert row['seal_delta'] == row['seal_phi_top'] == row['seal_path'] == 0.0
+
+
+def test_run_outgassing_writes_the_element_ratios_of_the_atmosphere():
+    """After the chemistry solve the {e2}/{e1}_atm columns follow the element
+    masses of the atmosphere."""
+    config = MagicMock()
+    config.outgas.module = 'calliope'
+    config.planet.fO2_source = 'user_constant'
+    hf_row = {f'{s}_kg_atm': 1e16 for s in gas_list}
+    hf_row.update({f'{s}_vmr': 0.01 for s in gas_list})
+    hf_row.update({f'{s}_bar': 0.01 for s in gas_list})
+    hf_row.update({f'{e}_kg_atm': 0.0 for e in element_list if e not in gas_list})
+    hf_row.update({'C_kg_atm': 3.0e19, 'H_kg_atm': 1.0e18, 'C/H_atm': -1.0, 'P_surf': 1.0})
+    hf_row['atm_kg_per_mol'] = 0.03
+    with patch('proteus.outgas.calliope.calc_surface_pressures'):
+        run_outgassing({'output': '/tmp/test'}, config, hf_row, initial=False)
+    assert hf_row['C/H_atm'] == pytest.approx(30.0, rel=1e-15)
+    assert hf_row['M_atm'] == pytest.approx(1e16 * len(gas_list), rel=1e-12)
+
+
+def test_run_crystallized_leaves_an_element_named_total_to_escape():
+    """A noble gas total is also its element total, which escape debits; the
+    frozen-mantle rescale must not take the escaped mass off it a second time."""
+    from proteus.outgas.wrapper import run_crystallized
+    from proteus.utils.constants import secs_per_year
+
+    hf_row = {'M_atm': 100.0, 'esc_rate_total': 10.0 / secs_per_year, 'He_kg_atm': 100.0}
+    hf_row.update({'He_kg_total': 150.0, 'He_mol_atm': 25000.0, 'He_mol_total': 37500.0})
+    run_crystallized(_cryst_cfg(), hf_row, 1.0)
+    assert hf_row['He_kg_atm'] == pytest.approx(90.0, rel=1e-12)
+    assert hf_row['He_kg_total'] == 150.0
+    assert hf_row['He_mol_total'] == pytest.approx(37500.0 - 2500.0, rel=1e-12)

@@ -432,6 +432,7 @@ def test_step_closes_after_the_solve_and_not_in_the_init_stage():
     row = {**_row(), 'lid_weight': 1.0, 'lid_delta': 0.29}
     assert _step(row, interior, False, delta_close=0.3)[0] is False
     assert row['seal_delta'] == 0.29 and row['seal_phi_top'] == 0.2
+    assert row['seal_path'] == 0.0  # an open step names no path
 
 
 @pytest.mark.parametrize(
