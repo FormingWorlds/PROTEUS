@@ -450,6 +450,7 @@ def test_load_grid_cases_skips_stray_entries_and_tolerates_missing_files(tmp_pat
     assert [c['index'] for c in cases] == [0, 2]
     assert [c['category'] for c in cases] == ['Completed', 'Unknown']
     assert cases[0]['status'] == 'Completed (solidified)'
+    assert cases[1]['status'] == 'Unknown (no readable status file)'
     assert cases[0]['init_params']['planet']['mass_tot'] == pytest.approx(1.0)
     assert cases[0]['final_row']['P_surf'] == pytest.approx(5.0)
     assert cases[1]['final_row'] == {}
