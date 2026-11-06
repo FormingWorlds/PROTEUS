@@ -993,6 +993,7 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'f_remelt',
         # the Aragog lid: zero is no lid, and the interior writes them at every step
         'lid_conductance',
+        'lid_delta',
         'lid_F_diff',
         'lid_F_open',
         'lid_T_base',
@@ -1083,6 +1084,7 @@ def GetHelpfileKeys():
         'T_magma',          # global outgassing temperature [K]
         'lid_weight',       # weight of the Aragog sub-grid lid [1]
         'lid_conductance',  # conductance of the Aragog sub-grid lid [W m-2 K-1]
+        'lid_delta',        # thickness of the Aragog sub-grid lid; 0 without the lid, read with lid_weight [m]
         'lid_T_surface',    # surface temperature of the Aragog sub-grid lid [K]
         'lid_T_base',       # base temperature of the Aragog sub-grid lid [K]
         'lid_T_node',       # top basic node of the Aragog mesh [K]

@@ -2946,6 +2946,7 @@ class AragogRunner:
             'T_magma': out.T_magma,
             'lid_weight': _lid_out(out, 'lid_weight'),
             'lid_conductance': _lid_out(out, 'lid_conductance'),
+            'lid_delta': _lid_out(out, 'lid_delta'),
             'lid_T_surface': _lid_out(out, 'lid_T_surface'),
             'lid_T_base': _lid_out(out, 'lid_T_base'),
             'lid_T_node': float(out.T_basic[-1]),
