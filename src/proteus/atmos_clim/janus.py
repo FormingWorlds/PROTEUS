@@ -298,7 +298,6 @@ def RunJANUS(
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
     any_cloud = np.any(np.array(atm.clfr) > 1.0e-20)
-    any_cloud = np.any(np.array(atm.clfr) > 1.0e-20)
     log.info('Water clouds have formed = %s' % (str(any_cloud)))
     log.info(
         'SOCRATES fluxes (net@surf, net@TOA, OLR): %.5e, %.5e, %.5e W m-2'

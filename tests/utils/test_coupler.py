@@ -4239,7 +4239,7 @@ def test_set_directories_requires_rad_dir_for_agni(monkeypatch):
 
 
 @pytest.mark.unit
-def test_set_directories_sets_rad_and_creates_no_temp_folder(monkeypatch, tmp_path):
+def test_set_directories_sets_rad_and_creates_no_temp_folder(monkeypatch, system_tmp):
     """Resolving directories for AGNI sets RAD_DIR and allocates no temporary folder.
 
     The temporary folder belongs to a run (`Proteus.start`), so a runner that is
@@ -4252,13 +4252,12 @@ def test_set_directories_sets_rad_and_creates_no_temp_folder(monkeypatch, tmp_pa
     monkeypatch.setattr('proteus.utils.coupler.get_proteus_dir', lambda: '/tmp/proteus')
     monkeypatch.setenv('FWL_DATA', '/tmp/fwl_data')
     monkeypatch.setenv('RAD_DIR', '/tmp/rad_dir')
-    monkeypatch.setattr('tempfile.tempdir', str(tmp_path))
 
     dirs = set_directories(cfg)
 
     assert dirs['rad'].endswith('/tmp/rad_dir/')
     assert 'temp' not in dirs
-    assert os.listdir(tmp_path) == []
+    assert os.listdir(system_tmp) == []
     assert dirs['output'].endswith('/tmp/proteus/output/run3/')
 
 
