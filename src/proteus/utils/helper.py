@@ -22,14 +22,7 @@ from proteus.utils.constants import (
 log = logging.getLogger('fwl.' + __name__)
 
 
-class MissingReferenceData(Exception):
-    """Marks an error raised because reference data the run needs is missing.
-
-    ``Proteus.start`` writes status 20 when such an error stops the run.
-    """
-
-
-class MissingDataError(FileNotFoundError, MissingReferenceData):
+class MissingDataError(FileNotFoundError):
     """A reference data file or table the run needs is not on disk."""
 
 
@@ -647,8 +640,7 @@ def UpdateStatusfile(dirs: dict, status: int):
         hdl.write('%s\n' % desc)
 
 
-# Status written by PROTEUS before its output folder is cleaned, and never
-# rewritten until the main loop starts.
+# Status of a run with no readable status file.
 STATUS_MISSING = -1
 
 
@@ -662,9 +654,7 @@ def ReadStatus(out_abs: Path | str) -> int:
     Returns
     ----------
     - int: The status code, or `STATUS_MISSING` when no readable status file
-      exists. A missing file is itself diagnostic: PROTEUS deletes the status
-      it writes at start-up when it cleans the output folder, and does not
-      write another until the main loop begins.
+      exists (missing, empty or unparsable).
     """
     try:
         with open(Path(out_abs) / 'status', 'r') as f:
