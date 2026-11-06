@@ -39,7 +39,9 @@ $$F_\mathrm{int} = F_\mathrm{atm}\ \text{of the last atmosphere call}.$$
 - the atmosphere call receives the skin columns and `T_magma` unchanged (`lid_boundary` in `atmos_clim/common.py`);
 - `lid_F_open` is set to `F_atm` (`lid_open_flux`);
 - Aragog takes `F_atm` as its surface flux (the boundary update in `interior_energetics/aragog.py`);
-- `F_int` is assigned `F_atm` (`_surface_flux_of_step`).
+- `F_int` is assigned `F_atm` when no lid acts at the start or at the end of the step (`_surface_flux_of_step`).
+
+In the step in which the lid switches on, the lid acts at its end, so `F_int` is the step integral of Rule 2. The lid then holds its surface at the `T_surf` of the last atmosphere call, which lies close to $T_b$ at the onset (1 K below $T_b$ where that call was hotter), so the lid conducts little and that step can lose much less than the `F_atm` it started from.
 
 ### Rule 2: the lid ledger
 
@@ -49,11 +51,11 @@ $$F_\mathrm{melt} = F_\mathrm{surf} + \frac{dE_\mathrm{lid}}{dt},$$
 
 with $F_\mathrm{melt}$ the heat the melt passes to the lid, $F_\mathrm{surf}$ the heat that leaves the lid surface, and $E_\mathrm{lid}$ in J m$^{-2}$.
 
-**How the code keeps it.** Aragog holds $E_\mathrm{lid}$ as a solver state. Its energy budget counts the melt and the lid together, so the energy of the mantle changes only by the heat that crosses the surface and the core boundary. PROTEUS books what crossed the surface. With a live lid, `F_int` is the mean surface flux of the step:
+**How the code keeps it.** Aragog holds $E_\mathrm{lid}$ as a solver state. Its energy budget counts the melt and the lid together, so the energy of the mantle changes only by the heat that crosses the surface and the core boundary. PROTEUS books what crossed the surface. With a lid at the start or at the end of the step, `F_int` is the mean surface flux of the step:
 
 $$F_\mathrm{int} = -\frac{\Delta E_\mathrm{surf}}{A\,\Delta t},$$
 
-with $\Delta E_\mathrm{surf}$ the surface energy integral of the step from Aragog (`step_dE_F_int_J`, negative for a loss), $A = 4\pi r^2$ at the top of the mesh and $\Delta t$ the step length. Inside the step the lid follows its own surface flux, so `F_int` can differ from `F_atm`. The column `lid_F_diff` records `F_int - F_atm`.
+with $\Delta E_\mathrm{surf}$ the surface energy integral of the step from Aragog (`step_dE_F_int_J`, negative for a loss), $A = 4\pi r^2$ at the top of the mesh and $\Delta t$ the step length. Inside the step the lid follows its own surface flux, so `F_int` can differ from `F_atm`. The column `lid_F_diff` records `F_int - F_atm`. A step in which the lid hands over to the mesh books this integral too; the coupling step does not end at the hand-over. No tested mesh reaches a hand-over: their top cell is at least 65.8 km thick.
 
 ### Rule 3: the atmosphere flux is the largest loss
 
@@ -65,10 +67,10 @@ $C$ is the lid term of the last atmosphere balance (see the next section). At $w
 
 **How the code keeps it.** Two parts:
 
-- In the atmosphere call, `lid_boundary` caps $G_\mathrm{lid}$ at $G_\mathrm{skin}$, so a lid never conducts more than the open surface.
+- In the atmosphere call, `lid_boundary` caps $G_\mathrm{lid}$ at $G_\mathrm{skin}$, so a lid never conducts more than the open surface. With $T_b \le T_\mathrm{node}$, as on every tested row, the lid part then never loses more than the open part would at the same surface temperature.
 - `lid_flux_cap` computes $C$ from the row after the atmosphere step. `_set_lid_surface` passes it to Aragog as `lid_surface_flux_cap`, next to the held surface temperature `lid_surface_temperature`. Without a lid, or for a surface at or above $T_b$ ($C \le 0$), no cap is set.
 
-Aragog applies the cap: where the lid held at $T_\mathrm{surf}$ would conduct more than $C$, its surface carries $C$ at a warmer surface. With $G_\mathrm{lid} \le G_\mathrm{skin}$ the cap equals the flux of the held lid at the start of the step; a growing lid then conducts less than the cap, so the cap acts while the lid thins. Near the onset, where $G_\mathrm{lid} > G_\mathrm{skin}$, the cap lies below the flux of the held lid and can act from the start of the step.
+Aragog applies the cap: where the lid held at $T_\mathrm{surf}$ would conduct more than $C$, its surface carries $C$ at a warmer surface. With $G_\mathrm{lid} \le G_\mathrm{skin}$ the cap equals the flux of the held lid at the start of the step, so it acts where the held lid would conduct more than at that start: while the lid thins, and while its profile relaxes toward the straight line. Near the onset, where $G_\mathrm{lid} > G_\mathrm{skin}$, the cap lies below the flux of the held lid and can act from the start of the step.
 
 ## What the atmosphere call sees
 
@@ -84,7 +86,7 @@ the call takes the skin thickness $d_\mathrm{call} = k / G$ (with the same $k$) 
 
 $$T_\mathrm{magma,call} = \frac{w\,G_\mathrm{lid}'\,T_b + (1 - w)\,G_\mathrm{skin}\,T_\mathrm{node}}{G}.$$
 
-Then $\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})$ equals $F$ above for every $T_\mathrm{surf}$, so the atmosphere solves the parallel balance with the skin balance it already has. These values hold for the call only: `lid_boundary` writes nothing to the row. The row keeps the `T_magma` that Aragog writes under a lid, $w T_b + (1 - w) T_\mathrm{node}$, the melt temperature that outgassing reads.
+Then $\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})$ equals $F$ above for every $T_\mathrm{surf}$, so the atmosphere solves the parallel balance with the skin balance it already has. These values hold for the call only: `lid_boundary` writes nothing to the row. The row keeps the `T_magma` that Aragog writes under a lid, $w T_b + (1 - w) T_\mathrm{node}$, the melt temperature that outgassing reads. The `T_magma` limiters of the interior wrapper (`planet.prevent_warming` and the large-increase clip of `tmagma_atol` and `tmagma_rtol`) act on this row value, not on the lid branch of the call.
 
 **Why the 10 mm skin is not added on top of the lid.** The skin stands for the boundary layer at the top of a molten surface. Under a solid lid no melt reaches the surface, so that boundary layer does not exist: the lid is the conductive layer, and $T_\mathrm{surf}$ is the temperature at its top. Adding the skin in series, $1/G = 1/G_\mathrm{lid} + 1/G_\mathrm{skin}$, would count one layer twice; at $G_\mathrm{lid} = G_\mathrm{skin}$ it would halve the conductance of the lid part.
 
@@ -96,11 +98,11 @@ and `F_atm` where no lid acts. In the next interior step Aragog takes `lid_F_ope
 
 ## The onset thickness
 
-Aragog switches the lid on when the steady thickness of a crust passes the onset thickness $\delta_\mathrm{on}$. PROTEUS derives $\delta_\mathrm{on}$ from the skin:
+Aragog switches the lid on through its weight $w = 1 - g\,(1 - w_\mathrm{g})$, with $g$ the floor weight of the top cell and $w_\mathrm{g}$ the weight of a grey-body crust (emissivity 1 at `T_eqm`) whose steady thickness passes the onset thickness $\delta_\mathrm{on}$; neither reads the `T_surf` of the atmosphere. PROTEUS derives $\delta_\mathrm{on}$ from the skin:
 
 $$\delta_\mathrm{on} = \frac{k_\mathrm{lid}\, d}{k}.$$
 
-For the defaults ($k_\mathrm{lid} = 4$ W m$^{-1}$ K$^{-1}$, $d = 0.01$ m, $k = 2$ W m$^{-1}$ K$^{-1}$) this gives $\delta_\mathrm{on} = 0.02$ m. At this thickness a straight lid has $k_\mathrm{lid}/\delta_\mathrm{on} = k/d = G_\mathrm{skin}$, so it conducts like the skin it replaces. A real lid has $G_\mathrm{lid} = f'(0)\,G_\mathrm{skin}$ at the onset, so the conductance changes at the onset only by the factor $f'(0)$. For the profile family of the Aragog lid, $f'(0) = 2\sqrt{s}/(\sqrt{\pi}\,\mathrm{erf}\sqrt{s})$ for a growing lid of shape $s > 0$: 1.03 at $s = 0.1$ and 1.34 at $s = 1$. The atmosphere call caps $G_\mathrm{lid}$ at $G_\mathrm{skin}$ (Rule 3), so it does not see that step.
+For the defaults ($k_\mathrm{lid} = 4$ W m$^{-1}$ K$^{-1}$, $d = 0.01$ m, $k = 2$ W m$^{-1}$ K$^{-1}$) this gives $\delta_\mathrm{on} = 0.02$ m. At this thickness a straight lid has $k_\mathrm{lid}/\delta_\mathrm{on} = k/d = G_\mathrm{skin}$, so it conducts like the skin it replaces. The lid enters, however, at the phantom thickness $\delta_\mathrm{lo} = \delta_\mathrm{on}/2$ (see [Resume](#resume)), so its conductance at the onset is $2 f'(0)\,G_\mathrm{skin}$. For the profile family of the Aragog lid, $f'(0) = 2\sqrt{s}/(\sqrt{\pi}\,\mathrm{erf}\sqrt{s})$ for a growing lid of shape $s > 0$: 1.03 at $s = 0.1$ and 1.34 at $s = 1$; a thinning lid ($s < 0$) has $f'(0) < 1$. The atmosphere call caps $G_\mathrm{lid}$ at $G_\mathrm{skin}$ (Rule 3), so it does not see that step while $G_\mathrm{lid} > G_\mathrm{skin}$.
 
 **Setting it.** `interior_energetics.aragog.lid_delta_on` \[m\]:
 
