@@ -22,7 +22,7 @@ This page checks the lid seal, `proteus.outgas.lid_seal`. When a crust closes ov
 ![Held water mass against time since closure, for 3 step lengths, with the exponential](../../assets/validation/outgas_lid_seal_relaxation.svg#only-light){ width="80%" }
 ![Held water mass against time since closure, for 3 step lengths, with the exponential](../../assets/validation/outgas_lid_seal_relaxation_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The upper panel shows the held fraction $M/M_c$ against the time since closure in units of $\tau$. The line is the exponential; the markers are the code for the 3 step lengths. The lower panel shows the relative error of the code against the exponential. A pass means that every marker lies on the line and every error is below 1e-12.
+**How to read the plot.** The upper panel shows the held fraction $M/M_c$ against the time since closure in units of $\tau$. The line is the exponential; the markers are the code for the 3 step lengths. The lower panel shows the relative error of the code against the exponential, rounded to the tolerance 1e-12, because the round-off below it changes with the platform; the largest error before rounding is 3.0e-14 on macOS. A pass means that every marker lies on the line and every error is below 1e-12.
 
 ??? info "Test details"
     - Reference: analytical solution of $dM/dt = -M/\tau$.

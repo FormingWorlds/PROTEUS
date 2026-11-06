@@ -262,11 +262,12 @@ def test_relaxation_matches_the_exponential_and_not_the_step_length(validation_p
             t = np.array(sorted(runs[dt]))[:: max(1, int(2.0e5 / dt))]
             m = np.array([runs[dt][k] for k in t]) / m0
             ax.plot(t / tau, m, marker, mfc='none', label=f'{dt / 1e3:.0f} kyr steps')
-            ax2.plot(t / tau, m / np.exp(-t / tau) - 1.0, marker, mfc='none')
+            # Round-off differs between libm builds; plot it at the 1e-12 tolerance.
+            ax2.plot(t / tau, np.round(m / np.exp(-t / tau) - 1.0, 12), marker, mfc='none')
         ax.set_ylabel('Sealed fraction')
         ax.legend(loc='upper right')
         ax2.set_xlabel(r'Time since closure / $\tau$')
-        ax2.set_ylabel('Error')
+        ax2.set_ylabel('Error (to 1e-12)')
         ax2.set_ylim(-2e-12, 2e-12)
         ax2.set_yticks([-1e-12, 0.0, 1e-12], ['-1e-12', '0', '1e-12'])
         ax2.set_xticks([0.0, 0.5, 1.0])
