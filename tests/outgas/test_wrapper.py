@@ -2987,9 +2987,11 @@ def test_sealed_mass_blocks_desiccation_and_a_desiccation_empties_the_rest():
     assert check_desiccation(config, row) is False
     row.update({'H_kg_total': 1e15, 'H_kg_sealed': 1e15, 'H2O_kg_sealed': 8.9e15})
     row['H2O_mol_sealed'] = 5e17
+    row.update({'H_kg_leak_tau': 3e12, 'seal_crust_rate': 5e10, 'seal_active': 1.0})
     assert check_desiccation(config, row) is True
     with patch('proteus.outgas.wrapper.record_volatile_change'):
         run_desiccated({}, config, row, False)
     assert row['H_kg_sealed'] == row['H2O_kg_sealed'] == row['H2O_mol_sealed'] == 0.0
     assert row['H_kg_total'] == 0.0
     assert row['M_desiccated'] == pytest.approx(1e15, rel=1e-12)
+    assert row['H_kg_leak_tau'] == row['seal_crust_rate'] == row['seal_active'] == 0.0

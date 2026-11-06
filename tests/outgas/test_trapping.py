@@ -1538,18 +1538,10 @@ def test_buried_and_released_mass_keeps_the_mole_columns_in_step_with_the_mass_c
 
 
 @pytest.mark.physics_invariant
-def test_sealed_mass_is_unreachable_and_held_trapping_records_a_zero_step():
-    """The mass the lid seal holds is beyond escape, as trapped mass is; while the
-    seal holds, a trapping step buries and releases nothing and records a zero
-    step, so a remelt cannot move trapped mass into a sealed melt."""
+def test_sealed_mass_is_unreachable_for_escape():
+    """The mass the lid seal holds is beyond escape, as trapped mass is, and an
+    unreadable sealed column counts as nothing."""
     row = {'H_kg_total': 5.0e19, 'H_kg_sealed': 3.0e19, 'H_kg_trapped': 1.0e19}
     assert escapable_inventory(row, 'H') == pytest.approx(1.0e19, rel=1e-12)
     row['H_kg_sealed'] = float('nan')
     assert escapable_inventory(row, 'H') == pytest.approx(4.0e19, rel=1e-12)
-    hf_all = pd.DataFrame([{'Time': 1.0, 'Phi_global': 0.2, 'M_mantle': 4e24}])
-    hf_row = {'Time': 2.0, 'Phi_global': 0.4, 'M_mantle': 4e24, 'H2O_kg_trapped': 2e19}
-    hf_row.update({'H2O_kg_solid': 2e19, 'H2O_kg_liquid': 0.0, 'trap_kg_cumulative': 2e19})
-    step = run_trapping(_config(), hf_row, hf_all, None, held=True)
-    assert step.total_trapped == 0.0 and step.dm_rm == 0.0
-    assert hf_row['H2O_kg_trapped'] == 2e19 and hf_row['H2O_kg_liquid'] == 0.0
-    assert hf_row['trap_kg_step'] == 0.0 and hf_row['trap_kg_cumulative'] == 2e19

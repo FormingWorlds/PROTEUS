@@ -193,7 +193,7 @@ def test_lid_seal_refuses_values_outside_each_domain(field, bad):
     phi_close read the other fields (defaults 1e4 m and 0.3)."""
     with pytest.raises(ValueError, match=rf'^{field} must'):
         _seal(**{field: bad})
-    assert isinstance(bad, (bool, str, float))
+    assert _seal().delta_close == 1e4  # a refusal leaves the defaults loadable
 
 
 def test_lid_seal_refuses_a_derived_phi_open_at_or_above_one():
@@ -218,10 +218,10 @@ def test_lid_seal_accepts_the_limits_and_both_regimes():
 def test_lid_seal_hypothesis_over_the_thickness_and_fraction_domains():
     """Property: any finite thickness > 0 and fraction in (0, 1) loads, and the
     derived band stays inside (0, delta_close] and [phi_close, 1)."""
-    from hypothesis import given, settings
-    from hypothesis import strategies as st
+    hypothesis = pytest.importorskip('hypothesis')
+    given, settings, st = hypothesis.given, hypothesis.settings, hypothesis.strategies
 
-    @settings(max_examples=200, deadline=None)
+    @settings(max_examples=200, deadline=None, derandomize=True)
     @given(
         st.floats(min_value=1e-9, max_value=1e9, allow_nan=False, allow_infinity=False),
         st.floats(min_value=2e-3, max_value=0.9499, allow_nan=False),
@@ -268,4 +268,11 @@ def test_lid_seal_cross_field_rules(tmp_path):
         load(lambda c: c['outgas'].update(vapourise=True))
     with pytest.raises(ValueError, match='lid_seal.enabled = true requires'):
         load(lambda c: c['interior_energetics'].update(module='spider'))
+    with pytest.raises(ValueError, match='lid_seal.*escape.reservoir'):
+        load(lambda c: c['escape'].update(reservoir='pxuv'))
+    assert load(lambda c: c['escape'].update(reservoir='bulk')).escape.reservoir == 'bulk'
+    with pytest.raises(ValueError, match='lid_seal.*outgas.module'):
+        load(lambda c: c['outgas'].update(module='atmodeller'))
+    with pytest.raises(ValueError, match='lid_seal.*dry_mantle'):
+        load(lambda c: c['interior_struct'].setdefault('zalmoxis', {}).update(dry_mantle=False))
     assert not load(lambda c: None).params.stop.solid.freeze_volatiles
