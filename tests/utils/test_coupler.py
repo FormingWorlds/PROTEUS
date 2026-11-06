@@ -6336,3 +6336,38 @@ def test_the_start_checks_vulcan_only_when_the_run_calls_it(tmp_path, module, mo
         mock_check.return_value.status = 'pass'
         validate_module_versions({'rad': str(tmp_path)}, config)
     assert mock_check.call_count == checked
+
+
+@pytest.mark.physics_invariant
+def test_element_closure_counts_the_sealed_reservoir_and_not_the_core():
+    """The per-element closure is total == atm + liquid + solid + condensed +
+    sealed. A row with the melt inventory sealed passes, the same row without
+    its sealed column fails, and a core column does not enter either side."""
+    from proteus.utils.coupler import assert_mass_conservation
+
+    row = {'M_atm': 1e20, 'M_planet': 6e24, 'M_vol_atm': 1e20, 'H2O_kg_atm': 1e20}
+    row.update({'H_kg_total': 4e19, 'H_kg_atm': 1e19, 'H_kg_sealed': 3e19, 'H_kg_core': 7e19})
+    assert assert_mass_conservation(row, check_element_closure=True) is None
+    with pytest.raises(RuntimeError, match='sealed=0.000e\\+00'):
+        assert_mass_conservation(dict(row, H_kg_sealed=0.0), check_element_closure=True)
+    with pytest.raises(RuntimeError, match='closure failed for H'):
+        assert_mass_conservation(dict(row, H_kg_sealed=3.1e19), check_element_closure=True)
+
+
+def test_lid_seal_columns_read_as_zero_on_resume_of_an_older_run(tmp_path):
+    """A helpfile written before the seal columns existed resumes open, with
+    nothing sealed: every seal column reads as zero, and the core columns keep
+    their values."""
+    from proteus.utils.coupler import GetHelpfileLidSealKeys
+
+    seal = GetHelpfileLidSealKeys()
+    assert {'seal_active', 'H2O_kg_sealed', 'H_kg_leak_volc', 'Xe_kg_leak_tau'} <= set(seal)
+    assert set(seal) <= set(GetHelpfileKeys())
+    for core in ('H2O_kg_liquid', 'H_kg_total', 'lid_weight'):
+        assert core not in seal
+    _write_drifted_helpfile(str(tmp_path), seal, n_rows=3)
+    hf = ReadHelpfileFromCSV(str(tmp_path))
+    assert len(hf) == 3
+    for key in seal:
+        assert (hf[key] == 0.0).all(), key
+    assert hf['H2O_kg_solid'].iloc[-1] > 0.0

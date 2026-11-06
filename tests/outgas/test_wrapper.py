@@ -2971,3 +2971,25 @@ def test_a_frozen_atmosphere_loses_per_element_what_escape_takes_from_each_total
     bare = {'M_atm': 100.0, 'esc_rate_total': 1.0, 'esc_step_kg': 10.0, 'H2O_kg_atm': 100.0}
     run_crystallized(_cryst_cfg(), bare, dt=1.0)
     assert bare['H2O_kg_atm'] == pytest.approx(90.0, rel=1e-12)
+
+
+def test_sealed_mass_blocks_desiccation_and_a_desiccation_empties_the_rest():
+    """A planet whose volatiles are held under a closed crust is not desiccated,
+    though escape cannot reach them; once desiccation fires, a sealed rest below
+    mass_thresh leaves with the atmosphere and is booked in M_desiccated."""
+    config = MagicMock()
+    config.outgas.mass_thresh = 1e16
+    config.outgas.vapourise = False
+    config.outgas.prevent_desaturation = False
+    config.outgas.trap_mode = 'none'
+    row = {f'{e}_kg_total': 0.0 for e in element_list}
+    row.update({'H_kg_total': 5e19, 'H_kg_sealed': 5e19, 'H2O_kg_sealed': 4.47e20})
+    assert check_desiccation(config, row) is False
+    row.update({'H_kg_total': 1e15, 'H_kg_sealed': 1e15, 'H2O_kg_sealed': 8.9e15})
+    row['H2O_mol_sealed'] = 5e17
+    assert check_desiccation(config, row) is True
+    with patch('proteus.outgas.wrapper.record_volatile_change'):
+        run_desiccated({}, config, row, False)
+    assert row['H_kg_sealed'] == row['H2O_kg_sealed'] == row['H2O_mol_sealed'] == 0.0
+    assert row['H_kg_total'] == 0.0
+    assert row['M_desiccated'] == pytest.approx(1e15, rel=1e-12)
