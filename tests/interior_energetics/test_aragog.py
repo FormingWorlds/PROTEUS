@@ -596,7 +596,7 @@ def test_setup_solver_stops_with_a_missing_data_error(tmp_path, missing, message
     which start() turns into status 20."""
     from proteus.data import LOOKUP_WOLF_BOWER_2018_1TPA, dataset_dir
     from proteus.interior_energetics.aragog import AragogRunner
-    from proteus.utils.helper import MissingReferenceData
+    from proteus.utils.helper import MissingDataError
 
     config = _make_aragog_config(struct_module='spider')
     hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
@@ -611,7 +611,7 @@ def test_setup_solver_stops_with_a_missing_data_error(tmp_path, missing, message
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        pytest.raises(MissingReferenceData, match=message),
+        pytest.raises(MissingDataError, match=message),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path / 'out'))
 

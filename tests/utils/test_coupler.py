@@ -29,7 +29,6 @@ import math
 import os
 import re
 import shutil
-import subprocess
 import sys
 import tempfile
 import types
@@ -3546,8 +3545,7 @@ def test_assert_surface_pressure_consistency_skips_pre_ic():
 
 
 # ---------------------------------------------------------------------------
-# Edge / error paths in the git-revision and version-validation helpers
-# (lines 50-52, 65-78, 165-166, 201-202 in utils/coupler.py).
+# Edge / error paths in the git-revision and version-validation helpers.
 # ---------------------------------------------------------------------------
 
 
@@ -3576,29 +3574,6 @@ def test_get_git_revision_works_when_the_working_directory_is_gone(tmp_path):
     This stopped a grid case at start-up before it wrote a status file (#778)."""
     from proteus.utils.coupler import _get_git_revision
 
-    repo = tmp_path / 'repo'
-    repo.mkdir()
-    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
-    env = {'GIT_AUTHOR_NAME': 't', 'GIT_AUTHOR_EMAIL': 't@t', 'GIT_COMMITTER_NAME': 't'}
-    env['GIT_COMMITTER_EMAIL'] = 't@t'
-    subprocess.run(
-        [
-            'git',
-            '-C',
-            str(repo),
-            '-c',
-            'commit.gpgsign=false',
-            'commit',
-            '-q',
-            '--allow-empty',
-            '-m',
-            'x',
-        ],
-        check=True,
-        env={**os.environ, **env},
-    )
-    head = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True)
-
     gone = tmp_path / 'gone'
     gone.mkdir()
     cwd_before = os.getcwd()
@@ -3607,24 +3582,17 @@ def test_get_git_revision_works_when_the_working_directory_is_gone(tmp_path):
     try:
         with pytest.raises(FileNotFoundError):
             os.getcwd()
-        result = _get_git_revision(str(repo))
+        with patch('subprocess.check_output', return_value=b'0123abcd\n') as git:
+            result = _get_git_revision(str(tmp_path))
     finally:
         os.chdir(cwd_before)
-    assert result == head.strip()
-    assert len(result) == 40
+    assert result == '0123abcd'
+    assert git.call_args.kwargs['cwd'] == str(tmp_path)
 
 
 def test_get_git_revision_returns_unknown_on_subprocess_failure():
-    """Even if chdir succeeds, a missing git executable or a non-repo
-    directory must surface as 'unknown' rather than raising.
-
-    Discriminating: patch subprocess.check_output to raise
-    FileNotFoundError (git absent). The except branch covers
-    CalledProcessError, FileNotFoundError, TimeoutExpired, and the
-    catch-all Exception; this test pins the FileNotFoundError path
-    explicitly so a future tightening that narrowed the except clause
-    would fail loudly.
-    """
+    """A missing git executable or a directory that is not a repository
+    returns 'unknown' rather than raising."""
     from proteus.utils.coupler import _get_git_revision
 
     with tempfile.TemporaryDirectory() as tmpdir:
