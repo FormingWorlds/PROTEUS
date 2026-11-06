@@ -490,16 +490,17 @@ def test_a_fresh_run_records_its_config_with_the_allow_switch_off(tmp_path):
 @pytest.mark.unit
 @pytest.mark.parametrize('struct, expected', [('zalmoxis', -3.0e21), ('dummy', 0.0)])
 @pytest.mark.parametrize(
-    'crystallized, freeze, phi, frozen',
+    'crystallized, freeze, phi, sealed, frozen',
     [
-        (False, False, 0.0, False),
-        (True, False, 0.5, True),
-        (False, True, 0.01, True),
-        (False, True, 0.5, False),
+        (False, False, 0.0, False, False),
+        (True, False, 0.5, False, True),
+        (False, True, 0.01, False, True),
+        (False, True, 0.5, False, False),
+        (False, False, 0.5, True, True),  # a closed lid seal draws on the atmosphere alone
     ],
 )
 def test_the_escape_step_records_the_removed_mass_for_the_zalmoxis_target(
-    tmp_path, struct, expected, crystallized, freeze, phi, frozen
+    tmp_path, struct, expected, crystallized, freeze, phi, sealed, frozen
 ):
     """The main-loop escape step books the element mass escape removed into
     M_volatile_change with the Zalmoxis structure, and nothing with the dummy
@@ -510,7 +511,7 @@ def test_the_escape_step_records_the_removed_mass_for_the_zalmoxis_target(
     p.hf_row = {'H_kg_total': 5.0e21, 'O_kg_total': 2.0e22, 'Phi_global': phi}
     p.interior_o = SimpleNamespace(dt=100.0)
     p.loops = {'total': 5, 'init_loops': 2}  # the first loop that runs escape
-    p.desiccated, p.crystallized = False, crystallized
+    p.desiccated, p.crystallized, p.lid_sealed = False, crystallized, sealed
     p.config.params.stop.solid.freeze_volatiles = freeze
     calls = []
 

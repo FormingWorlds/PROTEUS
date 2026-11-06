@@ -30,6 +30,7 @@ from proteus.outgas.lid_seal import (
     leak_step,
     open_seal,
     run_lid_seal_step,
+    seal_enabled,
     sealed_mass,
 )
 from proteus.utils.constants import gas_list, secs_per_year
@@ -461,3 +462,13 @@ def test_sealed_step_opens_only_past_the_band(phi_top, delta, impact, still_seal
     else:
         assert row['H2O_kg_liquid'] == MELT['H2O'] and row['H2O_kg_sealed'] == 0.0
         assert row['seal_open_kg'] == pytest.approx(sum(MELT.values()), rel=1e-15)
+
+
+def test_seal_enabled_reads_only_a_true_switch():
+    """The seal is on only for a LidSeal with enabled = True; a config built in
+    code without the table, or with a non-bool value, leaves it off."""
+    assert seal_enabled(_config()) is True
+    assert seal_enabled(SimpleNamespace(outgas=SimpleNamespace())) is False
+    assert seal_enabled(SimpleNamespace(outgas=SimpleNamespace(lid_seal=LidSeal()))) is False
+    odd = SimpleNamespace(outgas=SimpleNamespace(lid_seal=SimpleNamespace(enabled=1)))
+    assert seal_enabled(odd) is False
