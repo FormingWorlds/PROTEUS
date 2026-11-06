@@ -317,7 +317,7 @@ def test_write_summary_csvs_filters_by_status_category(tmp_path):
         _case(0, 'Completed', 'Completed (solidified)'),
         _case(1, 'Running', 'Running'),
         _case(2, 'Error', 'Error (Atmosphere model)'),
-        _case(3, 'Unknown', 'Missing status file'),
+        _case(3, 'Unknown', 'Unknown (no readable status file)'),
     ]
     paths = write_summary_csvs(build_summary_dataframe(cases, []), tmp_path)
     read = {mode: pd.read_csv(path, sep='\t') for mode, path in paths.items()}

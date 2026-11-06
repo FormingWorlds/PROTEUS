@@ -2,7 +2,9 @@
 
 Covers the ``summarise`` entrypoint: invalid-path error, status
 aggregation, general-category dispatch (Running / Completed / Error /
-All / named statuses), code-status dispatch, and unmatched input.
+Unknown / All / named statuses), code-status dispatch, unmatched input,
+non-contiguous case folders, and cases without a readable status file,
+which count as unknown.
 
 Testing standards:
   - docs/How-to/testing.md
@@ -55,42 +57,6 @@ def test_summarise_raises_when_grid_directory_missing(tmp_path, caplog):
         with pytest.raises(FileNotFoundError, match='Invalid path'):
             summarise_mod.summarise(str(tmp_path / 'missing'))
     assert 'Statistics' not in caplog.text
-
-
-@pytest.mark.parametrize(
-    'content',
-    [None, '', 'not-a-code\n'],
-    ids=['no-status-file', 'empty-status-file', 'unparseable-status-file'],
-)
-def test_summarise_counts_a_case_without_a_readable_status_as_unknown(
-    tmp_path, caplog, content
-):
-    """A case folder whose status file is missing, empty or unparseable (the run
-    stopped before PROTEUS wrote a status) counts as unknown, and the summary still
-    gives the statistics of the other cases instead of stopping at that case.
-    """
-    grid = _make_grid(tmp_path, statuses=[10, 10, 20])
-    status = grid / 'case_000001' / 'status'
-    if content is None:
-        status.unlink()
-    else:
-        status.write_text(content, encoding='utf-8')
-
-    with caplog.at_level(logging.INFO, logger='fwl'):
-        result = summarise_mod.summarise(str(grid), tgt_status='code=-1')
-
-    assert result is True
-    assert 'Found 3 cases' in caplog.text
-    # One case of three in each row: 33 %.
-    assert '1     (33%) Unknown (no readable status file)' in caplog.text
-    assert '1     (33%) Completed (solidified)' in caplog.text
-    assert '1     (33%) Error (generic case, or configuration issue)' in caplog.text
-    # The unknown case is listed by its own index, not by a neighbour's.
-    listed = caplog.text.split('Code -1 cases:')[1]
-    assert 'Case 1     : Code -1 - Unknown (no readable status file)' in listed
-    assert 'UNHANDLED' not in caplog.text
-    assert 'Case 0    ' not in listed
-    assert 'Case 2    ' not in listed
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +186,7 @@ def test_summarise_prints_help_message_for_unmatched_status(tmp_path, caplog):
 
 
 # ---------------------------------------------------------------------------
-# Robustness: non-contiguous case folders and malformed status files
+# Robustness: non-contiguous case folders and unreadable status files
 # ---------------------------------------------------------------------------
 
 
@@ -230,8 +196,8 @@ def test_summarise_handles_noncontiguous_case_folders(tmp_path, caplog):
     read the folders that exist and report cases by their real index.
 
     Discrimination: a regression that reconstructed paths as case_%06d for
-    i in range(N) would raise FileNotFoundError on the absent case_000001,
-    and would mislabel the error case (real index 5) as index 2.
+    i in range(N) would count the absent case_000001 as unknown and
+    mislabel the error case (real index 5) as index 2.
     """
     grid = tmp_path / 'grid'
     grid.mkdir()
@@ -249,6 +215,54 @@ def test_summarise_handles_noncontiguous_case_folders(tmp_path, caplog):
     # The error case is at real index 5, never at a contiguous index 2.
     assert 'Case 5    ' in code20_section
     assert 'Case 2    ' not in code20_section
+
+
+@pytest.mark.parametrize(
+    'content',
+    [None, '', 'not-a-code\n'],
+    ids=['no-status-file', 'empty-status-file', 'unparseable-status-file'],
+)
+def test_summarise_counts_a_case_without_a_readable_status_as_unknown(
+    tmp_path, caplog, content
+):
+    """A case folder whose status file is missing, empty or unparseable (the run
+    stopped before PROTEUS wrote a status) counts as unknown, and the summary still
+    gives the statistics of the other cases instead of stopping at that case. The
+    case is listed by `code=-1`, `unknown` and `all`, by its own index.
+    """
+    grid = _make_grid(tmp_path, statuses=[10, 10, 20])
+    status = grid / 'case_000001' / 'status'
+    if content is None:
+        status.unlink()
+    else:
+        status.write_text(content, encoding='utf-8')
+
+    listed = {}
+    for tgt, header in [
+        ('code=-1', 'Code -1 cases:'),
+        ('unknown', 'Unknown cases:'),
+        ('all', 'All cases:'),
+    ]:
+        caplog.clear()
+        with caplog.at_level(logging.INFO, logger='fwl'):
+            assert summarise_mod.summarise(str(grid), tgt_status=tgt) is True
+        listed[tgt] = caplog.text.split(header)[1]
+
+    assert 'Found 3 cases' in caplog.text
+    # One case of three in each row: 33 %.
+    assert '1     (33%) Unknown (no readable status file)' in caplog.text
+    assert '1     (33%) Completed (solidified)' in caplog.text
+    assert '1     (33%) Error (generic case, or configuration issue)' in caplog.text
+    assert 'UNHANDLED' not in caplog.text
+    unknown_line = 'Case 1     : Code -1 - Unknown (no readable status file)'
+    for tgt in ('code=-1', 'unknown'):
+        assert unknown_line in listed[tgt], tgt
+        assert 'Case 0    ' not in listed[tgt], tgt
+        assert 'Case 2    ' not in listed[tgt], tgt
+    # `all` lists every case, the unknown one included.
+    for idx in (0, 1, 2):
+        assert f'Case {idx}    ' in listed['all']
+    assert unknown_line in listed['all']
 
 
 # ---------------------------------------------------------------------------

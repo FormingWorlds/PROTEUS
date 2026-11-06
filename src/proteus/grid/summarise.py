@@ -7,7 +7,7 @@ import os
 
 import numpy as np
 
-from proteus.utils.helper import STATUS_MISSING, CommentFromStatus, ReadStatus
+from proteus.utils.helper import CommentFromStatus, ReadStatus
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -38,13 +38,6 @@ def status_category(code: int) -> str:
         if code in codes:
             return name
     return 'Unknown'
-
-
-def _comment(code: int) -> str:
-    """Description of a status code, including the code of a case without a status."""
-    if code == STATUS_MISSING:
-        return 'Unknown (no readable status file)'
-    return CommentFromStatus(code)
 
 
 def summarise(pgrid_dir: str, tgt_status: str = None):
@@ -93,13 +86,14 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
         if count == 0:
             continue
         pct = float(count) / N * 100.0
-        log.info('  %-5d (%2d%%) %s', count, pct, _comment(i))
+        log.info('  %-5d (%2d%%) %s', count, pct, CommentFromStatus(i))
 
     # Check options
     gen_cases = {
         # Broad categories (shared ranges)
         **{name: list(codes) for name, codes in STATUS_CATEGORIES.items()},
-        'All': list(range(0, 100, 1)),
+        'All': list(range(-1, 100)),
+        'Unknown': [c for c in range(-1, 100) if status_category(c) == 'Unknown'],
         # Narrower categories
         'Solidified': [10],
         'Steady': [11, 14],
@@ -141,7 +135,7 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
         for idx in indices:
             if case_status[idx] == code:
                 e_any = True
-                log.info('  Case %-5d : Code %-2d - %s', idx, code, _comment(code))
+                log.info('  Case %-5d : Code %-2d - %s', idx, code, CommentFromStatus(code))
         if not e_any:
             log.info('  (None)')
 

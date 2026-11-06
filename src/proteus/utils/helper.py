@@ -572,6 +572,9 @@ def CommentFromStatus(status: int):
     """
     desc = ''
     match status:
+        # No readable status file (STATUS_MISSING)
+        case -1:
+            desc = 'Unknown (no readable status file)'
         # Running cases
         case 0:
             desc = 'Started'
