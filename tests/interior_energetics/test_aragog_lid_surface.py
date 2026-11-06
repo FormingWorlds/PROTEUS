@@ -245,3 +245,25 @@ def test_a_lid_resumed_without_the_skin_conductivity_is_refused_with_its_cause(t
     bc = SimpleNamespace(outer_boundary_condition=4, lid_mush_base=True)
     with pytest.raises(ValueError, match='boundary_layer_conductivity'):
         _set_lid_surface(bc, hf)
+
+
+@pytest.mark.parametrize(('value', 'want'), [(0.1733, 0.1733), (0.0, 0.0), (float('nan'), 0.0)])
+def test_helpfile_carries_the_lid_thickness(value, want):
+    """``lid_delta`` [m] is a helpfile column: the solver thickness of the sub-grid lid, 0 where the
+    solver has no lid (NaN); a helpfile written without the column resumes with 0."""
+    from unittest.mock import MagicMock, patch
+
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.utils.coupler import RESUMABLE_ZERO_FILL_KEYS, GetHelpfileKeys
+
+    assert 'lid_delta' in GetHelpfileKeys()
+    assert 'lid_delta' in RESUMABLE_ZERO_FILL_KEYS
+    out = MagicMock()
+    out.T_core = 3800.0
+    out.T_basic = np.array([4100.0, 3900.0, 3500.0, 3000.0])
+    out.r_basic = np.array([3.5e6, 4.5e6, 5.5e6, 6.4e6])
+    out.mass_stag = np.ones(3)
+    out.lid_delta = value
+    with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
+        res = AragogRunner._build_helpfile_output(out, {'F_atm': 1e5})
+    assert res['lid_delta'] == want
