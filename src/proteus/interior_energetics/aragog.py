@@ -539,6 +539,59 @@ def _lid_surface_of_row(hf_row: dict, surface_bc_mode: str, lid_on: bool) -> flo
     return T_surf if lid_on and surface_bc_mode == 'flux' and T_surf > 0.0 else None
 
 
+LID_ONSET_TOLERANCE = (
+    0.10  # relative gap of an explicit lid_delta_on to the skin value that warns
+)
+
+
+def lid_delta_on_of(config) -> float:
+    """Onset thickness [m] of the Aragog sub-grid lid.
+
+    By default ``solid_cond * surface_d / surface_k``: a linear lid of the solid conductivity has
+    at this thickness the conductance of the skin, so the lid joins the skin coupling at its
+    onset. An explicit ``interior_energetics.aragog.lid_delta_on`` is used as given and warns
+    when it differs from that value by more than ``LID_ONSET_TOLERANCE``.
+
+    Raises
+    ------
+    ValueError
+        For a saturation skin without an explicit value: such a skin has no fixed thickness.
+    """
+    atm, ie = config.atmos_clim, config.interior_energetics
+    numeric = not isinstance(atm.surface_d, str) and not isinstance(atm.surface_k, str)
+    skin = (
+        float(ie.solid_cond) * float(atm.surface_d) / float(atm.surface_k) if numeric else None
+    )
+    explicit = ie.aragog.lid_delta_on
+    if explicit is None:
+        if skin is None:
+            raise ValueError(
+                'interior_energetics.aragog.lid_delta_on must be set for a saturation skin: '
+                'the skin has no fixed thickness to derive the lid onset thickness from'
+            )
+        return skin
+    value = float(explicit)
+    if skin is not None and abs(value / skin - 1.0) > LID_ONSET_TOLERANCE:
+        log.warning(
+            'interior_energetics.aragog.lid_delta_on = %.6g m differs from the skin value '
+            'solid_cond * surface_d / surface_k = %.6g m by more than %.0f %%: the lid onset '
+            'does not match the conductance of the skin',
+            value,
+            skin,
+            100.0 * LID_ONSET_TOLERANCE,
+        )
+    return value
+
+
+def _lid_onset_out(interior_o) -> float:
+    """Onset thickness [m] of the sub-grid lid in the solver, 0 without the lid or a solver."""
+    solver = getattr(interior_o, 'aragog_solver', None) if interior_o is not None else None
+    bc = getattr(getattr(solver, 'parameters', None), 'boundary_conditions', None)
+    if bc is None or not getattr(bc, 'subgrid_lid', False):
+        return 0.0
+    return float(bc.lid_delta_on)
+
+
 def _lid_out(out, name: str) -> float:
     """Lid value ``name`` of a solver output as a float, 0 where it is NaN or absent.
 
@@ -993,6 +1046,14 @@ class AragogRunner:
                 config, hf_row, interior_o, outdir
             )
 
+        lid_kw = {}
+        if config.interior_energetics.aragog.lid_mush_base:
+            lid_kw['lid_delta_on'] = lid_delta_on_of(config)
+            log.info(
+                'Aragog sub-grid lid onset thickness lid_delta_on = %.6g m',
+                lid_kw['lid_delta_on'],
+            )
+
         boundary_conditions = _BoundaryConditionsParameters(
             # 4 = prescribed heat flux (PROTEUS coupling mode, from hf_row['F_atm'])
             # 1 = native grey-body (emissivity * sigma * (T^4 - T_eqm^4))
@@ -1021,6 +1082,7 @@ class AragogRunner:
             subgrid_lid=config.interior_energetics.aragog.lid_mush_base,
             lid_mush_base=config.interior_energetics.aragog.lid_mush_base,
             core_module_params=core_module_params,
+            **lid_kw,
         )
 
         # Define the inner_radius for the mesh.
@@ -2947,6 +3009,7 @@ class AragogRunner:
             'lid_weight': _lid_out(out, 'lid_weight'),
             'lid_conductance': _lid_out(out, 'lid_conductance'),
             'lid_delta': _lid_out(out, 'lid_delta'),
+            'lid_delta_on': _lid_onset_out(interior_o),
             'lid_T_surface': _lid_out(out, 'lid_T_surface'),
             'lid_T_base': _lid_out(out, 'lid_T_base'),
             'lid_T_node': float(out.T_basic[-1]),

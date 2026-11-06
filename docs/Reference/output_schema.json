@@ -1063,6 +1063,36 @@
       "consumers_possible": []
     },
     {
+      "name": "lid_delta",
+      "unit": "m",
+      "description": "thickness of the Aragog sub-grid lid; 0 without the lid, read with lid_weight",
+      "group": "Temperatures",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "lid_delta_on",
+      "unit": "m",
+      "description": "onset thickness of the Aragog sub-grid lid; 0 without the lid",
+      "group": "Temperatures",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
       "name": "lid_T_surface",
       "unit": "K",
       "description": "surface temperature of the Aragog sub-grid lid",

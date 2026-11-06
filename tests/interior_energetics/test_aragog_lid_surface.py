@@ -221,7 +221,7 @@ def test_a_run_stored_without_the_lid_columns_resumes_as_no_lid(tmp_path):
     from proteus.utils.coupler import GetHelpfileKeys
 
     lid_keys = [k for k in GetHelpfileKeys() if k.startswith('lid_')]
-    assert len(lid_keys) == 8
+    assert len(lid_keys) == 9
     hf = _resumed_row(tmp_path, lid_keys)
     assert all(hf[k] == 0.0 for k in lid_keys)
     assert lid_boundary(hf) == (0.01, 2.0, 1450.0)

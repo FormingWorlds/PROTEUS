@@ -69,6 +69,16 @@ def _valid_bool(instance, attribute, value):
         raise TypeError(f'`{attribute.name}` must be a bool, got {value!r}')
 
 
+def _valid_lid_delta_on(instance, attribute, value):
+    """Accept None or a finite number above 0; reject a bool, a string, NaN and the rest."""
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f'`{attribute.name}` must be None or a number, got {value!r}')
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError(f'`{attribute.name}` must be finite and above 0, got {value}')
+
+
 def _check_top_cell_dt_rel_dT_pair(aragog) -> None:
     """Require top_cell_dt_rel_dT_solid <= top_cell_dt_rel_dT."""
     if aragog.top_cell_dt_rel_dT_solid > aragog.top_cell_dt_rel_dT:
@@ -456,6 +466,14 @@ class Aragog:
 
     lid_mush_base: bool = field(default=False, validator=_valid_bool)
     """Run the sub-grid lid with its base at the solidus (needs the rheology on)."""
+
+    lid_delta_on: float | str | None = field(
+        default=None, converter=none_if_none, validator=_valid_lid_delta_on
+    )
+    """Onset thickness [m] of the sub-grid lid. None takes solid_cond surface_d / surface_k, at
+    which a linear lid conducts like the skin (0.02 m for the default skin). A finite value above
+    0 is used as given, with a warning beyond 10 % of the skin value. With the lid on and a
+    saturation skin (surface_d = 'saturation') it must be set: the config is refused without it."""
 
     core_module: AragogCoreModule = field(factory=AragogCoreModule)
     """Core evolution module parameters, active when core_bc =

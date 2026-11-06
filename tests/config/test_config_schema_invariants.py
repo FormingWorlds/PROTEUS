@@ -1993,6 +1993,7 @@ def test_lid_delta_on_is_unset_by_default_and_refuses_bad_values():
     from proteus.config._interior import Aragog
 
     assert Aragog().lid_delta_on is None
+    assert Aragog(lid_delta_on='none').lid_delta_on is None  # the TOML spelling of None
     assert Aragog(lid_delta_on=0.02).lid_delta_on == 0.02
     for bad in (True, False, '0.02', float('nan'), float('inf'), 0.0, -0.02):
         with pytest.raises((TypeError, ValueError), match='lid_delta_on'):

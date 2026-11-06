@@ -527,6 +527,12 @@ def lid_requires_the_skin_atmosphere(instance, attribute, value):
             'interior_energetics.aragog.lid_mush_base = true needs atmos_clim.surf_state = '
             f"'skin', got {atm.surf_state!r}: only the skin carries the lid to the atmosphere."
         )
+    if getattr(atm, 'surface_d', None) == 'saturation' and ie.aragog.lid_delta_on is None:
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true with atmos_clim.surface_d = '
+            "'saturation' needs interior_energetics.aragog.lid_delta_on: a saturation skin has no "
+            'fixed thickness to derive the lid onset thickness from.'
+        )
 
 
 def janus_escape_atmosphere(instance, attribute, value):
