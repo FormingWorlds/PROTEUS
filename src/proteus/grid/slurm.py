@@ -74,12 +74,6 @@ def array_layout(n_cases: int, cores_per_job: int, max_array: int) -> tuple[int,
     return jobs, waves
 
 
-def slurm_time(days: float) -> str:
-    """Return a wall time in days as the Slurm time ``D-HH:MM:00``, to the nearest minute."""
-    minutes = round(days * 24 * 60)
-    return f'{minutes // 1440}-{minutes // 60 % 24:02d}:{minutes % 60:02d}:00'
-
-
 def dispatch_script(
     *,
     cfgdir: str,
@@ -106,7 +100,8 @@ def dispatch_script(
 
     A case that ends with its status file still at 0 or 1 (running), or without one,
     was killed before PROTEUS could write a final status (SIGKILL, out of memory, a
-    crash in compiled code); the script then writes status 25. Slurm sends SIGTERM to
+    crash in compiled code); the script then writes status 25 and counts the case as
+    failed. Slurm sends SIGTERM to
     the cases 5 minutes before the wall time, a tenth of it for short jobs, so they can
     end with a status; from then on the job starts no further case, so those stay
     without a status folder, as not started. The job is not requeued, since a
@@ -125,7 +120,8 @@ def dispatch_script(
     throttle : int
         Array tasks running at the same time.
     days : float
-        Wall time per job [days].
+        Wall time per job [days], written in whole minutes, at least 1, since a zero
+        Slurm time limit means no limit.
     mem_per_case_mb : int
         Memory per core, so per case [MB].
     command : str
@@ -135,13 +131,13 @@ def dispatch_script(
     env : str
         Shell lines run before the cases, such as exports.
     """
-    wall_s = round(days * 24 * 60) * 60  # as slurm_time writes it
-    signal_s = min(300, wall_s // 10)
+    minutes = max(1, round(days * 24 * 60))
+    signal_s = min(300, minutes * 6)  # a tenth of the wall time, at most 5 minutes
     return f"""#!/bin/bash
 #SBATCH -J proteus.grid.array
 #SBATCH --export=ALL
 #SBATCH --no-requeue
-#SBATCH --time={slurm_time(days)}
+#SBATCH --time={minutes}
 #SBATCH --signal=TERM@{signal_s}
 #SBATCH --cpus-per-task={cores_per_job}
 #SBATCH --mem-per-cpu={mem_per_case_mb}M
@@ -150,7 +146,7 @@ def dispatch_script(
 #SBATCH --array=0-{jobs - 1}%{throttle}
 
 {env}export cfgs={shlex.quote(cfgdir)} logs={shlex.quote(logdir)} cases={shlex.quote(casedir or '')}
-export stop_at=$(( $(date +%s) + {wall_s - signal_s} ))
+export stop_at=$(( $(date +%s) + {minutes * 60 - signal_s} ))
 
 # One case: $1 is its name, case_NNNNNN
 run_case='
@@ -171,7 +167,8 @@ if [ -n "$cases" ]; then
         ""|0|1)
             echo "$1 ended without a final status"
             mkdir -p "$cases/$1"
-            printf "25\\nError (died, or exit requested by user)\\n" > "$cases/$1/status" ;;
+            printf "25\\nError (died, or exit requested by user)\\n" > "$cases/$1/status"
+            exit 1 ;;
     esac
 fi
 [ "$code" -eq 0 ] || {{ echo "$1 failed with exit code $code"; exit 1; }}
