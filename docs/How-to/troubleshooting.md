@@ -126,7 +126,7 @@ The first appears when no mesh file of the earlier structure is left. The second
 
 ### A resumed run with the sub-grid lid {#a-resumed-run-with-the-sub-grid-lid}
 
-With the Aragog sub-grid lid on (`interior_energetics.aragog.lid_mush_base = true`), each interior snapshot `data/<time>_int.nc` holds the lid thickness `lid_delta_state` [m] and the lid energy `lid_E_state` [J m-2], and for a lid handed over to the mesh its hand-over time `lid_handover_time_state` [yr]. A resume starts the lid from these values. A snapshot without them, or with a value that is not finite, gives the warning
+With the Aragog sub-grid lid on (`interior_energetics.aragog.lid_mush_base = true`), each interior snapshot `data/<time>_int.nc` holds the lid thickness `lid_delta_state` \[m\] and the lid energy `lid_E_state` \[J m-2\], and for a lid handed over to the mesh its hand-over time `lid_handover_time_state` \[yr\]. A resume starts the lid from these values. A snapshot without them, or with a value that is not finite, gives the warning
 
 ```text
 Snapshot lid thickness is absent and lid energy is absent; the sub-grid lid restarts as the phantom lid at lid_delta_lo.

@@ -59,6 +59,7 @@ nav:
       - Software design:
           - Code architecture: Explanations/code_architecture.md
           - Coupling loop: Explanations/coupling_loop.md
+          - Sub-grid lid and the surface skin: Explanations/lid_coupling.md
           - Dummy modules: Explanations/dummy_modules.md
           - Test framework: Explanations/test_framework.md
 
