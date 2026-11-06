@@ -416,3 +416,20 @@ def test_resume_keeps_an_unchanged_rheology(tmp_path):
     out = _rheology_run(tmp_path, False)
     config, path = _user_config(tmp_path)
     assert check_resume_separation_laws(config, path, out) == []
+
+
+def test_the_allow_switch_lets_the_rheology_switch_and_reports_it(tmp_path, caplog):
+    """With allow_resume_law_change a run written with the rheology on resumes with it off,
+    returns the switch and logs one warning naming the key and both values."""
+    out = _rheology_run(tmp_path, True)
+    config, path = _user_config(tmp_path, allow_resume_law_change=True)
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        switches = check_resume_separation_laws(config, path, out)
+    assert switches == [('rheology.enabled', True, False)]
+    warned = [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == LOGGER and r.levelno == logging.WARNING
+    ]
+    assert len(warned) == 1
+    assert 'rheology.enabled' in warned[0] and 'True' in warned[0] and 'False' in warned[0]
