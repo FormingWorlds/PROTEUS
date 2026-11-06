@@ -631,23 +631,25 @@ def _surface_flux_of_step(
     out : SolverOutput
         Aragog output of the step.
     hf_row : dict
-        Row at the start of the step, with ``F_atm`` and ``Time`` [yr].
+        Row at the start of the step, with ``F_atm``, ``Time`` [yr] and ``lid_weight``.
     surface_bc_mode : str
-        ``'grey_body'`` books the surface node; ``'flux'`` books ``F_atm``, unless a lid acts.
+        ``'grey_body'`` books the surface node; ``'flux'`` books ``F_atm``, unless a lid acts
+        at the start or at the end of the step.
     t_end : float or None
         End of the step [yr]; None for a state with no step.
 
     Returns
     -------
     float
-        With a live lid in flux mode, the flux of the step integral
-        ``-step_dE_F_int_J / (A dt)``: the lid sets its own surface flux from the temperature
-        of the atmosphere, and it differs from ``F_atm`` inside the step.
+        With a live lid at the start or the end of the step in flux mode, the flux of the step
+        integral ``-step_dE_F_int_J / (A dt)``: the lid sets its own surface flux from the
+        temperature of the atmosphere, and it differs from ``F_atm`` inside the step.
     """
     if surface_bc_mode == 'grey_body':
         return float(out.heat_flux[-1])
     dt_yr = 0.0 if t_end is None else float(t_end) - float(hf_row['Time'])
-    if not _lid_out(out, 'lid_weight') > 0.0 or dt_yr <= 0.0:
+    lid = _lid_out(out, 'lid_weight') > 0.0 or float(hf_row.get('lid_weight', 0.0)) > 0.0
+    if not lid or dt_yr <= 0.0:
         return float(hf_row['F_atm'])
     area = 4.0 * np.pi * float(out.r_basic[-1]) ** 2
     return -float(out.step_dE_F_int_J) / (area * dt_yr * secs_per_year)

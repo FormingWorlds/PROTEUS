@@ -376,3 +376,55 @@ def test_update_solver_passes_the_lid_boundary_of_the_row(w):
     else:
         assert bc.lid_surface_flux_cap is None
     assert bc.equilibrium_temperature == 255.0
+
+
+def _lid_out_row(lid_weight=0.37, F_step=15500.0, dt=25.0):
+    """A solver output with distinct lid values and a step that loses ``F_step`` [W/m^2]."""
+    from unittest.mock import MagicMock
+
+    out = MagicMock()
+    out.T_core = 3800.0
+    out.T_basic = np.array([4100.0, 3900.0, 3500.0, 1589.0])
+    out.r_basic = np.array([3.5e6, 4.5e6, 5.5e6, 6.4e6])
+    out.mass_stag = np.ones(3)
+    out.lid_weight, out.lid_conductance, out.lid_delta = lid_weight, 21.9, 0.18
+    out.lid_T_surface, out.lid_T_base = 727.0, 1440.0
+    area = 4.0 * np.pi * 6.4e6**2
+    out.step_dE_F_int_J = -F_step * area * dt * 3.15576e7
+    return out
+
+
+def test_helpfile_carries_each_lid_column_from_its_field():
+    """Each lid column of the helpfile comes from its own solver field, F_int is the flux of the
+    step integral under a live lid, and lid_F_diff is F_int less the F_atm of the row."""
+    from unittest.mock import patch
+
+    out = _lid_out_row()
+    row = {'F_atm': 15000.0, 'Time': 30000.0}
+    with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
+        res = AragogRunner._build_helpfile_output(
+            out, row, surface_bc_mode='flux', t_end=30025.0
+        )
+    want = dict(
+        lid_weight=0.37,
+        lid_conductance=21.9,
+        lid_delta=0.18,
+        lid_T_surface=727.0,
+        lid_T_base=1440.0,
+        lid_T_node=1589.0,
+    )
+    assert {k: res[k] for k in want} == want
+    assert res['F_int'] == pytest.approx(15500.0, rel=1e-12)
+    assert res['lid_F_diff'] == pytest.approx(500.0, rel=1e-9)
+
+
+@pytest.mark.parametrize('end_weight', [float('nan'), 0.0])
+def test_a_step_that_starts_with_a_lid_books_its_integral_when_the_lid_ends(end_weight):
+    """A step that starts under a live lid and ends without one (hand-over, weight below the
+    floor) books the flux of its step integral, not the F_atm the lid replaced."""
+    out = _lid_out_row(lid_weight=end_weight)
+    row = {'F_atm': 15000.0, 'Time': 30000.0, 'lid_weight': 1.0}
+    got = _surface_flux_of_step(out, row, 'flux', 30025.0)
+    assert got == pytest.approx(15500.0, rel=1e-12)
+    no_lid = {'F_atm': 15000.0, 'Time': 30000.0, 'lid_weight': 0.0}
+    assert _surface_flux_of_step(out, no_lid, 'flux', 30025.0) == 15000.0
