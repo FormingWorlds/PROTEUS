@@ -1,9 +1,9 @@
 # Functions used to handle atmosphere thermodynamics (running JANUS, etc.)
 from __future__ import annotations  # noqa: I001
 
+import contextlib
 import logging
 import os
-import shutil
 import tempfile
 from typing import TYPE_CHECKING
 
@@ -167,7 +167,7 @@ def write_atmos_ncdf(atm, dirs: dict, time: float):
     atm.write_ncdf(nc_fpath)
 
 
-def _solve_janus(atm, dirs, config, hf_row, hf_all, time, search_method, rtol):
+def _solve_janus(atm, dirs, config, hf_row, hf_all):
     """Solve the JANUS atmosphere for the effective surface state; returns the solved atmosphere."""
     trppD = config.atmos_clim.janus.tropopause == 'dynamic'
     rscatter = config.atmos_clim.rayleigh
@@ -184,10 +184,10 @@ def _solve_janus(atm, dirs, config, hf_row, hf_all, time, search_method, rtol):
 
         T_surf_max = -1
         T_surf_old = -1
-        atol = 1.0e-5
+        rtol, atol = 1.0e-4, 1.0e-5
 
         # Done with initial loops
-        if time > 0 and hf_all is not None and len(hf_all) > 0:
+        if hf_row['Time'] > 0 and hf_all is not None and len(hf_all) > 0:
             # Get previous temperature as initial guess
             T_surf_old = hf_all.iloc[-1]['T_surf']
 
@@ -206,7 +206,7 @@ def _solve_janus(atm, dirs, config, hf_row, hf_all, time, search_method, rtol):
             atm,
             trppD,
             rscatter,
-            method=search_method,
+            method=0,
             atol=tol,
             atm_bc=int(config.atmos_clim.janus.F_atm_bc),
             T_surf_guess=float(T_surf_old) - 1.0,
@@ -226,8 +226,6 @@ def RunJANUS(
     config: Config,
     hf_row: dict,
     hf_all: pd.DataFrame,
-    search_method=0,
-    rtol=1.0e-4,
     write_data: bool = True,
 ):
     """Run JANUS.
@@ -248,10 +246,6 @@ def RunJANUS(
             Dictionary containing simulation variables for current iteration
         hf_all : pd.DataFrame
             Dataframe containing simulation variables (now and historic)
-        search_method : int
-            Root finding method used by JANUS
-        rtol : float
-            Relative tolerance on solution for root finding method
         write_data : bool
             Whether to write the atmosphere NetCDF file this iteration.
     Returns
@@ -276,15 +270,14 @@ def RunJANUS(
     UpdateStateAtm(atm, config, hf_row, config.atmos_clim.janus.tropopause)
 
     # SOCRATES writes its working files into the current directory
-    cwd = os.getcwd()
-    tmp_dir = tempfile.mkdtemp(prefix='janus_', dir=dirs['temp'])
-    log.debug("Will run socrates inside '%s'" % tmp_dir)
-    os.chdir(tmp_dir)
-    try:
-        atm = _solve_janus(atm, dirs, config, hf_row, hf_all, time, search_method, rtol)
-    finally:
-        os.chdir(cwd)
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+    with (
+        tempfile.TemporaryDirectory(
+            prefix='janus_', dir=dirs['temp'], ignore_cleanup_errors=True
+        ) as tmp_dir,
+        contextlib.chdir(tmp_dir),
+    ):
+        log.debug("Will run socrates inside '%s'" % tmp_dir)
+        atm = _solve_janus(atm, dirs, config, hf_row, hf_all)
 
     any_cloud = np.any(np.array(atm.clfr) > 1.0e-20)
     log.info('Water clouds have formed = %s' % (str(any_cloud)))

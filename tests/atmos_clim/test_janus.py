@@ -705,6 +705,19 @@ def test_run_janus_picks_the_solver_from_the_saturation_skin(
     assert (solver == 'MCPA_CBL') is (thickness > 0)
 
 
+def _run_janus_hf_row(time):
+    """Helpfile row with the fields RunJANUS reads, for an Earth-sized planet."""
+    return {'Time': time, 'R_int': 6.371e6, 'gravity': 9.81, 'p_xuv': 1e-3, 'T_surf': 1400.0}
+
+
+def _patch_run_janus_helpers(monkeypatch):
+    """Mock the state push and the observed-level lookup, covered by their own tests."""
+    monkeypatch.setattr(janus_mod, 'UpdateStateAtm', lambda *a, **kw: None)
+    monkeypatch.setattr(
+        janus_mod, 'get_oarr_from_parr', lambda p_arr, o_arr, val: (0, o_arr[-1])
+    )
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize('solver_fails', [False, True], ids=['solve-succeeds', 'solver-raises'])
 def test_run_janus_removes_its_socrates_folder_and_restores_cwd(
@@ -729,11 +742,8 @@ def test_run_janus_removes_its_socrates_folder_and_restores_cwd(
         return _build_run_atm(g_surf=9.81, z_obs_height=5.0e4, stale_grav=9.81)
 
     monkeypatch.setattr('janus.modules.MCPA', _solver)
-    monkeypatch.setattr(janus_mod, 'UpdateStateAtm', lambda *a, **kw: None)
-    monkeypatch.setattr(
-        janus_mod, 'get_oarr_from_parr', lambda p_arr, o_arr, val: (0, o_arr[-1])
-    )
-    hf_row = {'Time': 100.0, 'R_int': 6.371e6, 'gravity': 9.81, 'p_xuv': 1e-3, 'T_surf': 1400.0}
+    _patch_run_janus_helpers(monkeypatch)
+    hf_row = _run_janus_hf_row(100.0)
     dirs = {'output': str(tmp_path / 'out'), 'temp': str(run_temp)}
     cwd_before = os.getcwd()
 
@@ -747,68 +757,6 @@ def test_run_janus_removes_its_socrates_folder_and_restores_cwd(
     assert Path(seen['cwd']).parent == run_temp.resolve()
     assert os.getcwd() == cwd_before
     assert os.listdir(run_temp) == []
-
-
-def _run_janus_hf_row(time):
-    """Helpfile row with the fields RunJANUS reads, for an Earth-sized planet."""
-    return {'Time': time, 'R_int': 6.371e6, 'gravity': 9.81, 'p_xuv': 1e-3, 'T_surf': 1400.0}
-
-
-def _patch_run_janus_helpers(monkeypatch):
-    """Mock the state push and the observed-level lookup, covered by their own tests."""
-    monkeypatch.setattr(janus_mod, 'UpdateStateAtm', lambda *a, **kw: None)
-    monkeypatch.setattr(
-        janus_mod, 'get_oarr_from_parr', lambda p_arr, o_arr, val: (0, o_arr[-1])
-    )
-
-
-@pytest.mark.unit
-@pytest.mark.physics_invariant
-@pytest.mark.parametrize(
-    ('prevent_warming', 't_surf_max'),
-    [(False, -1.0), (True, 1850.0)],
-    ids=['interior-may-warm', 'interior-warming-capped'],
-)
-def test_run_janus_conductive_lid_starts_from_the_previous_step(
-    monkeypatch, tmp_path, prevent_warming, t_surf_max
-):
-    """After the first step the conductive-lid solve starts from the previous T_surf.
-
-    The root-finding tolerance is rtol * |F_atm| + 1e-5 W m-2 from the previous
-    row, the initial guess is 1 K below the previous T_surf, and with
-    prevent_warming the previous T_surf caps the solution so the interior does
-    not heat up.
-    """
-    seen = {}
-
-    def _mcpa_cbl(*a, **kw):
-        seen.update(kw)
-        return _build_run_atm(g_surf=9.81, z_obs_height=5.0e4, stale_grav=9.81)
-
-    monkeypatch.setattr('janus.modules.MCPA_CBL', _mcpa_cbl)
-    _patch_run_janus_helpers(monkeypatch)
-    config = _build_run_config()
-    config.atmos_clim.surf_state = 'skin'
-    config.planet.prevent_warming = prevent_warming
-    # A cooling planet: negative net flux, so a missing abs() gives a negative tolerance
-    hf_all = pd.DataFrame({'T_surf': [1900.0, 1850.0], 'F_atm': [-300.0, -250.0]})
-
-    RunJANUS(
-        SimpleNamespace(),
-        {'output': str(tmp_path), 'temp': str(tmp_path)},
-        config,
-        _run_janus_hf_row(1e3),
-        hf_all,
-    )
-
-    assert seen['atol'] == pytest.approx(1e-4 * 250.0 + 1e-5, rel=1e-12)
-    assert seen['atol'] > 0
-    # Discrimination: the first-step tolerance of 0.1 W m-2 is 4x larger
-    assert seen['atol'] != pytest.approx(0.1, rel=0.5)
-    assert seen['T_surf_guess'] == pytest.approx(1849.0, rel=1e-12)
-    assert seen['T_surf_max'] == pytest.approx(t_surf_max, rel=1e-12)
-    # The cap, when set, is the last row's T_surf and not an earlier one
-    assert seen['T_surf_max'] != pytest.approx(1900.0, rel=1e-6)
 
 
 @pytest.mark.unit
@@ -838,18 +786,25 @@ def test_run_janus_refuses_an_unknown_surface_state_and_cleans_up(monkeypatch, t
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(
-    ('time', 'with_history'),
-    [(0.0, True), (1e3, False)],
-    ids=['first-step', 'no-history'],
+    ('time', 'with_history', 'prevent_warming', 'atol', 'guess', 't_surf_max'),
+    [
+        (1e3, True, False, 1e-4 * 250.0 + 1e-5, 1849.0, -1.0),
+        (1e3, True, True, 1e-4 * 250.0 + 1e-5, 1849.0, 1850.0),
+        (0.0, True, True, 0.1, -2.0, -1.0),
+        (1e3, False, True, 0.1, -2.0, -1.0),
+    ],
+    ids=['interior-may-warm', 'interior-warming-capped', 'first-step', 'no-history'],
 )
-def test_run_janus_conductive_lid_first_step_uses_fixed_tolerance(
-    monkeypatch, tmp_path, time, with_history
+def test_run_janus_conductive_lid_starts_from_the_previous_step(
+    monkeypatch, tmp_path, time, with_history, prevent_warming, atol, guess, t_surf_max
 ):
-    """At Time = 0, or without earlier rows, the conductive-lid solve has nothing to start from.
+    """The conductive-lid solve starts from the previous step when there is one.
 
-    It then uses a fixed 0.1 W m-2 tolerance, an initial guess of -2 K (the
-    unset previous temperature of -1 K, minus 1 K) and no warming cap, even
-    with prevent_warming set.
+    After the first step the tolerance is 1e-4 * |F_atm| + 1e-5 W m-2 from the
+    last row, the initial guess is 1 K below its T_surf, and prevent_warming caps
+    the solution at that T_surf so the interior does not heat up. At Time = 0 or
+    without earlier rows the tolerance is 0.1 W m-2, the guess -2 K (the unset
+    -1 K minus 1 K) and there is no cap.
     """
     seen = {}
 
@@ -861,19 +816,22 @@ def test_run_janus_conductive_lid_first_step_uses_fixed_tolerance(
     _patch_run_janus_helpers(monkeypatch)
     config = _build_run_config()
     config.atmos_clim.surf_state = 'skin'
-    config.planet.prevent_warming = True
-    hf_all = pd.DataFrame({'T_surf': [1850.0], 'F_atm': [-250.0]}) if with_history else None
+    config.planet.prevent_warming = prevent_warming
+    # A cooling planet: negative net flux, so a missing abs() gives a negative tolerance
+    history = pd.DataFrame({'T_surf': [1900.0, 1850.0], 'F_atm': [-300.0, -250.0]})
+    dirs = {'output': str(tmp_path), 'temp': str(tmp_path)}
 
     RunJANUS(
         SimpleNamespace(),
-        {'output': str(tmp_path), 'temp': str(tmp_path)},
+        dirs,
         config,
         _run_janus_hf_row(time),
-        hf_all,
+        history if with_history else None,
     )
 
-    assert seen['atol'] == pytest.approx(0.1, rel=1e-12)
-    assert seen['T_surf_guess'] == pytest.approx(-2.0, rel=1e-12)
-    assert seen['T_surf_max'] == pytest.approx(-1.0, rel=1e-12)
-    # Discrimination: the history-based tolerance would be 1e-4 * 250 + 1e-5
-    assert seen['atol'] != pytest.approx(0.02501, rel=0.5)
+    assert seen['atol'] == pytest.approx(atol, rel=1e-12)
+    assert seen['atol'] > 0
+    assert seen['T_surf_guess'] == pytest.approx(guess, rel=1e-12)
+    assert seen['T_surf_max'] == pytest.approx(t_surf_max, rel=1e-12)
+    # The cap, when set, is the last row's T_surf and not an earlier one
+    assert seen['T_surf_max'] != pytest.approx(1900.0, rel=1e-6)
