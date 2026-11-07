@@ -31,7 +31,7 @@ from aragog.parser import (
     _SolverParameters,
 )
 from proteus.accretion.common import snap_to_impact
-from proteus.atmos_clim.common import lid_flux_cap
+from proteus.atmos_clim.common import lid_acts, lid_flux_cap
 from proteus.interior_energetics import aragog_core, aragog_resume
 from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
 from proteus.interior_energetics.aragog_phase import (
@@ -2228,7 +2228,7 @@ class AragogRunner:
         # Update boundary conditions (F_atm from atmosphere module); the open part of a live
         # lid takes lid_F_open, also checked against the solver, since a resume can turn it off
         bc = solver.parameters.boundary_conditions
-        live = getattr(bc, 'subgrid_lid', False) and float(hf_row.get('lid_weight', 0.0)) > 0.0
+        live = getattr(bc, 'subgrid_lid', False) and lid_acts(hf_row)
         bc.outer_boundary_value = hf_row['lid_F_open'] if live else hf_row['F_atm']
         _set_lid_surface(solver.parameters.boundary_conditions, hf_row)
 

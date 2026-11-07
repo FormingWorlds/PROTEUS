@@ -439,3 +439,32 @@ def test_a_step_that_starts_with_a_lid_books_its_integral_when_the_lid_ends(end_
     assert got == pytest.approx(15500.0, rel=1e-12)
     no_lid = {'F_atm': 15000.0, 'Time': 30000.0, 'lid_weight': 0.0}
     assert _surface_flux_of_step(out, no_lid, 'flux', 30025.0) == 15000.0
+
+
+def test_a_weight_without_a_conductance_is_no_lid_on_every_path():
+    """A row with a lid weight but no lid conductance is no lid for the atmosphere call, the
+    cap, the open-surface flux and the boundary value of the interior alike."""
+    row = _row(0.5, G=0.0, T_surf=1300.0, F_atm=7.0, lid_F_open=120000.0)
+    assert lid_boundary(row) == (0.01, 2.0, 1450.0)
+    assert lid_flux_cap(row) is None
+    assert lid_open_flux(row) == 7.0
+    bc = SimpleNamespace(
+        outer_boundary_condition=4,
+        subgrid_lid=True,
+        lid_mush_base=True,
+        outer_boundary_value=None,
+        lid_surface_temperature=None,
+        lid_surface_flux_cap=None,
+        equilibrium_temperature=None,
+    )
+    params = SimpleNamespace(
+        solver=SimpleNamespace(start_time=None, end_time=None),
+        boundary_conditions=bc,
+        energy=SimpleNamespace(tidal_array=None),
+    )
+    interior_o = SimpleNamespace(
+        aragog_solver=SimpleNamespace(parameters=params, solution=None), tides=np.zeros(3)
+    )
+    row.update(Time=1.0, T_eqm=255.0)
+    AragogRunner.update_solver(1.0, row, interior_o)
+    assert bc.outer_boundary_value == 7.0

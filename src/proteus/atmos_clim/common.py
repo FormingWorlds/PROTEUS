@@ -421,6 +421,14 @@ def _lid_skin_conductance(hf_row: dict) -> float:
     return k / d
 
 
+def lid_acts(hf_row: dict) -> bool:
+    """True where the row has a live lid: a lid weight and a lid conductance above 0."""
+    return (
+        float(hf_row.get('lid_weight', 0.0)) > 0.0
+        and float(hf_row.get('lid_conductance', 0.0)) > 0.0
+    )
+
+
 def lid_boundary(hf_row: dict) -> tuple[float, float, float]:
     """Skin and melt temperature for the surface balance of the atmosphere.
 
@@ -444,9 +452,9 @@ def lid_boundary(hf_row: dict) -> tuple[float, float, float]:
         float(hf_row['boundary_layer_thickness']),
         float(hf_row['boundary_layer_conductivity']),
     )
-    w, G_lid = float(hf_row.get('lid_weight', 0.0)), float(hf_row.get('lid_conductance', 0.0))
-    if not (w > 0.0 and G_lid > 0.0):
+    if not lid_acts(hf_row):
         return d, k, float(hf_row['T_magma'])
+    w, G_lid = float(hf_row['lid_weight']), float(hf_row['lid_conductance'])
     G_skin = _lid_skin_conductance(hf_row)
     G_lid = min(G_lid, G_skin)
     G = w * G_lid + (1.0 - w) * G_skin
@@ -473,9 +481,9 @@ def lid_flux_cap(hf_row: dict) -> float | None:
     float or None
         The cap, or None without a lid or for a surface at or above ``T_b``.
     """
-    w, G_lid = float(hf_row.get('lid_weight', 0.0)), float(hf_row.get('lid_conductance', 0.0))
-    if not (w > 0.0 and G_lid > 0.0):
+    if not lid_acts(hf_row):
         return None
+    G_lid = float(hf_row['lid_conductance'])
     C = min(G_lid, _lid_skin_conductance(hf_row)) * (
         float(hf_row['lid_T_base']) - float(hf_row['T_surf'])
     )
@@ -495,7 +503,7 @@ def lid_open_flux(hf_row: dict) -> float:
     float
         ``G_skin (T_node - T_surf)`` where a lid acts, otherwise ``F_atm``.
     """
-    if not (float(hf_row.get('lid_weight', 0.0)) > 0.0):
+    if not lid_acts(hf_row):
         return float(hf_row['F_atm'])
     return _lid_skin_conductance(hf_row) * (
         float(hf_row['lid_T_node']) - float(hf_row['T_surf'])
