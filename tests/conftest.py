@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -74,6 +75,15 @@ def _restore_fwl_logger():
     logger.setLevel(level)
     logger.handlers[:] = handlers
     sys.excepthook = hook
+
+
+@pytest.fixture(autouse=True)
+def _restore_sigterm_handler():
+    """`proteus start` and the inference `serve` install a SIGTERM handler; put the
+    earlier one back after each test."""
+    before = signal.getsignal(signal.SIGTERM)
+    yield
+    signal.signal(signal.SIGTERM, before)
 
 
 @pytest.fixture(autouse=True)
