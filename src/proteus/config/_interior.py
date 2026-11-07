@@ -184,7 +184,14 @@ def _check_aragog_rheology_module(interior) -> None:
 
 
 def _check_aragog_lid(interior) -> None:
-    """Reject the Aragog sub-grid lid where Aragog refuses it or where it cannot act."""
+    """Reject the Aragog sub-grid lid where Aragog refuses it or where it cannot act.
+
+    ``lid_mush_base`` needs the Aragog module, the solid rheology, the flux surface mode, a
+    diffusivity floor ``kappah_floor > 0`` and the EOS tables, and refuses the ``gradient``
+    and ``bower2018`` core boundaries and ``param_utbl``. Aragog refuses an onset thickness at
+    or above 0.7 of the top-cell width at setup; the atmosphere-side rules are in
+    ``lid_requires_the_skin_atmosphere``.
+    """
     aragog = interior.aragog
     if not aragog.lid_mush_base:
         return
@@ -211,6 +218,16 @@ def _check_aragog_lid(interior) -> None:
         raise ValueError(
             f'{key} cannot be used with interior_energetics.param_utbl = true: the lid replaces '
             'the surface flux that the ultra-thin boundary layer acts on'
+        )
+    if not interior.kappah_floor > 0.0:
+        raise ValueError(
+            f'{key} needs interior_energetics.kappah_floor > 0, got {interior.kappah_floor!r}: '
+            'the base flux of the mush base is the floor flux'
+        )
+    if interior.const_properties:
+        raise ValueError(
+            f'{key} cannot be used with interior_energetics.const_properties = true: the lid '
+            'needs the EOS tables'
         )
 
 
@@ -460,12 +477,14 @@ class Aragog:
     Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5;
     from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2."""
     allow_resume_law_change: bool = field(default=False, validator=_valid_bool)
-    """Let a resume change separation_viscosity or separation_buoyancy from the values
-    in the run's init_coupler.toml, with one warning per switched law in the log. False
-    stops such a resume, because the changed law would act from the resume row on. A law
-    the record does not hold must be set in the config file either way; a record that
-    names the Aragog module and lacks separation_viscosity counts as 'melt', and a record
-    of another interior module holds neither law. init_coupler.toml records false."""
+    """Let a resume change separation_viscosity, separation_buoyancy, rheology.enabled or
+    lid_mush_base from the values in the run's init_coupler.toml, with one warning per
+    switched law in the log. False stops such a resume, because the changed law would act
+    from the resume row on. A law the record does not hold must be set in the config file
+    either way; a record that names the Aragog module and lacks separation_viscosity counts
+    as 'melt', one that lacks the rheology or lid_mush_base counts as off, and a record of
+    another interior module holds none of them. Without a readable record the rheology and
+    the lid are not checked. init_coupler.toml records false."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),
@@ -496,7 +515,11 @@ class Aragog:
     """Solid-state mantle rheology of the Aragog solver."""
 
     lid_mush_base: bool = field(default=False, validator=_valid_bool)
-    """Run the sub-grid lid with its base at the solidus (needs the rheology on)."""
+    """Run the sub-grid lid with its base at the solidus. It needs the Aragog module with the
+    solid rheology, surface_bc_mode = 'flux', kappah_floor > 0, the EOS tables and the dummy
+    or AGNI atmosphere with surf_state = 'skin', and is refused with core_bc gradient or
+    bower2018 and with param_utbl.
+    A resume that changes it stops unless allow_resume_law_change is true."""
 
     lid_delta_on: float | str | None = field(
         default=None, converter=none_if_none, validator=_valid_lid_delta_on

@@ -85,6 +85,8 @@ POST_INIT_CHECKS = {
             'interior_energetics.aragog.lid_mush_base',
             'interior_energetics.aragog.rheology.enabled',
             'interior_energetics.aragog.core_bc',
+            'interior_energetics.kappah_floor',
+            'interior_energetics.const_properties',
         ),
     },
 }

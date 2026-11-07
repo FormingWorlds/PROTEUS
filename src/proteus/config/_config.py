@@ -512,7 +512,10 @@ def observe_resolved_atmosphere(instance, attribute, value):
 
 
 def lid_requires_the_skin_atmosphere(instance, attribute, value):
-    """A live Aragog lid acts on the atmosphere only through the skin of AGNI or the dummy."""
+    """A live Aragog lid acts on the atmosphere only through the skin of AGNI or the dummy.
+
+    The interior-side rules of the lid are in ``_interior._check_aragog_lid``.
+    """
     ie = instance.interior_energetics
     if ie.module != 'aragog' or not ie.aragog.lid_mush_base:
         return
