@@ -464,6 +464,39 @@ def lid_boundary(hf_row: dict) -> tuple[float, float, float]:
     return k / G, k, T_melt / G
 
 
+# smallest surface step [K] of the 2 rows that give the slope of the lid cap
+LID_SLOPE_DT_MIN = 0.01
+
+
+def lid_flux_slope(hf_all, hf_row: dict) -> float:
+    """Slope ``F'`` [W m-2 K-1] of ``F_atm`` with ``T_surf`` over the last 2 rows, for the lid cap.
+
+    Parameters
+    ----------
+    hf_all : pandas.DataFrame or None
+        Helpfile rows, with or without the current row as the last one.
+    hf_row : dict
+        Current helpfile row, with ``Time``, ``T_surf`` and ``F_atm``.
+
+    Returns
+    -------
+    float
+        ``(F_atm - F_atm before) / (T_surf - T_surf before)``; 0 without a row before, for a
+        surface step below ``LID_SLOPE_DT_MIN``, for a slope of 0 or below, or a non-finite one.
+    """
+    if hf_all is None or len(hf_all) == 0:
+        return 0.0
+    k = -2 if float(hf_all['Time'].iloc[-1]) == float(hf_row['Time']) else -1
+    if len(hf_all) < -k:
+        return 0.0
+    prev = hf_all.iloc[k]
+    dT = float(hf_row['T_surf']) - float(prev['T_surf'])
+    if not abs(dT) >= LID_SLOPE_DT_MIN:
+        return 0.0
+    slope = (float(hf_row['F_atm']) - float(prev['F_atm'])) / dT
+    return slope if np.isfinite(slope) and slope > 0.0 else 0.0
+
+
 def lid_flux_cap(hf_row: dict) -> float | None:
     """Largest surface flux [W m-2] of the lid in the next interior step, or None.
 

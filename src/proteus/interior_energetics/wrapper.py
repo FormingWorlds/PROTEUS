@@ -2442,6 +2442,29 @@ def _core_module_status(config: Config, dirs: dict):
         raise
 
 
+def lid_flux_provider(config, hf_row: dict):
+    """Flux of the atmosphere [W m-2] at a surface temperature, for the lid-cap corrector.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration options for PROTEUS.
+    hf_row : dict
+        Current helpfile row.
+
+    Returns
+    -------
+    callable or None
+        ``T_surf -> F_atm`` for the dummy atmosphere; None for the other modules, which take the
+        slope of the rows without the corrector.
+    """
+    if config.atmos_clim.module == 'dummy':
+        from proteus.atmos_clim.dummy import net_flux
+
+        return lambda T: net_flux(config, hf_row, T)
+    return None
+
+
 def run_interior(
     dirs: dict,
     config: Config,
@@ -2561,6 +2584,7 @@ def run_interior(
 
         with _core_module_status(config, dirs):
             runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
+        runner._lid_flux_at = lid_flux_provider(config, hf_row)
         try:
             with _core_module_status(config, dirs):
                 sim_time, output = runner.run_solver(

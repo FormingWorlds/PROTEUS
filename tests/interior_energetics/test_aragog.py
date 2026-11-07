@@ -3678,7 +3678,7 @@ def test_resume_restores_the_cmb_entropy_gradient(core_bc, stored, status, caplo
     def _setup(config, hf_row, interior_o, outdir):
         interior_o.aragog_solver = solver
 
-    def _update(dt, hf_row, interior_o, output_dir=None):
+    def _update(dt, hf_row, interior_o, output_dir=None, hf_all=None):
         interior_o._last_entropy = S_snap
         interior_o._last_dSdr_cmb = stored
         interior_o._last_dSdr_cmb_status = status
@@ -5365,7 +5365,7 @@ def _first_call(pending, S_snap=_S_SNAP):
         patch.object(
             AragogRunner,
             '_replay_structure_update',
-            side_effect=lambda c, row, i, dt: calls.replay(row, dt),
+            side_effect=lambda c, row, i, dt, hf_all=None: calls.replay(row, dt),
         ),
     ):
         AragogRunner.setup_or_update_solver(
@@ -5588,7 +5588,9 @@ def test_the_structure_update_resets_after_the_refresh_and_hands_the_entropy_las
             patch.object(
                 AragogRunner, 'update_structure', side_effect=lambda *a: calls.structure()
             ),
-            patch.object(AragogRunner, 'update_solver', side_effect=lambda *a: calls.solver()),
+            patch.object(
+                AragogRunner, 'update_solver', side_effect=lambda *a, **k: calls.solver()
+            ),
             patch.object(
                 AragogRunner, '_refresh_entropy_eos', side_effect=lambda *a: calls.refresh()
             ),

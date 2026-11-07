@@ -18,6 +18,29 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 # Run the dummy atmosphere module
+def _fluxes(config: Config, hf_row: dict, x: float) -> dict:
+    """Longwave, shortwave and net flux [W m-2] of the dummy atmosphere at the surface ``x`` [K]."""
+    gamma = config.atmos_clim.dummy.gamma
+    albedo_pl = float(hf_row['albedo_pl'])
+    albedo_s = config.atmos_clim.surf_greyalbedo
+    fl_U_LW = const_sigma * (x - gamma * x) ** 4.0
+    fl_D_SW = (
+        hf_row['F_ins']
+        * (1.0 - albedo_pl)
+        * config.orbit.s0_factor
+        * np.cos(config.orbit.zenith_angle * np.pi / 180.0)
+    )
+    fl_U_SW = fl_D_SW * albedo_s
+    fl_D_SW = fl_D_SW * (1.0 - albedo_s)
+    fl_N = fl_U_LW + fl_U_SW - fl_D_SW
+    return {'fl_U_LW': fl_U_LW, 'fl_D_SW': fl_D_SW, 'fl_U_SW': fl_U_SW, 'fl_N': fl_N}
+
+
+def net_flux(config: Config, hf_row: dict, T_surf: float) -> float:
+    """Net upward flux [W m-2] of the dummy atmosphere at the surface temperature ``T_surf`` [K]."""
+    return float(_fluxes(config, hf_row, T_surf)['fl_N'])
+
+
 def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     # Gas composition for escape equal to surface composition
     log.debug('Running dummy atmosphere...')
@@ -60,11 +83,6 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
         return output
 
     # Parameters
-    gamma = config.atmos_clim.dummy.gamma
-    zenith_angle = config.orbit.zenith_angle
-    albedo_pl = float(hf_row['albedo_pl'])
-    inst_sf = config.orbit.s0_factor
-    albedo_s = config.atmos_clim.surf_greyalbedo
     skin_d, skin_k, T_melt = lid_boundary(hf_row)
     surf_state = effective_surf_state(config, hf_row)
 
@@ -73,20 +91,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
 
     # Simple rad trans
     def _calc_fluxes(x):
-        # surface emission and stellar flux
-        fl_U_LW = const_sigma * (x - gamma * x) ** 4.0
-        fl_D_SW = (
-            hf_row['F_ins'] * (1.0 - albedo_pl) * inst_sf * np.cos(zenith_angle * np.pi / 180.0)
-        )
-
-        # surface reflection
-        fl_U_SW = fl_D_SW * albedo_s
-        fl_D_SW = fl_D_SW * (1.0 - albedo_s)
-
-        # net flux at surface
-        fl_N = fl_U_LW + fl_U_SW - fl_D_SW
-
-        return {'fl_U_LW': fl_U_LW, 'fl_D_SW': fl_D_SW, 'fl_U_SW': fl_U_SW, 'fl_N': fl_N}
+        return _fluxes(config, hf_row, x)
 
     # fixed T_Surf
     if surf_state == 'fixed':

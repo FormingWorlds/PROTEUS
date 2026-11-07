@@ -18,6 +18,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pandas as pd
 import pytest
 
 pytest.importorskip('hypothesis')
@@ -33,6 +34,7 @@ from proteus.atmos_clim.common import (  # noqa: E402
     get_spfile_path,
     lid_boundary,
     lid_flux_cap,
+    lid_flux_slope,
     lid_open_flux,
     list_atmosphere_times,
     ncdf_flag_to_bool,
@@ -1060,3 +1062,40 @@ def test_cap_is_the_flux_the_call_gave_the_lid():
     assert lid_flux_cap(_row(1.0, T_surf=1400.0)) is None
     with pytest.raises(ValueError, match='needs a skin'):
         lid_flux_cap(_row(0.5, d=0.0, k=0.0, T_surf=900.0))
+
+
+def _rows(T, F):
+    return pd.DataFrame(
+        {'Time': [10.0 * (i + 1) for i in range(len(T))], 'T_surf': T, 'F_atm': F}
+    )
+
+
+def test_flux_slope_is_the_slope_of_the_last_two_rows():
+    """F' of the lid cap: (F_atm - F_atm before) / (T_surf - T_surf before), with hf_all holding
+    the current row or only the rows before it."""
+    hf_all = _rows([700.0, 701.0], [15000.0, 15087.0])
+    row = {'Time': 20.0, 'T_surf': 701.0, 'F_atm': 15087.0}
+    assert lid_flux_slope(hf_all, row) == pytest.approx(87.0, rel=1e-12)
+    assert lid_flux_slope(hf_all.iloc[:1], row) == pytest.approx(87.0, rel=1e-12)
+
+
+@pytest.mark.parametrize(
+    ('T', 'F'),
+    [
+        ([700.0, 700.005], [15000.0, 15087.0]),  # surface step below 0.01 K
+        ([700.0, 701.0], [15087.0, 15000.0]),  # flux falls as the surface warms
+        ([700.0, 701.0], [15000.0, float('nan')]),
+    ],
+)
+def test_flux_slope_is_zero_without_a_usable_slope(T, F):
+    """A surface step below 0.01 K, a slope of 0 or below, or a non-finite value give F' = 0."""
+    hf_all = _rows(T, F)
+    row = {'Time': 20.0, 'T_surf': T[1], 'F_atm': F[1]}
+    assert lid_flux_slope(hf_all, row) == 0.0
+
+
+def test_flux_slope_is_zero_without_a_row_before():
+    """No row before the current one gives F' = 0."""
+    row = {'Time': 10.0, 'T_surf': 700.0, 'F_atm': 15000.0}
+    assert lid_flux_slope(None, row) == 0.0
+    assert lid_flux_slope(_rows([700.0], [15000.0]), row) == 0.0

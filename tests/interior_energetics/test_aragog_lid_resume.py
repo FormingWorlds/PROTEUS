@@ -131,7 +131,7 @@ def test_resume_hands_the_snapshot_lid_to_the_solver(tmp_path, kind, caplog):
     def _setup(config, hf_row, interior_o, outdir, **kw):
         interior_o.aragog_solver = solver
 
-    def _update(dt, hf_row, interior_o, output_dir=None):
+    def _update(dt, hf_row, interior_o, output_dir=None, hf_all=None):
         interior_o._last_entropy = np.linspace(3100.0, 3000.0, 6)
 
     config = MagicMock()

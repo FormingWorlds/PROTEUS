@@ -1054,3 +1054,37 @@ def test_rundummyatm_solves_the_parallel_balance_of_a_lid():
     parallel = 0.5 * 100.0 * (1440.0 - T) + 0.5 * G_skin * (1550.0 - T)
     assert out['F_atm'] == pytest.approx(parallel, rel=1e-6)
     assert 0.0 < T < 1440.0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('surf_state', ['skin', 'fixed'])
+def test_dummy_net_flux_is_the_flux_of_the_run(surf_state):
+    """net_flux at the surface temperature of a RunDummyAtm call gives the F_atm of that call."""
+    from proteus.atmos_clim.dummy import RunDummyAtm, net_flux
+
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.5
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.1
+    config.atmos_clim.surf_state = surf_state
+    config.planet.prevent_warming = False
+    config.interior_energetics.module = 'aragog'
+    hf_row = {
+        'boundary_layer_thickness': 1000.0,
+        'boundary_layer_conductivity': 2.0,
+        'T_magma': 1800.0,
+        'T_surf': 1800.0,
+        'albedo_pl': 0.3,
+        'F_ins': 1361.0,
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+    }
+    out = RunDummyAtm({}, config, hf_row)
+    assert net_flux(config, hf_row, out['T_surf']) == pytest.approx(out['F_atm'], rel=1e-12)
+    T = 1500.0
+    want = const_sigma * (0.5 * T) ** 4 + 1361.0 * 0.7 * 0.1 - 1361.0 * 0.7 * 0.9
+    assert net_flux(config, hf_row, T) == pytest.approx(want, rel=1e-12)

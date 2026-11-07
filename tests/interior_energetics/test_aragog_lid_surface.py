@@ -11,9 +11,12 @@ from scipy.optimize import brentq
 from proteus.atmos_clim.common import lid_boundary, lid_flux_cap, lid_open_flux
 from proteus.interior_energetics.aragog import (
     AragogRunner,
+    _call_start,
     _lid_surface_of_row,
     _set_lid_surface,
     _surface_flux_of_step,
+    lid_cap_secant,
+    lid_resolve_skip,
 )
 from tests.atmos_clim.test_common import _row
 
@@ -417,3 +420,140 @@ def test_a_weight_without_a_conductance_is_no_lid_on_every_path():
     row.update(Time=1.0, T_eqm=255.0)
     AragogRunner.update_solver(1.0, row, interior_o)
     assert bc.outer_boundary_value == pytest.approx(7.0, rel=1e-15)
+
+
+def test_lid_surface_takes_the_slope_with_the_cap():
+    """The slope of the row goes to the solver with the cap; without a cap it is None."""
+    bc = SimpleNamespace(outer_boundary_condition=4, lid_mush_base=True)
+    _set_lid_surface(bc, _row(1.0, T_surf=900.0, F_atm=1.0), slope=87.0)
+    assert bc.lid_surface_flux_cap is not None
+    assert bc.lid_surface_flux_slope == 87.0
+    _set_lid_surface(bc, _row(0.0, T_surf=900.0, F_atm=1.0), slope=87.0)
+    assert bc.lid_surface_flux_cap is None
+    assert bc.lid_surface_flux_slope is None
+
+
+def test_secant_of_the_cap():
+    """The secant of the atmosphere flux between the held and the end surface, at least 0."""
+    assert lid_cap_secant(700.0, 710.0, 15000.0, 15870.0) == pytest.approx(87.0, rel=1e-12)
+    assert lid_cap_secant(700.0, 710.0, 15000.0, 14000.0) == 0.0
+
+
+@pytest.mark.parametrize(
+    ('tan', 'sec', 'skip'),
+    [
+        (0.0, 0.0, True),
+        (86.98, 86.98, True),
+        (86.98, 86.76, False),
+        (0.0, 0.0766, False),
+        (100.0, 100.05, True),
+    ],
+)
+def test_resolve_is_skipped_where_the_secant_is_the_tangent(tan, sec, skip):
+    """A re-solve with a secant within 1e-3 of the tangent changes nothing and is skipped."""
+    assert lid_resolve_skip(tan, sec) is skip
+
+
+def _corrector(T_end, F_end, tangent=0.0, flux_at=True):
+    """Runner and solver stubs: the solve records the slope and the start state it sees."""
+    bc = SimpleNamespace(
+        lid_surface_temperature=700.0,
+        lid_surface_flux_cap=1.0e4,
+        lid_surface_flux_slope=tangent,
+    )
+    solver = SimpleNamespace(
+        parameters=SimpleNamespace(
+            boundary_conditions=bc, solver=SimpleNamespace(end_time=110.0)
+        ),
+        _solution='start',
+        _lid_init='lid0',
+        _last_compression_J=1.0,
+    )
+    seen = []
+
+    def solve(hf_row, interior_o, S0_entry=None):
+        seen.append(
+            (
+                bc.lid_surface_flux_slope,
+                solver._solution,
+                solver._lid_init,
+                solver.parameters.solver.end_time,
+                S0_entry,
+            )
+        )
+        solver._solution, solver._lid_init = 'end', None
+        solver.parameters.solver.end_time = 99.0
+        return SimpleNamespace(lid_T_surface=T_end[len(seen) - 1])
+
+    runner = SimpleNamespace(
+        _solve_with_retry=solve, _lid_flux_at=(lambda T: F_end) if flux_at else None
+    )
+    interior_o = SimpleNamespace(aragog_solver=solver)
+    return runner, solver, interior_o, seen
+
+
+@pytest.mark.parametrize('T_end', [690.0, 700.0])
+def test_no_resolve_where_the_lid_ends_at_or_below_the_held_surface(T_end):
+    """The cap did not act at the end: the first solve stands."""
+    runner, solver, io, seen = _corrector([T_end], 0.0)
+    snap = _call_start(solver)
+    out = runner._solve_with_retry({}, io, 'S0')
+    assert AragogRunner._correct_lid_cap(runner, {'F_atm': 15000.0}, io, 'S0', out, snap) is out
+    assert len(seen) == 1
+    assert getattr(io, 'lid_cap_resolves', 0) == 0
+
+
+def test_resolve_takes_the_secant_from_the_start_of_the_call():
+    """Where the lid ends above the held surface the call runs again from its start state with
+    the secant as slope, once, and the count and wall time of the re-solve are kept."""
+    runner, solver, io, seen = _corrector([710.0, 705.0], 15870.0, tangent=0.0)
+    snap = _call_start(solver)
+    out = runner._solve_with_retry({}, io, 'S0')
+    out2 = AragogRunner._correct_lid_cap(runner, {'F_atm': 15000.0}, io, 'S0', out, snap)
+    assert out2.lid_T_surface == 705.0
+    assert len(seen) == 2
+    assert seen[1] == (pytest.approx(87.0, rel=1e-12), 'start', 'lid0', 110.0, 'S0')
+    assert io.lid_cap_resolves == 1
+    assert io.lid_cap_resolve_wall >= 0.0
+
+
+def test_resolve_is_skipped_or_off_without_a_provider():
+    """A secant equal to the tangent, or no flux provider, keeps the first solve."""
+    for kw in (dict(tangent=87.0), dict(tangent=0.0, flux_at=False)):
+        runner, solver, io, seen = _corrector([710.0], 15870.0, **kw)
+        snap = _call_start(solver)
+        out = runner._solve_with_retry({}, io, 'S0')
+        assert (
+            AragogRunner._correct_lid_cap(runner, {'F_atm': 15000.0}, io, 'S0', out, snap)
+            is out
+        )
+        assert len(seen) == 1
+
+
+def test_guard_and_corrector_on_a_saturating_flux():
+    """In the first row under a flux ceiling the surface jumps up while F_atm falls: the row slope
+    is below 0 and the guard sets F' = 0 (the cap alone). The lid then ends far above the held
+    surface, and the corrector runs the call again with the small secant of the ceiling."""
+    import pandas as pd
+
+    from proteus.atmos_clim.common import lid_flux_slope
+
+    hf_all = pd.DataFrame(
+        {
+            'Time': [29921.01, 29950.67],
+            'T_surf': [728.996, 819.271],
+            'F_atm': [15808.86, 13749.08],
+        }
+    )
+    row = {'Time': 29950.67, 'T_surf': 819.271, 'F_atm': 13749.08}
+    tangent = lid_flux_slope(hf_all, row)
+    assert tangent == 0.0
+    F_end = 13749.08 + 0.07658 * (1406.255 - 819.271)
+    runner, solver, io, seen = _corrector([1406.255, 1406.144], F_end, tangent=tangent)
+    solver.parameters.boundary_conditions.lid_surface_temperature = 819.271
+    snap = _call_start(solver)
+    out = runner._solve_with_retry({}, io, 'S0')
+    out2 = AragogRunner._correct_lid_cap(runner, row, io, 'S0', out, snap)
+    assert out2.lid_T_surface == 1406.144
+    assert seen[1][0] == pytest.approx(0.07658, rel=1e-9)
+    assert io.lid_cap_resolves == 1

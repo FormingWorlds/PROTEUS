@@ -61,9 +61,11 @@ with $\Delta E_\mathrm{surf}$ the surface energy integral of the step from Arago
 
 ### Rule 3: the atmosphere flux is the largest loss
 
-**Rule.** The lid surface can lose at most what the atmosphere sustains through the lid part of the surface. In the next interior step the lid surface flux $F_s$ obeys
+**Rule.** The lid surface loses what the atmosphere takes from the lid part at the surface. In the next interior step, where the lid held at $T_\mathrm{surf}$ would conduct more than
 
-$$F_s \le C = \min(G_\mathrm{lid}, G_\mathrm{skin})\,(T_b - T_\mathrm{surf}).$$
+$$C = \min(G_\mathrm{lid}, G_\mathrm{skin})\,(T_b - T_\mathrm{surf}),$$
+
+its surface warms to $T_s$ and carries $F_s = C + F' (T_s - T_\mathrm{surf})$, with $F'$ the slope of `F_atm` with the surface temperature: the flux of the atmosphere at the warmer surface to first order. $F' = 0$ is the cap alone, $F_s = C$.
 
 $C$ is the lid term of the last atmosphere balance (see the next section). At $w = 1$ that balance has only its lid term, so $C$ equals `F_atm` to the accuracy of the atmosphere solve.
 
@@ -71,8 +73,12 @@ $C$ is the lid term of the last atmosphere balance (see the next section). At $w
 
 - In the atmosphere call, `lid_boundary` caps $G_\mathrm{lid}$ at $G_\mathrm{skin}$, so a lid never conducts more than the open surface. With $T_b \le T_\mathrm{node}$ and $T_\mathrm{surf} \le T_\mathrm{node}$, the lid part then never loses more than the open part would at the same surface temperature.
 - `lid_flux_cap` computes $C$ from the row after the atmosphere step. `_set_lid_surface` passes it to Aragog as `lid_surface_flux_cap`, next to the held surface temperature `lid_surface_temperature`. Without a lid, or for a surface at or above $T_b$ ($C \le 0$), no cap is set.
+- `lid_flux_slope` takes $F'$ from the last 2 rows, $\Delta F_\mathrm{atm} / \Delta T_\mathrm{surf}$, and sets it to 0 for a surface step below 0.01 K or a slope of 0 or below. `_set_lid_surface` passes it with the cap as `lid_surface_flux_slope`.
+- After the step, where the lid surface ends above the held one, `_correct_lid_cap` takes the secant of the atmosphere flux between the held and the end surface, $(F_\mathrm{atm}(T_\mathrm{end}) - F_\mathrm{atm}) / (T_\mathrm{end} - T_\mathrm{surf})$, at least 0, and runs the step again from its start with the secant as $F'$, once. A secant within $10^{-3}$ of $F'$ changes nothing, so that re-solve is skipped. The log names each re-solve with its wall time and the running total. The flux at $T_\mathrm{end}$ comes from the atmosphere module: the dummy has it as a formula; the other modules have no corrector and take the slope of the rows alone.
 
-Aragog applies the cap: where the lid held at $T_\mathrm{surf}$ would conduct more than $C$, its surface carries $C$ at a warmer surface. With $G_\mathrm{lid} \le G_\mathrm{skin}$ the cap equals the flux of the held lid at the start of the step, so it acts where the held lid would conduct more than at that start. The held lid conducts $k f_s'(0) (T_b - T_\mathrm{surf}) / \delta$, and $f_s'(0)$ rises with the shape parameter $s$ of the profile, so the cap acts while the lid thins and while $s$ rises. Near the onset, where $G_\mathrm{lid} > G_\mathrm{skin}$, the cap lies below the flux of the held lid and can act from the start of the step.
+Aragog applies the cap: where the lid held at $T_\mathrm{surf}$ would conduct more than $C$, its surface carries $C + F' (T_s - T_\mathrm{surf})$ at a warmer surface. With $G_\mathrm{lid} \le G_\mathrm{skin}$ the cap equals the flux of the held lid at the start of the step, so it acts where the held lid would conduct more than at that start. The held lid conducts $k f_s'(0) (T_b - T_\mathrm{surf}) / \delta$, and $f_s'(0)$ rises with the shape parameter $s$ of the profile, so the cap acts while the lid thins and while $s$ rises. Near the onset, where $G_\mathrm{lid} > G_\mathrm{skin}$, the cap lies below the flux of the held lid and can act from the start of the step.
+
+**Where the guard and the corrector act.** In dummy runs with this rule: after a kick of $-5$ K on the held surface, the row slope (87.4 W m$^{-2}$ K$^{-1}$) lies within 2.2 % of the exact slope of the dummy flux (85.5), and the re-solve moves the end surface by 0.001 K. In the first row under a soft ceiling of the dummy flux, the surface rose from 729 to 819 K while `F_atm` fell, so the row slope is below 0 and the guard sets $F' = 0$. The lid then ended at 1406.3 K, far above the held 819.3 K; the corrector took the secant 0.0766 W m$^{-2}$ K$^{-1}$ and the step ended at 1406.1 K, as with the exact slope (secant 0.0770). The guard and the corrector, not the row slope alone, carry such a row.
 
 ## What the atmosphere call sees
 
