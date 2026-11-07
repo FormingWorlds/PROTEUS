@@ -483,8 +483,9 @@ class Aragog:
     from the resume row on. A law the record does not hold must be set in the config file
     either way; a record that names the Aragog module and lacks separation_viscosity counts
     as 'melt', one that lacks the rheology or lid_mush_base counts as off, and a record of
-    another interior module holds none of them. Without a readable record the rheology and
-    the lid are not checked. init_coupler.toml records false."""
+    another interior module holds none of them. A missing record, or one that names no module
+    and holds no Aragog table, leaves the rheology and the lid unchecked. init_coupler.toml
+    records false."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),

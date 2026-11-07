@@ -145,14 +145,23 @@ def check_resume_separation_laws(
         if old != new:
             switch(field, key, old, new, f' ({source})')
     # A record without the rheology table ran with the rheology off, one without
-    # lid_mush_base without the lid.
-    rheology = stored.get('rheology')
-    old = rheology.get('enabled', False) if isinstance(rheology, dict) else False
-    if old != aragog.rheology.enabled:
-        switch('rheology.enabled', RHEOLOGY_KEY, old, aragog.rheology.enabled)
-    old = bool(stored.get('lid_mush_base', False))
-    if old != aragog.lid_mush_base:
-        switch('lid_mush_base', LID_KEY, old, aragog.lid_mush_base)
+    # lid_mush_base without the lid; with no Aragog table at all neither is known.
+    if module is None and not stored:
+        for key, new in (
+            (RHEOLOGY_KEY, aragog.rheology.enabled),
+            (LID_KEY, aragog.lid_mush_base),
+        ):
+            notes.append(
+                (logging.INFO, f'{key} is not recorded for this run; it resumes under {new!r}')
+            )
+    else:
+        rheology = stored.get('rheology')
+        old = rheology.get('enabled', False) if isinstance(rheology, dict) else False
+        if old != aragog.rheology.enabled:
+            switch('rheology.enabled', RHEOLOGY_KEY, old, aragog.rheology.enabled)
+        old = bool(stored.get('lid_mush_base', False))
+        if old != aragog.lid_mush_base:
+            switch('lid_mush_base', LID_KEY, old, aragog.lid_mush_base)
     if refusals:
         raise ResumeSeparationLawError('Resume refused:\n  ' + '\n  '.join(refusals))
     for level, note in notes:

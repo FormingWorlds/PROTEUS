@@ -495,3 +495,34 @@ def test_resume_keeps_an_unchanged_lid(tmp_path, caplog):
     assert [
         r for r in caplog.records if r.name == LOGGER and r.levelno >= logging.WARNING
     ] == []
+
+
+@pytest.mark.parametrize(
+    'content',
+    [None, b'\x00 not toml [', b"[interior]\nmodule = 'aragog'\n"],
+    ids=['no file', 'unreadable file', 'record in the [interior] layout'],
+)
+def test_a_run_without_a_usable_record_does_not_check_the_rheology_or_the_lid(
+    tmp_path, caplog, content
+):
+    """With no record of the Aragog table the rheology and lid switches are not compared with
+    a guessed value: the resume with both on goes ahead and logs one note for each."""
+    out = tmp_path / 'run'
+    out.mkdir()
+    if content is not None:
+        (out / 'init_coupler.toml').write_bytes(content)
+    text = MINIMAL.read_text() + (
+        '\n[interior_energetics.aragog]\n'
+        "    separation_viscosity = 'mixture'\n    separation_buoyancy = 'mixture'\n"
+        '    lid_mush_base = true\n'
+        '[interior_energetics.aragog.rheology]\n    enabled = true\n'
+    )
+    path = tmp_path / 'user.toml'
+    path.write_text(text)
+    config = read_config_object(path)
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        assert check_resume_separation_laws(config, path, out) == []
+    noted = [r.getMessage() for r in caplog.records if r.name == LOGGER]
+    for key in ('rheology.enabled', 'lid_mush_base'):
+        mine = [m for m in noted if key in m]
+        assert len(mine) == 1 and 'not recorded' in mine[0] and 'True' in mine[0]
