@@ -3,7 +3,9 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import shutil
 import sys
+import tempfile
 import time
 from collections.abc import Mapping
 from datetime import datetime
@@ -87,6 +89,41 @@ def _status_on_missing_eos(start):
         except MissingReferenceData:
             UpdateStatusfile(self.directories, 20)
             raise
+
+    return wrapper
+
+
+def _run_temp_dir(start):
+    """Give ``start`` its own temporary folder as ``directories['temp']`` and remove it after.
+
+    The folder comes from `tempfile.mkdtemp` under ``$TMPDIR``, so runs sharing
+    a node never collide and other users cannot read it. It is removed whether
+    the run ends or fails. With DEBUG logging the output folder is used and kept.
+    """
+
+    @functools.wraps(start)
+    def wrapper(self, *args, **kwargs):
+        if self.config.params.out.logging == 'DEBUG':
+            self.directories['temp'] = self.directories['output']
+            return start(self, *args, **kwargs)
+
+        log = logging.getLogger('fwl.' + __name__)
+        temp = tempfile.mkdtemp(prefix='proteus_')
+        self.directories['temp'] = temp + '/'
+        try:
+            return start(self, *args, **kwargs)
+        except BaseException:
+            log.warning(
+                f'Removing temporary files in {temp}; set params.out.logging = '
+                "'DEBUG' to keep them in the output folder"
+            )
+            raise
+        finally:
+            self.directories.pop('temp', None)
+            try:
+                shutil.rmtree(temp)
+            except OSError as exc:
+                log.warning(f'Could not remove temporary folder {temp}: {exc}')
 
     return wrapper
 
@@ -598,6 +635,7 @@ class Proteus:
                     self.config.params.stop.solid.phi_crit,
                 )
 
+    @_run_temp_dir
     @_status_on_missing_eos
     def start(self, *, resume: bool = False, offline: bool = False):
         """Start PROTEUS simulation.

@@ -1380,10 +1380,16 @@ def test_proteus_start_clears_the_superliquidus_caches(monkeypatch):
     zal._SUPERLIQ_LAST_ANCHOR_FOR = (500.0, 'PALEOS-2phase:MgSiO3')
     zal._SUPERLIQ_FAILED[(100000, 500.0, 'x')] = common.InitialConditionError('old')
 
-    # Stop start() at its first import after the cache clear.
+    # Stop start() at its first import after the cache clear. DEBUG logging
+    # makes the run use its output folder, so no temporary folder is made.
+    runner = object.__new__(Proteus)
+    runner.config = SimpleNamespace(
+        params=SimpleNamespace(out=SimpleNamespace(logging='DEBUG'))
+    )
+    runner.directories = {'output': '/nonexistent/output/'}
     monkeypatch.setitem(sys.modules, 'proteus.accretion.common', None)
     with pytest.raises(ImportError):
-        Proteus.start(object.__new__(Proteus))
+        Proteus.start(runner)
     assert zal._SUPERLIQ_LAST_ANCHOR is None
     assert zal._SUPERLIQ_LAST_SURFACE is None
     assert zal._SUPERLIQ_LAST_ANCHOR_FOR is None

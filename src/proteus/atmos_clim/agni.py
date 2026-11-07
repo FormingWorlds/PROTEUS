@@ -31,7 +31,6 @@ from proteus.data import (
 from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
-    create_tmp_folder,
     format_subyear_time,
     mol_to_ele,
     multiple,
@@ -615,10 +614,10 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
 
     # Fast I/O folder. Decided before the spectral file, because AGNI writes the
     # prepared runtime.sf pair here and so this is where the cache reads from.
-    if (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == 'DEBUG'):
+    if config.atmos_clim.agni.verbosity >= 2:
         io_dir = dirs['output']
     else:
-        io_dir = create_tmp_folder()
+        io_dir = dirs['temp']
     log.info(f'Temporary-file working dir: {io_dir}')
 
     # Set when this run built a prepared spectral file that the cache does not
