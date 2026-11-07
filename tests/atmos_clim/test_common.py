@@ -19,6 +19,8 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from proteus.atmos_clim.common import (
     clip_radius_to_hill,
@@ -856,3 +858,35 @@ def test_clip_radius_to_hill_skips_when_disabled_or_unset():
     assert clip_radius_to_hill(_clip_config(), {'hill_radius': 0.0}, r) == r
     assert clip_radius_to_hill(_clip_config(), {'hill_radius': float('nan')}, r) == r
     assert clip_radius_to_hill(_clip_config(), {}, r) == r
+
+
+@pytest.mark.physics_invariant
+@given(
+    w=st.floats(1e-6, 1.0),
+    G_lid=st.floats(1e-3, 1e5),
+    d=st.floats(1e-4, 1.0),
+    k=st.floats(0.1, 10.0),
+    T_node=st.floats(300.0, 4000.0),
+    dT_b=st.floats(0.0, 500.0),
+    dT_s=st.floats(0.0, 3000.0),
+)
+@settings(max_examples=300, deadline=None)
+def test_the_lid_never_loses_more_than_the_open_surface(w, G_lid, d, k, T_node, dT_b, dT_s):
+    """Rule 3 of the lid coupling: with T_b <= T_node and T_surf <= T_node the call flux of
+    lid_boundary, k / d_call (T_melt - T_surf), is at most the flux of the open surface,
+    G_skin (T_node - T_surf), for every weight and lid conductance."""
+    from proteus.atmos_clim.common import lid_boundary
+
+    T_b, T_s = T_node - dT_b, T_node - dT_s
+    row = dict(
+        boundary_layer_thickness=d,
+        boundary_layer_conductivity=k,
+        T_magma=T_node,
+        lid_weight=w,
+        lid_conductance=G_lid,
+        lid_T_base=T_b,
+        lid_T_node=T_node,
+    )
+    d_call, k_call, T_melt = lid_boundary(row)
+    F_call, F_open = k_call / d_call * (T_melt - T_s), k / d * (T_node - T_s)
+    assert F_call <= F_open + 1e-12 * (abs(F_open) + k / d * T_node)
