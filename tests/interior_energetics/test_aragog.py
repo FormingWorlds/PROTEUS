@@ -4384,16 +4384,17 @@ def test_setup_solver_passes_no_core_module_params_on_default_config(tmp_path):
 @pytest.mark.unit
 @pytest.mark.parametrize('lid', [True, False])
 def test_setup_solver_passes_the_lid_onset_thickness_with_the_lid(tmp_path, lid):
-    """With the lid on, the boundary conditions get the onset thickness of the skin (0.02 m for
-    the default skin); without the lid they keep the Aragog default."""
+    """With the lid on, the boundary conditions get the onset thickness of the skin
+    (k_lid d / k = 3.0 x 0.03 / 1.5 = 0.06 m for this skin) and the two lid switches; without the
+    lid they keep the Aragog default and both switches are off."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     config = _make_aragog_config(struct_module='zalmoxis')
     config.interior_energetics.aragog.lid_mush_base = lid
     config.interior_energetics.aragog.lid_delta_on = None
-    config.interior_energetics.solid_cond = 4.0
-    config.atmos_clim.surface_d = 0.01
-    config.atmos_clim.surface_k = 2.0
+    config.interior_energetics.solid_cond = 3.0
+    config.atmos_clim.surface_d = 0.03
+    config.atmos_clim.surface_k = 1.5
     hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
     hf_row.update(R_core=3.48e6)
 
@@ -4409,8 +4410,9 @@ def test_setup_solver_passes_the_lid_onset_thickness_with_the_lid(tmp_path, lid)
         AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
 
     kwargs = mock_bc_cls.call_args.kwargs
+    assert kwargs['subgrid_lid'] is lid and kwargs['lid_mush_base'] is lid
     if lid:
-        assert kwargs['lid_delta_on'] == 0.02
+        assert kwargs['lid_delta_on'] == pytest.approx(0.06, rel=1e-14)
     else:
         assert 'lid_delta_on' not in kwargs
 
