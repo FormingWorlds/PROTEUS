@@ -2016,6 +2016,17 @@ def _partial_remelt_profile(solver, S_end: np.ndarray, S_molten: np.ndarray, f: 
     return remelt_entropy(S_end, S_molten, w)
 
 
+# Lid columns of the helpfile that a re-melt takes from the re-melted state.
+LID_COLUMNS = (
+    'lid_weight',
+    'lid_conductance',
+    'lid_delta',
+    'lid_T_surface',
+    'lid_T_base',
+    'lid_T_node',
+)
+
+
 def _remelt_aragog(
     config: Config, dirs: dict, hf_row: dict, interior_o, f: float = 1.0
 ) -> None:
@@ -2058,7 +2069,8 @@ def _remelt_aragog(
     stays the mantle's.
 
     The melt-state keys in ``hf_row`` (``T_magma``, ``T_cmb``, ``Phi_global``,
-    ``Phi_global_vol``, ``T_pot``, ``RF_depth``, ``M_mantle_liquid``, ``M_mantle_solid``)
+    ``Phi_global_vol``, ``T_pot``, ``RF_depth``, ``M_mantle_liquid``, ``M_mantle_solid``, and the
+    lid columns)
     and the profile arrays on ``interior_o`` are updated to the re-melted
     profile evaluated without time integration, so downstream modules on the
     impact iteration read the post-impact melt state.
@@ -2187,6 +2199,11 @@ def _remelt_aragog(
             'RF_depth',
         ):
             hf_row[key] = output[key]
+        # The lid columns of the re-melted state, so that the atmosphere of the impact
+        # iteration sees the molten surface, not the lid of the cooled mantle.
+        for key in LID_COLUMNS:
+            if key in output:
+                hf_row[key] = output[key]
         # Accretion excludes a stratified core, so the top of a re-melted core is its T_cmb.
         if core_module:
             hf_row['core_T_top'] = output['T_cmb']

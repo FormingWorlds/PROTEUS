@@ -7621,6 +7621,9 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     solver = FakeSolver(n_nodes=80)
     hf_row = {'Time': 250.0, 'M_mantle': 4.2e24, 'F_atm': 100.0}
     hf_row['boundary_layer_thickness'] = 0.01  # m, written by the skin step
+    hf_row['boundary_layer_conductivity'] = 2.0
+    # a live lid of the cooled mantle before the impact
+    hf_row.update(lid_weight=1.0, lid_conductance=400.0, lid_T_base=1440.0, lid_T_node=1500.0)
 
     # 1. evaluate_molten_state direct evaluation
     out = evaluate_molten_state(solver, hf_row)
@@ -7656,10 +7659,23 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
                 'Phi_global_vol': 0.73,
                 'T_pot': 3750.0,
                 'RF_depth': 0.05,
+                'lid_weight': 0.0,
+                'lid_conductance': 0.0,
+                'lid_delta': 0.01,
+                'lid_T_surface': 0.0,
+                'lid_T_base': 0.0,
+                'lid_T_node': 3860.0,
             }
         ),
     )
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
+    # The lid columns are those of the re-melted state, so the atmosphere of the impact
+    # iteration sees the molten surface, not the lid of the cooled mantle.
+    from proteus.atmos_clim.common import lid_boundary
+
+    assert hf_row['lid_weight'] == 0.0 and hf_row['lid_conductance'] == 0.0
+    assert hf_row['lid_T_node'] == 3860.0
+    assert lid_boundary(hf_row)[2] == hf_row['T_magma']
     # The skin thickness of the row [m] is what the re-melt output is built with
     assert helpfile_kwargs['surface_d'] == pytest.approx(0.01, rel=1e-12)
 
