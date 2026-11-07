@@ -476,6 +476,7 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
         'separation': 1.5e11,
         'semimajorax': 1.5e11,
         'eccentricity': 0.0,
+        'lid_F_open': -1.0,  # stale value; the call writes the open-surface flux
     }
     atm_output = {'albedo': 0.2, 'F_atm': 100.0}
 
@@ -500,6 +501,8 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
     assert run_janus.call_args.args[0] is seed
     assert atmos_o._atm is seed
     assert atmos_o._atm_janus_last is solved
+    # Without a lid the open-surface flux the interior takes is F_atm.
+    assert hf_row['lid_F_open'] == 100.0
 
 
 @pytest.mark.unit
