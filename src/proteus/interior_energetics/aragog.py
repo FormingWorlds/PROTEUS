@@ -558,10 +558,10 @@ def lid_delta_on_of(config) -> float:
         For a saturation skin without an explicit value: such a skin has no fixed thickness.
     """
     atm, ie = config.atmos_clim, config.interior_energetics
-    numeric = not isinstance(atm.surface_d, str) and not isinstance(atm.surface_k, str)
-    skin = (
-        float(ie.solid_cond) * float(atm.surface_d) / float(atm.surface_k) if numeric else None
-    )
+    # the skin validator makes surface_d and surface_k both numbers or both 'saturation'
+    skin = None
+    if not isinstance(atm.surface_d, str):
+        skin = float(ie.solid_cond) * float(atm.surface_d) / float(atm.surface_k)
     explicit = ie.aragog.lid_delta_on
     if explicit is None:
         if skin is None:
@@ -586,7 +586,7 @@ def lid_delta_on_of(config) -> float:
 
 def _lid_onset_out(interior_o) -> float:
     """Onset thickness [m] of the sub-grid lid in the solver, 0 without the lid or a solver."""
-    solver = getattr(interior_o, 'aragog_solver', None) if interior_o is not None else None
+    solver = getattr(interior_o, 'aragog_solver', None)
     bc = getattr(getattr(solver, 'parameters', None), 'boundary_conditions', None)
     if bc is None or not getattr(bc, 'subgrid_lid', False):
         return 0.0
