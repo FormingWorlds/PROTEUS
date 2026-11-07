@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
-# Run the dummy atmosphere module
 def _fluxes(config: Config, hf_row: dict, x: float) -> dict:
     """Longwave, shortwave and net flux [W m-2] of the dummy atmosphere at the surface ``x`` [K]."""
     gamma = config.atmos_clim.dummy.gamma
@@ -41,6 +40,7 @@ def net_flux(config: Config, hf_row: dict, T_surf: float) -> float:
     return float(_fluxes(config, hf_row, T_surf)['fl_N'])
 
 
+# Run the dummy atmosphere module
 def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     # Gas composition for escape equal to surface composition
     log.debug('Running dummy atmosphere...')
@@ -89,10 +89,6 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     # Copy variables
     T_magma = float(hf_row['T_magma'])
 
-    # Simple rad trans
-    def _calc_fluxes(x):
-        return _fluxes(config, hf_row, x)
-
     # fixed T_Surf
     if surf_state == 'fixed':
         log.info('Calculating fluxes with dummy atmosphere')
@@ -100,7 +96,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
             T_surf_atm = hf_row['T_surf']
         else:
             T_surf_atm = T_magma
-        fluxes = _calc_fluxes(T_surf_atm)
+        fluxes = _fluxes(config, hf_row, T_surf_atm)
 
     # conductive lid
     elif surf_state == 'skin':
@@ -111,14 +107,14 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
         # This function takes T_surf_atm as the input value, and returns fl_N - f_skn
         def _resid(x):
             F_skn = skin_k / skin_d * (T_melt - x)
-            _f = _calc_fluxes(x)
+            _f = _fluxes(config, hf_row, x)
             return _f['fl_N'] - F_skn
 
         r = root_scalar(
             _resid, method='secant', x0=T_magma, x1=T_magma - 10.0, xtol=1.0e-7, maxiter=40
         )
         T_surf_atm = float(r.root)
-        fluxes = _calc_fluxes(T_surf_atm)
+        fluxes = _fluxes(config, hf_row, T_surf_atm)
 
         if r.converged:
             log.debug('    Found solution after %d iterations' % int(r.iterations))

@@ -43,10 +43,9 @@ from proteus.interior_energetics.aragog_phase import (
 )
 from proteus.interior_energetics.common import Interior_t
 from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, TDEP_EOS_PREFIXES
-from proteus.utils.constants import secs_per_year
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
-from proteus.utils.constants import radnuc_data
+from proteus.utils.constants import radnuc_data, secs_per_year
 from proteus.utils.data import (
     RELOCATE_HINT,
     resolve_lookup_table_dir,
@@ -539,9 +538,8 @@ def _lid_surface_of_row(hf_row: dict, surface_bc_mode: str, lid_on: bool) -> flo
     return T_surf if lid_on and surface_bc_mode == 'flux' and T_surf > 0.0 else None
 
 
-LID_ONSET_TOLERANCE = (
-    0.10  # relative gap of an explicit lid_delta_on to the skin value that warns
-)
+# relative gap of an explicit lid_delta_on to the skin value that warns
+LID_ONSET_TOLERANCE = 0.10
 
 
 def lid_delta_on_of(config) -> float:
@@ -2298,9 +2296,7 @@ class AragogRunner:
         bc = solver.parameters.boundary_conditions
         live = getattr(bc, 'subgrid_lid', False) and lid_acts(hf_row)
         bc.outer_boundary_value = hf_row['lid_F_open'] if live else hf_row['F_atm']
-        _set_lid_surface(
-            solver.parameters.boundary_conditions, hf_row, lid_flux_slope(hf_all, hf_row)
-        )
+        _set_lid_surface(bc, hf_row, lid_flux_slope(hf_all, hf_row))
 
         # Update equilibrium temperature (tracks stellar luminosity evolution).
         # SPIDER receives fresh T_eqm at every call via -teqm (spider.py:748).
