@@ -617,10 +617,6 @@ def test_the_structure_update_hands_the_run_table_to_update_solver():
     assert got == [rows]
 
 
-class _CorrectorRan(Exception):
-    pass
-
-
 class _AfterSolve(Exception):
     pass
 
@@ -633,11 +629,14 @@ def test_run_solver_runs_the_corrector_on_the_first_solve():
         _S0=np.zeros(3), parameters=SimpleNamespace(solver=SimpleNamespace(end_time=1.0))
     )
 
+    second, built = SimpleNamespace(dt_actual=1.0), []
+
     def correct(hf_row, interior_o, S0_entry, out, snap):
         seen.append((out, S0_entry.copy(), snap))
-        raise _CorrectorRan
+        return second
 
-    def build(*a, **k):
+    def build(out, *a, **k):
+        built.append(out)
         raise _AfterSolve
 
     first = SimpleNamespace(dt_actual=1.0)
@@ -649,11 +648,12 @@ def test_run_solver_runs_the_corrector_on_the_first_solve():
         _config=SimpleNamespace(interior_energetics=SimpleNamespace(surface_bc_mode='flux')),
     )
     io = SimpleNamespace(aragog_solver=solver)
-    with pytest.raises((_CorrectorRan, _AfterSolve)):
+    with pytest.raises(_AfterSolve):
         AragogRunner.run_solver(
             runner, {'Time': 10.0, 'boundary_layer_thickness': 0.01}, io, {'output': '.'}
         )
     assert len(seen) == 1 and seen[0][0] is first
+    assert len(built) == 1 and built[0] is second  # built from the output of the corrector
     assert np.array_equal(seen[0][1], np.zeros(3))
     assert seen[0][2]['end_time'] == 1.0
 
@@ -691,3 +691,6 @@ def test_a_secant_from_a_non_finite_flux_is_zero(F_end):
     """A non-finite end flux gives the secant 0 (the cap alone), never a non-finite slope."""
     assert lid_cap_secant(700.0, 710.0, 15000.0, F_end) == 0.0
     assert lid_cap_secant(700.0, 710.0, float('nan'), 15870.0) == 0.0
+    assert (
+        lid_cap_secant(700.0, 700.0, 15000.0, 15001.0) == 0.0
+    )  # no step above the held surface
