@@ -4148,3 +4148,36 @@ def test_init_agni_atmos_sets_up_the_skin_in_effect(
         assert kwargs['skin_d'] == pytest.approx(expected[0], rel=1e-12)
         assert kwargs['skin_k'] == pytest.approx(expected[1], rel=1e-12)
         assert kwargs['skin_d'] > 0 and kwargs['skin_k'] > 0
+
+
+@pytest.mark.unit
+def test_update_agni_atmos_gives_the_lid_boundary_to_the_struct(monkeypatch):
+    """Under a full lid the AGNI struct gets the skin of the lid call: thickness k / G, the skin
+    conductivity and the lid base as the melt temperature, not the raw skin and T_magma."""
+    fake_agni = _ProfileAGNI()
+    _install_profile_fakes(monkeypatch, fake_agni)
+    atmos = _ProfileAtmosphere([1.0e1, 1.0e3, 1.0e5, 1.0e7], [200.0, 500.0, 1100.0, 1900.0])
+    hf_row = {
+        'boundary_layer_thickness': 0.01,
+        'boundary_layer_conductivity': 2.0,
+        'lid_weight': 1.0,
+        'lid_conductance': 100.0,
+        'lid_T_base': 1440.0,
+        'lid_T_node': 1550.0,
+        'F_ins': 1361.0,
+        'albedo_pl': 0.1,
+        'T_surf': 1300.0,
+        'T_magma': 2000.0,
+        'P_surf': 200.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'M_int': 6.0e24,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
+        'hill_radius': 6.4e8,
+    }
+    agni_mod.update_agni_atmos(atmos, hf_row, {'output': '/tmp/run'}, _build_profile_config())
+    assert atmos.skin_d == pytest.approx(0.02, rel=1e-14)
+    assert atmos.skin_k == 2.0
+    assert atmos.tmp_magma == pytest.approx(1440.0, rel=1e-14)
