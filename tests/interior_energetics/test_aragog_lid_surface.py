@@ -319,7 +319,15 @@ def test_an_explicit_lid_onset_thickness_is_used_and_warned_beyond_10_percent(ca
 
 
 @pytest.mark.parametrize(
-    ('delta_on', 'warns'), [(0.0219, False), (0.0181, False), (0.0221, True), (0.0179, True)]
+    ('delta_on', 'warns'),
+    [
+        (0.022, False),
+        (0.018, False),
+        (0.0219, False),
+        (0.0181, False),
+        (0.0221, True),
+        (0.0179, True),
+    ],
 )
 def test_the_lid_onset_warning_starts_at_10_percent_from_the_skin(caplog, delta_on, warns):
     """Values 9.5 % from the 0.02 m skin value pass quietly, values 10.5 % away warn."""

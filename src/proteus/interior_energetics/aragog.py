@@ -571,7 +571,8 @@ def lid_delta_on_of(config) -> float:
             )
         return skin
     value = float(explicit)
-    if skin is not None and abs(value / skin - 1.0) > LID_ONSET_TOLERANCE:
+    # the relative tolerance 1e-12 keeps both ends of the band inside it under round-off
+    if skin is not None and abs(value / skin - 1.0) > LID_ONSET_TOLERANCE * (1.0 + 1.0e-12):
         log.warning(
             'interior_energetics.aragog.lid_delta_on = %.6g m differs from the skin value '
             'solid_cond * surface_d / surface_k = %.6g m by more than %.0f %%: the lid onset '
