@@ -931,3 +931,32 @@ def test_the_aragog_lid_is_refused_where_it_cannot_act(interior, aragog, match):
     with pytest.raises(ValueError, match=match):
         build(interior, dict(aragog))
     assert build({}, {}).aragog.lid_mush_base is True
+
+
+def test_a_config_file_with_the_lid_and_janus_is_refused_at_load(tmp_path):
+    """The lid validator of atmos_clim runs when a config file loads: the lid with JANUS is
+    refused, the same file with the dummy atmosphere loads."""
+    from pathlib import Path
+
+    import tomlkit
+
+    from proteus.config import read_config_object
+
+    doc = tomlkit.parse((Path(__file__).parents[2] / 'input' / 'minimal.toml').read_text())
+    ie = doc.setdefault('interior_energetics', tomlkit.table())
+    ie['module'] = 'aragog'
+    ie['surface_bc_mode'] = 'flux'
+    ar = ie.setdefault('aragog', tomlkit.table())
+    ar['lid_mush_base'] = True
+    ar['rheology'] = {'enabled': True}
+    atm = doc.setdefault('atmos_clim', tomlkit.table())
+    atm['rayleigh'] = False  # the dummy atmosphere has no Rayleigh scattering
+    for module, refused in (('janus', True), ('dummy', False)):
+        atm['module'] = module
+        path = tmp_path / f'{module}.toml'
+        path.write_text(tomlkit.dumps(doc))
+        if refused:
+            with pytest.raises(ValueError, match='JANUS does not read the lid'):
+                read_config_object(path)
+        else:
+            assert read_config_object(path).interior_energetics.aragog.lid_mush_base is True
