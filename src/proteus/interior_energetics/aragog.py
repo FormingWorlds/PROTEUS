@@ -2224,12 +2224,11 @@ class AragogRunner:
         if S_field is not None:
             interior_o._last_entropy = S_field
 
-        # Update boundary conditions (F_atm from atmosphere module)
-        solver.parameters.boundary_conditions.outer_boundary_value = (
-            hf_row['lid_F_open']
-            if float(hf_row.get('lid_weight', 0.0)) > 0.0
-            else hf_row['F_atm']
-        )
+        # Update boundary conditions (F_atm from atmosphere module); the open part of a live
+        # lid takes lid_F_open, also checked against the solver, since a resume can turn it off
+        bc = solver.parameters.boundary_conditions
+        live = getattr(bc, 'subgrid_lid', False) and float(hf_row.get('lid_weight', 0.0)) > 0.0
+        bc.outer_boundary_value = hf_row['lid_F_open'] if live else hf_row['F_atm']
         _set_lid_surface(solver.parameters.boundary_conditions, hf_row)
 
         # Update equilibrium temperature (tracks stellar luminosity evolution).

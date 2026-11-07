@@ -433,3 +433,54 @@ def test_the_allow_switch_lets_the_rheology_switch_and_reports_it(tmp_path, capl
     ]
     assert len(warned) == 1
     assert 'rheology.enabled' in warned[0] and 'True' in warned[0] and 'False' in warned[0]
+
+
+def _lid_case(folder, stored_lid, new_lid, allow=False):
+    """A run directory recording lid_mush_base (no field when None) and a resume config file,
+    both with the rheology on, so that only the lid switch differs."""
+    out = _rheology_run(folder, True)
+    doc = tomlkit.parse((out / 'init_coupler.toml').read_text())
+    if stored_lid is None:
+        doc['interior_energetics']['aragog'].pop('lid_mush_base', None)
+    else:
+        doc['interior_energetics']['aragog']['lid_mush_base'] = stored_lid
+    (out / 'init_coupler.toml').write_text(tomlkit.dumps(doc))
+    text = MINIMAL.read_text() + (
+        '\n[interior_energetics.aragog]\n'
+        f'    lid_mush_base = {str(new_lid).lower()}\n'
+        f'    allow_resume_law_change = {str(allow).lower()}\n'
+        '[interior_energetics.aragog.rheology]\n    enabled = true\n'
+    )
+    path = Path(folder) / 'user.toml'
+    path.write_text(text)
+    return read_config_object(path), path, out
+
+
+@pytest.mark.parametrize(('stored', 'new'), [(True, False), (False, True), (None, True)])
+def test_resume_refuses_to_switch_the_lid(tmp_path, stored, new):
+    """A run keeps its lid switch at a resume; a record without the field ran without the lid."""
+    config, path, out = _lid_case(tmp_path, stored, new)
+    with pytest.raises(ResumeSeparationLawError, match='lid_mush_base'):
+        check_resume_separation_laws(config, path, out)
+
+
+def test_the_allow_switch_lets_the_lid_switch_and_reports_it(tmp_path, caplog):
+    """With allow_resume_law_change a run written with the lid resumes without it, returns the
+    switch and logs one warning naming the key."""
+    config, path, out = _lid_case(tmp_path, True, False, allow=True)
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert check_resume_separation_laws(config, path, out) == [
+            ('lid_mush_base', True, False)
+        ]
+    warned = [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == LOGGER and r.levelno == logging.WARNING
+    ]
+    assert len(warned) == 1 and 'lid_mush_base' in warned[0]
+
+
+def test_resume_keeps_an_unchanged_lid(tmp_path):
+    """The same lid switch on both sides gives no switch."""
+    config, path, out = _lid_case(tmp_path, True, True)
+    assert check_resume_separation_laws(config, path, out) == []

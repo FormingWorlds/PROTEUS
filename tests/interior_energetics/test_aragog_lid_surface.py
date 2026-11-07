@@ -345,13 +345,16 @@ def test_helpfile_carries_the_lid_onset_thickness(lid, want):
     assert _lid_onset_out(None) == 0.0
 
 
-@pytest.mark.parametrize('w', [0.0, 0.4, 1.0])
-def test_update_solver_passes_the_lid_boundary_of_the_row(w):
+@pytest.mark.parametrize(('w', 'lid'), [(0.0, True), (0.4, True), (1.0, True), (1.0, False)])
+def test_update_solver_passes_the_lid_boundary_of_the_row(w, lid):
     """The interior takes the open-surface flux of the row under a live lid and the flux of the
-    atmosphere without one, and holds the lid surface at the row surface with the row cap."""
+    atmosphere without one, and holds the lid surface at the row surface with the row cap. A
+    solver without the lid (a resume with the lid switched off) takes the flux of the atmosphere
+    even where the row still has a lid weight."""
     bc = SimpleNamespace(
         outer_boundary_condition=4,
-        lid_mush_base=True,
+        subgrid_lid=lid,
+        lid_mush_base=lid,
         outer_boundary_value=None,
         lid_surface_temperature=-1.0,
         lid_surface_flux_cap=-1.0,
@@ -369,9 +372,9 @@ def test_update_solver_passes_the_lid_boundary_of_the_row(w):
     row.update(Time=30000.0, T_eqm=255.0)
     AragogRunner.update_solver(25.0, row, interior_o)
     assert params.solver.end_time == pytest.approx(30025.0, rel=1e-15)
-    assert bc.outer_boundary_value == (165000.0 if w > 0.0 else 7000.0)
-    assert bc.lid_surface_temperature == 727.3
-    if w > 0.0:
+    assert bc.outer_boundary_value == (165000.0 if w > 0.0 and lid else 7000.0)
+    assert bc.lid_surface_temperature == (727.3 if lid else None)
+    if w > 0.0 and lid:
         assert bc.lid_surface_flux_cap == pytest.approx(21.9 * (1440.0 - 727.3), rel=1e-14)
     else:
         assert bc.lid_surface_flux_cap is None
