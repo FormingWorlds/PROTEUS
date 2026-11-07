@@ -41,7 +41,7 @@ $$F_\mathrm{int} = F_\mathrm{atm}\ \text{of the last atmosphere call}.$$
 - Aragog takes `F_atm` as its surface flux (the boundary update in `interior_energetics/aragog.py`);
 - `F_int` is assigned `F_atm` when no lid acts at the start or at the end of the step (`_surface_flux_of_step`).
 
-In the step in which the lid switches on, the lid acts at its end, so `F_int` is the step integral of Rule 2. The lid then holds its surface at the `T_surf` of the last atmosphere call, which lies close to $T_b$ at the onset (1.8 and 2.6 K below $T_b$ in two AGNI runs; the held surface is never closer than 1 K to $T_b$), so the lid conducts little. In those two runs that step lost 0.11 and 0.23 of the `F_atm` it started from.
+In the step in which the lid switches on, the lid acts at its end, so `F_int` is the step integral of Rule 2. The lid holds its surface at the `T_surf` of the last atmosphere call. Its weight is the existence weight of the steady crust under that surface (Aragog), so it grows from 0 as the surface falls below $T_b$, without a step. In two AGNI runs (drain step $\times 1$ and $\times 0.5$) the first lid row had $w = 3 \times 10^{-10}$ with the held surface 13.7 and 15.3 K below $T_b$, so that step booked the full `F_atm` it started from; $w$ passed 0.5 about 270 to 280 yr later, with the surface 77 and 79 K below $T_b$.
 
 ### Rule 2: the lid ledger
 
