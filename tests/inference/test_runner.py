@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import textwrap
@@ -351,3 +352,38 @@ def test_serve_answers_each_request_in_order_until_the_pipe_closes(monkeypatch, 
     ]
     # Every run is offline, as `proteus start --offline` is on the default dispatch.
     assert ran == [(str(tmp_path / n), True) for n in ('a.toml', 'bad.toml', 'b.toml')]
+
+
+def test_serve_records_status_25_when_sigterm_stops_a_run(monkeypatch, tmp_path):
+    """SLURM sends SIGTERM at the time limit. In the reused process it ends the run through
+    the status guard of `Proteus.start`, which records status 25, and the process exits
+    with code 143; without the handler the run would keep status 1 (running)."""
+    from proteus.proteus import _status_on_exit
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
+    class _Proteus:
+        def __init__(self, config_path):
+            self.directories = {'output': str(tmp_path)}
+
+        @_status_on_exit
+        def start(self, offline):
+            UpdateStatusfile(self.directories, 1)
+            os.kill(os.getpid(), signal.SIGTERM)
+
+    monkeypatch.setattr('proteus.proteus.Proteus', _Proteus)
+    request_r, request_w = os.pipe()
+    reply_r, reply_w = os.pipe()
+    with os.fdopen(request_w, 'w') as requests:
+        requests.write(json.dumps({'config': str(tmp_path / 'a.toml')}) + '\n')
+
+    before = signal.getsignal(signal.SIGTERM)
+    # Without the handler under test, this one takes the signal instead of pytest dying.
+    signal.signal(signal.SIGTERM, lambda *_: None)
+    try:
+        with pytest.raises(SystemExit) as stopped:
+            serve(request_r, reply_w)
+    finally:
+        signal.signal(signal.SIGTERM, before)
+        os.close(reply_r)
+    assert stopped.value.code == 143
+    assert ReadStatus(tmp_path) == 25
