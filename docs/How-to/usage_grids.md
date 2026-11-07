@@ -144,6 +144,8 @@ Add `-s` to find out which cases have a particular status. For example, the comm
 proteus grid-summarise -o output/grid_demo/ -s completed
 ```
 
+A case without a readable status file, because it stopped before PROTEUS wrote one, counts as unknown with code -1; `-s unknown` lists those cases together with any unrecognised codes, and `-s code=-1` lists them alone.
+
 ## Packaging grid results
 
 Use the CLI to package the results of a grid into a zip file; for example to share or back it up. The command below creates `pack.zip` in the `grid_demo/` folder. This does not store all the data for each case, only the most important files: the 1D resolved interior and atmospheric data are dropped, while files containing global parameters and auto-generated plots are preserved.
