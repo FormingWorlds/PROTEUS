@@ -12,7 +12,7 @@ import netCDF4 as nc
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 T_SNAP = 30039.3583587
 LIDS = {
     'live': (0.182886055149, -321606520.677, float('nan')),

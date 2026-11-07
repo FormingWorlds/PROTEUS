@@ -16,7 +16,7 @@ from proteus.interior_energetics.aragog import (
     _surface_flux_of_step,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 YEAR = 3.15576e7
 
 
@@ -60,6 +60,7 @@ def test_grey_body_mode_books_the_surface_node():
 
 
 @pytest.mark.parametrize('dt', [1.0, 10.0, 1000.0])
+@pytest.mark.physics_invariant
 def test_a_live_lid_books_the_integrated_flux_of_the_step(dt):
     """``F_int A dt = -step_dE_F_int_J``: the energy of the step and the booked flux agree."""
     out = _out(0.7)
@@ -108,6 +109,7 @@ def _row(w, G=4.0, T_b=1400.0, T_node=1500.0, **kw):
     )
 
 
+@pytest.mark.physics_invariant
 def test_boundary_is_the_skin_without_a_lid_and_a_parallel_sum_with_one():
     """Without a lid the call takes the skin and T_magma; with one the parallel sum of the two parts."""
     no_lid = {
@@ -158,6 +160,7 @@ def test_a_zero_skin_passes_without_a_lid_and_is_refused_with_one():
         lid_boundary(_row(0.5, d=0.0, k=2.0))
 
 
+@pytest.mark.physics_invariant
 def test_the_two_parts_sum_to_the_balance_of_the_atmosphere():
     """The weighted lid and open parts sum to the skin balance of the call."""
     row = _row(0.3, T_surf=900.0, F_atm=1.0)
@@ -175,6 +178,7 @@ def test_open_flux_without_a_lid_is_the_flux_of_the_atmosphere():
 
 
 @pytest.mark.parametrize('w', [0.01, 0.2, 0.5, 0.9, 1.0])
+@pytest.mark.physics_invariant
 def test_coupled_budget_of_a_step_closes_at_every_weight(w):
     """The balance of the atmosphere, the boundary value and the booked flux of one step.
 
@@ -449,6 +453,7 @@ def test_helpfile_carries_each_lid_column_from_its_field():
 
 
 @pytest.mark.parametrize('end_weight', [float('nan'), 0.0])
+@pytest.mark.physics_invariant
 def test_a_step_that_starts_with_a_lid_books_its_integral_when_the_lid_ends(end_weight):
     """A step that starts under a live lid and ends without one (hand-over, weight below the
     floor) books the flux of its step integral, not the F_atm the lid replaced."""

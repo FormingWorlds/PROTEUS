@@ -3319,7 +3319,6 @@ def test_setup_solver_property_tables_follow_the_generated_set(
 
 
 @pytest.mark.unit
-@pytest.mark.unit
 @pytest.mark.parametrize('enabled', [False, True])
 def test_setup_solver_passes_the_rheology_to_the_solid_phase(tmp_path, enabled):
     """The solid phase gets the rheology switch when it is on and no keyword when it is off;

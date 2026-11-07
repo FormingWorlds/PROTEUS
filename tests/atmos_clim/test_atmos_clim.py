@@ -1018,6 +1018,7 @@ def test_rundummyatm_saturation_skin_cools_the_surface_as_it_thickens():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_rundummyatm_solves_the_parallel_balance_of_a_lid():
     """Under a live lid the dummy finds the surface temperature of the parallel balance of the
     lid part (from the lid base) and the open part (from the top node), not of the skin and
