@@ -183,6 +183,37 @@ def _check_aragog_rheology_module(interior) -> None:
         )
 
 
+def _check_aragog_lid(interior) -> None:
+    """Reject the Aragog sub-grid lid where Aragog refuses it or where it cannot act."""
+    aragog = interior.aragog
+    if not aragog.lid_mush_base:
+        return
+    key = 'interior_energetics.aragog.lid_mush_base = true'
+    if interior.module != 'aragog':
+        raise ValueError(
+            f"{key} needs interior_energetics.module = 'aragog', got {interior.module!r}"
+        )
+    if not aragog.rheology.enabled:
+        raise ValueError(
+            f'{key} needs interior_energetics.aragog.rheology.enabled = true: the lid base of the '
+            'mush base needs the solid rheology'
+        )
+    if interior.surface_bc_mode != 'flux':
+        raise ValueError(
+            f"{key} needs interior_energetics.surface_bc_mode = 'flux', got "
+            f'{interior.surface_bc_mode!r}: the lid takes its surface from the atmosphere'
+        )
+    if aragog.core_bc in ('gradient', 'bower2018'):
+        raise ValueError(
+            f'{key} cannot be used with interior_energetics.aragog.core_bc = {aragog.core_bc!r}'
+        )
+    if interior.param_utbl:
+        raise ValueError(
+            f'{key} cannot be used with interior_energetics.param_utbl = true: the lid replaces '
+            'the surface flux that the ultra-thin boundary layer acts on'
+        )
+
+
 def _check_aragog_top_cell_dt_limit_surface_bc(interior) -> None:
     """Reject Aragog top_cell_dt_limit with grey_body surface boundary conditions."""
     if (
@@ -1163,6 +1194,7 @@ class Interior:
         _check_top_cell_dt_rel_dT_pair(self.aragog)
         _check_aragog_top_cell_dt_limit_surface_bc(self)
         _check_aragog_rheology_module(self)
+        _check_aragog_lid(self)
 
 
 # Thematic grouping for the generated configuration reference. Each entry is

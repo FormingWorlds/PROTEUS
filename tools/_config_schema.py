@@ -76,6 +76,17 @@ POST_INIT_CHECKS = {
             'interior_energetics.aragog.top_cell_dt_limit',
         ),
     },
+    ('_interior', '_check_aragog_lid'): {
+        'classes': ('Interior',),
+        'paths': (
+            'interior_energetics.module',
+            'interior_energetics.surface_bc_mode',
+            'interior_energetics.param_utbl',
+            'interior_energetics.aragog.lid_mush_base',
+            'interior_energetics.aragog.rheology.enabled',
+            'interior_energetics.aragog.core_bc',
+        ),
+    },
 }
 
 

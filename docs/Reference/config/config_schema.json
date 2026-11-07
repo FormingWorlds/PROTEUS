@@ -12909,6 +12909,27 @@
       "doc": "Validate ZEPHYRUS settings: Pxuv within (0, 10] bar and efficiency within [0, 1]."
     },
     {
+      "validator": "_check_aragog_lid",
+      "module": "_interior.py",
+      "attached_to": [
+        "interior_energetics.aragog.core_bc",
+        "interior_energetics.aragog.lid_mush_base",
+        "interior_energetics.aragog.rheology.enabled",
+        "interior_energetics.module",
+        "interior_energetics.param_utbl",
+        "interior_energetics.surface_bc_mode"
+      ],
+      "touches": [
+        "interior_energetics.aragog.core_bc",
+        "interior_energetics.aragog.lid_mush_base",
+        "interior_energetics.aragog.rheology.enabled",
+        "interior_energetics.module",
+        "interior_energetics.param_utbl",
+        "interior_energetics.surface_bc_mode"
+      ],
+      "doc": "Reject the Aragog sub-grid lid where Aragog refuses it or where it cannot act."
+    },
+    {
       "validator": "_check_aragog_rheology_module",
       "module": "_interior.py",
       "attached_to": [

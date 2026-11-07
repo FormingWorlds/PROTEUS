@@ -900,3 +900,34 @@ def test_aragog_rheology_default_type_and_module_check():
     with pytest.raises(ValueError, match='rheology.enabled'):
         Interior(module='spider', aragog=Aragog(rheology=Rheology(enabled=True)))
     assert Interior(module='aragog', aragog=Aragog(rheology=Rheology(enabled=True)))
+
+
+@pytest.mark.parametrize(
+    ('interior', 'aragog', 'match'),
+    [
+        (dict(module='spider'), dict(), "module = 'aragog'"),
+        (dict(), dict(rheology=False), 'rheology.enabled = true'),
+        (dict(surface_bc_mode='grey_body'), dict(), "surface_bc_mode = 'flux'"),
+        (dict(), dict(core_bc='gradient'), "core_bc = 'gradient'"),
+        (dict(), dict(core_bc='bower2018'), "core_bc = 'bower2018'"),
+        (dict(param_utbl=True), dict(), 'param_utbl'),
+    ],
+)
+def test_the_aragog_lid_is_refused_where_it_cannot_act(interior, aragog, match):
+    """lid_mush_base is refused at load with another interior module, without the rheology, in
+    grey_body mode, with the core_bc values Aragog refuses for the lid and with the ultra-thin
+    boundary layer; the flux-mode lid with the rheology loads."""
+    from proteus.config._interior import Rheology
+
+    def build(interior, aragog):
+        rheo = aragog.pop('rheology', True)
+        a = Aragog(lid_mush_base=True, rheology=Rheology(enabled=rheo), **aragog)
+        kw = dict(module='aragog', surface_bc_mode='flux')
+        kw.update(interior)
+        if kw['module'] != 'aragog':
+            a = Aragog(lid_mush_base=True, **aragog)
+        return Interior(aragog=a, **kw)
+
+    with pytest.raises(ValueError, match=match):
+        build(interior, dict(aragog))
+    assert build({}, {}).aragog.lid_mush_base is True
