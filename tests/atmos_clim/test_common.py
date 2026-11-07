@@ -1032,8 +1032,11 @@ def test_open_part_without_a_positive_balance_is_the_skin_flux(caplog, monkeypat
     gap=st.floats(0.5, 1.5),
 )
 @settings(max_examples=300, deadline=None)
-def test_scaled_parts_sum_to_f_atm(w, G_lid, d, k, T_node, dT_b, dT_s, gap):
-    """With both parts scaled by F_atm over the balance of the call they sum to F_atm."""
+def test_the_open_part_and_the_cap_miss_f_atm_by_the_unscaled_cap(
+    w, G_lid, d, k, T_node, dT_b, dT_s, gap
+):
+    """Only the open part is scaled by r = F_atm over the balance of the call, so the cap C of the
+    lid part and the open part sum to F_atm - w C (r - 1)."""
     T_b = T_node - dT_b
     T_s = T_b - min(dT_s, T_b - 1.0)
     row = _balanced(_row(w, G=G_lid, T_b=T_b, T_node=T_node, d=d, k=k, T_surf=T_s), gap=gap)
@@ -1041,7 +1044,11 @@ def test_scaled_parts_sum_to_f_atm(w, G_lid, d, k, T_node, dT_b, dT_s, gap):
     L = min(G_lid, k / d) * (T_b - T_s)
     F_open = lid_open_flux(row)
     assert F_open == pytest.approx(gap * S, rel=1e-9)
-    assert w * gap * L + (1.0 - w) * F_open == pytest.approx(row['F_atm'], rel=1e-9)
+    C = lid_flux_cap(row)
+    assert C == pytest.approx(L, rel=1e-12)
+    assert w * C + (1.0 - w) * F_open == pytest.approx(
+        row['F_atm'] - w * C * (gap - 1.0), rel=1e-9, abs=1e-9 * row['F_atm']
+    )
 
 
 def test_open_flux_without_a_lid_is_the_flux_of_the_atmosphere():
