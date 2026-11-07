@@ -24,6 +24,14 @@ from proteus.config import UnknownConfigKeyError
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
+@pytest.fixture(autouse=True)
+def _restore_sigterm_handler():
+    """`proteus start` installs a SIGTERM handler; put the earlier one back after each test."""
+    before = signal.getsignal(signal.SIGTERM)
+    yield
+    signal.signal(signal.SIGTERM, before)
+
+
 runner = CliRunner()
 
 
@@ -4273,33 +4281,28 @@ def test_grid_analyse_takes_a_grid_folder_and_needs_c_or_o(monkeypatch, tmp_path
     assert len(calls) == 2
 
 
-def test_start_turns_sigterm_into_exit_code_143(monkeypatch, tmp_path):
-    """SLURM sends SIGTERM at the time limit and on scancel. `proteus start` turns it into
-    SystemExit(143) inside the run, so `Proteus.start` can record status 25 before the
-    process ends; without the handler the signal kills Python before any cleanup runs."""
+def test_start_records_status_25_on_sigterm(monkeypatch, tmp_path):
+    """SLURM sends SIGTERM at the time limit and on scancel. Under `proteus start` it ends
+    the run through the status guard of `Proteus.start`, which records status 25, with exit
+    code 143; without the handler the signal would end Python before the guard runs."""
+    from proteus.proteus import _status_on_exit
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
     cfg = tmp_path / 'stub.toml'
     cfg.write_text('# stub\n')
-    seen = {}
 
     class FakeProteus:
         def __init__(self, config_path):
-            pass
+            self.directories = {'output': str(tmp_path)}
 
+        @_status_on_exit
         def start(self, resume, offline):
-            try:
-                os.kill(os.getpid(), signal.SIGTERM)
-            except BaseException as exc:
-                seen['exc'] = exc
-                raise
+            UpdateStatusfile(self.directories, 1)
+            os.kill(os.getpid(), signal.SIGTERM)
 
     monkeypatch.setattr(cli, 'Proteus', FakeProteus)
-    before = signal.getsignal(signal.SIGTERM)
-    # Without the handler under test, this one catches the signal instead of pytest dying.
-    signal.signal(signal.SIGTERM, lambda *_: seen.setdefault('unhandled', True))
-    try:
-        res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
-    finally:
-        signal.signal(signal.SIGTERM, before)
-    assert 'unhandled' not in seen
-    assert type(seen.get('exc')) is SystemExit
+    # Without the handler under test, this one takes the signal instead of pytest dying.
+    signal.signal(signal.SIGTERM, lambda *_: None)
+    res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
+    assert ReadStatus(tmp_path) == 25
     assert res.exit_code == 128 + signal.SIGTERM == 143

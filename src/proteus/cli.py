@@ -210,12 +210,6 @@ cli.add_command(plot)
 # ----------------
 
 
-def _exit_on_sigterm(signum, frame):
-    """Turn SIGTERM (SLURM at its time limit, scancel) into SystemExit, so that
-    `Proteus.start` records status 25 before the process ends."""
-    sys.exit(128 + signum)
-
-
 @click.command()
 @config_option
 @click.option(
@@ -248,7 +242,8 @@ def _exit_on_sigterm(signum, frame):
 )
 def start(config_path: Path, resume: bool, offline: bool, deterministic: bool):
     """Start proteus run"""
-    signal.signal(signal.SIGTERM, _exit_on_sigterm)
+    # SLURM ends a job with SIGTERM; as SystemExit it lets Proteus.start record status 25.
+    signal.signal(signal.SIGTERM, lambda signum, _: sys.exit(128 + signum))
     if deterministic and os.environ.get(_PROTEUS_DETERMINISTIC_SENTINEL) != '1':
         click.secho(
             '[!] --deterministic was requested but the env-var re-exec did not '
