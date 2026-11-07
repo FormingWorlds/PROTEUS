@@ -24,14 +24,6 @@ from proteus.config import UnknownConfigKeyError
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
-@pytest.fixture(autouse=True)
-def _restore_sigterm_handler():
-    """`proteus start` installs a SIGTERM handler; put the earlier one back after each test."""
-    before = signal.getsignal(signal.SIGTERM)
-    yield
-    signal.signal(signal.SIGTERM, before)
-
-
 runner = CliRunner()
 
 

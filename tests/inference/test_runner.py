@@ -25,6 +25,8 @@ import time
 import pytest
 
 from proteus.inference.runner import ProteusRunner, handle_job, serve
+from proteus.proteus import _status_on_exit
+from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -358,8 +360,6 @@ def test_serve_records_status_25_when_sigterm_stops_a_run(monkeypatch, tmp_path)
     """SLURM sends SIGTERM at the time limit. In the reused process it ends the run through
     the status guard of `Proteus.start`, which records status 25, and the process exits
     with code 143; without the handler the run would keep status 1 (running)."""
-    from proteus.proteus import _status_on_exit
-    from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
     class _Proteus:
         def __init__(self, config_path):
@@ -376,14 +376,10 @@ def test_serve_records_status_25_when_sigterm_stops_a_run(monkeypatch, tmp_path)
     with os.fdopen(request_w, 'w') as requests:
         requests.write(json.dumps({'config': str(tmp_path / 'a.toml')}) + '\n')
 
-    before = signal.getsignal(signal.SIGTERM)
     # Without the handler under test, this one takes the signal instead of pytest dying.
     signal.signal(signal.SIGTERM, lambda *_: None)
-    try:
-        with pytest.raises(SystemExit) as stopped:
-            serve(request_r, reply_w)
-    finally:
-        signal.signal(signal.SIGTERM, before)
-        os.close(reply_r)
+    with pytest.raises(SystemExit) as stopped:
+        serve(request_r, reply_w)
+    os.close(reply_r)
     assert stopped.value.code == 143
     assert ReadStatus(tmp_path) == 25
