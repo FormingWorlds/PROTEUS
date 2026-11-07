@@ -1037,6 +1037,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
@@ -1055,6 +1059,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
@@ -1072,6 +1080,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [],
@@ -1102,6 +1114,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [],
@@ -1117,6 +1133,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
@@ -1134,6 +1154,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
