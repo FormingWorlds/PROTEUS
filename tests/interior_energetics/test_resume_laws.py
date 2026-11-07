@@ -399,23 +399,29 @@ def test_resume_refuses_to_turn_the_rheology_on(tmp_path, stored):
     text = MINIMAL.read_text() + '\n[interior_energetics.aragog.rheology]\n    enabled = true\n'
     path = tmp_path / 'user.toml'
     path.write_text(text)
-    with pytest.raises(ResumeSeparationLawError, match='rheology.enabled'):
+    with pytest.raises(ResumeSeparationLawError, match='rheology.enabled') as err:
         check_resume_separation_laws(read_config_object(path), path, out)
+    assert 'allow_resume_law_change' in str(err.value)
 
 
 def test_resume_refuses_to_turn_the_rheology_off(tmp_path):
     """A run written with the rheology on keeps it at a resume."""
     out = _rheology_run(tmp_path, True)
     config, path = _user_config(tmp_path)
-    with pytest.raises(ResumeSeparationLawError, match='rheology.enabled'):
+    with pytest.raises(ResumeSeparationLawError, match='rheology.enabled') as err:
         check_resume_separation_laws(config, path, out)
+    assert 'written with True' in str(err.value)
 
 
-def test_resume_keeps_an_unchanged_rheology(tmp_path):
-    """The same rheology switch on both sides gives no switch."""
+def test_resume_keeps_an_unchanged_rheology(tmp_path, caplog):
+    """The same rheology switch on both sides gives no switch and no warning."""
     out = _rheology_run(tmp_path, False)
     config, path = _user_config(tmp_path)
-    assert check_resume_separation_laws(config, path, out) == []
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert check_resume_separation_laws(config, path, out) == []
+    assert [
+        r for r in caplog.records if r.name == LOGGER and r.levelno >= logging.WARNING
+    ] == []
 
 
 def test_the_allow_switch_lets_the_rheology_switch_and_reports_it(tmp_path, caplog):
@@ -460,8 +466,9 @@ def _lid_case(folder, stored_lid, new_lid, allow=False):
 def test_resume_refuses_to_switch_the_lid(tmp_path, stored, new):
     """A run keeps its lid switch at a resume; a record without the field ran without the lid."""
     config, path, out = _lid_case(tmp_path, stored, new)
-    with pytest.raises(ResumeSeparationLawError, match='lid_mush_base'):
+    with pytest.raises(ResumeSeparationLawError, match='lid_mush_base') as err:
         check_resume_separation_laws(config, path, out)
+    assert f'written with {bool(stored)!r}' in str(err.value)
 
 
 def test_the_allow_switch_lets_the_lid_switch_and_reports_it(tmp_path, caplog):
@@ -480,7 +487,11 @@ def test_the_allow_switch_lets_the_lid_switch_and_reports_it(tmp_path, caplog):
     assert len(warned) == 1 and 'lid_mush_base' in warned[0]
 
 
-def test_resume_keeps_an_unchanged_lid(tmp_path):
-    """The same lid switch on both sides gives no switch."""
+def test_resume_keeps_an_unchanged_lid(tmp_path, caplog):
+    """The same lid switch on both sides gives no switch and no warning."""
     config, path, out = _lid_case(tmp_path, True, True)
-    assert check_resume_separation_laws(config, path, out) == []
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert check_resume_separation_laws(config, path, out) == []
+    assert [
+        r for r in caplog.records if r.name == LOGGER and r.levelno >= logging.WARNING
+    ] == []

@@ -30,25 +30,33 @@ def _out(weight, dE=-1.0e24, r=6.4e6, flux_top=7.0):
 
 
 def test_flux_mode_without_a_lid_books_the_flux_of_the_atmosphere():
+    """In flux mode a step with no lid at its start or end books the F_atm of the row."""
     hf = {'F_atm': 42.0, 'Time': 100.0}
     out = _out(float('nan'))
-    assert _surface_flux_of_step(out, hf, 'flux', 110.0) == 42.0
-    assert _surface_flux_of_step(_out(0.0), hf, 'flux', 110.0) == 42.0
+    assert _surface_flux_of_step(out, hf, 'flux', 110.0) == pytest.approx(42.0, rel=1e-15)
+    assert _surface_flux_of_step(_out(0.0), hf, 'flux', 110.0) == pytest.approx(42.0, rel=1e-15)
 
 
 def test_an_output_without_lid_fields_reads_as_no_lid():
     """An Aragog without the sub-grid lid has no lid fields: its step books ``F_atm``."""
     out = SimpleNamespace(step_dE_F_int_J=-1.0e24, r_basic=np.array([3.0e6, 6.4e6]))
-    assert _surface_flux_of_step(out, {'F_atm': 42.0, 'Time': 100.0}, 'flux', 110.0) == 42.0
+    assert _surface_flux_of_step(
+        out, {'F_atm': 42.0, 'Time': 100.0}, 'flux', 110.0
+    ) == pytest.approx(42.0, rel=1e-15)
     assert (
         _surface_flux_of_step(_out(0.7), {'F_atm': 42.0, 'Time': 100.0}, 'flux', 110.0) != 42.0
     )
 
 
 def test_grey_body_mode_books_the_surface_node():
-    assert (
-        _surface_flux_of_step(_out(1.0), {'F_atm': 42.0, 'Time': 0.0}, 'grey_body', 5.0) == 7.0
-    )
+    """In grey_body mode the step books the surface heat flux of the interior."""
+    assert _surface_flux_of_step(
+        _out(1.0), {'F_atm': 42.0, 'Time': 0.0}, 'grey_body', 5.0
+    ) == pytest.approx(7.0, rel=1e-15)
+    # without a lid the grey-body mode books the same surface node
+    assert _surface_flux_of_step(
+        _out(0.0), {'F_atm': 42.0, 'Time': 0.0}, 'grey_body', 5.0
+    ) == pytest.approx(7.0, rel=1e-15)
 
 
 @pytest.mark.parametrize('dt', [1.0, 10.0, 1000.0])
@@ -58,15 +66,17 @@ def test_a_live_lid_books_the_integrated_flux_of_the_step(dt):
     F = _surface_flux_of_step(out, {'F_atm': 42.0, 'Time': 100.0}, 'flux', 100.0 + dt)
     area = 4.0 * np.pi * 6.4e6**2
     assert F * area * dt * YEAR == pytest.approx(-out.step_dE_F_int_J, rel=1e-12)
+    assert F != pytest.approx(42.0)  # the lid books its own integral, not the F_atm of the row
 
 
 def test_a_state_with_no_step_books_the_flux_of_the_atmosphere():
-    assert (
-        _surface_flux_of_step(_out(1.0), {'F_atm': 42.0, 'Time': 100.0}, 'flux', 100.0) == 42.0
-    )
-    assert (
-        _surface_flux_of_step(_out(1.0), {'F_atm': 42.0, 'Time': 100.0}, 'flux', None) == 42.0
-    )
+    """A state with no step (no end time, or one at the row time) books the F_atm of the row."""
+    assert _surface_flux_of_step(
+        _out(1.0), {'F_atm': 42.0, 'Time': 100.0}, 'flux', 100.0
+    ) == pytest.approx(42.0, rel=1e-15)
+    assert _surface_flux_of_step(
+        _out(1.0), {'F_atm': 42.0, 'Time': 100.0}, 'flux', None
+    ) == pytest.approx(42.0, rel=1e-15)
 
 
 @pytest.mark.parametrize(
@@ -80,7 +90,9 @@ def test_a_state_with_no_step_books_the_flux_of_the_atmosphere():
     ],
 )
 def test_the_lid_takes_the_surface_of_the_atmosphere_only_in_flux_mode(row, mode, on, want):
+    """The lid takes the row surface only in flux mode with the lid on and a surface above 0."""
     assert _lid_surface_of_row(row, mode, on) == want
+    assert _lid_surface_of_row(row, mode, False) is None  # no lid, no held surface
 
 
 def _row(w, G=4.0, T_b=1400.0, T_node=1500.0, **kw):
@@ -97,6 +109,7 @@ def _row(w, G=4.0, T_b=1400.0, T_node=1500.0, **kw):
 
 
 def test_boundary_is_the_skin_without_a_lid_and_a_parallel_sum_with_one():
+    """Without a lid the call takes the skin and T_magma; with one the parallel sum of the two parts."""
     no_lid = {
         'T_magma': 1450.0,
         'boundary_layer_thickness': 0.01,
@@ -136,7 +149,7 @@ def test_boundary_reads_the_skin_of_the_columns():
 def test_a_zero_skin_passes_without_a_lid_and_is_refused_with_one():
     """Without a lid the zero columns of a fixed surface pass unchanged; a live lid refuses."""
     assert lid_boundary(_row(0.0, d=0.0, k=0.0)) == (0.0, 0.0, 1450.0)
-    assert lid_open_flux(_row(0.0, d=0.0, k=0.0, F_atm=42.0)) == 42.0
+    assert lid_open_flux(_row(0.0, d=0.0, k=0.0, F_atm=42.0)) == pytest.approx(42.0, rel=1e-15)
     with pytest.raises(ValueError, match='needs a skin'):
         lid_boundary(_row(0.5, d=0.0, k=0.0))
     with pytest.raises(ValueError, match='needs a skin'):
@@ -146,6 +159,7 @@ def test_a_zero_skin_passes_without_a_lid_and_is_refused_with_one():
 
 
 def test_the_two_parts_sum_to_the_balance_of_the_atmosphere():
+    """The weighted lid and open parts sum to the skin balance of the call."""
     row = _row(0.3, T_surf=900.0, F_atm=1.0)
     d, k, T_melt = lid_boundary(row)
     F_lid = 4.0 * (1400.0 - 900.0)
@@ -155,8 +169,9 @@ def test_the_two_parts_sum_to_the_balance_of_the_atmosphere():
 
 
 def test_open_flux_without_a_lid_is_the_flux_of_the_atmosphere():
-    assert lid_open_flux({'F_atm': 42.0}) == 42.0
-    assert lid_open_flux(_row(0.0, F_atm=42.0)) == 42.0
+    """Without a lid the open-surface flux is the F_atm of the row."""
+    assert lid_open_flux({'F_atm': 42.0}) == pytest.approx(42.0, rel=1e-15)
+    assert lid_open_flux(_row(0.0, F_atm=42.0)) == pytest.approx(42.0, rel=1e-15)
 
 
 @pytest.mark.parametrize('w', [0.01, 0.2, 0.5, 0.9, 1.0])
@@ -175,6 +190,7 @@ def test_coupled_budget_of_a_step_closes_at_every_weight(w):
     r, dt = 6.4e6, 10.0
     out = _out(w, dE=-loss * 4.0 * np.pi * r**2 * dt * YEAR, r=r)
     F_int = _surface_flux_of_step(out, row, 'flux', 100.0 + dt)
+    assert row['F_atm'] == pytest.approx(k / d * (T_melt - T), rel=1e-9)  # the call balance
     assert F_int - row['F_atm'] == pytest.approx(0.0, abs=1e-9 * row['F_atm'])
 
 
@@ -196,6 +212,7 @@ def test_cap_is_the_flux_the_call_gave_the_lid():
     'obc, mush, held', [(4, True, True), (4, False, False), (1, True, False)]
 )
 def test_the_solver_boundary_takes_the_held_surface_and_its_cap(obc, mush, held):
+    """The solver boundary holds the row surface with its cap only in flux mode with the mush base."""
     bc = SimpleNamespace(outer_boundary_condition=obc, lid_mush_base=mush)
     _set_lid_surface(bc, _row(1.0, T_surf=900.0))
     assert bc.lid_surface_temperature == (900.0 if held else None)
@@ -228,7 +245,7 @@ def test_a_run_stored_without_the_lid_columns_resumes_as_no_lid(tmp_path):
     hf = _resumed_row(tmp_path, lid_keys)
     assert all(hf[k] == 0.0 for k in lid_keys)
     assert lid_boundary(hf) == (0.01, 2.0, 1450.0)
-    assert lid_open_flux(hf) == 42.0
+    assert lid_open_flux(hf) == pytest.approx(42.0, rel=1e-15)
     assert lid_flux_cap(hf) is None
     bc = SimpleNamespace(outer_boundary_condition=4, lid_mush_base=True)
     _set_lid_surface(bc, hf)
@@ -294,7 +311,7 @@ def test_lid_onset_thickness_of_the_default_skin_is_the_validated_value(caplog):
     atm, ie = attrs.fields(AtmosClim), attrs.fields(Interior)
     cfg = _skin_config(atm.surface_d.default, atm.surface_k.default, ie.solid_cond.default)
     with caplog.at_level('WARNING'):
-        assert lid_delta_on_of(cfg) == 0.02
+        assert lid_delta_on_of(cfg) == pytest.approx(0.02, rel=1e-15)
     assert not caplog.records
     assert lid_delta_on_of(_skin_config(0.02, 1.0, 3.0)) == pytest.approx(0.06, rel=1e-15)
 
@@ -305,14 +322,16 @@ def test_an_explicit_lid_onset_thickness_is_used_and_warned_beyond_10_percent(ca
     from proteus.interior_energetics.aragog import lid_delta_on_of
 
     with caplog.at_level('WARNING'):
-        assert lid_delta_on_of(_skin_config(delta_on=0.021)) == 0.021
+        assert lid_delta_on_of(_skin_config(delta_on=0.021)) == pytest.approx(0.021, rel=1e-15)
     assert not caplog.records
     with caplog.at_level('WARNING'):
-        assert lid_delta_on_of(_skin_config(delta_on=0.5)) == 0.5
+        assert lid_delta_on_of(_skin_config(delta_on=0.5)) == pytest.approx(0.5, rel=1e-15)
     assert any('lid_delta_on' in r.getMessage() for r in caplog.records)
     caplog.clear()
     with caplog.at_level('WARNING'):
-        assert lid_delta_on_of(_skin_config('saturation', 'saturation', delta_on=0.3)) == 0.3
+        assert lid_delta_on_of(
+            _skin_config('saturation', 'saturation', delta_on=0.3)
+        ) == pytest.approx(0.3, rel=1e-15)
     assert not caplog.records
     with pytest.raises(ValueError, match='lid_delta_on'):
         lid_delta_on_of(_skin_config('saturation', 'saturation'))
@@ -386,7 +405,7 @@ def test_update_solver_passes_the_lid_boundary_of_the_row(w, lid):
         assert bc.lid_surface_flux_cap == pytest.approx(21.9 * (1440.0 - 727.3), rel=1e-14)
     else:
         assert bc.lid_surface_flux_cap is None
-    assert bc.equilibrium_temperature == 255.0
+    assert bc.equilibrium_temperature == pytest.approx(255.0, rel=1e-15)
 
 
 def _lid_out_row(lid_weight=0.37, F_step=15500.0, dt=25.0):
@@ -438,7 +457,9 @@ def test_a_step_that_starts_with_a_lid_books_its_integral_when_the_lid_ends(end_
     got = _surface_flux_of_step(out, row, 'flux', 30025.0)
     assert got == pytest.approx(15500.0, rel=1e-12)
     no_lid = {'F_atm': 15000.0, 'Time': 30000.0, 'lid_weight': 0.0}
-    assert _surface_flux_of_step(out, no_lid, 'flux', 30025.0) == 15000.0
+    assert _surface_flux_of_step(out, no_lid, 'flux', 30025.0) == pytest.approx(
+        15000.0, rel=1e-15
+    )
 
 
 def test_a_weight_without_a_conductance_is_no_lid_on_every_path():
@@ -447,7 +468,7 @@ def test_a_weight_without_a_conductance_is_no_lid_on_every_path():
     row = _row(0.5, G=0.0, T_surf=1300.0, F_atm=7.0, lid_F_open=120000.0)
     assert lid_boundary(row) == (0.01, 2.0, 1450.0)
     assert lid_flux_cap(row) is None
-    assert lid_open_flux(row) == 7.0
+    assert lid_open_flux(row) == pytest.approx(7.0, rel=1e-15)
     bc = SimpleNamespace(
         outer_boundary_condition=4,
         subgrid_lid=True,
@@ -467,4 +488,4 @@ def test_a_weight_without_a_conductance_is_no_lid_on_every_path():
     )
     row.update(Time=1.0, T_eqm=255.0)
     AragogRunner.update_solver(1.0, row, interior_o)
-    assert bc.outer_boundary_value == 7.0
+    assert bc.outer_boundary_value == pytest.approx(7.0, rel=1e-15)

@@ -7674,7 +7674,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     from proteus.atmos_clim.common import lid_boundary
 
     assert hf_row['lid_weight'] == 0.0 and hf_row['lid_conductance'] == 0.0
-    assert hf_row['lid_T_node'] == 3860.0
+    assert hf_row['lid_T_node'] == pytest.approx(3860.0, rel=1e-15)
     assert lid_boundary(hf_row)[2] == hf_row['T_magma']
     # The skin thickness of the row [m] is what the re-melt output is built with
     assert helpfile_kwargs['surface_d'] == pytest.approx(0.01, rel=1e-12)

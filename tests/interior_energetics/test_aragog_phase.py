@@ -760,6 +760,9 @@ def test_solid_rheology_kwargs_empty_when_off():
     from proteus.interior_energetics.aragog_phase import solid_rheology_kwargs
 
     assert solid_rheology_kwargs(_rheology_config(False)) == {}
+    # with the rheology off an aragog without the wiring does not stop the run
+    with patch('aragog.solver.EntropySolver', object):
+        assert solid_rheology_kwargs(_rheology_config(False)) == {}
 
 
 def test_solid_rheology_kwargs_on_uses_the_aragog_defaults():
@@ -770,9 +773,10 @@ def test_solid_rheology_kwargs_on_uses_the_aragog_defaults():
 
     if not hasattr(__import__('aragog.solver').solver.EntropySolver, '_rheology_enabled'):
         pytest.skip('the installed aragog solver does not read the rheology')
-    assert solid_rheology_kwargs(_rheology_config(True)) == {
-        'rheology': SolidRheologyParams(enabled=True)
-    }
+    kw = solid_rheology_kwargs(_rheology_config(True))
+    assert kw == {'rheology': SolidRheologyParams(enabled=True)}
+    # each call builds its own parameters, so no run shares a mutable default
+    assert solid_rheology_kwargs(_rheology_config(True))['rheology'] is not kw['rheology']
 
 
 def test_solid_rheology_kwargs_refuses_an_aragog_without_the_wiring():
@@ -780,8 +784,9 @@ def test_solid_rheology_kwargs_refuses_an_aragog_without_the_wiring():
     from proteus.interior_energetics.aragog_phase import solid_rheology_kwargs
 
     with patch('aragog.solver.EntropySolver', object):
-        with pytest.raises(RuntimeError, match='does not'):
+        with pytest.raises(RuntimeError, match='does not') as err:
             solid_rheology_kwargs(_rheology_config(True))
+    assert 'rheology' in str(err.value)
 
 
 def test_jax_phase_params_carry_the_rheology_switch():
@@ -833,3 +838,4 @@ def test_cvode_factory_builds_the_lid_parameters_at_each_call(tmp_path, lid):
         factory(MagicMock(), 'energy_balance')
     got = [c.kwargs['lid_params'] for c in build.call_args_list[-2:]]
     assert got == (['lid call 1', 'lid call 2'] if lid else [None, None])
+    assert solver.jax_lid_params.call_count == (2 if lid else 0)

@@ -502,7 +502,7 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
     assert atmos_o._atm is seed
     assert atmos_o._atm_janus_last is solved
     # Without a lid the open-surface flux the interior takes is F_atm.
-    assert hf_row['lid_F_open'] == 100.0
+    assert hf_row['lid_F_open'] == pytest.approx(100.0, rel=1e-15)
 
 
 @pytest.mark.unit

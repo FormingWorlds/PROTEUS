@@ -4179,5 +4179,5 @@ def test_update_agni_atmos_gives_the_lid_boundary_to_the_struct(monkeypatch):
     }
     agni_mod.update_agni_atmos(atmos, hf_row, {'output': '/tmp/run'}, _build_profile_config())
     assert atmos.skin_d == pytest.approx(0.02, rel=1e-14)
-    assert atmos.skin_k == 2.0
+    assert atmos.skin_k == pytest.approx(2.0, rel=1e-15)
     assert atmos.tmp_magma == pytest.approx(1440.0, rel=1e-14)
