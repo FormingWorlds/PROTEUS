@@ -9,7 +9,6 @@ nearest minute.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from unittest import mock
 
@@ -135,13 +134,6 @@ def test_walltime_signal_and_last_start_agree(tmp_path, days, minutes, lead, off
     assert '#SBATCH --time=0\n' not in text
 
 
-_TOOLS = pytest.mark.skipif(
-    not all(shutil.which(tool) for tool in ('bash', 'seq', 'xargs')),
-    reason='needs bash, seq and xargs',
-)
-
-
-@_TOOLS
 def test_dispatch_script_runs_each_case_once_and_gives_killed_cases_a_status(tmp_path):
     """Run the script for every array task, with srun replaced by a pass-through.
     Fifteen cases in five jobs of two cores (two waves) run once each, in a folder with
@@ -221,7 +213,6 @@ def test_dispatch_script_runs_each_case_once_and_gives_killed_cases_a_status(tmp
     }
 
 
-@_TOOLS
 def test_dispatch_script_starts_no_case_after_the_early_signal(tmp_path):
     """Once the clock passes the time of the early SIGTERM, the job starts none of its
     remaining cases: they keep no status folder, as not started, and the job exits

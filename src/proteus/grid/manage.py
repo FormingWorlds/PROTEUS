@@ -712,11 +712,6 @@ class Grid:
     ):
         """Write the Slurm job array script ``slurm_dispatch.sh``.
 
-        Each job of the array gets ``cores_per_job`` cores and runs that many cases at
-        a time, so a cluster with a minimum allocation of several cores is filled. The
-        number of jobs follows from the grid size and the cluster's MaxArraySize, see
-        `proteus.grid.slurm.array_layout`.
-
         Parameters
         ----------
         max_jobs : int
@@ -738,7 +733,6 @@ class Grid:
             CPU cores per Slurm job; each core runs one case at a time.
         """
 
-        max_days = max(0.001, max_days)  # do not request negative days
         jobs, waves = array_layout(self.size, cores_per_job, max_array_size())
         throttle = min(max(1, max_jobs // cores_per_job), jobs)
 
@@ -918,8 +912,9 @@ def _grid_bool(value, key: str, fpath: str) -> bool:
     return value
 
 
-def _grid_positive_int(value, key: str, fpath: str) -> int:
-    """Return a grid setting that must be a TOML integer of at least 1."""
+def _grid_positive_int(config: dict, key: str, fpath: str) -> int:
+    """Return a grid setting that must be a TOML integer of at least 1, default 1."""
+    value = config.get(key, 1)
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ValueError(
             f'grid file {fpath}: grid setting {key} must be an integer of at least 1, '
@@ -971,9 +966,7 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     max_jobs = int(config['max_jobs'])  # maximum number of concurrent tasks (e.g. 300)
     max_days = float(config['max_days'])  # maximum number of days to run (e.g. 1.0)
     max_mem = float(config['max_mem'])  # maximum memory per case in GB (e.g. 3)
-    cores_per_job = _grid_positive_int(
-        config.get('cores_per_job', 1), 'cores_per_job', config_fpath
-    )
+    cores_per_job = _grid_positive_int(config, 'cores_per_job', config_fpath)
 
     # Optional bounded JAX persistent compilation cache (Slurm runs only).
     # Absent or false leaves the generated script cache-free.

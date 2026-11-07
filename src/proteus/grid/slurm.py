@@ -44,25 +44,8 @@ def max_array_size() -> int:
 
 
 def array_layout(n_cases: int, cores_per_job: int, max_array: int) -> tuple[int, int]:
-    """Return the number of array jobs and the number of cases each core runs in turn.
-
-    Each job runs ``cores_per_job`` cases at a time. The array has one job per
-    ``cores_per_job`` cases, at most ``max_array`` jobs; past that, each core of a job
-    runs several cases one after the other (the waves).
-
-    Parameters
-    ----------
-    n_cases : int
-        Number of grid cases, at least 1.
-    cores_per_job : int
-        Cases run at the same time in one job, at least 1.
-    max_array : int
-        Largest number of tasks in one job array, at least 1.
-
-    Returns
-    -------
-    tuple[int, int]
-        ``(jobs, waves)``.
+    """Return ``(jobs, waves)``: one job per ``cores_per_job`` cases, at most ``max_array``
+    jobs, and past that ``waves`` cases per core one after the other. Counts are >= 1.
     """
     if min(n_cases, cores_per_job, max_array) < 1:
         raise ValueError(
@@ -90,22 +73,10 @@ def dispatch_script(
 ) -> str:
     """Return the sbatch script that runs the cases of a grid as a job array.
 
-    Array task ``j`` runs the cases ``j, j + jobs, j + 2 jobs, ...``, ``cores_per_job``
-    at a time with ``xargs -P``; a core takes the next case when its case ends. Each
-    case is a job step of one core and its own memory, named after the case, so
-    ``sacct`` reports its peak memory; it writes its output to
-    ``<logdir>/case_NNNNNN.log`` and its temporary files to its own folder under
-    ``$TMPDIR``, removed when the case ends. A case that fails, also by a signal, does
-    not stop the other cases; the job then exits non-zero.
-
-    A case that ends with its status file still at 0 or 1 (running), or without one,
-    was killed before PROTEUS could write a final status (SIGKILL, out of memory, a
-    crash in compiled code); the script then writes status 25 and counts the case as
-    failed. Slurm sends SIGTERM to the cases 5 minutes before the wall time, a tenth of
-    it for short jobs, so they can end with a status. Slurm may send it up to 60 s
-    early, so the job starts no case from 60 s before it on (as long as the lead, for
-    short jobs); those cases stay without a status folder, as not started. The job is not requeued, since a
-    requeued job would start its finished cases again.
+    Task ``j`` runs cases ``j, j + jobs, ...``, ``cores_per_job`` at a time, each as a
+    one-core job step; "With Slurm" in docs/How-to/usage_grids.md describes the statuses,
+    the early SIGTERM and the last case start. Slurm may send the SIGTERM up to 60 s
+    early, so no case starts within ``min(60 s, lead)`` of it.
 
     Parameters
     ----------
