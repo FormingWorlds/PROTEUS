@@ -7623,7 +7623,14 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     hf_row['boundary_layer_thickness'] = 0.01  # m, written by the skin step
     hf_row['boundary_layer_conductivity'] = 2.0
     # a live lid of the cooled mantle before the impact
-    hf_row.update(lid_weight=1.0, lid_conductance=400.0, lid_T_base=1440.0, lid_T_node=1500.0)
+    hf_row.update(
+        lid_weight=1.0,
+        lid_conductance=400.0,
+        lid_delta=0.18,
+        lid_T_surface=727.0,
+        lid_T_base=1440.0,
+        lid_T_node=1500.0,
+    )
 
     # 1. evaluate_molten_state direct evaluation
     out = evaluate_molten_state(solver, hf_row)
@@ -7647,6 +7654,15 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
         lambda *a, **k: np.full(len(solver._S0), 4000.0),
     )
     helpfile_kwargs = {}
+    # the phantom lid of a molten state: no weight, the other columns differ from the row
+    molten_lid = dict(
+        lid_weight=0.0,
+        lid_conductance=8.0,
+        lid_delta=0.5,
+        lid_T_surface=1300.0,
+        lid_T_base=1440.4,
+        lid_T_node=3860.0,
+    )
     monkeypatch.setattr(
         'proteus.interior_energetics.aragog.AragogRunner._build_helpfile_output',
         lambda *a, **k: (
@@ -7659,22 +7675,19 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
                 'Phi_global_vol': 0.73,
                 'T_pot': 3750.0,
                 'RF_depth': 0.05,
-                'lid_weight': 0.0,
-                'lid_conductance': 0.0,
-                'lid_delta': 0.01,
-                'lid_T_surface': 0.0,
-                'lid_T_base': 0.0,
-                'lid_T_node': 3860.0,
+                **molten_lid,
             }
         ),
     )
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
     # The lid columns are those of the re-melted state, so the atmosphere of the impact
     # iteration sees the molten surface, not the lid of the cooled mantle.
-    from proteus.atmos_clim.common import lid_boundary
+    from proteus.atmos_clim.common import lid_acts, lid_boundary
+    from proteus.interior_energetics.wrapper import LID_COLUMNS
 
-    assert hf_row['lid_weight'] == 0.0 and hf_row['lid_conductance'] == 0.0
-    assert hf_row['lid_T_node'] == pytest.approx(3860.0, rel=1e-15)
+    assert set(LID_COLUMNS) == set(molten_lid)
+    assert {k: hf_row[k] for k in LID_COLUMNS} == molten_lid
+    assert not lid_acts(hf_row)
     assert lid_boundary(hf_row)[2] == hf_row['T_magma']
     # The skin thickness of the row [m] is what the re-melt output is built with
     assert helpfile_kwargs['surface_d'] == pytest.approx(0.01, rel=1e-12)
