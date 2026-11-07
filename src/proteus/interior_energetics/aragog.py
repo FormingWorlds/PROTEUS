@@ -3003,6 +3003,7 @@ class AragogRunner:
                 t_end_yr = float(hf_row.get('Time', 0.0)) if t_end is None else float(t_end)
                 H_radio_per_kg = sum(float(r.get_heating(t_end_yr)) for r in radionuclides)
                 F_radio = H_radio_per_kg * float(out.M_mantle) / area_surf
+        F_int = _surface_flux_of_step(out, hf_row, surface_bc_mode, t_end)
 
         return {
             'M_mantle': out.M_mantle,
@@ -3015,9 +3016,8 @@ class AragogRunner:
             'lid_T_surface': _lid_out(out, 'lid_T_surface'),
             'lid_T_base': _lid_out(out, 'lid_T_base'),
             'lid_T_node': float(out.T_basic[-1]),
-            'lid_F_diff': (
-                _surface_flux_of_step(out, hf_row, surface_bc_mode, t_end) - hf_row['F_atm']
-            ),
+            # the lid booking exists only in flux mode; grey_body books the surface node
+            'lid_F_diff': F_int - hf_row['F_atm'] if surface_bc_mode == 'flux' else 0.0,
             'Phi_global': out.Phi_global,
             'RF_depth': out.RF_depth,
             # In flux mode Aragog is driven by F_atm, so its integrated
@@ -3027,7 +3027,7 @@ class AragogRunner:
             # so this column reflects the interior solver rather than the
             # atmosphere. out.heat_flux is positive-outward (W/m^2), the same
             # sign convention as F_atm.
-            'F_int': _surface_flux_of_step(out, hf_row, surface_bc_mode, t_end),
+            'F_int': F_int,
             'M_mantle_liquid': out.M_mantle_liquid,
             'M_mantle_solid': out.M_mantle_solid,
             'Phi_global_vol': out.Phi_global_vol,

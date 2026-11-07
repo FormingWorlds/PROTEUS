@@ -452,6 +452,22 @@ def test_helpfile_carries_each_lid_column_from_its_field():
     assert res['lid_F_diff'] == pytest.approx(500.0, rel=1e-9)
 
 
+def test_lid_flux_difference_is_zero_without_a_lid_in_grey_body_mode():
+    """In grey_body mode F_int is the surface node flux and lid_F_diff reads 0: the column
+    records the lid booking of the flux mode only."""
+    from unittest.mock import patch
+
+    out = _lid_out_row(lid_weight=float('nan'))
+    out.heat_flux = np.array([90.0, 80.0, 500.0])
+    row = {'F_atm': 2000.0, 'Time': 30000.0}
+    with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
+        res = AragogRunner._build_helpfile_output(
+            out, row, surface_bc_mode='grey_body', t_end=30025.0
+        )
+    assert res['F_int'] == 500.0
+    assert res['lid_weight'] == 0.0 and res['lid_F_diff'] == 0.0
+
+
 @pytest.mark.parametrize('end_weight', [float('nan'), 0.0])
 @pytest.mark.physics_invariant
 def test_a_step_that_starts_with_a_lid_books_its_integral_when_the_lid_ends(end_weight):

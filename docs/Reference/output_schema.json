@@ -1185,7 +1185,7 @@
     {
       "name": "lid_F_diff",
       "unit": "W m-2",
-      "description": "F_int of the step minus the F_atm it started from",
+      "description": "F_int of the step minus the F_atm it started from; 0 in grey_body mode",
       "group": "Temperatures",
       "origin": "literal",
       "producers": [
