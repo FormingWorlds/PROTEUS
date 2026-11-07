@@ -43,12 +43,13 @@ STALL_MAX_CONFIGURED = 41
 
 
 def _record_matching_separation_laws(config, output, buoyancy='mixture'):
-    """Give a mock config the 'mixture' separation laws, the rheology off, and its run directory an
-    init_coupler.toml that records ``buoyancy``; return the text of that record."""
+    """Give a mock config the 'mixture' separation laws, the rheology and the lid off, and its run
+    directory an init_coupler.toml that records ``buoyancy``; return the text of that record."""
     aragog = config.interior_energetics.aragog
     aragog.separation_viscosity = aragog.separation_buoyancy = 'mixture'
     aragog.allow_resume_law_change = False
     aragog.rheology.enabled = False  # a record without the rheology table ran with it off
+    aragog.lid_mush_base = False  # and without the lid
     text = (
         "[interior_energetics]\nmodule = 'aragog'\n\n[interior_energetics.aragog]\n"
         f"separation_viscosity = 'mixture'\nseparation_buoyancy = '{buoyancy}'\n"
