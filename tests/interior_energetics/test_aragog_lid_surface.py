@@ -557,3 +557,137 @@ def test_guard_and_corrector_on_a_saturating_flux():
     assert out2.lid_T_surface == 1406.144
     assert seen[1][0] == pytest.approx(0.07658, rel=1e-9)
     assert io.lid_cap_resolves == 1
+
+
+def test_update_solver_passes_the_slope_of_the_last_two_rows():
+    """With the run table, update_solver hands Aragog the slope of F_atm with T_surf over the last
+    2 rows next to the cap of a live lid."""
+    import pandas as pd
+
+    from proteus.atmos_clim.common import lid_flux_slope
+
+    bc = SimpleNamespace(
+        outer_boundary_condition=4,
+        subgrid_lid=True,
+        lid_mush_base=True,
+        outer_boundary_value=None,
+        lid_surface_temperature=-1.0,
+        lid_surface_flux_cap=-1.0,
+        lid_surface_flux_slope=-1.0,
+        equilibrium_temperature=None,
+    )
+    params = SimpleNamespace(
+        solver=SimpleNamespace(start_time=None, end_time=None),
+        boundary_conditions=bc,
+        energy=SimpleNamespace(tidal_array=None),
+    )
+    interior_o = SimpleNamespace(
+        aragog_solver=SimpleNamespace(parameters=params, solution=None), tides=np.zeros(3)
+    )
+    row = _row(0.4, G=21.9, T_b=1440.0, T_surf=727.3, F_atm=7000.0, lid_F_open=165000.0)
+    row.update(Time=30000.0, T_eqm=255.0)
+    hf_all = pd.DataFrame(
+        {'Time': [29975.0, 30000.0], 'T_surf': [717.3, 727.3], 'F_atm': [6500.0, 7000.0]}
+    )
+    AragogRunner.update_solver(25.0, row, interior_o, hf_all=hf_all)
+    assert lid_flux_slope(hf_all, row) == pytest.approx(50.0, rel=1e-12)
+    assert bc.lid_surface_flux_slope == pytest.approx(50.0, rel=1e-12)
+
+
+def test_the_structure_update_hands_the_run_table_to_update_solver():
+    """The update to a new structure passes the run table on, so the row slope survives it."""
+    from unittest.mock import MagicMock, patch
+
+    rows, got = object(), []
+    interior_o = SimpleNamespace(ic=2, aragog_solver=MagicMock(), _last_entropy=None)
+    config = MagicMock()
+    config.interior_energetics.aragog.core_bc = 'quasi_steady'
+    with (
+        patch.object(AragogRunner, 'update_structure'),
+        patch.object(AragogRunner, '_refresh_entropy_eos'),
+        patch.object(
+            AragogRunner,
+            'update_solver',
+            side_effect=lambda *a, hf_all=None, **k: got.append(hf_all),
+        ),
+    ):
+        AragogRunner._apply_structure_update(
+            config, {'Time': 1.0}, interior_o, 1.0, hf_all=rows
+        )
+    assert got == [rows]
+
+
+class _CorrectorRan(Exception):
+    pass
+
+
+class _AfterSolve(Exception):
+    pass
+
+
+def test_run_solver_runs_the_corrector_on_the_first_solve():
+    """run_solver hands the output of the first solve to the cap corrector of the call, before
+    it builds the helpfile output."""
+    seen = []
+    solver = SimpleNamespace(
+        _S0=np.zeros(3), parameters=SimpleNamespace(solver=SimpleNamespace(end_time=1.0))
+    )
+
+    def correct(hf_row, interior_o, S0_entry, out, snap):
+        seen.append((out, S0_entry.copy(), snap))
+        raise _CorrectorRan
+
+    def build(*a, **k):
+        raise _AfterSolve
+
+    first = SimpleNamespace(dt_actual=1.0)
+    runner = SimpleNamespace(
+        _use_jax=False,
+        _solve_with_retry=lambda hf_row, interior_o, S0_entry: first,
+        _correct_lid_cap=correct,
+        _build_helpfile_output=build,
+        _config=SimpleNamespace(interior_energetics=SimpleNamespace(surface_bc_mode='flux')),
+    )
+    io = SimpleNamespace(aragog_solver=solver)
+    with pytest.raises((_CorrectorRan, _AfterSolve)):
+        AragogRunner.run_solver(
+            runner, {'Time': 10.0, 'boundary_layer_thickness': 0.01}, io, {'output': '.'}
+        )
+    assert len(seen) == 1 and seen[0][0] is first
+    assert np.array_equal(seen[0][1], np.zeros(3))
+    assert seen[0][2]['end_time'] == 1.0
+
+
+def _provider_config(module='dummy', fixed_flux=-1.0, prevent_warming=False):
+    return SimpleNamespace(
+        atmos_clim=SimpleNamespace(module=module, dummy=SimpleNamespace(fixed_flux=fixed_flux)),
+        planet=SimpleNamespace(prevent_warming=prevent_warming),
+    )
+
+
+def test_the_corrector_has_the_dummy_flux_only(monkeypatch):
+    """The flux provider of the corrector is the dummy formula for the dummy atmosphere, with the
+    clip of prevent_warming, and none for AGNI, JANUS or a fixed dummy flux."""
+    import proteus.atmos_clim.dummy as dummy
+    from proteus.interior_energetics.wrapper import lid_flux_provider
+
+    monkeypatch.setattr(dummy, 'net_flux', lambda config, hf_row, T: 3.0 * T - 2000.0)
+    f = lid_flux_provider(_provider_config(), {})
+    assert f(1000.0) == pytest.approx(1000.0, rel=1e-15)
+    assert f(500.0) == pytest.approx(-500.0, rel=1e-15)
+    f = lid_flux_provider(_provider_config(prevent_warming=True), {})
+    assert f(1000.0) == pytest.approx(1000.0, rel=1e-15)
+    assert f(500.0) == 1.0e-8
+    for cfg in (
+        _provider_config('agni'),
+        _provider_config('janus'),
+        _provider_config(fixed_flux=1.0e4),
+    ):
+        assert lid_flux_provider(cfg, {}) is None
+
+
+@pytest.mark.parametrize('F_end', [float('nan'), float('inf'), -float('inf')])
+def test_a_secant_from_a_non_finite_flux_is_zero(F_end):
+    """A non-finite end flux gives the secant 0 (the cap alone), never a non-finite slope."""
+    assert lid_cap_secant(700.0, 710.0, 15000.0, F_end) == 0.0
+    assert lid_cap_secant(700.0, 710.0, float('nan'), 15870.0) == 0.0

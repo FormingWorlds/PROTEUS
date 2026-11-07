@@ -633,8 +633,10 @@ LID_RESOLVE_RTOL = 1.0e-3
 
 
 def lid_cap_secant(T_held: float, T_end: float, F_held: float, F_end: float) -> float:
-    """Secant [W m-2 K-1] of the atmosphere flux between the held and the end surface, at least 0."""
-    return max((F_end - F_held) / (T_end - T_held), 0.0)
+    """Secant [W m-2 K-1] of the atmosphere flux between the held and the end surface, at least 0;
+    0 where it is not finite."""
+    secant = (F_end - F_held) / (T_end - T_held)
+    return secant if np.isfinite(secant) and secant > 0.0 else 0.0
 
 
 def lid_resolve_skip(tangent: float, secant: float) -> bool:

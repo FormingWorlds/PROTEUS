@@ -2455,14 +2455,20 @@ def lid_flux_provider(config, hf_row: dict):
     Returns
     -------
     callable or None
-        ``T_surf -> F_atm`` for the dummy atmosphere; None for the other modules, which take the
-        slope of the rows without the corrector.
+        ``T_surf -> F_atm`` for the dummy atmosphere, with the lower limit of
+        ``planet.prevent_warming``; None for a fixed dummy flux and for the other modules, which
+        take the slope of the rows without the corrector.
     """
-    if config.atmos_clim.module == 'dummy':
-        from proteus.atmos_clim.dummy import net_flux
+    if config.atmos_clim.module != 'dummy':
+        return None
+    fixed_flux = getattr(config.atmos_clim.dummy, 'fixed_flux', -1.0)
+    if isinstance(fixed_flux, (int, float)) and fixed_flux > 0:
+        return None
+    from proteus.atmos_clim.dummy import net_flux
 
-        return lambda T: net_flux(config, hf_row, T)
-    return None
+    if config.planet.prevent_warming:
+        return lambda T: max(1.0e-8, net_flux(config, hf_row, T))
+    return lambda T: net_flux(config, hf_row, T)
 
 
 def run_interior(

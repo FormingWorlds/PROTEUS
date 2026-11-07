@@ -131,7 +131,11 @@ def test_resume_hands_the_snapshot_lid_to_the_solver(tmp_path, kind, caplog):
     def _setup(config, hf_row, interior_o, outdir, **kw):
         interior_o.aragog_solver = solver
 
+    rows = object()  # the run table, handed on to update_solver for the row slope
+    got_rows = []
+
     def _update(dt, hf_row, interior_o, output_dir=None, hf_all=None):
+        got_rows.append(hf_all)
         interior_o._last_entropy = np.linspace(3100.0, 3000.0, 6)
 
     config = MagicMock()
@@ -147,8 +151,9 @@ def test_resume_hands_the_snapshot_lid_to_the_solver(tmp_path, kind, caplog):
         caplog.at_level('WARNING'),
     ):
         AragogRunner.setup_or_update_solver(
-            config, {'Time': T_SNAP}, interior_o, 100.0, {'output': out}
+            config, {'Time': T_SNAP}, interior_o, 100.0, {'output': out}, hf_all=rows
         )
+    assert got_rows == [rows]
     delta, E, t_ho = LIDS[kind]
     assert len(solver.seen) == 1
     assert solver.seen[0][0] == (delta, E)
