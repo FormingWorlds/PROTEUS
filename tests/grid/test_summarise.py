@@ -228,9 +228,10 @@ def test_summarise_counts_a_case_without_a_readable_status_as_unknown(
     """A case folder whose status file is missing, empty or unparseable (the run
     stopped before PROTEUS wrote a status) counts as unknown, and the summary still
     gives the statistics of the other cases instead of stopping at that case. The
-    case is listed by `code=-1`, `unknown` and `all`, by its own index.
+    case is listed by `code=-1`, `unknown` and `all`, by its own index; `unknown` also
+    lists an unrecognised code (35), as grid-analyse's Unknown category does.
     """
-    grid = _make_grid(tmp_path, statuses=[10, 10, 20])
+    grid = _make_grid(tmp_path, statuses=[10, 10, 20, 35])
     status = grid / 'case_000001' / 'status'
     if content is None:
         status.unlink()
@@ -248,19 +249,24 @@ def test_summarise_counts_a_case_without_a_readable_status_as_unknown(
             assert summarise_mod.summarise(str(grid), tgt_status=tgt) is True
         listed[tgt] = caplog.text.split(header)[1]
 
-    assert 'Found 3 cases' in caplog.text
-    # One case of three in each row: 33 %.
-    assert '1     (33%) Unknown (no readable status file)' in caplog.text
-    assert '1     (33%) Completed (solidified)' in caplog.text
-    assert '1     (33%) Error (generic case, or configuration issue)' in caplog.text
-    assert 'UNHANDLED' not in caplog.text
+    assert 'Found 4 cases' in caplog.text
+    # One case of four in each row: 25 %.
+    assert '1     (25%) Unknown (no readable status file)' in caplog.text
+    assert '1     (25%) Completed (solidified)' in caplog.text
+    assert '1     (25%) Error (generic case, or configuration issue)' in caplog.text
+    assert '1     (25%) UNHANDLED STATUS (35)' in caplog.text
+    assert 'UNHANDLED STATUS (-1)' not in caplog.text
     unknown_line = 'Case 1     : Code -1 - Unknown (no readable status file)'
+    unrecognised_line = 'Case 3     : Code 35 - UNHANDLED STATUS (35)'
+    assert unknown_line in listed['code=-1']
+    assert 'Case 3    ' not in listed['code=-1']
+    assert unknown_line in listed['unknown']
+    assert unrecognised_line in listed['unknown']
     for tgt in ('code=-1', 'unknown'):
-        assert unknown_line in listed[tgt], tgt
         assert 'Case 0    ' not in listed[tgt], tgt
         assert 'Case 2    ' not in listed[tgt], tgt
-    # `all` lists every case, the unknown one included.
-    for idx in (0, 1, 2):
+    # `all` lists every case, the unknown ones included.
+    for idx in (0, 1, 2, 3):
         assert f'Case {idx}    ' in listed['all']
     assert unknown_line in listed['all']
 

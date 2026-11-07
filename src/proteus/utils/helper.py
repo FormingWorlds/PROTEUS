@@ -566,65 +566,44 @@ def safe_rm(fpath: str):
             log.warning("Cannot remove unhandled path '%s'" % fpath)
 
 
+STATUS_COMMENTS = {
+    # No readable status file (STATUS_MISSING)
+    -1: 'Unknown (no readable status file)',
+    # Running cases
+    0: 'Started',
+    1: 'Running',
+    # Successful cases
+    10: 'Completed (solidified)',
+    11: 'Completed (maximum clock runtime)',
+    12: 'Completed (maximum iterations)',
+    13: 'Completed (target time)',
+    14: 'Completed (net flux is small)',
+    15: 'Completed (volatiles escaped)',
+    16: 'Completed (planet disintegrated)',
+    17: 'Completed (satellite escaped)',
+    18: 'Completed (satellite disintegrated)',
+    29: 'Completed (planet evaporated)',
+    # Error cases
+    20: 'Error (generic case, or configuration issue)',
+    21: 'Error (Interior model)',
+    22: 'Error (Atmosphere model)',
+    23: 'Error (Stellar evolution model)',
+    24: 'Error (Kinetics model)',
+    25: 'Error (died, or exit requested by user)',
+    26: 'Error (Tides/orbit model)',
+    27: 'Error (Outgassing model)',
+    28: 'Error (Escape model)',
+}
+
+
 def CommentFromStatus(status: int):
     """
     Convert status number into comment string
     """
-    desc = ''
-    match status:
-        # No readable status file (STATUS_MISSING)
-        case -1:
-            desc = 'Unknown (no readable status file)'
-        # Running cases
-        case 0:
-            desc = 'Started'
-        case 1:
-            desc = 'Running'
-        # Successful cases
-        case 10:
-            desc = 'Completed (solidified)'
-        case 11:
-            desc = 'Completed (maximum clock runtime)'
-        case 12:
-            desc = 'Completed (maximum iterations)'
-        case 13:
-            desc = 'Completed (target time)'
-        case 14:
-            desc = 'Completed (net flux is small)'
-        case 15:
-            desc = 'Completed (volatiles escaped)'
-        case 16:
-            desc = 'Completed (planet disintegrated)'
-        case 17:
-            desc = 'Completed (satellite escaped)'
-        case 18:
-            desc = 'Completed (satellite disintegrated)'
-        # Error cases
-        case 20:
-            desc = 'Error (generic case, or configuration issue)'
-        case 21:
-            desc = 'Error (Interior model)'
-        case 22:
-            desc = 'Error (Atmosphere model)'
-        case 23:
-            desc = 'Error (Stellar evolution model)'
-        case 24:
-            desc = 'Error (Kinetics model)'
-        case 25:
-            desc = 'Error (died, or exit requested by user)'
-        case 26:
-            desc = 'Error (Tides/orbit model)'
-        case 27:
-            desc = 'Error (Outgassing model)'
-        case 28:
-            desc = 'Error (Escape model)'
-        case 29:
-            desc = 'Completed (planet evaporated)'
-        # Default case
-        case _:
-            desc = 'UNHANDLED STATUS (%d)' % status
-            log.warning('Unhandled model status (%d) selected' % status)
-    return desc
+    if status in STATUS_COMMENTS:
+        return STATUS_COMMENTS[status]
+    log.warning('Unhandled model status (%d) selected' % status)
+    return 'UNHANDLED STATUS (%d)' % status
 
 
 def UpdateStatusfile(dirs: dict, status: int):
