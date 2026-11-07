@@ -948,7 +948,8 @@ def test_boundary_reads_the_skin_of_the_columns():
     d, k, T = lid_boundary(_row(0.5, d=0.1, k=1.0))
     assert k / d == pytest.approx(0.5 * 4.0 + 0.5 * 10.0, rel=1e-14)
     assert (k / d) * T == pytest.approx(0.5 * 4.0 * 1400.0 + 0.5 * 10.0 * 1500.0, rel=1e-14)
-    assert lid_open_flux(_row(0.5, d=0.1, k=1.0, T_surf=900.0)) == pytest.approx(10.0 * 600.0)
+    row = _balanced(_row(0.5, d=0.1, k=1.0, T_surf=900.0))
+    assert lid_open_flux(row) == pytest.approx(10.0 * 600.0, rel=1e-12)
 
 
 def test_a_zero_skin_passes_without_a_lid_and_is_refused_with_one():
@@ -963,15 +964,82 @@ def test_a_zero_skin_passes_without_a_lid_and_is_refused_with_one():
         lid_boundary(_row(0.5, d=0.0, k=2.0))
 
 
+def _balanced(row, gap=1.0):
+    """Row with F_atm at ``gap`` times the parallel skin balance of its call."""
+    d, k, T_melt = lid_boundary(row)
+    row['F_atm'] = gap * k / d * (T_melt - row['T_surf'])
+    return row
+
+
 @pytest.mark.physics_invariant
 def test_the_two_parts_sum_to_the_balance_of_the_atmosphere():
-    """The weighted lid and open parts sum to the skin balance of the call."""
-    row = _row(0.3, T_surf=900.0, F_atm=1.0)
-    d, k, T_melt = lid_boundary(row)
+    """Where the atmosphere closes the skin balance, the open part is the skin flux and the
+    weighted parts sum to F_atm."""
+    row = _balanced(_row(0.3, T_surf=900.0))
     F_lid = 4.0 * (1400.0 - 900.0)
     F_open = lid_open_flux(row)
     assert F_open == pytest.approx(200.0 * (1500.0 - 900.0), rel=1e-14)
-    assert 0.3 * F_lid + 0.7 * F_open == pytest.approx(k / d * (T_melt - 900.0), rel=1e-12)
+    assert 0.3 * F_lid + 0.7 * F_open == pytest.approx(row['F_atm'], rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_open_part_takes_the_gap_of_the_atmosphere():
+    """Off the skin balance the open part is the skin flux scaled by F_atm over the balance."""
+    row = _balanced(_row(0.3, T_surf=900.0), gap=0.95)
+    S, L = 200.0 * 600.0, 4.0 * 500.0
+    assert lid_open_flux(row) == pytest.approx(0.95 * S, rel=1e-14)
+    assert 0.3 * 0.95 * L + 0.7 * lid_open_flux(row) == pytest.approx(row['F_atm'], rel=1e-12)
+
+
+@pytest.mark.parametrize('gap', [0.95, 1.0, 1.05])
+@pytest.mark.parametrize('w', [1e-12, 1e-9])
+def test_open_part_goes_to_f_atm_as_the_weight_goes_to_zero(w, gap):
+    """The boundary of the interior is continuous at the onset: F_atm at w = 0 and as w -> 0."""
+    row = _balanced(_row(w, T_surf=1300.0), gap=gap)
+    assert lid_open_flux(row) == pytest.approx(row['F_atm'], rel=1e-8)
+    assert lid_open_flux(dict(row, lid_weight=0.0)) == row['F_atm']
+
+
+def test_open_part_without_a_positive_balance_is_the_skin_flux(caplog, monkeypatch):
+    """A surface at or above the melt side of the call gives no scale; the skin flux stays,
+    with one warning per process."""
+    import proteus.atmos_clim.common as common
+
+    monkeypatch.setattr(common, '_OPEN_FLUX_WARNED', [False])
+    row = _row(0.99, T_surf=1450.0, F_atm=7.0)
+    d, k, T_melt = lid_boundary(row)
+    assert k / d * (T_melt - 1450.0) < 0.0
+    with caplog.at_level('WARNING', logger='fwl.proteus.atmos_clim.common'):
+        assert lid_open_flux(row) == pytest.approx(200.0 * 50.0, rel=1e-14)
+        assert lid_open_flux(_row(0.5, T_surf=1500.0, F_atm=7.0)) == 0.0
+        assert lid_open_flux(_balanced(_row(0.5, T_surf=900.0))) == pytest.approx(200.0 * 600.0)
+    warned = [r for r in caplog.records if 'unscaled' in r.getMessage()]
+    assert len(warned) == 1
+    assert 'T_surf 1450.00 K' in warned[0].getMessage()
+
+
+@pytest.mark.physics_invariant
+@given(
+    w=st.floats(1e-6, 1.0),
+    G_lid=st.floats(1e-3, 1e5),
+    d=st.floats(1e-4, 1.0),
+    k=st.floats(0.1, 10.0),
+    T_node=st.floats(300.0, 4000.0),
+    dT_b=st.floats(0.0, 250.0),
+    dT_s=st.floats(1.0, 3000.0),
+    gap=st.floats(0.5, 1.5),
+)
+@settings(max_examples=300, deadline=None)
+def test_scaled_parts_sum_to_f_atm(w, G_lid, d, k, T_node, dT_b, dT_s, gap):
+    """With both parts scaled by F_atm over the balance of the call they sum to F_atm."""
+    T_b = T_node - dT_b
+    T_s = T_b - min(dT_s, T_b - 1.0)
+    row = _balanced(_row(w, G=G_lid, T_b=T_b, T_node=T_node, d=d, k=k, T_surf=T_s), gap=gap)
+    S = k / d * (T_node - T_s)
+    L = min(G_lid, k / d) * (T_b - T_s)
+    F_open = lid_open_flux(row)
+    assert F_open == pytest.approx(gap * S, rel=1e-9)
+    assert w * gap * L + (1.0 - w) * F_open == pytest.approx(row['F_atm'], rel=1e-9)
 
 
 def test_open_flux_without_a_lid_is_the_flux_of_the_atmosphere():

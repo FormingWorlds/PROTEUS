@@ -490,6 +490,10 @@ def lid_flux_cap(hf_row: dict) -> float | None:
     return C if C > 0.0 else None
 
 
+# set by the first unscaled open part, so that the warning is logged once per process
+_OPEN_FLUX_WARNED = [False]
+
+
 def lid_open_flux(hf_row: dict) -> float:
     """Flux [W m-2] of the surface without a lid, the boundary value of the interior.
 
@@ -501,13 +505,35 @@ def lid_open_flux(hf_row: dict) -> float:
     Returns
     -------
     float
-        ``G_skin (T_node - T_surf)`` where a lid acts, otherwise ``F_atm``.
+        ``F_atm`` without a lid. Where a lid acts, the skin flux ``G_skin (T_node - T_surf)``
+        scaled by ``F_atm / (G (T_melt - T_surf))``, the ratio of the atmosphere flux to the
+        parallel balance of :func:`lid_boundary`; the skin flux alone where that balance is not
+        positive.
+
+    Notes
+    -----
+    The scale makes the boundary continuous at the onset: it tends to ``F_atm`` as the lid
+    weight goes to 0. Where the atmosphere closes the skin balance it is 1, and the weighted
+    lid and open parts sum to ``F_atm``.
     """
     if not lid_acts(hf_row):
         return float(hf_row['F_atm'])
-    return _lid_skin_conductance(hf_row) * (
-        float(hf_row['lid_T_node']) - float(hf_row['T_surf'])
-    )
+    T_surf = float(hf_row['T_surf'])
+    skin = _lid_skin_conductance(hf_row) * (float(hf_row['lid_T_node']) - T_surf)
+    d, k, T_melt = lid_boundary(hf_row)
+    balance = k / d * (T_melt - T_surf)
+    if not (balance > 0.0 and skin > 0.0):
+        if not _OPEN_FLUX_WARNED[0]:
+            log.warning(
+                'Lid open part: the skin balance of the call is %.4g W m-2 and the skin flux %.4g '
+                'W m-2 at T_surf %.2f K; the open part takes the skin flux unscaled',
+                balance,
+                skin,
+                T_surf,
+            )
+            _OPEN_FLUX_WARNED[0] = True
+        return skin
+    return float(hf_row['F_atm']) / balance * skin
 
 
 def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:

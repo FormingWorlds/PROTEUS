@@ -92,9 +92,9 @@ Then $\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})$ equa
 
 **What the interior takes.** After the atmosphere step, `run_atmosphere` writes `lid_F_open`, the flux of the open part:
 
-$$F_\mathrm{open} = G_\mathrm{skin}\,(T_\mathrm{node} - T_\mathrm{surf}),$$
+$$F_\mathrm{open} = r\,G_\mathrm{skin}\,(T_\mathrm{node} - T_\mathrm{surf}), \qquad r = \frac{F_\mathrm{atm}}{\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})},$$
 
-and `F_atm` where no lid acts. In the next interior step Aragog takes `lid_F_open` as the flux of the part $1 - w$ and holds the lid surface at $T_\mathrm{surf}$. `F_atm` itself holds the lid term too, so as the flux of the open part it would count the lid part a second time.
+and `F_atm` where no lid acts. The ratio $r$ compares the flux of the atmosphere with the parallel skin balance of its call. Where the atmosphere closes that balance, $r = 1$ and the weighted lid and open parts sum to `F_atm`. Where it does not, the open part takes the difference in the same ratio, so $F_\mathrm{open}$ tends to `F_atm` as $w$ goes to 0: the boundary of the open part does not step by the difference when the weight first exceeds 0. Where the balance of the call is not positive (a surface at or above the melt side of the call), $F_\mathrm{open}$ is the skin flux alone. In the next interior step Aragog takes `lid_F_open` as the flux of the part $1 - w$ and holds the lid surface at $T_\mathrm{surf}$. `F_atm` itself holds the lid term too, so as the flux of the open part it would count the lid part a second time.
 
 ## The onset thickness
 
