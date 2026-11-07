@@ -15,6 +15,7 @@ from proteus.interior_energetics.aragog import (
     _set_lid_surface,
     _surface_flux_of_step,
 )
+from tests.atmos_clim.test_common import _row
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 YEAR = 3.15576e7
@@ -96,87 +97,6 @@ def test_the_lid_takes_the_surface_of_the_atmosphere_only_in_flux_mode(row, mode
     assert _lid_surface_of_row(row, mode, False) is None  # no lid, no held surface
 
 
-def _row(w, G=4.0, T_b=1400.0, T_node=1500.0, **kw):
-    return dict(
-        lid_weight=w,
-        lid_conductance=G,
-        lid_T_base=T_b,
-        lid_T_node=T_node,
-        T_magma=1450.0,
-        boundary_layer_thickness=kw.pop('d', 0.01),
-        boundary_layer_conductivity=kw.pop('k', 2.0),
-        **kw,
-    )
-
-
-@pytest.mark.physics_invariant
-def test_boundary_is_the_skin_without_a_lid_and_a_parallel_sum_with_one():
-    """Without a lid the call takes the skin and T_magma; with one the parallel sum of the two parts."""
-    no_lid = {
-        'T_magma': 1450.0,
-        'boundary_layer_thickness': 0.01,
-        'boundary_layer_conductivity': 2.0,
-    }
-    assert lid_boundary(no_lid) == (0.01, 2.0, 1450.0)
-    assert lid_boundary(_row(0.0)) == (0.01, 2.0, 1450.0)
-    assert lid_boundary(_row(1.0)) == (2.0 / 4.0, 2.0, 1400.0)
-    d, k, T = lid_boundary(_row(0.5))
-    G = k / d
-    assert G == pytest.approx(0.5 * 4.0 + 0.5 * 200.0, rel=1e-14)
-    assert G * T == pytest.approx(0.5 * 4.0 * 1400.0 + 0.5 * 200.0 * 1500.0, rel=1e-14)
-
-
-def test_call_caps_the_lid_conductance_at_the_skin():
-    """In the call a lid conducts at most like the skin, so a thin lid never takes more than
-    the open surface would."""
-    d, k, T = lid_boundary(_row(1.0, G=400.0))
-    assert k / d == pytest.approx(200.0, rel=1e-14)
-    assert T == pytest.approx(1400.0, rel=1e-14)
-    d, k, T = lid_boundary(_row(0.5, G=400.0))
-    assert k / d == pytest.approx(200.0, rel=1e-14)
-    assert (k / d) * T == pytest.approx(0.5 * 200.0 * 1400.0 + 0.5 * 200.0 * 1500.0, rel=1e-14)
-    # at the skin value and below it the lid conductance passes unchanged
-    assert lid_boundary(_row(1.0, G=200.0))[0] == pytest.approx(0.01, rel=1e-14)
-    assert lid_boundary(_row(1.0, G=199.0))[0] == pytest.approx(2.0 / 199.0, rel=1e-14)
-
-
-def test_boundary_reads_the_skin_of_the_columns():
-    """A skin from the columns, as from condensate layers, sets the open branch."""
-    d, k, T = lid_boundary(_row(0.5, d=0.1, k=1.0))
-    assert k / d == pytest.approx(0.5 * 4.0 + 0.5 * 10.0, rel=1e-14)
-    assert (k / d) * T == pytest.approx(0.5 * 4.0 * 1400.0 + 0.5 * 10.0 * 1500.0, rel=1e-14)
-    assert lid_open_flux(_row(0.5, d=0.1, k=1.0, T_surf=900.0)) == pytest.approx(10.0 * 600.0)
-
-
-def test_a_zero_skin_passes_without_a_lid_and_is_refused_with_one():
-    """Without a lid the zero columns of a fixed surface pass unchanged; a live lid refuses."""
-    assert lid_boundary(_row(0.0, d=0.0, k=0.0)) == (0.0, 0.0, 1450.0)
-    assert lid_open_flux(_row(0.0, d=0.0, k=0.0, F_atm=42.0)) == pytest.approx(42.0, rel=1e-15)
-    with pytest.raises(ValueError, match='needs a skin'):
-        lid_boundary(_row(0.5, d=0.0, k=0.0))
-    with pytest.raises(ValueError, match='needs a skin'):
-        lid_open_flux(_row(0.5, d=0.0, k=0.0, T_surf=900.0))
-    with pytest.raises(ValueError, match='needs a skin'):
-        lid_boundary(_row(0.5, d=0.0, k=2.0))
-
-
-@pytest.mark.physics_invariant
-def test_the_two_parts_sum_to_the_balance_of_the_atmosphere():
-    """The weighted lid and open parts sum to the skin balance of the call."""
-    row = _row(0.3, T_surf=900.0, F_atm=1.0)
-    d, k, T_melt = lid_boundary(row)
-    F_lid = 4.0 * (1400.0 - 900.0)
-    F_open = lid_open_flux(row)
-    assert F_open == pytest.approx(200.0 * (1500.0 - 900.0), rel=1e-14)
-    assert 0.3 * F_lid + 0.7 * F_open == pytest.approx(k / d * (T_melt - 900.0), rel=1e-12)
-
-
-def test_open_flux_without_a_lid_is_the_flux_of_the_atmosphere():
-    """Without a lid the open-surface flux is the F_atm of the row."""
-    assert lid_open_flux({'F_atm': 42.0}) == pytest.approx(42.0, rel=1e-15)
-    assert lid_open_flux(_row(0.0, F_atm=42.0)) == pytest.approx(42.0, rel=1e-15)
-
-
 @pytest.mark.parametrize('w', [0.01, 0.2, 0.5, 0.9, 1.0])
 @pytest.mark.physics_invariant
 def test_coupled_budget_of_a_step_closes_at_every_weight(w):
@@ -196,20 +116,6 @@ def test_coupled_budget_of_a_step_closes_at_every_weight(w):
     F_int = _surface_flux_of_step(out, row, 'flux', 100.0 + dt)
     assert row['F_atm'] == pytest.approx(k / d * (T_melt - T), rel=1e-9)  # the call balance
     assert F_int - row['F_atm'] == pytest.approx(0.0, abs=1e-9 * row['F_atm'])
-
-
-def test_cap_is_the_flux_the_call_gave_the_lid():
-    """The cap is the lid branch of the atmosphere balance: G_call (T_b - T_surf)."""
-    assert lid_flux_cap(_row(1.0, T_surf=900.0)) == pytest.approx(4.0 * 500.0, rel=1e-14)
-    assert lid_flux_cap(_row(0.4, T_surf=900.0)) == pytest.approx(4.0 * 500.0, rel=1e-14)
-    # a lid above the skin conductance gets the capped conductance of the call
-    assert lid_flux_cap(_row(1.0, G=400.0, T_surf=900.0)) == pytest.approx(200.0 * 500.0)
-    # no lid, or a surface at or above the base: no cap
-    assert lid_flux_cap(_row(0.0, T_surf=900.0)) is None
-    assert lid_flux_cap(_row(1.0, G=0.0, T_surf=900.0)) is None
-    assert lid_flux_cap(_row(1.0, T_surf=1400.0)) is None
-    with pytest.raises(ValueError, match='needs a skin'):
-        lid_flux_cap(_row(0.5, d=0.0, k=0.0, T_surf=900.0))
 
 
 @pytest.mark.parametrize(
@@ -464,8 +370,9 @@ def test_lid_flux_difference_is_zero_without_a_lid_in_grey_body_mode():
         res = AragogRunner._build_helpfile_output(
             out, row, surface_bc_mode='grey_body', t_end=30025.0
         )
-    assert res['F_int'] == 500.0
-    assert res['lid_weight'] == 0.0 and res['lid_F_diff'] == 0.0
+    assert res['F_int'] == pytest.approx(500.0, rel=1e-15)
+    assert res['lid_weight'] == pytest.approx(0.0, abs=1e-300)
+    assert res['lid_F_diff'] == pytest.approx(0.0, abs=1e-300)
 
 
 @pytest.mark.parametrize('end_weight', [float('nan'), 0.0])

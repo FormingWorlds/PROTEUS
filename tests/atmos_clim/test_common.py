@@ -19,16 +19,21 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from hypothesis import given, settings
-from hypothesis import strategies as st
 
-from proteus.atmos_clim.common import (
+pytest.importorskip('hypothesis')
+from hypothesis import given, settings  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
+
+from proteus.atmos_clim.common import (  # noqa: E402
     clip_radius_to_hill,
     find_latest_atmosphere_time,
     get_oarr_from_parr,
     get_radius_from_pressure,
     get_spfile_name_and_bands,
     get_spfile_path,
+    lid_boundary,
+    lid_flux_cap,
+    lid_open_flux,
     list_atmosphere_times,
     ncdf_flag_to_bool,
     read_atmosphere_data,
@@ -875,8 +880,6 @@ def test_the_lid_never_loses_more_than_the_open_surface(w, G_lid, d, k, T_node, 
     """Rule 3 of the lid coupling: with T_b <= T_node and T_surf <= T_node the call flux of
     lid_boundary, k / d_call (T_melt - T_surf), is at most the flux of the open surface,
     G_skin (T_node - T_surf), for every weight and lid conductance."""
-    from proteus.atmos_clim.common import lid_boundary
-
     T_b, T_s = T_node - dT_b, T_node - dT_s
     row = dict(
         boundary_layer_thickness=d,
@@ -889,4 +892,103 @@ def test_the_lid_never_loses_more_than_the_open_surface(w, G_lid, d, k, T_node, 
     )
     d_call, k_call, T_melt = lid_boundary(row)
     F_call, F_open = k_call / d_call * (T_melt - T_s), k / d * (T_node - T_s)
-    assert F_call <= F_open + 1e-12 * (abs(F_open) + k / d * T_node)
+    tol = 1e-12 * (abs(F_open) + k / d * T_node)
+    assert F_call <= F_open + tol
+    # the lid part alone loses no more than the open surface would at that weight
+    G_part = w * min(G_lid, k / d)
+    assert G_part * (T_b - T_s) <= w * F_open + tol
+
+
+def _row(w, G=4.0, T_b=1400.0, T_node=1500.0, **kw):
+    return dict(
+        lid_weight=w,
+        lid_conductance=G,
+        lid_T_base=T_b,
+        lid_T_node=T_node,
+        T_magma=1450.0,
+        boundary_layer_thickness=kw.pop('d', 0.01),
+        boundary_layer_conductivity=kw.pop('k', 2.0),
+        **kw,
+    )
+
+
+@pytest.mark.physics_invariant
+def test_boundary_is_the_skin_without_a_lid_and_a_parallel_sum_with_one():
+    """Without a lid the call takes the skin and T_magma; with one the parallel sum of the two parts."""
+    no_lid = {
+        'T_magma': 1450.0,
+        'boundary_layer_thickness': 0.01,
+        'boundary_layer_conductivity': 2.0,
+    }
+    assert lid_boundary(no_lid) == (0.01, 2.0, 1450.0)
+    assert lid_boundary(_row(0.0)) == (0.01, 2.0, 1450.0)
+    assert lid_boundary(_row(1.0)) == (2.0 / 4.0, 2.0, 1400.0)
+    d, k, T = lid_boundary(_row(0.5))
+    G = k / d
+    assert G == pytest.approx(0.5 * 4.0 + 0.5 * 200.0, rel=1e-14)
+    assert G * T == pytest.approx(0.5 * 4.0 * 1400.0 + 0.5 * 200.0 * 1500.0, rel=1e-14)
+
+
+def test_call_caps_the_lid_conductance_at_the_skin():
+    """In the call a lid conducts at most like the skin, so a thin lid never takes more than
+    the open surface would."""
+    d, k, T = lid_boundary(_row(1.0, G=400.0))
+    assert k / d == pytest.approx(200.0, rel=1e-14)
+    assert T == pytest.approx(1400.0, rel=1e-14)
+    d, k, T = lid_boundary(_row(0.5, G=400.0))
+    assert k / d == pytest.approx(200.0, rel=1e-14)
+    assert (k / d) * T == pytest.approx(0.5 * 200.0 * 1400.0 + 0.5 * 200.0 * 1500.0, rel=1e-14)
+    # at the skin value and below it the lid conductance passes unchanged
+    assert lid_boundary(_row(1.0, G=200.0))[0] == pytest.approx(0.01, rel=1e-14)
+    assert lid_boundary(_row(1.0, G=199.0))[0] == pytest.approx(2.0 / 199.0, rel=1e-14)
+
+
+def test_boundary_reads_the_skin_of_the_columns():
+    """A skin from the columns, as from condensate layers, sets the open branch."""
+    d, k, T = lid_boundary(_row(0.5, d=0.1, k=1.0))
+    assert k / d == pytest.approx(0.5 * 4.0 + 0.5 * 10.0, rel=1e-14)
+    assert (k / d) * T == pytest.approx(0.5 * 4.0 * 1400.0 + 0.5 * 10.0 * 1500.0, rel=1e-14)
+    assert lid_open_flux(_row(0.5, d=0.1, k=1.0, T_surf=900.0)) == pytest.approx(10.0 * 600.0)
+
+
+def test_a_zero_skin_passes_without_a_lid_and_is_refused_with_one():
+    """Without a lid the zero columns of a fixed surface pass unchanged; a live lid refuses."""
+    assert lid_boundary(_row(0.0, d=0.0, k=0.0)) == (0.0, 0.0, 1450.0)
+    assert lid_open_flux(_row(0.0, d=0.0, k=0.0, F_atm=42.0)) == pytest.approx(42.0, rel=1e-15)
+    with pytest.raises(ValueError, match='needs a skin'):
+        lid_boundary(_row(0.5, d=0.0, k=0.0))
+    with pytest.raises(ValueError, match='needs a skin'):
+        lid_open_flux(_row(0.5, d=0.0, k=0.0, T_surf=900.0))
+    with pytest.raises(ValueError, match='needs a skin'):
+        lid_boundary(_row(0.5, d=0.0, k=2.0))
+
+
+@pytest.mark.physics_invariant
+def test_the_two_parts_sum_to_the_balance_of_the_atmosphere():
+    """The weighted lid and open parts sum to the skin balance of the call."""
+    row = _row(0.3, T_surf=900.0, F_atm=1.0)
+    d, k, T_melt = lid_boundary(row)
+    F_lid = 4.0 * (1400.0 - 900.0)
+    F_open = lid_open_flux(row)
+    assert F_open == pytest.approx(200.0 * (1500.0 - 900.0), rel=1e-14)
+    assert 0.3 * F_lid + 0.7 * F_open == pytest.approx(k / d * (T_melt - 900.0), rel=1e-12)
+
+
+def test_open_flux_without_a_lid_is_the_flux_of_the_atmosphere():
+    """Without a lid the open-surface flux is the F_atm of the row."""
+    assert lid_open_flux({'F_atm': 42.0}) == pytest.approx(42.0, rel=1e-15)
+    assert lid_open_flux(_row(0.0, F_atm=42.0)) == pytest.approx(42.0, rel=1e-15)
+
+
+def test_cap_is_the_flux_the_call_gave_the_lid():
+    """The cap is the lid branch of the atmosphere balance: G_call (T_b - T_surf)."""
+    assert lid_flux_cap(_row(1.0, T_surf=900.0)) == pytest.approx(4.0 * 500.0, rel=1e-14)
+    assert lid_flux_cap(_row(0.4, T_surf=900.0)) == pytest.approx(4.0 * 500.0, rel=1e-14)
+    # a lid above the skin conductance gets the capped conductance of the call
+    assert lid_flux_cap(_row(1.0, G=400.0, T_surf=900.0)) == pytest.approx(200.0 * 500.0)
+    # no lid, or a surface at or above the base: no cap
+    assert lid_flux_cap(_row(0.0, T_surf=900.0)) is None
+    assert lid_flux_cap(_row(1.0, G=0.0, T_surf=900.0)) is None
+    assert lid_flux_cap(_row(1.0, T_surf=1400.0)) is None
+    with pytest.raises(ValueError, match='needs a skin'):
+        lid_flux_cap(_row(0.5, d=0.0, k=0.0, T_surf=900.0))
