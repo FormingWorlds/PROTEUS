@@ -41,7 +41,7 @@ $$F_\mathrm{int} = F_\mathrm{atm}\ \text{of the last atmosphere call}.$$
 - Aragog takes `F_atm` as its surface flux (the boundary update in `interior_energetics/aragog.py`);
 - `F_int` is assigned `F_atm` when no lid acts at the start or at the end of the step (`_surface_flux_of_step`).
 
-In the step in which the lid switches on, the lid acts at its end, so `F_int` is the step integral of Rule 2. The lid then holds its surface at the `T_surf` of the last atmosphere call, which lies close to $T_b$ at the onset (1 K below $T_b$ where that call was hotter), so the lid conducts little and that step can lose much less than the `F_atm` it started from.
+In the step in which the lid switches on, the lid acts at its end, so `F_int` is the step integral of Rule 2. The lid then holds its surface at the `T_surf` of the last atmosphere call, which lies close to $T_b$ at the onset (1.8 and 2.6 K below $T_b$ in two AGNI runs; the held surface is never closer than 1 K to $T_b$), so the lid conducts little. In those two runs that step lost 0.11 and 0.23 of the `F_atm` it started from.
 
 ### Rule 2: the lid ledger
 
@@ -55,7 +55,7 @@ with $F_\mathrm{melt}$ the heat the melt passes to the lid, $F_\mathrm{surf}$ th
 
 $$F_\mathrm{int} = -\frac{\Delta E_\mathrm{surf}}{A\,\Delta t},$$
 
-with $\Delta E_\mathrm{surf}$ the surface energy integral of the step from Aragog (`step_dE_F_int_J`, negative for a loss), $A = 4\pi r^2$ at the top of the mesh and $\Delta t$ the step length. Inside the step the lid follows its own surface flux, so `F_int` can differ from `F_atm`. The column `lid_F_diff` records `F_int - F_atm`. A step in which the lid hands over to the mesh books this integral too; the coupling step does not end at the hand-over. No tested mesh reaches a hand-over: their top cell is at least 65.8 km thick.
+with $\Delta E_\mathrm{surf}$ the surface energy integral of the step from Aragog (`step_dE_F_int_J`, negative for a loss), $A = 4\pi r^2$ at the top of the mesh and $\Delta t$ the step length. Inside the step the lid follows its own surface flux, so `F_int` can differ from `F_atm`. The column `lid_F_diff` records `F_int - F_atm`. A step in which the lid hands over to the mesh books this integral too; the coupling step does not end at the hand-over. With the mush base the lid hands over at 0.7 of the top-cell width; in the coupled runs of this page the top cell is 65.8 km thick and the lid stays near 0.18 m, far from it.
 
 ### Rule 3: the atmosphere flux is the largest loss
 
@@ -67,10 +67,10 @@ $C$ is the lid term of the last atmosphere balance (see the next section). At $w
 
 **How the code keeps it.** Two parts:
 
-- In the atmosphere call, `lid_boundary` caps $G_\mathrm{lid}$ at $G_\mathrm{skin}$, so a lid never conducts more than the open surface. With $T_b \le T_\mathrm{node}$, as on every tested row, the lid part then never loses more than the open part would at the same surface temperature.
+- In the atmosphere call, `lid_boundary` caps $G_\mathrm{lid}$ at $G_\mathrm{skin}$, so a lid never conducts more than the open surface. With $T_b \le T_\mathrm{node}$ and $T_\mathrm{surf} \le T_\mathrm{node}$, the lid part then never loses more than the open part would at the same surface temperature.
 - `lid_flux_cap` computes $C$ from the row after the atmosphere step. `_set_lid_surface` passes it to Aragog as `lid_surface_flux_cap`, next to the held surface temperature `lid_surface_temperature`. Without a lid, or for a surface at or above $T_b$ ($C \le 0$), no cap is set.
 
-Aragog applies the cap: where the lid held at $T_\mathrm{surf}$ would conduct more than $C$, its surface carries $C$ at a warmer surface. With $G_\mathrm{lid} \le G_\mathrm{skin}$ the cap equals the flux of the held lid at the start of the step, so it acts where the held lid would conduct more than at that start: while the lid thins, and while its profile relaxes toward the straight line. Near the onset, where $G_\mathrm{lid} > G_\mathrm{skin}$, the cap lies below the flux of the held lid and can act from the start of the step.
+Aragog applies the cap: where the lid held at $T_\mathrm{surf}$ would conduct more than $C$, its surface carries $C$ at a warmer surface. With $G_\mathrm{lid} \le G_\mathrm{skin}$ the cap equals the flux of the held lid at the start of the step, so it acts where the held lid would conduct more than at that start. The held lid conducts $k f_s'(0) (T_b - T_\mathrm{surf}) / \delta$, and $f_s'(0)$ rises with the shape parameter $s$ of the profile, so the cap acts while the lid thins and while $s$ rises. Near the onset, where $G_\mathrm{lid} > G_\mathrm{skin}$, the cap lies below the flux of the held lid and can act from the start of the step.
 
 ## What the atmosphere call sees
 
@@ -86,7 +86,7 @@ the call takes the skin thickness $d_\mathrm{call} = k / G$ (with the same $k$) 
 
 $$T_\mathrm{magma,call} = \frac{w\,G_\mathrm{lid}'\,T_b + (1 - w)\,G_\mathrm{skin}\,T_\mathrm{node}}{G}.$$
 
-Then $\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})$ equals $F$ above for every $T_\mathrm{surf}$, so the atmosphere solves the parallel balance with the skin balance it already has. These values hold for the call only: `lid_boundary` writes nothing to the row. The row keeps the `T_magma` that Aragog writes under a lid, $w T_b + (1 - w) T_\mathrm{node}$, the melt temperature that outgassing reads. The `T_magma` limiters of the interior wrapper (`planet.prevent_warming` and the large-increase clip of `tmagma_atol` and `tmagma_rtol`) act on this row value, not on the lid branch of the call.
+Then $\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})$ equals $F$ above for every $T_\mathrm{surf}$, so the atmosphere solves the parallel balance with the skin balance it already has. These values hold for the call only: `lid_boundary` writes nothing to the row. The row keeps the `T_magma` that Aragog writes under a lid, $w T_b + (1 - w) T_\mathrm{node}$, the melt temperature that outgassing reads. The `T_magma` limiters of the interior wrapper (`planet.prevent_warming` and the large-increase clip of `tmagma_atol` and `tmagma_rtol`) act on this row value, not on the lid branch of the call. With `planet.prevent_warming` the wrapper also limits `F_int` to that of the previous row (after the init stage) and to at least $10^{-8}$ W m$^{-2}$, so a row it limits does not book the step integral of Rule 2.
 
 **Why the 10 mm skin is not added on top of the lid.** The skin stands for the boundary layer at the top of a molten surface. Under a solid lid no melt reaches the surface, so that boundary layer does not exist: the lid is the conductive layer, and $T_\mathrm{surf}$ is the temperature at its top. Adding the skin in series, $1/G = 1/G_\mathrm{lid} + 1/G_\mathrm{skin}$, would count one layer twice; at $G_\mathrm{lid} = G_\mathrm{skin}$ it would halve the conductance of the lid part.
 
@@ -98,7 +98,7 @@ and `F_atm` where no lid acts. In the next interior step Aragog takes `lid_F_ope
 
 ## The onset thickness
 
-Aragog switches the lid on through its weight $w = 1 - g\,(1 - w_\mathrm{g})$, with $g$ the floor weight of the top cell and $w_\mathrm{g}$ the weight of a grey-body crust (emissivity 1 at `T_eqm`) whose steady thickness passes the onset thickness $\delta_\mathrm{on}$; neither reads the `T_surf` of the atmosphere. PROTEUS derives $\delta_\mathrm{on}$ from the skin:
+Aragog switches the lid on through its weight $w = 1 - g\,(1 - w_\mathrm{g})$, with $g$ the floor weight of the top cell and $w_\mathrm{g}$ the weight of a grey-body crust (emissivity 1 at `T_eqm`) whose steady thickness passes the onset thickness $\delta_\mathrm{on}$. In the flux mode $w_\mathrm{g}$ is 0 while the held surface, the `T_surf` of the last atmosphere call, lies at or above $T_b$; below $T_b$ it does not depend on how far below. The lid therefore switches on in the first step whose held surface lies below $T_b$. PROTEUS derives $\delta_\mathrm{on}$ from the skin:
 
 $$\delta_\mathrm{on} = \frac{k_\mathrm{lid}\, d}{k}.$$
 
@@ -132,6 +132,8 @@ On `proteus start -r`, PROTEUS restores the entropy profile of the snapshot and 
 - Otherwise PROTEUS calls the Aragog `set_initial_lid` with the stored thickness, energy and hand-over time. If Aragog refuses the stored lid, the resume stops with an error that names the snapshot time.
 
 A helpfile written without the lid columns resumes with them read as zero, which means no lid.
+
+A resume that changes `lid_mush_base` from the value in the run's `init_coupler.toml` stops with status 20, unless `interior_energetics.aragog.allow_resume_law_change` is true; see [Resume stops on a separation law](../How-to/troubleshooting.md#resume-stops-on-a-separation-law).
 
 ## Helpfile columns
 

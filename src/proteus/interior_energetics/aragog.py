@@ -644,7 +644,9 @@ def _surface_flux_of_step(
     float
         With a live lid at the start or the end of the step in flux mode, the flux of the step
         integral ``-step_dE_F_int_J / (A dt)``: the lid sets its own surface flux from the
-        temperature of the atmosphere, and it differs from ``F_atm`` inside the step.
+        temperature of the atmosphere, and it differs from ``F_atm`` inside the step. The test
+        reads the weight alone, not :func:`lid_acts`: the step integral is the loss of the step
+        in any case, so a weight without a conductance books it too.
     """
     if surface_bc_mode == 'grey_body':
         return float(out.heat_flux[-1])
