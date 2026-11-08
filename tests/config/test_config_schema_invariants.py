@@ -2025,9 +2025,10 @@ def test_lid_delta_on_accepts_exactly_the_finite_positive_floats():
 
 
 @pytest.mark.unit
-def test_live_lid_on_a_saturation_skin_needs_an_explicit_onset_thickness():
-    """With ``surface_d = 'saturation'`` the skin has no fixed thickness, so the lid onset
-    thickness cannot be derived: a live lid then needs ``lid_delta_on`` set."""
+def test_live_lid_on_a_saturation_skin_is_refused():
+    """A saturation skin has no thickness while no condensate layer has formed, and the series
+    stack of a condensate layer on the lid is not built: the lid on a saturation skin is refused
+    with or without lid_delta_on; a numeric skin passes."""
 
     def cfg(surface_d, delta_on):
         return SimpleNamespace(
@@ -2038,7 +2039,9 @@ def test_live_lid_on_a_saturation_skin_needs_an_explicit_onset_thickness():
             ),
         )
 
-    with pytest.raises(ValueError, match='lid_delta_on'):
-        lid_requires_the_skin_atmosphere(cfg('saturation', None), None, None)
-    assert lid_requires_the_skin_atmosphere(cfg('saturation', 0.02), None, None) is None
+    for delta_on in (None, 0.02):
+        with pytest.raises(ValueError, match="surface_d = 'saturation'") as excinfo:
+            lid_requires_the_skin_atmosphere(cfg('saturation', delta_on), None, None)
+        assert 'lid_mush_base' in str(excinfo.value)
     assert lid_requires_the_skin_atmosphere(cfg(0.01, None), None, None) is None
+    assert lid_requires_the_skin_atmosphere(cfg(0.01, 0.02), None, None) is None
