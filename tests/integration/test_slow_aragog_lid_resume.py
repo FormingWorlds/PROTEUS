@@ -23,7 +23,7 @@ Invariants asserted:
 
 - Each resume hands the snapshot lid to the solver unchanged: the lid states of the start
   vector equal the stored thickness and energy, and the hand-over time is the stored one.
-- The control resume reads the snapshot of its own copy (top-cell entropy as stored).
+- The two edited copies resume their own edited top-cell entropy.
 
 Wall time: about 90 s locally (macOS, M-series) for the run and the 3 resumes to the setup.
 
@@ -45,7 +45,7 @@ from helpers import PROTEUS_ROOT
 from proteus import Proteus
 from proteus.config._interior import default_rtol
 
-pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(900)]
 
 CONFIG = PROTEUS_ROOT / 'input' / 'dummy.toml'
 T_END = 2.0e3  # [yr] end of the short run; its last snapshot is the resume point
@@ -195,3 +195,4 @@ def test_a_live_lid_resumes_in_the_slack_band_of_the_step_check(lid_run):
     solver, S = _resume_setup(run)
     assert S[-1] == S_top
     assert np.array_equal(solver._S0[-2:], stored)
+    assert math.isnan(solver._lid_handover_time)

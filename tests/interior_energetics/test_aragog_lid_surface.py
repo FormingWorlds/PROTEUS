@@ -357,7 +357,8 @@ def test_helpfile_carries_each_lid_column_from_its_field():
             surface_bc_mode='flux',
             t_end=30025.0,
         )
-    assert res['lid_delta_on'] == 0.0 and with_solver['lid_delta_on'] == 0.0213
+    assert res['lid_delta_on'] == 0.0
+    assert with_solver['lid_delta_on'] == pytest.approx(bc.lid_delta_on, rel=1e-15)
     want = dict(
         lid_weight=0.37,
         lid_conductance=21.9,

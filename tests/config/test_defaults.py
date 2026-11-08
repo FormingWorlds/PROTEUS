@@ -991,9 +991,23 @@ def test_a_config_file_with_the_lid_and_the_fixed_flux_dummy_is_refused_at_load(
                 read_config_object(path)
             assert 'lid_mush_base' in str(excinfo.value)
         else:
-            assert read_config_object(path).atmos_clim.dummy.fixed_flux == fixed_flux
+            assert read_config_object(path).atmos_clim.dummy.fixed_flux == pytest.approx(
+                fixed_flux, rel=1e-15
+            )
     ar['lid_mush_base'] = False  # without the lid the fixed flux loads
     atm['dummy'] = {'fixed_flux': 200.0}
     path = tmp_path / 'ff_nolid.toml'
     path.write_text(tomlkit.dumps(doc))
-    assert read_config_object(path).atmos_clim.dummy.fixed_flux == 200.0
+    assert read_config_object(path).atmos_clim.dummy.fixed_flux == pytest.approx(
+        200.0, rel=1e-15
+    )
+    # J: AGNI ignores the dummy section, so the same fixed_flux loads with the lid on AGNI
+    ar['lid_mush_base'] = True
+    atm['module'] = 'agni'
+    atm['rayleigh'] = True
+    path = tmp_path / 'ff_agni.toml'
+    path.write_text(tomlkit.dumps(doc))
+    cfg = read_config_object(path)
+    assert (
+        cfg.atmos_clim.module == 'agni' and cfg.interior_energetics.aragog.lid_mush_base is True
+    )

@@ -407,7 +407,7 @@ def _lid_skin_conductance(hf_row: dict) -> float:
     ------
     ValueError
         If the skin has no resistance: the parallel sum has no open path without a skin, as
-        with ``surface_d = 'saturation'`` and no condensate layer.
+        on a resume from a helpfile without ``boundary_layer_conductivity``.
     """
     d, k = (
         float(hf_row['boundary_layer_thickness']),

@@ -554,6 +554,8 @@ def lid_delta_on_of(config) -> float:
     ------
     ValueError
         For a saturation skin without an explicit value: such a skin has no fixed thickness.
+        A loaded config refuses the lid on a saturation skin; this guards a config built
+        without the loader.
     """
     atm, ie = config.atmos_clim, config.interior_energetics
     # the skin validator makes surface_d and surface_k both numbers or both 'saturation'
@@ -926,7 +928,7 @@ class AragogRunner:
                             aragog_core.snapshot_core_state(interior_o, solver),
                         )
                     # The stored lid first: a new solver otherwise starts the phantom lid, which
-                    # refuses a handed-over lid and a top cell in the slack of the step check.
+                    # refuses a top cell below the full floor gap or in the heat-jump band.
                     restore_lid_start(solver, dirs['output'], hf_row['Time'])
                     solver.set_initial_entropy(S_snap)
                     log.info(
