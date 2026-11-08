@@ -5517,7 +5517,7 @@
         "solid"
       ],
       "bounds": null,
-      "description": "Buoyancy of the gravitational-separation velocity. 'mixture' takes it against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie 1984, Eq. 3.7), on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes (rho_s - rho_l) g on every regime (Abe 1995, Eq. 40), as SPIDER does, so 'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy. Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5; from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2.",
+      "description": "Buoyancy of the gravitational-separation velocity. 'mixture' takes it against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie (1984)[^cite-mckenzie1984], Eq. 3.7), on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes (rho_s - rho_l) g on every regime (Abe (1995)[^cite-abe1995], Eq. 40), as SPIDER does, so 'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy. Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5; from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -5918,7 +5918,7 @@
           "value": 0
         }
       ],
-      "description": "Core thermal conductivity [W m-1 K-1] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015) Table 2 value.",
+      "description": "Core thermal conductivity [W m-1 K-1] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015)[^cite-nimmo2015b] Table 2 value.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6010,7 +6010,7 @@
           "value": 1
         }
       ],
-      "description": "Ohmic fraction of the dissipation in the field-strength scaling, in (0, 1]; Christensen et al. (2009) adopt 1 for planets.",
+      "description": "Ohmic fraction of the dissipation in the field-strength scaling, in (0, 1]; Christensen et al. (2009)[^cite-christensen2009] adopt 1 for planets.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6035,7 +6035,7 @@
           "value": Infinity
         }
       ],
-      "description": "Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast; the default is the theoretical value of Thiriet et al. (2019, Table 2).",
+      "description": "Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast; the default is the theoretical value of Thiriet et al. (2019)[^cite-thiriet2019], Table 2.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -8770,7 +8770,7 @@
       "default": "\"greybody\"",
       "choices": null,
       "bounds": null,
-      "description": "Surface scattering material: the file name of a Hammond et al. (2024) spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo.",
+      "description": "Surface scattering material: the file name of a Hammond et al. (2024)[^cite-hammond2024] spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo.",
       "doc_source": "attributes",
       "group_order": 1,
       "group_position": 0,

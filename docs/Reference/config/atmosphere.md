@@ -88,7 +88,7 @@ interior heat flux. The `fastchem_*` parameters apply when
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `surf_material` | str | `"greybody"` | Surface scattering material: the file name of a Hammond et al. (2024) spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo. |
+| `surf_material` | str | `"greybody"` | Surface scattering material: the file name of a Hammond et al. (2024)[^cite-hammond2024] spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo. |
 | `surf_roughness` | float | `0.001` | Characteristic surface roughness scale \[metres\]. Must be > 0. |
 | `surf_windspeed` | float | `2.0` | Characteristic surface wind speed \[m/s\]. Must be > 0. |
 
@@ -273,3 +273,5 @@ Cross-field constraints enforced when the config file loads:
 ---
 
 **See also:** [Atmosphere modules](../../Explanations/model.md#atmosphere-climate-agni-janus) | [Earth analogue tutorial](../../Tutorials/earth_analogue.md)
+
+[^cite-hammond2024]: Hammond, M., Guimond, C.M., Lichtenberg, T. et al., *[Reliable Detections of Atmospheres on Rocky Exoplanets with Photometric JWST Phase Curves](https://doi.org/10.3847/2041-8213/ada0bc)*, The Astrophysical Journal Letters, 978, L40, 2025 (preprint [arXiv:2409.04386](https://arxiv.org/abs/2409.04386), 2024).

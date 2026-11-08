@@ -308,7 +308,7 @@ class AragogCoreModule:
     k_core: float
         Core thermal conductivity [W m-1 K-1] for conduction in the
         stratified shell and the entropy and dynamo diagnostics; the default is the
-        Nimmo (2015) Table 2 value.
+        Nimmo (2015)[^cite-nimmo2015b] Table 2 value.
     layer_base_fraction: float
         Base of the stratified shell as a fraction of the CMB radius, in (0, 1);
         the inner core must stay below it. Used with the experimental
@@ -323,11 +323,11 @@ class AragogCoreModule:
         stratification.
     f_ohm: float
         Ohmic fraction of the dissipation in the field-strength scaling,
-        in (0, 1]; Christensen et al. (2009) adopt 1 for planets.
+        in (0, 1]; Christensen et al. (2009)[^cite-christensen2009] adopt 1 for planets.
     ra_crit_cmb: float
         Critical Rayleigh number of the mantle-side boundary layer that sets
         the CMB heat flux from the core-mantle temperature contrast; the
-        default is the theoretical value of Thiriet et al. (2019, Table 2).
+        default is the theoretical value of Thiriet et al. (2019)[^cite-thiriet2019], Table 2.
     flux_geometry: str
         Which printed Earth-core efficiency factor converts the
         superadiabatic flux into the field-strength scaling's F:
@@ -468,10 +468,10 @@ class Aragog:
         validator=in_(('mixture', 'solid')),
     )
     """Buoyancy of the gravitational-separation velocity. 'mixture' takes it
-    against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie 1984, Eq. 3.7),
+    against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie (1984)[^cite-mckenzie1984], Eq. 3.7),
     on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes
     regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes
-    (rho_s - rho_l) g on every regime (Abe 1995, Eq. 40), as SPIDER does, so
+    (rho_s - rho_l) g on every regime (Abe (1995)[^cite-abe1995], Eq. 40), as SPIDER does, so
     'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt
     drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy.
     Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5;

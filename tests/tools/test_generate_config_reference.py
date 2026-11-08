@@ -287,7 +287,9 @@ def test_section_table_and_choices_dedup(schema):
 # Independently written, but CommonMark-faithful on backtick runs: a span
 # delimited by N backticks may hold shorter runs, so the content is .+?, not
 # [^`]*?, or a ``code with ` inside`` span would desynchronise the sweep.
-_CODE_OR_LINK = re.compile(r'(?s:(`+).+?\1)|\[[^\]]*\]\([^)]*\)|\[[^\]]*\]\[[^\]]*\]')
+_CODE_OR_LINK = re.compile(
+    r'(?s:(`+).+?\1)|\[[^\]]*\]\([^)]*\)|\[[^\]]*\]\[[^\]]*\]|\[\^[A-Za-z0-9_-]+\]'
+)
 
 
 def test_generated_blocks_leave_no_bare_square_bracket(schema):
@@ -298,6 +300,8 @@ def test_generated_blocks_leave_no_bare_square_bracket(schema):
     linked = next(f for f in schema['fields'] if '](' in f['description'])
     assert '](' in _gcr._describe(linked)
     code_span = next(f for f in schema['fields'] if '``[' in f['description'])
+    cited = next(f for f in schema['fields'] if '[^cite-' in f['description'])
+    assert '[^cite-' in _gcr._describe(cited)  # a footnote mark stays a footnote mark
     assert '``[' in _gcr._describe(code_span)  # a backslash would render literally
 
     sections = sorted({f['toml_section'] for f in schema['fields']})
