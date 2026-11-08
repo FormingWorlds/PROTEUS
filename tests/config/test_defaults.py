@@ -960,3 +960,40 @@ def test_a_config_file_with_the_lid_and_janus_is_refused_at_load(tmp_path):
                 read_config_object(path)
         else:
             assert read_config_object(path).interior_energetics.aragog.lid_mush_base is True
+
+
+@pytest.mark.unit
+def test_a_config_file_with_the_lid_and_the_fixed_flux_dummy_is_refused_at_load(tmp_path):
+    """The fixed-flux dummy returns its flux without the skin, so the lid never reaches the
+    atmosphere: the lid with fixed_flux > 0 is refused at load, fixed_flux -1 and 0 load."""
+    from pathlib import Path
+
+    import tomlkit
+
+    from proteus.config import read_config_object
+
+    doc = tomlkit.parse((Path(__file__).parents[2] / 'input' / 'minimal.toml').read_text())
+    ie = doc.setdefault('interior_energetics', tomlkit.table())
+    ie['module'] = 'aragog'
+    ie['surface_bc_mode'] = 'flux'
+    ar = ie.setdefault('aragog', tomlkit.table())
+    ar['lid_mush_base'] = True
+    ar['rheology'] = {'enabled': True}
+    atm = doc.setdefault('atmos_clim', tomlkit.table())
+    atm['module'] = 'dummy'
+    atm['rayleigh'] = False  # the dummy atmosphere has no Rayleigh scattering
+    for fixed_flux, refused in ((200.0, True), (1.0e-6, True), (0.0, False), (-1.0, False)):
+        atm['dummy'] = {'fixed_flux': fixed_flux}
+        path = tmp_path / f'ff_{fixed_flux}.toml'
+        path.write_text(tomlkit.dumps(doc))
+        if refused:
+            with pytest.raises(ValueError, match='fixed_flux') as excinfo:
+                read_config_object(path)
+            assert 'lid_mush_base' in str(excinfo.value)
+        else:
+            assert read_config_object(path).atmos_clim.dummy.fixed_flux == fixed_flux
+    ar['lid_mush_base'] = False  # without the lid the fixed flux loads
+    atm['dummy'] = {'fixed_flux': 200.0}
+    path = tmp_path / 'ff_nolid.toml'
+    path.write_text(tomlkit.dumps(doc))
+    assert read_config_object(path).atmos_clim.dummy.fixed_flux == 200.0
