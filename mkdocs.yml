@@ -70,6 +70,7 @@ nav:
           - Impact atmosphere-loss dispatch (wrapper.py): Validation/accretion/wrapper.md
       - Atmosphere climate:
           - Transparent black-body limit (agni.py): Validation/atmos_clim/agni.md
+          - Lid and open surface in the call (common.py): Validation/atmos_clim/common.md
       - Interior energetics:
           - Partial giant-impact re-melt (remelt.py): Validation/interior_energetics/remelt.md
       - Interior structure:

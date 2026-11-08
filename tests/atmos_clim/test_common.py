@@ -1106,3 +1106,119 @@ def test_flux_slope_is_zero_without_a_row_before():
     row = {'Time': 10.0, 'T_surf': 700.0, 'F_atm': 15000.0}
     assert lid_flux_slope(None, row) == 0.0
     assert lid_flux_slope(_rows([700.0], [15000.0]), row) == 0.0
+
+
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_the_call_flux_is_the_parallel_sum_of_the_lid_and_the_open_surface(validation_plot):
+    """Analytical limit: the lid part, weight w, and the open part, weight 1 - w, conduct in
+    parallel to one surface, F = w min(G_lid, G_skin) (T_b - T_surf) + (1 - w) G_skin
+    (T_node - T_surf). The one skin of lid_boundary, k / d_call (T_melt - T_surf), equals it at
+    every T_surf to 1e-12, for G_lid of 1/4, 1 and 2 times G_skin. At w = 1 a skin in series
+    with the lid gives 0.8 of it at G_lid = G_skin / 4 and 0.5 at G_lid = G_skin; a lid without
+    the cap at G_skin gives 2 times it at G_lid = 2 G_skin."""
+    T_b, T_node, d, k = 1400.0, 1500.0, 0.01, 2.0
+    G_skin = k / d
+    T_surf = np.linspace(300.0, 1390.0, 110)
+    weights = (0.0, 0.3, 0.7, 1.0)
+    ref, got = {}, {}
+    for G_lid in (0.25 * G_skin, G_skin, 2.0 * G_skin):
+        for w in weights:
+            row = _row(w, G=G_lid, T_b=T_b, T_node=T_node, d=d, k=k)
+            # the T_magma that Aragog writes under a lid, w T_b + (1 - w) T_node
+            row['T_magma'] = w * T_b + (1.0 - w) * T_node
+            d_call, k_call, T_melt = lid_boundary(row)
+            F = k_call / d_call * (T_melt - T_surf)
+            F_ref = w * min(G_lid, G_skin) * (T_b - T_surf) + (1.0 - w) * G_skin * (
+                T_node - T_surf
+            )
+            np.testing.assert_allclose(F, F_ref, rtol=1e-12, atol=1e-12 * G_skin * T_node)
+            ref[G_lid, w], got[G_lid, w] = F_ref, F
+    series = {
+        G: 1.0 / (1.0 / G + 1.0 / G_skin) * (T_b - T_surf) for G in (0.25 * G_skin, G_skin)
+    }
+    np.testing.assert_allclose(series[0.25 * G_skin] / ref[0.25 * G_skin, 1.0], 0.8, rtol=1e-12)
+    np.testing.assert_allclose(series[G_skin] / ref[G_skin, 1.0], 0.5, rtol=1e-12)
+    uncapped = 2.0 * G_skin * (T_b - T_surf)
+    np.testing.assert_allclose(uncapped / ref[2.0 * G_skin, 1.0], 2.0, rtol=1e-12)
+    # the lines are straight in T_surf, so their end points draw them exactly
+    G_plot, x, ends = 0.25 * G_skin, slice(None, None, 20), [0, -1]
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(7, 3.6))
+        for i, w in enumerate(weights):
+            ax.plot(
+                T_surf[ends],
+                ref[G_plot, w][ends] / 1e3,
+                color=f'C{i}',
+                label=f'w = {w:g}',
+            )
+            ax.plot(T_surf[x], got[G_plot, w][x] / 1e3, 'o', color=f'C{i}', ms=5)
+        ax.plot(
+            T_surf[ends],
+            series[G_plot][ends] / 1e3,
+            '--',
+            color='C4',
+            label='series, w = 1',
+        )
+        ink = plt.rcParams['text.color']
+        ax.plot([], [], 'o', color=ink, ms=5, label='code')
+        ax.set_xlabel('Surface temperature $T_\\mathrm{surf}$ [K]')
+        ax.set_ylabel('$F$ [kW m$^{-2}$]')
+        ax.legend(fontsize=8, loc='center left', bbox_to_anchor=(1.0, 0.5))
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'atmos_clim_lid_parallel_sum')
+
+
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_the_weighted_parts_sum_to_f_atm_less_the_unscaled_cap(validation_plot):
+    """Analytical limit: with r = F_atm over the skin balance of the call, the lid part at its
+    cap C and the open part sum to w C + (1 - w) F_open = F_atm - w C (r - 1), so to F_atm where
+    the atmosphere closes its balance (r = 1). Checked to 1e-12 for w from 0 to 1 at r = 0.95,
+    1 and 1.06, with G_lid = G_skin / 2. At w = 0.5 an open part equal to F_atm counts the lid
+    part twice and misses F_atm by 21 % at r = 1; an open part without the scale misses it by
+    5.7 % at r = 1.06, where the sum of the code is 1.7 % below F_atm."""
+    w_grid = np.linspace(0.0, 1.0, 21)
+    gaps = (0.95, 1.0, 1.06)
+    ratio, closed = {}, {}
+    for r in gaps:
+        got, ref = [], []
+        for w in w_grid:
+            row = _balanced(_row(w, G=100.0, T_surf=900.0), gap=r)
+            C = lid_flux_cap(row) or 0.0
+            total = w * C + (1.0 - w) * lid_open_flux(row)
+            got.append(total / row['F_atm'])
+            ref.append(1.0 - w * C * (r - 1.0) / row['F_atm'])
+        ratio[r], closed[r] = np.array(got), np.array(ref)
+        np.testing.assert_allclose(ratio[r], closed[r], rtol=1e-12)
+    np.testing.assert_allclose(ratio[1.0], 1.0, rtol=1e-12)
+    row = _balanced(_row(0.5, G=100.0, T_surf=900.0), gap=1.0)
+    C = lid_flux_cap(row)
+    twice = (0.5 * C + 0.5 * row['F_atm']) / row['F_atm']
+    assert 1.0 - twice == pytest.approx(0.206, abs=0.001)
+    row = _balanced(_row(0.5, G=100.0, T_surf=900.0), gap=1.06)
+    unscaled = (0.5 * C + 0.5 * 200.0 * (1500.0 - 900.0)) / row['F_atm']
+    assert 1.0 - unscaled == pytest.approx(0.057, abs=0.001)
+    assert 1.0 - ratio[1.06][10] == pytest.approx(0.017, abs=0.001)
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(7, 3.6))
+        for i, r in enumerate(gaps):
+            ax.plot(w_grid, closed[r], color=f'C{i}', label=f'r = {r:g}')
+            ax.plot(w_grid[::2], ratio[r][::2], 'o', color=f'C{i}', ms=5)
+        ink = plt.rcParams['text.color']
+        ax.plot([], [], 'o', color=ink, ms=5, label='code')
+        ax.set_xlabel('Lid weight $w$')
+        ax.set_ylabel('sum / $F_\\mathrm{atm}$')
+        ax.legend(fontsize=8, loc='center left', bbox_to_anchor=(1.0, 0.5))
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'atmos_clim_lid_open_part_sum')
