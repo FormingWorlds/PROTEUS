@@ -514,7 +514,7 @@ def observe_resolved_atmosphere(instance, attribute, value):
 def lid_requires_the_skin_atmosphere(instance, attribute, value):
     """A live Aragog lid acts on the atmosphere only through the skin of AGNI or the dummy.
 
-    The fixed-flux dummy (``fixed_flux > 0``) has no skin and is refused with the lid.
+    The fixed-flux dummy (``fixed_flux > 0``) and the saturation skin are refused with the lid.
 
     The interior-side rules of the lid are in ``_interior._check_aragog_lid``.
     """
@@ -539,11 +539,11 @@ def lid_requires_the_skin_atmosphere(instance, attribute, value):
             f'atmos_clim.dummy.fixed_flux = {fixed_flux!r}: the fixed-flux dummy returns its '
             'flux without the skin, so the lid does not reach the atmosphere.'
         )
-    if getattr(atm, 'surface_d', None) == 'saturation' and ie.aragog.lid_delta_on is None:
+    if getattr(atm, 'surface_d', None) == 'saturation':
         raise ValueError(
-            'interior_energetics.aragog.lid_mush_base = true with atmos_clim.surface_d = '
-            "'saturation' needs interior_energetics.aragog.lid_delta_on: a saturation skin has no "
-            'fixed thickness to derive the lid onset thickness from.'
+            'interior_energetics.aragog.lid_mush_base = true cannot be used with '
+            "atmos_clim.surface_d = 'saturation': that skin has no thickness while no condensate "
+            'layer has formed, and a condensate layer over the lid is not modelled.'
         )
 
 

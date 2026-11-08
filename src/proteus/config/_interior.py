@@ -518,8 +518,8 @@ class Aragog:
     lid_mush_base: bool = field(default=False, validator=_valid_bool)
     """Run the sub-grid lid with its base at the solidus. It needs the Aragog module with the
     solid rheology, surface_bc_mode = 'flux', kappah_floor > 0, the EOS tables and the dummy
-    (without fixed_flux) or AGNI atmosphere with surf_state = 'skin', and is refused with
-    core_bc gradient or bower2018 and with param_utbl.
+    (without fixed_flux) or AGNI atmosphere with surf_state = 'skin' and a numeric surface_d,
+    and is refused with core_bc gradient or bower2018 and with param_utbl.
     A resume that changes it stops unless allow_resume_law_change is true."""
 
     lid_delta_on: float | str | None = field(
@@ -527,8 +527,7 @@ class Aragog:
     )
     """Onset thickness [m] of the sub-grid lid. None takes solid_cond surface_d / surface_k, at
     which a linear lid conducts like the skin (0.02 m for the default skin). A finite value above
-    0 is used as given, with a warning beyond 10 % of the skin value. With the lid on and a
-    saturation skin (surface_d = 'saturation') it must be set: the config is refused without it."""
+    0 is used as given, with a warning beyond 10 % of the skin value."""
 
     core_module: AragogCoreModule = field(factory=AragogCoreModule)
     """Core evolution module parameters, active when core_bc =

@@ -119,7 +119,6 @@ For the defaults ($k_\mathrm{lid} = 4$ W m$^{-1}$ K$^{-1}$, $d = 0.01$ m, $k = 2
 - Default none: PROTEUS takes the skin value above.
 - A finite number above 0: used as given. PROTEUS logs a warning when it differs from the skin value by more than 10 %, for the defaults outside 0.018 to 0.022 m.
 - A bool, a string, NaN, 0 or a negative value is refused at config load.
-- With `atmos_clim.surface_d = "saturation"` the skin has no fixed thickness. The config is then refused unless `lid_delta_on` is set.
 
 At setup PROTEUS logs the value it passes, `Aragog sub-grid lid onset thickness lid_delta_on = ... m`. The helpfile column `lid_delta_on` holds the value of the solver, 0 without the lid. Aragog refuses an onset thickness at or above 0.7 of the top-cell width, where the lid with the mush base hands over.
 
@@ -164,7 +163,7 @@ The interior writes every column except `lid_F_open` at each step; the atmospher
 ## Limits
 
 - **JANUS.** JANUS does not read the lid. With `interior_energetics.module = "aragog"` and `lid_mush_base = true`, a config with `atmos_clim.module = "janus"` is refused at load, and so is any `atmos_clim.surf_state` other than `"skin"`. The dummy with `atmos_clim.dummy.fixed_flux > 0` is refused too: it returns its flux without the skin, so the lid does not reach the atmosphere.
-- **Saturation skin.** With `surface_d = "saturation"` the skin is the stack of condensate layers, and it has no thickness while no layer has formed. The config needs an explicit `lid_delta_on`. A live lid with a zero skin stops the run with an error, because the open part then has no conductance to blend.
+- **Saturation skin.** With `surface_d = "saturation"` the skin is the stack of condensate layers, and it has no thickness while no layer has formed; a condensate layer over the lid is not modelled. A config with the lid and a saturation skin is refused at load. A live lid with a zero skin, as on a resume from a helpfile without `boundary_layer_conductivity`, stops the run with an error, because the open part then has no conductance to blend.
 - **One column.** The lid and the open part share one surface temperature in a 1-D column, blended by $w$. The model has no map of where on the planet a crust lies.
 - **The cap.** Rule 3 caps the flux of the lid part only; the open part keeps the boundary flux `lid_F_open` for the whole step.
 - **The slope with AGNI.** With AGNI the cap takes $F'$ from the last 2 rows alone, and `_correct_lid_cap` does not act. A secant from AGNI needs a second solve at a fixed surface temperature, and that solve differs from the flux of the row by up to about $2\times10^{-3}$ at `solution_rtol` 0.01 and $2.5\times10^{-3}$ at 0.15. In one AGNI onset passage at `solution_rtol` 0.01, with steps of 12 to 25 K, a secant from the row flux at the held end and a second solve at the end surface was off by 2.5 to 3.6 per cent, as much as the correction itself (0.3 to 3.4 per cent). Where `F_atm` levels off with the surface temperature within one step, a slope from the rows before lies above the slope across the step, and the lid part can lose more than the atmosphere at the end surface. That case is tested only on the dummy flux with a soft ceiling: it has no AGNI form and is not tested with AGNI.
