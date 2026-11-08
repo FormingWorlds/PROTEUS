@@ -542,6 +542,26 @@ def test_resolve_takes_the_secant_from_the_start_of_the_call():
     assert io.lid_cap_resolve_wall >= 0.0
 
 
+def test_a_resolve_keeps_one_stall_window_entry_per_step():
+    """The re-solve of the corrector runs the step again from its start: the stall window holds
+    the entry of the re-solve only, not also the one of the discarded first solve."""
+    runner, solver, io, seen = _corrector([710.0, 705.0], 15870.0, tangent=0.0)
+    io.aragog_step_progress = [(1.0, 1.0)]
+    solve = runner._solve_with_retry
+
+    def solve_and_book(hf_row, interior_o, S0_entry=None):
+        out = solve(hf_row, interior_o, S0_entry)
+        interior_o.aragog_step_progress.append((float(len(seen)), 1.0))
+        return out
+
+    runner._solve_with_retry = solve_and_book
+    snap = _call_start(solver, io)
+    out = runner._solve_with_retry({}, io, 'S0')
+    AragogRunner._correct_lid_cap(runner, {'F_atm': 15000.0}, io, 'S0', out, snap)
+    assert len(seen) == 2
+    assert io.aragog_step_progress == [(1.0, 1.0), (2.0, 1.0)]
+
+
 def test_resolve_is_skipped_or_off_without_a_provider():
     """A secant equal to the tangent, or no flux provider, keeps the first solve."""
     for kw in (dict(tangent=87.0), dict(tangent=0.0, flux_at=False)):

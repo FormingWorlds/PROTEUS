@@ -963,6 +963,40 @@ def test_a_config_file_with_the_lid_and_janus_is_refused_at_load(tmp_path):
 
 
 @pytest.mark.unit
+def test_a_config_file_with_the_lid_and_prevent_warming_is_refused_at_load(tmp_path):
+    """prevent_warming clamps F_atm while the open part of the lid keeps the skin flux, so the
+    flux balance of the lid does not close: the lid with prevent_warming is refused at load,
+    with both keys named; the same file with prevent_warming false loads."""
+    from pathlib import Path
+
+    import tomlkit
+
+    from proteus.config import read_config_object
+
+    doc = tomlkit.parse((Path(__file__).parents[2] / 'input' / 'minimal.toml').read_text())
+    ie = doc.setdefault('interior_energetics', tomlkit.table())
+    ie['module'] = 'aragog'
+    ie['surface_bc_mode'] = 'flux'
+    ar = ie.setdefault('aragog', tomlkit.table())
+    ar['lid_mush_base'] = True
+    ar['rheology'] = {'enabled': True}
+    atm = doc.setdefault('atmos_clim', tomlkit.table())
+    atm['module'] = 'dummy'
+    atm['rayleigh'] = False
+    planet = doc.setdefault('planet', tomlkit.table())
+    for warming, refused in ((True, True), (False, False)):
+        planet['prevent_warming'] = warming
+        path = tmp_path / f'pw_{warming}.toml'
+        path.write_text(tomlkit.dumps(doc))
+        if refused:
+            with pytest.raises(ValueError, match='prevent_warming') as excinfo:
+                read_config_object(path)
+            assert 'lid_mush_base' in str(excinfo.value)
+        else:
+            assert read_config_object(path).planet.prevent_warming is False
+
+
+@pytest.mark.unit
 def test_a_config_file_with_the_lid_and_the_fixed_flux_dummy_is_refused_at_load(tmp_path):
     """The fixed-flux dummy returns its flux without the skin, so the lid never reaches the
     atmosphere: the lid with fixed_flux > 0 is refused at load, fixed_flux -1 and 0 load."""
