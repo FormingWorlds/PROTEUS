@@ -1091,7 +1091,7 @@ def GetHelpfileKeys():
         'lid_T_base',       # base temperature of the Aragog sub-grid lid [K]
         'lid_T_node',       # top basic node of the Aragog mesh [K]
         'lid_F_open',       # flux of the open part 1 - w of the surface [W m-2]
-        'lid_F_diff',       # F_int of the step minus the F_atm it started from, before prevent_warming; 0 in grey_body mode [W m-2]
+        'lid_F_diff',       # F_int of the step minus the F_atm it started from; 0 in grey_body mode [W m-2]
         'T_cmb',           # core temperature: the bottom mantle cell, or the core state with core_bc = core_module or bower2018 [K]
         'T_cmb_node',      # mantle temperature at the core-mantle boundary basic node; with core_bc = core_module the temperature of the bottom-cell entropy at P_cmb, so the CMB contrast is T_cmb - T_cmb_node, or core_T_top - T_cmb_node with stratification [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]

@@ -274,4 +274,4 @@ Cross-field constraints enforced when the config file loads:
 
 **See also:** [Atmosphere modules](../../Explanations/model.md#atmosphere-climate-agni-janus) | [Earth analogue tutorial](../../Tutorials/earth_analogue.md)
 
-[^cite-hammond2024]: Hammond, M., Guimond, C.M., Lichtenberg, T. et al., *[Reliable Detections of Atmospheres on Rocky Exoplanets with Photometric JWST Phase Curves](https://doi.org/10.3847/2041-8213/ada0bc)*, The Astrophysical Journal Letters, 978, L40, 2025 (preprint [arXiv:2409.04386](https://arxiv.org/abs/2409.04386), 2024).
+[^cite-hammond2024]: Hammond, M., Guimond, C.M., Lichtenberg, T. et al., *[Reliable Detections of Atmospheres on Rocky Exoplanets with Photometric JWST Phase Curves](https://doi.org/10.3847/2041-8213/ada0bc)*, The Astrophysical Journal Letters, 978, L40, 2025 (preprint [arXiv:2409.04386](https://arxiv.org/abs/2409.04386), 2024); the surface spectra PROTEUS downloads are [Zenodo record 15880455](https://zenodo.org/records/15880455).

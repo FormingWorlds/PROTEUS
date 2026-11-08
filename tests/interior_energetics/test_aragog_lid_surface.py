@@ -545,13 +545,17 @@ def test_resolve_takes_the_secant_from_the_start_of_the_call():
 def test_a_resolve_keeps_one_stall_window_entry_per_step():
     """The re-solve of the corrector runs the step again from its start: the stall window holds
     the entry of the re-solve only, not also the one of the discarded first solve."""
+    from proteus.interior_energetics.aragog import _STEP_PROGRESS_WINDOW
+
     runner, solver, io, seen = _corrector([710.0, 705.0], 15870.0, tangent=0.0)
-    io.aragog_step_progress = [(1.0, 1.0)]
+    full = [(100.0 + i, 100.0 + i) for i in range(_STEP_PROGRESS_WINDOW)]
+    io.aragog_step_progress = list(full)
     solve = runner._solve_with_retry
 
     def solve_and_book(hf_row, interior_o, S0_entry=None):
         out = solve(hf_row, interior_o, S0_entry)
-        interior_o.aragog_step_progress.append((float(len(seen)), 1.0))
+        dt = float(len(seen))  # 1.0 for the first solve, 2.0 for the re-solve
+        AragogRunner._track_step_progress(runner, interior_o, dt, dt, {'Time': 10.0})
         return out
 
     runner._solve_with_retry = solve_and_book
@@ -559,7 +563,8 @@ def test_a_resolve_keeps_one_stall_window_entry_per_step():
     out = runner._solve_with_retry({}, io, 'S0')
     AragogRunner._correct_lid_cap(runner, {'F_atm': 15000.0}, io, 'S0', out, snap)
     assert len(seen) == 2
-    assert io.aragog_step_progress == [(1.0, 1.0), (2.0, 1.0)]
+    # the first solve evicted the oldest entry; the restore brings it back before the re-solve
+    assert io.aragog_step_progress == full[1:] + [(2.0, 2.0)]
 
 
 def test_resolve_is_skipped_or_off_without_a_provider():
@@ -685,34 +690,42 @@ def test_run_solver_runs_the_corrector_on_the_first_solve():
         raise _AfterSolve
 
     first = SimpleNamespace(dt_actual=1.0)
+    start_window = [(5.0, 5.0)]
+
+    def solve_and_book(hf_row, interior_o, S0_entry):
+        interior_o.aragog_step_progress.append((1.0, 1.0))
+        return first
+
     runner = SimpleNamespace(
         _use_jax=False,
-        _solve_with_retry=lambda hf_row, interior_o, S0_entry: first,
+        _solve_with_retry=solve_and_book,
         _correct_lid_cap=correct,
         _build_helpfile_output=build,
         _config=SimpleNamespace(interior_energetics=SimpleNamespace(surface_bc_mode='flux')),
     )
-    io = SimpleNamespace(aragog_solver=solver)
+    io = SimpleNamespace(aragog_solver=solver, aragog_step_progress=list(start_window))
     with pytest.raises(_AfterSolve):
         AragogRunner.run_solver(
             runner, {'Time': 10.0, 'boundary_layer_thickness': 0.01}, io, {'output': '.'}
         )
+    # the call start holds the stall window, and a step that raises leaves it as it started
+    assert seen[0][2]['progress'] == start_window
+    assert io.aragog_step_progress == start_window
     assert len(seen) == 1 and seen[0][0] is first
     assert len(built) == 1 and built[0] is second  # built from the output of the corrector
     assert np.array_equal(seen[0][1], np.zeros(3))
     assert seen[0][2]['end_time'] == 1.0
 
 
-def _provider_config(module='dummy', fixed_flux=-1.0, prevent_warming=False):
+def _provider_config(module='dummy', fixed_flux=-1.0):
     return SimpleNamespace(
-        atmos_clim=SimpleNamespace(module=module, dummy=SimpleNamespace(fixed_flux=fixed_flux)),
-        planet=SimpleNamespace(prevent_warming=prevent_warming),
+        atmos_clim=SimpleNamespace(module=module, dummy=SimpleNamespace(fixed_flux=fixed_flux))
     )
 
 
 def test_the_corrector_has_the_dummy_flux_only(monkeypatch):
-    """The flux provider of the corrector is the dummy formula for the dummy atmosphere, with the
-    clip of prevent_warming, and none for AGNI, JANUS or a fixed dummy flux."""
+    """The flux provider of the corrector is the dummy formula for the dummy atmosphere, also
+    where it is negative, and none for AGNI, JANUS or a fixed dummy flux."""
     import proteus.atmos_clim.dummy as dummy
     from proteus.interior_energetics.wrapper import lid_flux_provider
 
@@ -720,9 +733,6 @@ def test_the_corrector_has_the_dummy_flux_only(monkeypatch):
     f = lid_flux_provider(_provider_config(), {})
     assert f(1000.0) == pytest.approx(1000.0, rel=1e-15)
     assert f(500.0) == pytest.approx(-500.0, rel=1e-15)
-    f = lid_flux_provider(_provider_config(prevent_warming=True), {})
-    assert f(1000.0) == pytest.approx(1000.0, rel=1e-15)
-    assert f(500.0) == 1.0e-8
     for cfg in (
         _provider_config('agni'),
         _provider_config('janus'),

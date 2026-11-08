@@ -2524,6 +2524,8 @@ class AragogRunner:
             # The row of this step is skipped or the run stops: the solver holds the state
             # the call started from, and a snapshot of the end state does not stay on disk.
             solver._solution = state_solution(S0_entry, hf_row['Time'])
+            if snap['progress'] is not None:  # a row that is not written books no stall entry
+                interior_o.aragog_step_progress = list(snap['progress'])
             if written is not None:
                 discard_snapshot(dirs['output'], written)
             raise
