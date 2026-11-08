@@ -348,6 +348,16 @@ def test_helpfile_carries_each_lid_column_from_its_field():
         res = AragogRunner._build_helpfile_output(
             out, row, surface_bc_mode='flux', t_end=30025.0
         )
+        bc = SimpleNamespace(subgrid_lid=True, lid_delta_on=0.0213)
+        solver = SimpleNamespace(parameters=SimpleNamespace(boundary_conditions=bc))
+        with_solver = AragogRunner._build_helpfile_output(
+            out,
+            row,
+            SimpleNamespace(aragog_solver=solver),
+            surface_bc_mode='flux',
+            t_end=30025.0,
+        )
+    assert res['lid_delta_on'] == 0.0 and with_solver['lid_delta_on'] == 0.0213
     want = dict(
         lid_weight=0.37,
         lid_conductance=21.9,
@@ -501,6 +511,20 @@ def test_no_resolve_where_the_lid_ends_at_or_below_the_held_surface(T_end):
     assert AragogRunner._correct_lid_cap(runner, {'F_atm': 15000.0}, io, 'S0', out, snap) is out
     assert len(seen) == 1
     assert getattr(io, 'lid_cap_resolves', 0) == 0
+
+
+@pytest.mark.parametrize(('dT', 'resolves'), [(0.5e-6, False), (2.0e-6, True)])
+def test_the_cap_acts_only_above_its_activation_margin(dT, resolves):
+    """The re-solve starts only where the lid surface ends more than LID_CAP_DT_ACT = 1e-6 K
+    above the held one: half the margin keeps the first solve, twice the margin solves again."""
+    runner, solver, io, seen = _corrector([700.0 + dT] * 2, 15000.0 + 2000.0 * dT)
+    snap = _call_start(solver)
+    out = runner._solve_with_retry({}, io, 'S0')
+    out2 = AragogRunner._correct_lid_cap(runner, {'F_atm': 15000.0}, io, 'S0', out, snap)
+    assert len(seen) == (2 if resolves else 1)
+    assert (out2 is out) is not resolves
+    if resolves:
+        assert seen[1][0] == pytest.approx(2000.0, rel=1e-6)
 
 
 def test_resolve_takes_the_secant_from_the_start_of_the_call():

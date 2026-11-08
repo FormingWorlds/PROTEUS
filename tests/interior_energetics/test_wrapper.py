@@ -4465,6 +4465,39 @@ def test_every_per_step_column_is_zeroed_on_a_skipped_step_or_reset_per_row():
 
 
 @pytest.mark.unit
+def test_run_interior_hands_the_aragog_runner_the_flux_provider_of_its_row():
+    """The Aragog runner of a step solves with the lid flux provider that lid_flux_provider builds
+    from the config and the row of that step."""
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic, interior_o.dt, interior_o.aragog_fail_count = 2, 0.0, 0
+    provider, built, solved = object(), [], []
+
+    def _provider(cfg, row):
+        built.append((cfg, row))
+        return provider
+
+    runner_mock = MagicMock()
+
+    def _solve(*args, **kwargs):
+        solved.append(runner_mock._lid_flux_at)
+        raise RuntimeError('stop after the wiring')
+
+    runner_mock.run_solver.side_effect = _solve
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
+        patch('proteus.interior_energetics.wrapper.lid_flux_provider', side_effect=_provider),
+        patch('proteus.interior_energetics.timestep.next_step', return_value=42.0),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
+    assert len(built) == 1 and built[0][0] is config and built[0][1] is hf_row
+    assert len(solved) == 1 and solved[0] is provider
+
+
+@pytest.mark.unit
 def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
     """After _ARAGOG_MAX_CONSECUTIVE_FAILS (default 3), the next failure re-raises."""
     from unittest.mock import patch as _patch

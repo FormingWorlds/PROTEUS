@@ -94,12 +94,15 @@ def _same(a, b):
 
 
 @pytest.mark.parametrize('kind', sorted(LIDS))
-def test_snapshot_stores_the_lid_state(tmp_path, kind):
-    """The snapshot keeps the thickness, the energy and a known hand-over time of the lid."""
+def test_snapshot_stores_the_lid_state(tmp_path, kind, caplog):
+    """The snapshot keeps the thickness, the energy and a known hand-over time of the lid; an
+    unknown hand-over time is left out without a warning."""
     from proteus.interior_energetics.aragog import _snapshot_scalar
 
     delta, E, t_ho = LIDS[kind]
-    out = _snapshot(tmp_path, LIDS[kind])
+    with caplog.at_level('WARNING'):
+        out = _snapshot(tmp_path, LIDS[kind])
+    assert not [r for r in caplog.records if 'lid_' in r.getMessage()]
     got = [
         _snapshot_scalar(out, T_SNAP, f'lid_{n}_state') for n in ('delta', 'E', 'handover_time')
     ]
