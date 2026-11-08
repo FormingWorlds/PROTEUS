@@ -26,6 +26,17 @@ from tests.outgas._calliope_helpers import (  # noqa: F401
 
 pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
 
+# P_surf [bar] of the seeded low-H cold start per IW buffer of the installed CALLIOPE:
+# Fischer in 26.10.5, Hirschmann (2021) from the release that makes it the default.
+_LOW_H_P_SURF = {'fischer': 24.8673, 'hirschmann': 25.0959}
+
+
+def _low_h_p_surf(model):
+    """The pinned P_surf of the IW buffer ``model``; a buffer without a pin fails by name."""
+    if model not in _LOW_H_P_SURF:
+        pytest.fail(f'no pinned low-H P_surf for the IW buffer {model!r}')
+    return _LOW_H_P_SURF[model]
+
 
 def _cold_start(caller_seed, config=None):
     hf_row = _surface_pressure_hf_row()
@@ -102,8 +113,19 @@ def test_seeded_low_h_cold_start_returns_the_physical_root(tmp_path):
     calc_surface_pressures({'output': str(tmp_path)}, config, hf_row)
     assert hf_row['H2O_bar'] > 0.0
     assert hf_row['H2_bar'] > 0.0
-    assert hf_row['P_surf'] == pytest.approx(24.8673, rel=1e-4)
+    from calliope.oxygen_fugacity import DEFAULT_FO2_MODEL
+
+    assert hf_row['P_surf'] == pytest.approx(_low_h_p_surf(DEFAULT_FO2_MODEL), rel=1e-4)
     gate = max(budgets.values()) * config.outgas.solver_rtol + config.outgas.mass_thresh
     for e, m in budgets.items():
         held = sum(hf_row[f'{e}_kg_{r}'] for r in ('atm', 'liquid', 'solid'))
         assert abs(held - m) <= gate, e
+
+
+def test_low_h_pin_follows_the_iw_buffer_and_names_an_unknown_one():
+    """Each IW buffer has its own P_surf, 0.9 % apart (far outside rel 1e-4); an unknown one fails."""
+    fischer, hirschmann = _low_h_p_surf('fischer'), _low_h_p_surf('hirschmann')
+    assert (fischer, hirschmann) == (24.8673, 25.0959)
+    assert abs(hirschmann / fischer - 1.0) > 50 * 1e-4
+    with pytest.raises(pytest.fail.Exception, match="IW buffer 'oneill'"):
+        _low_h_p_surf('oneill')
