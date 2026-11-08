@@ -27,7 +27,7 @@ from tests.outgas._calliope_helpers import (  # noqa: F401
 pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
 
 # P_surf [bar] of the seeded low-H cold start per IW buffer of the installed CALLIOPE:
-# Fischer in 26.10.5, Hirschmann (2021) from the release that makes it the default.
+# Fischer in CALLIOPE 26.10.5, Hirschmann (2021) on CALLIOPE main.
 _LOW_H_P_SURF = {'fischer': 24.8673, 'hirschmann': 25.0959}
 _LOW_H_REL = 1e-4
 
@@ -123,8 +123,8 @@ def test_seeded_low_h_cold_start_returns_the_physical_root(tmp_path):
         assert abs(held - m) <= gate, e
 
 
-def test_low_h_pin_follows_the_iw_buffer_and_names_an_unknown_one():
-    """The pin tolerance tells the IW buffers apart (0.9 % apart); an unknown buffer fails."""
+def test_low_h_pin_follows_the_iw_buffer_and_names_a_buffer_without_a_pin():
+    """The pin tolerance tells the IW buffers apart (0.9 % apart); a buffer without a pin fails."""
     fischer, hirschmann = _low_h_p_surf('fischer'), _low_h_p_surf('hirschmann')
     assert hirschmann != pytest.approx(fischer, rel=_LOW_H_REL)
     with pytest.raises(pytest.fail.Exception, match="IW buffer 'oneill'"):
