@@ -64,11 +64,11 @@ $$w C + (1 - w) F_\mathrm{open} = F_\mathrm{atm} - w C (r - 1).$$
 
 **How to read the plot.** The horizontal axis is the lid weight $w$, the vertical axis the sum $w C + (1 - w) F_\mathrm{open}$ divided by $F_\mathrm{atm}$, for $G_\mathrm{lid}$ = 100 W m$^{-2}$ K$^{-1}$. The lines are the closed form for each ratio $r$, and the dots are the sum from `lid_flux_cap` and `lid_open_flux`. The dots lie on the lines. At $r = 1$ the sum is $F_\mathrm{atm}$ for every weight.
 
-**Known limit.** For $r \neq 1$ the sum misses $F_\mathrm{atm}$ by $w C (r - 1)$, by design: 1.7 % at $r$ = 1.06 and $w$ = 0.5 here. In the two AGNI onset runs of the page [Sub-grid lid and the surface skin](../../Explanations/lid_coupling.md) the sum lay between 0.956 and 1.000 of $F_\mathrm{atm}$.
+**Known limit.** For $r \neq 1$ the sum misses $F_\mathrm{atm}$ by $w C (r - 1)$, by design: 1.7 % at $r$ = 1.06 and $w$ = 0.5 here.
 
 ??? info "Test details"
     - Reference: analytical limit, the sum of the two weighted parts from the definitions of the cap and the open part.
     - Tolerance: relative $10^{-12}$ at each weight.
-    - Discrimination: at $w = 0.5$ and $G_\mathrm{lid} = G_\mathrm{skin}/2$, an open part equal to $F_\mathrm{atm}$ misses $F_\mathrm{atm}$ by 21 % at $r = 1$. An open part without the scale misses $F_\mathrm{atm}$ by 5.7 % and the closed form by 4.0 % at $r = 1.06$, where the closed form is 1.7 % below $F_\mathrm{atm}$; at $r = 1$ the two are equal, so only $r$ = 0.95 and 1.06 tell them apart.
+    - Discrimination (computed in the test): at $w = 0.5$ and $G_\mathrm{lid} = G_\mathrm{skin}/2$, an open part equal to $F_\mathrm{atm}$ misses $F_\mathrm{atm}$ by 21 % at $r = 1$. An open part without the scale misses $F_\mathrm{atm}$ by 5.7 % and the closed form by 4.0 % at $r = 1.06$, where the closed form is 1.7 % below $F_\mathrm{atm}$; at $r = 1$ the two are equal, so only $r$ = 0.95 and 1.06 tell them apart.
     - Test id: `tests/atmos_clim/test_common.py::test_the_weighted_parts_sum_to_f_atm_less_the_unscaled_cap`
     - Command: `pytest tests/atmos_clim/test_common.py -k less_the_unscaled_cap` (add `--validation-plots` to write the plot pair)
