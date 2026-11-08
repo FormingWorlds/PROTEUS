@@ -1125,14 +1125,14 @@ def test_the_call_flux_is_the_parallel_sum_of_the_lid_and_the_open_surface(valid
     for G_lid in (0.25 * G_skin, G_skin, 2.0 * G_skin):
         for w in weights:
             row = _row(w, G=G_lid, T_b=T_b, T_node=T_node, d=d, k=k)
-            # the T_magma that Aragog writes under a lid, w T_b + (1 - w) T_node
+            # the call passes T_magma unchanged at w = 0; Aragog writes T_node there
             row['T_magma'] = w * T_b + (1.0 - w) * T_node
             d_call, k_call, T_melt = lid_boundary(row)
             F = k_call / d_call * (T_melt - T_surf)
             F_ref = w * min(G_lid, G_skin) * (T_b - T_surf) + (1.0 - w) * G_skin * (
                 T_node - T_surf
             )
-            np.testing.assert_allclose(F, F_ref, rtol=1e-12, atol=1e-12 * G_skin * T_node)
+            np.testing.assert_allclose(F, F_ref, rtol=1e-12)
             ref[G_lid, w], got[G_lid, w] = F_ref, F
     series = {
         G: 1.0 / (1.0 / G + 1.0 / G_skin) * (T_b - T_surf) for G in (0.25 * G_skin, G_skin)
@@ -1178,33 +1178,44 @@ def test_the_call_flux_is_the_parallel_sum_of_the_lid_and_the_open_surface(valid
 @pytest.mark.physics_invariant
 def test_the_weighted_parts_sum_to_f_atm_less_the_unscaled_cap(validation_plot):
     """Analytical limit: with r = F_atm over the skin balance of the call, the lid part at its
-    cap C and the open part sum to w C + (1 - w) F_open = F_atm - w C (r - 1), so to F_atm where
-    the atmosphere closes its balance (r = 1). Checked to 1e-12 for w from 0 to 1 at r = 0.95,
-    1 and 1.06, with G_lid = G_skin / 2. At w = 0.5 an open part equal to F_atm counts the lid
-    part twice and misses F_atm by 21 % at r = 1; an open part without the scale misses it by
-    5.7 % at r = 1.06, where the sum of the code is 1.7 % below F_atm."""
+    cap C = min(G_lid, G_skin) (T_b - T_surf) and the open part sum to w C + (1 - w) F_open =
+    F_atm - w C (r - 1), so to F_atm where the atmosphere closes its balance (r = 1). C and the
+    balance are computed here from their formulas. Checked to 1e-12 for w from 0 to 1 at
+    r = 0.95, 1 and 1.06, with G_lid = G_skin / 2 and 2 G_skin. At w = 0.5 and G_lid = G_skin / 2
+    an open part equal to F_atm misses F_atm by 21 % at r = 1; an open part without the scale
+    misses F_atm by 5.7 % and the closed form by 4.0 % at r = 1.06 (the closed form is 1.7 %
+    below F_atm) and is not told apart at r = 1."""
+    T_b, T_node, T_surf, G_skin = 1400.0, 1500.0, 900.0, 200.0
     w_grid = np.linspace(0.0, 1.0, 21)
     gaps = (0.95, 1.0, 1.06)
     ratio, closed = {}, {}
-    for r in gaps:
-        got, ref = [], []
-        for w in w_grid:
-            row = _balanced(_row(w, G=100.0, T_surf=900.0), gap=r)
-            C = lid_flux_cap(row) or 0.0
-            total = w * C + (1.0 - w) * lid_open_flux(row)
-            got.append(total / row['F_atm'])
-            ref.append(1.0 - w * C * (r - 1.0) / row['F_atm'])
-        ratio[r], closed[r] = np.array(got), np.array(ref)
-        np.testing.assert_allclose(ratio[r], closed[r], rtol=1e-12)
-    np.testing.assert_allclose(ratio[1.0], 1.0, rtol=1e-12)
-    row = _balanced(_row(0.5, G=100.0, T_surf=900.0), gap=1.0)
-    C = lid_flux_cap(row)
-    twice = (0.5 * C + 0.5 * row['F_atm']) / row['F_atm']
-    assert 1.0 - twice == pytest.approx(0.206, abs=0.001)
-    row = _balanced(_row(0.5, G=100.0, T_surf=900.0), gap=1.06)
-    unscaled = (0.5 * C + 0.5 * 200.0 * (1500.0 - 900.0)) / row['F_atm']
+    for G_lid in (0.5 * G_skin, 2.0 * G_skin):
+        G_cap = min(G_lid, G_skin)
+        C_ref = G_cap * (T_b - T_surf)
+        S = G_skin * (T_node - T_surf)
+        for r in gaps:
+            got, ref = [], []
+            for w in w_grid:
+                F_atm = r * (w * C_ref + (1.0 - w) * S)
+                row = _row(w, G=G_lid, T_b=T_b, T_node=T_node, T_surf=T_surf, F_atm=F_atm)
+                C = lid_flux_cap(row) or 0.0
+                if w > 0.0:
+                    assert C == pytest.approx(C_ref, rel=1e-14)
+                total = w * C + (1.0 - w) * lid_open_flux(row)
+                got.append(total / F_atm)
+                ref.append(1.0 - w * C_ref * (r - 1.0) / F_atm)
+            ratio[G_lid, r], closed[G_lid, r] = np.array(got), np.array(ref)
+            np.testing.assert_allclose(ratio[G_lid, r], closed[G_lid, r], rtol=1e-12)
+        np.testing.assert_allclose(ratio[G_lid, 1.0], 1.0, rtol=1e-12)
+    C_h, S = 100.0 * 500.0, G_skin * 600.0
+    F1, F6 = 0.5 * C_h + 0.5 * S, 1.06 * (0.5 * C_h + 0.5 * S)
+    assert 1.0 - (0.5 * C_h + 0.5 * F1) / F1 == pytest.approx(0.206, abs=0.001)
+    unscaled = (0.5 * C_h + 0.5 * S) / F6
     assert 1.0 - unscaled == pytest.approx(0.057, abs=0.001)
-    assert 1.0 - ratio[1.06][10] == pytest.approx(0.017, abs=0.001)
+    assert closed[100.0, 1.06][10] - unscaled == pytest.approx(0.040, abs=0.001)
+    assert 1.0 - ratio[100.0, 1.06][10] == pytest.approx(0.017, abs=0.001)
+    ratio = {r: ratio[100.0, r] for r in gaps}
+    closed = {r: closed[100.0, r] for r in gaps}
 
     def figure():
         import matplotlib.pyplot as plt
