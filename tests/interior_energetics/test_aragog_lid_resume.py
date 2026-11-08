@@ -68,7 +68,7 @@ class _LidSolver:
         self._n_lid, self._S0, self._n_stag = n_lid, None, 6
         self._lid_init = self._lid_handover_time = None
         self._real = EntropySolver.set_initial_lid
-        self.seen = []
+        self.seen, self.calls = [], []
 
     def _n_core_state(self):
         return self._n_stag
@@ -76,6 +76,7 @@ class _LidSolver:
     def set_initial_lid(self, delta, E_lid=None, handover_time=float('nan')):
         self._real(self, delta, E_lid, handover_time)
         self.seen.append((self._lid_init, self._lid_handover_time))
+        self.calls.append('lid')
 
     # Resume calls of setup_or_update_solver that the lid does not need.
     def initialize(self):
@@ -85,7 +86,7 @@ class _LidSolver:
         pass
 
     def set_initial_entropy(self, S):
-        pass
+        self.calls.append('entropy')
 
 
 def _same(a, b):
@@ -159,6 +160,8 @@ def test_resume_hands_the_snapshot_lid_to_the_solver(tmp_path, kind, caplog):
     assert solver.seen[0][0] == (delta, E)
     assert _same([solver.seen[0][1]], [t_ho])
     assert not [r for r in caplog.records if 'phantom lid' in r.getMessage()]
+    # a new solver builds its lid start in set_initial_entropy, so the stored lid comes first
+    assert solver.calls == ['lid', 'entropy']
 
 
 def _raw_fields(draw, st):

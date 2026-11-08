@@ -925,8 +925,10 @@ class AragogRunner:
                             solver,
                             aragog_core.snapshot_core_state(interior_o, solver),
                         )
-                    solver.set_initial_entropy(S_snap)
+                    # The stored lid first: a new solver otherwise starts the phantom lid, which
+                    # refuses a handed-over lid and a top cell in the slack of the step check.
                     restore_lid_start(solver, dirs['output'], hf_row['Time'])
+                    solver.set_initial_entropy(S_snap)
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
                         float(np.mean(S_snap)),
@@ -3606,7 +3608,8 @@ def restore_lid_start(solver, output_dir: str, time: float) -> None:
 
     A solver with the lid off takes nothing. A snapshot without a finite lid
     thickness and energy starts the phantom lid at ``lid_delta_lo`` and says
-    so at WARNING.
+    so at WARNING. Call it before ``set_initial_entropy``, which builds the
+    lid start of a new solver from the set lid.
 
     Parameters
     ----------
