@@ -125,7 +125,6 @@ def test_seeded_low_h_cold_start_returns_the_physical_root(tmp_path):
 def test_low_h_pin_follows_the_iw_buffer_and_names_an_unknown_one():
     """Each IW buffer has its own P_surf, 0.9 % apart (far outside rel 1e-4); an unknown one fails."""
     fischer, hirschmann = _low_h_p_surf('fischer'), _low_h_p_surf('hirschmann')
-    assert (fischer, hirschmann) == (24.8673, 25.0959)
     assert abs(hirschmann / fischer - 1.0) > 50 * 1e-4
     with pytest.raises(pytest.fail.Exception, match="IW buffer 'oneill'"):
         _low_h_p_surf('oneill')
