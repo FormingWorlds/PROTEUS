@@ -514,6 +514,8 @@ def observe_resolved_atmosphere(instance, attribute, value):
 def lid_requires_the_skin_atmosphere(instance, attribute, value):
     """A live Aragog lid acts on the atmosphere only through the skin of AGNI or the dummy.
 
+    The fixed-flux dummy (``fixed_flux > 0``) has no skin and is refused with the lid.
+
     The interior-side rules of the lid are in ``_interior._check_aragog_lid``.
     """
     ie = instance.interior_energetics
@@ -529,6 +531,13 @@ def lid_requires_the_skin_atmosphere(instance, attribute, value):
         raise ValueError(
             'interior_energetics.aragog.lid_mush_base = true needs atmos_clim.surf_state = '
             f"'skin', got {atm.surf_state!r}: only the skin carries the lid to the atmosphere."
+        )
+    fixed_flux = getattr(getattr(atm, 'dummy', None), 'fixed_flux', -1.0)
+    if atm.module == 'dummy' and fixed_flux > 0:
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true cannot be used with '
+            f'atmos_clim.dummy.fixed_flux = {fixed_flux!r}: the fixed-flux dummy returns its '
+            'flux without the skin, so the lid does not reach the atmosphere.'
         )
     if getattr(atm, 'surface_d', None) == 'saturation' and ie.aragog.lid_delta_on is None:
         raise ValueError(

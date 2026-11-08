@@ -163,7 +163,7 @@ The interior writes every column except `lid_F_open` at each step; the atmospher
 
 ## Limits
 
-- **JANUS.** JANUS does not read the lid. With `interior_energetics.module = "aragog"` and `lid_mush_base = true`, a config with `atmos_clim.module = "janus"` is refused at load, and so is any `atmos_clim.surf_state` other than `"skin"`.
+- **JANUS.** JANUS does not read the lid. With `interior_energetics.module = "aragog"` and `lid_mush_base = true`, a config with `atmos_clim.module = "janus"` is refused at load, and so is any `atmos_clim.surf_state` other than `"skin"`. The dummy with `atmos_clim.dummy.fixed_flux > 0` is refused too: it returns its flux without the skin, so the lid does not reach the atmosphere.
 - **Saturation skin.** With `surface_d = "saturation"` the skin is the stack of condensate layers, and it has no thickness while no layer has formed. The config needs an explicit `lid_delta_on`. A live lid with a zero skin stops the run with an error, because the open part then has no conductance to blend.
 - **One column.** The lid and the open part share one surface temperature in a 1-D column, blended by $w$. The model has no map of where on the planet a crust lies.
 - **The cap.** Rule 3 caps the flux of the lid part only; the open part keeps the boundary flux `lid_F_open` for the whole step.
