@@ -514,7 +514,8 @@ def observe_resolved_atmosphere(instance, attribute, value):
 def lid_requires_the_skin_atmosphere(instance, attribute, value):
     """A live Aragog lid acts on the atmosphere only through the skin of AGNI or the dummy.
 
-    The fixed-flux dummy (``fixed_flux > 0``) and the saturation skin are refused with the lid.
+    The fixed-flux dummy (``fixed_flux > 0``), the saturation skin and ``prevent_warming`` are
+    refused with the lid.
 
     The interior-side rules of the lid are in ``_interior._check_aragog_lid``.
     """
@@ -538,6 +539,12 @@ def lid_requires_the_skin_atmosphere(instance, attribute, value):
             'interior_energetics.aragog.lid_mush_base = true cannot be used with '
             f'atmos_clim.dummy.fixed_flux = {fixed_flux!r}: the fixed-flux dummy returns its '
             'flux without the skin, so the lid does not reach the atmosphere.'
+        )
+    if getattr(getattr(instance, 'planet', None), 'prevent_warming', False):
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true cannot be used with '
+            'planet.prevent_warming = true: prevent_warming clamps F_atm while the open part of '
+            'the lid keeps the skin flux, so the flux balance of the lid does not close.'
         )
     if getattr(atm, 'surface_d', None) == 'saturation':
         raise ValueError(

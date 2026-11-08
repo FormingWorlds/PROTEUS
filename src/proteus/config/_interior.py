@@ -519,8 +519,8 @@ class Aragog:
     """Run the sub-grid lid with its base at the solidus. It needs the Aragog module with the
     solid rheology, surface_bc_mode = 'flux', kappah_floor > 0, the EOS tables and the dummy
     (without fixed_flux) or AGNI atmosphere with surf_state = 'skin' and a numeric surface_d,
-    and is refused with core_bc gradient or bower2018 and with param_utbl.
-    A resume that changes it stops unless allow_resume_law_change is true."""
+    and is refused with core_bc gradient or bower2018, with param_utbl and with
+    planet.prevent_warming. A resume that changes it stops unless allow_resume_law_change is true."""
 
     lid_delta_on: float | str | None = field(
         default=None, converter=none_if_none, validator=_valid_lid_delta_on

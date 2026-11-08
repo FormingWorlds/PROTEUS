@@ -94,7 +94,7 @@ the call takes the skin thickness $d_\mathrm{call} = k / G$ (with the same $k$) 
 
 $$T_\mathrm{magma,call} = \frac{w\,G_\mathrm{lid}'\,T_b + (1 - w)\,G_\mathrm{skin}\,T_\mathrm{node}}{G}.$$
 
-Then $\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})$ equals $F$ above for every $T_\mathrm{surf}$, so the atmosphere solves the parallel balance with the skin balance it already has. These values hold for the call only: `lid_boundary` writes nothing to the row. The row keeps the `T_magma` that Aragog writes under a lid, $w T_b + (1 - w) T_\mathrm{node}$, the melt temperature that outgassing reads. The `T_magma` limiters of the interior wrapper (`planet.prevent_warming` and the large-increase clip of `tmagma_atol` and `tmagma_rtol`) act on this row value, not on the lid branch of the call. With `planet.prevent_warming` the wrapper also limits `F_int` to that of the previous row (after the init stage) and to at least $10^{-8}$ W m$^{-2}$, so a row it limits does not book the step integral of Rule 2.
+Then $\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})$ equals $F$ above for every $T_\mathrm{surf}$, so the atmosphere solves the parallel balance with the skin balance it already has. These values hold for the call only: `lid_boundary` writes nothing to the row. The row keeps the `T_magma` that Aragog writes under a lid, $w T_b + (1 - w) T_\mathrm{node}$, the melt temperature that outgassing reads. The large-increase clip of `tmagma_atol` and `tmagma_rtol` in the interior wrapper acts on this row value, not on the lid branch of the call. `planet.prevent_warming` is refused with the lid (see Limits).
 
 **Why the 10 mm skin is not added on top of the lid.** The skin stands for the boundary layer at the top of a molten surface. Under a solid lid no melt reaches the surface, so that boundary layer does not exist: the lid is the conductive layer, and $T_\mathrm{surf}$ is the temperature at its top. Adding the skin in series, $1/G = 1/G_\mathrm{lid} + 1/G_\mathrm{skin}$, would count one layer twice; at $G_\mathrm{lid} = G_\mathrm{skin}$ it would halve the conductance of the lid part.
 
@@ -134,7 +134,7 @@ Each interior snapshot (`data/<time>_int.nc`) of a run with the lid stores:
 
 A run with the lid off writes none of them. A non-finite value is not written, with a warning.
 
-On `proteus start -r`, PROTEUS restores the entropy profile of the snapshot and then the lid (`restore_lid_start` in `interior_energetics/aragog.py`):
+On `proteus start -r`, PROTEUS restores the lid of the snapshot first and then its entropy profile (`restore_lid_start`, then `set_initial_entropy`, in `interior_energetics/aragog.py`). A new solver without a set lid would otherwise start the phantom lid, which refuses a top cell below the full floor gap or in the heat-jump band. If the snapshot has a different number of cells than the mesh of the resumed run, PROTEUS logs an error, restarts from the initial entropy profile and the lid starts as the phantom lid. Otherwise:
 
 - A solver without the lid takes nothing.
 - If the lid thickness or the lid energy is absent or not finite, PROTEUS logs a warning that names the status of both. The lid then restarts as the phantom lid of Aragog at `lid_delta_lo`; by the Aragog default that is half of `lid_delta_on`, 0.01 m for the default skin.
@@ -162,7 +162,7 @@ The interior writes every column except `lid_F_open` at each step; the atmospher
 
 ## Limits
 
-- **JANUS.** JANUS does not read the lid. With `interior_energetics.module = "aragog"` and `lid_mush_base = true`, a config with `atmos_clim.module = "janus"` is refused at load, and so is any `atmos_clim.surf_state` other than `"skin"`. The dummy with `atmos_clim.dummy.fixed_flux > 0` is refused too: it returns its flux without the skin, so the lid does not reach the atmosphere.
+- **JANUS.** JANUS does not read the lid. With `interior_energetics.module = "aragog"` and `lid_mush_base = true`, a config with `atmos_clim.module = "janus"` is refused at load, and so is any `atmos_clim.surf_state` other than `"skin"`. The dummy with `atmos_clim.dummy.fixed_flux > 0` is refused too: it returns its flux without the skin, so the lid does not reach the atmosphere. So is `planet.prevent_warming = true`: it clamps `F_atm` while the open part of the lid keeps the skin flux, so the flux balance of the lid does not close.
 - **Saturation skin.** With `surface_d = "saturation"` the skin is the stack of condensate layers, and it has no thickness while no layer has formed; a condensate layer over the lid is not modelled. A config with the lid and a saturation skin is refused at load. A live lid with a zero skin, as on a resume from a helpfile without `boundary_layer_conductivity`, stops the run with an error, because the open part then has no conductance to blend.
 - **One column.** The lid and the open part share one surface temperature in a 1-D column, blended by $w$. The model has no map of where on the planet a crust lies.
 - **The cap.** Rule 3 caps the flux of the lid part only; the open part keeps the boundary flux `lid_F_open` for the whole step.

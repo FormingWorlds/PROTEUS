@@ -646,10 +646,13 @@ def lid_resolve_skip(tangent: float, secant: float) -> bool:
     return abs(secant - tangent) <= LID_RESOLVE_RTOL * max(abs(secant), abs(tangent))
 
 
-def _call_start(solver) -> dict:
-    """State of the solver that a call starts from and a second solve of it must see again."""
+def _call_start(solver, interior_o=None) -> dict:
+    """State of the solver that a call starts from and a second solve of it must see again,
+    with the stall window of ``interior_o`` (a second solve of the step books it once)."""
     params = getattr(getattr(solver, 'parameters', None), 'solver', None)
+    window = getattr(interior_o, 'aragog_step_progress', None)
     return {
+        'progress': None if window is None else list(window),
         'had_sol': hasattr(solver, '_solution'),
         'sol': getattr(solver, '_solution', None),
         'lid_init': getattr(solver, '_lid_init', None),
@@ -658,8 +661,11 @@ def _call_start(solver) -> dict:
     }
 
 
-def _restore_call_start(solver, snap: dict) -> None:
-    """Put the solver back to the state of :func:`_call_start` (a solve clears a set start lid)."""
+def _restore_call_start(solver, snap: dict, interior_o=None) -> None:
+    """Put the solver back to the state of :func:`_call_start` (a solve clears a set start lid),
+    and the stall window of ``interior_o``."""
+    if interior_o is not None and snap.get('progress') is not None:
+        interior_o.aragog_step_progress = list(snap['progress'])
     if snap['had_sol']:
         solver._solution = snap['sol']
     elif hasattr(solver, '_solution'):
@@ -2466,7 +2472,7 @@ class AragogRunner:
         # Mirrors SPIDER's _try_spider retry ladder in spider.py.
         solver = interior_o.aragog_solver
         S0_entry, written = solver._S0.copy(), None
-        snap = _call_start(solver)
+        snap = _call_start(solver, interior_o)
         try:
             out = self._solve_with_retry(hf_row, interior_o, S0_entry)
             out = self._correct_lid_cap(hf_row, interior_o, S0_entry, out, snap)
@@ -2557,7 +2563,7 @@ class AragogRunner:
         if lid_resolve_skip(tangent, secant):
             return out
         t0 = time.perf_counter()
-        _restore_call_start(solver, snap)
+        _restore_call_start(solver, snap, interior_o)
         bc.lid_surface_flux_slope = secant
         out2 = self._solve_with_retry(hf_row, interior_o, S0_entry)
         wall = time.perf_counter() - t0
