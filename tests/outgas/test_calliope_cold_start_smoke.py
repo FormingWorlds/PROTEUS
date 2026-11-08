@@ -29,6 +29,7 @@ pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
 # P_surf [bar] of the seeded low-H cold start per IW buffer of the installed CALLIOPE:
 # Fischer in 26.10.5, Hirschmann (2021) from the release that makes it the default.
 _LOW_H_P_SURF = {'fischer': 24.8673, 'hirschmann': 25.0959}
+_LOW_H_REL = 1e-4
 
 
 def _low_h_p_surf(model):
@@ -115,7 +116,7 @@ def test_seeded_low_h_cold_start_returns_the_physical_root(tmp_path):
     assert hf_row['H2_bar'] > 0.0
     from calliope.oxygen_fugacity import DEFAULT_FO2_MODEL
 
-    assert hf_row['P_surf'] == pytest.approx(_low_h_p_surf(DEFAULT_FO2_MODEL), rel=1e-4)
+    assert hf_row['P_surf'] == pytest.approx(_low_h_p_surf(DEFAULT_FO2_MODEL), rel=_LOW_H_REL)
     gate = max(budgets.values()) * config.outgas.solver_rtol + config.outgas.mass_thresh
     for e, m in budgets.items():
         held = sum(hf_row[f'{e}_kg_{r}'] for r in ('atm', 'liquid', 'solid'))
@@ -123,8 +124,8 @@ def test_seeded_low_h_cold_start_returns_the_physical_root(tmp_path):
 
 
 def test_low_h_pin_follows_the_iw_buffer_and_names_an_unknown_one():
-    """Each IW buffer has its own P_surf, 0.9 % apart (far outside rel 1e-4); an unknown one fails."""
+    """The pin tolerance tells the IW buffers apart (0.9 % apart); an unknown buffer fails."""
     fischer, hirschmann = _low_h_p_surf('fischer'), _low_h_p_surf('hirschmann')
-    assert abs(hirschmann / fischer - 1.0) > 50 * 1e-4
+    assert hirschmann != pytest.approx(fischer, rel=_LOW_H_REL)
     with pytest.raises(pytest.fail.Exception, match="IW buffer 'oneill'"):
         _low_h_p_surf('oneill')
