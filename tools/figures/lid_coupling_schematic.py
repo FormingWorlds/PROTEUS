@@ -343,12 +343,38 @@ def _compact(svg: str) -> bytes:
     svg = svg.replace(' style="image-rendering:crisp-edges;image-rendering:pixelated"', '')
     svg = re.sub(r'<g id="(?:text|patch|line2d|axes|figure)_\d+">', '<g>', svg)
 
-    # Glyph outlines at 1/8 of their resolution (under 0.01 px at these sizes).
+    # Glyph outlines at 1/16 of their resolution (under 0.02 px at these sizes).
     def glyph(m):
-        d = re.sub(r'-?\d+', lambda n: str(round(int(n.group()) / 8)), m.group(1))
-        return f'd="{d}" transform="scale(0.125)"'
+        d = re.sub(r'-?\d+', lambda n: str(round(int(n.group()) / 16)), m.group(1))
+        return f'd="{d}" transform="scale(0.25)"'
 
     svg = re.sub(r'd="([^"]*)" transform="scale\(0\.015625\)"', glyph, svg)
+    # Drop uses of glyphs with no outline (spaces have no definition).
+    defined = set(re.findall(r'<path id="([^"]+)"', svg))
+    svg = re.sub(
+        r'\s*<use xlink:href="#([^"]+)"[^>]*/>',
+        lambda m: m.group() if m.group(1) in defined else '',
+        svg,
+    )
+
+    def offset(m):
+        x, y = (f'{float(v):.1f}'.rstrip('0').rstrip('.') for v in m.groups())
+        return f' x="{x}"' + ('' if y in ('0', '-0') else f' y="{y}"')
+
+    svg = re.sub(r' transform="translate\(([-\d.]+) ([-\d.]+)\)"(?=/>)', offset, svg)
+    svg = svg.replace('xlink:href="#', 'href="#')
+    svg = re.sub(r'd="[^"]*"', lambda m: re.sub(r' ?([A-Za-z]) ', r'\1', m.group()), svg)
+    svg = re.sub(r'\.00\b', '', svg)
+    # Fill as an attribute; no clip paths (the axes cover the whole canvas).
+    svg = re.sub(r'style="fill: (#[0-9a-f]{6})"', r'fill="\1"', svg)
+    svg = re.sub(r' clip-path="url\(#[^)]*\)"', '', svg)
+    svg = re.sub(r'\s*<clipPath id="[^"]*">.*?</clipPath>', '', svg, flags=re.S)
+    # A text of one glyph: move its group fill and transform onto the use.
+    svg = re.sub(
+        r'<g>\s*<g fill="([^"]+)" transform="([^"]+)">\s*(<use href="#[^"]+"[^>]*?)/>\s*</g>\s*</g>',
+        r'\3 fill="\1" transform="\2"/>',
+        svg,
+    )
     return '\n'.join(line.strip() for line in svg.splitlines()).encode()
 
 
