@@ -23,6 +23,10 @@
 <path d="M 0 472 L 920 472 L 920 0 L 0 0 z" style="fill: #05070b"/>
 </g>
 <g>
+<g clip-path="url(#p3c114efbc6)">
+<image xlink:href="data:image/png;base64,
+iVBORw0KGgoAAAANSUhEUgAAAAEAAABACAYAAADbER1AAAAASElEQVR4nGOwEuL5z8TIwMDAxAQiGBlBBILLwAjjMsIkkGUZoDqQuCAdxCtG2Au3CE0Wt1Egi7AahUUxklGoFhFQDPcRDi8AADhAAj0M8TyHAAAAAElFTkSuQmCC" id="image1fb522938a" transform="matrix(290 0 0 1.40625 40 130)" width="1" height="64"/>
+</g>
 <g>
 <path d="M 40 40 L 560 40 L 560 130 L 40 130 z" clip-path="url(#p3c114efbc6)" style="fill: #1b6fa8; opacity: 0.38"/>
 </g>
@@ -34,141 +38,6 @@
 </g>
 <g>
 <path d="M 330 140 L 560 140 L 560 420 L 330 420 z" clip-path="url(#p3c114efbc6)" style="fill: #e23d28"/>
-</g>
-<g>
-<path d="M 40 130 L 330 130 L 330 132.3 L 40 132.3 z" clip-path="url(#p3c114efbc6)" style="fill: #3b120c"/>
-</g>
-<g>
-<path d="M 40 132 L 330 132 L 330 134.3 L 40 134.3 z" clip-path="url(#p3c114efbc6)" style="fill: #3d120c"/>
-</g>
-<g>
-<path d="M 40 134 L 330 134 L 330 136.3 L 40 136.3 z" clip-path="url(#p3c114efbc6)" style="fill: #3f130c"/>
-</g>
-<g>
-<path d="M 40 136 L 330 136 L 330 138.3 L 40 138.3 z" clip-path="url(#p3c114efbc6)" style="fill: #41130c"/>
-</g>
-<g>
-<path d="M 40 138 L 330 138 L 330 140.3 L 40 140.3 z" clip-path="url(#p3c114efbc6)" style="fill: #42130d"/>
-</g>
-<g>
-<path d="M 40 140 L 330 140 L 330 142.3 L 40 142.3 z" clip-path="url(#p3c114efbc6)" style="fill: #44140d"/>
-</g>
-<g>
-<path d="M 40 142 L 330 142 L 330 144.3 L 40 144.3 z" clip-path="url(#p3c114efbc6)" style="fill: #46140d"/>
-</g>
-<g>
-<path d="M 40 144 L 330 144 L 330 146.3 L 40 146.3 z" clip-path="url(#p3c114efbc6)" style="fill: #48140d"/>
-</g>
-<g>
-<path d="M 40 146 L 330 146 L 330 148.3 L 40 148.3 z" clip-path="url(#p3c114efbc6)" style="fill: #4a140d"/>
-</g>
-<g>
-<path d="M 40 148 L 330 148 L 330 150.3 L 40 150.3 z" clip-path="url(#p3c114efbc6)" style="fill: #4c150d"/>
-</g>
-<g>
-<path d="M 40 150 L 330 150 L 330 152.3 L 40 152.3 z" clip-path="url(#p3c114efbc6)" style="fill: #4e150d"/>
-</g>
-<g>
-<path d="M 40 152 L 330 152 L 330 154.3 L 40 154.3 z" clip-path="url(#p3c114efbc6)" style="fill: #4f150e"/>
-</g>
-<g>
-<path d="M 40 154 L 330 154 L 330 156.3 L 40 156.3 z" clip-path="url(#p3c114efbc6)" style="fill: #51160e"/>
-</g>
-<g>
-<path d="M 40 156 L 330 156 L 330 158.3 L 40 158.3 z" clip-path="url(#p3c114efbc6)" style="fill: #53160e"/>
-</g>
-<g>
-<path d="M 40 158 L 330 158 L 330 160.3 L 40 160.3 z" clip-path="url(#p3c114efbc6)" style="fill: #55160e"/>
-</g>
-<g>
-<path d="M 40 160 L 330 160 L 330 162.3 L 40 162.3 z" clip-path="url(#p3c114efbc6)" style="fill: #57160e"/>
-</g>
-<g>
-<path d="M 40 162 L 330 162 L 330 164.3 L 40 164.3 z" clip-path="url(#p3c114efbc6)" style="fill: #59170e"/>
-</g>
-<g>
-<path d="M 40 164 L 330 164 L 330 166.3 L 40 166.3 z" clip-path="url(#p3c114efbc6)" style="fill: #5b170e"/>
-</g>
-<g>
-<path d="M 40 166 L 330 166 L 330 168.3 L 40 168.3 z" clip-path="url(#p3c114efbc6)" style="fill: #5d170e"/>
-</g>
-<g>
-<path d="M 40 168 L 330 168 L 330 170.3 L 40 170.3 z" clip-path="url(#p3c114efbc6)" style="fill: #5e180f"/>
-</g>
-<g>
-<path d="M 40 170 L 330 170 L 330 172.3 L 40 172.3 z" clip-path="url(#p3c114efbc6)" style="fill: #60180f"/>
-</g>
-<g>
-<path d="M 40 172 L 330 172 L 330 174.3 L 40 174.3 z" clip-path="url(#p3c114efbc6)" style="fill: #62180f"/>
-</g>
-<g>
-<path d="M 40 174 L 330 174 L 330 176.3 L 40 176.3 z" clip-path="url(#p3c114efbc6)" style="fill: #64180f"/>
-</g>
-<g>
-<path d="M 40 176 L 330 176 L 330 178.3 L 40 178.3 z" clip-path="url(#p3c114efbc6)" style="fill: #66190f"/>
-</g>
-<g>
-<path d="M 40 178 L 330 178 L 330 180.3 L 40 180.3 z" clip-path="url(#p3c114efbc6)" style="fill: #68190f"/>
-</g>
-<g>
-<path d="M 40 180 L 330 180 L 330 182.3 L 40 182.3 z" clip-path="url(#p3c114efbc6)" style="fill: #6a190f"/>
-</g>
-<g>
-<path d="M 40 182 L 330 182 L 330 184.3 L 40 184.3 z" clip-path="url(#p3c114efbc6)" style="fill: #6b1a10"/>
-</g>
-<g>
-<path d="M 40 184 L 330 184 L 330 186.3 L 40 186.3 z" clip-path="url(#p3c114efbc6)" style="fill: #6d1a10"/>
-</g>
-<g>
-<path d="M 40 186 L 330 186 L 330 188.3 L 40 188.3 z" clip-path="url(#p3c114efbc6)" style="fill: #6f1a10"/>
-</g>
-<g>
-<path d="M 40 188 L 330 188 L 330 190.3 L 40 190.3 z" clip-path="url(#p3c114efbc6)" style="fill: #711b10"/>
-</g>
-<g>
-<path d="M 40 190 L 330 190 L 330 192.3 L 40 192.3 z" clip-path="url(#p3c114efbc6)" style="fill: #731b10"/>
-</g>
-<g>
-<path d="M 40 192 L 330 192 L 330 194.3 L 40 194.3 z" clip-path="url(#p3c114efbc6)" style="fill: #751b10"/>
-</g>
-<g>
-<path d="M 40 194 L 330 194 L 330 196.3 L 40 196.3 z" clip-path="url(#p3c114efbc6)" style="fill: #771b10"/>
-</g>
-<g>
-<path d="M 40 196 L 330 196 L 330 198.3 L 40 198.3 z" clip-path="url(#p3c114efbc6)" style="fill: #791c10"/>
-</g>
-<g>
-<path d="M 40 198 L 330 198 L 330 200.3 L 40 200.3 z" clip-path="url(#p3c114efbc6)" style="fill: #7a1c11"/>
-</g>
-<g>
-<path d="M 40 200 L 330 200 L 330 202.3 L 40 202.3 z" clip-path="url(#p3c114efbc6)" style="fill: #7c1c11"/>
-</g>
-<g>
-<path d="M 40 202 L 330 202 L 330 204.3 L 40 204.3 z" clip-path="url(#p3c114efbc6)" style="fill: #7e1d11"/>
-</g>
-<g>
-<path d="M 40 204 L 330 204 L 330 206.3 L 40 206.3 z" clip-path="url(#p3c114efbc6)" style="fill: #801d11"/>
-</g>
-<g>
-<path d="M 40 206 L 330 206 L 330 208.3 L 40 208.3 z" clip-path="url(#p3c114efbc6)" style="fill: #821d11"/>
-</g>
-<g>
-<path d="M 40 208 L 330 208 L 330 210.3 L 40 210.3 z" clip-path="url(#p3c114efbc6)" style="fill: #841d11"/>
-</g>
-<g>
-<path d="M 40 210 L 330 210 L 330 212.3 L 40 212.3 z" clip-path="url(#p3c114efbc6)" style="fill: #861e11"/>
-</g>
-<g>
-<path d="M 40 212 L 330 212 L 330 214.3 L 40 214.3 z" clip-path="url(#p3c114efbc6)" style="fill: #871e12"/>
-</g>
-<g>
-<path d="M 40 214 L 330 214 L 330 216.3 L 40 216.3 z" clip-path="url(#p3c114efbc6)" style="fill: #891e12"/>
-</g>
-<g>
-<path d="M 40 216 L 330 216 L 330 218.3 L 40 218.3 z" clip-path="url(#p3c114efbc6)" style="fill: #8b1f12"/>
-</g>
-<g>
-<path d="M 40 218 L 330 218 L 330 220.3 L 40 220.3 z" clip-path="url(#p3c114efbc6)" style="fill: #8d1f12"/>
 </g>
 <g>
 <path d="M 330 130 L 560 130 L 560 140 L 330 140 z" clip-path="url(#p3c114efbc6)" style="fill: #8e1f12"/>

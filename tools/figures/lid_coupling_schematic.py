@@ -24,6 +24,7 @@ from math import erf
 from pathlib import Path
 
 import matplotlib
+import matplotlib.colors
 
 matplotlib.use('Agg')
 
@@ -173,9 +174,10 @@ def draw(theme_name: str):
     # Melt, lid (vertical gradient in 2 px bands) and skin.
     c.rect(40, LB, 290, MB - LB, MELT)
     c.rect(330, SK, 230, MB - SK, MELT)
-    n = (LB - S) // 2
-    for i in range(n):
-        c.rect(40, S + 2 * i, 290, 2.3, _hex_mix(LID_TOP, LID_BASE, (i + 0.5) / n))
+    rgb = [[matplotlib.colors.to_rgb(_hex_mix(LID_TOP, LID_BASE, i / 63))] for i in range(64)]
+    c.ax.imshow(rgb, extent=(40, 330, LB, S), aspect='auto', interpolation='none')
+    c.ax.set_xlim(0, W)
+    c.ax.set_ylim(H, 0)
     c.rect(330, S, 230, SK - S, SKIN)
     c.line([40, 330], [LB, LB], ON_ROCK, lw=1.2, dash=(5, 4))
     c.line([330, 330], [S, MB], ON_MELT, lw=1.0, dash=(3, 4), alpha=0.35)
@@ -337,6 +339,8 @@ def _compact(svg: str) -> bytes:
         svg,
     )
     svg = re.sub(r'\s*<!--.*?-->', '', svg, flags=re.S)
+    # Let the viewer smooth the 1 x 64 lid gradient image.
+    svg = svg.replace(' style="image-rendering:crisp-edges;image-rendering:pixelated"', '')
     svg = re.sub(r'<g id="(?:text|patch|line2d|axes|figure)_\d+">', '<g>', svg)
 
     # Glyph outlines at 1/8 of their resolution (under 0.01 px at these sizes).
