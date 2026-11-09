@@ -601,16 +601,79 @@ def test_eval_obj_student_t_prefers_one_outlier_over_a_spread_misfit(monkeypatch
 
 
 @pytest.mark.parametrize('loss', [('student-t', 4.0), ('huber', 1.345)])
-def test_eval_obj_robust_loss_needs_sigma_and_no_correlation(loss):
-    """Student-t and Huber errors are scaled by sigma and independent, so both misuses raise."""
+def test_eval_obj_robust_loss_needs_sigma_and_accepts_a_whitener(loss):
+    """Student-t and Huber errors are scaled by sigma, so a missing sigma raises. A whitener
+    with no correlations is accepted and leaves the robust objective exactly as without one.
+    """
     tru, sim = {'R_obs': 6.0e6, 'T_obs': 400.0}, {'R_obs': 7.0e6, 'T_obs': 450.0}
     sigma = {'R_obs': 5.0e5, 'T_obs': 25.0}
-    whitener = CorrelationWhitener(list(tru), {'R_obs': {'T_obs': 0.6}})
 
     with pytest.raises(ValueError, match=f'objective {loss[0]!r} needs sigma'):
         objective_mod.eval_obj(sim, tru, None, None, loss)
-    with pytest.raises(ValueError, match='no correlation'):
-        objective_mod.eval_obj(sim, tru, sigma, whitener, loss)
+    identity = CorrelationWhitener(list(tru), {})
+    assert objective_mod.eval_obj(sim, tru, sigma, identity, loss).item() == pytest.approx(
+        objective_mod.eval_obj(sim, tru, sigma, None, loss).item(), rel=1e-12
+    )
+
+
+def _correlated_deviance(sim, tru, sigma, correlation, loss):
+    """The `loss` sum of `eval_obj` with the observables correlated as in `correlation`."""
+    whitener = CorrelationWhitener(list(tru), correlation)
+    return 10 ** (-objective_mod.eval_obj(sim, tru, sigma, whitener, loss).item())
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('loss', [('huber', 1.0e6), ('student-t', 1.0e9)])
+def test_eval_obj_correlated_robust_loss_tends_to_correlated_chi_squared(monkeypatch, loss):
+    """With a huge Huber k or Student-t nu the loss is u^2 on the whitened residuals, so the
+    sum is the correlated chi-squared u^T R^-1 u: 4 for u = (1, 1) and rho = -0.5, where the
+    loss on the raw residuals (correlation dropped) gives 2.
+    """
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    tru, sigma = {'R_obs': 0.0, 'T_obs': 0.0}, {'R_obs': 1.0, 'T_obs': 1.0}
+    sim = {'R_obs': 1.0, 'T_obs': 1.0}
+
+    dev = _correlated_deviance(sim, tru, sigma, {'R_obs': {'T_obs': -0.5}}, loss)
+    assert dev == pytest.approx(4.0, rel=1e-6)
+    assert abs(dev - 2.0) > 1.0
+
+
+@pytest.mark.physics_invariant
+def test_eval_obj_correlated_huber_keeps_an_uncorrelated_outlier_linear(monkeypatch):
+    """An outlier in an observable correlated with none (T) passes the whitening unchanged,
+    so with k = 1 its u = 5 adds 2 k |u| - k^2 = 9, not 25 as under chi-squared. The
+    correlated pair at zero residual adds nothing.
+    """
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    tru = {'C/O_atm': 0.0, 'T_obs': 0.0, 'O/H_atm': 0.0}
+    sigma = {k: 1.0 for k in tru}
+    sim = {'C/O_atm': 0.0, 'T_obs': 5.0, 'O/H_atm': 0.0}
+    corr = {'C/O_atm': {'O/H_atm': -0.5}}
+
+    assert _correlated_deviance(sim, tru, sigma, corr, ('huber', 1.0)) == pytest.approx(9.0)
+    assert _correlated_deviance(sim, tru, sigma, corr, None) == pytest.approx(25.0)
+
+
+@pytest.mark.physics_invariant
+def test_eval_obj_correlated_huber_does_not_depend_on_observable_order(monkeypatch):
+    """The symmetric whitening makes the Huber sum independent of the order in which the
+    observables are listed, while a Cholesky whitening of the same residuals is not.
+    """
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    sim = {'R_obs': 2.0, 'T_obs': -0.5, 'g_obs': 1.5}
+    corr = {'R_obs': {'T_obs': 0.6, 'g_obs': 0.3}}
+    huber = ('huber', 1.0)
+    devs, chol = [], []
+    for order in (['R_obs', 'T_obs', 'g_obs'], ['g_obs', 'R_obs', 'T_obs']):
+        tru = {k: 0.0 for k in order}
+        sigma = {k: 1.0 for k in order}
+        devs.append(_correlated_deviance(sim, tru, sigma, corr, huber))
+        w = CorrelationWhitener(order, corr)
+        u = torch.tensor([[sim[k] for k in order]], dtype=torch.double)
+        z = torch.linalg.solve_triangular(w._chol, u.T, upper=False).T
+        chol.append(objective_mod.squared_distance(z, order, None, huber).item())
+    assert devs[0] == pytest.approx(devs[1], rel=1e-12)
+    assert abs(chol[0] - chol[1]) > 0.05
 
 
 @pytest.mark.physics_invariant

@@ -122,7 +122,7 @@ When posterior samples, e.g. from a retrieval, exist, their correlation matrix i
 
 ### Student-t and Huber errors
 
-`objective` selects the error model: `"chi-2"` (the default, Gaussian errors), `"student-t"` or `"huber"`. With `objective = "student-t"`, each observable's error follows a Student-t distribution with `student_t_dof = nu` degrees of freedom (default 4). It needs `[sigma]` and cannot be combined with `[correlation]` or `correlate_ratios`, because the errors are taken as independent. Each squared residual `u^2` is replaced by
+`objective` selects the error model: `"chi-2"` (the default, Gaussian errors), `"student-t"` or `"huber"`. With `objective = "student-t"`, each observable's error follows a Student-t distribution with `student_t_dof = nu` degrees of freedom (default 4). It needs `[sigma]`. Each squared residual `u^2` is replaced by
 
 ```
 (nu + 1) * ln(1 + u^2 / nu),    u = (sim - true) / sigma
@@ -137,7 +137,9 @@ u^2                   for |u| <= k
 2 k |u| - k^2         for |u| >  k,     u = (sim - true) / sigma
 ```
 
-with `huber_k = k` (default 1.345, which keeps 95% of the least-squares efficiency when the errors are Gaussian). It is `-2 ln` of Huber's density, Gaussian in the core and Laplace in the tails, up to a constant; the two branches meet with equal value and slope at `|u| = k`. Within `k` sigma it is the chi-squared; beyond, a residual grows linearly rather than quadratically. That bounds the pull of one outlier less strongly than a Student-t, whose growth is logarithmic. Like the Student-t, it needs `[sigma]` and cannot be combined with `[correlation]` or `correlate_ratios`.
+with `huber_k = k` (default 1.345, which keeps 95% of the least-squares efficiency when the errors are Gaussian). It is `-2 ln` of Huber's density, Gaussian in the core and Laplace in the tails, up to a constant; the two branches meet with equal value and slope at `|u| = k`. Within `k` sigma it is the chi-squared; beyond, a residual grows linearly rather than quadratically. That bounds the pull of one outlier less strongly than a Student-t, whose growth is logarithmic. Like the Student-t, it needs `[sigma]`.
+
+Both combine with `[correlation]` or `correlate_ratios`. The loss then applies to the whitened residuals `z = R^(-1/2) u` instead of `u`, where `R^(-1/2)` is the symmetric inverse square root of the correlation matrix: the errors are independent Student-t or Huber errors mixed by `R^(1/2)`, which is again `-2 ln L` up to a constant. With a large `nu` or `k` this is the correlated chi-squared. The symmetric root keeps each `z` closest to its own observable and does not depend on the order of the observables, and an observable correlated with none (such as `T_obs` under `correlate_ratios`) keeps its own residual, so an outlier there is down-weighted as without correlation. An outlier in one correlated ratio spreads over the whitened residuals of that group, so it is bounded less sharply.
 
 ### Known true parameters
 
@@ -158,7 +160,7 @@ The observables of a simulation carry no noise, so the truth sits at the peak of
 
 ### Posterior samples
 
-With `[sigma]`, every objective form (chi-squared, correlated chi-squared, Student-t) is `S = -2 ln L` up to a constant, so `ln L = -10^(-J) / 2` up to a constant. At the end of the study one GP per observable is fitted to that observable of the scored runs, in the space the objective compares it in (log10 or linear), and `J` follows from the predicted observables as for a run. `posterior_samples` (default 2000, `0` is off) parameter samples are drawn from `L` at the GP prediction, by importance resampling of 10^6 uniform draws. When the posterior is so narrow that these give fewer effective samples than requested, up to five more rounds draw from a Gaussian mixture centred on the best-weighted draws (with a 10 % uniform share), until they do. The prior is uniform over the sampled ranges, log-uniform for log10-scaled parameters such as `planet.elements.H_budget`. The log reports the effective sample size, with a warning when it stays below the number of samples.
+With `[sigma]`, every objective form (chi-squared, Student-t or Huber, each with or without correlation) is `S = -2 ln L` up to a constant, so `ln L = -10^(-J) / 2` up to a constant. At the end of the study one GP per observable is fitted to that observable of the scored runs, in the space the objective compares it in (log10 or linear), and `J` follows from the predicted observables as for a run. `posterior_samples` (default 2000, `0` is off) parameter samples are drawn from `L` at the GP prediction, by importance resampling of 10^6 uniform draws. When the posterior is so narrow that these give fewer effective samples than requested, up to five more rounds draw from a Gaussian mixture centred on the best-weighted draws (with a 10 % uniform share), until they do. The prior is uniform over the sampled ranges, log-uniform for log10-scaled parameters such as `planet.elements.H_budget`. The log reports the effective sample size, with a warning when it stays below the number of samples.
 
 The posterior ignores the GPs' own uncertainty, so it is only as good as the GPs near the best fit: check that the study converged (`perf_bestval.png`) before using it.
 

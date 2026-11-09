@@ -57,20 +57,36 @@ class CorrelationWhitener:
             raise ValueError(
                 f'correlation matrix is not positive definite (eigenvalue {eig_min:.3g})'
             )
+        # Symmetric R^(-1/2): unlike the Cholesky factor, it does not depend on the order
+        evals, evecs = torch.linalg.eigh(mat)
+        self._inv_sqrt = evecs @ torch.diag(evals.rsqrt()) @ evecs.T
 
     def correlate(self, z):
         """Independent standard normals z, ordered as `names`, turned into draws with correlation R."""
         return self._chol.numpy() @ z
 
-    def chi_squared(self, names: list[str], u: torch.Tensor) -> torch.Tensor:
-        """Chi-squared, shape (m, 1), of each row of residuals u = (sim - true) / sigma, columns
-        ordered as `names`."""
+    def _ordered(self, names: list[str], u: torch.Tensor) -> torch.Tensor:
+        """Rows of residuals u with columns ordered as `names`, reordered to `self.names`."""
         if sorted(names) != sorted(self.names):
             raise KeyError(f'residuals for {sorted(names)} do not match {sorted(self.names)}')
         pos = {k: i for i, k in enumerate(names)}
-        u = u.reshape(-1, len(names))[:, [pos[k] for k in self.names]]
-        z = torch.linalg.solve_triangular(self._chol, u.T, upper=False)
+        return u.reshape(-1, len(names))[:, [pos[k] for k in self.names]]
+
+    def chi_squared(self, names: list[str], u: torch.Tensor) -> torch.Tensor:
+        """Chi-squared, shape (m, 1), of each row of residuals u = (sim - true) / sigma, columns
+        ordered as `names`."""
+        z = torch.linalg.solve_triangular(self._chol, self._ordered(names, u).T, upper=False)
         return (z**2).sum(0).reshape(-1, 1)
+
+    def whiten(self, names: list[str], u: torch.Tensor) -> torch.Tensor:
+        """Uncorrelated residuals z = R^(-1/2) u, shape (m, n), columns ordered as `self.names`.
+
+        The sum of z^2 is the correlated chi-squared. R^(-1/2) is the symmetric inverse root,
+        so each z stays the closest to its own observable, the result does not depend on the
+        order of the observables, and an observable correlated with none passes unchanged.
+        A robust loss applied to z then keeps the correlation.
+        """
+        return self._ordered(names, u) @ self._inv_sqrt.T
 
 
 def validate_correlation(

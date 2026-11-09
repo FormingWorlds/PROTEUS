@@ -134,6 +134,30 @@ def test_chi_squared_matches_residuals_to_names_in_any_order():
         whitener.chi_squared(['A', 'B', 'D'], u)
 
 
+@pytest.mark.physics_invariant
+def test_whiten_is_the_symmetric_inverse_root_and_preserves_chi_squared():
+    """For rho on (A, B), R^(-1/2) has diagonal (a + b) / 2 and off-diagonal (a - b) / 2 with
+    a = (1 + rho)^(-1/2), b = (1 - rho)^(-1/2). The squares of z sum to the chi-squared, C
+    (correlated with none) passes unchanged, and z_A differs from the Cholesky value u_A = 1.
+    """
+    whitener = correlation_mod.CorrelationWhitener(['A', 'B', 'C'], {'A': {'B': 0.5}})
+    u = torch.tensor(
+        [[2.0, 3.0, 1.0]], dtype=torch.double
+    )  # (B, C, A): u_A, u_B, u_C = 1, 2, 3
+
+    z = whitener.whiten(['B', 'C', 'A'], u)[0].tolist()
+
+    a, b = 1.5**-0.5, 0.5**-0.5
+    diag, off = (a + b) / 2, (a - b) / 2
+    assert z == pytest.approx([diag * 1 + off * 2, off * 1 + diag * 2, 3.0], rel=1e-12)
+    assert sum(v * v for v in z) == pytest.approx(
+        whitener.chi_squared(['B', 'C', 'A'], u).item(), rel=1e-12
+    )
+    assert abs(z[0] - 1.0) > 0.3
+    with pytest.raises(KeyError, match='do not match'):
+        whitener.whiten(['A', 'B', 'D'], u)
+
+
 def test_chi_squared_of_several_rows_matches_each_row_alone():
     """A batch of residual rows gives one chi2 per row, each as the row alone gives it."""
     whitener = correlation_mod.CorrelationWhitener(['A', 'B', 'C'], {'A': {'B': 0.5}})

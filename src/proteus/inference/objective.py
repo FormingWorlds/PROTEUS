@@ -500,8 +500,11 @@ def observable_space(sim_dict, tru_dict, sigma=None):
 
 def squared_distance(diff, names, whitener=None, loss=None):
     """Sum over observables `names` of the loss of each row of normalised differences diff
-    (m, len(names)), shape (m, 1): squared, correlated through whitener, or robust `loss`."""
+    (m, len(names)), shape (m, 1): squared, correlated through whitener, or robust `loss`.
+    With both, the robust loss applies to the whitened residuals, so it keeps the correlation."""
     name, param = loss if loss is not None else (None, None)
+    if name is not None and whitener is not None:
+        diff = whitener.whiten(names, diff)
     if name == 'student-t':
         terms = (param + 1.0) * torch.log1p(diff**2 / param)
         sq_dist = terms.sum(dim=1, keepdim=True)
@@ -527,6 +530,8 @@ def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None, loss=None):
     u^T R^-1 u; R applies unchanged to log-space observables.
 
     With `loss`, the objective function can be changed to a robust loss function.
+    With `loss` and `whitener` together, the loss applies to the whitened residuals
+    R^(-1/2) u, which is minus twice the log-likelihood of correlated robust errors.
 
     Parameters
     ----------
@@ -553,8 +558,8 @@ def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None, loss=None):
             raise KeyError(f'No sigma given for observables: {missing}')
     if whitener is not None and sigma is None:
         raise ValueError('correlation needs sigma: the correlation matrix scales sigma')
-    if loss is not None and (sigma is None or whitener is not None):
-        raise ValueError(f'objective {loss[0]!r} needs sigma and no correlation')
+    if loss is not None and sigma is None:
+        raise ValueError(f'objective {loss[0]!r} needs sigma: sigma is the scale of each error')
 
     sim_vals, tru_vals, sig_vals = observable_space(sim_dict, tru_dict, sigma)
 

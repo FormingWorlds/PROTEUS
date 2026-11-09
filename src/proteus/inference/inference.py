@@ -160,10 +160,12 @@ LOSS_PARAMS = {
 }
 
 
-def validate_objective(
-    objective, params: dict, sigma: dict | None, correlation: dict | None
-) -> tuple[str, float] | None:
-    """Check `objective` and its parameter in `params`; returns (name, parameter), or None for chi-2."""
+def validate_objective(objective, params: dict, sigma: dict | None) -> tuple[str, float] | None:
+    """Check `objective` and its parameter in `params`; returns (name, parameter), or None for chi-2.
+
+    Student-t and Huber combine with `[correlation]` and `correlate_ratios`: the loss then
+    applies to the whitened residuals (`CorrelationWhitener.whiten`).
+    """
     objective = 'chi-2' if objective is None else objective
     if objective not in OBJECTIVES:
         raise ValueError(f'objective must be one of {OBJECTIVES}, got {objective!r}')
@@ -183,10 +185,6 @@ def validate_objective(
     if sigma is None:
         raise ValueError(
             f'objective "{objective}" needs [sigma]: sigma is the scale of each error'
-        )
-    if correlation is not None:
-        raise ValueError(
-            f'objective "{objective}" cannot be combined with [correlation] or correlate_ratios'
         )
     return objective, float(value)
 
@@ -406,9 +404,7 @@ def run_inference(config):
     apply_noise(config)
 
     # Chi-squared or, with `objective`, Student-t or Huber errors
-    config['loss'] = validate_objective(
-        config.get('objective'), config, config['sigma'], config['correlation']
-    )
+    config['loss'] = validate_objective(config.get('objective'), config, config['sigma'])
 
     # Optional true value of each parameter, for studies of a known simulation
     config['truth'] = validate_truth(config['parameters'], config.get('truth'))
