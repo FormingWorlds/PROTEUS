@@ -29,7 +29,7 @@ matplotlib.use('Agg')
 
 import matplotlib.pyplot as plt  # noqa: E402
 import proteus_mpl  # noqa: E402
-from matplotlib.font_manager import FontProperties, findfont  # noqa: E402
+from matplotlib.font_manager import FontProperties  # noqa: E402
 from matplotlib.patches import Polygon, Rectangle  # noqa: E402
 from matplotlib.textpath import text_to_path  # noqa: E402
 
@@ -67,7 +67,13 @@ THEMES = {
     ),
 }
 LAB, SM, EYE = 13.0, 11.5, 10.5
-MONO = 'Spline Sans Mono'
+# Fonts by file from proteus-mpl, so a copy installed elsewhere is never taken.
+FONT_DIR = Path(proteus_mpl.__file__).parent / 'fonts'
+FONTS = {
+    'sans': FONT_DIR / 'InstrumentSans-Regular.ttf',
+    'semibold': FONT_DIR / 'InstrumentSans-SemiBold.ttf',
+    'mono': FONT_DIR / 'SplineSansMono-Regular.ttf',
+}
 
 
 class Canvas:
@@ -83,16 +89,14 @@ class Canvas:
         self.ax.set_axis_off()
         self.renderer = self.fig.canvas.get_renderer()
 
-    def text(self, x, y, s, size=LAB, color=None, family=None, weight='normal', ha='left'):
+    def text(self, x, y, s, size=LAB, color=None, font='sans', ha='left'):
         """Draw one text at baseline ``y``; return the x of its right edge."""
         art = self.ax.text(
             x,
             y,
             s,
-            fontsize=size,
+            fontproperties=FontProperties(fname=FONTS[font], size=size),
             color=color or self.t['ink'],
-            family=family or 'sans-serif',
-            weight=weight,
             ha=ha,
             va='baseline',
         )
@@ -101,7 +105,7 @@ class Canvas:
 
     def tracked(self, x, y, s, color, size=EYE, spacing=0.16, rotate=False, ha='left'):
         """Draw upper-case monospaced text with letter spacing, one glyph at a time."""
-        prop = FontProperties(family=MONO, size=size)
+        prop = FontProperties(fname=FONTS['mono'], size=size)
         adv = text_to_path.get_text_width_height_descent('M' * 10, prop, ismath=False)[0] / 10
         step = adv + spacing * size
         start = -(step * len(s) - spacing * size) / 2 if ha == 'center' else 0.0
@@ -169,12 +173,12 @@ def draw(theme_name: str):
     c.text(552, 123, r'$T_\mathrm{surf}$', ha='right')
 
     # Lid part labels.
-    c.text(54, 154, 'solid lid', color=ON_ROCK, weight='semibold')
+    c.text(54, 154, 'solid lid', color=ON_ROCK, font='semibold')
     c.text(54, 172, r'thickness $\delta$, centimetres to decimetres', size=SM, color=ON_ROCK)
     x = c.text(
         54, 190, r"$G_\mathrm{lid} = k_\mathrm{lid}\,f'(0)\,/\,\delta$", size=SM, color=ON_ROCK
     )
-    c.text(x + 10, 190, 'lid_conductance', size=SM - 1, color=ON_ROCK, family=MONO)
+    c.text(x + 10, 190, 'lid_conductance', size=SM - 1, color=ON_ROCK, font='mono')
     c.text(
         54,
         208,
@@ -185,7 +189,7 @@ def draw(theme_name: str):
     c.up(306, 216, 134, ON_ROCK)
     c.text(298, 160, '$C$', color=ON_ROCK, ha='right')
     x = c.text(54, 238, r'$T_\mathrm{b}$ at the solidus', color=ON_MELT)
-    c.text(x + 10, 238, 'lid_T_base', size=EYE, color=ON_MELT, family=MONO)
+    c.text(x + 10, 238, 'lid_T_base', size=EYE, color=ON_MELT, font='mono')
     c.up(306, 300, 224, ON_ROCK)
     c.text(298, 270, r'$F_\mathrm{melt}$', color=ON_MELT, ha='right')
     c.text(
@@ -199,7 +203,7 @@ def draw(theme_name: str):
     # Open part labels; the dot is the top basic node directly under the skin.
     c.ax.plot([346], [SK], 'o', ms=8, mfc=ON_MELT, mec=ON_ROCK, mew=1.2)
     x = c.text(358, 160, r'$T_\mathrm{node}$', color=ON_MELT)
-    c.text(x + 10, 160, 'lid_T_node', size=EYE, color=ON_MELT, family=MONO)
+    c.text(x + 10, 160, 'lid_T_node', size=EYE, color=ON_MELT, font='mono')
     c.text(358, 176, 'top basic node of the mesh', size=SM, color=ON_MELT)
     c.text(358, 200, 'skin above it: $d$ = 0.01 m', size=SM, color=ON_MELT)
     c.text(
@@ -207,7 +211,7 @@ def draw(theme_name: str):
     )
     c.up(540, 330, 144, ON_ROCK)
     c.text(530, 300, r'$F_\mathrm{open}$', color=ON_MELT, ha='right')
-    c.text(530, 316, 'lid_F_open', size=EYE, color=ON_MELT, family=MONO, ha='right')
+    c.text(530, 316, 'lid_F_open', size=EYE, color=ON_MELT, font='mono', ha='right')
 
     # Melt eyebrow and the break line of the cut column.
     c.tracked(54, MB - 40, 'MELT · ARAGOG TOP CELL', ON_MELT)
@@ -365,13 +369,11 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--check', action='store_true', help='compare the files in docs/assets')
     args = ap.parse_args(argv)
-    proteus_mpl.use('light')
-    for family in ('Instrument Sans', MONO):
-        try:
-            findfont(FontProperties(family=family), fallback_to_default=False)
-        except ValueError:
-            print(f'font {family!r} not found: install proteus-mpl, which ships it')
+    for path in FONTS.values():
+        if not path.is_file():
+            print(f'font file {path} not found: install proteus-mpl, which ships it')
             return 2
+        print(f'font {path}')
     bad = 0
     for name, suffix in (('light', ''), ('dark', '_dark')):
         out = ASSETS / f'lid_coupling_schematic{suffix}.svg'
