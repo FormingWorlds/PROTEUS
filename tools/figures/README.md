@@ -120,6 +120,7 @@ python tools/figures/lid_coupling_schematic.py
 python tools/figures/lid_coupling_schematic.py --check
 ```
 
-`--check` compares bytes, so it holds only with the same matplotlib, proteus-mpl
-and fonts (Instrument Sans, Spline Sans Mono) as the stored files; the script
-stops when a font is missing.
+`--check` compares bytes, so it holds only with the same matplotlib and
+proteus-mpl as the stored files. The script loads Instrument Sans and Spline Sans
+Mono from the font files of proteus-mpl, and stops when one is missing; the
+symbols use the DejaVu Sans of matplotlib (mathtext).

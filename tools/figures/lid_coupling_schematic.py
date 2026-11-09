@@ -187,7 +187,7 @@ def draw(theme_name: str):
         color=ON_ROCK,
     )
     c.up(306, 216, 134, ON_ROCK)
-    c.text(298, 160, '$C$', color=ON_ROCK, ha='right')
+    c.text(298, 160, r'$F_\mathrm{surf}$', color=ON_ROCK, ha='right')
     x = c.text(54, 238, r'$T_\mathrm{b}$ at the solidus', color=ON_MELT)
     c.text(x + 10, 238, 'lid_T_base', size=EYE, color=ON_MELT, font='mono')
     c.up(306, 300, 224, ON_ROCK)
@@ -205,10 +205,11 @@ def draw(theme_name: str):
     x = c.text(358, 160, r'$T_\mathrm{node}$', color=ON_MELT)
     c.text(x + 10, 160, 'lid_T_node', size=EYE, color=ON_MELT, font='mono')
     c.text(358, 176, 'top basic node of the mesh', size=SM, color=ON_MELT)
-    c.text(358, 200, 'skin above it: $d$ = 0.01 m', size=SM, color=ON_MELT)
+    c.text(358, 200, 'skin above it: $d$ = 0.01 m (default)', size=SM, color=ON_MELT)
     c.text(
         358, 216, r'$G_\mathrm{skin} = k/d$ = 200 W m$^{-2}$ K$^{-1}$', size=SM, color=ON_MELT
     )
+    c.text(358, 232, 'for the default $k$ and $d$', size=SM, color=ON_MELT)
     c.up(540, 330, 144, ON_ROCK)
     c.text(530, 300, r'$F_\mathrm{open}$', color=ON_MELT, ha='right')
     c.text(530, 316, 'lid_F_open', size=EYE, color=ON_MELT, font='mono', ha='right')
@@ -263,16 +264,21 @@ def draw(theme_name: str):
         ink,
         lw=2,
     )
-    c.line([TB, TB + 6], [LB, MB - 10], ink, lw=1.4, dash=(1.5, 4), cap='round')
+    c.line([TB, TN + 6], [LB, MB - 10], ink, lw=1.4, dash=(1.5, 4), cap='round')
     c.line([TS, TN], [S, SK], ink, lw=2, dash=(6, 4))
     c.line([TN, TN + 6], [SK, MB - 10], ink, lw=1.4, dash=(1.5, 4), cap='round')
     c.text(770, 160, 'open part: skin', size=SM, color=ink2)
     c.text(700, 206, 'lid part', size=SM, color=ink2)
-    c.text(672, 290, 'dotted: melt below', size=SM, color=ink2)
-    c.text(672, 306, 'each part conducts', size=SM, color=ink2)
-    c.text(672, 322, 'from its own warm side,', size=SM, color=ink2)
+    notes = (
+        'dotted: the melt',
+        'of the top cell;',
+        'each part conducts',
+        'from its own warm side,',
+    )
+    for k, note in enumerate(notes):
+        c.text(672, 282 + 16 * k, note, size=SM, color=ink2)
     c.text(
-        672, 338, r'$T_\mathrm{b}$ or $T_\mathrm{node} \geq T_\mathrm{b}$', size=SM, color=ink2
+        672, 346, r'$T_\mathrm{b}$ or $T_\mathrm{node} \geq T_\mathrm{b}$', size=SM, color=ink2
     )
     return c.fig
 

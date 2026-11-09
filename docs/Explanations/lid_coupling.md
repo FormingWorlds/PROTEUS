@@ -16,18 +16,24 @@ $$F_\mathrm{atm}(T_\mathrm{surf}) = G_\mathrm{skin}\,(T_\mathrm{magma} - T_\math
 
 It returns `F_atm`; in AGNI this is the total flux at the top level. Without a lid the interior takes `F_atm` as its surface flux for the next step.
 
-[![Schematic of the top of the column with the sub-grid lid: the atmosphere above one surface temperature, a lid part of weight w with a solid lid over melt, an open part of weight 1 - w with a thin skin over melt, and the temperature with depth in both parts](../assets/lid_coupling_schematic.svg#only-light){ width="100%" }](../assets/lid_coupling_schematic.svg)
-[![Schematic of the top of the column with the sub-grid lid: the atmosphere above one surface temperature, a lid part of weight w with a solid lid over melt, an open part of weight 1 - w with a thin skin over melt, and the temperature with depth in both parts](../assets/lid_coupling_schematic_dark.svg#only-dark){ width="100%" }](../assets/lid_coupling_schematic_dark.svg)
-
-Top of the column with the sub-grid lid. Left: the atmosphere sets one surface temperature $T_\mathrm{surf}$ for both parts of the surface. The lid part, weight $w$, is a solid lid of thickness $\delta$ over melt. It conducts from its base $T_b$ at the solidus; the melt of the top cell under it is at $T_b$ or warmer. The open part, weight $1 - w$, is the skin of thickness $d$ over melt. It conducts from $T_\mathrm{node}$, the top node of the Aragog mesh (its top basic node), directly under the skin. [Rule 3](#rule-3-the-atmosphere-flux-is-the-largest-loss) assumes $T_\mathrm{node} \ge T_b$. The arrows mark the flux $F_\mathrm{atm}$ of the atmosphere call. The arrow $C$ in the lid is the flux $F_\mathrm{surf}$ that leaves the lid surface, which Rule 3 limits by the cap $C$. Other arrows mark the heat $F_\mathrm{melt}$ that the melt passes to the lid ([Rule 2](#rule-2-the-lid-ledger)) and the flux $F_\mathrm{open}$ of the open part ([What the atmosphere call sees](#what-the-atmosphere-call-sees)). Right: temperature $T$ against depth $z$ in each part. The lid thickness of centimetres to decimetres and the top cell of 65.8 km are those of the coupled runs of this page. Thicknesses are not to scale. The lid profile uses the shape $s = 1$ for illustration.
-
-**The lid.** A crust that forms at the surface starts metres thick or less, while the top cell of the interior mesh is kilometres thick. The mesh cannot resolve it, so Aragog carries it as a sub-grid lid: a conductive solid layer of thickness $\delta$ at the top of the mantle, with its base $T_b$ at the solidus. Aragog holds $\delta$ and the lid energy per area $E_\mathrm{lid}$ as two extra solver states. A weight $w$ from 0 to 1 says how strongly the lid acts: $w = 0$ is no lid, $w = 1$ is a full lid, and values between blend the lid with the open surface. The lid conducts with
+**The lid.** A crust that forms at the surface starts metres thick or less, while the top cell of the interior mesh is kilometres thick. The mesh cannot resolve it, so Aragog carries it as a sub-grid lid: a conductive solid layer of thickness $\delta$ at the top of the mantle, with its base $T_b$ at the solidus at the pressure of the top-cell centre. Aragog holds $\delta$ and the lid energy per area $E_\mathrm{lid}$ as two extra solver states. A weight $w$ from 0 to 1 says how strongly the lid acts: $w = 0$ is no lid, $w = 1$ is a full lid, and values between blend the lid with the open surface. The lid conducts with
 
 $$G_\mathrm{lid} = \frac{k_\mathrm{lid}\, f'(0)}{\delta},$$
 
 the helpfile column `lid_conductance`. Here $k_\mathrm{lid}$ is `interior_energetics.solid_cond` and $f'(0)$ is the slope of the temperature profile of the lid at its surface, 1 for a straight profile and at least 0.1 in this conductance.
 
 Set `interior_energetics.aragog.lid_mush_base = true` to run the lid. PROTEUS then passes `subgrid_lid` and `lid_mush_base` to Aragog. The Aragog lid also needs the solid rheology, `interior_energetics.aragog.rheology.enabled = true`.
+
+[![Schematic of the top of the column with the sub-grid lid: the atmosphere above one surface temperature, a lid part of weight w with a solid lid over melt, an open part of weight 1 - w with a thin skin over melt, and the temperature with depth in both parts](../assets/lid_coupling_schematic.svg#only-light){ width="100%" }](../assets/lid_coupling_schematic.svg)
+[![Schematic of the top of the column with the sub-grid lid: the atmosphere above one surface temperature, a lid part of weight w with a solid lid over melt, an open part of weight 1 - w with a thin skin over melt, and the temperature with depth in both parts](../assets/lid_coupling_schematic_dark.svg#only-dark){ width="100%" }](../assets/lid_coupling_schematic_dark.svg)
+
+**How to read the figure.** Left: the column top, with one surface temperature $T_\mathrm{surf}$ for both parts. The lid part, weight $w$, conducts from its base $T_b$; the top-cell melt under it is at $T_b$ or warmer. The open part, weight $1 - w$, conducts through the skin from $T_\mathrm{node}$, the top basic node of the Aragog mesh. Rule 3 assumes $T_\mathrm{node} \ge T_b$.
+
+The arrow in the atmosphere is the flux $F_\mathrm{atm}$ of the atmosphere call. The arrow in the lid is the flux $F_\mathrm{surf}$ that leaves the lid surface; where the held lid would conduct more than the cap $C$, [Rule 3](#rule-3-the-atmosphere-flux-is-the-largest-loss) sets it to $C$ plus a slope term. Under the lid, $F_\mathrm{melt}$ is the heat that the melt passes to the lid ([Rule 2](#rule-2-the-lid-ledger)). In the open part, $F_\mathrm{open}$ is its flux ([What the atmosphere call sees](#what-the-atmosphere-call-sees)).
+
+Right: temperature $T$ against depth $z$ in each part; dotted lines: the melt of the top cell. The lid profile uses the shape parameter $s = 1$ of the Aragog lid ([The onset thickness](#the-onset-thickness)), for illustration.
+
+The lid thickness (centimetres to decimetres) and the top cell (65.8 km) are values of the coupled runs of this page. Thicknesses are not to scale.
 
 ## Three energy rules
 
@@ -87,7 +93,7 @@ Aragog applies the cap: where the lid held at $T_\mathrm{surf}$ would conduct mo
 
 ## What the atmosphere call sees
 
-Under a lid the surface has two parts that share one surface temperature. The lid part, weight $w$, conducts from the lid base $T_b$ (column `lid_T_base`). The open part, weight $1 - w$, conducts through the skin from the top node of the mesh $T_\mathrm{node}$ (column `lid_T_node`). The two act in parallel:
+Under a lid the surface has two parts that share one surface temperature. The lid part, weight $w$, conducts from the lid base $T_b$ (column `lid_T_base`). The open part, weight $1 - w$, conducts through the skin from the top basic node of the Aragog mesh $T_\mathrm{node}$ (column `lid_T_node`). The two act in parallel:
 
 $$F = w\,G_\mathrm{lid}'\,(T_b - T_\mathrm{surf}) + (1 - w)\,G_\mathrm{skin}\,(T_\mathrm{node} - T_\mathrm{surf}), \qquad G_\mathrm{lid}' = \min(G_\mathrm{lid}, G_\mathrm{skin}).$$
 
@@ -151,7 +157,7 @@ A resume that changes `lid_mush_base` from the value in the run's `init_coupler.
 
 ## Helpfile columns
 
-The interior writes every column except `lid_F_open` at each step; the atmosphere wrapper writes `lid_F_open`. With the lid off the columns read 0, except `lid_T_node` (the top node of the mesh) and `lid_F_open` (`F_atm`). With the lid on and $w = 0$, `lid_delta` holds the thin phantom lid, so read it with `lid_weight`. The full list is in [Output format](../Reference/output.md).
+The interior writes every column except `lid_F_open` at each step; the atmosphere wrapper writes `lid_F_open`. With the lid off the columns read 0, except `lid_T_node` (the top basic node of the Aragog mesh) and `lid_F_open` (`F_atm`). With the lid on and $w = 0$, `lid_delta` holds the thin phantom lid, so read it with `lid_weight`. The full list is in [Output format](../Reference/output.md).
 
 | Column | Unit | Meaning |
 |---|---|---|
