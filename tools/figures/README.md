@@ -107,3 +107,15 @@ python3 tools/figures/svg_labels_to_text.py docs/assets/proteus_modules_schemati
 
 The script needs Playwright and Arial or a font with Arial's widths (Liberation
 Sans, Arimo, Nimbus Sans); otherwise labels wrap differently than in draw.io.
+
+## Lid coupling schematic
+
+`docs/assets/lid_coupling_schematic.svg` and its dark counterpart, shown on
+`docs/Explanations/lid_coupling.md`, are drawn by `lid_coupling_schematic.py`
+with matplotlib and the proteus-mpl fonts; all text is stored as paths. Rebuild
+both variants, or check that the stored files match a fresh render, with:
+
+```bash
+python tools/figures/lid_coupling_schematic.py
+python tools/figures/lid_coupling_schematic.py --check
+```

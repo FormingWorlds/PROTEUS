@@ -2,7 +2,7 @@
 
 A thin solid crust at the top of the Aragog mantle changes the heat path from the melt to the atmosphere. The lid enters the surface balance of the atmosphere, and the coupling keeps three energy rules between the melt, the lid and the atmosphere.
 
-This page assumes you know the [coupling loop](coupling_loop.md): the interior runs first in each iteration with the flux `F_atm` of the last atmosphere call, and the atmosphere then solves for the surface temperature `T_surf`. The lid itself, its profile, its growth and its hand-over to the mesh, is described on the Surface lid page of the Aragog documentation. This page covers the PROTEUS side: what the atmosphere sees and what the interior takes. It applies to `interior_energetics.module = "aragog"` with the default `interior_energetics.surface_bc_mode = "flux"`.
+This page assumes you know the [coupling loop](coupling_loop.md): the interior runs first in each iteration with the flux `F_atm` of the last atmosphere call, and the atmosphere then solves for the surface temperature `T_surf`. The lid itself, its profile, its growth and its hand-over to the mesh, is described on the [Surface lid page](https://proteus-framework.org/aragog/Explanations/surface_lid.html) of the Aragog documentation. This page covers the PROTEUS side: what the atmosphere sees and what the interior takes. It applies to `interior_energetics.module = "aragog"` with the default `interior_energetics.surface_bc_mode = "flux"`.
 
 ## The skin and the lid
 
@@ -15,6 +15,11 @@ $$G_\mathrm{skin} = \frac{k}{d},$$
 $$F_\mathrm{atm}(T_\mathrm{surf}) = G_\mathrm{skin}\,(T_\mathrm{magma} - T_\mathrm{surf}).$$
 
 It returns `F_atm`; in AGNI this is the total flux at the top level. Without a lid the interior takes `F_atm` as its surface flux for the next step.
+
+![Schematic of the top of the column with the sub-grid lid: the atmosphere above one surface temperature, a lid part of weight w with a solid lid over melt, an open part of weight 1 - w with a thin skin over melt, and the temperature with depth in both parts](../assets/lid_coupling_schematic.svg#only-light){ width="100%" }
+![Schematic of the top of the column with the sub-grid lid: the atmosphere above one surface temperature, a lid part of weight w with a solid lid over melt, an open part of weight 1 - w with a thin skin over melt, and the temperature with depth in both parts](../assets/lid_coupling_schematic_dark.svg#only-dark){ width="100%" }
+
+Top of the column with the sub-grid lid. Left: the atmosphere sets one surface temperature $T_\mathrm{surf}$ for both parts of the surface. The lid part, weight $w$, is a solid lid of thickness $\delta$ over melt; it conducts from its base $T_b$ at the solidus. The open part, weight $1 - w$, is the skin of thickness $d$ over melt; it conducts from $T_\mathrm{node}$, the top basic node of the Aragog mesh directly under the skin, with $T_\mathrm{node} \ge T_b$. The arrows mark the cap $C$ on the flux of the lid part, the heat $F_\mathrm{melt}$ that the melt passes to the lid, the flux $F_\mathrm{open}$ of the open part and the flux $F_\mathrm{atm}$ of the atmosphere call. Right: temperature $T$ against depth $z$ in each part. Thicknesses are not to scale. The lid profile uses the shape $s = 1$ for illustration.
 
 **The lid.** A crust that forms at the surface starts metres thick or less, while the top cell of the interior mesh is kilometres thick. The mesh cannot resolve it, so Aragog carries it as a sub-grid lid: a conductive solid layer of thickness $\delta$ at the top of the mantle, with its base $T_b$ at the solidus. Aragog holds $\delta$ and the lid energy per area $E_\mathrm{lid}$ as two extra solver states. A weight $w$ from 0 to 1 says how strongly the lid acts: $w = 0$ is no lid, $w = 1$ is a full lid, and values between blend the lid with the open surface. The lid conducts with
 
