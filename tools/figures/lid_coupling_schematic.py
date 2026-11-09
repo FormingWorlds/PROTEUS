@@ -30,9 +30,9 @@ matplotlib.use('Agg')
 
 import matplotlib.pyplot as plt  # noqa: E402
 import proteus_mpl  # noqa: E402
-from matplotlib.font_manager import FontProperties  # noqa: E402
+from matplotlib.font_manager import FontProperties, findfont  # noqa: E402
 from matplotlib.patches import Polygon, Rectangle  # noqa: E402
-from matplotlib.textpath import TextPath  # noqa: E402
+from matplotlib.textpath import text_to_path  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSETS = ROOT / 'docs' / 'assets'
@@ -107,18 +107,11 @@ class Canvas:
         bb = art.get_window_extent(self.renderer)
         return x + bb.width if ha == 'left' else x
 
-    def run(self, x, y, parts, size=LAB, color=None):
-        """Draw text pieces one after another; a piece is (text,) or (text, family)."""
-        for p in parts:
-            x = self.text(
-                x, y, p[0], size=size, color=color, family=p[1] if len(p) > 1 else None
-            )
-        return x
-
     def tracked(self, x, y, s, color, size=EYE, spacing=0.16, rotate=False, ha='left'):
         """Draw upper-case monospaced text with letter spacing, one glyph at a time."""
         prop = FontProperties(family=MONO, size=size)
-        step = TextPath((0, 0), 'M' * 10, prop=prop).get_extents().width / 10 + spacing * size
+        adv = text_to_path.get_text_width_height_descent('M' * 10, prop, ismath=False)[0] / 10
+        step = adv + spacing * size
         start = -(step * len(s) - spacing * size) / 2 if ha == 'center' else 0.0
         for i, ch in enumerate(s):
             if ch == ' ':
@@ -188,7 +181,7 @@ def draw(theme_name: str):
     c.text(54, 154, 'solid lid', color=ON_ROCK, weight='semibold')
     c.text(54, 172, r'thickness $\delta$, centimetres to decimetres', size=SM, color=ON_ROCK)
     x = c.text(
-        54, 190, r"$G_\mathrm{lid} = k_\mathrm{lid}\,f'(0)/\delta$", size=SM, color=ON_ROCK
+        54, 190, r"$G_\mathrm{lid} = k_\mathrm{lid}\,f'(0)\,/\,\delta$", size=SM, color=ON_ROCK
     )
     c.text(x + 10, 190, 'lid_conductance', size=SM - 1, color=ON_ROCK, family=MONO)
     c.text(
@@ -241,7 +234,7 @@ def draw(theme_name: str):
     c.line([575, 585], [S, S], mut)
     c.line([575, 585], [MB, MB], mut)
     c.tracked(
-        590,
+        594,
         (S + MB) / 2,
         'TOP CELL · 65.8 KM · NOT TO SCALE',
         ink2,
@@ -286,12 +279,14 @@ def draw(theme_name: str):
     c.line([TB, TB + 6], [LB, MB - 10], ink, lw=1.4, dash=(1.5, 4), cap='round')
     c.line([TS, TN], [S, SK], ink, lw=2, dash=(6, 4))
     c.line([TN, TN + 6], [SK, MB - 10], ink, lw=1.4, dash=(1.5, 4), cap='round')
-    c.text(770, 160, 'open part: skin', size=SM)
-    c.text(700, 206, 'lid part', size=SM)
-    c.text(672, 290, 'dotted: melt below', size=SM)
-    c.text(672, 306, 'each part conducts', size=SM)
-    c.text(672, 322, 'from its own warm side,', size=SM)
-    c.text(672, 338, r'$T_\mathrm{b}$ or $T_\mathrm{node} \geq T_\mathrm{b}$', size=SM)
+    c.text(770, 160, 'open part: skin', size=SM, color=ink2)
+    c.text(700, 206, 'lid part', size=SM, color=ink2)
+    c.text(672, 290, 'dotted: melt below', size=SM, color=ink2)
+    c.text(672, 306, 'each part conducts', size=SM, color=ink2)
+    c.text(672, 322, 'from its own warm side,', size=SM, color=ink2)
+    c.text(
+        672, 338, r'$T_\mathrm{b}$ or $T_\mathrm{node} \geq T_\mathrm{b}$', size=SM, color=ink2
+    )
     return c.fig
 
 
@@ -303,11 +298,12 @@ def render(theme_name: str) -> bytes:
             'svg.hashsalt': 'lid_coupling_schematic',
             'svg.fonttype': 'path',
             'savefig.bbox': 'standard',
+            'lines.scale_dashes': False,
         }
     ):
         fig = draw(theme_name)
         buf = io.BytesIO()
-        fig.savefig(buf, format='svg', metadata={'Date': None})
+        fig.savefig(buf, format='svg', metadata={'Date': None, 'Creator': None})
         plt.close(fig)
     return _compact(buf.getvalue().decode())
 
@@ -340,7 +336,10 @@ def _compact(svg: str) -> bytes:
     )
     svg = re.sub(r'\s*<!--.*?-->', '', svg, flags=re.S)
     # Let the viewer smooth the 1 x 64 lid gradient image.
-    svg = svg.replace(' style="image-rendering:crisp-edges;image-rendering:pixelated"', '')
+    pixelated = ' style="image-rendering:crisp-edges;image-rendering:pixelated"'
+    if svg.count(pixelated) != 1:
+        raise RuntimeError('the lid gradient image is not in the expected SVG form')
+    svg = svg.replace(pixelated, '')
     svg = re.sub(r'<g id="(?:text|patch|line2d|axes|figure)_\d+">', '<g>', svg)
 
     # Glyph outlines at 1/16 of their resolution (under 0.02 px at these sizes).
@@ -383,6 +382,13 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--check', action='store_true', help='compare the files in docs/assets')
     args = ap.parse_args(argv)
+    proteus_mpl.use('light')
+    for family in ('Instrument Sans', MONO):
+        try:
+            findfont(FontProperties(family=family), fallback_to_default=False)
+        except ValueError:
+            print(f'font {family!r} not found: install proteus-mpl, which ships it')
+            return 2
     bad = 0
     for name, suffix in (('light', ''), ('dark', '_dark')):
         out = ASSETS / f'lid_coupling_schematic{suffix}.svg'

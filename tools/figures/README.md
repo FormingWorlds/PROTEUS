@@ -119,3 +119,7 @@ both variants, or check that the stored files match a fresh render, with:
 python tools/figures/lid_coupling_schematic.py
 python tools/figures/lid_coupling_schematic.py --check
 ```
+
+`--check` compares bytes, so it holds only with the same matplotlib, proteus-mpl
+and fonts (Instrument Sans, Spline Sans Mono) as the stored files; the script
+stops when a font is missing.
