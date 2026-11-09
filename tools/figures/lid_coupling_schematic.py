@@ -24,7 +24,6 @@ from math import erf
 from pathlib import Path
 
 import matplotlib
-import matplotlib.colors
 
 matplotlib.use('Agg')
 
@@ -69,13 +68,6 @@ THEMES = {
 }
 LAB, SM, EYE = 13.0, 11.5, 10.5
 MONO = 'Spline Sans Mono'
-
-
-def _hex_mix(a: str, b: str, t: float) -> str:
-    """Return the colour at fraction ``t`` between hex colours ``a`` and ``b``."""
-    ca = [int(a[i : i + 2], 16) for i in (1, 3, 5)]
-    cb = [int(b[i : i + 2], 16) for i in (1, 3, 5)]
-    return '#' + ''.join(f'{round(x + (y - x) * t):02X}' for x, y in zip(ca, cb))
 
 
 class Canvas:
@@ -167,10 +159,9 @@ def draw(theme_name: str):
     # Melt, lid (vertical gradient in 2 px bands) and skin.
     c.rect(40, LB, 290, MB - LB, MELT)
     c.rect(330, SK, 230, MB - SK, MELT)
-    rgb = [[matplotlib.colors.to_rgb(_hex_mix(LID_TOP, LID_BASE, i / 63))] for i in range(64)]
+    lo, hi = ([int(h[i : i + 2], 16) for i in (1, 3, 5)] for h in (LID_TOP, LID_BASE))
+    rgb = [[[round(p + (q - p) * i / 63) / 255 for p, q in zip(lo, hi)]] for i in range(64)]
     c.ax.imshow(rgb, extent=(40, 330, LB, S), aspect='auto', interpolation='none')
-    c.ax.set_xlim(0, W)
-    c.ax.set_ylim(H, 0)
     c.rect(330, S, 230, SK - S, SKIN)
     c.line([40, 330], [LB, LB], ON_ROCK, lw=1.2, dash=(5, 4))
     c.line([330, 330], [S, MB], ON_MELT, lw=1.0, dash=(3, 4), alpha=0.35)
@@ -212,11 +203,7 @@ def draw(theme_name: str):
     c.text(358, 176, 'top basic node of the mesh', size=SM, color=ON_MELT)
     c.text(358, 200, 'skin above it: $d$ = 0.01 m', size=SM, color=ON_MELT)
     c.text(
-        358,
-        216,
-        r'$G_\mathrm{skin} = k/d$ = 200 W m$^{-2}$ K$^{-1}$',
-        size=SM,
-        color=ON_MELT,
+        358, 216, r'$G_\mathrm{skin} = k/d$ = 200 W m$^{-2}$ K$^{-1}$', size=SM, color=ON_MELT
     )
     c.up(540, 330, 144, ON_ROCK)
     c.text(530, 300, r'$F_\mathrm{open}$', color=ON_MELT, ha='right')
@@ -258,13 +245,9 @@ def draw(theme_name: str):
     c.line([660, 660], [S, MB - 6], ink, lw=1.2)
     c.ax.add_patch(Polygon([(656, MB - 6), (664, MB - 6), (660, MB + 2)], fc=ink, ec='none'))
     c.text(660, MB + 18, '$z$', ha='center')
-    for xt, lab in (
-        (TS, r'$T_\mathrm{surf}$'),
-        (TB, r'$T_\mathrm{b}$'),
-        (TN, r'$T_\mathrm{node}$'),
-    ):
+    for xt, sub in ((TS, 'surf'), (TB, 'b'), (TN, 'node')):
         c.line([xt, xt], [S - 4, S + 4], ink)
-        c.text(xt, S - 10, lab, size=SM, ha='center')
+        c.text(xt, S - 10, rf'$T_\mathrm{{{sub}}}$', size=SM, ha='center')
     c.line([660, 890], [SK, SK], t['grid'], dash=(3, 3))
     c.line([660, 890], [LB, LB], t['grid'], dash=(3, 3))
     c.text(652, SK + 4, '$d$', ha='right')
