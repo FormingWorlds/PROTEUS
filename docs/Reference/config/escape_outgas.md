@@ -238,7 +238,7 @@ A crust that closes over the mantle can hold the volatiles dissolved in the melt
 | `delta_open` | float or none | `none` | Crust thickness \[m\] below which a closed seal opens; `none` means `0.5 delta_close`. |
 | `phi_open` | float or none | `none` | Top-cell melt fraction \[1\] at or above which a closed seal opens; `none` means `phi_close + 0.05`. |
 | `tau_leak` | float | `inf` | Relaxation time \[yr\] of the sealed inventory; inf holds it. |
-| `chi_d` | float | `0.02` | Degassing efficiency \[1\] of the melt that reaches the crust (Schaefer and Sasselov 2015, Table 3). |
+| `chi_d` | float | `0.02` | Degassing efficiency \[1\] of the melt that reaches the crust (Schaefer & Sasselov (2015)[^cite-schaefer2015], Table 3). |
 | `crust_rate` | float | `0.0` | Mass of melt that reaches the crust per year \[kg yr-1\]. |
 | `phi_solid` | float | `0.001` | Melt fraction \[1\] below which a mesh cell counts as crust, and below which the mantle makes no crust. |
 <!-- END GENERATED: config-table [outgas.lid_seal] -->
@@ -266,3 +266,5 @@ Cross-field constraints enforced when the config file loads:
 <!-- END GENERATED: config-constraints escape_outgas -->
 
 **See also:** [Escape modules](../../Explanations/model.md#atmospheric-escape-zephyrus) | [Outgassing modules](../../Explanations/model.md#volatile-outgassing-calliope-atmodeller)
+
+[^cite-schaefer2015]: Schaefer, L. and Sasselov, D., *[The persistence of oceans on Earth-like planets: insights from the deep-water cycle](https://doi.org/10.1088/0004-637X/801/1/40)*, The Astrophysical Journal, 801, 40, 2015. Eq. 14, Eq. 17 and Table 3.

@@ -7,7 +7,7 @@ This page checks the lid seal, `proteus.outgas.lid_seal`. When a crust closes ov
 | Test id | Reference | Scope |
 |---|---|---|
 | `tests/outgas/test_lid_seal.py::test_relaxation_matches_the_exponential_and_not_the_step_length` | Analytical solution of $dM/dt = -M/\tau$ | The held mass against $M_c\,e^{-(t - t_c)/\tau}$ at every step, for steps of 1, 10 and 100 kyr. |
-| `tests/outgas/test_lid_seal.py::test_volcanic_rate_closes_the_mass_balance_of_the_sealed_reservoir` | Schaefer & Sasselov (2015), ApJ 801:40, Eq. 14 and Eq. 17; mass balance | The volcanic rate against its closed form over the global melt fraction, the mass balance of the held volatile, and one state written out by hand. |
+| `tests/outgas/test_lid_seal.py::test_volcanic_rate_closes_the_mass_balance_of_the_sealed_reservoir` | Schaefer & Sasselov (2015)[^cite-schaefer2015], ApJ 801:40, Eq. 14 and Eq. 17; mass balance | The volcanic rate against its closed form over the global melt fraction, the mass balance of the held volatile, and one state written out by hand. |
 
 ## The held mass decays as the exponential, for any step length
 
@@ -52,7 +52,7 @@ It also checks the closed form $1/(D + \Phi(1 - D))$ of the scaled rate over $\P
 **How to read the plot.** The x-axis is the global melt fraction $\Phi$, the y-axis the scaled volcanic rate $k_i M_\mathrm{mantle}/(\chi_d \dot M_c)$, both on log scales. Each line is the closed form $1/(D + \Phi(1 - D))$ for one partition coefficient $D$; the markers are the code. A pass means that every marker lies on its line. At $D$ = 1 the rate does not depend on $\Phi$, because the volatile is spread evenly over melt and crystals.
 
 ??? info "Test details"
-    - Reference: Schaefer & Sasselov (2015), ApJ 801:40, Eq. 14 and Eq. 17; mass balance of the held volatile.
+    - Reference: Schaefer & Sasselov (2015)[^cite-schaefer2015], ApJ 801:40, Eq. 14 and Eq. 17; mass balance of the held volatile.
     - Tolerance: relative 1e-14 for the mass balance and the 2-region case, 1e-12 for the hand-written state, 1e-13 for the closed form; the local melt fraction must be more than 40 % off.
     - Test id: `tests/outgas/test_lid_seal.py::test_volcanic_rate_closes_the_mass_balance_of_the_sealed_reservoir`
     - Command: `pytest -m reference_pinned tests/outgas/test_lid_seal.py --validation-plots`
@@ -70,3 +70,5 @@ The tests in `tests/outgas/test_lid_seal.py` and the code itself also check, wit
 - the crust thickness on the mesh reaches the lower face of the top run of solid cells;
 - on every held row the melt columns are 0 and the held masses are finite and not negative (an error stops the run otherwise);
 - the per-element closure includes the held mass, and the held mass blocks the desiccation check.
+
+[^cite-schaefer2015]: Schaefer, L. and Sasselov, D., *[The persistence of oceans on Earth-like planets: insights from the deep-water cycle](https://doi.org/10.1088/0004-637X/801/1/40)*, The Astrophysical Journal, 801, 40, 2015. Eq. 14, Eq. 17 and Table 3.

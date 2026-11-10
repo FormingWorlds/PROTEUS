@@ -314,8 +314,8 @@ class LidSeal:
     tau_leak: float
         Relaxation time [yr] of the sealed inventory; inf holds it.
     chi_d: float
-        Degassing efficiency [1] of the melt that reaches the crust (Schaefer and
-        Sasselov 2015, Table 3).
+        Degassing efficiency [1] of the melt that reaches the crust (Schaefer &
+        Sasselov (2015)[^cite-schaefer2015], Table 3).
     crust_rate: float
         Mass of melt that reaches the crust per year [kg yr-1].
     phi_solid: float

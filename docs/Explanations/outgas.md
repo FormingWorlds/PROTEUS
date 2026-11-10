@@ -368,7 +368,7 @@ The seal reads 2 quantities in each step after the initialisation stage:
 - the crust thickness $\delta$ \[m\];
 - the melt fraction $\phi_\mathrm{top}$ \[1\] of the top cell of the interior mesh.
 
-Where $\delta$ comes from depends on the state of the crust:
+Where $\delta$ comes from depends on the state of the crust. The Aragog sub-grid lid and its weight `lid_weight` are explained in [Sub-grid lid and the surface skin](lid_coupling.md).
 
 | State of the crust | Thickness $\delta$ | What decides the closure |
 |---|---|---|
