@@ -3342,7 +3342,7 @@
         "liquidus_super"
       ],
       "bounds": null,
-      "description": "How to set the initial mantle thermal state. 'isothermal': T = tsurf_init everywhere. 'linear': T from tsurf_init (surface) to tcenter_init (center). 'adiabatic': integrate dT/dP|_S downward from tsurf_init. 'adiabatic_from_cmb': anchor the adiabat at the core-mantle boundary (T = tcmb_init at P_cmb) and integrate upward to the surface. Use this when the surface-anchored adiabat under the current EOS would put the mantle into the mushy zone at IC and you want to force a fully molten initial state by pinning the CMB temperature instead. PROTEUS converts the (P_cmb, tcmb_init) anchor into a target entropy via PALEOS-2phase lookup, then hands that S to the interior solver as if it were the isentropic IC. 'accretion': White & Li (2025) parameterization. 'isentropic': set the initial specific entropy directly via ini_entropy + ini_dsdr (bypasses PALEOS lookup; matches the CHILI intercomparison protocol). The interior solver maps the entropy IC to T(P) via its own EOS table. 'liquidus_super' (default): start the mantle on the coolest single adiabat that is fully molten everywhere, with at least delta_T_super Kelvin of superheat above the configured liquidus. The surface temperature (hence the uniform initial entropy) is solved so the minimum superheat over the whole mantle equals delta_T_super, evaluated against the solidus/liquidus actually in use. This controls the molten margin without the user picking a surface temperature or entropy. If the requested superheat cannot be reached before the deep adiabat exhausts the EOS table, the solve clamps to the largest achievable superheat and emits a warning that reports it. If even the hottest adiabat the table supports stays below the liquidus somewhere in the mantle, no fully molten initial condition exists and the solve raises a RuntimeError. The liquidus is the one in the interior P-S tables, which the interior solver also uses for its melt fraction, for every structure module.",
+      "description": "How to set the initial mantle thermal state. 'isothermal': T = tsurf_init everywhere. 'linear': T from tsurf_init (surface) to tcenter_init (center). 'adiabatic': integrate dT/dP|_S downward from tsurf_init. 'adiabatic_from_cmb': anchor the adiabat at the core-mantle boundary (T = tcmb_init at P_cmb) and integrate upward to the surface. Use this when the surface-anchored adiabat under the current EOS would put the mantle into the mushy zone at IC and you want to force a fully molten initial state by pinning the CMB temperature instead. PROTEUS converts the (P_cmb, tcmb_init) anchor into a target entropy via PALEOS-2phase lookup, then hands that S to the interior solver as if it were the isentropic IC. 'accretion': White & Li (2025)[^cite-white2025] parameterization. 'isentropic': set the initial specific entropy directly via ini_entropy + ini_dsdr (bypasses PALEOS lookup; matches the CHILI intercomparison protocol). The interior solver maps the entropy IC to T(P) via its own EOS table. 'liquidus_super' (default): start the mantle on the coolest single adiabat that is fully molten everywhere, with at least delta_T_super Kelvin of superheat above the configured liquidus. The surface temperature (hence the uniform initial entropy) is solved so the minimum superheat over the whole mantle equals delta_T_super, evaluated against the solidus/liquidus actually in use. This controls the molten margin without the user picking a surface temperature or entropy. If the requested superheat cannot be reached before the deep adiabat exhausts the EOS table, the solve clamps to the largest achievable superheat and emits a warning that reports it. If even the hottest adiabat the table supports stays below the liquidus somewhere in the mantle, no fully molten initial condition exists and the solve raises a RuntimeError. The liquidus is the one in the interior P-S tables, which the interior solver also uses for its melt fraction, for every structure module.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -3426,7 +3426,7 @@
           "value": 0
         }
       ],
-      "description": "Accretion heat retention [0-1] (accretion mode, White & Li 2025).",
+      "description": "Accretion heat retention [0-1] (accretion mode, White & Li (2025)[^cite-white2025]).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -4258,7 +4258,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "When True, require the planet to monotonically cool over time. Enforced in all atmosphere modules and termination checks.",
+      "description": "When True, require the planet to monotonically cool over time. Enforced in all atmosphere modules and termination checks. Refused with the sub-grid lid (interior_energetics.aragog.lid_mush_base = true).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5517,7 +5517,7 @@
         "solid"
       ],
       "bounds": null,
-      "description": "Buoyancy of the gravitational-separation velocity. 'mixture' takes it against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie 1984, Eq. 3.7), on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes (rho_s - rho_l) g on every regime (Abe 1995, Eq. 40), as SPIDER does, so 'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy. Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5; from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2.",
+      "description": "Buoyancy of the gravitational-separation velocity. 'mixture' takes it against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie (1984)[^cite-mckenzie1984], Eq. 3.7), on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes (rho_s - rho_l) g on every regime (Abe (1995)[^cite-abe1995], Eq. 40), as SPIDER does, so 'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy. Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5; from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -5533,7 +5533,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Let a resume change separation_viscosity or separation_buoyancy from the values in the run's init_coupler.toml, with one warning per switched law in the log. False stops such a resume, because the changed law would act from the resume row on. A law the record does not hold must be set in the config file either way; a record that names the Aragog module and lacks separation_viscosity counts as 'melt', and a record of another interior module holds neither law. init_coupler.toml records false.",
+      "description": "Let a resume change separation_viscosity, separation_buoyancy, rheology.enabled or lid_mush_base from the values in the run's init_coupler.toml, with one warning per switched law in the log. False stops such a resume, because the changed law would act from the resume row on. A law the record does not hold must be set in the config file either way; a record that names the Aragog module and lacks separation_viscosity counts as 'melt', one that lacks the rheology or lid_mush_base counts as off, and a record of another interior module holds none of them. A missing record, or one that names no module and holds no Aragog table, leaves the rheology and the lid unchecked. init_coupler.toml records false.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -5586,6 +5586,54 @@
       "choices": null,
       "bounds": null,
       "description": "Per-call melt-fraction step cap. When > 0 and any staggered cell is in or near the two-phase window at solve() entry, a CVODE root function (and the equivalent scipy event) returns control at the exact time the larger of the global mass-weighted |ΔΦ| and the maximum single-cell |Δφ| reaches this cap. Off by default: the schema default 0.0 resolves to no cap, because on a benign freezing-front crossing the root function slices the coupled step into many small ones and drives the reported CMB heat flux briefly negative where the uncapped run stays positive, so the cap is a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.rheology.enabled",
+      "toml_section": "interior_energetics.aragog.rheology",
+      "class": "Rheology",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Use the temperature- and pressure-dependent solid viscosity and the stagnant-lid closure of ``aragog.rheology.SolidRheologyParams``, with its defaults for every other parameter. False uses the constant ``solid_log10visc``.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.lid_mush_base",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Run the sub-grid lid with its base at the solidus. It needs the Aragog module with the solid rheology, surface_bc_mode = 'flux', kappah_floor > 0, the EOS tables and the dummy (without fixed_flux) or AGNI atmosphere with surf_state = 'skin' and a numeric surface_d, and is refused with core_bc gradient or bower2018, with param_utbl and with planet.prevent_warming. A resume that changes it stops unless allow_resume_law_change is true.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.lid_delta_on",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Onset thickness [m] of the sub-grid lid. None takes solid_cond surface_d / surface_k, at which a linear lid conducts like the skin (0.02 m for the default skin). A finite value above 0 is used as given, with a warning beyond 10 % of the skin value.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -5870,7 +5918,7 @@
           "value": 0
         }
       ],
-      "description": "Core thermal conductivity [W m-1 K-1] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015) Table 2 value.",
+      "description": "Core thermal conductivity [W m-1 K-1] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015)[^cite-nimmo2015b] Table 2 value.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5962,7 +6010,7 @@
           "value": 1
         }
       ],
-      "description": "Ohmic fraction of the dissipation in the field-strength scaling, in (0, 1]; Christensen et al. (2009) adopt 1 for planets.",
+      "description": "Ohmic fraction of the dissipation in the field-strength scaling, in (0, 1]; Christensen et al. (2009)[^cite-christensen2009] adopt 1 for planets.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5987,7 +6035,7 @@
           "value": Infinity
         }
       ],
-      "description": "Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast; the default is the theoretical value of Thiriet et al. (2019, Table 2).",
+      "description": "Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast; the default is the theoretical value of Thiriet et al. (2019)[^cite-thiriet2019], Table 2.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -8866,7 +8914,7 @@
       "default": "\"greybody\"",
       "choices": null,
       "bounds": null,
-      "description": "Surface scattering material: the file name of a Hammond et al. (2024) spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo.",
+      "description": "Surface scattering material: the file name of a Hammond et al. (2024)[^cite-hammond2024] spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo.",
       "doc_source": "attributes",
       "group_order": 1,
       "group_position": 0,
@@ -12726,6 +12774,18 @@
       "doc": "ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled."
     },
     {
+      "validator": "lid_requires_the_skin_atmosphere",
+      "module": "_config.py",
+      "attached_to": [
+        "atmos_clim"
+      ],
+      "touches": [
+        "atmos_clim",
+        "interior_energetics"
+      ],
+      "doc": "A live Aragog lid acts on the atmosphere only through the skin of AGNI or the dummy."
+    },
+    {
       "validator": "lid_seal_requirements",
       "module": "_config.py",
       "attached_to": [
@@ -13008,6 +13068,44 @@
         "zephyrus.efficiency"
       ],
       "doc": "Validate ZEPHYRUS settings: Pxuv within (0, 10] bar and efficiency within [0, 1]."
+    },
+    {
+      "validator": "_check_aragog_lid",
+      "module": "_interior.py",
+      "attached_to": [
+        "interior_energetics.aragog.core_bc",
+        "interior_energetics.aragog.lid_mush_base",
+        "interior_energetics.aragog.rheology.enabled",
+        "interior_energetics.const_properties",
+        "interior_energetics.kappah_floor",
+        "interior_energetics.module",
+        "interior_energetics.param_utbl",
+        "interior_energetics.surface_bc_mode"
+      ],
+      "touches": [
+        "interior_energetics.aragog.core_bc",
+        "interior_energetics.aragog.lid_mush_base",
+        "interior_energetics.aragog.rheology.enabled",
+        "interior_energetics.const_properties",
+        "interior_energetics.kappah_floor",
+        "interior_energetics.module",
+        "interior_energetics.param_utbl",
+        "interior_energetics.surface_bc_mode"
+      ],
+      "doc": "Reject the Aragog sub-grid lid where Aragog refuses it or where it cannot act."
+    },
+    {
+      "validator": "_check_aragog_rheology_module",
+      "module": "_interior.py",
+      "attached_to": [
+        "interior_energetics.aragog.rheology.enabled",
+        "interior_energetics.module"
+      ],
+      "touches": [
+        "interior_energetics.aragog.rheology.enabled",
+        "interior_energetics.module"
+      ],
+      "doc": "Reject the Aragog solid rheology when another interior module runs."
     },
     {
       "validator": "_check_aragog_top_cell_dt_limit_surface_bc",

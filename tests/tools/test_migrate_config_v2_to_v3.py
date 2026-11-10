@@ -218,12 +218,17 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.aragog.core_module.t_m1',
         'interior_energetics.aragog.core_module.t_m2',
         'interior_energetics.aragog.entropy_step_cap',
+        # Off by default, so a migrated config runs without the lid.
+        'interior_energetics.aragog.lid_mush_base',
+        # None derives the lid onset thickness from the skin; read only with the lid on.
+        'interior_energetics.aragog.lid_delta_on',
         'interior_energetics.aragog.phase_boundary_entropy_margin',
         'interior_energetics.aragog.phase_boundary_cap',
         'interior_energetics.aragog.phase_smoothing',
         'interior_energetics.aragog.phi_step_cap',
         'interior_energetics.aragog.scalar_gravity_override',
         'interior_energetics.aragog.separation_buoyancy',
+        'interior_energetics.aragog.rheology.enabled',
         'interior_energetics.aragog.separation_viscosity',
         'interior_energetics.aragog.solver_method',
         'interior_energetics.aragog.temperature_step_cap',

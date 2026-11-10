@@ -14,9 +14,10 @@ step-by-step guide or the advice below,
 | `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
 | `was written before N column(s) of the current output schema existed` | [Resuming an older run](#resuming-a-run-written-by-an-older-proteus) |
 | `Resume: no Zalmoxis structure file matches the helpfile row` | [Resume stops on the Zalmoxis structure](#resume-stops-no-zalmoxis-structure-file-matches-the-row) |
-| `interior_energetics.aragog.separation_... but the run was written with` or `... is not recorded in`, after `Resume refused:` | [Resume stops on a separation law](#resume-stops-on-a-separation-law) |
+| `interior_energetics.aragog.<law> is ... but the run was written with` or `... is not recorded in`, after `Resume refused:` | [Resume stops on a separation law](#resume-stops-on-a-separation-law) |
 | `Resume: the interior snapshot at t = ... is on an earlier structure` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
 | `Resume: a structure update was pending at the stop` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
+| `the sub-grid lid restarts as the phantom lid` / `Resume: the lid of the snapshot at t = ... yr is refused` | [A resumed run with the sub-grid lid](#a-resumed-run-with-the-sub-grid-lid) |
 | Simulation fails to converge (general) | [Stabilise a simulation](stabilise_run.md) |
 | `Aragog needs the SUNDIALS CVODE solver` / `scikits_odes_sundials.cvode cannot be imported` | [Aragog stops at setup](#aragog-stops-at-setup-cvode-cannot-be-imported) |
 | `Permission denied (publickey)` | [SSH keys](#cannot-clone-module-or-permission-denied-publickey) |
@@ -110,6 +111,8 @@ The run's `init_coupler.toml` records the config of its last start; a resume wri
 
 A record that names the Aragog module and lacks `separation_viscosity` counts as `'melt'`. Any other law the record does not hold must be set in the config file: a `separation_buoyancy` it lacks, a `separation_viscosity` it lacks when it names no interior module, and both laws when `init_coupler.toml` is missing or unreadable or names another interior module (as after a resume with `interior_energetics.module = 'dummy'`). The allow switch does not cover them. A run without a recorded `separation_buoyancy` ran under `'solid'` with an aragog below 26.10.22 and under `'mixture'` from 26.10.22; each start writes the aragog version to its `proteus_NN.log`.
 
+The same check keeps the solid rheology (`interior_energetics.aragog.rheology.enabled`) and the sub-grid lid (`interior_energetics.aragog.lid_mush_base`) of the run, with the same allow switch. A record that names the Aragog module and lacks either counts as off. A missing record, or one that names no module and holds no Aragog table, leaves both unchecked, with a note in the log.
+
 ### A resumed run and the uninterrupted run {#a-resumed-run-and-the-uninterrupted-run}
 
 A Zalmoxis + Aragog run solves the structure after the interior step of an iteration, and Aragog takes the new mesh at the start of the next iteration. A run that stops between the two leaves an interior snapshot on the earlier structure and a helpfile row on the new one. On resume, PROTEUS builds Aragog on the earlier structure, restores the snapshot, and then makes the same structure update as a running loop. The first resumed step then records the compression work of that update (`step_dE_compression_J`) and carries the entropy to the new mesh by mass parcel, as the uninterrupted run does.
@@ -122,6 +125,16 @@ Resume: a structure update was pending at the stop. With core_bc = 'core_module'
 ```
 
 The first appears when no mesh file of the earlier structure is left. The second appears for a core boundary condition other than `energy_balance`, and when a giant impact landed between the snapshot and the row. In both cases, the run continues on the structure of its row: the first resumed step records no compression work, and the entropy is handed over by node. The resumed run then differs from the uninterrupted one from that step on. A structure update that moves both radii by less than 1 m is not detected and is handled in the same way, without a warning. A snapshot with no entropy profile on the node count of the run gives neither warning: the run starts from a fresh initial condition on its row, as on any resume with such a snapshot. If the solver is built on the earlier structure and the snapshot entropy does not fit its cells, the resume stops with an error, and the run must start again from t = 0.
+
+### A resumed run with the sub-grid lid {#a-resumed-run-with-the-sub-grid-lid}
+
+With the Aragog sub-grid lid on (`interior_energetics.aragog.lid_mush_base = true`), each interior snapshot `data/<time>_int.nc` holds the lid thickness `lid_delta_state` \[m\] and the lid energy `lid_E_state` \[J m-2\], and for a lid handed over to the mesh its hand-over time `lid_handover_time_state` \[yr\]. A resume starts the lid from these values. A snapshot without them, or with a value that is not finite, gives the warning
+
+```text
+Snapshot lid thickness is absent and lid energy is absent; the sub-grid lid restarts as the phantom lid at lid_delta_lo.
+```
+
+The lid then starts at `lid_delta_lo` with a linear temperature profile, and the resumed run differs from the uninterrupted one. A run written without the lid and resumed with it stops before this at the check of [Resume stops on a separation law](#resume-stops-on-a-separation-law), unless `allow_resume_law_change` is true. A stored lid that Aragog refuses stops the resume with `Resume: the lid of the snapshot at t = ... yr is refused`: a thickness at or below 0 other than the handed-over lid (thickness and energy both 0), a negative hand-over time, or a hand-over time with a live lid. A stored live lid over a top cell that Aragog does not accept at a start stops the run with `lid_mush_base: the top cell starts at ...`: below the floor of the step check ($S_\mathrm{sol}$ + 0.5 J/kg/K), or where the heat jump of the lid base is below 1000 J/kg (up to about $S_\mathrm{sol} + 1000/T_\mathrm{sol}$ J/kg/K). For a solidus below 2000 K that band reaches above the floor of the step check, so a top cell the step check accepted at the end of a step can still be refused at the next start. The check runs at every live start of the solver, and PROTEUS starts the solver at every coupling step, not only on a resume. The phantom lid of a snapshot without a lid needs the top cell 1 J/kg/K above $S_\mathrm{sol}$ and stops the run with the same message below it. Run the configuration again from t = 0.
 
 ### Cannot clone module, or Permission denied (publickey) {#cannot-clone-module-or-permission-denied-publickey}
 

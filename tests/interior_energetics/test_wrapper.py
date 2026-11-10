@@ -4465,6 +4465,39 @@ def test_every_per_step_column_is_zeroed_on_a_skipped_step_or_reset_per_row():
 
 
 @pytest.mark.unit
+def test_run_interior_hands_the_aragog_runner_the_flux_provider_of_its_row():
+    """The Aragog runner of a step solves with the lid flux provider that lid_flux_provider builds
+    from the config and the row of that step."""
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic, interior_o.dt, interior_o.aragog_fail_count = 2, 0.0, 0
+    provider, built, solved = object(), [], []
+
+    def _provider(cfg, row):
+        built.append((cfg, row))
+        return provider
+
+    runner_mock = MagicMock()
+
+    def _solve(*args, **kwargs):
+        solved.append(runner_mock._lid_flux_at)
+        raise RuntimeError('stop after the wiring')
+
+    runner_mock.run_solver.side_effect = _solve
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
+        patch('proteus.interior_energetics.wrapper.lid_flux_provider', side_effect=_provider),
+        patch('proteus.interior_energetics.timestep.next_step', return_value=42.0),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
+    assert len(built) == 1 and built[0][0] is config and built[0][1] is hf_row
+    assert len(solved) == 1 and solved[0] is provider
+
+
+@pytest.mark.unit
 def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
     """After _ARAGOG_MAX_CONSECUTIVE_FAILS (default 3), the next failure re-raises."""
     from unittest.mock import patch as _patch
@@ -7621,6 +7654,16 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     solver = FakeSolver(n_nodes=80)
     hf_row = {'Time': 250.0, 'M_mantle': 4.2e24, 'F_atm': 100.0}
     hf_row['boundary_layer_thickness'] = 0.01  # m, written by the skin step
+    hf_row['boundary_layer_conductivity'] = 2.0
+    # a live lid of the cooled mantle before the impact
+    hf_row.update(
+        lid_weight=1.0,
+        lid_conductance=400.0,
+        lid_delta=0.18,
+        lid_T_surface=727.0,
+        lid_T_base=1440.0,
+        lid_T_node=1500.0,
+    )
 
     # 1. evaluate_molten_state direct evaluation
     out = evaluate_molten_state(solver, hf_row)
@@ -7644,6 +7687,15 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
         lambda *a, **k: np.full(len(solver._S0), 4000.0),
     )
     helpfile_kwargs = {}
+    # the phantom lid of a molten state: no weight, the other columns differ from the row
+    molten_lid = dict(
+        lid_weight=0.0,
+        lid_conductance=8.0,
+        lid_delta=0.5,
+        lid_T_surface=1300.0,
+        lid_T_base=1440.4,
+        lid_T_node=3860.0,
+    )
     monkeypatch.setattr(
         'proteus.interior_energetics.aragog.AragogRunner._build_helpfile_output',
         lambda *a, **k: (
@@ -7656,10 +7708,20 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
                 'Phi_global_vol': 0.73,
                 'T_pot': 3750.0,
                 'RF_depth': 0.05,
+                **molten_lid,
             }
         ),
     )
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
+    # The lid columns are those of the re-melted state, so the atmosphere of the impact
+    # iteration sees the molten surface, not the lid of the cooled mantle.
+    from proteus.atmos_clim.common import lid_acts, lid_boundary
+    from proteus.interior_energetics.wrapper import LID_COLUMNS
+
+    assert set(LID_COLUMNS) == set(molten_lid)
+    assert {k: hf_row[k] for k in LID_COLUMNS} == molten_lid
+    assert not lid_acts(hf_row)
+    assert lid_boundary(hf_row)[2] == hf_row['T_magma']
     # The skin thickness of the row [m] is what the re-melt output is built with
     assert helpfile_kwargs['surface_d'] == pytest.approx(0.01, rel=1e-12)
 
