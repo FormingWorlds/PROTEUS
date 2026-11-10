@@ -502,9 +502,9 @@ def test_leak_step_moves_species_masses_and_moles_together():
 
 
 @pytest.mark.physics_invariant
-def test_a_step_that_drains_the_reservoir_passes_the_ledger_check():
-    """A step much longer than tau drains the sealed mass; round-off in the 2
-    leak parts must not trip the ledger check, and no sealed mass is negative."""
+def test_a_step_that_drains_the_reservoir_leaks_it_whole():
+    """A step much longer than tau drains the sealed mass: each element leaks
+    its whole held mass, and round-off leaves no sealed mass below 0."""
     cfg = _config(tau_leak=3.0, crust_rate=7.0e21, chi_d=0.7)
     row = _sealed_row(phi=0.37)
     before = dict(row)

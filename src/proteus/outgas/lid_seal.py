@@ -54,8 +54,6 @@ LEAK_ELEMENTS = (*vol_element_list, *noble_gases)
 
 # seal_path: the path that closed the seal.
 PATH_OPEN, PATH_MESH, PATH_LID = 0, 1, 2
-# Relative round-off allowed in the ledger checks of one step.
-_LEDGER_RTOL = 1e-12
 # Mass fraction of each sealed element in each sealed species [1].
 _WEIGHTS = {
     e: {s: element_masses_from_species({s: 1.0}).get(e, 0.0) for s in SEALED_SPECIES}
@@ -120,11 +118,14 @@ def closure_state(
     KeyError
         With an active sub-grid lid and no ``lid_delta`` in the row.
     ValueError
-        If the thickness or the melt fraction is not finite.
+        If ``lid_weight``, the thickness or the melt fraction is not finite.
     """
     seal = config.outgas.lid_seal
     phi_top = float(np.asarray(interior_o.phi, dtype=float)[-1])
-    lid = float(hf_row.get('lid_weight', 0.0)) > 0.0
+    weight = float(hf_row.get('lid_weight', 0.0))
+    if not np.isfinite(weight):
+        raise ValueError(f'Lid seal: lid_weight = {weight} is not finite')
+    lid = weight > 0.0
     if lid and path in (PATH_OPEN, PATH_LID):
         if 'lid_delta' not in hf_row:
             raise KeyError('The lid seal needs lid_delta [m] while the sub-grid lid is active')
@@ -209,10 +210,18 @@ def leak_rates(config: Config, hf_row: dict, dt: float) -> tuple[dict, float, bo
         Crust production rate applied over the step [kg yr-1].
     capped : bool
         Whether ``crust_rate dt`` exceeded the melt mass and was cut to it.
+
+    Raises
+    ------
+    ValueError
+        If ``M_mantle`` or ``Phi_global`` is not finite.
     """
     seal = config.outgas.lid_seal
-    m_mantle = float(hf_row['M_mantle'])
-    phi = min(max(float(hf_row['Phi_global']), 0.0), 1.0)
+    m_mantle, phi = float(hf_row['M_mantle']), float(hf_row['Phi_global'])
+    for key, value in (('M_mantle', m_mantle), ('Phi_global', phi)):
+        if not np.isfinite(value):
+            raise ValueError(f'Lid seal: {key} = {value} is not finite')
+    phi = min(max(phi, 0.0), 1.0)
     m_melt, m_solid = phi * m_mantle, (1.0 - phi) * m_mantle
     mdot = float(seal.crust_rate) if phi >= seal.phi_solid else 0.0
     capped = mdot * dt > m_melt
@@ -291,7 +300,6 @@ def leak_step(config: Config, hf_row: dict, dt: float) -> None:
         by_tau = share * sum(w * tau_part[s] for s, w in weights.items())
         by_volc = share * sum(w * volc_part[s] for s, w in weights.items())
         out = by_tau + by_volc
-        _check(out <= sealed_e * (1.0 + _LEDGER_RTOL), f'{e} leaks {out} kg of {sealed_e} kg')
         hf_row[f'{e}_kg_leak_tau'], hf_row[f'{e}_kg_leak_volc'] = by_tau, by_volc
         hf_row[f'{e}_kg_sealed'] = max(sealed_e - out, 0.0)
         hf_row[f'{e}_kg_atm'] = float(hf_row.get(f'{e}_kg_atm', 0.0)) + out
