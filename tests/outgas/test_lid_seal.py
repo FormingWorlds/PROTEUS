@@ -736,6 +736,39 @@ def test_a_seal_keeps_reading_the_path_that_closed_it():
     assert hand == [(True, 2.0), (True, 1.0), (True, 1.0), (True, 1.0)]  # on the mesh for good
 
 
+@pytest.mark.parametrize('w', [0.0, 1e-12, 1e-9, 0.5, 1.0])
+def test_any_lid_weight_above_zero_closes_on_the_lid_with_the_whole_inventory(w):
+    """The sub-grid lid acts at any lid_weight > 0, however small: it closes the
+    seal with the whole melt inventory, not a share scaled by the weight. At 0
+    the mesh, here without a crust, keeps the seal open."""
+    row = {**_row(), 'lid_weight': w, 'lid_delta': 0.31, 'esc_rate_total': 0.0}
+    sealed, _ = _step(row, _mesh(0.2), False, delta_close=0.3)
+    assert sealed is (w > 0.0)
+    if sealed:
+        assert row['seal_path'] == 2.0
+        for s, kg in MELT.items():
+            assert row[f'{s}_kg_sealed'] == kg and row[f'{s}_kg_liquid'] == 0.0
+    else:
+        assert row['seal_delta'] == 0.0 and row['H2O_kg_liquid'] == MELT['H2O']
+
+
+def test_a_lid_closed_seal_stays_closed_while_its_lid_fades_to_zero():
+    """A seal closed by the sub-grid lid holds while lid_weight falls step by step
+    to 0; at 0 it reads the mesh band below phi_open, and a top cell between
+    phi_close and phi_open keeps it closed."""
+    fade = _lid_seq(
+        [
+            (1.0, 0.35, 0.2),
+            (0.5, 0.35, 0.2),
+            (1e-9, 0.35, 0.2),
+            (0.0, 0.35, 0.32),
+            (0.0, 0.0, 0.32),
+        ],
+        delta_close=0.3,
+    )
+    assert fade == [(True, 2.0), (True, 2.0), (True, 2.0), (True, 1.0), (True, 1.0)]
+
+
 def test_mesh_band_counts_cells_between_phi_close_and_phi_open():
     """A sealed top cell holding 0.32 melt (above phi_close, below phi_open) is
     still crust for the open test, so the seal holds; at phi_open it opens."""
