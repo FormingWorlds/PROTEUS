@@ -5464,6 +5464,17 @@ class TestJuliaDepot:
         assert self._marker(site) == f'{home}/.julia'
         assert f'{home}/.julia stays as it is' in result.stdout
 
+    @pytest.mark.parametrize('value', [':', '~/.julia:'])
+    def test_question_on_yes_gives_no_hint_to_stay_on_the_old_depot(self, site, value):
+        """A yes chose the depot of this install, so the move names no way back to the old one."""
+        (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
+        self._agni_manifest(site)
+        result = self._run(site, value, interactive=True, terminal=b'y\n')
+        assert result.returncode == 0, result.stdout
+        assert 'move to' in result.stdout
+        assert 'To stay on the old depot' not in result.stdout
+        assert 'conda env config vars set' not in result.stdout
+
     def test_question_on_yes_names_only_lines_that_set_the_value(self, site):
         """A comment or another variable that holds the name is no line to remove."""
         home = site['tmp'] / 'home'
