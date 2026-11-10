@@ -145,9 +145,8 @@ def missing_julia_packages(project: Path, entries: list[str]) -> list[str]:
     The check is a folder ``packages/<name>`` in any entry, so another version
     of a package passes. A stdlib and a package added with ``Pkg.develop`` have
     no ``git-tree-sha1`` in the Manifest and no such folder, so they do not count.
-    As in Julia, the first file that exists of ``JuliaManifest-v<major>.<minor>.toml``,
-    ``Manifest-v<major>.<minor>.toml`` (both of the required Julia),
-    ``JuliaManifest.toml`` and ``Manifest.toml`` is the Manifest.
+    As in Julia, the Manifest is the first that exists of ``JuliaManifest-v<major>.<minor>.toml``,
+    ``Manifest-v<major>.<minor>.toml`` (of the required Julia), ``JuliaManifest.toml``, ``Manifest.toml``.
 
     Parameters
     ----------

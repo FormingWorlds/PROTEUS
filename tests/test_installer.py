@@ -2955,10 +2955,11 @@ class TestAgniJuliaVersion:
         (agni / 'Manifest.toml').write_text('# This file is machine-generated\n\n' + manifest)
         exe = _stub(tmp_path / 'jl' / 'julia', '#!/bin/sh\necho "julia version 1.13.1"\n')
         defs = (
-            'set -euo pipefail\n'
+            'set -euo pipefail\nREQUIRED_JULIA_MAJOR=1\nREQUIRED_JULIA_MINOR=13\n'
             + _install_sh_blocks("RED='", 'info()')
             + _install_sh_function('julia_version_of')
             + _install_sh_function('note_agni_julia_version')
+            + _install_sh_function('julia_manifest_of')
         )
         result = subprocess.run(
             ['bash', '-c', defs + f'note_agni_julia_version {shlex.quote(str(agni))}\n'],
@@ -2992,11 +2993,7 @@ class TestAgniJuliaVersion:
             + _install_sh_blocks("RED='", 'info()')
             + _install_sh_function('julia_version_of')
             + _install_sh_function('note_agni_julia_version')
-        )
-        defs += (
-            _install_sh_function('julia_manifest_of')
-            if 'julia_manifest_of()' in INSTALL_SH.read_text()
-            else ''
+            + _install_sh_function('julia_manifest_of')
         )
         result = subprocess.run(
             ['bash', '-c', defs + f'note_agni_julia_version {shlex.quote(str(agni))}\n'],
@@ -3037,7 +3034,7 @@ class TestAgniJuliaVersion:
         _stub(jup / 'juliaup', f"#!/bin/sh\nprintf '%s' '{_juliaup_config('1.13', '1.11')}'\n")
         _stub(jup / 'julia', f'#!/bin/sh\n[ "$1" = +1.11 ] && printf "%s" "{bin111}"\n')
         defs = (
-            'set -euo pipefail\n'
+            'set -euo pipefail\nREQUIRED_JULIA_MAJOR=1\nREQUIRED_JULIA_MINOR=13\n'
             + f'SCRIPT_DIR={shlex.quote(str(root))}\n'
             + _install_sh_blocks("RED='", 'info()', 'PROTEUS_ENV_FILE=')
             + ''.join(
@@ -3052,6 +3049,7 @@ class TestAgniJuliaVersion:
                     'set_install_var',
                     'reset_julia_env',
                     'note_agni_julia_version',
+                    'julia_manifest_of',
                     'fix_julia_111_for_openssl',
                     'print_exit_hint',
                 )
@@ -5159,7 +5157,7 @@ _DEPOT_FUNCTIONS = (
     'is_proteus_install_folder',
     'is_gone_env_folder',
     'julia_depot_holds_packages',
-    'has_julia_manifest',
+    'julia_manifest_of',
     'instantiate_julia_project',
     'stop_on_unusable_depot',
     'setup_julia_depot',

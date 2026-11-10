@@ -538,11 +538,12 @@ julia_depot_holds_packages() {
     return 1
 }
 
-# Whether the Julia project $1 has a Manifest under one of the 4 names that Julia reads.
-has_julia_manifest() {
+# Print the Manifest of the Julia project $1 that Julia reads, the first of its 4 names; status 1
+# with none.
+julia_manifest_of() {
     local name ver="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
     for name in "JuliaManifest-v$ver.toml" "Manifest-v$ver.toml" JuliaManifest.toml Manifest.toml; do
-        [ -f "$1/$name" ] && return 0
+        [ -f "$1/$name" ] && { printf '%s\n' "$1/$name"; return 0; }
     done
     return 1
 }
@@ -551,7 +552,7 @@ has_julia_manifest() {
 # change to that Manifest; juliapkg does not resolve again for a new depot. A failure warns and
 # joins the list at the end of the run; a later step reports what it stops.
 instantiate_julia_project() {
-    has_julia_manifest "$1" || return 0
+    julia_manifest_of "$1" >/dev/null || return 0
     local code='using Pkg; Pkg.instantiate()'
     if ! run_logged --takes "several minutes in a new depot" "Installing the Julia packages of $1" \
         env LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --startup-file=no --project="$1" -e "$code"; then
@@ -600,12 +601,12 @@ setup_julia_depot() {
             info "JULIA_DEPOT_PATH stays at $value (--ignore-julia-depot-path)."
         elif [ -z "${PIXI_ENVIRONMENT_NAME:-}" ] && [ "$INTERACTIVE" = true ] && [ -t 0 ] && [ -t 3 ] \
             && ask_yn "JULIA_DEPOT_PATH is $value. Use a Julia depot of its own for this install?" n; then
-            lines="$(cd "$HOME" && grep -sn 'JULIA_DEPOT_PATH=' .zshenv .zprofile .zshrc .profile .bash_profile .bashrc \
-                | cut -d: -f1,2 | sed "s|^|$HOME/|" | xargs || true)"
+            lines="$(grep -snE '^[[:space:]]*(export[[:space:]]+)?JULIA_DEPOT_PATH=' "$HOME"/.zshenv "$HOME"/.zprofile \
+                "$HOME"/.zshrc "$HOME"/.profile "$HOME"/.bash_profile "$HOME"/.bashrc | cut -d: -f1,2 | xargs || true)"
             warn "This install uses $own. conda activate sets it, but a new interactive shell inside the environment reads your shell start file again and gets $value back."
             warn "Remove the line that sets JULIA_DEPOT_PATH from your shell start file${lines:+ ($lines)}."
             value="$own"
-            old="$first"
+            old="${first:-$HOME/.julia}"
         else
             warn "JULIA_DEPOT_PATH stays at $value, so this install shares its Julia packages with anything else that uses that value."
             if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
@@ -625,7 +626,7 @@ setup_julia_depot() {
     first="${first:-$HOME/.julia}"
     first="${first/#\~/$HOME}"
     if ! julia_depot_holds_packages "$value" \
-        && { has_julia_manifest "$CONDA_PREFIX/julia_env" || has_julia_manifest "$SCRIPT_DIR/AGNI"; }; then
+        && { julia_manifest_of "$CONDA_PREFIX/julia_env" || julia_manifest_of "$SCRIPT_DIR/AGNI"; } >/dev/null; then
         if [ -d "$old/packages" ]; then
             if ! { mkdir -p "$first" && printf '%s\n' "$old" > "$first/.proteus-moved-from"; } 2>/dev/null; then
                 warn "Could not write in $first; if $old holds LovePy, run bash $SCRIPT_DIR/tools/get_lovepy.sh after this install."
@@ -727,15 +728,16 @@ note_old_shell_exports() {
     esac
 }
 
-# Warn once when the Manifest.toml of the AGNI folder $1 names another minor Julia version than
+# Warn once when the Manifest of the AGNI folder $1 names another minor Julia version than
 # the Julia PROTEUS uses; proteus update-all brings AGNI to its pin and instantiates it again.
 note_agni_julia_version() {
-    local built used
-    built=$(sed -n 's/^julia_version = "\([^"]*\)"$/\1/p' "$1/Manifest.toml" 2>/dev/null | head -1 || true)
+    local built used manifest
+    manifest=$(julia_manifest_of "$1") || return 0
+    built=$(sed -n 's/^julia_version = "\([^"]*\)"$/\1/p' "$manifest" 2>/dev/null | head -1 || true)
     used=$(julia_version_of "${PYTHON_JULIAPKG_EXE:-julia}")
     if [ -n "$built" ] && [ -n "$used" ] \
        && [ "$(echo "$built" | cut -d. -f1,2)" != "$(echo "$used" | cut -d. -f1,2)" ]; then
-        warn "AGNI at $1 was built with Julia $built (its Manifest.toml), and PROTEUS uses Julia $used; after the installer, run 'proteus update-all', which brings AGNI to its pin and instantiates it again."
+        warn "AGNI at $1 was built with Julia $built (its ${manifest##*/}), and PROTEUS uses Julia $used; after the installer, run 'proteus update-all', which brings AGNI to its pin and instantiates it again."
     fi
 }
 
@@ -1295,7 +1297,7 @@ fi
 CURRENT_PHASE=5
 phase 5 "AGNI + FastChem"
 
-if [ -d "$SCRIPT_DIR/AGNI" ] && [ -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; then
+if [ -d "$SCRIPT_DIR/AGNI" ] && julia_manifest_of "$SCRIPT_DIR/AGNI" >/dev/null; then
     info "AGNI already installed at $SCRIPT_DIR/AGNI"
     note_agni_julia_version "$SCRIPT_DIR/AGNI"
     instantiate_julia_project "$SCRIPT_DIR/AGNI"
@@ -1303,7 +1305,7 @@ else
     run_logged --takes "several minutes" "Installing AGNI and its Julia packages" \
         bash tools/get_agni.sh 0 \
         || die "Could not install AGNI and its Julia packages (bash tools/get_agni.sh 0); see the error above"
-    if [ ! -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; then
+    if ! julia_manifest_of "$SCRIPT_DIR/AGNI" >/dev/null; then
         die "AGNI installation failed (Julia packages not resolved)."
     fi
     info "AGNI installed"
