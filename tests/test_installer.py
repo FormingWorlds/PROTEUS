@@ -187,6 +187,58 @@ def system_path(tmp_path_factory) -> str:
     return str(_bin_dir_without(tmp_path_factory.mktemp('system'), hidden, '/usr/bin:/bin'))
 
 
+class TestIgnoreDepotOption:
+    """install.sh takes `--ignore-julia-depot-path` in any position and lists it in --help."""
+
+    def test_help_lists_the_option(self):
+        """--help has one line for the option."""
+        result = subprocess.run(
+            ['bash', str(INSTALL_SH), '--help'], capture_output=True, text=True, timeout=10
+        )
+        assert result.returncode == 0
+        lines = [ln for ln in result.stdout.splitlines() if '--ignore-julia-depot-path' in ln]
+        assert len(lines) == 1
+        assert 'JULIA_DEPOT_PATH' in result.stdout
+
+    def test_option_sets_the_variable_that_setup_julia_depot_reads(self):
+        """The parser sets IGNORE_JULIA_DEPOT_PATH true, and false without the option."""
+        text = INSTALL_SH.read_text()
+        assert '\nIGNORE_JULIA_DEPOT_PATH="false"\n' in text
+        assert '--ignore-julia-depot-path) IGNORE_JULIA_DEPOT_PATH="true" ;;' in text
+
+    def test_any_order_of_known_options_is_accepted(self):
+        """Each order and repeat of the known options, then --help, exits 0 with no unknown argument."""
+        hypothesis = pytest.importorskip('hypothesis')
+        st = hypothesis.strategies
+        known = ['--ignore-julia-depot-path', '-i', '--verbose', '--no-data', '--all-data']
+
+        @hypothesis.settings(max_examples=25, deadline=None)
+        @hypothesis.given(st.lists(st.sampled_from(known), min_size=1, max_size=5))
+        def check(args):
+            result = subprocess.run(
+                ['bash', str(INSTALL_SH), *args, '--help'],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert 'Unknown argument' not in result.stdout + result.stderr
+
+        check()
+
+    @pytest.mark.parametrize(
+        'arg',
+        ['--ignore-julia-depot', '--ignore-julia-depot-path=yes', '--IGNORE-JULIA-DEPOT-PATH'],
+    )
+    def test_near_spellings_are_unknown(self, arg):
+        """Only the exact option counts; a near spelling stops at parsing."""
+        result = subprocess.run(
+            ['bash', str(INSTALL_SH), arg, '--help'], capture_output=True, text=True, timeout=10
+        )
+        assert result.returncode == 1
+        assert f'Unknown argument: {arg}' in result.stdout + result.stderr
+
+
 def _run_preflight(bindir: Path) -> str:
     """Run install.sh with PATH restricted to `bindir`; return its combined output."""
     env = os.environ.copy()
@@ -5101,13 +5153,30 @@ class TestJuliaDepot:
         (site['tmp'] / 'root' / 'AGNI').mkdir()
         (site['tmp'] / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
 
-    def _run(self, site, value=UNSET, prefix='prefix', after='', **env):
-        """Run the shipped setup_julia_depot and print the variable and the old depot it leaves."""
+    def _run(
+        self,
+        site,
+        value=UNSET,
+        prefix='prefix',
+        after='',
+        interactive=False,
+        ignore=False,
+        terminal=None,
+        **env,
+    ):
+        """Run the shipped setup_julia_depot and print the variable and the old depot it leaves.
+
+        ``terminal`` bytes are typed on a pseudo-terminal that is stdin and fd 3; what
+        the script wrote there is in the attribute ``terminal`` of the result.
+        """
         tmp = site['tmp']
         defs = (
             'set -euo pipefail\n'
             + _install_sh_blocks("RED='", 'info()')
             + 'REQUIRED_JULIA_MAJOR=1\nREQUIRED_JULIA_MINOR=13\n'
+            + f'INTERACTIVE={str(interactive).lower()}\n'
+            + f'IGNORE_JULIA_DEPOT_PATH={str(ignore).lower()}\n'
+            + _install_sh_function('ask_yn')
             + f'SCRIPT_DIR={shlex.quote(str(tmp / "root"))}\n'
             + 'PROTEUS_ENV_FILE="$SCRIPT_DIR/.proteus-env.sh"\nINSTALL_VAR_NAMES=""\n'
             + 'FAILED_MODULES=""\n'
@@ -5130,15 +5199,30 @@ class TestJuliaDepot:
         full_env['CONDA_PREFIX'] = str(tmp / prefix)
         if value is not self.UNSET:
             full_env['JULIA_DEPOT_PATH'] = value
-        result = subprocess.run(
-            ['bash', '-c', defs + report],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            env=full_env,
-            timeout=25,
-        )
-        return result
+        stdin, master = subprocess.DEVNULL, None
+        if terminal is not None:
+            try:
+                master, stdin = pty.openpty()
+            except OSError:
+                pytest.skip('this host refuses a pseudo-terminal (pty)')
+            os.write(master, terminal)
+            defs = 'exec 3>&0\n' + defs
+        try:
+            result = subprocess.run(
+                ['bash', '-c', defs + report],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                stdin=stdin,
+                text=True,
+                env=full_env,
+                timeout=25,
+            )
+            result.terminal = '' if master is None else _drain(master)
+            return result
+        finally:
+            if master is not None:
+                os.close(master)
+                os.close(stdin)
 
     def _call(self, site, value=UNSET, prefix='prefix', after='', **env):
         """``_run`` of a call that must end with status 0."""
@@ -5219,6 +5303,143 @@ class TestJuliaDepot:
         result = self._call(site, '/big/x:', PIXI_ENVIRONMENT_NAME='default')
         assert 'pixi.toml' in result.stdout
         assert 'conda env config vars' not in result.stdout
+
+    @staticmethod
+    def _warns(result, text):
+        """Whether a line that holds ``text`` is a warning."""
+        lines = [ln for ln in result.stdout.splitlines() if text in ln]
+        return bool(lines) and all('[WARN]' in ln for ln in lines)
+
+    @pytest.mark.parametrize('value', ['/big/x:', ':'], ids=['colon', 'only-colon'])
+    def test_value_of_the_user_is_a_warning(self, site, value):
+        """A shared depot is a risk to the install, so the lines are warnings."""
+        result = self._call(site, value)
+        assert self._warns(result, 'shares')
+        assert self._warns(result, 'new shell')
+        assert '--ignore-julia-depot-path' in result.stdout
+        assert 'bash install.sh -i' in result.stdout
+
+    @pytest.mark.parametrize(
+        ('typed', 'own'),
+        [(b'y\n', True), (b'\n', False), (b'n\n', False)],
+        ids=['y', 'empty', 'n'],
+    )
+    def test_interactive_question_takes_the_own_depot_on_yes(self, site, typed, own):
+        """In -i mode with a terminal one question decides; the default no keeps the value."""
+        home = site['tmp'] / 'home'
+        (home / '.zshrc').write_text('alias ll=ls\nexport JULIA_DEPOT_PATH=/big/x:\n')
+        result = self._run(site, '/big/x:', interactive=True, terminal=typed)
+        assert result.returncode == 0, result.stdout
+        assert 'Use a Julia depot of its own for this install?' in result.terminal
+        assert '[y/N]' in result.terminal
+        mine = f'{site["tmp"] / "prefix"}/julia_depot:'
+        exports = (site['tmp'] / 'root' / '.proteus-env.sh').read_text()
+        if own:
+            assert self._value(result) == mine
+            assert f"export JULIA_DEPOT_PATH='{mine}'" in exports
+            assert self._warns(result, f'{home}/.zshrc:2')
+            assert self._warns(result, 'new interactive shell')
+            assert 'shares' not in result.stdout
+        else:
+            assert self._value(result) == '/big/x:'
+            assert self._warns(result, 'shares')
+
+    def test_question_on_yes_with_no_start_file_line_names_the_shell_start_file(self, site):
+        """A value from elsewhere gives no file and line, and the warning still names the rule."""
+        result = self._run(site, '/big/x:', interactive=True, terminal=b'y\n')
+        assert self._value(result) == f'{site["tmp"] / "prefix"}/julia_depot:'
+        assert self._warns(result, 'shell start file')
+
+    def test_question_on_yes_moves_from_the_kept_depot(self, site):
+        """The depot left behind is the value of the user, so LovePy follows from there."""
+        shared = site['tmp'] / 'shared'
+        (shared / 'packages').mkdir(parents=True)
+        self._agni_manifest(site)
+        result = self._run(site, f'{shared}:', interactive=True, terminal=b'y\n')
+        assert result.returncode == 0, result.stdout
+        assert self._marker(site) == str(shared)
+        assert f'{shared} stays as it is' in result.stdout
+
+    @pytest.mark.parametrize(
+        ('interactive', 'terminal'),
+        [(True, None), (False, b'y\n')],
+        ids=['interactive-no-terminal', 'terminal-not-interactive'],
+    )
+    def test_no_question_without_interactive_mode_and_a_terminal(
+        self, site, interactive, terminal
+    ):
+        """CI and cluster jobs never wait on a question: the value stays with the warning."""
+        result = self._run(site, '/big/x:', interactive=interactive, terminal=terminal)
+        assert result.returncode == 0, result.stdout
+        assert 'Use a Julia depot' not in result.stdout + getattr(result, 'terminal', '')
+        assert self._value(result) == '/big/x:'
+        assert self._warns(result, 'shares')
+
+    def test_no_question_on_pixi(self, site):
+        """Pixi sets the value on each activation, so a yes would not hold: pixi.toml is named."""
+        result = self._run(
+            site, '/big/x:', interactive=True, terminal=b'y\n', PIXI_ENVIRONMENT_NAME='default'
+        )
+        assert 'Use a Julia depot' not in result.terminal
+        assert self._value(result) == '/big/x:'
+        assert self._warns(result, 'pixi.toml')
+
+    @pytest.mark.parametrize('interactive', [True, False], ids=['interactive', 'plain'])
+    def test_ignore_option_keeps_the_value_in_silence(self, site, interactive):
+        """--ignore-julia-depot-path keeps the value with no question and no warning, and one line."""
+        terminal = b'y\n' if interactive else None
+        result = self._run(
+            site, '/big/x:', interactive=interactive, ignore=True, terminal=terminal
+        )
+        assert result.returncode == 0, result.stdout
+        assert self._value(result) == '/big/x:'
+        assert 'Use a Julia depot' not in getattr(result, 'terminal', '')
+        assert '[WARN]' not in result.stdout
+        named = [ln for ln in result.stdout.splitlines() if '/big/x:' in ln and '[INFO]' in ln]
+        assert len(named) == 1
+
+    def test_ignore_option_does_not_keep_the_depot_of_another_install(self, site):
+        """The option is about a value of the user; an inherited depot of another install still goes."""
+        other = site['tmp'] / 'other'
+        (other / 'conda-meta').mkdir(parents=True)
+        result = self._call(site, f'{other}/julia_depot:', ignore=True)
+        assert self._value(result) == f'{site["tmp"] / "prefix"}/julia_depot:'
+
+    @pytest.mark.parametrize(
+        'name',
+        [
+            'JuliaManifest-v1.13.toml',
+            'Manifest-v1.13.toml',
+            'JuliaManifest.toml',
+            'Manifest.toml',
+        ],
+    )
+    @pytest.mark.parametrize('project', ['julia_env', 'AGNI'])
+    def test_each_manifest_name_of_julia_gets_an_instantiate(self, site, name, project):
+        """Julia reads 4 Manifest names, so each one is a project to install and a move to name."""
+        folder = (
+            site['tmp'] / 'prefix' / 'julia_env'
+            if project == 'julia_env'
+            else site['tmp'] / 'root' / 'AGNI'
+        )
+        folder.mkdir()
+        (folder / name).write_text('m')
+        (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
+        after = f'instantiate_julia_project {shlex.quote(str(site["tmp"] / "root" / "AGNI"))}\n'
+        result = self._call(site, after=after)
+        assert 'MiB' in result.stdout
+        calls = site['log'].read_text().splitlines()
+        assert [f'--project={folder}' in c for c in calls].count(True) == 1
+
+    def test_manifest_of_another_julia_version_gets_no_instantiate(self, site):
+        """Julia 1.13 does not read Manifest-v1.12.toml, so it is no project to install."""
+        env_project = site['tmp'] / 'prefix' / 'julia_env'
+        env_project.mkdir()
+        (env_project / 'Manifest-v1.12.toml').write_text('m')
+        (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
+        result = self._call(site)
+        assert 'MiB' not in result.stdout
+        assert site['log'].read_text() == ''
 
     def test_tilde_path_to_another_install_is_replaced(self, site):
         """Julia expands the tilde, so the rule reads the same folder that Julia reads."""

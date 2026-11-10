@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 import runpy
 import subprocess
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -492,3 +493,45 @@ def test_real_tests_skip_off_ci(monkeypatch):
         _real_tests_with_no_julia(monkeypatch)
     assert caught.value.allow_module_level is True
     assert 'no Julia binary found' in str(caught.value)
+
+
+_MANIFEST_NAMES = (
+    f'JuliaManifest-v{install_env.REQUIRED_JULIA}.toml',
+    f'Manifest-v{install_env.REQUIRED_JULIA}.toml',
+    'JuliaManifest.toml',
+    'Manifest.toml',
+)
+
+
+def test_first_manifest_name_of_julia_is_read():
+    """Over each set of the 4 names Julia reads, the first in its order is the one read."""
+    hypothesis = pytest.importorskip('hypothesis')
+    strategies = pytest.importorskip('hypothesis.strategies')
+
+    @hypothesis.settings(max_examples=40, deadline=None)
+    @hypothesis.given(strategies.sets(strategies.sampled_from(range(4)), min_size=1))
+    def check(present):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            (folder / 'Project.toml').write_text(
+                '[deps]\n' + ''.join(f'P{i} = "{i}"\n' for i in range(4))
+            )
+            for i in present:
+                (folder / _MANIFEST_NAMES[i]).write_text(
+                    f'[[deps.P{i}]]\ngit-tree-sha1 = "a"\n'
+                )
+            assert missing_julia_packages(folder, [tmp]) == [f'P{min(present)}']
+
+    check()
+
+
+@pytest.mark.parametrize(
+    'name', ['Manifest-v1.12.toml', 'manifest.toml', 'JuliaManifest-v1.13']
+)
+def test_name_that_julia_does_not_read_is_no_manifest(tmp_path, name):
+    """Another version, another case or no extension gives a project with no Manifest."""
+    (tmp_path / 'Project.toml').write_text('[deps]\nFoo = "1"\n')
+    (tmp_path / name).write_text('[[deps.Foo]]\ngit-tree-sha1 = "a"\n')
+    if (tmp_path / 'Manifest.toml').is_file():
+        pytest.skip('this file system ignores case')
+    assert missing_julia_packages(tmp_path, [str(tmp_path)]) == []
