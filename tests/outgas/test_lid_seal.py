@@ -35,7 +35,7 @@ from proteus.outgas.lid_seal import (
     seal_enabled,
     sealed_mass,
 )
-from proteus.utils.constants import gas_list
+from proteus.utils.constants import gas_list, vol_gas_list
 from proteus.utils.helper import eval_gas_mmw
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -391,7 +391,7 @@ def test_leak_refreshes_the_atmosphere_from_the_masses():
     """After a leak, P_surf = M_atm g / (4 pi R^2), the mixing ratios sum to 1
     and follow the moles, and the mean molar mass is M_atm over the moles."""
     cfg = _config(tau_leak=1.0e4)
-    row = _sealed_row()
+    row = {**_sealed_row(), 'M_vol_atm': 0.0}
     leak_step(cfg, row, 1.0e3)
     m_atm = sum(row[f'{s}_kg_atm'] for s in gas_list)
     assert row['M_atm'] == pytest.approx(m_atm, rel=1e-15)
@@ -404,6 +404,8 @@ def test_leak_refreshes_the_atmosphere_from_the_masses():
     assert row['H2O_vmr'] == pytest.approx(row['H2O_mol_atm'] / n, rel=1e-14)
     assert row['atm_kg_per_mol'] == pytest.approx(m_atm / n, rel=1e-14)
     assert row['H2O_bar'] == pytest.approx(row['H2O_vmr'] * row['P_surf'], rel=1e-14)
+    m_vol = sum(row[f'{s}_kg_atm'] for s in vol_gas_list)
+    assert row['M_vol_atm'] == pytest.approx(m_vol, rel=1e-15) and m_vol > sum(ATM.values())
 
 
 def _step(row, interior, sealed, *, init_stage=False, **seal):
@@ -795,6 +797,83 @@ def test_a_sealed_row_without_its_path_reads_the_lid_at_any_weight_above_zero():
     assert 'seal_path' not in row
     sealed, _ = _step(row, _mesh(0.2), True, delta_close=0.3)
     assert sealed is True and row['seal_path'] == 2.0 and row['seal_delta'] == 0.35
+
+
+def test_a_sealed_row_without_its_path_reads_the_mesh_band_at_lid_weight_zero():
+    """At lid_weight 0 a sealed row with no seal_path reads the mesh band below
+    phi_open, as a mesh-closed seal does; a top cell at 0.2 melt keeps it closed."""
+    row = {**_sealed_row(), 'lid_weight': 0.0, 'esc_rate_total': 0.0}
+    sealed, _ = _step(row, _mesh(0.2), True)
+    assert sealed is True and row['seal_path'] == 1.0
+    assert row['seal_delta'] == pytest.approx(9.0e4, rel=1e-12)  # 0.2, 0.0 and 0.2 cells
+
+
+def _thin_mesh(solid_cells):
+    """3 km cells to the surface: ``solid_cells`` solid cells over 0.6 melt."""
+    phi = [0.6] * (20 - solid_cells) + [0.0] * solid_cells
+    return _interior(phi, radius=np.linspace(R_INT - 6.0e4, R_INT, 21))
+
+
+@pytest.mark.parametrize(
+    ('lid', 'thickness', 'expected'),
+    [(False, 3, False), (False, 4, True), (True, 9.9e3, False), (True, 1.0e4, True)],
+    ids=['mesh-9km', 'mesh-12km', 'lid-9.9km', 'lid-10km'],
+)
+def test_delta_close_decides_the_closure_on_both_paths(lid, thickness, expected):
+    """The default delta_close of 10 km closes the seal on the crust it reads: on
+    the mesh 3 solid cells of 3 km stay open and 4 close; under the sub-grid lid
+    9.9 km stays open and 10 km closes."""
+    w, d = (1.0, thickness) if lid else (0.0, 0.0)
+    row = {**_row(), 'lid_weight': w, 'lid_delta': d, 'esc_rate_total': 0.0}
+    sealed, _ = _step(row, _mesh(0.2) if lid else _thin_mesh(thickness), False)
+    assert sealed is expected
+    assert row['seal_delta'] == pytest.approx(
+        thickness if lid else 3.0e3 * thickness, rel=1e-12
+    )
+    assert row['seal_path'] == (float(1 + lid) if expected else 0.0)
+
+
+def _off_stoichiometry_row():
+    """A sealed row whose element masses are the stoichiometric sum times 1 - 2e-5."""
+    row = _sealed_row()
+    for e in SEALED_ELEMENTS:
+        row[f'{e}_kg_sealed'] *= 1.0 - 2.0e-5
+    return row
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(('tau', 'dt'), [(1.0e4, 1.0e3), (3.0, 1.0e4)], ids=['part', 'drain'])
+def test_each_element_leaks_its_own_sealed_mass_off_the_stoichiometry(tau, dt):
+    """Element masses apart from the species stoichiometry leak in the same
+    fraction as the species: the leak of each element equals the drop of its
+    sealed mass and that fraction of its held mass; a drained reservoir ends at 0."""
+    row = _off_stoichiometry_row()
+    before = dict(row)
+    leak_step(_config(tau_leak=tau), row, dt)
+    frac = -np.expm1(-dt / tau)
+    for e in SEALED_ELEMENTS:
+        out = row[f'{e}_kg_leak_tau'] + row[f'{e}_kg_leak_volc']
+        assert out == pytest.approx(before[f'{e}_kg_sealed'] * frac, rel=1e-12), e
+        assert before[f'{e}_kg_sealed'] - row[f'{e}_kg_sealed'] == pytest.approx(out, rel=1e-12)
+        if frac == 1.0:
+            assert row[f'{e}_kg_sealed'] == 0.0
+
+
+@pytest.mark.parametrize('bad', [float('nan'), float('inf')], ids=['nan', 'inf'])
+@pytest.mark.parametrize('key', ['Phi_global', 'M_mantle'])
+def test_leak_rates_refuse_a_non_finite_mantle_state(key, bad):
+    """A non-finite melt fraction or mantle mass is refused, not read as no crust."""
+    row = {'M_mantle': M_MANTLE, 'Phi_global': 0.3, key: bad}
+    with pytest.raises(ValueError, match=key):
+        leak_rates(_config(crust_rate=3.0e20), row, 1.0e3)
+
+
+@pytest.mark.parametrize('bad', [float('nan'), float('inf')], ids=['nan', 'inf'])
+def test_closure_state_refuses_a_non_finite_lid_weight(bad):
+    """A non-finite lid_weight is refused, not read as no sub-grid lid."""
+    row = {'lid_weight': bad, 'lid_delta': 0.35}
+    with pytest.raises(ValueError, match='lid_weight'):
+        closure_state(_config(), row, _mesh(0.2))
 
 
 def test_mesh_band_counts_cells_between_phi_close_and_phi_open():
