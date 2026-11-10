@@ -248,7 +248,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `step_dE_core_J` | `J` | core heat change over the call net of its internal source, plus the jump of the heat content since the last kept call; computed only with core_bc = core_module, 0 otherwise | `interior_energetics/aragog_core.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog", interior_energetics.aragog.core_bc = "core_module"; interior_energetics.module = "aragog" | utils |
 | `E_core_residual_J` | `J` | cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J - step_dE_impact_core_refit_J - step_dE_struct_core_J); computed only with core_bc = core_module, 0 otherwise | `utils/coupler.py` | always | utils |
 | `E_core_residual_frac` | `1` | E_core_residual_J / max(sum(\|step_dE_F_cmb_J\| + \|the 3 booked terms\|), 1 J); a booked term equals the jump it explains by construction, so the fraction checks the bookkeeping of those terms and the solver's core heat against its CMB flux; computed only with core_bc = core_module, 0 otherwise | `utils/coupler.py` | always |   |
-| `Cp_eff` | `J kg-1 K-1` | effective mantle heat capacity | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "spider" |   |
+| `Cp_eff` | `J kg-1 K-1` | effective mantle heat capacity | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "spider" |   |
 
 ### Host star properties
 

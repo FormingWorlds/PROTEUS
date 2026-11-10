@@ -27,6 +27,9 @@ magma ocean states to solid interiors.
   - Melt fraction and solidification radius evolution
   - Coupled thermal ODEs (potential and surface temperature)
   - ODE solver integration with terminal events
+  - Adiabat melt model: the isothermal limit against the linear model, mass
+    and volume melt fractions, the shells handed to the tides modules and the
+    tidal heat summed over them, and the T(P) profile handed to the structure
 """
 
 from __future__ import annotations
@@ -37,6 +40,13 @@ from unittest.mock import Mock, patch
 import attrs
 import numpy as np
 import pytest
+from _adiabat_mesh import (
+    ADIABAT_DTDP,
+    CURVE_DTDP,
+    count_adiabat_solves,
+    patch_adiabat_inputs,
+    write_mantle_mesh,
+)
 
 from proteus.config import read_config_object
 from proteus.interior_energetics.boundary import BoundaryRunner
@@ -84,6 +94,10 @@ def mock_config():
     **Physical Basis**: Terrestrial magma ocean cooling parameters (Turcotte & Schubert 2014)
     """
     boundary = SimpleNamespace(
+        # The linear melt model, so these tests exercise the solidification
+        # front with constant melting temperatures; the adiabat model has its
+        # own fixtures further down.
+        melt_model='linear',
         T_solidus=1420.0,  # K
         T_liquidus=2020.0,  # K
         critical_rayleigh_number=1e3,  # dimensionless
@@ -103,6 +117,10 @@ def mock_config():
         creep_parameter=26,  # dimensionless
         viscosity_prefactor=2.4e-4,  # Pa s
         viscosity_activation_temp=4600.0,  # K
+        include_core_heat_capacity=False,  # schema default: mantle only
+        sensible_heat='molten',  # schema default: molten part only
+        tidal_viscosity='boundary',  # schema default: own viscosity_model
+        viscosity_phi='global',  # schema default: mass-averaged melt fraction
         logging=False,
     )
     interior_energetics = SimpleNamespace(
@@ -122,6 +140,8 @@ def mock_config():
         radio_U=0.031,  # ppm (BSE abundance)
         radio_Th=0.124,  # ppm (BSE abundance)
         radio_K=310,  # ppm (BSE abundance)
+        radio_Al=0.0,  # ppm; short-lived, off by default
+        radio_Fe=0.0,  # ppm; short-lived, off by default
     )
     # BoundaryRunner reads no structure settings: masses and radii come from hf_row.
     interior_struct = SimpleNamespace()
@@ -149,7 +169,9 @@ def mock_interior():
     """
     return SimpleNamespace(
         ic=0,  # Initial condition type (0 = not first step)
+        nlev_s=1,  # Single layer, as the linear melt model publishes
         tides=[0.0],  # No tidal heating by default
+        temp_profile=None,
         phi=None,
         mass=None,
         visc=None,
@@ -1366,6 +1388,111 @@ def test_boundary_runner_partial_nan_layer_cp_averages_finite_values(
 
 
 # =============================================================================
+# Tests: atmosphere_specific_heat (the atm_heat_capacity_const = false path)
+# =============================================================================
+
+
+def _cp_config(const: bool, value: float = 1.7e4):
+    """Config carrying only the two keys atmosphere_specific_heat reads."""
+    boundary = SimpleNamespace(atm_heat_capacity_const=const, atm_heat_capacity=value)
+    return SimpleNamespace(interior_energetics=SimpleNamespace(boundary=boundary))
+
+
+def _cp_atmos(layer_cp, layer_mass):
+    """Atmosphere object whose column carries AGNI's layer_cp and layer_σ arrays."""
+    return SimpleNamespace(
+        _atm=SimpleNamespace(layer_cp=np.asarray(layer_cp), layer_σ=np.asarray(layer_mass))
+    )
+
+
+@pytest.mark.physics_invariant
+def test_atmosphere_specific_heat_is_layer_mass_weighted():
+    """An H2 envelope whose deep, massive layers hold most of the heat sets the mean.
+
+    A column with a heavy-molecule upper layer (cp 4.0e3 J/kg/K, 1e3 kg m-2) over an
+    H2-rich deep layer (cp 1.43e4 J/kg/K, 9e3 kg m-2) has a mass-weighted cp of
+    1.327e4 J/kg/K; the unweighted mean (9.15e3) is the plausible wrong formula.
+    """
+    from proteus.interior_energetics.boundary import atmosphere_specific_heat
+
+    cp, source = atmosphere_specific_heat(
+        _cp_config(False, value=2.0e3), _cp_atmos([4.0e3, 1.43e4], [1.0e3, 9.0e3])
+    )
+
+    assert cp == pytest.approx(1.327e4, rel=1e-12)
+    assert source == 'atmosphere column'
+    assert abs(cp - 9.15e3) > 1.0e3  # unweighted mean
+    assert 4.0e3 < cp < 1.43e4  # a weighted mean stays between the layer values
+
+
+@pytest.mark.physics_invariant
+def test_atmosphere_specific_heat_skips_nonfinite_and_nonpositive_layers():
+    """Layers whose heat capacity or mass is NaN, zero or negative carry no weight."""
+    from proteus.interior_energetics.boundary import atmosphere_specific_heat
+
+    cp, source = atmosphere_specific_heat(
+        _cp_config(False),
+        _cp_atmos([np.nan, 1.2e4, -5.0e3, 1.4e4, 8.0e3], [2.0, 1.0, 1.0, 3.0, 0.0]),
+    )
+
+    # Only the 1.2e4 (mass 1) and 1.4e4 (mass 3) layers count: (1.2e4 + 4.2e4) / 4.
+    assert cp == pytest.approx(1.35e4, rel=1e-12)
+    assert source == 'atmosphere column'
+    assert cp > 0.0
+
+
+def test_atmosphere_specific_heat_uses_configured_value_before_first_solve():
+    """AGNI allocates layer_cp and layer_σ as ones; until a solve fills them the
+    configured value stands in, rather than a 1 J/kg/K atmosphere that would leave
+    the surface temperature with almost no thermal inertia."""
+    from proteus.interior_energetics.boundary import atmosphere_specific_heat
+
+    cp, source = atmosphere_specific_heat(
+        _cp_config(False, value=1.6e4), _cp_atmos([1.0] * 4, [1.0] * 4)
+    )
+
+    assert cp == pytest.approx(1.6e4, rel=1e-12)
+    assert 'not solved' in source
+    assert abs(cp - 1.0) > 1.0e4
+
+
+@pytest.mark.parametrize(
+    'atmos_o, reason',
+    [
+        (None, 'no atmosphere column'),
+        (SimpleNamespace(_atm=None), 'no atmosphere column'),
+        (SimpleNamespace(_atm=SimpleNamespace(layer_cp=np.ones(3))), 'no atmosphere column'),
+        (_cp_atmos([1.4e4, 1.3e4, 1.2e4], [1.0, 2.0]), 'differ in shape'),
+        (_cp_atmos([np.nan, np.nan], [1.0, 1.0]), 'no usable layer'),
+    ],
+    ids=['no-object', 'no-column', 'no-layer-mass', 'shape-mismatch', 'all-nan'],
+)
+def test_atmosphere_specific_heat_falls_back_without_a_usable_column(atmos_o, reason):
+    """Each way the column can be unusable returns the configured value and says why,
+    instead of raising (a shape mismatch would index one array with the other's mask)."""
+    from proteus.interior_energetics.boundary import atmosphere_specific_heat
+
+    cp, source = atmosphere_specific_heat(_cp_config(False, value=1.5e4), atmos_o)
+
+    assert cp == pytest.approx(1.5e4, rel=1e-12)
+    assert reason in source
+    assert source.startswith('configured value')
+
+
+def test_atmosphere_specific_heat_constant_flag_ignores_column():
+    """With atm_heat_capacity_const the column is never read, even when it is valid."""
+    from proteus.interior_energetics.boundary import atmosphere_specific_heat
+
+    cp, source = atmosphere_specific_heat(
+        _cp_config(True, value=3.0e4), _cp_atmos([1.4e4], [5.0])
+    )
+
+    assert cp == pytest.approx(3.0e4, rel=1e-12)
+    assert source == 'constant'
+    assert abs(cp - 1.4e4) > 1.0e4
+
+
+# =============================================================================
 # Tests: BoundaryRunner init edge cases + run_solver logging path.
 # Targets lines 66-100, 106, 378, 567, 658-720 in boundary.py.
 # =============================================================================
@@ -1732,3 +1859,871 @@ def test_boundary_runner_mantle_mass_closes_structure_budget(
     assert 2.0e3 < runner.mantle_bulk_density < 6.0e3
     # Surface gravity uses the structure's interior mass.
     assert runner.surface_gravity == pytest.approx(const_G * M_int / R_int**2, rel=1e-12)
+
+
+# =============================================================================
+# Regression freeze: shared helpers must not move boundary's numbers
+# =============================================================================
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_radioactive_heating_matches_values_frozen_before_the_shared_helper(
+    boundary_runner,
+):
+    """Radiogenic heating is unchanged by routing through the shared helper.
+
+    Cross-implementation check against values recorded from this module's own
+    previous hand-rolled decay loop, at the undepleted-mantle abundances used
+    elsewhere in this file. The shared helper groups the decay exponent
+    differently, so agreement is required only to 1e-12 relative; the observed
+    difference is one unit in the last place.
+    """
+    boundary_runner.use_radiogenic_heating = True
+    boundary_runner.age_ini = 0.0
+    boundary_runner.radio_tref = 4.567
+    boundary_runner.U_abun = 20.0e-9
+    boundary_runner.Th_abun = 79.0e-9
+    boundary_runner.K_abun = 143.0e-6
+    boundary_runner.Al_abun = 0.0
+    boundary_runner.Fe_abun = 0.0
+
+    frozen = {
+        0.0: 1.98516237777628535e-11,
+        1.0: 1.19887610223852725e-11,
+        4.567: 4.53016900062606112e-12,
+    }
+    for t_gyr, expected in frozen.items():
+        heat = boundary_runner.radioactive_heating(t_gyr * 1e9 * secs_per_year)
+        assert heat == pytest.approx(expected, rel=1e-12)
+
+    # Monotonic decay across the frozen samples, and positivity throughout.
+    values = [boundary_runner.radioactive_heating(t * 1e9 * secs_per_year) for t in frozen]
+    assert all(later < earlier for earlier, later in zip(values, values[1:]))
+    assert all(v > 0.0 for v in values)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_solidification_front_matches_values_frozen_before_the_shared_helper(
+    boundary_runner,
+):
+    """The front position and its derivative survive delegation bit for bit.
+
+    Cross-implementation check against values recorded from this module's own
+    previous inline expressions. The shared helper evaluates the identical
+    operations in the identical order, so exact agreement is required here,
+    not merely agreement to a tolerance.
+    """
+    boundary_runner.T_solidus = 1420.0
+    boundary_runner.T_liquidus = 2020.0
+    boundary_runner.planet_radius = 6.371e6
+    boundary_runner.core_radius = 3.4e6
+
+    frozen = {
+        1300.0: (6.37100000000000000e06, -3.00148562003514371e03),
+        1420.0: (6.37100000000000000e06, -3.00148562003514371e03),
+        1642.0: (5.61951461057546455e06, -3.85792577532489258e03),
+        1720.0: (5.30086969714618661e06, -4.33567998512968006e03),
+        2020.0: (3.40000000000000000e06, -1.05388601889177244e04),
+        2500.0: (3.40000000000000000e06, -1.05388601889177244e04),
+    }
+    for temp, (r_expected, drs_expected) in frozen.items():
+        assert boundary_runner.r_s(temp) == pytest.approx(r_expected, rel=1e-15)
+        assert boundary_runner.drs_dTp(temp) == pytest.approx(drs_expected, rel=1e-15)
+
+    # Boundedness: the front never leaves the mantle shell.
+    assert all(
+        boundary_runner.core_radius <= boundary_runner.r_s(t) <= boundary_runner.planet_radius
+        for t in frozen
+    )
+
+
+@pytest.mark.physics_invariant
+def test_radioactive_heating_includes_short_lived_isotopes(boundary_runner):
+    """Aluminium-26 and iron-60 now contribute when they are configured.
+
+    The backend previously read only uranium, thorium and potassium, so a run
+    that set radio_Al got no aluminium-26 heating while SPIDER and Aragog gave
+    it the dominant early source. Evaluated at the reference age so the
+    inventory is isolated from the decay law.
+    """
+    boundary_runner.use_radiogenic_heating = True
+    boundary_runner.age_ini = 0.0
+    boundary_runner.radio_tref = 0.0
+    boundary_runner.U_abun = 20.0e-9
+    boundary_runner.Th_abun = 79.0e-9
+    boundary_runner.K_abun = 143.0e-6
+    boundary_runner.Al_abun = 0.0
+    boundary_runner.Fe_abun = 0.0
+
+    base = boundary_runner.radioactive_heating(0.0)
+    boundary_runner.Al_abun = 1.23e-6  # canonical 26Al/27Al = 5.25e-5
+    with_al = boundary_runner.radioactive_heating(0.0)
+    boundary_runner.Al_abun = 0.0
+    boundary_runner.Fe_abun = 6.3e-10
+    with_fe = boundary_runner.radioactive_heating(0.0)
+
+    assert with_al - base == pytest.approx(1.23e-6 * 0.3583, rel=1e-9)
+    assert with_fe - base == pytest.approx(6.3e-10 * 3.6579e-2, rel=1e-9)
+    # Aluminium-26 dominates the long-lived background by four orders.
+    assert with_al > 1e4 * base
+    assert base > 0.0
+
+
+@pytest.mark.physics_invariant
+def test_dT_pdt_excludes_latent_heat_from_a_wholly_molten_mantle(boundary_runner):
+    """A fully molten mantle has no crystallisation front to draw heat from.
+
+    The front of a mantle above the liquidus sits at the core-mantle boundary,
+    which is still inside the planet, so a latent term keyed on the front
+    radius alone fires there and slows the cooling of a mantle that is not
+    freezing. Above the liquidus the cooling rate must therefore match the
+    sensible-only balance exactly.
+    """
+    boundary_runner.use_radiogenic_heating = False
+    boundary_runner.use_tidal_heating = False
+    boundary_runner.tidal_term = 0.0
+
+    T_p, T_surf = 3000.0, 1600.0
+    assert boundary_runner.melt_fraction(T_p) == pytest.approx(1.0, rel=1e-12)
+
+    dTp_dt = boundary_runner.dT_pdt(T_p, T_surf, 0.0)
+    q_m = boundary_runner.q_m(T_p, T_surf, 1.0)
+    sensible = boundary_runner.silicate_heat_capacity * boundary_runner.mantle_mass
+    expected = -4 * np.pi * boundary_runner.planet_radius**2 * q_m / sensible
+
+    assert dTp_dt == pytest.approx(expected, rel=1e-12)
+    assert dTp_dt < 0.0
+
+    # Discrimination: the ungated form would divide by an extra
+    # L * M / (T_liquidus - T_solidus), slowing the rate by a factor of 1.56
+    # at these parameters.
+    latent = (
+        boundary_runner.heat_fusion_silicate
+        * boundary_runner.mantle_mass
+        / (boundary_runner.T_liquidus - boundary_runner.T_solidus)
+    )
+    ungated = -4 * np.pi * boundary_runner.planet_radius**2 * q_m / (sensible + latent)
+    assert abs(dTp_dt / ungated - 1.0) > 0.4
+
+    # Inside the mushy zone the latent term is still active, so the gate is a
+    # real boundary condition and not a wholesale removal.
+    T_mush = 0.5 * (boundary_runner.T_solidus + boundary_runner.T_liquidus)
+    phi_mush = boundary_runner.melt_fraction(T_mush)
+    r_s_mush = boundary_runner.r_s(T_mush)
+    mushy_sensible = (
+        (4 / 3)
+        * np.pi
+        * boundary_runner.mantle_bulk_density
+        * boundary_runner.silicate_heat_capacity
+        * (boundary_runner.planet_radius**3 - r_s_mush**3)
+    )
+    mushy_expected = (
+        -4
+        * np.pi
+        * boundary_runner.planet_radius**2
+        * boundary_runner.q_m(T_mush, T_surf, phi_mush)
+        / (mushy_sensible + latent)
+    )
+    assert boundary_runner.dT_pdt(T_mush, T_surf, 0.0) == pytest.approx(
+        mushy_expected, rel=1e-12
+    )
+
+
+# =============================================================================
+# Tests: adiabat melt model
+# =============================================================================
+#
+# The adiabat model reads the structure's mantle mesh, so these tests write one
+# under tmp_path and stand in for the Zalmoxis gradient and the tabulated
+# melting curves (tests/helpers/_adiabat_mesh.py). The masses come from the
+# structure, so the linear model's bulk density and the mesh describe the same
+# mantle, and the constant melting curves match the fixture's T_solidus and
+# T_liquidus so the two models can be compared in the isothermal limit.
+
+_ADB_R_INT = 6.371e6  # m
+_ADB_R_CORE = 3.4e6  # m
+_ADB_M_CORE = 2.0e24  # kg
+_ADB_M_MANTLE = 4.0e24  # kg
+_ADB_AREA = 4.0 * np.pi * _ADB_R_INT**2  # m2
+_ADB_TSOL = 1420.0  # K, the fixture's T_solidus
+_ADB_TLIQ = 2020.0  # K, the fixture's T_liquidus
+
+
+def _adiabat_hf_row(T_magma=2000.0):
+    """Helpfile row for a planet whose masses come from a structure solve."""
+    return {
+        'Time': 1.0e4,
+        'R_int': _ADB_R_INT,
+        'R_core': _ADB_R_CORE,
+        'M_int': _ADB_M_CORE + _ADB_M_MANTLE,
+        'M_core': _ADB_M_CORE,
+        'M_atm': 1e18,
+        'F_atm': 100.0,
+        'T_magma': T_magma,
+        'T_surf': 1600.0,
+        'P_surf': 1e8,
+    }
+
+
+def _adiabat_interior(nlev_s, tides=None, ic=0):
+    """Interior state with `nlev_s` layers, as Interior_t sizes it."""
+    return SimpleNamespace(
+        ic=ic,
+        nlev_s=nlev_s,
+        tides=np.zeros(nlev_s) if tides is None else np.asarray(tides, dtype=float),
+        phi=None,
+        mass=None,
+        visc=None,
+        density=None,
+        temp=None,
+        pres=None,
+        radius=None,
+        temp_profile=None,
+    )
+
+
+def _make_runner(config, tmp_path, interior_o, melt_model, T_magma=2000.0):
+    """BoundaryRunner on the shared geometry with the given melt model."""
+    config.interior_energetics.boundary.melt_model = melt_model
+    config.interior_energetics.module = 'boundary'
+    config.interior_struct.module = 'zalmoxis'
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        return BoundaryRunner(
+            config,
+            {'output': str(tmp_path)},
+            _adiabat_hf_row(T_magma),
+            None,
+            interior_o,
+            None,
+        )
+
+
+def _adiabat_runner(
+    config,
+    tmp_path,
+    monkeypatch,
+    nlev_s=8,
+    dtdp=0.0,
+    curve_dtdp=0.0,
+    rho_cmb=5500.0,
+    rho_top=4300.0,
+    tides=None,
+    ic=0,
+    T_magma=2000.0,
+):
+    """BoundaryRunner with the adiabat melt model on a freshly written mesh."""
+    write_mantle_mesh(
+        tmp_path, _ADB_R_CORE, _ADB_R_INT, _ADB_M_MANTLE, rho_cmb=rho_cmb, rho_top=rho_top
+    )
+    patch_adiabat_inputs(
+        monkeypatch, dtdp=dtdp, curve_dtdp=curve_dtdp, tsol=_ADB_TSOL, tliq=_ADB_TLIQ
+    )
+    interior_o = _adiabat_interior(nlev_s, tides=tides, ic=ic)
+    runner = _make_runner(config, tmp_path, interior_o, 'adiabat', T_magma=T_magma)
+    return runner, interior_o
+
+
+def _run_to(runner, interior_o, tmp_path, T_p_final, T_surf_final=1600.0):
+    """Run one solver step whose integration ends at the given temperatures."""
+    sol = SimpleNamespace(
+        t=np.array([runner.curr_time, runner.curr_time + runner.dt]),
+        y=np.array([[runner.T_p_0, T_p_final], [runner.T_surf_0, T_surf_final]]),
+        status=0,
+        message='',
+    )
+    with patch('proteus.interior_energetics.boundary.solve_ivp', return_value=sol):
+        return runner.run_solver(_adiabat_hf_row(), interior_o, {'output': str(tmp_path)})
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_adiabat_isothermal_limit_reproduces_the_linear_cooling_rate(
+    mock_config, tmp_path, monkeypatch
+):
+    """With no gradient and constant curves the adiabat model cools like the linear one.
+
+    Cross-implementation check against the Schaefer et al. (2016) solidification
+    front: an isothermal, uniform-density mantle between a pressure-independent
+    solidus and liquidus has a molten mass fraction linear in T_p, so the
+    sensible capacity of its molten part, c_p phi M, and the latent capacity
+    of its front, L M / (T_liq - T_sol), must match the front-radius form of
+    the linear model. 1713.6 K sits between the curve's nodes and inside the
+    mushy zone.
+    """
+    linear = _make_runner(mock_config, tmp_path, _adiabat_interior(1), 'linear')
+    adiabatic, _ = _adiabat_runner(
+        mock_config, tmp_path, monkeypatch, rho_cmb=4800.0, rho_top=4800.0
+    )
+    T_p, T_surf = 1713.6, 1600.0
+    cp = mock_config.interior_energetics.boundary.silicate_heat_capacity
+    L = mock_config.interior_energetics.latent_heat_of_fusion
+    phi = (T_p - _ADB_TSOL) / (_ADB_TLIQ - _ADB_TSOL)
+
+    expected = _ADB_M_MANTLE * (cp * phi + L / (_ADB_TLIQ - _ADB_TSOL))
+    assert adiabatic.heat_capacity(T_p) == pytest.approx(expected, rel=1e-12)
+    assert linear.heat_capacity(T_p) == pytest.approx(expected, rel=1e-10)
+    assert adiabatic.dT_pdt(T_p, T_surf, 0.0) == pytest.approx(
+        linear.dT_pdt(T_p, T_surf, 0.0), rel=1e-10
+    )
+    # Factor guards: charging the whole mantle's sensible heat (1867 J/kg/K)
+    # or dropping the latent term (587 J/kg/K) lands far from 1254 J/kg/K.
+    whole_mantle = _ADB_M_MANTLE * (cp + L / (_ADB_TLIQ - _ADB_TSOL))
+    assert abs(adiabatic.heat_capacity(T_p) / whole_mantle - 1.0) > 0.3
+    assert abs(adiabatic.heat_capacity(T_p) / (_ADB_M_MANTLE * cp * phi) - 1.0) > 0.3
+    # Scale guard: per unit mantle mass, of order a silicate heat capacity.
+    assert 1000.0 < adiabatic.heat_capacity(T_p) / _ADB_M_MANTLE < 1500.0
+    # Sign guard: a mantle hotter than its surface cools.
+    assert adiabatic.dT_pdt(T_p, T_surf, 0.0) < 0.0
+
+
+@pytest.mark.physics_invariant
+def test_adiabat_step_reports_mass_and_volume_melt_fractions(
+    mock_config, tmp_path, monkeypatch
+):
+    """A magma ocean over a solid, denser base melts less by mass than by volume.
+
+    The melting curves rise with depth faster than the adiabat, so a mantle
+    whose top is above its liquidus is solid at its base. The base is also the
+    densest part, so the mass melt fraction must lag the volume one. The
+    reported masses must close on the mantle mass, the front must sit inside
+    the mantle, and the melt fraction must be the exact adiabat state at the
+    end of the step, not the interpolated curve the solver stepped on.
+    """
+    runner, interior_o = _adiabat_runner(
+        mock_config, tmp_path, monkeypatch, dtdp=ADIABAT_DTDP, curve_dtdp=CURVE_DTDP
+    )
+    T_p_final = 2100.37
+    _, out = _run_to(runner, interior_o, tmp_path, T_p_final)
+
+    assert 0.0 < out['Phi_global'] < out['Phi_global_vol'] < 1.0
+    exact = runner.melt_curve.model.state(T_p_final)
+    assert out['Phi_global'] == pytest.approx(exact.phi_mass, rel=1e-12)
+    # Conservation: the molten and solid parts make up the mantle.
+    assert out['M_mantle_liquid'] + out['M_mantle_solid'] == pytest.approx(
+        _ADB_M_MANTLE, rel=1e-12
+    )
+    assert out['M_mantle_liquid'] == pytest.approx(out['Phi_global'] * _ADB_M_MANTLE, rel=1e-12)
+    # The front lies between the surface and the core-mantle boundary.
+    assert 0.0 < out['RF_depth'] < 1.0 - _ADB_R_CORE / _ADB_R_INT
+    # The latent heat of the advancing front adds to the heat capacity.
+    cp = mock_config.interior_energetics.boundary.silicate_heat_capacity
+    assert out['Cp_eff'] > cp * out['Phi_global']
+    assert out['Cp_eff'] == pytest.approx(
+        runner.heat_capacity(T_p_final) / _ADB_M_MANTLE, rel=1e-12
+    )
+
+    # The adiabat itself is handed to the structure re-solve on pressure,
+    # anchored at T_p at the top and warming with depth.
+    pres, temp = interior_o.temp_profile
+    np.testing.assert_allclose(pres, runner.melt_curve.model.profile.pressure, rtol=1e-12)
+    assert temp[-1] == pytest.approx(T_p_final, rel=1e-12)
+    assert np.all(np.diff(temp) <= 0.0)
+    assert temp[0] > T_p_final + 1000.0
+
+
+@pytest.mark.physics_invariant
+def test_adiabat_shells_carry_the_mantle_mass_melt_and_rheology(
+    mock_config, tmp_path, monkeypatch
+):
+    """The shells handed to the tides modules conserve the mantle and resolve its rheology.
+
+    The shell masses must sum to the mantle mass and their melt fractions to
+    the global one. Each shell takes the viscosity the aggregate rheology
+    assigns to its own melt fraction, so the solid base is many orders of
+    magnitude stiffer than the molten top; publishing the bulk viscosity in
+    every shell would make them equal.
+    """
+    mock_config.interior_energetics.boundary.viscosity_model = 2
+    runner, interior_o = _adiabat_runner(
+        mock_config, tmp_path, monkeypatch, nlev_s=12, dtdp=ADIABAT_DTDP, curve_dtdp=CURVE_DTDP
+    )
+    _, out = _run_to(runner, interior_o, tmp_path, 2100.37)
+
+    assert len(interior_o.mass) == 12
+    assert len(interior_o.radius) == 13
+    assert interior_o.radius[0] == pytest.approx(_ADB_R_CORE, rel=1e-12)
+    assert interior_o.radius[-1] == pytest.approx(_ADB_R_INT, rel=1e-12)
+    # Conservation of the mantle mass and of its melt across the shells.
+    assert float(np.sum(interior_o.mass)) == pytest.approx(_ADB_M_MANTLE, rel=1e-12)
+    phi_shells = float(np.sum(interior_o.phi * interior_o.mass)) / _ADB_M_MANTLE
+    assert phi_shells == pytest.approx(out['Phi_global'], rel=1e-9)
+
+    # A molten top over a mostly solid base, the melt rising outward.
+    assert interior_o.phi[-1] == pytest.approx(1.0, abs=1e-12)
+    assert interior_o.phi[0] < 0.2
+    assert np.all(np.diff(interior_o.phi) >= 0.0)
+    # Viscosity does not rise with melt fraction, and the two ends differ by
+    # many orders of magnitude.
+    order = np.argsort(interior_o.phi)
+    assert np.all(np.diff(interior_o.visc[order]) <= 0.0)
+    assert interior_o.visc[0] / interior_o.visc[-1] > 1e6
+
+
+@pytest.mark.physics_invariant
+def test_adiabat_tidal_heating_is_summed_over_the_shells(mock_config, tmp_path, monkeypatch):
+    """Tidal heat enters the energy balance as each shell's rate times its mass.
+
+    A uniform rate must give the single-layer flux H M / A. Heating only the
+    base shell must deposit that shell's share alone, well under a fifth of
+    the uniform total for ten shells. A rate array on a different grid is
+    rejected before any heat is applied.
+    """
+    mock_config.interior_energetics.heat_tidal = True
+    H = 2.0e-9  # W kg-1
+
+    uniform, interior_o = _adiabat_runner(
+        mock_config, tmp_path, monkeypatch, nlev_s=10, tides=np.full(10, H)
+    )
+    assert uniform.tidal_term == pytest.approx(H, rel=1e-12)
+    _, out_uniform = _run_to(uniform, interior_o, tmp_path, 1850.4)
+    assert out_uniform['F_tidal'] == pytest.approx(H * _ADB_M_MANTLE / _ADB_AREA, rel=1e-12)
+
+    base_only = np.zeros(10)
+    base_only[0] = H
+    based, interior_b = _adiabat_runner(
+        mock_config, tmp_path, monkeypatch, nlev_s=10, tides=base_only
+    )
+    _, out_base = _run_to(based, interior_b, tmp_path, 1850.4)
+    assert out_base['F_tidal'] == pytest.approx(H * based.shells.mass[0] / _ADB_AREA, rel=1e-12)
+    # The base shell holds well under a fifth of the mantle mass, so applying
+    # its rate to the whole mantle would be caught.
+    assert out_base['F_tidal'] < 0.2 * out_uniform['F_tidal']
+    assert out_base['F_tidal'] > 0.0
+
+    # Error contract: rates computed on another radial grid.
+    with pytest.raises(ValueError, match='disagree on the radial grid'):
+        _adiabat_runner(mock_config, tmp_path, monkeypatch, nlev_s=10, tides=np.full(9, H))
+
+    # Edge case: with tidal heating off, the rates are ignored.
+    mock_config.interior_energetics.heat_tidal = False
+    off, _ = _adiabat_runner(
+        mock_config, tmp_path, monkeypatch, nlev_s=10, tides=np.full(10, H)
+    )
+    assert off.tidal_term == pytest.approx(0.0, abs=1e-30)
+
+
+@pytest.mark.physics_invariant
+def test_adiabat_mantle_outside_its_mushy_zone_cools_as_a_whole(
+    mock_config, tmp_path, monkeypatch
+):
+    """Wholly molten or wholly solid, the whole mantle cools with no latent heat.
+
+    Above the hottest liquidus in the mantle every level is molten, and below
+    the coldest solidus every level is solid, so there is no front to advance
+    and the heat capacity is c_p M_mantle. A wholly molten mantle is
+    recognised without integrating the adiabat. Inside the mushy zone the
+    front releases latent heat on top of the molten part's sensible heat.
+    """
+    runner, _ = _adiabat_runner(
+        mock_config, tmp_path, monkeypatch, dtdp=ADIABAT_DTDP, curve_dtdp=CURVE_DTDP
+    )
+    calls = count_adiabat_solves(monkeypatch)
+    cp = mock_config.interior_energetics.boundary.silicate_heat_capacity
+    whole = cp * _ADB_M_MANTLE
+
+    hottest = float(np.max(runner.melt_curve.model.tmp_liq))
+    assert runner.melt_fraction(hottest + 10.3) == pytest.approx(1.0, abs=1e-15)
+    assert runner.heat_capacity(hottest + 10.3) == pytest.approx(whole, rel=1e-12)
+    assert calls[0] == 0
+
+    assert runner.melt_fraction(900.4) == pytest.approx(0.0, abs=1e-15)
+    assert runner.heat_capacity(900.4) == pytest.approx(whole, rel=1e-12)
+
+    # Inside the mushy zone the latent term is active: the capacity exceeds
+    # the molten part's sensible heat by L M dphi/dT_p.
+    T_mush = 1850.4
+    phi = runner.melt_fraction(T_mush)
+    assert 0.0 < phi < 1.0
+    L = mock_config.interior_energetics.latent_heat_of_fusion
+    latent = L * _ADB_M_MANTLE * runner.melt_curve.dphi_dtmp(T_mush)
+    assert latent > 0.0
+    assert runner.heat_capacity(T_mush) == pytest.approx(
+        cp * phi * _ADB_M_MANTLE + latent, rel=1e-12
+    )
+
+
+def test_adiabat_without_a_structure_mesh_names_the_boundary_switch(
+    mock_config, tmp_path, monkeypatch
+):
+    """A missing structure mesh fails loudly and names the boundary's way out.
+
+    Error contract: the adiabat needs the structure module's mantle profile.
+    Without it the runner must not start, the message must point at the
+    boundary backend's own melt_model setting rather than the dummy's, and no
+    half-built melt model may be left cached on the interior.
+    """
+    patch_adiabat_inputs(monkeypatch, tsol=_ADB_TSOL, tliq=_ADB_TLIQ)
+    interior_o = _adiabat_interior(8)
+
+    with pytest.raises(FileNotFoundError) as excinfo:
+        _make_runner(mock_config, tmp_path, interior_o, 'adiabat')
+
+    message = str(excinfo.value)
+    assert 'interior_energetics.boundary.melt_model = "linear"' in message
+    assert 'boundary interior module' in message
+    assert getattr(interior_o, '_adiabat_melt_model', None) is None
+
+
+def test_linear_step_publishes_one_layer_and_clears_the_profile(mock_config, tmp_path):
+    """The linear model publishes a single isothermal layer and no T(P) profile.
+
+    Edge case for a run that switched melt model on resume: a profile left on
+    the interior by an earlier adiabat step must be cleared, or the structure
+    re-solve would keep reading an adiabat the energetics no longer follows.
+    The volume and mass melt fractions coincide in a uniform-density layer.
+    """
+    interior_o = _adiabat_interior(1)
+    interior_o.temp_profile = (np.array([1e9, 1e5]), np.array([3000.0, 2000.0]))
+    runner = _make_runner(mock_config, tmp_path, interior_o, 'linear')
+    _, out = _run_to(runner, interior_o, tmp_path, 1713.6)
+
+    assert interior_o.temp_profile is None
+    assert len(interior_o.phi) == 1
+    assert interior_o.phi[0] == pytest.approx((1713.6 - _ADB_TSOL) / (_ADB_TLIQ - _ADB_TSOL))
+    assert out['Phi_global_vol'] == pytest.approx(out['Phi_global'], rel=1e-15)
+    assert out['RF_depth'] == pytest.approx(
+        out['Phi_global'] * (1.0 - _ADB_R_CORE / _ADB_R_INT), rel=1e-12
+    )
+
+
+def test_adiabat_curve_is_reused_by_the_next_step(mock_config, tmp_path, monkeypatch):
+    """Consecutive steps on one interior share the melt curve and its nodes.
+
+    The wrapper builds a fresh runner every step. The curve has to persist on
+    the interior, or each step would integrate the adiabat afresh at every
+    temperature the previous step already visited.
+    """
+    first, interior_o = _adiabat_runner(
+        mock_config, tmp_path, monkeypatch, dtdp=ADIABAT_DTDP, curve_dtdp=CURVE_DTDP
+    )
+    first.melt_fraction(1850.4)
+    calls = count_adiabat_solves(monkeypatch)
+
+    second = _make_runner(mock_config, tmp_path, interior_o, 'adiabat')
+    assert second.melt_curve is first.melt_curve
+    assert second.melt_fraction(1850.4) == pytest.approx(first.melt_fraction(1850.4))
+    assert calls[0] == 0
+
+
+@pytest.mark.physics_invariant
+def test_adiabat_step_cools_through_the_mushy_zone(mock_config, tmp_path, monkeypatch):
+    """An integrated step through a partly molten mantle cools and freezes it.
+
+    The real ODE integration, reading the melt curve inside its right-hand
+    side, from a magma ocean over a solid base. Losing heat at the surface
+    must lower the potential temperature and the melt fraction together, and
+    both must stay physical.
+    """
+    runner, interior_o = _adiabat_runner(
+        mock_config,
+        tmp_path,
+        monkeypatch,
+        dtdp=ADIABAT_DTDP,
+        curve_dtdp=CURVE_DTDP,
+        ic=2,
+        T_magma=1950.0,
+    )
+    phi_start = runner.melt_fraction(runner.T_p_0)
+    _, out = runner.run_solver(_adiabat_hf_row(1950.0), interior_o, {'output': str(tmp_path)})
+
+    assert 0.0 < out['T_magma'] < runner.T_p_0
+    assert 0.0 <= out['Phi_global'] < phi_start <= 1.0
+    # Monotonicity: the melt fraction followed the temperature down, so the
+    # mantle froze by the amount the curve assigns to the final temperature.
+    assert out['Phi_global'] == pytest.approx(runner.melt_fraction(out['T_magma']), abs=1e-4)
+
+
+# =============================================================================
+# Tests: the choices the dummy backend makes differently
+# =============================================================================
+#
+# include_core_heat_capacity, sensible_heat and tidal_viscosity default to this
+# backend's own behaviour; set to true / "whole" / "kervazo" they follow the
+# dummy backend. Isothermal limit throughout (no gradient, constant curves), so
+# phi = (T - 1420) / 600 at every level and dphi/dT_p = 1 / 600 K-1.
+
+# 1850.4 K inside the mushy zone, 900.4 K below it, 2100.7 K above it.
+_T_MUSH, _T_SOLID, _T_MOLTEN = 1850.4, 900.4, 2100.7
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_core_heat_capacity_is_added_only_when_requested(mock_config, tmp_path, monkeypatch):
+    """With include_core_heat_capacity the core adds core_heatcap * M_core everywhere.
+
+    The core is lumped with the mantle as in the dummy backend, so its share
+    is the same solid, mushy or molten: 450 J kg-1 K-1 x 2e24 kg = 9.0e26 J/K.
+    A wholly molten mantle then holds 1200 x 4e24 + 9.0e26 = 5.7e27 J/K. The
+    reported Cp_eff stays the mantle's own, as the dummy reports it.
+    """
+    # Off by default: the core heat capacity is never read (the fixture has none).
+    off, interior_off = _adiabat_runner(mock_config, tmp_path, monkeypatch)
+    assert off.core_heat_capacity == pytest.approx(0.0, abs=1e-30)
+
+    mock_config.interior_struct.core_heatcap = 450.0
+    mock_config.interior_energetics.boundary.include_core_heat_capacity = True
+    on, interior_on = _adiabat_runner(mock_config, tmp_path, monkeypatch)
+
+    for tmp in (_T_SOLID, _T_MUSH, _T_MOLTEN):
+        assert on.heat_capacity(tmp) - off.heat_capacity(tmp) == pytest.approx(
+            9.0e26, rel=1e-12
+        )
+    assert on.heat_capacity(_T_MOLTEN) == pytest.approx(5.7e27, rel=1e-12)
+    # Mass guard: the core's share uses the core mass, not the mantle's (3.6e27).
+    assert abs(on.heat_capacity(_T_MOLTEN) - off.heat_capacity(_T_MOLTEN) - 3.6e27) > 1e27
+    # More thermal inertia cools the same heat loss more slowly.
+    assert abs(on.dT_pdt(_T_MOLTEN, 1600.0, 0.0)) < abs(off.dT_pdt(_T_MOLTEN, 1600.0, 0.0))
+
+    _, out_on = _run_to(on, interior_on, tmp_path, _T_MUSH)
+    _, out_off = _run_to(off, interior_off, tmp_path, _T_MUSH)
+    assert out_on['Cp_eff'] == pytest.approx(out_off['Cp_eff'], rel=1e-12)
+
+    # Edge case: core_heatcap = "self" with no structure value falls back to 450.
+    mock_config.interior_struct.core_heatcap = 'self'
+    fallback, _ = _adiabat_runner(mock_config, tmp_path, monkeypatch)
+    assert fallback.core_heat_capacity == pytest.approx(9.0e26, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_sensible_heat_whole_cools_the_whole_partly_molten_mantle(
+    mock_config, tmp_path, monkeypatch
+):
+    """sensible_heat = "whole" counts c_p M in the mushy zone, "molten" c_p phi M.
+
+    At 1850.4 K, phi = 0.71733 and the latent capacity is
+    L M / 600 = 4e5 x 4e24 / 600 = 2.66667e27 J/K, so "whole" gives
+    4.8e27 + 2.66667e27 = 7.46667e27 J/K and "molten" gives
+    3.44320e27 + 2.66667e27 = 6.10987e27 J/K. Outside the mushy zone the
+    two agree on c_p M. "whole" has no jump in sensible heat at the solidus.
+    """
+    molten, _ = _adiabat_runner(mock_config, tmp_path, monkeypatch)
+    mock_config.interior_energetics.boundary.sensible_heat = 'whole'
+    whole, _ = _adiabat_runner(mock_config, tmp_path, monkeypatch)
+
+    assert whole.heat_capacity(_T_MUSH) == pytest.approx(7.466667e27, rel=1e-6)
+    assert molten.heat_capacity(_T_MUSH) == pytest.approx(6.109867e27, rel=1e-6)
+    # Factor guard: the difference is the solid part's sensible heat, c_p (1 - phi) M.
+    phi = whole.melt_fraction(_T_MUSH)
+    assert whole.heat_capacity(_T_MUSH) - molten.heat_capacity(_T_MUSH) == pytest.approx(
+        1200.0 * (1.0 - phi) * _ADB_M_MANTLE, rel=1e-9
+    )
+    # Edge cases: wholly solid or molten, both count the whole mantle.
+    for tmp in (_T_SOLID, _T_MOLTEN):
+        assert whole.heat_capacity(tmp) == pytest.approx(4.8e27, rel=1e-12)
+        assert molten.heat_capacity(tmp) == pytest.approx(4.8e27, rel=1e-12)
+    # Just above the solidus "molten" has almost no sensible heat left, "whole" all of it.
+    near_solidus = _ADB_TSOL + 0.6
+    latent = 4.0e5 * _ADB_M_MANTLE / 600.0
+    assert whole.heat_capacity(near_solidus) == pytest.approx(4.8e27 + latent, rel=1e-6)
+    assert molten.heat_capacity(near_solidus) - latent < 1e-2 * 4.8e27
+
+    # The linear model takes the same switch: the whole mantle replaces the shell above the front.
+    interior_lin = _adiabat_interior(1)
+    lin_whole = _make_runner(mock_config, tmp_path, interior_lin, 'linear')
+    mock_config.interior_energetics.boundary.sensible_heat = 'molten'
+    lin_molten = _make_runner(mock_config, tmp_path, interior_lin, 'linear')
+    assert lin_whole.heat_capacity(_T_MUSH) > lin_molten.heat_capacity(_T_MUSH)
+    assert lin_whole.heat_capacity(_T_MOLTEN) == pytest.approx(
+        lin_molten.heat_capacity(_T_MOLTEN), rel=1e-12
+    )
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_tidal_viscosity_kervazo_hands_the_tides_the_dummy_rheology(
+    mock_config, tmp_path, monkeypatch
+):
+    """tidal_viscosity = "kervazo" publishes the Kervazo et al. (2021) viscosity.
+
+    The fixture's own viscosity_model is constant at 1e2 Pa s. With "kervazo"
+    a wholly solid mantle is handed 1.2567e19 Pa s per shell (phi = 0) and a
+    wholly molten one 1.0 Pa s (phi = 1), the dummy backend's values, either
+    side of LovePy's 1e9 Pa s viscous-block threshold. The viscosity that sets
+    the convective heat flux is unchanged.
+    """
+    own, interior_own = _adiabat_runner(mock_config, tmp_path, monkeypatch, nlev_s=6)
+    _run_to(own, interior_own, tmp_path, _T_SOLID)
+    np.testing.assert_allclose(interior_own.visc, 1.0e2, rtol=1e-12)
+
+    mock_config.interior_energetics.boundary.tidal_viscosity = 'kervazo'
+    solid, interior_solid = _adiabat_runner(mock_config, tmp_path, monkeypatch, nlev_s=6)
+    _run_to(solid, interior_solid, tmp_path, _T_SOLID)
+    np.testing.assert_allclose(interior_solid.visc, 1.2567096326586444e19, rtol=1e-9)
+    assert np.all(interior_solid.visc > 1e9)
+
+    molten, interior_molten = _adiabat_runner(mock_config, tmp_path, monkeypatch, nlev_s=6)
+    _run_to(molten, interior_molten, tmp_path, _T_MOLTEN)
+    np.testing.assert_allclose(interior_molten.visc, 1.0, rtol=1e-12)
+    assert np.all(interior_molten.visc < 1e9)
+
+    # The convective flux still uses viscosity_model.
+    assert solid.viscosity(_T_MUSH, 1600.0, 0.5) == pytest.approx(1.0e2, rel=1e-12)
+    assert solid.q_m(_T_MUSH, 1600.0, 0.5) == pytest.approx(
+        own.q_m(_T_MUSH, 1600.0, 0.5), rel=1e-12
+    )
+
+    # The linear model's single layer takes the same switch.
+    interior_lin = _adiabat_interior(1)
+    lin = _make_runner(mock_config, tmp_path, interior_lin, 'linear')
+    _run_to(lin, interior_lin, tmp_path, _T_SOLID)
+    assert interior_lin.visc[0] == pytest.approx(1.2567096326586444e19, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_boundary_dummy_choice_keys_default_to_the_boundary_backend_and_validate():
+    """The three keys default to this backend's own choices and reject other values.
+
+    Error contract: a misspelt choice is refused at config load rather than
+    silently falling back to the default behaviour.
+    """
+    from proteus.config._interior import InteriorBoundary
+
+    defaults = InteriorBoundary()
+    assert defaults.include_core_heat_capacity is False
+    assert defaults.sensible_heat == 'molten'
+    assert defaults.tidal_viscosity == 'boundary'
+
+    dummy_like = InteriorBoundary(
+        include_core_heat_capacity=True, sensible_heat='whole', tidal_viscosity='kervazo'
+    )
+    assert dummy_like.sensible_heat == 'whole'
+    assert dummy_like.tidal_viscosity == 'kervazo'
+
+    with pytest.raises(ValueError):
+        InteriorBoundary(sensible_heat='all')
+    with pytest.raises(ValueError):
+        InteriorBoundary(tidal_viscosity='dummy')
+
+
+# =============================================================================
+# Tests: viscosity_phi, the melt fraction behind the convective viscosity
+# =============================================================================
+#
+# With the test gradients the melting curves (2.0e-8 K/Pa) are steeper than the
+# adiabat (1.5e-8 K/Pa), so the mantle crystallises from the bottom up and its
+# top level is its most molten one, as in a real magma ocean.
+
+
+def _top_and_global_runners(config, tmp_path, monkeypatch):
+    """Two adiabat runners on the same mesh, viscosity_phi "top" and "global"."""
+    config.interior_energetics.boundary.viscosity_model = 2  # aggregate
+    glob, _ = _adiabat_runner(
+        config, tmp_path, monkeypatch, dtdp=ADIABAT_DTDP, curve_dtdp=CURVE_DTDP
+    )
+    config.interior_energetics.boundary.viscosity_phi = 'top'
+    top, interior_top = _adiabat_runner(
+        config, tmp_path, monkeypatch, dtdp=ADIABAT_DTDP, curve_dtdp=CURVE_DTDP
+    )
+    return top, glob, interior_top
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_top_melt_fraction_is_the_top_level_of_the_adiabat(mock_config, tmp_path, monkeypatch):
+    """viscosity_phi = "top" reads the melt fraction of the mantle's top level.
+
+    Cross-implementation check: the closed form (T_p - T_sol,top) / (T_liq,top -
+    T_sol,top) must equal the top level of the full adiabat integration
+    (`AdiabatMeltModel.state(T_p).phi[-1]`), and it exceeds the mass average
+    because the mantle freezes from the bottom up.
+    """
+    top, glob, _ = _top_and_global_runners(mock_config, tmp_path, monkeypatch)
+    model = top.melt_curve.model
+    p_top = model.profile.pressure[-1]
+    assert top.T_solidus_top == pytest.approx(_ADB_TSOL + CURVE_DTDP * p_top, rel=1e-12)
+    assert top.T_liquidus_top == pytest.approx(_ADB_TLIQ + CURVE_DTDP * p_top, rel=1e-12)
+    # Pinned at 1900 K: the top level is 80% molten, the mass average 38%.
+    assert top.top_melt_fraction(1900.0) == pytest.approx(0.7999966666666668, rel=1e-9)
+    assert glob.melt_fraction(1900.0) == pytest.approx(0.38114628582270216, rel=1e-6)
+
+    for tmp in (1500.0, 1700.0, 1900.0, 2100.0):
+        expected = np.clip((tmp - top.T_solidus_top) / 600.0, 0.0, 1.0)
+        assert top.top_melt_fraction(tmp) == pytest.approx(expected, abs=1e-12)
+        assert top.top_melt_fraction(tmp) == pytest.approx(model.state(tmp).phi[-1], abs=1e-9)
+        assert top.convective_melt_fraction(tmp) == top.top_melt_fraction(tmp)
+        # "global" keeps the mass average.
+        assert glob.convective_melt_fraction(tmp) == glob.melt_fraction(tmp)
+        # Bottom-up crystallisation: the top is at least as molten as the average.
+        assert top.top_melt_fraction(tmp) >= glob.melt_fraction(tmp)
+
+    # Edge cases: below the top solidus and above the top liquidus.
+    assert top.top_melt_fraction(top.T_solidus_top - 1.0) == pytest.approx(0.0, abs=1e-15)
+    assert top.top_melt_fraction(top.T_liquidus_top + 1.0) == pytest.approx(1.0, rel=1e-15)
+
+
+@pytest.mark.physics_invariant
+def test_viscosity_phi_top_sets_only_the_convective_flux(mock_config, tmp_path, monkeypatch):
+    """With "top" the convective flux follows the top level; the energy budget does not.
+
+    At 1900 K the top level (phi 0.80) is above the aggregate model's 0.4
+    transition and the mass average (phi 0.38) below it, so "global" gives a
+    near-solid viscosity and "top" a near-melt one: "top" loses heat far
+    faster and has a far thinner boundary layer. Heat capacity, the reported
+    melt fraction and the mantle state stay on the mass average.
+    """
+    top, glob, interior_top = _top_and_global_runners(mock_config, tmp_path, monkeypatch)
+    tmp, tsurf = 1900.0, 1600.0
+    phi_top, phi_avg = top.top_melt_fraction(tmp), glob.melt_fraction(tmp)
+
+    # The viscosity behind q_m, Ra and delta is the top level's.
+    assert top.q_m(tmp, tsurf, top.convective_melt_fraction(tmp)) == pytest.approx(
+        glob.q_m(tmp, tsurf, phi_top), rel=1e-12
+    )
+    assert top.viscosity(tmp, tsurf, phi_top) < 1e-6 * glob.viscosity(tmp, tsurf, phi_avg)
+    q_top = top.q_m(tmp, tsurf, phi_top)
+    q_glob = glob.q_m(tmp, tsurf, phi_avg)
+    assert q_top > 10.0 * q_glob
+
+    # The heat capacity is the same in both: only the flux changed.
+    assert top.heat_capacity(tmp) == pytest.approx(glob.heat_capacity(tmp), rel=1e-12)
+    ratio = top.dT_pdt(tmp, tsurf, 0.0) / glob.dT_pdt(tmp, tsurf, 0.0)
+    assert ratio == pytest.approx(q_top / q_glob, rel=1e-9)
+
+    # The surface equation sees the same flux and a thinner boundary layer.
+    assert top.boundary_layer_thickness(tmp, tsurf, phi_top) < glob.boundary_layer_thickness(
+        tmp, tsurf, phi_avg
+    )
+    assert top.dT_surfdt(tmp, tsurf) != pytest.approx(glob.dT_surfdt(tmp, tsurf), rel=1e-3)
+
+    # The step's reported state stays on the mass average.
+    _, out = _run_to(top, interior_top, tmp_path, tmp)
+    assert out['Phi_global'] == pytest.approx(phi_avg, abs=1e-4)
+    assert out['boundary_layer_thickness'] == pytest.approx(
+        top.boundary_layer_thickness(tmp, 1600.0, phi_top), rel=1e-12
+    )
+
+
+@pytest.mark.unit
+def test_viscosity_phi_defaults_to_global_and_top_needs_the_adiabat(
+    mock_config, tmp_path, monkeypatch
+):
+    """viscosity_phi defaults to "global"; "top" is refused without a depth profile.
+
+    Error contract: a misspelt value is refused at config load, and "top" with
+    the linear melt model is refused both by the config validator and by the
+    runner, rather than silently using the mass average.
+    """
+    from proteus.config._interior import InteriorBoundary, valid_interiorboundary
+
+    assert InteriorBoundary().viscosity_phi == 'global'
+    assert InteriorBoundary(viscosity_phi='top').viscosity_phi == 'top'
+    with pytest.raises(ValueError):
+        InteriorBoundary(viscosity_phi='mean')
+
+    linear_top = SimpleNamespace(
+        module='boundary', boundary=InteriorBoundary(melt_model='linear', viscosity_phi='top')
+    )
+    with pytest.raises(ValueError, match='needs'):
+        valid_interiorboundary(linear_top, None, None)
+    # Discriminator: the same block with the adiabat passes.
+    adiabat_top = SimpleNamespace(
+        module='boundary', boundary=InteriorBoundary(melt_model='adiabat', viscosity_phi='top')
+    )
+    valid_interiorboundary(adiabat_top, None, None)
+
+    mock_config.interior_energetics.boundary.viscosity_phi = 'top'
+    with pytest.raises(ValueError, match='adiabat'):
+        _make_runner(mock_config, tmp_path, _adiabat_interior(1), 'linear')

@@ -9,12 +9,25 @@ import pandas as pd
 from scipy.integrate import solve_ivp
 
 from proteus.atmos_clim.common import Atmos_t
-from proteus.interior_energetics.common import Interior_t
+from proteus.interior_energetics.common import (
+    Interior_t,
+    d_solidification_radius_dT,
+    eval_rheoparam,
+    melt_fraction_linear,
+    radiogenic_specific_heating,
+    solidification_radius,
+)
+from proteus.interior_energetics.resolved_mantle import (
+    get_melt_curve,
+    mantle_shells,
+    publish_shells,
+    tidal_power,
+)
 from proteus.interior_energetics.timestep import next_step
+from proteus.interior_energetics.wrapper import get_core_heatcap
 from proteus.utils.constants import (
     const_G,
     const_R,
-    radnuc_data,
     secs_per_year,
 )
 
@@ -25,6 +38,60 @@ log = logging.getLogger('fwl.' + __name__)
 
 ATM_MASS_MIN = 1.0  # min atmosphere mass
 DELTA_MIN = 1e-3  # min CBL thickness
+
+
+def atmosphere_specific_heat(config: Config, atmos_o: Atmos_t | None) -> tuple[float, str]:
+    """
+    Specific heat capacity of the atmosphere carried by the surface temperature.
+
+    With ``interior_energetics.boundary.atm_heat_capacity_const`` this is the
+    configured ``atm_heat_capacity``. Otherwise it is the layer-mass-weighted
+    mean of the climate module's layer heat capacities at constant pressure,
+    ``sum(cp_i sigma_i) / sum(sigma_i)``, from the column of the last
+    atmosphere solve (AGNI's ``layer_cp`` [J kg-1 K-1] and ``layer_σ``
+    [kg m-2]). Layers with a non-finite or non-positive value are skipped.
+    The configured value stands in, and the returned source says why, when
+    there is no column yet (no atmosphere object, or one without these
+    arrays), when the two arrays differ in shape, when no layer is usable, or
+    when both arrays still hold AGNI's allocation values (all ones), which a
+    solve overwrites.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration object.
+    atmos_o : Atmos_t or None
+        Atmosphere object whose ``_atm`` is the climate module's column.
+
+    Returns
+    -------
+    cp : float
+        Specific heat capacity [J kg-1 K-1].
+    source : str
+        'constant', 'atmosphere column', or 'configured value: <reason>'.
+    """
+    const = float(config.interior_energetics.boundary.atm_heat_capacity)
+    if config.interior_energetics.boundary.atm_heat_capacity_const:
+        return const, 'constant'
+
+    column = getattr(atmos_o, '_atm', None)
+    cp_layer = getattr(column, 'layer_cp', None)
+    mass_layer = getattr(column, 'layer_σ', None)
+    if cp_layer is None or mass_layer is None:
+        return const, 'configured value: no atmosphere column yet'
+
+    cp_arr = np.asarray(cp_layer, dtype=float)
+    mass_arr = np.asarray(mass_layer, dtype=float)
+    if cp_arr.ndim != 1 or cp_arr.shape != mass_arr.shape:
+        return const, 'configured value: layer arrays differ in shape'
+
+    valid = np.isfinite(cp_arr) & np.isfinite(mass_arr) & (cp_arr > 0.0) & (mass_arr > 0.0)
+    if not np.any(valid):
+        return const, 'configured value: no usable layer'
+    if np.all(cp_arr == 1.0) and np.all(mass_arr == 1.0):
+        return const, 'configured value: column not solved yet'
+
+    return float(np.average(cp_arr[valid], weights=mass_arr[valid])), 'atmosphere column'
 
 
 class BoundaryRunner:
@@ -50,42 +117,14 @@ class BoundaryRunner:
         self.m_atm = hf_row.get('M_atm', ATM_MASS_MIN)  # Atmospheric mass
         self.f_atm = hf_row['F_atm']
 
-        # Attempt to obtain cp and ma from atmos object
-        if config.interior_energetics.boundary.atm_heat_capacity_const:
-            self.atmosphere_heat_capacity = (
-                config.interior_energetics.boundary.atm_heat_capacity
+        # Specific heat of the atmosphere reservoir that T_surf carries [J kg-1 K-1]
+        self.atmosphere_heat_capacity, cp_source = atmosphere_specific_heat(config, atmos_o)
+        if not config.interior_energetics.boundary.atm_heat_capacity_const:
+            log.info(
+                'Atmosphere heat capacity for the surface reservoir: %.4g J kg-1 K-1 (%s)',
+                self.atmosphere_heat_capacity,
+                cp_source,
             )
-
-        else:
-            cp_layer = getattr(
-                getattr(atmos_o, '_atm', None),
-                'layer_cp',
-                [config.interior_energetics.boundary.atm_heat_capacity],
-            )
-            ma_layer = getattr(
-                getattr(atmos_o, '_atm', None),
-                'layer_σ',
-                [ATM_MASS_MIN],
-            )
-
-            # Get extracted values
-            cp_arr = np.array(cp_layer, dtype=float)
-            ma_arr = np.array(ma_layer, dtype=float)
-
-            # Skip NaN values
-            valid = np.isfinite(cp_arr) & np.isfinite(ma_arr)
-            cp_arr = cp_arr[valid]
-            ma_arr = ma_arr[valid]
-
-            # Handle zero-length arrays after filtering
-            if len(cp_arr) == 0 or len(ma_arr) == 0 or np.sum(ma_arr) < 1e-9:
-                self.atmosphere_heat_capacity = (
-                    config.interior_energetics.boundary.atm_heat_capacity
-                )
-
-            # Store mass-weighted cp average
-            else:
-                self.atmosphere_heat_capacity = float(np.average(cp_arr, weights=ma_arr))
 
         self.core_radius = float(hf_row['R_core'])
         self.core_frac = self.core_radius / self.planet_radius
@@ -118,8 +157,43 @@ class BoundaryRunner:
 
         self.T_solidus = config.interior_energetics.boundary.T_solidus
         self.T_liquidus = config.interior_energetics.boundary.T_liquidus
+
+        # How the melt fraction follows from the potential temperature. The
+        # adiabat model integrates T_p down the structure's mantle profile and
+        # compares each level with the pressure-dependent melting curves, and
+        # hands the tides modules the mantle as shells. The linear model treats
+        # the mantle as one isothermal, uniform-density layer between the
+        # constant solidus and liquidus above.
+        self.melt_model = config.interior_energetics.boundary.melt_model
+        if self.melt_model == 'adiabat':
+            self.melt_curve = get_melt_curve(config, dirs, hf_row, interior_o)
+            self.shells = mantle_shells(
+                self.melt_curve.model.profile, interior_o.nlev_s, self.mantle_mass
+            )
+            shell_mass = self.shells.mass
+        else:
+            self.melt_curve = None
+            self.shells = None
+            shell_mass = np.array([self.mantle_mass])
         self.critical_melt_fraction = config.interior_energetics.rfront_loc
         self.Tsurf_event_change = config.interior_energetics.tmagma_atol
+
+        # Choices the dummy backend makes differently (InteriorBoundary). The
+        # core, when included, is lumped with the mantle and cools with T_p.
+        self.sensible_heat = config.interior_energetics.boundary.sensible_heat
+        self.tidal_viscosity = config.interior_energetics.boundary.tidal_viscosity
+        self.viscosity_phi = config.interior_energetics.boundary.viscosity_phi
+        if self.viscosity_phi == 'top':
+            if self.melt_curve is None:
+                raise ValueError('viscosity_phi = "top" needs melt_model = "adiabat"')
+            # Melting curves at the structure's top level, the top of the mantle.
+            self.T_solidus_top = float(self.melt_curve.model.tmp_sol[-1])
+            self.T_liquidus_top = float(self.melt_curve.model.tmp_liq[-1])
+        self.core_heat_capacity = (
+            get_core_heatcap(config, hf_row) * float(self.core_mass)
+            if config.interior_energetics.boundary.include_core_heat_capacity
+            else 0.0
+        )  # J/K
 
         # Material constants
         self.critical_rayleigh_number = (
@@ -181,10 +255,18 @@ class BoundaryRunner:
         self.U_abun = config.interior_energetics.radio_U * 1e-6  # Convert ppm to kg/kg
         self.Th_abun = config.interior_energetics.radio_Th * 1e-6  # Convert ppm to kg/kg
         self.K_abun = config.interior_energetics.radio_K * 1e-6  # Convert ppm to kg/kg
+        self.Al_abun = config.interior_energetics.radio_Al * 1e-6  # Convert ppm to kg/kg
+        self.Fe_abun = config.interior_energetics.radio_Fe * 1e-6  # Convert ppm to kg/kg
 
-        # use tidal heating from orbit module if enabled, otherwise zero
+        # Tidal heating from the orbit module if enabled, otherwise zero. The
+        # tides module returns a rate per shell, so the heat it deposits is
+        # summed over the shells and expressed per unit mantle mass [W kg-1].
         self.use_tidal_heating = config.interior_energetics.heat_tidal
-        self.tidal_term = interior_o.tides[0] if self.use_tidal_heating else 0.0
+        self.tidal_term = (
+            tidal_power(interior_o.tides, shell_mass) / self.mantle_mass
+            if self.use_tidal_heating
+            else 0.0
+        )
 
         # Logging setup
         self.logging = config.interior_energetics.boundary.logging
@@ -394,7 +476,7 @@ class BoundaryRunner:
 
     def radioactive_heating(self, t: float) -> float:
         """
-        Calculate the volumetric radioactive heating rate as a function of time.
+        Calculate the specific radioactive heating rate as a function of time.
 
         Parameters
         ----------
@@ -404,51 +486,26 @@ class BoundaryRunner:
         Returns
         -------
         float
-            Radioactive heating rate per unit volume [W/kg]
+            Radioactive heating rate per unit mass [W/kg]
         """
-        # Get radioactive constants from radnuc_data
-
-        radio_t0 = (self.radio_tref - self.age_ini) * 1e9 * secs_per_year
-
-        # Radioactive isotope properties from radnuc_data
-        # Convert half-lives to decay constants: lambda = ln(2) / half-life
-        K_decay_constant = np.log(2) / (radnuc_data['k40']['halflife'] * secs_per_year)  # 1/s
-        K_heat_production = radnuc_data['k40']['heatprod']  # W/kg of K-40
-        K40_abun = self.K_abun * radnuc_data['k40']['abundance']  # kg(K-40)/kg(mantle)
-
-        Th_decay_constant = np.log(2) / (
-            radnuc_data['th232']['halflife'] * secs_per_year
-        )  # 1/s
-        Th_heat_production = radnuc_data['th232']['heatprod']  # W/kg of Th-232
-        Th232_abun = self.Th_abun * radnuc_data['th232']['abundance']  # kg(Th-232)/kg(mantle)
-
-        U238_decay_constant = np.log(2) / (
-            radnuc_data['u238']['halflife'] * secs_per_year
-        )  # 1/s
-        U238_heat_production = radnuc_data['u238']['heatprod']  # W/kg of U-238
-        U238_abun = self.U_abun * radnuc_data['u238']['abundance']  # kg(U-238)/kg(mantle)
-
-        U235_decay_constant = np.log(2) / (
-            radnuc_data['u235']['halflife'] * secs_per_year
-        )  # 1/s
-        U235_heat_production = radnuc_data['u235']['heatprod']  # W/kg of U-235
-        U235_abun = self.U_abun * radnuc_data['u235']['abundance']  # kg(U-235)/kg(mantle)
-
-        # Calculate heating contributions from each isotope
-        K_term = K40_abun * K_heat_production * np.exp(K_decay_constant * (radio_t0 - t))
-        U238_term = (
-            U238_abun * U238_heat_production * np.exp(U238_decay_constant * (radio_t0 - t))
-        )
-        U235_term = (
-            U235_abun * U235_heat_production * np.exp(U235_decay_constant * (radio_t0 - t))
-        )
-        Th_term = Th232_abun * Th_heat_production * np.exp(Th_decay_constant * (radio_t0 - t))
-        H_total = K_term + U238_term + U235_term + Th_term
-
-        if self.use_radiogenic_heating:
-            return H_total
-        else:
+        if not self.use_radiogenic_heating:
             return 0.0
+
+        # Offset by age_ini, which converts model simulation time to the actual age
+        t0_yr = (self.radio_tref - self.age_ini) * 1e9
+
+        return radiogenic_specific_heating(
+            t / secs_per_year,
+            t0_yr,
+            {
+                'al26': self.Al_abun,
+                'fe60': self.Fe_abun,
+                'k40': self.K_abun,
+                'th232': self.Th_abun,
+                'u235': self.U_abun,
+                'u238': self.U_abun,
+            },
+        )
 
     def melt_fraction(self, T_p: float) -> float:
         """
@@ -462,10 +519,55 @@ class BoundaryRunner:
         Returns
         -------
         float
+            Melt fraction [0-1], by mass under the adiabat model
+        """
+        if self.melt_curve is not None:
+            return self.melt_curve.phi(T_p)
+        return melt_fraction_linear(T_p, self.T_solidus, self.T_liquidus)
+
+    def top_melt_fraction(self, T_p: float) -> float:
+        """
+        Melt fraction at the top of the mantle on the adiabat.
+
+        The adiabat starts at T_p at the structure's top level, so this is the
+        level's melt fraction at T_p, linear between its own solidus and
+        liquidus as in `adiabat.melt_profile`.
+
+        Parameters
+        ----------
+        T_p : float
+            Potential temperature of the mantle [K]
+
+        Returns
+        -------
+        float
+            Melt fraction [0-1] of the topmost mantle level
+        """
+        span = self.T_liquidus_top - self.T_solidus_top
+        if span <= 0.0:
+            return 1.0 if T_p >= self.T_liquidus_top else 0.0
+        return float(np.clip((T_p - self.T_solidus_top) / span, 0.0, 1.0))
+
+    def convective_melt_fraction(self, T_p: float) -> float:
+        """
+        Melt fraction that sets the viscosity of the convective heat flux.
+
+        The mass-averaged melt fraction with ``viscosity_phi = "global"``, the
+        top-of-mantle one with ``"top"``.
+
+        Parameters
+        ----------
+        T_p : float
+            Potential temperature of the mantle [K]
+
+        Returns
+        -------
+        float
             Melt fraction [0-1]
         """
-        phi = (T_p - self.T_solidus) / (self.T_liquidus - self.T_solidus)
-        return np.clip(phi, 0.0, 1.0)
+        if self.viscosity_phi == 'top':
+            return self.top_melt_fraction(T_p)
+        return self.melt_fraction(T_p)
 
     def r_s(self, T_p) -> float:
         """
@@ -481,19 +583,9 @@ class BoundaryRunner:
         float
             Solidification radius [m]
         """
-        phi = self.melt_fraction(T_p)
-
-        if phi >= 1.0:
-            return (
-                self.core_radius
-            )  # Fully molten, solidification radius at core-mantle boundary
-        elif phi <= 0.0:
-            return self.planet_radius  # Fully solid, solidification radius at surface
-        else:
-            # Linear interpolation between core and surface based on melt fraction
-            return (
-                self.planet_radius**3 - phi * (self.planet_radius**3 - self.core_radius**3)
-            ) ** (1 / 3)
+        return solidification_radius(
+            T_p, self.T_solidus, self.T_liquidus, self.planet_radius, self.core_radius
+        )
 
     def drs_dTp(self, T_p: float) -> float:
         """
@@ -510,16 +602,9 @@ class BoundaryRunner:
             Derivative dr_s/dT_p [m/K]
         """
 
-        # Compute r_s
-        r_s = self.r_s(T_p)
-
-        # Compute dr_s/dT_p using the chain rule as derived in drs_dt
-        volume_diff = self.planet_radius**3 - self.core_radius**3
-        T_range = self.T_liquidus - self.T_solidus
-
-        dr_s_dT_p = -(volume_diff) / (3 * T_range * r_s**2)
-
-        return dr_s_dT_p
+        return d_solidification_radius_dT(
+            T_p, self.T_solidus, self.T_liquidus, self.planet_radius, self.core_radius
+        )
 
     def dT_pdt(self, T_p: float, T_surf: float, t: float) -> float:
         """
@@ -539,8 +624,8 @@ class BoundaryRunner:
         float
             Rate of change of potential temperature [K/s]
         """
-        # Calculate melt fraction
-        phi = self.melt_fraction(T_p)
+        # Melt fraction that sets the convective viscosity
+        phi = self.convective_melt_fraction(T_p)
 
         # Calculate convective heat flux
         q_m_val = self.q_m(T_p, T_surf, phi)
@@ -553,32 +638,72 @@ class BoundaryRunner:
             Q_val + self.tidal_term
         )
 
-        r_s_val = self.r_s(T_p)  # Update r_s_val based on current T_p
+        dT_pdt_val = numerator / self.heat_capacity(T_p)
 
-        # Calculate dr_s/dT_p for the latent heat term
-        dr_s_dT_p = self.drs_dTp(T_p)
+        return dT_pdt_val
 
-        # Energy balance denominator: sensible heat + latent heat
-        if r_s_val < self.planet_radius:
-            denominator = (
+    def heat_capacity(self, T_p: float) -> float:
+        """
+        Effective heat capacity of the mantle, sensible plus latent, plus the core's.
+
+        With ``sensible_heat = "molten"`` only the molten part of a partially
+        molten mantle cools with the potential temperature; with ``"whole"``
+        the whole mantle does. Either way the crystallisation front releases
+        latent heat as it advances. A wholly molten mantle has no front to
+        advance, and a wholly solid one cools as a whole, so neither draws on
+        the latent budget. With ``include_core_heat_capacity`` the core's heat
+        capacity is added throughout.
+
+        Under the adiabat model the molten part is the mass melt fraction of
+        the adiabat and the latent term is L M_mantle dphi/dT_p. With no
+        adiabatic gradient, pressure-independent melting curves and a uniform
+        density this reduces exactly to the linear model's solidification-front
+        form.
+
+        Parameters
+        ----------
+        T_p : float
+            Potential temperature of the mantle [K]
+
+        Returns
+        -------
+        float
+            Heat capacity [J/K], positive
+        """
+        whole = self.silicate_heat_capacity * self.mantle_mass
+        phi = self.melt_fraction(T_p)
+        if not 0.0 < phi < 1.0:
+            return whole + self.core_heat_capacity
+
+        if self.melt_curve is not None:
+            molten = self.silicate_heat_capacity * phi * self.mantle_mass
+            latent = (
+                self.heat_fusion_silicate * self.mantle_mass * self.melt_curve.dphi_dtmp(T_p)
+            )
+        else:
+            r_s_val = self.r_s(T_p)  # Update r_s_val based on current T_p
+
+            # Calculate dr_s/dT_p for the latent heat term
+            dr_s_dT_p = self.drs_dTp(T_p)
+
+            molten = (
                 (4 / 3)
                 * np.pi
                 * self.mantle_bulk_density
                 * self.silicate_heat_capacity
                 * (self.planet_radius**3 - r_s_val**3)
-                - 4
+            )
+            latent = (
+                -4
                 * np.pi
-                * r_s_val** 2
+                * r_s_val**2
                 * self.mantle_bulk_density
                 * self.heat_fusion_silicate
                 * dr_s_dT_p
             )
-        else:
-            denominator = self.silicate_heat_capacity * self.mantle_mass
 
-        dT_pdt_val = numerator / denominator
-
-        return dT_pdt_val
+        sensible = whole if self.sensible_heat == 'whole' else molten
+        return sensible + latent + self.core_heat_capacity
 
     def dT_surfdt(self, T_p: float, T_surf: float) -> float:
         """
@@ -596,7 +721,7 @@ class BoundaryRunner:
         dT_surfdt_val : float
             Rate of change of surface temperature [K/s]
         """
-        phi = self.melt_fraction(T_p)
+        phi = self.convective_melt_fraction(T_p)
         q_m_val = self.q_m(T_p, T_surf, phi)
 
         # Calculate thickness of boundary layer
@@ -721,15 +846,44 @@ class BoundaryRunner:
         # Extract results
         T_p_final = sol.y[0, -1]
         T_surf_final = sol.y[1, -1]
-        phi_final = self.melt_fraction(T_p_final)
-        visc_final = self.viscosity(T_p_final, T_surf_final, phi_final)
+        if self.melt_curve is not None:
+            # The exact melt state at the end of the step, rather than the
+            # interpolated curve the solver stepped on, supplies the reported
+            # melt fractions, the front and the profiles handed on.
+            state = self.melt_curve.model.state(T_p_final)
+            phi_final = state.phi_mass
+            phi_vol_final = state.phi_vol
+            # Depth of the rheological front as a fraction of the planet
+            # radius, the convention of the dummy, Aragog and SPIDER backends.
+            rf_depth = 1.0 - state.r_liq / self.planet_radius
+            m_liquid = phi_final * self.mantle_mass
+        else:
+            state = None
+            phi_final = self.melt_fraction(T_p_final)
+            phi_vol_final = phi_final
+            rf_depth = phi_final * (1.0 - self.core_frac)
+            r_s_fin = self.r_s(T_p_final)
+            m_liquid = (
+                (4 / 3)
+                * np.pi
+                * self.mantle_bulk_density
+                * (self.planet_radius**3 - r_s_fin**3)
+            )
+        # The convective quantities use the melt fraction that sets their
+        # viscosity, which is phi_final unless viscosity_phi = "top".
+        phi_conv_final = self.convective_melt_fraction(T_p_final)
+        if self.viscosity_phi == 'top':
+            log.info(
+                f'Top-of-mantle melt fraction for the convective viscosity: '
+                f'{phi_conv_final:.4f} (mantle average {phi_final:.4f})'
+            )
+        visc_final = self.viscosity(T_p_final, T_surf_final, phi_conv_final)
         f_radio_final = self.radioactive_heating(t_final) * self.mantle_mass
-        r_s_fin = self.r_s(T_p_final)
 
         # Log final timestep values to CSV
         if self.logging:
-            q_m_val = self.q_m(T_p_final, T_surf_final, phi_final)
-            ra_final = self.rayleigh_number(T_p_final, T_surf_final, phi_final)
+            q_m_val = self.q_m(T_p_final, T_surf_final, phi_conv_final)
+            ra_final = self.rayleigh_number(T_p_final, T_surf_final, phi_conv_final)
 
             with open(csv_log_file, mode='a', encoding='utf-8', newline='') as handle:
                 writer = csv.DictWriter(handle, fieldnames=csv_columns)
@@ -749,13 +903,10 @@ class BoundaryRunner:
                     }
                 )
 
-        m_liquid = (
-            (4 / 3) * np.pi * self.mantle_bulk_density * (self.planet_radius**3 - r_s_fin**3)
-        )
         m_solid = self.mantle_mass - m_liquid
 
         # Calculate boundary layer thickness
-        delta = self.boundary_layer_thickness(T_p_final, T_surf_final, phi_final)
+        delta = self.boundary_layer_thickness(T_p_final, T_surf_final, phi_conv_final)
 
         output = {
             'T_magma': T_p_final,
@@ -763,9 +914,9 @@ class BoundaryRunner:
             'T_surf': T_surf_final,
             'F_int': self.f_atm,
             'Phi_global': phi_final,
-            'Phi_global_vol': phi_final,
+            'Phi_global_vol': phi_vol_final,
             'F_radio': f_radio_final / (4 * np.pi * self.planet_radius**2),
-            'RF_depth': phi_final * (1.0 - self.core_frac),
+            'RF_depth': rf_depth,
             'M_mantle_liquid': m_liquid,
             'M_mantle_solid': m_solid,
             'F_tidal': self.tidal_term * self.mantle_mass / (4 * np.pi * self.planet_radius**2)
@@ -773,15 +924,81 @@ class BoundaryRunner:
             else 0.0,
             'M_mantle': self.mantle_mass,
             'boundary_layer_thickness': delta,
+            # Effective specific heat capacity, including the latent heat the
+            # crystallisation front releases per kelvin of cooling.
+            # The core's share, when included, is left out so Cp_eff stays the
+            # mantle's own, as the dummy backend reports it.
+            'Cp_eff': (self.heat_capacity(T_p_final) - self.core_heat_capacity)
+            / self.mantle_mass,
         }
 
         # Store arrays
-        interior_o.phi = np.array([output['Phi_global']])
-        interior_o.mass = np.array([output['M_mantle']])
-        interior_o.visc = np.array([visc_final])
-        interior_o.density = np.array([self.mantle_bulk_density])
-        interior_o.temp = np.array([output['T_magma']])
-        interior_o.pres = np.array([hf_row['P_surf']])
-        interior_o.radius = np.array([self.core_radius, hf_row['R_int']])
+        if state is not None:
+            self.publish_resolved_mantle(interior_o, state, T_surf_final)
+        else:
+            interior_o.phi = np.array([output['Phi_global']])
+            interior_o.mass = np.array([output['M_mantle']])
+            interior_o.visc = np.array([self.tidal_layer_viscosity(visc_final, phi_final)])
+            interior_o.density = np.array([self.mantle_bulk_density])
+            interior_o.temp = np.array([output['T_magma']])
+            interior_o.pres = np.array([hf_row['P_surf']])
+            interior_o.radius = np.array([self.core_radius, hf_row['R_int']])
+            # The single isothermal layer is already the mantle's profile.
+            interior_o.temp_profile = None
 
         return sim_time, output
+
+    def tidal_layer_viscosity(self, own: float, phi: float) -> float:
+        """
+        Viscosity of one mantle layer as handed to the tides modules.
+
+        Parameters
+        ----------
+        own : float
+            This backend's own viscosity of the layer, from `viscosity_model` [Pa s]
+        phi : float
+            Melt fraction of the layer [0-1]
+
+        Returns
+        -------
+        float
+            `own` with ``tidal_viscosity = "boundary"``; with ``"kervazo"`` the
+            Kervazo et al. (2021) melt-fraction rheology the dummy backend hands
+            the tides modules, matching the shear and bulk moduli [Pa s]
+        """
+        if self.tidal_viscosity == 'kervazo':
+            return float(eval_rheoparam(phi, 'visc'))
+        return float(own)
+
+    def publish_resolved_mantle(self, interior_o: Interior_t, state, T_surf: float):
+        """
+        Publish the adiabat-resolved mantle for the tides modules and the structure.
+
+        The shells carry the mass-weighted melt fraction and temperature of the
+        adiabat over them, and each takes the viscosity this backend's own
+        rheology assigns to that melt fraction and temperature. The adiabat
+        itself is handed to the structure re-solve on pressure, which a shell
+        keeps when the re-solve moves its radius.
+
+        Parameters
+        ----------
+        interior_o : Interior_t
+            Interior model object receiving the layer arrays
+        state : adiabat.MeltState
+            Melt state of the mantle at the end of the step
+        T_surf : float
+            Surface temperature of the planet [K]
+        """
+        profile = self.melt_curve.model.profile
+        publish_shells(interior_o, self.shells, profile, state)
+        interior_o.visc = np.array(
+            [
+                self.tidal_layer_viscosity(self.viscosity(tmp, T_surf, phi), phi)
+                for tmp, phi in zip(interior_o.temp, interior_o.phi)
+            ],
+            dtype=float,
+        )
+        interior_o.temp_profile = (
+            np.array(profile.pressure, dtype=float),
+            np.array(state.temperature, dtype=float),
+        )

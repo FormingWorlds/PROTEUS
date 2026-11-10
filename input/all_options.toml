@@ -574,13 +574,14 @@ config_version = "3.0"
 
     # Boundary backend (Schaefer+2016 0-D box model with prescribed solidus/liquidus)
     [interior_energetics.boundary]
-        T_solidus                 = 1420.0       # mantle solidus [K]
-        T_liquidus                = 2020.0       # mantle liquidus [K]
+        melt_model                = "linear"     # melt fraction from T_p against the constants below in one layer ("linear"), or from a mantle adiabat against the tabulated melting curves, with the mantle split into shells ("adiabat")
+        T_solidus                 = 1420.0       # mantle solidus [K]; read only when melt_model = "linear"
+        T_liquidus                = 2020.0       # mantle liquidus [K]; read only when melt_model = "linear"
         critical_rayleigh_number  = 1100.0       # critical Rayleigh number for onset of convection
         nusselt_exponent          = 0.33         # Nusselt-Rayleigh scaling exponent
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
-        atm_heat_capacity         = 1.7e4        # fallback atmosphere heat capacity [J/kg/K]
-        atm_heat_capacity_const   = true         # use the constant fallback heat capacity above
+        atm_heat_capacity         = 1.7e4        # atmosphere heat capacity [J/kg/K]; the fallback before the first atmosphere solve when atm_heat_capacity_const = false
+        atm_heat_capacity_const   = true         # true: constant atm_heat_capacity; false: layer-mass-weighted mean of the last atmosphere solve
         core_shear                = 1.0e9        # core shear modulus [Pa]
         core_bulk                 = 1.0e12       # core bulk modulus [Pa]
         thermal_conductivity      = 4.2          # thermal conductivity [W/m/K]
@@ -592,6 +593,10 @@ config_version = "3.0"
         creep_parameter           = 26.0         # Arrhenius creep parameter
         viscosity_prefactor       = 2.4e-4       # VFT magma-ocean prefactor [Pa s]
         viscosity_activation_temp = 4600.0       # VFT magma-ocean activation temperature [K]
+        include_core_heat_capacity = false       # add core_heatcap * M_core to the heat capacity, as the dummy does
+        sensible_heat             = "molten"     # partly molten mantle: sensible heat of the molten part ("molten") or the whole mantle ("whole", as the dummy)
+        tidal_viscosity           = "boundary"   # viscosity handed to the tides modules: own viscosity_model ("boundary") or the dummy's Kervazo+21 rheology ("kervazo")
+        viscosity_phi             = "global"     # melt fraction behind the convective viscosity: mantle average ("global") or the top of the mantle on the adiabat ("top", needs melt_model = "adiabat")
         logging                   = false        # write Boundary diagnostic CSVs
 
 # ----------------------------------------------------
