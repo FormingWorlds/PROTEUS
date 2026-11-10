@@ -15,7 +15,7 @@ While the seal holds, the held volatiles reach the atmosphere only by a leak wit
 - `tomlkit` and `matplotlib`; both come with `pip install -e ".[develop]"`.
 
 Run the commands from the PROTEUS folder. Run the Python blocks in one Python session, in the order of the steps.
-Each run took about 18 minutes on a workstation.
+Each run took about 20 minutes on a workstation.
 
 ## Step 1: the configuration
 
