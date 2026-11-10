@@ -382,6 +382,8 @@ A closed seal opens when $\phi_\mathrm{top} \ge$ `phi_open` (default `phi_close 
 
 The default `delta_close` is 10 km. On a crust that grows on the mesh, a coarse mesh moves the thickness in steps of one cell: on the 79-cell mesh of the [tutorial](../Tutorials/lid_seal.md) the top cell is 65.8 km thick (the mesh is not uniform in radius). The seal then closes when the top cell freezes, for any `delta_close` below that cell. A thin chill crust, with `delta_close` near 0.3 m, closes only through the sub-grid lid.
 
+An open seal reads the sub-grid lid at any `lid_weight` above 0, however small. A lid with a small weight can therefore close the seal, and the seal then holds the whole melt inventory, not a share scaled by the weight. A seal closed by the sub-grid lid stays closed when `lid_weight` falls to 0, also when the weight falls over several steps: from that step on it reads the mesh band below `phi_open`.
+
 The seal covers the whole surface at once. A planet with a molten dayside and a frozen nightside, without heat transport between them, is outside this rule.
 
 ### The leak
