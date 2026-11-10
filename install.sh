@@ -577,10 +577,9 @@ stop_on_unusable_depot() {
     die "JULIA_DEPOT_PATH=$value is relative, names the home folder of another user or holds a literal \$; name an absolute folder, or $remedy."
 }
 
-# Give this install its own Julia packages and compile files: <prefix>/julia_depot, and the trailing
-# colon keeps the stdlib compile files of the Julia binary. A value of the user stays with a warning,
-# unless -i on a terminal gets a yes; a depot inherited from another install does not stay. An old
-# install hears the cost before the download.
+# Give this install its own Julia packages: <prefix>/julia_depot, where the colon keeps the stdlib
+# compile files. A value of the user stays with a warning unless -i gets a yes; a depot of another
+# install does not stay. An old install hears the cost before the download.
 setup_julia_depot() {
     [ -n "${CONDA_PREFIX:-}" ] || die "CONDA_PREFIX is not set, so the Julia depot of this install has no place."
     local value="${JULIA_DEPOT_PATH:-}" own="$CONDA_PREFIX/julia_depot:" old="$HOME/.julia" first parent name lines
