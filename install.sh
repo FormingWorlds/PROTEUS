@@ -602,7 +602,7 @@ setup_julia_depot() {
         elif [ -z "${PIXI_ENVIRONMENT_NAME:-}" ] && [ "$INTERACTIVE" = true ] && [ -t 0 ] && [ -t 3 ] \
             && ask_yn "JULIA_DEPOT_PATH is $value. Use a Julia depot of its own for this install?" n; then
             lines="$(grep -snE '^[[:space:]]*(export[[:space:]]+)?JULIA_DEPOT_PATH=' "$HOME"/.zshenv "$HOME"/.zprofile \
-                "$HOME"/.zshrc "$HOME"/.profile "$HOME"/.bash_profile "$HOME"/.bashrc | cut -d: -f1,2 | xargs || true)"
+                "$HOME"/.zshrc "$HOME"/.profile "$HOME"/.bash_profile "$HOME"/.bashrc | cut -d: -f1,2 | paste -sd" " - || true)"
             warn "This install uses $own. conda activate sets it, but a new interactive shell inside the environment reads your shell start file again and gets $value back."
             warn "Remove the line that sets JULIA_DEPOT_PATH from your shell start file${lines:+ ($lines)}."
             value="$own"
@@ -866,7 +866,7 @@ while [ "$#" -gt 0 ]; do
             echo "  --conda-env <name>  The conda environment to use, or to make, when none or base"
             echo "               is active (default: proteus)"
             echo "  --ignore-julia-depot-path  Keep a JULIA_DEPOT_PATH that is set, with no warning"
-            echo "               and no question in -i mode"
+            echo "               about a shared depot and no question in -i mode"
             echo "  --help       Show this message"
             echo ""
             echo "Default: download the essential data (~3 GB): the default-config and tutorial"
