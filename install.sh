@@ -583,7 +583,7 @@ stop_on_unusable_depot() {
 # install does not stay. An old install hears the cost before the download.
 setup_julia_depot() {
     [ -n "${CONDA_PREFIX:-}" ] || die "CONDA_PREFIX is not set, so the Julia depot of this install has no place."
-    local value="${JULIA_DEPOT_PATH:-}" own="$CONDA_PREFIX/julia_depot:" old="$HOME/.julia" first parent name lines
+    local value="${JULIA_DEPOT_PATH:-}" own="$CONDA_PREFIX/julia_depot:" old="$HOME/.julia" first parent name lines yes=false
     first="${value%%:*}"
     first="${first/#\~/$HOME}"
     parent="$(dirname -- "${first:-.}")"
@@ -605,7 +605,7 @@ setup_julia_depot() {
                 "$HOME"/.zshrc "$HOME"/.profile "$HOME"/.bash_profile "$HOME"/.bashrc | cut -d: -f1,2 | paste -sd" " - || true)"
             warn "This install uses $own. conda activate sets it, but a new interactive shell inside the environment reads your shell start file again and gets $value back."
             warn "Remove the line that sets JULIA_DEPOT_PATH from your shell start file${lines:+ ($lines)}."
-            value="$own"
+            value="$own" yes=true
             old="${first:-$HOME/.julia}"
         else
             warn "JULIA_DEPOT_PATH stays at $value, so this install shares its Julia packages with anything else that uses that value."
@@ -635,7 +635,7 @@ setup_julia_depot() {
             warn "$old stays as it is; do not remove the juliaup folder of $HOME/.julia."
             if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
                 warn "To stay on the old depot, change JULIA_DEPOT_PATH in pixi.toml and run again."
-            elif [ "$old" = "$HOME/.julia" ]; then
+            elif [ "$old" = "$HOME/.julia" ] && [ "$yes" = false ]; then
                 warn "To stay on the old depot, run these 4 commands (for an old depot in another folder, name that folder):"
                 warn "  conda env config vars set -p $CONDA_PREFIX JULIA_DEPOT_PATH=$HOME/.julia:"
                 warn "  conda deactivate"
@@ -866,7 +866,8 @@ while [ "$#" -gt 0 ]; do
             echo "  --conda-env <name>  The conda environment to use, or to make, when none or base"
             echo "               is active (default: proteus)"
             echo "  --ignore-julia-depot-path  Keep a JULIA_DEPOT_PATH that is set, with no warning"
-            echo "               about a shared depot and no question in -i mode"
+            echo "               about a shared depot and no question in -i mode, except the depot"
+            echo "               of another install or of a gone environment"
             echo "  --help       Show this message"
             echo ""
             echo "Default: download the essential data (~3 GB): the default-config and tutorial"
