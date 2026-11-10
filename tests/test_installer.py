@@ -5231,12 +5231,13 @@ class TestJuliaDepot:
         ignore=False,
         terminal=None,
         fd3='&0',
+        stdin_tty=True,
         **env,
     ):
         """Run the shipped setup_julia_depot and print the variable and the old depot it leaves.
 
-        ``terminal`` bytes are typed on a pseudo-terminal that is stdin and, unless ``fd3``
-        names a file, fd 3; what the script wrote there is in ``result.terminal``.
+        ``terminal`` bytes are typed on a pseudo-terminal that is stdin (unless ``stdin_tty``
+        is False) and, unless ``fd3`` names a file, fd 3; its output is in ``result.terminal``.
         """
         tmp = site['tmp']
         defs = (
@@ -5275,13 +5276,14 @@ class TestJuliaDepot:
             except OSError:
                 pytest.skip('this host refuses a pseudo-terminal (pty)')
             os.write(master, terminal)
-            defs = f'exec 3>{fd3}\n' + defs
+            defs = f'exec 3>{fd3 if stdin_tty else f"&{stdin}"}\n' + defs
         try:
             result = subprocess.run(
                 ['bash', '-c', defs + report],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                stdin=stdin,
+                stdin=stdin if stdin_tty else subprocess.DEVNULL,
+                pass_fds=() if stdin_tty or master is None else (stdin,),
                 text=True,
                 env=full_env,
                 timeout=25,
@@ -5486,6 +5488,13 @@ class TestJuliaDepot:
         result = self._run(site, '/big/x:', interactive=True, terminal=b'y\n', HOME=str(home))
         named = next(ln for ln in result.stdout.splitlines() if 'Remove the line' in ln)
         assert f'({home}/.bashrc:1)' in named
+
+    def test_no_question_when_stdin_is_no_terminal(self, site):
+        """With input from a file the answer cannot be typed, so no question shows on the terminal."""
+        result = self._run(site, '/big/x:', interactive=True, terminal=b'', stdin_tty=False)
+        assert result.returncode == 0, result.stdout
+        assert 'Use a Julia depot' not in result.terminal
+        assert self._warns(result, 'shares')
 
     def test_no_question_on_pixi(self, site):
         """Pixi sets the value on each activation, so a yes would not hold: pixi.toml is named."""
