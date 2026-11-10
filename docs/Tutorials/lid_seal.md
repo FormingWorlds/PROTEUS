@@ -76,8 +76,8 @@ print(f"held: H2O {close['H2O_kg_sealed']:.3e} kg, CO2 {close['CO2_kg_sealed']:.
 The run printed:
 
 ```text
-closed at 97144 yr, crust 65.8 km, top-cell melt fraction 2.6e-04, mantle melt fraction 0.192
-held: H2O 6.924e+18 kg, CO2 2.574e+17 kg
+closed at 96938 yr, crust 65.8 km, top-cell melt fraction 5.0e-05, mantle melt fraction 0.192
+held: H2O 6.924e+18 kg, CO2 2.572e+17 kg
 ```
 
 The seal closes when the top mesh cell freezes.
@@ -99,8 +99,8 @@ print(f"held at {on['Time'].iloc[-1]:.0f} yr: {on['H2O_kg_sealed'].iloc[-1] / cl
 The run printed:
 
 ```text
-largest relative error 1.1e-15
-held at 140000 yr: 0.651 of the closing value
+largest relative error 1.6e-15
+held at 140000 yr: 0.650 of the closing value
 ```
 
 The code uses the exact solution over each step, so only round-off remains, whatever the step length.
@@ -117,15 +117,15 @@ print(f"H2O in the melt without the seal: {end_off['H2O_kg_liquid']:.2e} kg")
 The run printed:
 
 ```text
-H2O in the atmosphere at 140 kyr: seal 2.40e+18 kg, no seal 2.22e+15 kg
-surface pressure: seal 1.315 bar, no seal 1.035 bar
+H2O in the atmosphere at 140 kyr: seal 2.41e+18 kg, no seal 2.23e+15 kg
+surface pressure: seal 1.316 bar, no seal 1.035 bar
 H2O in the melt without the seal: 6.92e+18 kg
 ```
 
 Before the closing step the 2 runs agree to the last digit.
 After it they part.
-Without the seal, the chemistry keeps the water dissolved in the melt, because the melt is still 19 % of the mantle and water is very soluble.
-With the seal, the leak takes a fixed share of the held water per year, and it does not depend on the solubility, so a third of the held water reaches the atmosphere in 43 kyr.
+Without the seal, the chemistry keeps the water dissolved in the melt, because the melt is still 13 % of the mantle at 140 kyr and water is very soluble.
+With the seal, the leak takes a fixed share of the held water per year, and it does not depend on the solubility, so 35 % of the held water reaches the atmosphere in 43 kyr.
 `tau_leak` therefore sets how fast a sealed planet degasses; with the default, infinity, the held water stays under the crust.
 
 The block plots the water in the atmosphere and under the crust:
