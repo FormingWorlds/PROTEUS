@@ -2978,6 +2978,44 @@ class TestAgniJuliaVersion:
         assert result.stderr.splitlines() == (expected if warned else [])
 
     @pytest.mark.parametrize(
+        'name', ['JuliaManifest-v1.13.toml', 'Manifest-v1.13.toml', 'JuliaManifest.toml']
+    )
+    def test_reads_the_manifest_that_julia_reads(self, tmp_path, name):
+        """The version comes from the first of the 4 names, and the warning names that file."""
+        agni = tmp_path / 'AGNI'
+        agni.mkdir()
+        (agni / name).write_text('julia_version = "1.11.5"\n')
+        (agni / 'Manifest.toml').write_text('julia_version = "1.13.0"\n')
+        exe = _stub(tmp_path / 'jl' / 'julia', '#!/bin/sh\necho "julia version 1.13.1"\n')
+        defs = (
+            'set -euo pipefail\nREQUIRED_JULIA_MAJOR=1\nREQUIRED_JULIA_MINOR=13\n'
+            + _install_sh_blocks("RED='", 'info()')
+            + _install_sh_function('julia_version_of')
+            + _install_sh_function('note_agni_julia_version')
+        )
+        defs += (
+            _install_sh_function('julia_manifest_of')
+            if 'julia_manifest_of()' in INSTALL_SH.read_text()
+            else ''
+        )
+        result = subprocess.run(
+            ['bash', '-c', defs + f'note_agni_julia_version {shlex.quote(str(agni))}\n'],
+            capture_output=True,
+            text=True,
+            env={'PATH': '/usr/bin:/bin', 'PYTHON_JULIAPKG_EXE': str(exe)},
+            timeout=10,
+        )
+        assert result.returncode == 0, result.stderr
+        assert f'built with Julia 1.11.5 (its {name})' in result.stderr
+
+    def test_phase_5_takes_an_agni_with_any_manifest_name_as_installed(self):
+        """An AGNI with only a versioned or Julia-prefixed Manifest is installed, not cloned again."""
+        text = INSTALL_SH.read_text()
+        main = text[text.index('phase 5 "AGNI') : text.index('phase 6 "Python submodules"')]
+        assert 'Manifest.toml' not in main
+        assert main.count('julia_manifest_of "$SCRIPT_DIR/AGNI"') == 2
+
+    @pytest.mark.parametrize(
         ('built', 'warned'),
         [('1.13.1', True), ('1.11.5', False)],
         ids=['agni-built-with-1.13', 'agni-built-with-1.11'],
@@ -5163,12 +5201,13 @@ class TestJuliaDepot:
         interactive=False,
         ignore=False,
         terminal=None,
+        fd3='&0',
         **env,
     ):
         """Run the shipped setup_julia_depot and print the variable and the old depot it leaves.
 
-        ``terminal`` bytes are typed on a pseudo-terminal that is stdin and fd 3; what
-        the script wrote there is in the attribute ``terminal`` of the result.
+        ``terminal`` bytes are typed on a pseudo-terminal that is stdin and, unless ``fd3``
+        names a file, fd 3; what the script wrote there is in ``result.terminal``.
         """
         tmp = site['tmp']
         defs = (
@@ -5207,7 +5246,7 @@ class TestJuliaDepot:
             except OSError:
                 pytest.skip('this host refuses a pseudo-terminal (pty)')
             os.write(master, terminal)
-            defs = 'exec 3>&0\n' + defs
+            defs = f'exec 3>{fd3}\n' + defs
         try:
             result = subprocess.run(
                 ['bash', '-c', defs + report],
@@ -5375,6 +5414,39 @@ class TestJuliaDepot:
         assert 'Use a Julia depot' not in result.stdout + getattr(result, 'terminal', '')
         assert self._value(result) == '/big/x:'
         assert self._warns(result, 'shares')
+
+    def test_no_question_when_the_saved_stdout_is_a_file(self, site):
+        """After bash install.sh > file the question would go to the file, so none is asked."""
+        saved = site['tmp'] / 'saved.txt'
+        result = self._run(site, '/big/x:', interactive=True, terminal=b'y\n', fd3=str(saved))
+        assert result.returncode == 0, result.stdout
+        assert 'Use a Julia depot' not in result.terminal + saved.read_text()
+        assert self._value(result) == '/big/x:'
+
+    def test_question_on_yes_with_a_leading_colon_moves_from_the_home_depot(self, site):
+        """A leading colon puts ~/.julia first, so a yes moves from ~/.julia and says so."""
+        home = site['tmp'] / 'home'
+        (home / '.julia' / 'packages').mkdir(parents=True)
+        self._agni_manifest(site)
+        result = self._run(site, ':', interactive=True, terminal=b'y\n')
+        assert result.returncode == 0, result.stdout
+        assert self._marker(site) == f'{home}/.julia'
+        assert f'{home}/.julia stays as it is' in result.stdout
+
+    def test_question_on_yes_names_only_lines_that_set_the_value(self, site):
+        """A comment or another variable that holds the name is no line to remove."""
+        home = site['tmp'] / 'home'
+        (home / '.zshrc').write_text(
+            '# export JULIA_DEPOT_PATH=/old:\n'
+            'echo JULIA_DEPOT_PATH=/x\n'
+            '  export JULIA_DEPOT_PATH=/big/x:\n'
+            'JULIA_DEPOT_PATH=/big/x:; export JULIA_DEPOT_PATH\n'
+        )
+        result = self._run(site, '/big/x:', interactive=True, terminal=b'y\n')
+        named = next(ln for ln in result.stdout.splitlines() if 'Remove the line' in ln)
+        assert f'{home}/.zshrc:3 {home}/.zshrc:4' in named
+        assert '.zshrc:1' not in named
+        assert '.zshrc:2' not in named
 
     def test_no_question_on_pixi(self, site):
         """Pixi sets the value on each activation, so a yes would not hold: pixi.toml is named."""
