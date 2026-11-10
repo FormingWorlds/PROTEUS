@@ -2978,11 +2978,9 @@ class TestAgniJuliaVersion:
         ]
         assert result.stderr.splitlines() == (expected if warned else [])
 
-    @pytest.mark.parametrize(
-        'name', ['JuliaManifest-v1.13.toml', 'Manifest-v1.13.toml', 'JuliaManifest.toml']
-    )
-    def test_reads_the_manifest_that_julia_reads(self, tmp_path, name):
+    def test_reads_the_manifest_that_julia_reads(self, tmp_path):
         """The version comes from the first of the 4 names, and the warning names that file."""
+        name = 'JuliaManifest.toml'
         agni = tmp_path / 'AGNI'
         agni.mkdir()
         (agni / name).write_text('julia_version = "1.11.5"\n')
@@ -3004,6 +3002,39 @@ class TestAgniJuliaVersion:
         )
         assert result.returncode == 0, result.stderr
         assert f'built with Julia 1.11.5 (its {name})' in result.stderr
+
+    def test_julia_manifest_of_prints_the_first_name_that_exists(self, tmp_path):
+        """Over each set of the 4 names Julia reads, the helper prints the first in Julia's order."""
+        names = [
+            'JuliaManifest-v1.13.toml',
+            'Manifest-v1.13.toml',
+            'JuliaManifest.toml',
+            'Manifest.toml',
+        ]
+        defs = 'REQUIRED_JULIA_MAJOR=1\nREQUIRED_JULIA_MINOR=13\n' + _install_sh_function(
+            'julia_manifest_of'
+        )
+        for mask in range(1, 16):
+            folder = tmp_path / str(mask)
+            folder.mkdir()
+            present = [n for i, n in enumerate(names) if mask >> i & 1]
+            for name in present:
+                (folder / name).write_text('')
+            out = subprocess.run(
+                ['bash', '-c', defs + f'julia_manifest_of {shlex.quote(str(folder))}'],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            assert out.returncode == 0
+            assert out.stdout == f'{folder}/{present[0]}\n', present
+        out = subprocess.run(
+            ['bash', '-c', defs + f'julia_manifest_of {shlex.quote(str(tmp_path))}'],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert (out.returncode, out.stdout) == (1, '')
 
     def test_phase_5_takes_an_agni_with_any_manifest_name_as_installed(self):
         """An AGNI with only a versioned or Julia-prefixed Manifest is installed, not cloned again."""
@@ -5445,6 +5476,16 @@ class TestJuliaDepot:
         assert f'{home}/.zshrc:3 {home}/.zshrc:4' in named
         assert '.zshrc:1' not in named
         assert '.zshrc:2' not in named
+
+    @pytest.mark.parametrize('folder', ["o'brien", 'ho me', 'back\\slash'])
+    def test_question_on_yes_names_the_line_in_any_home_folder(self, site, folder):
+        """A quote, a space or a backslash in the home folder still gives the file and line."""
+        home = site['tmp'] / folder
+        home.mkdir()
+        (home / '.bashrc').write_text('export JULIA_DEPOT_PATH=/big/x:\n')
+        result = self._run(site, '/big/x:', interactive=True, terminal=b'y\n', HOME=str(home))
+        named = next(ln for ln in result.stdout.splitlines() if 'Remove the line' in ln)
+        assert f'({home}/.bashrc:1)' in named
 
     def test_no_question_on_pixi(self, site):
         """Pixi sets the value on each activation, so a yes would not hold: pixi.toml is named."""
