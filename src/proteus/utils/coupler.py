@@ -991,6 +991,16 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'boundary_layer_conductivity',
         'esc_kg_cumulative',
         'f_remelt',
+        # the Aragog lid: zero is no lid, and the interior writes them at every step
+        'lid_conductance',
+        'lid_delta',
+        'lid_delta_on',
+        'lid_F_diff',
+        'lid_F_open',
+        'lid_T_base',
+        'lid_T_node',
+        'lid_T_surface',
+        'lid_weight',
         'M_accreted_rock',
         'M_core_target',
         'M_desiccated',
@@ -1073,6 +1083,15 @@ def GetHelpfileKeys():
         # Temperatures
         'T_surf',           # global surface temperature [K]
         'T_magma',          # global outgassing temperature [K]
+        'lid_weight',       # weight of the Aragog sub-grid lid [1]
+        'lid_conductance',  # conductance of the Aragog sub-grid lid [W m-2 K-1]
+        'lid_delta',        # thickness of the Aragog sub-grid lid; 0 without the lid, read with lid_weight [m]
+        'lid_delta_on',     # onset thickness of the Aragog sub-grid lid; 0 without the lid [m]
+        'lid_T_surface',    # surface temperature of the Aragog sub-grid lid [K]
+        'lid_T_base',       # base temperature of the Aragog sub-grid lid [K]
+        'lid_T_node',       # top basic node of the Aragog mesh [K]
+        'lid_F_open',       # flux of the open part 1 - w of the surface [W m-2]
+        'lid_F_diff',       # F_int of the step minus the F_atm it started from; 0 in grey_body mode [W m-2]
         'T_cmb',           # core temperature: the bottom mantle cell, or the core state with core_bc = core_module or bower2018 [K]
         'T_cmb_node',      # mantle temperature at the core-mantle boundary basic node; with core_bc = core_module the temperature of the bottom-cell entropy at P_cmb, so the CMB contrast is T_cmb - T_cmb_node, or core_T_top - T_cmb_node with stratification [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]

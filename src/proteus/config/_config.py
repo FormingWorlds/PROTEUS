@@ -511,6 +511,49 @@ def observe_resolved_atmosphere(instance, attribute, value):
         raise ValueError('Observational synthesis requires that atmos_clim != dummy')
 
 
+def lid_requires_the_skin_atmosphere(instance, attribute, value):
+    """A live Aragog lid acts on the atmosphere only through the skin of AGNI or the dummy.
+
+    The fixed-flux dummy (``fixed_flux > 0``), the saturation skin and ``prevent_warming`` are
+    refused with the lid.
+
+    The interior-side rules of the lid are in ``_interior._check_aragog_lid``.
+    """
+    ie = instance.interior_energetics
+    if ie.module != 'aragog' or not ie.aragog.lid_mush_base:
+        return
+    atm = instance.atmos_clim
+    if atm.module == 'janus':
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true needs atmos_clim.module = "agni" '
+            'or "dummy", not atmos_clim.module = "janus": JANUS does not read the lid.'
+        )
+    if atm.surf_state != 'skin':
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true needs atmos_clim.surf_state = '
+            f"'skin', got {atm.surf_state!r}: only the skin carries the lid to the atmosphere."
+        )
+    fixed_flux = getattr(getattr(atm, 'dummy', None), 'fixed_flux', -1.0)
+    if atm.module == 'dummy' and fixed_flux > 0:
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true cannot be used with '
+            f'atmos_clim.dummy.fixed_flux = {fixed_flux!r}: the fixed-flux dummy returns its '
+            'flux without the skin, so the lid does not reach the atmosphere.'
+        )
+    if getattr(getattr(instance, 'planet', None), 'prevent_warming', False):
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true cannot be used with '
+            'planet.prevent_warming = true: prevent_warming clamps F_atm while the open part of '
+            'the lid keeps the skin flux, so the flux balance of the lid does not close.'
+        )
+    if getattr(atm, 'surface_d', None) == 'saturation':
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true cannot be used with '
+            "atmos_clim.surface_d = 'saturation': that skin has no thickness while no condensate "
+            'layer has formed, and a condensate layer over the lid is not modelled.'
+        )
+
+
 def janus_escape_atmosphere(instance, attribute, value):
     """ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled."""
     if (
@@ -853,7 +896,8 @@ class Config:
         ),
     )
     atmos_clim: AtmosClim = field(
-        factory=AtmosClim, validator=(saturation_skin_warns_without_condensates,)
+        factory=AtmosClim,
+        validator=(saturation_skin_warns_without_condensates, lid_requires_the_skin_atmosphere),
     )
     atmos_chem: AtmosChem = field(factory=AtmosChem)
     escape: Escape = field(

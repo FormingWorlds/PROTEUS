@@ -247,7 +247,7 @@ class Planet:
             tcmb_init) anchor into a target entropy via PALEOS-2phase
             lookup, then hands that S to the interior solver as if it
             were the isentropic IC.
-        'accretion': White & Li (2025) parameterization.
+        'accretion': White & Li (2025)[^cite-white2025] parameterization.
         'isentropic': set the initial specific entropy directly via
             ini_entropy + ini_dsdr (bypasses PALEOS lookup; matches the
             CHILI intercomparison protocol). The interior solver maps the
@@ -288,7 +288,7 @@ class Planet:
     tcenter_init: float
         Center temperature [K] (linear only).
     f_accretion: float
-        Accretion heat retention [0-1] (accretion mode, White & Li 2025).
+        Accretion heat retention [0-1] (accretion mode, White & Li (2025)[^cite-white2025]).
     f_differentiation: float
         Differentiation heat retention [0-1] (accretion mode).
     ini_entropy: float
@@ -345,7 +345,8 @@ class Planet:
             framework lands.
     prevent_warming: bool
         When True, require the planet to monotonically cool over time.
-        Enforced in all atmosphere modules and termination checks.
+        Enforced in all atmosphere modules and termination checks. Refused with the
+        sub-grid lid (interior_energetics.aragog.lid_mush_base = true).
     R_int_override: float
         Bypass the radius root finder and force a fixed interior radius [m];
         'none' (default) uses the root finder. Used for SPIDER/Aragog parity

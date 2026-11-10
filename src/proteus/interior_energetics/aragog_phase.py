@@ -238,6 +238,39 @@ def build_mixed_phase_params(
     )
 
 
+def solid_rheology_kwargs(config: Config) -> dict:
+    """Return the rheology keyword of the aragog solid phase and JAX phase parameters.
+
+    Parameters
+    ----------
+    config : Config
+        The PROTEUS configuration.
+
+    Returns
+    -------
+    dict
+        Empty when the rheology is off, so that the aragog defaults apply; otherwise
+        ``{'rheology': SolidRheologyParams(enabled=True)}``.
+
+    Raises
+    ------
+    RuntimeError
+        If the rheology is on and the installed aragog solver does not read it.
+    """
+    if config.interior_energetics.aragog.rheology.enabled is not True:
+        return {}
+
+    from aragog.rheology import SolidRheologyParams
+    from aragog.solver import EntropySolver
+
+    if not hasattr(EntropySolver, '_rheology_enabled'):
+        raise RuntimeError(
+            'interior_energetics.aragog.rheology.enabled = true needs an aragog whose entropy '
+            'solver reads the rheology; the installed aragog does not'
+        )
+    return {'rheology': SolidRheologyParams(enabled=True)}
+
+
 def build_jax_phase_params(config: Config) -> PhaseParams:
     """Build the JAX phase parameters from a PROTEUS config.
 
@@ -282,6 +315,7 @@ def build_jax_phase_params(config: Config) -> PhaseParams:
         phase_smoothing_width=_JAX_PHASE_SMOOTHING_WIDTH,
         separation_viscosity=inputs.separation_viscosity,
         separation_buoyancy=inputs.separation_buoyancy,
+        **solid_rheology_kwargs(config),
     )
 
 
