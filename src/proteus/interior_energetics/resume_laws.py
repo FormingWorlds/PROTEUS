@@ -23,6 +23,8 @@ log = logging.getLogger('fwl.' + __name__)
 
 LAW_FIELDS = ('separation_viscosity', 'separation_buoyancy')
 UNRECORDED_VISCOSITY = 'melt'  # aragog's default, which a record without the field ran under
+RHEOLOGY_KEY = 'interior_energetics.aragog.rheology.enabled'
+LID_KEY = 'interior_energetics.aragog.lid_mush_base'
 # The permission to switch a separation law holds for one resume, so the record keeps it off.
 RECORD_OVERRIDES = {'interior_energetics.aragog.allow_resume_law_change': False}
 
@@ -104,6 +106,24 @@ def check_resume_separation_laws(
     aragog = config.interior_energetics.aragog
     in_file = _aragog_table(config_path)[1]
     switches, refusals, notes = [], [], []
+
+    def switch(field, key, old, new, source=''):
+        """Record a changed law: a switch with a warning when allowed, else a refusal."""
+        switches.append((field, old, new))
+        if aragog.allow_resume_law_change:
+            notes.append(
+                (
+                    logging.WARNING,
+                    f'Resume switches {key} from {old!r} to {new!r} (allow_resume_law_change = true)',
+                )
+            )
+        else:
+            refusals.append(
+                f'{key} is {new!r} in {config_path}, but the run was written with {old!r}{source}; '
+                f'set it to {old!r} to keep the law, or set interior_energetics.aragog.'
+                'allow_resume_law_change = true to switch it at the resume'
+            )
+
     for field in LAW_FIELDS:
         key = f'interior_energetics.aragog.{field}'
         new = getattr(aragog, field)
@@ -122,22 +142,26 @@ def check_resume_separation_laws(
         else:
             refusals.append(_unrecorded(key, stored_path, module, config_path))
             continue
-        if old == new:
-            continue
-        switches.append((field, old, new))
-        if aragog.allow_resume_law_change:
+        if old != new:
+            switch(field, key, old, new, f' ({source})')
+    # A record without the rheology table ran with the rheology off, one without
+    # lid_mush_base without the lid; with no Aragog table at all neither is known.
+    if module is None and not stored:
+        for key, new in (
+            (RHEOLOGY_KEY, aragog.rheology.enabled),
+            (LID_KEY, aragog.lid_mush_base),
+        ):
             notes.append(
-                (
-                    logging.WARNING,
-                    f'Resume switches {key} from {old!r} to {new!r} (allow_resume_law_change = true)',
-                )
+                (logging.INFO, f'{key} is not recorded for this run; it resumes under {new!r}')
             )
-        else:
-            refusals.append(
-                f'{key} is {new!r} in {config_path}, but the run was written with {old!r} '
-                f'({source}); set it to {old!r} to keep the law, or set interior_energetics.'
-                'aragog.allow_resume_law_change = true to switch it at the resume'
-            )
+    else:
+        rheology = stored.get('rheology')
+        old = rheology.get('enabled', False) if isinstance(rheology, dict) else False
+        if old != aragog.rheology.enabled:
+            switch('rheology.enabled', RHEOLOGY_KEY, old, aragog.rheology.enabled)
+        old = bool(stored.get('lid_mush_base', False))
+        if old != aragog.lid_mush_base:
+            switch('lid_mush_base', LID_KEY, old, aragog.lid_mush_base)
     if refusals:
         raise ResumeSeparationLawError('Resume refused:\n  ' + '\n  '.join(refusals))
     for level, note in notes:

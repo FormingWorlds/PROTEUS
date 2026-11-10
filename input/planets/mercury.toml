@@ -16,7 +16,7 @@ config_version = "3.0"
         # name (run_YYYYMMDD_HHMMSS_xxxx), or any string for a fixed folder name.
         path                  = "mercury"
         logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
-        plot_mod              = 5            # 0: at end | n: every n iters | none: never
+        plot_mod              = 10            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf
         write_mod             = 1            # 0: at end | n: every n iters
         dt_write_rel          = 1e-3         # extra time-based write trigger as fraction of sim time, OR-ed with write_mod (0: off)
@@ -25,16 +25,16 @@ config_version = "3.0"
 
     [params.dt]
         minimum               = 1e2          # minimum time step [yr]; small enough for the controller to resolve solidification
-        minimum_rel           = 1e-5         # minimum relative time step
+        minimum_rel           = 1e-3         # minimum relative time step
         maximum               = 1e7          # maximum time step [yr]
         initial               = 3e1          # initial step size [yr]
-        starspec              = 1e8          # recalculate stellar spectrum interval [yr]
+        starspec              = 1e9          # recalculate stellar spectrum interval [yr]
         starinst              = 1e2          # recalculate instellation interval [yr]
         method                = "adaptive"   # proportional | adaptive | maximum
         propconst             = 52.0         # proportionality constant (proportional method)
         atol                  = 0.02         # step size absolute tolerance (adaptive method)
-        rtol                  = 0.25         # step size relative tolerance (adaptive method)
-        scale_incr            = 1.6          # growth factor on successful adaptive step
+        rtol                  = 0.24         # step size relative tolerance (adaptive method)
+        scale_incr            = 1.5          # growth factor on successful adaptive step
         scale_decr            = 0.8          # shrink factor on rejected adaptive step
         window                = 3            # lookback window for adaptive comparison [steps]
         max_growth_factor     = 0.0          # cap on dt growth ratio between consecutive steps; 0 = disabled
@@ -59,8 +59,8 @@ config_version = "3.0"
 
         [params.stop.solid]                  # solidification criterion
             enabled           = true
-            phi_crit          = 0.01         # stop when global melt fraction < phi_crit
-            freeze_volatiles  = false        # freeze mantle volatiles at solidification
+            phi_crit          = 0.02         # stop when global melt fraction < phi_crit
+            freeze_volatiles  = true        # freeze mantle volatiles at solidification
 
         [params.stop.radeqm]                 # radiative equilibrium criterion
             enabled           = true
@@ -85,12 +85,12 @@ config_version = "3.0"
     mass_tot                  = 0.0553       # total initial planet mass [M_earth]; Mercury 3.30e23 kg
 
     # Initial temperature profile
-    temperature_mode          = "isothermal" # liquidus_super | isothermal | linear | adiabatic | adiabatic_from_cmb | accretion | isentropic
-    tsurf_init                = 3300         # surface temperature [K]; above the Wolf & Bower (2018) liquidus throughout the mantle (~1980-2270 K at 0-5 GPa)
+    temperature_mode          = "isentropic" # liquidus_super | isothermal | linear | adiabatic | adiabatic_from_cmb | accretion | isentropic
+    tsurf_init                = 3500         # surface temperature [K]
     tcmb_init                 = 6000         # CMB temperature [K] (adiabatic_from_cmb)
     tcenter_init              = 6000         # center temperature [K] (linear only)
     delta_T_super             = 100.0        # min superheat above the liquidus [K] (liquidus_super); small value starts the interior near the liquidus for a stable default run
-    ini_entropy               = 3900.0       # initial specific entropy [J/kg/K] (isentropic only)
+    ini_entropy               = 4200.0       # initial specific entropy [J/kg/K] (isentropic only)
     ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (isentropic only)
     f_accretion               = 0.04         # accretion heat retention [0-1] (accretion only)
     f_differentiation         = 0.50         # differentiation heat retention [0-1] (accretion only)
@@ -103,20 +103,20 @@ config_version = "3.0"
     volatile_reservoir        = "mantle"     # ppmw reference mass: mantle | mantle+core
 
     # Cooling constraint
-    prevent_warming           = false        # require monotonic cooling
+    prevent_warming           = true        # require monotonic cooling
 
     # Element abundances (used when volatile_mode = 'elements')
     [planet.elements]
         O_mode                = "ic_chemistry"  # ic_chemistry | ppmw | kg | FeO_mantle_wt_pct
         O_budget              = 0.0          # ignored for ic_chemistry mode
         H_mode                = "ppmw"       # oceans | ppmw | kg
-        H_budget              = 600          # unit defined by H_mode; illustrative, Mercury's bulk H is poorly constrained
+        H_budget              = 630          # unit defined by H_mode; illustrative, Mercury's bulk H is poorly constrained
         C_mode                = "ppmw"       # C/H mass ratio | ppmw | kg
-        C_budget              = 4000         # unit defined by C_mode; set per case by the grid
+        C_budget              = 10000         # unit defined by C_mode; set per case by the grid
         N_mode                = "ppmw"       # N/H mass ratio | ppmw | kg
         N_budget              = 424          # unit defined by N_mode; illustrative
         S_mode                = "ppmw"       # S/H mass ratio | ppmw | kg
-        S_budget              = 2000         # unit defined by S_mode; illustrative (Mercury's surface is S-rich)
+        S_budget              = 56000         # unit defined by S_mode; illustrative (Mercury's surface is S-rich)
         use_metallicity       = false        # scale C/N/S from solar metallicity; replaces C/N/S budgets
         metallicity           = 1000         # metallicity relative to solar [by mass]
         # Noble gases (opt-in per gas via outgas.calliope.include_*). Mode is
@@ -256,9 +256,9 @@ config_version = "3.0"
     module                    = "spider"     # aragog | spider | dummy | boundary
 
     # Grid and solver tolerances (shared by Aragog + SPIDER; ignored for dummy)
-    num_levels                = 50           # radial grid levels (energetics domain only); minimum allowed
-    rtol                      = 1.0e-8       # relative ODE solver tolerance; 100x looser than the SPIDER default (1e-10)
-    atol                      = 1.0e-10      # absolute ODE solver tolerance
+    num_levels                = 40           # radial grid levels (energetics domain only); minimum allowed
+    rtol                      = 1.0e-7       # relative ODE solver tolerance
+    atol                      = 1.0e-8      # absolute ODE solver tolerance
     flux_guess                = 1e4           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
 
     # Constant-properties mode: bypass EOS tables, use analytical T(S) = T_ref * exp((S - S_ref) / Cp)
@@ -328,8 +328,8 @@ config_version = "3.0"
     # Aragog-only parameters
     [interior_energetics.aragog]
         mass_coordinates              = true     # mass coordinate mesh spacing
-        backend                       = "jax"    # jax (CVODE + analytic Jacobian) | numpy (CVODE + FD Jacobian)
-        solver_method                 = "cvode"  # cvode (SUNDIALS) | radau (scipy) | bdf (scipy)
+        backend                       = "numpy"    # jax (CVODE + analytic Jacobian) | numpy (CVODE + FD Jacobian)
+        solver_method                 = "radau"  # cvode (SUNDIALS) | radau (scipy) | bdf (scipy)
         atol_temperature_equivalent   = 1.0e-6   # CVODE atol [K]
         phase_smoothing               = "tanh"   # phase-boundary smoothing: tanh | cubic_hermite
         # Proximity band [J/kg/K] within which a cell counts as near a solidus/liquidus
@@ -350,7 +350,6 @@ config_version = "3.0"
     [interior_energetics.dummy]
         mantle_tliq           = 2020.0       # liquidus [K]; low-pressure peridotite (Mercury CMB ~5 GPa)
         mantle_tsol           = 1420.0       # solidus [K]; low-pressure peridotite
-        mantle_rho            = 3200.0       # mantle density [kg m-3]; Mercury mantle
         mantle_cp             = 1792.0       # mantle heat capacity [J K-1 kg-1]
         heat_internal         = 0.0          # internal heating rate [W kg-1]
 
@@ -363,8 +362,6 @@ config_version = "3.0"
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
         atm_heat_capacity_const   = true         # always use the fallback atmosphere heat capacity
         atm_heat_capacity         = 1.7e4        # fallback atmosphere heat capacity [J/kg/K]
-        silicate_density          = 3200.0       # silicate density [kg/m^3]; Mercury mantle. Boundary backend only, which takes the mantle density from the structure instead
-        core_density              = 6980         # core density [kg/m^3]; Mercury core. Only read with core_frac_mode = "mass" and no structure R_core
         thermal_conductivity      = 4.2          # thermal conductivity [W/m/K]
         thermal_diffusivity       = 1.0e-6       # thermal diffusivity [m^2/s]
         thermal_expansivity       = 2.0e-5       # thermal expansivity [1/K]
@@ -381,14 +378,14 @@ config_version = "3.0"
 # Outgassing (volatile partitioning between interior and atmosphere)
 [outgas]
     module                    = "atmodeller" # calliope | atmodeller | dummy
-    fO2_shift_IW              = -6           # redox state [log10(delta_IW)]
+    fO2_shift_IW              = -5           # redox state [log10(delta_IW)]
     mass_thresh               = 1e16         # minimum volatile mass threshold [kg]
     h2_binodal                = false        # H2 binodal partitioning; true is rejected at config load (not production ready)
     vapourise                 = false        # include rock vapour species
 
     # Shared solver parameters (calliope + atmodeller)
-    T_floor                   = 700.0        # outgassing temperature floor [K]; clamped from below
-    solver_rtol               = 1e-4         # relative mass/equilibrium tolerance
+    T_floor                   = 1200.0        # outgassing temperature floor [K]; clamped from below
+    solver_rtol               = 1e-3         # relative mass/equilibrium tolerance
     solver_atol               = 1e-6         # absolute mass/equilibrium tolerance
     prevent_desaturation      = true         # condensates never re-vapourise, so each condensed layer only grows (its activity can fall below 1)
 
@@ -445,8 +442,8 @@ config_version = "3.0"
     module                    = "agni"       # agni | janus | dummy
 
     # Grid and spectral setup (shared by agni + janus)
-    spectral_group            = "Dayspring"  # opacity k-table set; see docs/assets/spectral_files.pdf
-    spectral_bands            = "48"         # wavenumber bands in k-table
+    spectral_group            = "Proudspire"  # opacity k-table set
+    spectral_bands            = "32"         # wavenumber bands in k-table
     num_levels                = 40           # vertical atmosphere levels (min 15)
     p_top                     = 1.0e-3       # top-of-atmosphere pressure [bar]
     p_obs                     = 'none'       # observation pressure level [bar] (transit radius)
@@ -461,9 +458,9 @@ config_version = "3.0"
     surf_greyalbedo           = 0.1          # grey surface albedo (used when agni.surf_material = "greybody")
 
     # Surface boundary condition
-    surf_state                = "fixed"       # energy balance: mixed_layer | fixed | skin
-    surface_d                 = 0.01         # conductive skin thickness [m]
-    surface_k                 = 2.0          # conductive skin conductivity [W/m/K]
+    surf_state                = "skin"       # energy balance: mixed_layer | fixed | skin
+    surface_d                 = 'saturation' # conductive skin thickness [m]
+    surface_k                 = 'saturation' # conductive skin conductivity [W/m/K]
 
     # Solver limits (agni, janus only)
     tmp_minimum               = 0.5          # temperature floor [K]
@@ -502,6 +499,7 @@ config_version = "3.0"
         ls_default            = 2            # linesearch method: 0 (none) | 1 (golden section) | 2 (backtracking)
         fdo                   = 2            # finite-difference order for Jacobian: 2 | 4
         check_safe_gas        = true         # require at least one gas with opacity+thermo data
+        load_all_opacities    = false
         verbosity             = 1            # AGNI log level: 0 (silent) | 1 (info) | 2 (debug)
 
         # FastChem equilibrium chemistry (only used when chemistry = "eq")
@@ -530,6 +528,9 @@ config_version = "3.0"
 [escape]
     module                    = "zephyrus"   # zephyrus | dummy
     reservoir                 = "outgas"     # reservoir setting escaping composition
+    step_max_frac             = 0.90         # max timestep fraction of PROTEUS step
+    step_dt_floor_frac        = 0.50         # min timestep fraction of PROTEUS step
+
 
     [escape.zephyrus]
         Pxuv                  = 5e-5         # XUV opacity pressure level [bar]

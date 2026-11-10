@@ -85,6 +85,10 @@ The atmosphere climate module solves the radiative-convective equilibrium struct
 
 **[JANUS](https://proteus-framework.org/JANUS/)** (Python) is a 1D convective atmosphere module that computes a radiative-convective profile using a band-averaged two-stream approach. JANUS is faster than AGNI but makes stronger simplifying assumptions (e.g. no iterative Newton solve; a prescribed adiabatic lower atmosphere). It is useful for parameter sweeps and initial exploration.
 
+With `surf_state = 'skin'`, a conductive skin of thickness `surface_d` and conductivity `surface_k` separates the magma from the atmosphere, and carries the flux $k\,(T_\mathrm{magma} - T_\mathrm{surf}) / d$. 
+
+Instead, setting both to `'saturation'` derives the skin from the condensates formed at the surface, such as graphite. Each condensate is spread over the surface as a layer at its density, and the layers are stacked in series: $d = \sum_i d_i$ and $k = d / \sum_i (d_i / k_i)$, with a constant conductivity per condensate (`condensate_conductivity` in `proteus.utils.constants`). 
+
 Config section: `[atmos_clim]`. Reference: [Atmosphere configuration](../Reference/config/atmosphere.md).
 
 ## Atmospheric chemistry: VULCAN

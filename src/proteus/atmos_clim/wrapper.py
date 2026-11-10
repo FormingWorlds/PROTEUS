@@ -16,8 +16,10 @@ from proteus.atmos_clim.common import (
     Atmos_t,
     LevelsSource,
     clip_radius_to_hill,
+    lid_open_flux,
     require_spfile_path,
 )
+from proteus.atmos_clim.surface_skin import effective_surf_state
 from proteus.star.wrapper import flux_weighted_distance
 from proteus.utils.constants import const_R, gas_list
 from proteus.utils.helper import UpdateStatusfile, safe_rm
@@ -285,19 +287,20 @@ def run_atmosphere(
         # Held at zero
         hf_row['albedo_pl'] = 0.0
 
-    # Handle new surface temperature
+    # Handle new surface temperature; a saturation skin is 'fixed' until a layer forms
+    surf_state = effective_surf_state(config, hf_row)
     if config.interior_energetics.module == 'boundary':
         # T_surf is already advanced by the Boundary backend's ODE, so the
         # atmosphere wrapper must not overwrite it.
         pass
 
-    elif config.atmos_clim.surf_state == 'mixed_layer':
+    elif surf_state == 'mixed_layer':
         # Argument order: (current hf_row, previous committed row). The
         # function integrates forward from hf_pre['Time'] to hf_cur['Time']
         # starting at hf_pre['T_surf'].
         hf_row['T_surf'] = ShallowMixedOceanLayer(hf_row, hf_all.iloc[-1].to_dict())
 
-    elif config.atmos_clim.surf_state == 'fixed':
+    elif surf_state == 'fixed':
         hf_row['T_surf'] = hf_row['T_magma']
 
     # elif surf_state=='skin':
@@ -429,6 +432,7 @@ def run_atmosphere(
     # Copy special cases
     hf_row['rho_obs'] = 3 * hf_row['M_planet'] / (4 * pi * hf_row['R_obs'] ** 3)
     hf_row['F_net'] = hf_row['F_int'] - hf_row['F_atm']
+    hf_row['lid_F_open'] = lid_open_flux(hf_row)
     hf_row['bond_albedo'] = atm_output['albedo']
 
     # Calculate bolometric observables (measured at infinite distance)

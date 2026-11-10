@@ -1028,6 +1028,176 @@
       "consumers_possible": []
     },
     {
+      "name": "lid_weight",
+      "unit": "1",
+      "description": "weight of the Aragog sub-grid lid",
+      "group": "Temperatures",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": [
+        "atmos_clim",
+        "interior_energetics"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "lid_conductance",
+      "unit": "W m-2 K-1",
+      "description": "conductance of the Aragog sub-grid lid",
+      "group": "Temperatures",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": [
+        "atmos_clim"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "lid_delta",
+      "unit": "m",
+      "description": "thickness of the Aragog sub-grid lid; 0 without the lid, read with lid_weight",
+      "group": "Temperatures",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "lid_delta_on",
+      "unit": "m",
+      "description": "onset thickness of the Aragog sub-grid lid; 0 without the lid",
+      "group": "Temperatures",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "lid_T_surface",
+      "unit": "K",
+      "description": "surface temperature of the Aragog sub-grid lid",
+      "group": "Temperatures",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "lid_T_base",
+      "unit": "K",
+      "description": "base temperature of the Aragog sub-grid lid",
+      "group": "Temperatures",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": [
+        "atmos_clim"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "lid_T_node",
+      "unit": "K",
+      "description": "top basic node of the Aragog mesh",
+      "group": "Temperatures",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": [
+        "atmos_clim"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "lid_F_open",
+      "unit": "W m-2",
+      "description": "flux of the open part 1 - w of the surface",
+      "group": "Temperatures",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/atmos_clim/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "interior_energetics"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "lid_F_diff",
+      "unit": "W m-2",
+      "description": "F_int of the step minus the F_atm it started from; 0 in grey_body mode",
+      "group": "Temperatures",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
       "name": "T_cmb",
       "unit": "K",
       "description": "core temperature: the bottom mantle cell, or the core state with core_bc = core_module or bower2018",
@@ -1976,10 +2146,14 @@
     {
       "name": "boundary_layer_thickness",
       "unit": "m",
-      "description": "thermal boundary layer thickness",
+      "description": "conductive skin thickness given to the atmosphere, written by the skin step over any interior value; 0 for a fixed surface under 'saturation'",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/atmos_clim/surface_skin.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
@@ -1989,15 +2163,32 @@
           "condition": "interior_energetics.module = \"boundary\""
         },
         {
-          "file": "src/proteus/interior_energetics/dummy.py",
-          "condition": "interior_energetics.module = \"dummy\""
-        },
-        {
           "file": "src/proteus/interior_energetics/spider.py",
           "condition": "interior_energetics.module = \"spider\""
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "atmos_clim",
+        "interior_energetics"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "boundary_layer_conductivity",
+      "unit": "W m-1 K-1",
+      "description": "conductive skin conductivity given to the atmosphere, 0 for a fixed surface under 'saturation'",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/atmos_clim/surface_skin.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "atmos_clim",
+        "plot"
+      ],
       "consumers_possible": []
     },
     {
@@ -3629,6 +3820,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "plot"
       ],
       "consumers_possible": []
@@ -3650,6 +3842,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "outgas",
         "plot"
       ],
@@ -3668,6 +3861,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "plot"
       ],
       "consumers_possible": []
@@ -3689,6 +3883,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "outgas",
         "plot"
       ],
@@ -3707,6 +3902,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "plot"
       ],
       "consumers_possible": []
@@ -3728,6 +3924,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "outgas",
         "plot"
       ],
@@ -3746,6 +3943,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "plot"
       ],
       "consumers_possible": []
@@ -3767,6 +3965,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "outgas",
         "plot"
       ],

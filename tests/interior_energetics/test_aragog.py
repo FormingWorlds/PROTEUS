@@ -1532,7 +1532,14 @@ def test_a_failed_call_leaves_the_solver_with_the_state_it_started_from(
     interior_o = SimpleNamespace(
         aragog_solver=solver, aragog_step_progress=[], _last_entropy=None, tides=None, **ledger
     )
-    hf_row = {'Time': 202.0, 'T_cmb': 5000.0, 'F_atm': 1.0e3, 'T_eqm': 255.0}
+    hf_row = {
+        'boundary_layer_thickness': 0.01,
+        'boundary_layer_conductivity': 2.0,
+        'Time': 202.0,
+        'T_cmb': 5000.0,
+        'F_atm': 1.0e3,
+        'T_eqm': 255.0,
+    }
     dirs = {'output': str(tmp_path)}
     in_columns = entry == 'columns'
     side_effect = error if in_columns else None
@@ -3312,6 +3319,71 @@ def test_setup_solver_property_tables_follow_the_generated_set(
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('enabled', [False, True])
+def test_setup_solver_passes_the_rheology_to_the_solid_phase(tmp_path, enabled):
+    """The solid phase gets the rheology switch when it is on and no keyword when it is off;
+    the liquid phase never gets it."""
+    from aragog.rheology import SolidRheologyParams
+
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    if not hasattr(__import__('aragog.solver').solver.EntropySolver, '_rheology_enabled'):
+        pytest.skip('the installed aragog solver does not read the rheology')
+    outdir = tmp_path / 'out'
+    pt_dir = outdir / 'data' / 'aragog_pt'
+    pt_dir.mkdir(parents=True)
+    for name in ('density_melt.dat', 'heat_capacity_melt.dat'):
+        (pt_dir / name).write_text('dummy')
+    config = _make_aragog_config(struct_module='zalmoxis', mantle_eos='PALEOS:MgSiO3')
+    config.interior_struct.eos_dir = None
+    config.planet.mass_tot = 1.0
+    config.interior_energetics.aragog.rheology.enabled = enabled
+    solid, liquid = tmp_path / 'solid.dat', tmp_path / 'liquid.dat'
+    solid.write_text('dummy')
+    liquid.write_text('dummy')
+    registry = {
+        'PALEOS-2phase:MgSiO3': {
+            'solid_mantle': {'eos_file': str(solid)},
+            'melted_mantle': {'eos_file': str(liquid)},
+        }
+    }
+    _seed_lookup_tables(tmp_path)
+    hf_row = {
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+        'T_eqm': 255.0,
+        'F_atm': 100.0,
+    }
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    interior_o._spider_eos_dir = str(tmp_path)
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value=registry,
+        ),
+        patch(
+            'proteus.interior_energetics.aragog._melting_curve_files',
+            return_value=(solid, liquid),
+        ),
+        patch('proteus.interior_energetics.aragog._PhaseParameters') as mock_phase,
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(outdir))
+
+    by_phase = {c.kwargs['melt_fraction']: c.kwargs for c in mock_phase.call_args_list}
+    assert 'rheology' not in by_phase[1]
+    if enabled:
+        assert by_phase[0].get('rheology') == SolidRheologyParams(enabled=True)
+    else:
+        assert 'rheology' not in by_phase[0]
+
+
 @pytest.mark.parametrize('kept, liquid_path', [(False, True), (True, True), (False, False)])
 def test_setup_solver_stops_without_the_paleos_pair(tmp_path, kept, liquid_path):
     """A PALEOS mantle whose 2-phase liquid table is absent, or has no registry path,
@@ -3606,7 +3678,7 @@ def test_resume_restores_the_cmb_entropy_gradient(core_bc, stored, status, caplo
     def _setup(config, hf_row, interior_o, outdir):
         interior_o.aragog_solver = solver
 
-    def _update(dt, hf_row, interior_o, output_dir=None):
+    def _update(dt, hf_row, interior_o, output_dir=None, hf_all=None):
         interior_o._last_entropy = S_snap
         interior_o._last_dSdr_cmb = stored
         interior_o._last_dSdr_cmb_status = status
@@ -3754,7 +3826,12 @@ def test_run_solver_writes_the_resume_state_every_step(tmp_path, core_bc):
     interior_o = SimpleNamespace(
         aragog_solver=_StateSolver(-5.254e-08 if core_bc == 'energy_balance' else 4100.0)
     )
-    hf_row = {'Time': 202.0, 'T_surf': 3000.0}
+    hf_row = {
+        'boundary_layer_thickness': 0.01,  # m, written by the skin step
+        'boundary_layer_conductivity': 2.0,  # W m-1 K-1
+        'Time': 202.0,
+        'T_surf': 3000.0,
+    }
     sim_time, _ = runner.run_solver(hf_row, interior_o, {'output': str(tmp_path)})
     assert sim_time == pytest.approx(282.0, rel=1e-15)
     # The 7 profiles land on interior_o unchanged; the radius stays in metres.
@@ -3777,7 +3854,12 @@ def test_run_solver_writes_the_resume_state_every_step(tmp_path, core_bc):
     assert status == 'ok' and P_mesh == pytest.approx(8.12e8, rel=1e-15, abs=0.0)
     # Limit input: a suppressed write (dt_write) leaves no snapshot behind.
     runner.run_solver(
-        {'Time': 282.0, 'T_surf': 3000.0},
+        {
+            'boundary_layer_thickness': 0.01,
+            'boundary_layer_conductivity': 2.0,
+            'Time': 282.0,
+            'T_surf': 3000.0,
+        },
         interior_o,
         {'output': str(tmp_path)},
         write_data=False,
@@ -3808,7 +3890,14 @@ def test_a_step_ending_short_of_an_impact_writes_its_snapshot_at_the_impact_time
     runner._build_helpfile_output = lambda *a, **k: {}
     interior_o = SimpleNamespace(aragog_solver=_StateSolver(4100.0), t_next_impact=t_impact)
     sim_time, _ = runner.run_solver(
-        {'Time': 1.0e3, 'T_surf': 3000.0}, interior_o, {'output': str(tmp_path)}
+        {
+            'boundary_layer_thickness': 0.01,
+            'boundary_layer_conductivity': 2.0,
+            'Time': 1.0e3,
+            'T_surf': 3000.0,
+        },
+        interior_o,
+        {'output': str(tmp_path)},
     )
     assert 1.0e3 + out.dt_actual < t_impact
     assert sim_time == t_impact
@@ -4006,7 +4095,15 @@ def test_final_snapshot_skipped_on_the_diffrax_path(tmp_path, monkeypatch):
     config.interior_energetics.write_flux_diagnostics = False
     interior_o = MagicMock()
     interior_o.aragog_solver = _StateSolver(-2.2e-11)
-    dirs, row = {'output': str(tmp_path)}, {'Time': 282.0, 'T_surf': 3000.0}
+    dirs, row = (
+        {'output': str(tmp_path)},
+        {
+            'boundary_layer_thickness': 0.01,
+            'boundary_layer_conductivity': 2.0,
+            'Time': 282.0,
+            'T_surf': 3000.0,
+        },
+    )
     monkeypatch.setattr(flag, True)
     write_final_snapshot(config, interior_o, dirs, row)
     assert list((tmp_path / 'data').glob('*_int.nc')) == []
@@ -4284,6 +4381,42 @@ def test_setup_solver_passes_no_core_module_params_on_default_config(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('lid', [True, False])
+def test_setup_solver_passes_the_lid_onset_thickness_with_the_lid(tmp_path, lid):
+    """With the lid on, the boundary conditions get the onset thickness of the skin
+    (k_lid d / k = 3.0 x 0.03 / 1.5 = 0.06 m for this skin) and the two lid switches; without the
+    lid they keep the Aragog default and both switches are off."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = _make_aragog_config(struct_module='zalmoxis')
+    config.interior_energetics.aragog.lid_mush_base = lid
+    config.interior_energetics.aragog.lid_delta_on = None
+    config.interior_energetics.solid_cond = 3.0
+    config.atmos_clim.surface_d = 0.03
+    config.atmos_clim.surface_k = 1.5
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
+    hf_row.update(R_core=3.48e6)
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch(
+            'proteus.interior_energetics.aragog._BoundaryConditionsParameters'
+        ) as mock_bc_cls,
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
+
+    kwargs = mock_bc_cls.call_args.kwargs
+    assert kwargs['subgrid_lid'] is lid and kwargs['lid_mush_base'] is lid
+    if lid:
+        assert kwargs['lid_delta_on'] == pytest.approx(0.06, rel=1e-14)
+    else:
+        assert 'lid_delta_on' not in kwargs
+
+
+@pytest.mark.unit
 def test_core_module_snapshot_and_resume_preserves_t_core_and_gradient(tmp_path):
     """Resume with core_bc='core_module' preserves both T_core and dSdr_cmb.
 
@@ -4479,7 +4612,12 @@ def test_run_solver_invokes_core_module_diagnostics_when_active(tmp_path):
         output['core_flux'] = 12.34
 
     interior_o = SimpleNamespace(aragog_solver=_StateSolver(4500.0))
-    hf_row = {'Time': 300.0, 'T_surf': 2800.0}
+    hf_row = {
+        'boundary_layer_thickness': 0.01,
+        'boundary_layer_conductivity': 2.0,
+        'Time': 300.0,
+        'T_surf': 2800.0,
+    }
 
     with (
         patch(f'{_CORE}.write_core_diagnostics', _mock_write_diag),
@@ -4523,12 +4661,28 @@ def test_run_solver_writes_the_core_impact_heat_booked_at_the_reset(tmp_path):
         patch(f'{_CORE}.write_core_diagnostics'),
         patch(f'{_CORE}_impact.core_call_heat', return_value=0.0) as heat,
     ):
-        _, output = runner.run_solver({'Time': 300.0}, interior_o, {'output': str(tmp_path)})
+        _, output = runner.run_solver(
+            {
+                'boundary_layer_thickness': 0.01,
+                'boundary_layer_conductivity': 2.0,
+                'Time': 300.0,
+            },
+            interior_o,
+            {'output': str(tmp_path)},
+        )
         assert output['step_dE_impact_core_J'] == pytest.approx(1.79e30)
         assert output['step_dE_impact_core_refit_J'] == pytest.approx(5.2e29)
         assert (interior_o._core_impact_booked, interior_o._core_t_end) == (None, 4500.0)
         assert heat.call_args.kwargs == {'lift': pytest.approx(1.79e30 + 5.2e29)}
-        _, output = runner.run_solver({'Time': 375.0}, interior_o, {'output': str(tmp_path)})
+        _, output = runner.run_solver(
+            {
+                'boundary_layer_thickness': 0.01,
+                'boundary_layer_conductivity': 2.0,
+                'Time': 375.0,
+            },
+            interior_o,
+            {'output': str(tmp_path)},
+        )
     assert output['step_dE_impact_core_J'] == pytest.approx(0.0)
     assert heat.call_args.kwargs == {'lift': 0.0}
 
@@ -4569,7 +4723,7 @@ def test_setup_or_update_solver_restores_the_core_temperature_on_resume(
     config = _make_aragog_config(struct_module='zalmoxis')
     config.params.resume = True
     config.interior_energetics.aragog.core_bc = 'core_module'
-    solver = MagicMock(_n_stag=20)
+    solver = MagicMock(_n_stag=20, _n_lid=0)
     interior_o = MagicMock(
         aragog_solver=None, _last_T_core=last_t_core, _last_T_core_status='absent'
     )
@@ -4621,7 +4775,7 @@ def test_a_resume_of_another_core_boundary_sets_no_core_start(core_bc):
     config = _make_aragog_config(struct_module='zalmoxis')
     config.params.resume = True
     config.interior_energetics.aragog.core_bc = core_bc
-    solver = MagicMock(_n_stag=20)
+    solver = MagicMock(_n_stag=20, _n_lid=0)
     interior_o = MagicMock(aragog_solver=None, _last_T_core=5280.0, _last_dSdr_cmb=-2e-11)
     interior_o._last_entropy = np.full(20, 4000.0)
 
@@ -4655,7 +4809,7 @@ def test_a_failed_core_carry_on_a_resume_raises_before_the_entropy_is_set():
     config = _make_aragog_config(struct_module='zalmoxis')
     config.params.resume = True
     config.interior_energetics.aragog.core_bc = 'core_module'
-    solver = MagicMock(_n_stag=20)
+    solver = MagicMock(_n_stag=20, _n_lid=0)
     interior_o = MagicMock(aragog_solver=None, _last_T_core=5280.0)
     interior_o._last_entropy = np.full(20, 4000.0)
     dirs = {'output': '.'}
@@ -5021,7 +5175,12 @@ def test_the_radiogenic_heat_is_sampled_at_the_end_of_the_step(tmp_path):
     runner._solve_with_retry = lambda hf_row, interior_o, S0: _solver_output(500.0)
     runner._store_profiles = lambda interior_o, out: None
     interior_o = SimpleNamespace(aragog_solver=solver, dt=20.0, tides=np.zeros(3))
-    hf_row = {'Time': 1000.0, 'F_atm': 1.0e5}
+    hf_row = {
+        'boundary_layer_thickness': 0.01,
+        'boundary_layer_conductivity': 2.0,
+        'Time': 1000.0,
+        'F_atm': 1.0e5,
+    }
 
     with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
         sim_time, output = runner.run_solver(
@@ -5167,7 +5326,7 @@ def _first_call(pending, S_snap=_S_SNAP):
 
     S_snap = None if S_snap is None else np.array(S_snap)
     solver = MagicMock()
-    solver._n_stag = 3
+    solver._n_stag, solver._n_lid = 3, 0
     interior_o = SimpleNamespace(
         aragog_solver=None, _last_entropy=S_snap, _last_dSdr_cmb=-6.2e-9, ic=2
     )
@@ -5206,7 +5365,7 @@ def _first_call(pending, S_snap=_S_SNAP):
         patch.object(
             AragogRunner,
             '_replay_structure_update',
-            side_effect=lambda c, row, i, dt: calls.replay(row, dt),
+            side_effect=lambda c, row, i, dt, hf_all=None: calls.replay(row, dt),
         ),
     ):
         AragogRunner.setup_or_update_solver(
@@ -5429,7 +5588,9 @@ def test_the_structure_update_resets_after_the_refresh_and_hands_the_entropy_las
             patch.object(
                 AragogRunner, 'update_structure', side_effect=lambda *a: calls.structure()
             ),
-            patch.object(AragogRunner, 'update_solver', side_effect=lambda *a: calls.solver()),
+            patch.object(
+                AragogRunner, 'update_solver', side_effect=lambda *a, **k: calls.solver()
+            ),
             patch.object(
                 AragogRunner, '_refresh_entropy_eos', side_effect=lambda *a: calls.refresh()
             ),
@@ -5595,3 +5756,33 @@ def test_aragog_runner_resume_top_cell_dt_limit_off_no_recompute():
 
     assert mock_dt.call_count == 1
     assert populated_solver.parameters.solver.end_time == pytest.approx(3202.5, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_run_solver_builds_the_row_with_the_skin_thickness_in_effect(tmp_path):
+    """``run_solver`` builds the helpfile output with the boundary_layer_thickness the
+    skin step left in the row (5.9 m), whatever the configured surface_d says."""
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    (tmp_path / 'data').mkdir()
+    runner = AragogRunner.__new__(AragogRunner)
+    runner._use_jax = False
+    runner._config = MagicMock()
+    runner._config.interior_energetics.aragog.core_bc = 'bower2018'
+    runner._config.interior_energetics.write_flux_diagnostics = False
+    runner._config.atmos_clim.surface_d = 0.01  # m, not what the row holds
+    out = _snapshot_output()
+    out.dt_actual = 80.0
+    runner._solve_with_retry = lambda hf_row, interior_o, S0_entry: out
+    captured = {}
+    runner._build_helpfile_output = lambda *a, **k: captured.update(k) or {}
+    interior_o = SimpleNamespace(aragog_solver=_StateSolver(4100.0))
+    hf_row = {'Time': 202.0, 'T_surf': 3000.0}
+    hf_row.update(boundary_layer_thickness=5.9, boundary_layer_conductivity=2.89)
+
+    runner.run_solver(hf_row, interior_o, {'output': str(tmp_path)}, write_data=False)
+
+    assert captured['surface_d'] == pytest.approx(5.9, rel=1e-12)
+    assert abs(captured['surface_d'] - 0.01) > 1.0  # not the config value

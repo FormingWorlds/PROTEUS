@@ -437,7 +437,6 @@ config_version = "3.0"
     rtol                      = -1.0         # relative ODE solver tolerance; unset: 1e-8 Aragog, 1e-10 SPIDER
     atol                      = 1.0e-10      # absolute ODE solver tolerance
     flux_guess                = -1           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
-    num_tolerance             = -1           # deprecated alias for rtol; leave at -1 (unset)
     surface_bc_mode           = "flux"       # flux (F_atm from the atmosphere) | grey_body (native BC)
 
     # Constant-properties mode: bypass EOS tables, use analytical T(S) = T_ref * exp((S - S_ref) / Cp)
@@ -527,6 +526,9 @@ config_version = "3.0"
         # it (1 yr steps with "fixed", which can stall a run; 1 to 100 yr segments with "rate").
         phase_boundary_entropy_margin = 200.0    # phase-boundary max_step band [J/kg/K]
         phase_boundary_cap            = "rate"     # phase-boundary max_step policy: "rate" (default) | "fixed"
+        rheology.enabled              = false    # temperature- and pressure-dependent solid viscosity; Aragog only
+        lid_mush_base                 = false    # sub-grid lid with its base at the solidus; needs rheology.enabled and the skin surface of AGNI or the dummy (not fixed_flux), not with prevent_warming
+        lid_delta_on                  = "none"   # lid onset thickness [m]; none = solid_cond * surface_d / surface_k (0.02 m for the default skin)
         top_cell_dt_limit             = false    # bound dt by tau_drain (down to dt.minimum * escape.step_dt_floor_frac) and keep T_magma, T_surf, and Phi_global unclipped by tmagma_atol/tmagma_rtol when tau_drain is finite and the step does not exceed tau_drain
         top_cell_dt_rel_dT            = 0.08     # relative surface-temperature change allowance in the mushy regime (phi_s[-1] >= 0.40); in (0, 0.15]
         top_cell_dt_rel_dT_solid      = 0.08     # relative surface-temperature change allowance at a fully solid top cell (phi_s[-1] = 0); in (0, top_cell_dt_rel_dT]
@@ -560,7 +562,6 @@ config_version = "3.0"
     [interior_energetics.spider]
         solver_type           = "bdf"        # SUNDIALS method: adams | bdf
         matprop_smooth_width  = 1.0e-2       # melt-fraction smoothing window across solidus/liquidus
-        tolerance_rel         = -1           # deprecated alias for interior_energetics.rtol; leave at -1 (unset)
         tolerance_struct      = 100          # absolute mass tolerance [kg] for the radius secant solver
         log_output            = true         # write SPIDER solver log output
 
@@ -568,7 +569,6 @@ config_version = "3.0"
     [interior_energetics.dummy]
         mantle_tliq           = 2700.0       # liquidus [K]
         mantle_tsol           = 1700.0       # solidus [K]
-        mantle_rho            = 4550.0       # mantle density [kg m-3]; mantle mass uses M_int-M_core when the structure provides it
         mantle_cp             = 1792.0       # mantle heat capacity [J K-1 kg-1]
         heat_internal         = 0.0          # internal heating rate [W kg-1]
 
@@ -581,8 +581,6 @@ config_version = "3.0"
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
         atm_heat_capacity         = 1.7e4        # fallback atmosphere heat capacity [J/kg/K]
         atm_heat_capacity_const   = true         # use the constant fallback heat capacity above
-        silicate_density          = 4103.0       # silicate density [kg/m^3]
-        core_density              = 10738        # core density if not defined by structure module [kg/m^3]
         core_shear                = 1.0e9        # core shear modulus [Pa]
         core_bulk                 = 1.0e12       # core bulk modulus [Pa]
         thermal_conductivity      = 4.2          # thermal conductivity [W/m/K]
@@ -755,6 +753,7 @@ config_version = "3.0"
         broyden               = true         # Broyden jacobian updates between finite-difference evaluations; intended for ls_default = 3
         fdo                   = 2            # finite-difference order for Jacobian: 2 | 4
         check_safe_gas        = true         # require at least one gas with opacity+thermo data
+        load_all_opacities    = true         # load every gas of the spectral file; false loads only the modelled gases
         verbosity             = 1            # AGNI log level: 0 (silent) | 1 (info) | 2 (debug)
 
         # FastChem equilibrium chemistry (only used when chemistry = "eq")

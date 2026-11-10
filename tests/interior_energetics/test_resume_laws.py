@@ -376,3 +376,153 @@ def test_any_stored_buoyancy_other_than_the_new_string_refuses(
     else:
         with pytest.raises(ResumeSeparationLawError, match='separation_buoyancy is '):
             check_resume_separation_laws(config, MINIMAL, tmp_path)
+
+
+def _rheology_run(folder, enabled):
+    """A run directory recording the rheology switch, or no rheology table when None."""
+    out = Path(folder) / 'run'
+    out.mkdir()
+    config, _ = _user_config(out)
+    config.write(out / 'init_coupler.toml')
+    doc = tomlkit.parse((out / 'init_coupler.toml').read_text())
+    del doc['interior_energetics']['aragog']['rheology']
+    if enabled is not None:
+        doc['interior_energetics']['aragog']['rheology'] = {'enabled': enabled}
+    (out / 'init_coupler.toml').write_text(tomlkit.dumps(doc))
+    return out
+
+
+@pytest.mark.parametrize('stored', [False, None])
+def test_resume_refuses_to_turn_the_rheology_on(tmp_path, stored):
+    """A record with the rheology off, or with no rheology table, refuses a resume with it on."""
+    out = _rheology_run(tmp_path, stored)
+    text = MINIMAL.read_text() + '\n[interior_energetics.aragog.rheology]\n    enabled = true\n'
+    path = tmp_path / 'user.toml'
+    path.write_text(text)
+    with pytest.raises(ResumeSeparationLawError, match='rheology.enabled') as err:
+        check_resume_separation_laws(read_config_object(path), path, out)
+    assert 'allow_resume_law_change' in str(err.value)
+
+
+def test_resume_refuses_to_turn_the_rheology_off(tmp_path):
+    """A run written with the rheology on keeps it at a resume."""
+    out = _rheology_run(tmp_path, True)
+    config, path = _user_config(tmp_path)
+    with pytest.raises(ResumeSeparationLawError, match='rheology.enabled') as err:
+        check_resume_separation_laws(config, path, out)
+    assert 'written with True' in str(err.value)
+
+
+def test_resume_keeps_an_unchanged_rheology(tmp_path, caplog):
+    """The same rheology switch on both sides gives no switch and no warning."""
+    out = _rheology_run(tmp_path, False)
+    config, path = _user_config(tmp_path)
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert check_resume_separation_laws(config, path, out) == []
+    assert [
+        r for r in caplog.records if r.name == LOGGER and r.levelno >= logging.WARNING
+    ] == []
+
+
+def test_the_allow_switch_lets_the_rheology_switch_and_reports_it(tmp_path, caplog):
+    """With allow_resume_law_change a run written with the rheology on resumes with it off,
+    returns the switch and logs one warning naming the key and both values."""
+    out = _rheology_run(tmp_path, True)
+    config, path = _user_config(tmp_path, allow_resume_law_change=True)
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        switches = check_resume_separation_laws(config, path, out)
+    assert switches == [('rheology.enabled', True, False)]
+    warned = [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == LOGGER and r.levelno == logging.WARNING
+    ]
+    assert len(warned) == 1
+    assert 'rheology.enabled' in warned[0] and 'True' in warned[0] and 'False' in warned[0]
+
+
+def _lid_case(folder, stored_lid, new_lid, allow=False):
+    """A run directory recording lid_mush_base (no field when None) and a resume config file,
+    both with the rheology on, so that only the lid switch differs."""
+    out = _rheology_run(folder, True)
+    doc = tomlkit.parse((out / 'init_coupler.toml').read_text())
+    if stored_lid is None:
+        doc['interior_energetics']['aragog'].pop('lid_mush_base', None)
+    else:
+        doc['interior_energetics']['aragog']['lid_mush_base'] = stored_lid
+    (out / 'init_coupler.toml').write_text(tomlkit.dumps(doc))
+    text = MINIMAL.read_text() + (
+        '\n[interior_energetics.aragog]\n'
+        f'    lid_mush_base = {str(new_lid).lower()}\n'
+        f'    allow_resume_law_change = {str(allow).lower()}\n'
+        '[interior_energetics.aragog.rheology]\n    enabled = true\n'
+    )
+    path = Path(folder) / 'user.toml'
+    path.write_text(text)
+    return read_config_object(path), path, out
+
+
+@pytest.mark.parametrize(('stored', 'new'), [(True, False), (False, True), (None, True)])
+def test_resume_refuses_to_switch_the_lid(tmp_path, stored, new):
+    """A run keeps its lid switch at a resume; a record without the field ran without the lid."""
+    config, path, out = _lid_case(tmp_path, stored, new)
+    with pytest.raises(ResumeSeparationLawError, match='lid_mush_base') as err:
+        check_resume_separation_laws(config, path, out)
+    assert f'written with {bool(stored)!r}' in str(err.value)
+
+
+def test_the_allow_switch_lets_the_lid_switch_and_reports_it(tmp_path, caplog):
+    """With allow_resume_law_change a run written with the lid resumes without it, returns the
+    switch and logs one warning naming the key."""
+    config, path, out = _lid_case(tmp_path, True, False, allow=True)
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert check_resume_separation_laws(config, path, out) == [
+            ('lid_mush_base', True, False)
+        ]
+    warned = [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == LOGGER and r.levelno == logging.WARNING
+    ]
+    assert len(warned) == 1 and 'lid_mush_base' in warned[0]
+
+
+def test_resume_keeps_an_unchanged_lid(tmp_path, caplog):
+    """The same lid switch on both sides gives no switch and no warning."""
+    config, path, out = _lid_case(tmp_path, True, True)
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert check_resume_separation_laws(config, path, out) == []
+    assert [
+        r for r in caplog.records if r.name == LOGGER and r.levelno >= logging.WARNING
+    ] == []
+
+
+@pytest.mark.parametrize(
+    'content',
+    [None, b'\x00 not toml [', b"[interior]\nmodule = 'aragog'\n"],
+    ids=['no file', 'unreadable file', 'record in the [interior] layout'],
+)
+def test_a_run_without_a_usable_record_does_not_check_the_rheology_or_the_lid(
+    tmp_path, caplog, content
+):
+    """With no record of the Aragog table the rheology and lid switches are not compared with
+    a guessed value: the resume with both on goes ahead and logs one note for each."""
+    out = tmp_path / 'run'
+    out.mkdir()
+    if content is not None:
+        (out / 'init_coupler.toml').write_bytes(content)
+    text = MINIMAL.read_text() + (
+        '\n[interior_energetics.aragog]\n'
+        "    separation_viscosity = 'mixture'\n    separation_buoyancy = 'mixture'\n"
+        '    lid_mush_base = true\n'
+        '[interior_energetics.aragog.rheology]\n    enabled = true\n'
+    )
+    path = tmp_path / 'user.toml'
+    path.write_text(text)
+    config = read_config_object(path)
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        assert check_resume_separation_laws(config, path, out) == []
+    noted = [r.getMessage() for r in caplog.records if r.name == LOGGER]
+    for key in ('rheology.enabled', 'lid_mush_base'):
+        mine = [m for m in noted if key in m]
+        assert len(mine) == 1 and 'not recorded' in mine[0] and 'True' in mine[0]

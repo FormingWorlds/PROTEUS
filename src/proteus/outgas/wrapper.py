@@ -18,7 +18,7 @@ from proteus.outgas.trapping import (
     trapping_active,
 )
 from proteus.utils.constants import (
-    condensate_list,
+    condensate_density,
     element_list,
     element_mmw,
     gas_list,
@@ -435,10 +435,10 @@ def condensed_mass_withheld(config: Config, hf_row: dict, *, initial: bool):
         held = {e: locked_condensed_mass(hf_row, e, config) for e in vol_element_list}
     held_cd = {}
     if any(held.values()):
-        for c in condensate_list:
+        for c in condensate_density.keys():
             mass = float(hf_row.get(f'{c}_cd_kg', 0.0))
             held_cd[c] = max(0.0, mass) if np.isfinite(mass) else 0.0
-    for c in condensate_list:
+    for c in condensate_density.keys():
         hf_row[f'{c}_cd_kg'] = 0.0
     for e in vol_element_list:
         hf_row[f'{e}_kg_condensed'] = 0.0

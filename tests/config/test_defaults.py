@@ -890,3 +890,158 @@ def test_aragog_top_cell_dt_rel_property():
     assert len(rejected) >= 10
     assert all(0.0 < solid_val <= dt_val <= 0.15 for dt_val, solid_val in seen)
     assert all(solid_val > dt_val for dt_val, solid_val in rejected)
+
+
+def test_aragog_rheology_default_type_and_module_check():
+    """The rheology is off by default and needs the Aragog module."""
+    from proteus.config._interior import Rheology
+
+    assert Aragog().rheology.enabled is False
+    with pytest.raises(ValueError, match='rheology.enabled'):
+        Interior(module='spider', aragog=Aragog(rheology=Rheology(enabled=True)))
+    assert Interior(module='aragog', aragog=Aragog(rheology=Rheology(enabled=True)))
+
+
+@pytest.mark.parametrize(
+    ('interior', 'aragog', 'match'),
+    [
+        (dict(module='spider'), dict(rheology=False), "module = 'aragog'"),
+        (dict(), dict(rheology=False), 'rheology.enabled = true'),
+        (dict(surface_bc_mode='grey_body'), dict(), "surface_bc_mode = 'flux'"),
+        (dict(), dict(core_bc='gradient'), "core_bc = 'gradient'"),
+        (dict(), dict(core_bc='bower2018'), "core_bc = 'bower2018'"),
+        (dict(param_utbl=True), dict(), 'param_utbl'),
+        (dict(kappah_floor=0.0), dict(), 'kappah_floor > 0'),
+        (dict(const_properties=True), dict(), 'const_properties'),
+    ],
+)
+def test_the_aragog_lid_is_refused_where_it_cannot_act(interior, aragog, match):
+    """lid_mush_base is refused at load with another interior module, without the rheology, in
+    grey_body mode, with the core_bc values Aragog refuses for the lid, with the ultra-thin
+    boundary layer, without a diffusivity floor and in the constant-property mode; the
+    flux-mode lid with the rheology loads."""
+    from proteus.config._interior import Rheology
+
+    def build(interior, aragog):
+        kw = {'module': 'aragog', 'surface_bc_mode': 'flux', **interior}
+        opts = {'rheology': True, **aragog}
+        rheology = Rheology(enabled=opts.pop('rheology'))
+        return Interior(aragog=Aragog(lid_mush_base=True, rheology=rheology, **opts), **kw)
+
+    with pytest.raises(ValueError, match=match):
+        build(interior, aragog)
+    assert build({}, {}).aragog.lid_mush_base is True
+
+
+def test_a_config_file_with_the_lid_and_janus_is_refused_at_load(tmp_path):
+    """The lid validator of atmos_clim runs when a config file loads: the lid with JANUS is
+    refused, the same file with the dummy atmosphere loads."""
+    from pathlib import Path
+
+    import tomlkit
+
+    from proteus.config import read_config_object
+
+    doc = tomlkit.parse((Path(__file__).parents[2] / 'input' / 'minimal.toml').read_text())
+    ie = doc.setdefault('interior_energetics', tomlkit.table())
+    ie['module'] = 'aragog'
+    ie['surface_bc_mode'] = 'flux'
+    ar = ie.setdefault('aragog', tomlkit.table())
+    ar['lid_mush_base'] = True
+    ar['rheology'] = {'enabled': True}
+    atm = doc.setdefault('atmos_clim', tomlkit.table())
+    atm['rayleigh'] = False  # the dummy atmosphere has no Rayleigh scattering
+    for module, refused in (('janus', True), ('dummy', False)):
+        atm['module'] = module
+        path = tmp_path / f'{module}.toml'
+        path.write_text(tomlkit.dumps(doc))
+        if refused:
+            with pytest.raises(ValueError, match='JANUS does not read the lid'):
+                read_config_object(path)
+        else:
+            assert read_config_object(path).interior_energetics.aragog.lid_mush_base is True
+
+
+@pytest.mark.unit
+def test_a_config_file_with_the_lid_and_prevent_warming_is_refused_at_load(tmp_path):
+    """prevent_warming clamps F_atm while the open part of the lid keeps the skin flux, so the
+    flux balance of the lid does not close: the lid with prevent_warming is refused at load,
+    with both keys named; the same file with prevent_warming false loads."""
+    from pathlib import Path
+
+    import tomlkit
+
+    from proteus.config import read_config_object
+
+    doc = tomlkit.parse((Path(__file__).parents[2] / 'input' / 'minimal.toml').read_text())
+    ie = doc.setdefault('interior_energetics', tomlkit.table())
+    ie['module'] = 'aragog'
+    ie['surface_bc_mode'] = 'flux'
+    ar = ie.setdefault('aragog', tomlkit.table())
+    ar['lid_mush_base'] = True
+    ar['rheology'] = {'enabled': True}
+    atm = doc.setdefault('atmos_clim', tomlkit.table())
+    atm['module'] = 'dummy'
+    atm['rayleigh'] = False
+    planet = doc.setdefault('planet', tomlkit.table())
+    for warming, refused in ((True, True), (False, False)):
+        planet['prevent_warming'] = warming
+        path = tmp_path / f'pw_{warming}.toml'
+        path.write_text(tomlkit.dumps(doc))
+        if refused:
+            with pytest.raises(ValueError, match='prevent_warming') as excinfo:
+                read_config_object(path)
+            assert 'lid_mush_base' in str(excinfo.value)
+        else:
+            assert read_config_object(path).planet.prevent_warming is False
+
+
+@pytest.mark.unit
+def test_a_config_file_with_the_lid_and_the_fixed_flux_dummy_is_refused_at_load(tmp_path):
+    """The fixed-flux dummy returns its flux without the skin, so the lid never reaches the
+    atmosphere: the lid with fixed_flux > 0 is refused at load, fixed_flux -1 and 0 load."""
+    from pathlib import Path
+
+    import tomlkit
+
+    from proteus.config import read_config_object
+
+    doc = tomlkit.parse((Path(__file__).parents[2] / 'input' / 'minimal.toml').read_text())
+    ie = doc.setdefault('interior_energetics', tomlkit.table())
+    ie['module'] = 'aragog'
+    ie['surface_bc_mode'] = 'flux'
+    ar = ie.setdefault('aragog', tomlkit.table())
+    ar['lid_mush_base'] = True
+    ar['rheology'] = {'enabled': True}
+    atm = doc.setdefault('atmos_clim', tomlkit.table())
+    atm['module'] = 'dummy'
+    atm['rayleigh'] = False  # the dummy atmosphere has no Rayleigh scattering
+    for fixed_flux, refused in ((200.0, True), (1.0e-6, True), (0.0, False), (-1.0, False)):
+        atm['dummy'] = {'fixed_flux': fixed_flux}
+        path = tmp_path / f'ff_{fixed_flux}.toml'
+        path.write_text(tomlkit.dumps(doc))
+        if refused:
+            with pytest.raises(ValueError, match='fixed_flux') as excinfo:
+                read_config_object(path)
+            assert 'lid_mush_base' in str(excinfo.value)
+        else:
+            assert read_config_object(path).atmos_clim.dummy.fixed_flux == pytest.approx(
+                fixed_flux, rel=1e-15
+            )
+    ar['lid_mush_base'] = False  # without the lid the fixed flux loads
+    atm['dummy'] = {'fixed_flux': 200.0}
+    path = tmp_path / 'ff_nolid.toml'
+    path.write_text(tomlkit.dumps(doc))
+    assert read_config_object(path).atmos_clim.dummy.fixed_flux == pytest.approx(
+        200.0, rel=1e-15
+    )
+    # J: AGNI ignores the dummy section, so the same fixed_flux loads with the lid on AGNI
+    ar['lid_mush_base'] = True
+    atm['module'] = 'agni'
+    atm['rayleigh'] = True
+    path = tmp_path / 'ff_agni.toml'
+    path.write_text(tomlkit.dumps(doc))
+    cfg = read_config_object(path)
+    assert (
+        cfg.atmos_clim.module == 'agni' and cfg.interior_energetics.aragog.lid_mush_base is True
+    )

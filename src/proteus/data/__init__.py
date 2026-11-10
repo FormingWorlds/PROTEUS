@@ -71,7 +71,7 @@ def spectral_file_key(group: str, bands: str | int) -> str:
 # The oldest fwl-io that reads this manifest schema and pins every shared dataset PROTEUS
 # reads at the expected version; proteus start stops below it. The pyproject.toml
 # requirement must equal it; a test checks.
-FWL_IO_FLOOR = '26.10.16'
+FWL_IO_FLOOR = '26.11.3'
 
 
 def manifest_path() -> Path:

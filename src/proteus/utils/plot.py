@@ -420,6 +420,13 @@ def latex_float(f):
         return float_str
 
 
+def profile_sample_tmin(times: list) -> float:
+    """Earliest time [yr] to sample profile snapshots from: 1e3 yr once a run passes it."""
+    if len(times) > 0 and np.amax(times) > 1e3:
+        return 1e3
+    return 1.0
+
+
 def sample_times(times: list, nsamp: int, tmin: float = 1.0):
     from proteus.utils.helper import find_nearest
 

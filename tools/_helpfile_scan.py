@@ -41,7 +41,7 @@ DOMAIN_LISTS = {
     'vol_gas_list',
     'vol_element_list',
     'vap_element_list',
-    'condensate_list',
+    'condensate_density',
     'VOLATILE_EOS_MAP',
 }
 
@@ -78,7 +78,7 @@ _GASES_VOL = TemplateOverride(('gas_list', 'vol_element_list'))
 _TRAPPED = TemplateOverride(('vol_list', 'vol_element_list', 'noble_gases'))
 _TRAPPED_ELEMENTS = TemplateOverride(('vol_element_list', 'noble_gases'))
 _VOL_ELEMENTS = TemplateOverride(('vol_element_list',))
-_CONDENSATES = TemplateOverride(('condensate_list',))
+_CONDENSATES = TemplateOverride(('condensate_density',))
 _TRAPPED_SPECIES = TemplateOverride(('vol_list', 'noble_gases'))
 _NOBLE = TemplateOverride(('noble_gases',))
 

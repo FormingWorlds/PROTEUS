@@ -74,12 +74,13 @@ def normalize(text: str) -> str:
 
 
 # A code span first, so a bracket inside one is never read as a link, then
-# the two real link forms. The URL part tolerates one level of nested
-# parentheses. Anything outside these is free text.
+# the two real link forms and a footnote mark [^key]. The URL part tolerates
+# one level of nested parentheses. Anything outside these is free text.
 _PROTECTED = re.compile(
     r'(?P<ticks>`+).+?(?P=ticks)'
     r'|\[[^\[\]]*\]\([^()]*(?:\([^()]*\)[^()]*)*\)'
-    r'|\[[^\[\]]*\]\[[^\[\]]*\]',
+    r'|\[[^\[\]]*\]\[[^\[\]]*\]'
+    r'|\[\^[A-Za-z0-9_-]+\]',
     re.DOTALL,
 )
 _BARE_BRACKET = re.compile(r'(?<!\\)([\[\]])')

@@ -747,3 +747,95 @@ def test_numpy_setup_solver_site_delegates_to_the_shared_builder():
 
     assert 'build_mixed_phase_params' in call_targets
     assert '_PhaseMixedParameters' not in call_targets
+
+
+def _rheology_config(enabled):
+    """A config namespace holding only the rheology switch."""
+    aragog = SimpleNamespace(rheology=SimpleNamespace(enabled=enabled))
+    return SimpleNamespace(interior_energetics=SimpleNamespace(aragog=aragog))
+
+
+def test_solid_rheology_kwargs_empty_when_off():
+    """With the rheology off the aragog constructors get no rheology keyword."""
+    from proteus.interior_energetics.aragog_phase import solid_rheology_kwargs
+
+    assert solid_rheology_kwargs(_rheology_config(False)) == {}
+    # with the rheology off an aragog without the wiring does not stop the run
+    with patch('aragog.solver.EntropySolver', object):
+        assert solid_rheology_kwargs(_rheology_config(False)) == {}
+
+
+def test_solid_rheology_kwargs_on_uses_the_aragog_defaults():
+    """With the rheology on the keyword holds the aragog defaults with enabled true."""
+    from aragog.rheology import SolidRheologyParams
+
+    from proteus.interior_energetics.aragog_phase import solid_rheology_kwargs
+
+    if not hasattr(__import__('aragog.solver').solver.EntropySolver, '_rheology_enabled'):
+        pytest.skip('the installed aragog solver does not read the rheology')
+    kw = solid_rheology_kwargs(_rheology_config(True))
+    assert kw == {'rheology': SolidRheologyParams(enabled=True)}
+    # each call builds its own parameters, so no run shares a mutable default
+    assert solid_rheology_kwargs(_rheology_config(True))['rheology'] is not kw['rheology']
+
+
+def test_solid_rheology_kwargs_refuses_an_aragog_without_the_wiring():
+    """An aragog solver that does not read the rheology stops the run."""
+    from proteus.interior_energetics.aragog_phase import solid_rheology_kwargs
+
+    with patch('aragog.solver.EntropySolver', object):
+        with pytest.raises(RuntimeError, match='does not') as err:
+            solid_rheology_kwargs(_rheology_config(True))
+    assert 'rheology' in str(err.value)
+
+
+def test_jax_phase_params_carry_the_rheology_switch():
+    """The JAX site passes the switch: on reaches PhaseParams, off leaves the default."""
+    from aragog.rheology import SolidRheologyParams
+
+    if not hasattr(__import__('aragog.solver').solver.EntropySolver, '_rheology_enabled'):
+        pytest.skip('the installed aragog solver does not read the rheology')
+    config = _make_full_config()
+    config.interior_energetics.aragog.rheology = SimpleNamespace(enabled=True)
+    assert build_jax_phase_params(config).rheology == SolidRheologyParams(enabled=True)
+    config.interior_energetics.aragog.rheology = SimpleNamespace(enabled=False)
+    assert build_jax_phase_params(config).rheology.enabled is False
+
+
+@pytest.mark.parametrize('lid', [True, False])
+def test_cvode_factory_builds_the_lid_parameters_at_each_call(tmp_path, lid):
+    """With the lid on, each factory call builds the JAX right-hand side with the current
+    ``jax_lid_params()`` of the solver, so the held surface and the cap of that call enter it;
+    without the lid it passes ``lid_params=None``."""
+    config = _make_full_config()
+    config.interior_energetics.aragog.backend = 'jax'
+    interior_o = _make_runner_interior_o(spider_eos_dir=str(tmp_path))
+    solver = interior_o.aragog_solver
+    solver._lid_on = lid
+    solver.jax_lid_params = MagicMock(side_effect=['lid call 1', 'lid call 2'])
+    with (
+        patch(
+            'proteus.interior_energetics.aragog._cached_entropy_eos_jax',
+            return_value=MagicMock(),
+        ),
+        patch('aragog.jax.phase.MeshArrays.from_numpy_mesh', return_value=MagicMock()),
+        patch(
+            'proteus.interior_energetics.aragog.build_jax_phase_params',
+            return_value=MagicMock(
+                separation_buoyancy_mixture=_FLAG[
+                    config.interior_energetics.aragog.separation_buoyancy
+                ]
+            ),
+        ),
+        patch(
+            'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
+            return_value=(MagicMock(), MagicMock(), MagicMock()),
+        ) as build,
+    ):
+        AragogRunner._maybe_install_jax_cvode_factory(config, interior_o, str(tmp_path))
+        factory = solver.set_jax_cvode_factory.call_args[0][0]
+        factory(MagicMock(), 'energy_balance')
+        factory(MagicMock(), 'energy_balance')
+    got = [c.kwargs['lid_params'] for c in build.call_args_list[-2:]]
+    assert got == (['lid call 1', 'lid call 2'] if lid else [None, None])
+    assert solver.jax_lid_params.call_count == (2 if lid else 0)

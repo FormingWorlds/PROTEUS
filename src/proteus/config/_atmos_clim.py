@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Literal, Union
 
@@ -9,6 +10,8 @@ from attrs.validators import ge, gt, in_, le
 from proteus.utils.constants import R_earth
 
 from ._converters import lowercase, none_if_none
+
+log = logging.getLogger('fwl.' + __name__)
 
 
 def warn_if_dummy(instance, attribute, value):
@@ -65,6 +68,35 @@ def valid_p_obs(instance, attribute, value):
         raise ValueError('`p_obs` must be > 0')
 
 
+def valid_surface_skin(instance, attribute, value):
+    """surface_d and surface_k are each a positive number, or both 'saturation'.
+
+    'saturation' derives the skin from the saturated condensate layers and needs
+    `surf_state = 'skin'`, which then falls back to 'fixed' while no layer has formed.
+    """
+    name = attribute.name
+    if value == 'saturation':
+        other = 'surface_k' if name == 'surface_d' else 'surface_d'
+        if getattr(instance, other) != 'saturation':
+            raise ValueError(f"`{name}='saturation'` requires `{other}='saturation'`")
+        if instance.surf_state != 'skin':
+            raise ValueError(f"`{name}='saturation'` requires `surf_state='skin'`")
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0:
+        raise ValueError(f"`{name}` must be a positive number or 'saturation', got {value!r}")
+
+
+def surf_state_to_int(surf_state: str) -> int:
+    """Return the AGNI integer surface boundary condition for a surface state."""
+    match surf_state:
+        case 'fixed':
+            return 1
+        case 'skin':
+            return 2
+        case _:
+            raise ValueError(f"Invalid surf_state for AGNI: '{surf_state}'")
+
+
 def check_overlap(instance, attribute, value):
     _overlaps = ('ro', 'ee', 'rorr')
     if value not in _overlaps:
@@ -115,6 +147,12 @@ def valid_agni(instance, attribute, value):
         if not instance.spectral_bands:
             raise ValueError('Must set atmos_clim.spectral_bands')
 
+    # AGNI loads every opacity with equilibrium chemistry, which can add any gas
+    if instance.agni.chemistry == 'eq' and not instance.agni.load_all_opacities:
+        log.warning(
+            'atmos_clim.agni.load_all_opacities = false has no effect with chemistry = "eq"'
+        )
+
     # fastchem installed?
     if instance.agni.chemistry == 'eq':
         FC_DIR = os.environ.get('FC_DIR')
@@ -139,7 +177,7 @@ class Agni:
     verbosity: int
         Logging and output verbosity for agni (0:none, 1:info, 2:debug).
     surf_material: str
-        Surface scattering material: the file name of a Hammond et al. (2024) spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo.
+        Surface scattering material: the file name of a Hammond et al. (2024)[^cite-hammond2024] spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo.
     chemistry: str | None
         Atmospheric chemistry treatment. Choices: 'none', 'eq' (FastChem).
     solve_energy: bool
@@ -205,6 +243,8 @@ class Agni:
     spectral_file: str | None
         Path to AGNI spectral file, or 'greygas' to enable the grey-gas RT scheme.
         If None, will use atmos_clim.spectral_group and atmos_clim.spectral_bands.
+    load_all_opacities: bool
+        Load the opacities of every gas in the spectral file into SOCRATES. If false, only the gases that PROTEUS models are loaded, which makes each radiative transfer calculation faster with spectral files that hold other gases. Has no effect with `chemistry = "eq"`, which loads every gas.
     grey_opacity_lw: float
         Grey longwave opacity [m2 kg-1], used when `spectral_file='greygas'`.
     grey_opacity_sw: float
@@ -300,6 +340,7 @@ class Agni:
         },
     )
     spectral_file: str | None = field(default=None, converter=none_if_none)
+    load_all_opacities: bool = field(default=True)
     grey_opacity_lw: float = field(default=1e1, validator=gt(0))
     grey_opacity_sw: float = field(default=1e-4, validator=gt(0))
     hydrograv_steps: int = field(default=2048, validator=gt(0))
@@ -414,10 +455,15 @@ class AtmosClim:
         `agni.wl_obs`); AGNI only.
     overlap_method: str
         Gas overlap method. Choices: 'ro', 'rorr', 'ee'.
-    surface_d: float
-        Conductive skin thickness [m].
-    surface_k: float
-        Conductive skin thermal conductivity [W m-1 K-1].
+    surface_d: float | str
+        Conductive skin thickness [m], or 'saturation' (together with `surface_k`)
+        to use the total thickness of the saturated condensate layers, such as
+        graphite, that float on the surface. 'saturation' needs `surf_state='skin'`;
+        while the layers are negligible the surface is fixed (T_surf = T_magma).
+    surface_k: float | str
+        Conductive skin thermal conductivity [W m-1 K-1], or 'saturation' to combine
+        the conductivities of the stacked condensate layers in series,
+        k = d / sum(d_i / k_i).
     aerosols_enabled: bool
         Enable aerosol radiative effects.
     cloud_enabled: bool
@@ -461,8 +507,8 @@ class AtmosClim:
 
     # Radiative and surface properties
     surf_state: str = field(default='skin', validator=(in_(('mixed_layer', 'fixed', 'skin')),))
-    surface_d: float = field(default=0.01, validator=gt(0))
-    surface_k: float = field(default=2.0, validator=gt(0))
+    surface_d = field(default=0.01, validator=valid_surface_skin)
+    surface_k = field(default=2.0, validator=valid_surface_skin)
     aerosols_enabled: bool = field(default=False, validator=valid_aerosols_enabled)
     cloud_enabled: bool = field(default=False, validator=warn_if_dummy)
     cloud_alpha: float = field(default=0.0, validator=(ge(0), le(1)))
@@ -474,13 +520,7 @@ class AtmosClim:
     @property
     def surf_state_int(self) -> int:
         """Return integer surface boundary condition for agni."""
-        match self.surf_state:
-            case 'fixed':
-                return 1
-            case 'skin':
-                return 2
-            case _:
-                raise ValueError(f"Invalid surf_state for AGNI: '{self.surf_state}'")
+        return surf_state_to_int(self.surf_state)
 
 
 # Thematic grouping for the generated configuration reference. Each entry is
@@ -564,7 +604,13 @@ DOC_GROUPS = {
         (
             'Spectral and gas allocation',
             None,
-            ('spectral_file', 'grey_opacity_lw', 'grey_opacity_sw', 'check_safe_gas'),
+            (
+                'spectral_file',
+                'load_all_opacities',
+                'grey_opacity_lw',
+                'grey_opacity_sw',
+                'check_safe_gas',
+            ),
         ),
         (
             'FastChem equilibrium chemistry',

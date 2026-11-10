@@ -83,7 +83,7 @@ def test_unannotated_fields_survive_with_declared_types(schema):
     assert by_path['planet.R_int_override']['type'] == 'float or none'
     assert by_path['planet.R_int_override']['bounds'] == [{'op': '>', 'value': 0}]
     # The override list must not rot: every entry still lacks an annotation.
-    assert len(_cs.ANNOTATION_OVERRIDES) == 9
+    assert len(_cs.ANNOTATION_OVERRIDES) == 11
 
 
 def test_enum_and_bound_extraction_pins_real_validator_sets(schema):
@@ -287,7 +287,9 @@ def test_section_table_and_choices_dedup(schema):
 # Independently written, but CommonMark-faithful on backtick runs: a span
 # delimited by N backticks may hold shorter runs, so the content is .+?, not
 # [^`]*?, or a ``code with ` inside`` span would desynchronise the sweep.
-_CODE_OR_LINK = re.compile(r'(?s:(`+).+?\1)|\[[^\]]*\]\([^)]*\)|\[[^\]]*\]\[[^\]]*\]')
+_CODE_OR_LINK = re.compile(
+    r'(?s:(`+).+?\1)|\[[^\]]*\]\([^)]*\)|\[[^\]]*\]\[[^\]]*\]|\[\^[A-Za-z0-9_-]+\]'
+)
 
 
 def test_generated_blocks_leave_no_bare_square_bracket(schema):
@@ -298,6 +300,8 @@ def test_generated_blocks_leave_no_bare_square_bracket(schema):
     linked = next(f for f in schema['fields'] if '](' in f['description'])
     assert '](' in _gcr._describe(linked)
     code_span = next(f for f in schema['fields'] if '``[' in f['description'])
+    cited = next(f for f in schema['fields'] if '[^cite-' in f['description'])
+    assert '[^cite-' in _gcr._describe(cited)  # a footnote mark stays a footnote mark
     assert '``[' in _gcr._describe(code_span)  # a backslash would render literally
 
     sections = sorted({f['toml_section'] for f in schema['fields']})
@@ -550,3 +554,19 @@ def test_every_table_row_has_the_header_cell_count(schema):
     assert by_path['accretion.morrigan.selector_value']['type'] == 'float or int or none'
     assert by_path['interior_struct.core_density']['type'] == 'float or str'
     assert '|' not in ''.join(f['type'] for f in schema['fields'])
+
+
+def test_every_footnote_mark_of_a_config_page_has_its_definition():
+    """A footnote mark [^key] that a docstring puts into a generated table needs its definition
+    at the end of the same page (outside the generated blocks), and every definition needs a mark,
+    so neither a dropped mark nor a deleted definition goes unnoticed."""
+    pages = sorted((_REPO_ROOT / 'docs' / 'Reference' / 'config').glob('*.md'))
+    assert pages
+    checked = 0
+    for page in pages:
+        text = page.read_text()
+        defined = set(re.findall(r'^\s*\[\^([A-Za-z0-9_-]+)\]:', text, flags=re.M))
+        used = set(re.findall(r'\[\^([A-Za-z0-9_-]+)\](?!:)', text))
+        assert used == defined, (page.name, sorted(used ^ defined))
+        checked += len(used)
+    assert checked >= 6  # the sweep must have marks to check

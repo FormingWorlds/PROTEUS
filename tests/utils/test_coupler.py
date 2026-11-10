@@ -1054,12 +1054,12 @@ def test_condensate_mass_is_resumable_state_and_its_activity_a_diagnostic():
     zeroed together with ``{e}_kg_condensed``, so no layer is held, and every
     other column keeps its value.
     """
-    from proteus.utils.constants import condensate_list, vol_element_list
+    from proteus.utils.constants import condensate_density, vol_element_list
 
     assert 'C_cd_activity' in GetHelpfileDiagnosticKeys()
     assert 'C_cd_kg' not in GetHelpfileDiagnosticKeys()
     assert 'C_cd_kg' in GetHelpfileCoreKeys()
-    dropped = [f'{c}_cd_{q}' for c in condensate_list for q in ('activity', 'kg')]
+    dropped = [f'{c}_cd_{q}' for c in condensate_density for q in ('activity', 'kg')]
     dropped += [f'{e}_kg_condensed' for e in vol_element_list]
     with tempfile.TemporaryDirectory() as tmpdir:
         _write_drifted_helpfile(tmpdir, dropped, n_rows=2)
@@ -3691,14 +3691,18 @@ def test_validate_module_versions_accepts_compatible_versions(tmp_path):
 
 
 @pytest.mark.usefixtures('fwl_io_current')
-@pytest.mark.parametrize(('agni_version', 'accepted'), [('1.13.2', False), ('1.14.0', True)])
-def test_validate_module_versions_requires_agni_with_broyden(tmp_path, agni_version, accepted):
-    """AGNI older than 1.14.0 is refused before the run starts.
+@pytest.mark.parametrize(
+    ('agni_version', 'accepted'), [('1.13.2', False), ('1.14.0', False), ('1.15.0', True)]
+)
+def test_validate_module_versions_requires_agni_with_load_all_opacities(
+    tmp_path, agni_version, accepted
+):
+    """AGNI older than 1.15.0 is refused before the run starts.
 
-    PROTEUS passes the `broyden` keyword to every `solve_energy_b` call, and
-    an older AGNI raises on that keyword, which `_solve_energy` would report
-    as a failed solve on every attempt. Edge: 1.13.2, the release before, is
-    refused, and 1.14.0 itself is accepted.
+    PROTEUS passes the `load_all_opacities` keyword to every `setup_b` call
+    and the `broyden` keyword (AGNI 1.14.0) to every `solve_energy_b` call,
+    and an AGNI without them raises on the keyword. Edge: 1.14.0, the release
+    before, is refused, and 1.15.0 itself is accepted.
     """
     from proteus.utils.coupler import validate_module_versions
 
@@ -5147,6 +5151,30 @@ def test_a_helpfile_without_m_desiccated_resumes_with_nothing_booked(tmp_path):
 
 
 @pytest.mark.unit
+def test_a_helpfile_without_the_skin_conductivity_resumes_with_zero(tmp_path):
+    """boundary_layer_conductivity is zero-filled for a helpfile that predates it, so an
+    older run resumes; boundary_layer_thickness is kept, and the skin step writes both
+    again after the first outgassing step."""
+    from proteus.utils.coupler import (
+        RESUMABLE_ZERO_FILL_KEYS,
+        GetHelpfileKeys,
+        ReadHelpfileFromCSV,
+    )
+
+    assert 'boundary_layer_conductivity' in RESUMABLE_ZERO_FILL_KEYS
+    assert 'boundary_layer_thickness' not in RESUMABLE_ZERO_FILL_KEYS
+    row = ZeroHelpfileRow()
+    row['boundary_layer_thickness'] = 0.01  # m
+    del row['boundary_layer_conductivity']
+    pd.DataFrame([row, row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert loaded['boundary_layer_conductivity'].tolist() == [0.0, 0.0]
+    assert loaded['boundary_layer_thickness'].tolist() == pytest.approx([0.01, 0.01])
+    assert set(loaded.columns) == set(GetHelpfileKeys())
+
+
+@pytest.mark.unit
 def test_a_helpfile_without_f_remelt_resumes_with_no_remelt_recorded(tmp_path):
     """f_remelt is in the schema and zero-filled: an older helpfile resumes with 0 on every row."""
     from proteus.utils.coupler import (
@@ -5539,6 +5567,32 @@ def test_select_profile_plot_times_intersects_for_snapshot_interiors():
     assert 30 not in result  # atmosphere-only time excluded
     assert 5 not in result  # interior-only time excluded
     assert 10 in result  # shared time included
+
+
+def test_select_profile_plot_times_matches_spider_snapshots_named_by_the_rounded_year():
+    """SPIDER names a snapshot by the time rounded to a year (309.json for 309.47 yr),
+    so with interior_rounds_to_year the sub-year atmosphere times of a long run match
+    and the run is plotted to its end; exact matching keeps only whole-year times."""
+    interior = [0, 1, 31, 61, 309, 644, 1110]
+    nc = [1.0, 2.0, 31.0, 61.0, 309.47, 643.733, 1110.493]
+    rounded = select_profile_plot_times(
+        interior, nc, no_int_snapshots=False, interior_rounds_to_year=True
+    )
+    assert rounded == [1.0, 31.0, 61.0, 309.47, 643.733, 1110.493]
+    exact = select_profile_plot_times(interior, nc, no_int_snapshots=False)
+    assert exact == [1.0, 31.0, 61.0]  # the earlier behaviour for SPIDER
+    assert max(rounded) > 10 * max(exact)
+
+
+def test_select_profile_plot_times_keeps_one_time_per_rounded_snapshot():
+    """Of several atmosphere times that round to one SPIDER snapshot the nearest is kept,
+    and a time exactly half a year away, which the two roundings may name differently,
+    is left out."""
+    result = select_profile_plot_times(
+        [10, 20], [9.7, 10.2, 19.5, 20.4], no_int_snapshots=False, interior_rounds_to_year=True
+    )
+    assert result == [10.2, 20.4]
+    assert 19.5 not in result and 9.7 not in result
 
 
 def test_select_profile_plot_times_empty_atmosphere_returns_empty():

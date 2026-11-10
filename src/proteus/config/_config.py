@@ -447,6 +447,24 @@ def prevent_desaturation_warns_without_condensates(instance, attribute, value):
         )
 
 
+def saturation_skin_warns_without_condensates(instance, attribute, value):
+    """A skin from saturation stays fixed unless atmodeller forms condensates."""
+    if instance.atmos_clim.surface_d != 'saturation':
+        return
+    outgas = instance.outgas
+    if outgas.module != 'atmodeller':
+        log.warning(
+            "atmos_clim.surface_d = 'saturation' keeps the surface fixed with "
+            'outgas.module = "%s": only atmodeller forms condensates',
+            outgas.module,
+        )
+    elif not outgas.atmodeller.include_condensates:
+        log.warning(
+            "atmos_clim.surface_d = 'saturation' keeps the surface fixed with "
+            'outgas.atmodeller.include_condensates = false'
+        )
+
+
 def lowt_extension_requires_aragog(instance, attribute, value):
     """The low-temperature solid extension is run only with the Aragog interior."""
     zalmoxis = getattr(instance.interior_struct, 'zalmoxis', None)
@@ -491,6 +509,49 @@ def observe_resolved_atmosphere(instance, attribute, value):
     """Synthetic observations require a spatially resolved atmosphere (not dummy)."""
     if (instance.observe.module is not None) and (instance.atmos_clim.module == 'dummy'):
         raise ValueError('Observational synthesis requires that atmos_clim != dummy')
+
+
+def lid_requires_the_skin_atmosphere(instance, attribute, value):
+    """A live Aragog lid acts on the atmosphere only through the skin of AGNI or the dummy.
+
+    The fixed-flux dummy (``fixed_flux > 0``), the saturation skin and ``prevent_warming`` are
+    refused with the lid.
+
+    The interior-side rules of the lid are in ``_interior._check_aragog_lid``.
+    """
+    ie = instance.interior_energetics
+    if ie.module != 'aragog' or not ie.aragog.lid_mush_base:
+        return
+    atm = instance.atmos_clim
+    if atm.module == 'janus':
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true needs atmos_clim.module = "agni" '
+            'or "dummy", not atmos_clim.module = "janus": JANUS does not read the lid.'
+        )
+    if atm.surf_state != 'skin':
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true needs atmos_clim.surf_state = '
+            f"'skin', got {atm.surf_state!r}: only the skin carries the lid to the atmosphere."
+        )
+    fixed_flux = getattr(getattr(atm, 'dummy', None), 'fixed_flux', -1.0)
+    if atm.module == 'dummy' and fixed_flux > 0:
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true cannot be used with '
+            f'atmos_clim.dummy.fixed_flux = {fixed_flux!r}: the fixed-flux dummy returns its '
+            'flux without the skin, so the lid does not reach the atmosphere.'
+        )
+    if getattr(getattr(instance, 'planet', None), 'prevent_warming', False):
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true cannot be used with '
+            'planet.prevent_warming = true: prevent_warming clamps F_atm while the open part of '
+            'the lid keeps the skin flux, so the flux balance of the lid does not close.'
+        )
+    if getattr(atm, 'surface_d', None) == 'saturation':
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true cannot be used with '
+            "atmos_clim.surface_d = 'saturation': that skin has no thickness while no condensate "
+            'layer has formed, and a condensate layer over the lid is not modelled.'
+        )
 
 
 def janus_escape_atmosphere(instance, attribute, value):
@@ -737,6 +798,23 @@ def boundary_requires_fixed_surface_state(instance, attribute, value):
         )
 
 
+def spider_struct_needs_mass_from_interior(instance, attribute, value):
+    """Refuse the SPIDER structure with an interior that takes its mass from the structure.
+
+    The SPIDER structure finds the interior radius from the mantle mass that the
+    energetics module returns for each trial radius. The dummy and boundary
+    interiors take their mantle mass from the structure (M_int - M_core), so the
+    radius solve would have no mantle mass to work with.
+    """
+    struct_module = instance.interior_struct.module
+    energetics = instance.interior_energetics.module
+    if struct_module == 'spider' and energetics in ('dummy', 'boundary'):
+        raise ValueError(
+            "interior_struct.module = 'spider' is incompatible with "
+            f"interior_energetics.module = '{energetics}'."
+        )
+
+
 @define
 class Config:
     """Root config parameters.
@@ -807,6 +885,7 @@ class Config:
             dummy_struct_mantle_eos,
             lowt_extension_requires_aragog,
             lowt_extension_requires_ps_tables,
+            spider_struct_needs_mass_from_interior,
         ),
     )
     outgas: Outgas = field(
@@ -816,7 +895,10 @@ class Config:
             prevent_desaturation_warns_without_condensates,
         ),
     )
-    atmos_clim: AtmosClim = field(factory=AtmosClim)
+    atmos_clim: AtmosClim = field(
+        factory=AtmosClim,
+        validator=(saturation_skin_warns_without_condensates, lid_requires_the_skin_atmosphere),
+    )
     atmos_chem: AtmosChem = field(factory=AtmosChem)
     escape: Escape = field(
         factory=Escape,

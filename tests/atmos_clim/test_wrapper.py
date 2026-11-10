@@ -454,6 +454,8 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
     )
@@ -474,6 +476,7 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
         'separation': 1.5e11,
         'semimajorax': 1.5e11,
         'eccentricity': 0.0,
+        'lid_F_open': -1.0,  # stale value; the call writes the open-surface flux
     }
     atm_output = {'albedo': 0.2, 'F_atm': 100.0}
 
@@ -498,6 +501,8 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
     assert run_janus.call_args.args[0] is seed
     assert atmos_o._atm is seed
     assert atmos_o._atm_janus_last is solved
+    # Without a lid the open-surface flux the interior takes is F_atm.
+    assert hf_row['lid_F_open'] == pytest.approx(100.0, rel=1e-15)
 
 
 @pytest.mark.unit
@@ -510,6 +515,8 @@ def test_run_atmosphere_janus_stops_with_status_20_on_a_missing_spectral_file(tm
         atmos_clim=SimpleNamespace(
             module='janus',
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
             albedo_pl=0.0,
             spectral_group='Dayspring',
             spectral_bands='48',
@@ -563,6 +570,8 @@ def test_run_atmosphere_uses_the_spectral_cache_only_for_the_first_agni_build(
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
             agni=SimpleNamespace(verbosity=0),
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
@@ -853,6 +862,8 @@ def test_run_atmosphere_carries_levels_into_the_row_escape_reads():
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
     )
@@ -957,6 +968,8 @@ def test_run_atmosphere_takes_the_resume_fallback_from_the_last_committed_row():
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
     )
@@ -1145,6 +1158,8 @@ def test_run_atmosphere_clips_a_carried_radius_from_an_unclipped_row():
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
         escape=SimpleNamespace(hill_clamp=True, hill_clamp_frac=1.0),
@@ -1249,6 +1264,8 @@ def test_run_atmosphere_does_not_place_gravity_from_a_radius_that_is_not_a_numbe
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
         escape=SimpleNamespace(hill_clamp=hill_clamp, hill_clamp_frac=1.0),
@@ -1349,6 +1366,8 @@ def test_run_atmosphere_keeps_a_level_the_bound_does_not_move():
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
         escape=SimpleNamespace(hill_clamp=True, hill_clamp_frac=1.0),
@@ -1489,3 +1508,74 @@ def test_realign_xuv_gravity_leaves_the_level_alone_where_it_cannot_be_placed():
     assert 'g_xuv' not in empty
     assert 'p_xuv' not in empty
     assert 'T_xuv' not in empty
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('thickness', 'T_surf_seen'),
+    [(0.0, 1800.0), (5.9, 1500.0)],
+    ids=['no-layer-surface-fixed-at-magma', 'graphite-layer-surface-left-to-the-skin'],
+)
+def test_run_atmosphere_fixes_the_surface_until_a_saturation_skin_forms(thickness, T_surf_seen):
+    """With surface_d = surface_k = 'saturation' and surf_state = 'skin', the
+    wrapper sets T_surf = T_magma (1800 K) before the solve while no layer has
+    formed, as for the fixed state, and leaves T_surf (1500 K) to the skin solve
+    once the skin step has written a thickness."""
+    from proteus.atmos_clim.common import Atmos_t
+
+    atmos_o = Atmos_t()
+    atmos_o._atm = object()
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            module='janus',
+            albedo_pl=0.0,
+            rayleigh=False,
+            cloud_enabled=False,
+            surf_state='skin',
+            surface_d='saturation',
+            surface_k='saturation',
+        ),
+        interior_energetics=SimpleNamespace(module='aragog'),
+    )
+    hf_row = {
+        'T_magma': 1800.0,  # K
+        'T_surf': 1500.0,  # K, below the magma as under a skin
+        'boundary_layer_thickness': thickness,  # m
+        'boundary_layer_conductivity': 2.89 if thickness > 0 else 0.0,  # W m-1 K-1
+        'M_planet': 3.3e23,
+        'R_obs': 2.45e6,
+        'F_int': 120.0,
+        'F_atm': 100.0,
+        'axial_period': 5.07e6,
+        'atm_kg_per_mol': 0.044,
+        'R_int': 2.4397e6,
+        'R_star': 6.96e8,
+        'F_olr': 200.0,
+        'F_sct': 100.0,
+        'F_ins': 9000.0,
+        'separation': 5.8e10,
+        'semimajorax': 5.8e10,
+        'eccentricity': 0.0,
+    }
+    seen = {}
+
+    def _fake_run_janus(atm, dirs, config_in, row, hf_all, write_data=True):
+        seen['T_surf'] = row['T_surf']
+        return object(), {'albedo': 0.2, 'F_atm': 100.0}
+
+    with patch('proteus.atmos_clim.janus.RunJANUS', side_effect=_fake_run_janus):
+        atmos_wrapper.run_atmosphere(
+            atmos_o,
+            config,
+            {'output': '/tmp/x'},
+            {'total': 5},
+            [1.0],
+            [1.0],
+            False,
+            None,
+            hf_row,
+        )
+
+    assert seen['T_surf'] == pytest.approx(T_surf_seen, rel=1e-12)
+    assert 0.0 < seen['T_surf'] <= hf_row['T_magma']

@@ -314,7 +314,7 @@ def _create_mock_config(
     mantle_tliq: float = 2500.0,
     mantle_tsol: float = 1500.0,
     mantle_cp: float = 1200.0,
-    mantle_rho: float = 4000.0,
+    const_rho: float = 4000.0,
     heat_internal: float = 5e-12,
     tmagma_rtol: float = 0.01,
     tmagma_atol: float = 10.0,
@@ -328,7 +328,7 @@ def _create_mock_config(
     config.interior_energetics.dummy.mantle_tliq = mantle_tliq
     config.interior_energetics.dummy.mantle_tsol = mantle_tsol
     config.interior_energetics.dummy.mantle_cp = mantle_cp
-    config.interior_energetics.dummy.mantle_rho = mantle_rho
+    config.interior_energetics.const_rho = const_rho
     config.interior_energetics.dummy.heat_internal = heat_internal
     config.interior_energetics.tmagma_rtol = tmagma_rtol
     config.interior_energetics.tmagma_atol = tmagma_atol
@@ -411,9 +411,10 @@ def test_run_dummy_int_rf_depth_uses_structure_core_radius():
 def test_run_dummy_int_mantle_mass_from_structure_budget():
     """The dummy energetics mantle mass equals the structure's M_int - M_core
     (consistent with the boundary backend and the planet mass budget), not the
-    density times shell-volume estimate, so M_core + M_mantle <= M_planet.
+    density times shell-volume estimate, so M_core + M_mantle <= M_planet. The
+    density it reports is that mass over the mantle shell volume.
     """
-    config = _create_mock_config(tsurf_init=2000.0, mantle_rho=4000.0)
+    config = _create_mock_config(tsurf_init=2000.0, const_rho=3300.0)
     dirs = {}
     M_int = 6.0e24
     M_core = 2.0e24  # structure mantle mass = 4.0e24
@@ -437,10 +438,47 @@ def test_run_dummy_int_mantle_mass_from_structure_budget():
     assert output['M_mantle'] == pytest.approx(M_int - M_core)
     # Conservation: core plus mantle does not exceed the planet mass.
     assert output['M_mantle'] + M_core <= M_int + 1.0
-    # Discrimination: the rho times shell-volume fallback (~3.2e24 here) is well
+    # Discrimination: the rho times shell-volume fallback (~2.6e24 here) is well
     # separated from the structure budget (4.0e24).
-    fallback = calculate_simple_mantle_mass(6e6, 0.5, 4000.0)
+    fallback = calculate_simple_mantle_mass(6e6, 0.5, 3300.0)
     assert abs(output['M_mantle'] - fallback) > 1e23
+    # Density: 4.0e24 kg over the 7.92e20 m3 shell is 5052 kg m-3, not const_rho (3300).
+    shell = 4.0 / 3.0 * np.pi * (6e6**3 - 3e6**3)
+    assert interior_o.density[0] == pytest.approx((M_int - M_core) / shell, rel=1e-12)
+    assert abs(interior_o.density[0] - 3300.0) > 1.0e3
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_dummy_int_fallback_mantle_mass_uses_const_rho():
+    """Without M_int in hf_row, the dummy mantle mass is const_rho times the shell volume.
+
+    const_rho = 3300 kg m-3 differs from the old dummy.mantle_rho default (4550)
+    and from the const_rho default (4000), so reading either default fails the pin.
+    """
+    R_int, R_core, rho = 6.0e6, 3.0e6, 3300.0
+    config = _create_mock_config(tsurf_init=2000.0, const_rho=rho)
+    hf_row = {
+        'F_atm': 100.0,
+        'R_int': R_int,
+        'R_core': R_core,
+        'M_core': 2.0e24,
+        'P_surf': 1e5,
+        'Time': 0.0,
+    }
+    interior_o = Interior_t(nlev_b=2)
+    interior_o.ic = 1
+    interior_o.tides = [0.0]
+
+    _, output = run_dummy_int(config, {}, hf_row, pd.DataFrame(), interior_o)
+
+    shell = 4.0 / 3.0 * np.pi * (R_int**3 - R_core**3)  # 7.92e20 m3
+    assert output['M_mantle'] == pytest.approx(rho * shell, rel=1e-12)
+    # The one-layer profile reports the density the mass was computed with.
+    assert interior_o.density[0] == pytest.approx(rho, rel=1e-12)
+    # Discrimination: 4550 and 4000 give 3.60e24 and 3.17e24 kg against 2.61e24 kg.
+    for wrong_rho in (4550.0, 4000.0):
+        assert abs(output['M_mantle'] - wrong_rho * shell) > 0.1 * rho * shell
 
 
 @pytest.mark.unit
@@ -627,7 +665,7 @@ def test_run_dummy_int_interior_arrays():
     Validates that phi, mass, visc, density, temp, pres, and radius
     arrays are set with correct shapes and physically valid values.
     """
-    config = _create_mock_config(tsurf_init=2000.0, mantle_rho=4000.0)
+    config = _create_mock_config(tsurf_init=2000.0, const_rho=3300.0)
     dirs = {}
     R_int = 6e6
     R_core = 2.7e6  # R_core/R_int = 0.45, deliberately != config core_frac (0.55)
@@ -660,7 +698,9 @@ def test_run_dummy_int_interior_arrays():
     # Check values
     assert interior_o.phi[0] == pytest.approx(output['Phi_global'])
     assert interior_o.mass[0] == pytest.approx(output['M_mantle'])
-    assert interior_o.density[0] == pytest.approx(4000.0)
+    # The one-layer density times the shell volume gives back the mantle mass.
+    shell = 4.0 / 3.0 * np.pi * (R_int**3 - R_core**3)
+    assert interior_o.density[0] * shell == pytest.approx(output['M_mantle'], rel=1e-12)
     assert interior_o.temp[0] == pytest.approx(output['T_magma'])
     assert interior_o.pres[0] == pytest.approx(P_surf)
     # radius[0] is the structure-derived core radius, not config.core_frac*R_int.
@@ -969,3 +1009,29 @@ def test_interior_t_single_layer_dummy_interior():
     assert len(interior.tides) == 1
     assert len(interior.phi) == 1
     assert len(interior.radius) == 2  # One more radius point than layers
+
+
+@pytest.mark.unit
+def test_run_dummy_int_leaves_the_skin_thickness_to_the_skin_step():
+    """The dummy interior writes no boundary_layer_thickness, so the skin step that
+    runs after outgassing is the only writer of the skin columns; this holds for a
+    numeric and for a saturation skin."""
+    hf_row = {
+        'F_atm': 100.0,
+        'R_int': 6e6,
+        'M_core': 2e24,
+        'P_surf': 1e5,
+        'Time': 0.0,
+        'T_magma': 0.0,
+        'boundary_layer_thickness': 5.9,  # m
+        'boundary_layer_conductivity': 2.89,  # W m-1 K-1
+    }
+    for surface_d in ('saturation', 0.01):
+        config = _create_mock_config(tsurf_init=3000.0)
+        config.atmos_clim.surface_d = surface_d
+        interior_o = Interior_t(nlev_b=2)
+        interior_o.ic = 1
+        interior_o.tides = [0.0]
+        _, output = run_dummy_int(config, {}, dict(hf_row), pd.DataFrame(), interior_o)
+        assert 'boundary_layer_thickness' not in output
+        assert output['T_magma'] == pytest.approx(3000.0)

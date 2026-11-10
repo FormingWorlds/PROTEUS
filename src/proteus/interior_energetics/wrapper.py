@@ -2016,6 +2016,17 @@ def _partial_remelt_profile(solver, S_end: np.ndarray, S_molten: np.ndarray, f: 
     return remelt_entropy(S_end, S_molten, w)
 
 
+# Lid columns of the helpfile that a re-melt takes from the re-melted state.
+LID_COLUMNS = (
+    'lid_weight',
+    'lid_conductance',
+    'lid_delta',
+    'lid_T_surface',
+    'lid_T_base',
+    'lid_T_node',
+)
+
+
 def _remelt_aragog(
     config: Config, dirs: dict, hf_row: dict, interior_o, f: float = 1.0
 ) -> None:
@@ -2058,7 +2069,8 @@ def _remelt_aragog(
     stays the mantle's.
 
     The melt-state keys in ``hf_row`` (``T_magma``, ``T_cmb``, ``Phi_global``,
-    ``Phi_global_vol``, ``T_pot``, ``RF_depth``, ``M_mantle_liquid``, ``M_mantle_solid``)
+    ``Phi_global_vol``, ``T_pot``, ``RF_depth``, ``M_mantle_liquid``, ``M_mantle_solid``, and the
+    lid columns)
     and the profile arrays on ``interior_o`` are updated to the re-melted
     profile evaluated without time integration, so downstream modules on the
     impact iteration read the post-impact melt state.
@@ -2172,7 +2184,7 @@ def _remelt_aragog(
             molten_out,
             hf_row,
             interior_o=interior_o,
-            surface_d=config.atmos_clim.surface_d,
+            surface_d=hf_row['boundary_layer_thickness'],
             surface_bc_mode=config.interior_energetics.surface_bc_mode,
         )
         # T_cmb and T_cmb_node keep the impact row consistent; the T_core jump guard
@@ -2187,6 +2199,11 @@ def _remelt_aragog(
             'RF_depth',
         ):
             hf_row[key] = output[key]
+        # The lid columns of the re-melted state, so that the atmosphere of the impact
+        # iteration sees the molten surface, not the lid of the cooled mantle.
+        for key in LID_COLUMNS:
+            if key in output:
+                hf_row[key] = output[key]
         # Accretion excludes a stratified core, so the top of a re-melted core is its T_cmb.
         if core_module:
             hf_row['core_T_top'] = output['T_cmb']
@@ -2425,6 +2442,33 @@ def _core_module_status(config: Config, dirs: dict):
         raise
 
 
+def lid_flux_provider(config, hf_row: dict):
+    """Flux of the atmosphere [W m-2] at a surface temperature, for the lid-cap corrector.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration options for PROTEUS.
+    hf_row : dict
+        Current helpfile row.
+
+    Returns
+    -------
+    callable or None
+        ``T_surf -> F_atm`` for the dummy atmosphere (the lid refuses ``planet.prevent_warming``
+        at config load, so no lower limit applies); None for a fixed dummy flux and for the other
+        modules, which take the slope of the rows without the corrector.
+    """
+    if config.atmos_clim.module != 'dummy':
+        return None
+    fixed_flux = getattr(config.atmos_clim.dummy, 'fixed_flux', -1.0)
+    if isinstance(fixed_flux, (int, float)) and fixed_flux > 0:
+        return None
+    from proteus.atmos_clim.dummy import net_flux
+
+    return lambda T: net_flux(config, hf_row, T)
+
+
 def run_interior(
     dirs: dict,
     config: Config,
@@ -2531,13 +2575,20 @@ def run_interior(
             interior_o._spider_cumulative_time += dtswitch
             interior_o.dt = dtswitch
             return
-        sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
+        sim_time, output = ReadSPIDER(
+            dirs,
+            config,
+            hf_row['R_int'],
+            interior_o,
+            surface_d=hf_row['boundary_layer_thickness'],
+        )
 
     elif config.interior_energetics.module == 'aragog':
         from proteus.interior_energetics.aragog import AragogRunner, InteriorStalledError
 
         with _core_module_status(config, dirs):
             runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
+        runner._lid_flux_at = lid_flux_provider(config, hf_row)
         try:
             with _core_module_status(config, dirs):
                 sim_time, output = runner.run_solver(
