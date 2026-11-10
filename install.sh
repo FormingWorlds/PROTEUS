@@ -538,11 +538,20 @@ julia_depot_holds_packages() {
     return 1
 }
 
+# Whether the Julia project $1 has a Manifest under one of the 4 names that Julia reads.
+has_julia_manifest() {
+    local name ver="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
+    for name in "JuliaManifest-v$ver.toml" "Manifest-v$ver.toml" JuliaManifest.toml Manifest.toml; do
+        [ -f "$1/$name" ] && return 0
+    done
+    return 1
+}
+
 # Install the packages that the Manifest of the Julia project $1 records into the depot, with no
 # change to that Manifest; juliapkg does not resolve again for a new depot. A failure warns and
 # joins the list at the end of the run; a later step reports what it stops.
 instantiate_julia_project() {
-    [ -f "$1/Manifest.toml" ] || return 0
+    has_julia_manifest "$1" || return 0
     local code='using Pkg; Pkg.instantiate()'
     if ! run_logged --takes "several minutes in a new depot" "Installing the Julia packages of $1" \
         env LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --startup-file=no --project="$1" -e "$code"; then
@@ -569,11 +578,12 @@ stop_on_unusable_depot() {
 }
 
 # Give this install its own Julia packages and compile files: <prefix>/julia_depot, and the trailing
-# colon keeps the stdlib compile files of the Julia binary. A value of the user stays; only a depot
-# inherited from another install does not. An old install hears the cost before the download.
+# colon keeps the stdlib compile files of the Julia binary. A value of the user stays with a warning,
+# unless -i on a terminal gets a yes; a depot inherited from another install does not stay. An old
+# install hears the cost before the download.
 setup_julia_depot() {
     [ -n "${CONDA_PREFIX:-}" ] || die "CONDA_PREFIX is not set, so the Julia depot of this install has no place."
-    local value="${JULIA_DEPOT_PATH:-}" own="$CONDA_PREFIX/julia_depot:" old="$HOME/.julia" first parent name
+    local value="${JULIA_DEPOT_PATH:-}" own="$CONDA_PREFIX/julia_depot:" old="$HOME/.julia" first parent name lines
     first="${value%%:*}"
     first="${first/#\~/$HOME}"
     parent="$(dirname -- "${first:-.}")"
@@ -587,11 +597,24 @@ setup_julia_depot() {
         value="$own"
         old="$first"
     elif [ "$name" != julia_depot ] || [ ! "$parent" -ef "$CONDA_PREFIX" ]; then
-        info "JULIA_DEPOT_PATH stays at $value, so this install shares its Julia packages with anything else that uses that value."
-        if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
-            info "For a depot of its own, restore the JULIA_DEPOT_PATH line of pixi.toml and run bash install.sh again."
+        if [ "$IGNORE_JULIA_DEPOT_PATH" = true ]; then
+            info "JULIA_DEPOT_PATH stays at $value (--ignore-julia-depot-path)."
+        elif [ -z "${PIXI_ENVIRONMENT_NAME:-}" ] && [ "$INTERACTIVE" = true ] && [ -t 0 ] && [ -t 3 ] \
+            && ask_yn "JULIA_DEPOT_PATH is $value. Use a Julia depot of its own for this install?" n; then
+            lines="$(cd "$HOME" && grep -sn 'JULIA_DEPOT_PATH=' .zshenv .zprofile .zshrc .profile .bash_profile .bashrc \
+                | cut -d: -f1,2 | sed "s|^|$HOME/|" | xargs || true)"
+            warn "This install uses $own. conda activate sets it, but a new interactive shell inside the environment reads your shell start file again and gets $value back."
+            warn "Remove the line that sets JULIA_DEPOT_PATH from your shell start file${lines:+ ($lines)}."
+            value="$own"
+            old="$first"
         else
-            info "For a depot of its own, remove the value from your shell start file and open a new shell. Then run conda env config vars unset -p $CONDA_PREFIX JULIA_DEPOT_PATH, conda deactivate, conda activate $CONDA_PREFIX and bash install.sh."
+            warn "JULIA_DEPOT_PATH stays at $value, so this install shares its Julia packages with anything else that uses that value."
+            if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
+                warn "For a depot of its own, restore the JULIA_DEPOT_PATH line of pixi.toml and run bash install.sh again."
+            else
+                warn "For a depot of its own, run bash install.sh -i and answer yes, or remove the value from your shell start file and open a new shell. Then run conda env config vars unset -p $CONDA_PREFIX JULIA_DEPOT_PATH, conda deactivate, conda activate $CONDA_PREFIX and bash install.sh."
+            fi
+            warn "To keep the value with no warning, run bash install.sh --ignore-julia-depot-path."
         fi
     fi
     case "$value" in
@@ -603,7 +626,7 @@ setup_julia_depot() {
     first="${first:-$HOME/.julia}"
     first="${first/#\~/$HOME}"
     if ! julia_depot_holds_packages "$value" \
-        && { [ -f "$CONDA_PREFIX/julia_env/Manifest.toml" ] || [ -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; }; then
+        && { has_julia_manifest "$CONDA_PREFIX/julia_env" || has_julia_manifest "$SCRIPT_DIR/AGNI"; }; then
         if [ -d "$old/packages" ]; then
             if ! { mkdir -p "$first" && printf '%s\n' "$old" > "$first/.proteus-moved-from"; } 2>/dev/null; then
                 warn "Could not write in $first; if $old holds LovePy, run bash $SCRIPT_DIR/tools/get_lovepy.sh after this install."
@@ -786,6 +809,7 @@ available_disk_gb() {
 CURRENT_PHASE=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INTERACTIVE="false"
+IGNORE_JULIA_DEPOT_PATH="false"
 VERBOSE="false"
 
 # The log state of run_logged: whether the log tee runs, whether it named the log, its temp file.
@@ -818,6 +842,7 @@ while [ "$#" -gt 0 ]; do
         --no-data)  DATA_MODE="none" ;;
         --interactive|-i) INTERACTIVE="true" ;;
         --verbose)  VERBOSE="true" ;;
+        --ignore-julia-depot-path) IGNORE_JULIA_DEPOT_PATH="true" ;;
         --conda-env)
             if [ "$#" -eq 0 ] || [ -z "$1" ] || [ "${1#-}" != "$1" ]; then
                 fail "--conda-env needs the name of a conda environment."
@@ -839,6 +864,8 @@ while [ "$#" -gt 0 ]; do
             echo "  --verbose    Show the full build output on the terminal, not only in the log file"
             echo "  --conda-env <name>  The conda environment to use, or to make, when none or base"
             echo "               is active (default: proteus)"
+            echo "  --ignore-julia-depot-path  Keep a JULIA_DEPOT_PATH that is set, with no warning"
+            echo "               and no question in -i mode"
             echo "  --help       Show this message"
             echo ""
             echo "Default: download the essential data (~3 GB): the default-config and tutorial"

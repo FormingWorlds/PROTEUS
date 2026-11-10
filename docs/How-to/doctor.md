@@ -144,7 +144,7 @@ conda deactivate && conda activate proteus
 
 With no `JULIA_DEPOT_PATH`, the install shares `~/.julia` with every other install that has none. An install in this state works.
 
-The package check reads `Manifest-v1.13.toml` when it exists, as Julia does. Otherwise it reads `Manifest.toml`. It does not read the versions or the indirect dependencies.
+The package check reads the first of `JuliaManifest-v1.13.toml`, `Manifest-v1.13.toml`, `JuliaManifest.toml` and `Manifest.toml` that exists, as Julia does. It does not read the versions or the indirect dependencies.
 
 #### CVODE
 

@@ -145,8 +145,9 @@ def missing_julia_packages(project: Path, entries: list[str]) -> list[str]:
     The check is a folder ``packages/<name>`` in any entry, so another version
     of a package passes. A stdlib and a package added with ``Pkg.develop`` have
     no ``git-tree-sha1`` in the Manifest and no such folder, so they do not count.
-    As in Julia, ``Manifest-v<major>.<minor>.toml`` of the required Julia wins
-    over ``Manifest.toml``.
+    As in Julia, the first file that exists of ``JuliaManifest-v<major>.<minor>.toml``,
+    ``Manifest-v<major>.<minor>.toml`` (both of the required Julia),
+    ``JuliaManifest.toml`` and ``Manifest.toml`` is the Manifest.
 
     Parameters
     ----------
@@ -165,10 +166,10 @@ def missing_julia_packages(project: Path, entries: list[str]) -> list[str]:
     ValueError
         When the ``Project.toml`` or the Manifest cannot be read.
     """
-    path = project / f'Manifest-v{REQUIRED_JULIA}.toml'
-    if not path.is_file():
-        path = project / 'Manifest.toml'
-    if not path.is_file():
+    names = (f'JuliaManifest-v{REQUIRED_JULIA}.toml', f'Manifest-v{REQUIRED_JULIA}.toml')
+    names += ('JuliaManifest.toml', 'Manifest.toml')
+    path = next((project / n for n in names if (project / n).is_file()), None)
+    if path is None:
         return []
     try:
         manifest = tomllib.loads(path.read_bytes().decode())

@@ -5121,6 +5121,7 @@ _DEPOT_FUNCTIONS = (
     'is_proteus_install_folder',
     'is_gone_env_folder',
     'julia_depot_holds_packages',
+    'has_julia_manifest',
     'instantiate_julia_project',
     'stop_on_unusable_depot',
     'setup_julia_depot',
@@ -5395,8 +5396,9 @@ class TestJuliaDepot:
         assert self._value(result) == '/big/x:'
         assert 'Use a Julia depot' not in getattr(result, 'terminal', '')
         assert '[WARN]' not in result.stdout
-        named = [ln for ln in result.stdout.splitlines() if '/big/x:' in ln and '[INFO]' in ln]
+        named = [ln for ln in result.stdout.splitlines() if 'stays at /big/x:' in ln]
         assert len(named) == 1
+        assert '[INFO]' in named[0]
 
     def test_ignore_option_does_not_keep_the_depot_of_another_install(self, site):
         """The option is about a value of the user; an inherited depot of another install still goes."""
