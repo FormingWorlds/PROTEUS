@@ -23,8 +23,13 @@ repository, so it replaces only the conda steps of the
     `pixi run` creates the environment on first use, so there is no separate
     setup step.
 
+`pixi.toml` sets `JULIA_DEPOT_PATH` to `julia_depot` in the pixi environment, so each
+clone keeps its own Julia packages and `pixi run` always uses them. This value
+replaces one set in your shell; to use another depot, change that line in `pixi.toml`.
+Deleting `.pixi/` deletes the depot too.
+
 The installer writes the environment variables (`FWL_DATA`, `RAD_DIR`, `FC_DIR`,
-`PYTHON_JULIAPKG_EXE`) to `.proteus-env.sh` in the PROTEUS folder, not into the
+`PYTHON_JULIAPKG_EXE`, `JULIA_DEPOT_PATH`) to `.proteus-env.sh` in the PROTEUS folder, not into the
 pixi environment. Load them in each new shell, then prefix commands with
 `pixi run`, or use `pixi shell` for an activated shell:
 
@@ -53,10 +58,9 @@ pixi add netcdf-fortran gfortran
 ```
 
 SOCRATES also needs the library directory on `LD_LIBRARY_PATH` at run time, so
-add to `pixi.toml`:
+add this line under `[activation.env]` in `pixi.toml`:
 
 ```toml
-[activation.env]
 LD_LIBRARY_PATH = "$CONDA_PREFIX/lib"
 ```
 

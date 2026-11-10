@@ -94,13 +94,12 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
 ### Julia considerations
 If you have already installed Julia in your home folder, you could remove that through `rm -rf ~/.julia`.
 
-If you install Julia through Juliaup, first add these two variables to your `~/.shellrc`, e.g. `~/.bashrc`, so that they are set at each login. `JULIAUP_DEPOT_PATH` places the Julia versions of Juliaup, and `JULIA_DEPOT_PATH` places the Julia ecosystem, such as Julia packages, outside `$HOME`:
+If you install Julia through Juliaup, first add this variable to your `~/.shellrc`, e.g. `~/.bashrc`, so that it is set at each login. `JULIAUP_DEPOT_PATH` places the Julia versions of Juliaup outside `$HOME`:
 ```console
 export JULIAUP_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.juliaup
-export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia
 ```
 
-Load them in this terminal and run the official installer. It places the juliaup program in `~/.juliaup` and downloads a first Julia into the folder of `JULIAUP_DEPOT_PATH`:
+Load it in this terminal and run the official installer. It places the juliaup program in `~/.juliaup` and downloads a first Julia into the folder of `JULIAUP_DEPOT_PATH`:
 ```console
 source ~/.bashrc
 curl -fsSL https://install.julialang.org | sh
@@ -111,7 +110,7 @@ Then open a new terminal and add Julia 1.13, which the PROTEUS installer checks 
 juliaup add 1.13
 ```
 
-Setting only `JULIA_DEPOT_PATH` will be sufficient if you have not installed Julia through Juliaup.
+Do not set `JULIA_DEPOT_PATH` in `~/.bashrc` for PROTEUS: `bash install.sh` keeps the Julia packages of each install in its conda environment, which step 5 places outside `$HOME`. With a value in `~/.bashrc`, the installer keeps it for each environment with no value of its own, and these installs share that one folder. A Julia that you use outside PROTEUS then keeps its packages in `~/.julia`, in your capped home folder. A job must run through an activated environment or `conda run`, or it does not get the depot, as for `FWL_DATA`.
 
 If you install Julia using `tar`, use the following steps:
 
@@ -127,8 +126,6 @@ wget https://julialang-s3.julialang.org/bin/linux/x64/1.13/julia-1.13.0-linux-x8
 tar -xvzf julia-1.13.0-linux-x86_64.tar.gz
 
 echo 'export PATH=/dataserver/users/formingworlds/<username>/julia-1.13.0/bin:$PATH' >> ~/.bashrc
-
-echo 'export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia' >> ~/.bashrc
 
 source ~/.bashrc
 ```
