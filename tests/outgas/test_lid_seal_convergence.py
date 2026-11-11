@@ -23,7 +23,7 @@ from proteus.outgas.lid_seal import SEALED_ELEMENTS, SEALED_SPECIES, leak_step
 from proteus.utils.constants import gas_list
 from proteus.utils.helper import eval_gas_mmw
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(60)]
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 M_MANTLE, R_INT, GRAVITY = 4.0e24, 6.371e6, 9.81  # [kg], [m], [m s-2]
 T_SEAL, FO2 = 1500.0, 2.0  # [K], [log10 IW offset] of the closing solve
@@ -110,7 +110,7 @@ def _reference(tau):
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize('tau', [1.0e2, 1.0e3, 1.0e4, 1.0e5, 1.0e6, 1.0e7])
 def test_leak_step_converges_to_the_continuous_law(tau):
-    """E4: end state of 120 and 480 steps against Radau. Each error over the
+    """End state of 120 and 480 steps against Radau. Each error over the
     inventory of its species (held plus atmosphere) is below 1e-4, and where
     the step is short against the leak (lam dt < 0.1) 4 times more steps cut
     the largest error by at least 3.5, the first order of the end-point step."""

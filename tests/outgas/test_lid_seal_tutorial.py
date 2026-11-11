@@ -1,9 +1,11 @@
 """The lid seal on the stored rows of its tutorial run.
 
 Invariants checked: replayed on the stored closing rows with escape off, the
-leak starts for each species at the step the floor predicts; on every stored
-row of the tutorial run, held water that leaked ends at or above its floor, and
-the water in the atmosphere lies between the run that holds it and the open run.
+leak starts for each species at the step the floor predicts; replayed over the
+whole held span with the stored escape and melt fraction, the code gives the
+held water, its floor and the atmospheric water of the run on every row, held
+water that leaked ends at or above its floor, and the water in the atmosphere
+lies between the run that holds it and the open run.
 The data are rows of the tutorial runs that their header names.
 """
 
@@ -18,11 +20,12 @@ import pytest
 
 from proteus.config._outgas import Calliope, LidSeal
 from proteus.outgas.lid_seal import SEALED_ELEMENTS, SEALED_SPECIES, leak_step
+from proteus.outgas.wrapper import run_crystallized
 from proteus.utils.constants import gas_list
 
 from .test_lid_seal import _assert_legend_clear
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(60)]
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 DATA = Path(__file__).parents[1] / 'data' / 'lid_seal'
 D_H2O = 0.0017  # outgas.D_const_H2O of the tutorial
@@ -34,22 +37,29 @@ def _tutorial_config():
     outgas.calliope = Calliope()
     for s in SEALED_SPECIES:
         setattr(outgas, f'D_const_{s}', D_H2O if s == 'H2O' else 0.0)
-    return SimpleNamespace(outgas=outgas)
+    return SimpleNamespace(outgas=outgas, escape=SimpleNamespace(reservoir='outgas'))
 
 
-@pytest.mark.physics_invariant
-def test_the_first_held_steps_of_the_tutorial_follow_the_floor():
-    """E3: on the stored closing row the held water is the dissolved water of the
-    melt, below its floor on melt plus crystals by 1 + D (1 - Phi)/Phi. Replayed
-    with escape off over the stored melt fractions, CO2, CO and CH4 leak from the
-    first held step, and water only from the first step with Phi below
-    (Phi_c - D)/(1 - D), where the floor falls under it."""
+def _closing_row():
+    """The stored closing row as a sealed helpfile row, with the frozen solve temperature."""
     rows = pd.read_csv(DATA / 'tutorial_closing_rows.csv', comment='#')
     row = {f'{s}_kg_{r}': 0.0 for s in gas_list for r in ('atm', 'sealed')}
     row.update({f'{s}_mol_{r}': 0.0 for s in gas_list for r in ('atm', 'sealed')})
     row.update({f'{e}_kg_{r}': 0.0 for e in SEALED_ELEMENTS for r in ('atm', 'sealed')})
     row.update(rows.iloc[0].to_dict())
-    row.update({'seal_Tmagma_close': max(row['T_magma'], 700.0), 'esc_rate_total': 0.0})
+    row['seal_Tmagma_close'] = max(row['T_magma'], 700.0)
+    return row, rows
+
+
+@pytest.mark.physics_invariant
+def test_the_first_held_steps_of_the_tutorial_follow_the_floor():
+    """On the stored closing row the held water is the dissolved water of the
+    melt, below its floor on melt plus crystals by 1 + D (1 - Phi)/Phi. Replayed
+    with escape off over the stored melt fractions, CO2, CO and CH4 leak from the
+    first held step, and water only from the first step with Phi below
+    (Phi_c - D)/(1 - D), where the floor falls under it."""
+    row, rows = _closing_row()
+    row['esc_rate_total'] = 0.0
     phi_c = row['Phi_global']
     phi_star = (phi_c - D_H2O) / (1.0 - D_H2O)
     cfg, first = _tutorial_config(), {}
@@ -72,12 +82,28 @@ def test_the_first_held_steps_of_the_tutorial_follow_the_floor():
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_the_tutorial_atmosphere_lies_between_the_held_and_the_open_run(validation_plot):
-    """E5: in the stored tutorial run (tau_leak 1e5 yr), every row on which the
-    held water fell ends at or above its floor H2O_kg_eq (relative 1e-12). From
-    the closing row on, the water in the atmosphere is at or above the run that
-    holds it (tau_leak inf); from the first held step on, it is below the open run."""
+    """The held span of the stored tutorial run (tau_leak 1e5 yr), replayed from
+    its closing row through run_crystallized and leak_step with the stored escape
+    and melt fraction of each step, gives the held water, its floor H2O_kg_eq and
+    the water in the atmosphere of the run on every row (relative 1e-12). Every
+    row on which the held water fell ends at or above its floor. From the closing
+    row on, the water in the atmosphere is at or above the run that holds it
+    (tau_leak inf) and 1.5 times it at the end; from the first held step on, it
+    is below the open run."""
     w = pd.read_csv(DATA / 'tutorial_water.csv', comment='#')
     held = w[w['seal_active'] > 0.5]
+    row, _ = _closing_row()
+    assert row['Time'] == held['Time'].iloc[0]
+    cfg, out = _tutorial_config(), []
+    for r in held.iloc[1:].itertuples():
+        dt = r.Time - row['Time']
+        row.update({'Time': r.Time, 'Phi_global': r.Phi_global, 'M_mantle': r.M_mantle})
+        row.update({'esc_step_kg': r.esc_step_kg, 'esc_rate_total': r.esc_rate_total})
+        run_crystallized(cfg, row, dt)
+        leak_step(cfg, row, dt)
+        out.append((row['H2O_kg_sealed'], row['H2O_kg_eq'], row['H2O_kg_atm']))
+    stored = held[['seal_held', 'seal_eq', 'seal_atm']].values[1:]
+    np.testing.assert_allclose(np.array(out), stored, rtol=1e-12, atol=0.0)
     fell = held['seal_held'].diff() < 0.0
     assert fell.sum() > 0.5 * len(held)
     assert np.all(held['seal_held'][fell] >= held['seal_eq'][fell] * (1.0 - 1e-12))

@@ -19,7 +19,7 @@ from proteus.outgas.lid_seal import floor_leak, restore_seal_state
 
 from .test_lid_seal import _config, _row, _sealed_row
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(60)]
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 @given(

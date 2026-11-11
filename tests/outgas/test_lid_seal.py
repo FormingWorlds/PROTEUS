@@ -209,7 +209,7 @@ def test_assert_sealed_row_refuses_melt_mass_and_a_nan_reservoir():
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize('solubility', [False, True])
 def test_hold_keeps_every_reservoir_bit_identical(solubility):
-    """V2, E2(a): with tau_leak = inf and crust_rate = 0 (the defaults) nothing
+    """With tau_leak = inf and crust_rate = 0 (the defaults) nothing
     leaks, no dissolved equilibrium is computed (a NaN closing temperature
     passes), and the atmosphere is not recomputed: every column stays equal to
     the bit."""
@@ -275,7 +275,7 @@ def test_with_no_solubility_the_leak_decays_to_zero_whatever_the_step():
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_relaxation_matches_the_exponential_and_not_the_step_length(validation_plot):
-    """E1: at a constant floor M_eq = 0.4 M_0 the step kernel gives
+    """At a constant floor M_eq = 0.4 M_0 the step kernel gives
     M = M_eq + (M_0 - M_eq) exp(-(t - t_c)/tau) to 1e-12 at every row, for steps
     of 1, 10 and 100 kyr (tau = 1 Myr). The step solution is exact, so the step
     length enters only at round-off; a forward Euler step would miss the exact
@@ -323,7 +323,7 @@ def test_relaxation_matches_the_exponential_and_not_the_step_length(validation_p
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_volcanic_rate_closes_the_mass_balance_of_the_sealed_reservoir(validation_plot):
-    """V4: the volcanic rate k_i = chi_d Mdot_c / (M_melt + D_i M_solid) of the
+    """The volcanic rate k_i = chi_d Mdot_c / (M_melt + D_i M_solid) of the
     Schaefer & Sasselov (2015, ApJ 801:40) Eq. 14 and Eq. 17 form, with the
     global melt fraction. (a) X_melt (M_melt + D M_solid) == M_i; (b) half the
     mantle solid, half at phi 0.4, D = 0: X_melt = M_i / (0.2 M_mantle), which a
@@ -497,7 +497,7 @@ def test_step_closes_after_the_solve_and_not_in_the_init_stage():
     ids=['held', 'phi-band', 'phi-opens', 'delta-band', 'delta-opens', 'impact'],
 )
 def test_sealed_step_opens_only_past_the_band(phi_top, delta, impact, still_sealed):
-    """V9: the seal opens at phi_top >= phi_close + 0.05, at a crust thinner than
+    """The seal opens at phi_top >= phi_close + 0.05, at a crust thinner than
     0.5 delta_close, or on an impact; on opening the sealed mass returns in full
     and the solve of the same step runs; a held step does not solve."""
     interior = _interior([0.6, phi_top])
@@ -724,25 +724,20 @@ def test_melt_mass_on_a_held_step_without_a_release_fails_the_ledger_check():
     assert row['CO2_kg_sealed'] == MELT['CO2']
 
 
-@pytest.mark.physics_invariant
-def test_a_remelt_release_under_the_seal_reaches_the_sealed_reservoir():
-    """A real trapping step that remelts buried water while the seal holds hands
-    it to the held step, which puts it under the crust: no melt mass is left and
-    the water mass is conserved across trapped, sealed and atmosphere."""
+def _bury_and_remelt(row):
+    """Bury 2e19 kg of water in the solid and remelt it with a real trapping step.
+
+    Returns the released mass [kg] and the water in sealed, solid and atmosphere
+    before the release [kg].
+    """
     import pandas as pd
 
     from proteus.outgas.trapping import run_trapping
 
-    row = {**_sealed_row(phi=0.3), 'lid_weight': 1.0, 'lid_delta': 0.5, 'esc_rate_total': 0.0}
-    row.update(
-        {
-            'H2O_kg_solid': 2.0e19,
-            'H2O_kg_trapped': 2.0e19,
-            'H2O_mol_solid': 2.0e19 / eval_gas_mmw('H2O'),
-        }
-    )
-    row.update({'H_kg_solid': element_masses_from_species({'H2O': 2.0e19})['H']})
-    row['H_kg_trapped'] = row['H_kg_solid']
+    buried = 2.0e19
+    row.update({'H2O_kg_solid': buried, 'H2O_kg_trapped': buried})
+    row['H2O_mol_solid'] = buried / eval_gas_mmw('H2O')
+    row['H_kg_solid'] = row['H_kg_trapped'] = element_masses_from_species({'H2O': buried})['H']
     total0 = row['H2O_kg_sealed'] + row['H2O_kg_solid'] + row['H2O_kg_atm']
     hf_all = pd.DataFrame([{**row, 'Phi_global': 0.2, 'Time': row['Time'] - 10.0}])
     cfg = SimpleNamespace(
@@ -751,7 +746,16 @@ def test_a_remelt_release_under_the_seal_reaches_the_sealed_reservoir():
     )
     step = run_trapping(cfg, row, hf_all, None)
     assert step is not None and step.total_trapped < 0.0
-    released = -step.total_trapped
+    return -step.total_trapped, total0
+
+
+@pytest.mark.physics_invariant
+def test_a_remelt_release_under_the_seal_reaches_the_sealed_reservoir():
+    """A real trapping step that remelts buried water while the seal holds hands
+    it to the held step, which puts it under the crust: no melt mass is left and
+    the water mass is conserved across trapped, sealed and atmosphere."""
+    row = {**_sealed_row(phi=0.3), 'lid_weight': 1.0, 'lid_delta': 0.5, 'esc_rate_total': 0.0}
+    released, total0 = _bury_and_remelt(row)
     state, _ = _step(row, _interior([0.6, 0.2]), True, delta_close=0.3)
     assert state is True and row['H2O_kg_liquid'] == 0.0
     total1 = row['H2O_kg_sealed'] + row['H2O_kg_solid'] + row['H2O_kg_atm']
@@ -962,29 +966,11 @@ def test_a_release_a_leak_and_escape_in_one_held_step_keep_the_water_ledger():
     """A remelt release, the leak and escape in one held step: the water lost is
     exactly the escaped share of the atmosphere, and the sealed water is the
     held plus released mass times the exact leak factor."""
-    import pandas as pd
-
-    from proteus.outgas.trapping import run_trapping
-
     row = {**_sealed_row(phi=0.3), 'lid_weight': 1.0, 'lid_delta': 0.5}
-    row.update(
-        {
-            'H2O_kg_solid': 2.0e19,
-            'H2O_kg_trapped': 2.0e19,
-            'H2O_mol_solid': 2.0e19 / eval_gas_mmw('H2O'),
-        }
-    )
-    row['H_kg_solid'] = row['H_kg_trapped'] = element_masses_from_species({'H2O': 2.0e19})['H']
     m_el = sum(row[f'{e}_kg_atm'] for e in SEALED_ELEMENTS)
     row.update({'esc_rate_total': 1.0, 'esc_step_kg': 0.1 * m_el})
     atm0 = row['H2O_kg_atm']
-    total0 = row['H2O_kg_sealed'] + row['H2O_kg_solid'] + atm0
-    hf_all = pd.DataFrame([{**row, 'Phi_global': 0.2, 'Time': row['Time'] - 10.0}])
-    cfg = SimpleNamespace(
-        outgas=SimpleNamespace(trap_mode='front', D_const_H2O=0.0017, mass_thresh=1e16),
-        interior_energetics=SimpleNamespace(rfront_loc=0.5),
-    )
-    released = -run_trapping(cfg, row, hf_all, None).total_trapped
+    released, total0 = _bury_and_remelt(row)
     state, _ = _step(row, _interior([0.6, 0.2]), True, delta_close=0.3, tau_leak=1.0e3)
     keep = np.exp(-10.0 / 1.0e3)
     assert state is True and row['H2O_kg_liquid'] == 0.0
@@ -1071,7 +1057,7 @@ def test_leak_relaxes_toward_the_floor_of_the_end_state(tau, crust):
     """Above its floor the sealed mass relaxes toward the floor of the end state,
     M_end - M_eq,end = exp(-(1/tau + k) dt) (M_0 - M_eq,end), with M_eq from the
     atmosphere after the leak; the atmosphere gains what the reservoir loses.
-    E7: the volcanic term alone (tau = inf) stops at the same floor."""
+    The volcanic term alone (tau = inf) stops at the same floor."""
     atm = {'H2O': 1.0e17, 'CO2': 5.0e16}
     m0 = {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O), 'CO2': 1.0e19}
     row = _eq_row(atm, m0)
@@ -1130,7 +1116,7 @@ def test_closure_stores_the_magma_temperature_of_the_closing_solve(t_magma, expe
 
 @pytest.mark.physics_invariant
 def test_finite_tau_lies_between_the_frozen_and_the_open_atmosphere():
-    """E2b: escape off, H2O the only dissolving species, melt fraction falling
+    """Escape off, H2O the only dissolving species, melt fraction falling
     from 0.3 to 0.15. At every step the atmospheric H2O of tau = 3 kyr is below
     the open equilibrium on the melt alone (the closure state, D = 0) and at or
     above the frozen seal; once it leaks it stays above the frozen value."""
@@ -1156,7 +1142,7 @@ def test_finite_tau_lies_between_the_frozen_and_the_open_atmosphere():
 
 
 def test_a_leak_off_its_relaxation_fails_the_floor_check():
-    """E8: a step kernel that ignores the floor ends below it, and one that leaks
+    """A step kernel that ignores the floor ends below it, and one that leaks
     too little ends off the relaxation; the check in the step stops both."""
     atm = {'H2O': 1.0e17}
     m0 = {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O)}
@@ -1282,3 +1268,48 @@ def test_the_s2_fraction_continues_the_square_root_law_below_the_cutoff():
     )
     assert x[1e-2 * S2_CUTOFF]['S2'] == pytest.approx(0.1 * x[S2_CUTOFF]['S2'], rel=1e-12)
     assert SolubilityS2()(1e-2 * S2_CUTOFF, T_SEAL, 2.0) == 0.0
+
+
+@pytest.mark.physics_invariant
+def test_the_floor_takes_the_closing_iw_offset_and_the_surface_pressure():
+    """Held N2, S2, CO and CH4 in one leaking step; each floor written to the row is
+    the solubility of the end atmosphere at the IW offset of the closing solve
+    (fO2_shift_IW_derived, here IW+2) and the surface pressure. At IW+0 the N2
+    and S2 floors differ by more than 1 %, so a wrong offset is visible."""
+    atm = {
+        'H2O': 1.0e19,
+        'CO2': 1.0e18,
+        'N2': 1.0e17,
+        'S2': 1.0e16,
+        'CO': 1.0e17,
+        'CH4': 1.0e15,
+    }
+    held = {'N2': 1.0e19, 'S2': 1.0e19, 'CO': 1.0e19, 'CH4': 1.0e18}
+    row = _eq_row(atm, held)
+    cfg = _config(solubility=True, tau_leak=1.0e3)
+    leak_step(cfg, row, 1.0e3)
+    bar = {s: row[f'{s}_bar'] for s in gas_list}
+    melt = M_MANTLE * row['Phi_global']
+    x2 = equilibrium_fractions(cfg, bar, row['P_surf'], T_SEAL, 2.0)
+    x0 = equilibrium_fractions(cfg, bar, row['P_surf'], T_SEAL, 0.0)
+    for s in held:
+        assert row[f'{s}_kg_eq'] == pytest.approx(x2[s] * melt, rel=1e-10), s
+    assert row['N2_kg_sealed'] < held['N2'] and row['CO_kg_sealed'] < held['CO']
+    for s in ('N2', 'S2'):
+        assert abs(x0[s] / x2[s] - 1.0) > 0.01, s
+
+
+def test_the_law_table_covers_every_soluble_gas_and_reads_the_include_flags():
+    """Every species of soluble_gases has a law, and a species switched off in
+    outgas.calliope (here CO and Ar) gets no dissolved fraction at any pressure."""
+    from proteus.outgas.lid_seal import _LAW
+    from proteus.utils.constants import soluble_gases
+
+    assert set(_LAW) == set(soluble_gases)
+    cfg = _config(solubility=True)
+    cfg.outgas.calliope = Calliope(include_CO=False, include_Ar=True)
+    bar = dict.fromkeys(gas_list, 10.0)
+    x = equilibrium_fractions(cfg, bar, 500.0, T_SEAL, 2.0)
+    assert x['CO'] == 0.0 and x['Ar'] > 0.0 and x['CH4'] > 0.0
+    cfg.outgas.calliope = Calliope(include_Ar=False)
+    assert equilibrium_fractions(cfg, bar, 500.0, T_SEAL, 2.0)['Ar'] == 0.0

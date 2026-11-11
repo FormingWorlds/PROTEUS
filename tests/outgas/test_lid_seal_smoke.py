@@ -23,7 +23,7 @@ pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
 
 @pytest.mark.physics_invariant
 def test_pressures_from_masses_match_a_solved_calliope_row():
-    """V5: on a CALLIOPE row, rebuilding the atmosphere from its own masses and
+    """On a CALLIOPE row, rebuilding the atmosphere from its own masses and
     moles gives back its partial pressures and mixing ratios to 1e-10, and a
     mass-weighted (not mole-weighted) mixing ratio misses by more than 1 %."""
     row = _surface_pressure_hf_row()
@@ -62,7 +62,7 @@ def _dissolved_parity(config, row):
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(('shift', 't_magma'), [(-2.0, 1800.0), (2.0, 1000.0)])
 def test_equilibrium_fractions_are_the_dissolved_fractions_of_a_solved_row(shift, t_magma):
-    """E0: at IW-2 and IW+2, with He and Ar on and T_magma above and below
+    """At IW-2 and IW+2, with He and Ar on and T_magma above and below
     T_floor (1200 K), the seal's X_eq of each species equals the dissolved mass
     of the solve over M_mantle Phi_global, to 1e-12."""
     config = _cold_start_config({'He': True, 'Ar': True}, He_budget=3.0e16)
@@ -76,7 +76,7 @@ def test_equilibrium_fractions_are_the_dissolved_fractions_of_a_solved_row(shift
 
 @pytest.mark.physics_invariant
 def test_equilibrium_fractions_take_the_derived_fo2_under_from_o_budget():
-    """E0: under from_O_budget the IW offset of the solve is fO2_shift_IW_derived;
+    """Under from_O_budget the IW offset of the solve is fO2_shift_IW_derived;
     with it the seal's X_eq equals the solved melt, and with the configured
     offset the N2 and S2 fractions differ by more than 1 %."""
     legacy = _make_from_o_budget_config(fO2_shift_IW=1.0)
