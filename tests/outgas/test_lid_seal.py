@@ -1233,3 +1233,20 @@ def test_equilibrium_fractions_are_zero_with_solubility_off():
     on = equilibrium_fractions(_config(solubility=True), bar, 500.0, T_SEAL, 2.0)
     off = equilibrium_fractions(_config(), bar, 500.0, T_SEAL, 2.0)
     assert on['H2O'] > 0.0 and set(off.values()) == {0.0}
+
+
+@pytest.mark.parametrize(('p_co2', 'stops'), [(5.0e3, False), (6.0e3, True)])
+def test_a_co2_leak_above_the_peak_of_the_dixon_law_stops_the_step(p_co2, stops):
+    """The Dixon et al. (1995) CO2 solubility peaks at 83.15 T/23 bar (5423 bar at
+    1500 K) and falls above it, where the step can have more than one solution: a
+    step that leaves CO2 above that pressure stops, one below it does not."""
+    a_co2 = p_co2 * 1e5 * 4.0 * np.pi * R_INT**2 / GRAVITY
+    row = _eq_row({'CO2': a_co2}, {})
+    row = _eq_row({'CO2': a_co2}, {'CO2': 1.1 * _floor(row, 'CO2')})
+    cfg = _config(solubility=True, tau_leak=1.0e3)
+    if stops:
+        with pytest.raises(RuntimeError, match='Dixon'):
+            leak_step(cfg, row, 1.0e3)
+    else:
+        leak_step(cfg, row, 1.0e3)
+        assert 83.15 * T_SEAL / 23.0 > row['CO2_bar'] > p_co2
