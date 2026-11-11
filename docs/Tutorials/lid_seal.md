@@ -17,6 +17,7 @@ The leak stops at the floor `{x}_kg_eq`: the mass that melt and crystals dissolv
 
 Run the commands from the PROTEUS folder. Run the Python blocks in one Python session, in the order of the steps.
 Each run took about 20 minutes on a workstation.
+The printed values come from runs with CALLIOPE 26.11.8.
 
 ## Step 1: the configuration
 
@@ -77,8 +78,8 @@ print(f"held: H2O {close['H2O_kg_sealed']:.3e} kg, CO2 {close['CO2_kg_sealed']:.
 The run printed:
 
 ```text
-closed at 96938 yr, crust 65.8 km, top-cell melt fraction 5.0e-05, mantle melt fraction 0.192
-held: H2O 6.924e+18 kg, CO2 2.572e+17 kg
+closed at 97808 yr, crust 65.8 km, top-cell melt fraction 3.1e-04, mantle melt fraction 0.193
+held: H2O 6.924e+18 kg, CO2 2.858e+17 kg
 ```
 
 The seal closes when the top mesh cell freezes.
@@ -108,17 +109,17 @@ print(f"held / floor of water on the rows where it leaks: at least {(held['H2O_k
 The run printed:
 
 ```text
-floor / held water on the first held step: 1.0062
-CO2 first leaks at 97020 yr, Phi = 0.19167
-H2O first leaks at 97599 yr, Phi = 0.19039
-(Phi_c - D) / (1 - D) = 0.19048
-held / floor of water on the rows where it leaks: at least 1.000156
+floor / held water on the first held step: 1.0061
+CO2 first leaks at 97890 yr, Phi = 0.19231
+H2O first leaks at 98470 yr, Phi = 0.19105
+(Phi_c - D) / (1 - D) = 0.19113
+held / floor of water on the rows where it leaks: at least 1.000127
 ```
 
-At closure the floor of the water is $1 + D(1 - \Phi_c)/\Phi_c$ = 1.0072 times the held water.
-On the first held step the ratio is already 1.0062, because $\Phi$ has fallen from 0.19186 to 0.19167, which shrinks the melt in the reservoir of the floor.
+At closure the floor of the water is $1 + D(1 - \Phi_c)/\Phi_c$ = 1.0071 times the held water.
+On the first held step the ratio is already 1.0061, because $\Phi$ has fallen from 0.19250 to 0.19231, which shrinks the melt in the reservoir of the floor.
 CO$_2$ has $D$ = 0, so its floor starts at the held mass and it leaks from the first held step.
-Water does not leak on the first 7 held steps; it starts once $\Phi$ falls below 0.19048, about 660 yr after closure.
+Water does not leak on the first 7 held steps; it starts once $\Phi$ falls below 0.19113, about 660 yr after closure.
 From then on the held water follows its floor down and stays above it.
 
 ## Step 6: compare the 2 atmospheres
@@ -135,16 +136,16 @@ print(f"mantle melt fraction without the seal: {end_off['Phi_global']:.3f}")
 The run printed:
 
 ```text
-H2O in the atmosphere at 140 kyr: seal 2.209e+15 kg, no seal 2.231e+15 kg
-surface pressure: seal 1.014 bar, no seal 1.035 bar
+H2O in the atmosphere at 140 kyr: seal 2.113e+15 kg, no seal 2.122e+15 kg
+surface pressure: seal 1.037 bar, no seal 1.064 bar
 held H2O: 6.923e+18 kg, floor 6.920e+18 kg
 H2O in the melt without the seal: 6.923e+18 kg
-mantle melt fraction without the seal: 0.135
+mantle melt fraction without the seal: 0.136
 ```
 
 Before the closing step the 2 runs agree to the last digit.
 After it they part, but not by much.
-The melt is still 13.5 % of the mantle at 140 kyr, and water is very soluble, so in both runs almost all the water stays in the mantle.
+The melt is still 13.6 % of the mantle at 140 kyr, and water is very soluble, so in both runs almost all the water stays in the mantle.
 With the seal, the leak lets out only the water above the floor; the atmosphere then holds about 1 % less water than without the seal.
 The floor counts the water in the crystals and the held gas keeps its species, so the 2 runs need not agree exactly.
 

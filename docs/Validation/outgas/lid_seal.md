@@ -118,7 +118,7 @@ This case has no plot: it checks one step against an identity.
 
 **Why this check exists.** Within a step the floor moves, because the melt fraction falls and because the leak fills the atmosphere, but the step takes the floor of its end state. The result is then first order in the step length. This check measures how large that error is, and that it falls with the step as a first-order method must.
 
-**What it tests.** Held water, CO$_2$ and N$_2$ start at the melt equilibrium of a closing state, with escape off. The global melt fraction falls linearly from 0.19 to 0.135 over 43 kyr, as in the [tutorial](../../Tutorials/lid_seal.md). The leak step runs this path in 120 and in 480 equal steps, for $\tau$ from 100 yr to 10 Myr. Each atmospheric and held mass at the end is compared with the reference, as a fraction of the inventory of its species: the held mass plus the atmospheric mass. That error must be below $10^{-4}$. Where the step is short against the leak ($\lambda \Delta t < 0.1$), 4 times more steps must cut the largest error by at least 3.5 times.
+**What it tests.** Held water, CO$_2$ and N$_2$ start at the melt equilibrium of a closing state, with escape off. The global melt fraction falls linearly from 0.19 to 0.135 over 43 kyr, close to the path of the [tutorial](../../Tutorials/lid_seal.md). The leak step runs this path in 120 and in 480 equal steps, for $\tau$ from 100 yr to 10 Myr. Each atmospheric and held mass at the end is compared with the reference, as a fraction of the inventory of its species: the held mass plus the atmospheric mass. That error must be below $10^{-4}$. Where the step is short against the leak ($\lambda \Delta t < 0.1$), 4 times more steps must cut the largest error by at least 3.5 times.
 
 **How we know the right answer.** A stiff ODE solver (Radau, relative tolerance $10^{-11}$) integrates the same law in continuous time. The test writes the solubility laws out itself, without the CALLIOPE classes.
 
@@ -155,7 +155,7 @@ The cut is asserted only where the step is short against the leak ($\lambda \Del
 
 **Why it matters.** It sets how much gas a sealed planet with front trapping releases. At closure the floor equals the held mass, so the held mass leaks as soon as the melt fraction falls.
 
-This case has no plot: it checks closed forms on one step. The rule has no stored run of its own; on the tutorial run with front trapping, a replay of the held span with this rule gives 1.467e15 kg of water in the atmosphere at 140 kyr, against 1.438e15 kg without it.
+This case has no plot: it checks closed forms on one step. The rule has no stored run of its own. The tutorial with front trapping gives 1.242e15 kg of water in the atmosphere at 140 kyr; a replay of its held span with the floor that counts all crystals gives 1.218e15 kg.
 
 ??? info "Test details"
     - Reference: the closed forms above, from the mass balance on the crystals.
@@ -230,10 +230,10 @@ This case has no plot: it checks the row of the first leak of each species.
 ![Water in the atmosphere of the 3 tutorial runs against time, and the distance of the held water to its floor](../../assets/validation/outgas_lid_seal_tutorial_water.svg#only-light){ width="80%" }
 ![Water in the atmosphere of the 3 tutorial runs against time, and the distance of the held water to its floor](../../assets/validation/outgas_lid_seal_tutorial_water_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The upper panel shows the water in the atmosphere, in units of $10^{15}$ kg, against time in kyr for the open run, the seal with $\tau$ = 100 kyr, and the seal with $\tau$ infinite. The seal closes at 97 kyr. The lower panel shows, for the seal with $\tau$ = 100 kyr, how far the held water lies above its floor, as a fraction of the held water. Below the dotted zero line the held water is below its floor and does not leak. A pass means that the seal curve lies between the 2 other curves, and the lower curve is at or above zero on every row where the held water fell.
+**How to read the plot.** The upper panel shows the water in the atmosphere, in units of $10^{15}$ kg, against time in kyr for the open run, the seal with $\tau$ = 100 kyr, and the seal with $\tau$ infinite. The seal closes at 98 kyr. The lower panel shows, for the seal with $\tau$ = 100 kyr, how far the held water lies above its floor, as a fraction of the held water. Below the dotted zero line the held water is below its floor and does not leak. A pass means that the seal curve lies between the 2 other curves, and the lower curve is at or above zero on every row where the held water fell.
 
 ??? info "Test details"
-    - Reference: tutorial runs with the seal ($\tau$ = 100 kyr and infinite) and without it.
+    - Reference: tutorial runs with the seal ($\tau$ = 100 kyr and infinite) and without it, with CALLIOPE 26.11.8.
     - Tolerance: relative 1e-12 for the replay and for the floor; inequalities on every row; the atmospheric water at the end at least 1.5 times that of the run with $\tau$ infinite.
     - Test id: `tests/outgas/test_lid_seal_tutorial.py::test_the_tutorial_atmosphere_lies_between_the_held_and_the_open_run`
     - Command: `pytest -m reference_pinned tests/outgas/test_lid_seal_tutorial.py --validation-plots`

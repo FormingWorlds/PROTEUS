@@ -100,11 +100,11 @@ The floor is $M_{\mathrm{eq},i} = X_{\mathrm{eq},i}\, R_i$, with $X_{\mathrm{eq}
 
 The floor is one way: a species below its floor does not move, because gas does not dissolve back through the crust.
 
-**Example.** Without front trapping (the default), in the [tutorial](../Tutorials/lid_seal.md) the seal closes at $\Phi_c = 0.19186$. The held water is the dissolved water of the melt, while its floor also counts the crystals at $D = 0.0017$. The floor is therefore 1.0072 times the held water, and water starts to leak only when $\Phi$ falls below 0.19048. CO$_2$ ($D = 0$) leaks from the first held step.
+**Example.** Without front trapping (the default), in the [tutorial](../Tutorials/lid_seal.md) the seal closes at $\Phi_c = 0.19250$. The held water is the dissolved water of the melt, while its floor also counts the crystals at $D = 0.0017$. The floor is therefore 1.0071 times the held water, and water starts to leak only when $\Phi$ falls below 0.19113. CO$_2$ ($D = 0$) leaks from the first held step.
 
 ## One step of the leak
 
-The floor rises with the gas the leak puts into the atmosphere: for water at the closure of the tutorial, 1 kg more in the atmosphere raises the floor by about 3000 kg. A floor taken at the start of a step would therefore let a step leak far past the end state. The code takes the floor at the end of the step instead. Over a step of length $\Delta t$ it solves for the leak $L_i$ \[kg\]:
+The floor rises with the gas the leak puts into the atmosphere: for water at the closure of the tutorial, 1 kg more in the atmosphere raises the floor by about 3200 kg. A floor taken at the start of a step would therefore let a step leak far past the end state. The code takes the floor at the end of the step instead. Over a step of length $\Delta t$ it solves for the leak $L_i$ \[kg\]:
 
 $$
 L_i = \left(1 - e^{-\lambda_i \Delta t}\right) \max\left(M_i - M_{\mathrm{eq},i}(L),\ 0\right),
