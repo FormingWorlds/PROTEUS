@@ -103,19 +103,21 @@ runs:
     # ------------------------------------------------------------------
     # 1a0. Apt mirror reachability (Linux)
     # ------------------------------------------------------------------
-    # A down mirror fails every apt-get attempt the same way, so probe the
-    # mirrors actually configured on this runner and fail fast if none
-    # answer, instead of retrying against one that cannot succeed. Doesn't
-    # recognize a deb822 stanza disabled only via "Enabled: no" (no leading #).
+    # A down mirror fails every apt-get attempt the same way, so probe every
+    # configured host (deb822 "mirror+file:" URIs list theirs in apt-mirrors.txt)
+    # and fail fast if none, or no Ubuntu archive mirror, answers.
     - name: Check apt mirror reachability (Linux)
       if: runner.os == 'Linux'
       shell: bash
       run: |
         set -euo pipefail
-        mirrors="$(grep -rhvE '^[[:space:]]*#' \
-          /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources \
-          2>/dev/null | grep -oE 'https?://[^ "]+' \
-          | sed -E 's#(https?://[^/]+).*#\1#' | sort -u || true)"
+        hosts() {
+          grep -rhvE '^[[:space:]]*#' "$@" 2>/dev/null | grep -oE 'https?://[^ "[:space:]]+' \
+            | sed -E 's#(https?://[^/]+).*#\1#' | sort -u || true
+        }
+        mirrors="$(hosts /etc/apt/sources.list /etc/apt/sources.list.d/*.list \
+          /etc/apt/sources.list.d/*.sources /etc/apt/apt-mirrors.txt)"
+        ubuntu="$(hosts /etc/apt/apt-mirrors.txt)"
         if [ -z "$mirrors" ]; then
           echo "No apt mirror URIs found in the sources config; skipping the reachability check."
           exit 0
@@ -125,13 +127,17 @@ runs:
           code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$mirror" 2>/dev/null)" || code="000"
           if [ "$code" != "000" ]; then
             echo "Reachable ($code): $mirror"
-            reachable=1
-            break
+            reachable="$reachable $mirror"
+          else
+            echo "Unreachable: $mirror"
           fi
-          echo "Unreachable: $mirror"
         done <<< "$mirrors"
         if [ -z "$reachable" ]; then
           echo "::error::No configured apt mirror answered; failing fast instead of retrying apt-get against a mirror that cannot succeed." >&2
+          exit 1
+        fi
+        if [ -n "$ubuntu" ] && ! grep -qxFf <(printf '%s\n' $reachable) <<< "$ubuntu"; then
+          echo "::error::No Ubuntu archive mirror answered ($(echo $ubuntu)); failing fast." >&2
           exit 1
         fi
 
@@ -157,7 +163,7 @@ runs:
           sudo timeout --kill-after=10 60 dpkg --configure -a >/dev/null 2>&1 || true
         }
         retry_with_timeout "apt-get update" 150 10 dpkg_repair \
-          sudo apt-get update -qq
+          sudo apt-get update -q
         retry_with_timeout "apt-get install" 150 10 dpkg_repair \
           sudo apt-get install -y --no-install-recommends \
             gfortran \
