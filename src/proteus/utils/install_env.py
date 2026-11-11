@@ -12,9 +12,178 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 
 ENV_FILE_NAME = '.proteus-env.sh'
+REQUIRED_JULIA = '1.13'
+
+
+def julia_depot_entries(value: str | None) -> list[str]:
+    """Return the depot folders that Julia reads from a ``JULIA_DEPOT_PATH`` value.
+
+    Julia 1.13 reads an empty first entry as ``~/.julia`` plus the bundled
+    depots, and a later empty entry as the bundled depots alone, so that
+    ``/x:`` does not read ``~/.julia``. The bundled depots are not listed.
+
+    Parameters
+    ----------
+    value : str or None
+        The value; None when the variable is not set.
+
+    Returns
+    -------
+    list of str
+        The folders in order, without repeats, empty for an empty value.
+    """
+    if value is None:
+        value = ':'
+    if not value:
+        return []
+    parts = value.split(':')
+    if not parts[0]:
+        parts[0] = '~/.julia'
+    return list(dict.fromkeys(os.path.expanduser(part) for part in parts if part))
+
+
+def depot_of_other_install(value: str | None, root: Path) -> bool:
+    """Return whether a depot value is the ``julia_depot`` of another PROTEUS install.
+
+    That is a first entry named ``julia_depot`` beside ``conda-meta``, in a
+    PROTEUS tree or in a folder that is gone from an ``envs`` folder that exists
+    (a removed conda or pixi env), other than the active env and the tree
+    ``root``. ``install.sh`` applies the same rule. Any other missing folder can
+    still come, for example on a disk that is not mounted, and stays.
+    Conda keeps the value of the previous env when the next env has none, so
+    such a value is inherited and not chosen.
+
+    Parameters
+    ----------
+    value : str or None
+        Value of ``JULIA_DEPOT_PATH``.
+    root : Path
+        PROTEUS source tree of this install.
+
+    Returns
+    -------
+    bool
+        True for a depot that belongs to another install or to one that is gone.
+    """
+    entries = julia_depot_entries(value)
+    if not entries or Path(entries[0]).name != 'julia_depot':
+        return False
+    parent = Path(entries[0]).parent
+    own = {root.resolve(), Path(os.environ.get('CONDA_PREFIX') or root).resolve()}
+    if parent.resolve() in own:
+        return False
+    return (
+        (not parent.exists() and parent.parent.name == 'envs' and parent.parent.is_dir())
+        or (parent / 'conda-meta').is_dir()
+        or ((parent / 'install.sh').is_file() and (parent / 'src' / 'proteus').is_dir())
+    )
+
+
+def other_depot_words(value: str | None) -> str:
+    """Name what the depot of ``depot_of_other_install`` is, for a message.
+
+    Parameters
+    ----------
+    value : str or None
+        Value of ``JULIA_DEPOT_PATH``, with at least one entry.
+
+    Returns
+    -------
+    str
+        The first entry and what it belongs to.
+    """
+    first = Path(julia_depot_entries(value)[0])
+    if first.parent.exists():
+        return f'{first} is the depot of another PROTEUS install'
+    return f'{first} is the depot of an environment that is gone'
+
+
+def own_julia_depot() -> str | None:
+    """Return the depot value of the active env, the one ``install.sh`` gives it.
+
+    Returns
+    -------
+    str or None
+        ``<CONDA_PREFIX>/julia_depot:``, or None with no env or with ``base``,
+        which PROTEUS does not install into.
+    """
+    prefix = os.environ.get('CONDA_PREFIX')
+    if not prefix or os.environ.get('CONDA_DEFAULT_ENV') == 'base':
+        return None
+    return f'{prefix}/julia_depot:'
+
+
+def depot_value_is_unusable(value: str | None) -> bool:
+    """Return whether the first entry of a depot value names no fixed folder.
+
+    A relative entry depends on the folder of each process, ``~user`` is not
+    expanded by Julia and a literal ``$`` was never expanded. ``install.sh``
+    stops on the same forms. An empty first entry is ``~/.julia``.
+
+    Parameters
+    ----------
+    value : str or None
+        Value of ``JULIA_DEPOT_PATH``.
+
+    Returns
+    -------
+    bool
+        True for a first entry that names no fixed folder.
+    """
+    first = (value or '').split(':')[0]
+    fixed = not first or first == '~' or first.startswith(('/', '~/'))
+    return '$' in first or not fixed
+
+
+def missing_julia_packages(project: Path, entries: list[str]) -> list[str]:
+    """Return the direct dependencies of a Julia project that no depot entry holds.
+
+    The check is a folder ``packages/<name>`` in any entry, so another version
+    of a package passes. A stdlib and a package added with ``Pkg.develop`` have
+    no ``git-tree-sha1`` in the Manifest and no such folder, so they do not count.
+    As in Julia, the Manifest is the first that exists of ``JuliaManifest-v<major>.<minor>.toml``,
+    ``Manifest-v<major>.<minor>.toml`` (of the required Julia), ``JuliaManifest.toml``, ``Manifest.toml``.
+
+    Parameters
+    ----------
+    project : Path
+        Folder of the Julia project.
+    entries : list of str
+        Depot folders, from ``julia_depot_entries``.
+
+    Returns
+    -------
+    list of str
+        Package names, empty with no Manifest.
+
+    Raises
+    ------
+    ValueError
+        When the ``Project.toml`` or the Manifest cannot be read.
+    """
+    names = (f'JuliaManifest-v{REQUIRED_JULIA}.toml', f'Manifest-v{REQUIRED_JULIA}.toml')
+    names += ('JuliaManifest.toml', 'Manifest.toml')
+    path = next((project / n for n in names if (project / n).is_file()), None)
+    if path is None:
+        return []
+    try:
+        manifest = tomllib.loads(path.read_bytes().decode())
+        direct = tomllib.loads((project / 'Project.toml').read_bytes().decode()).get('deps', {})
+    except (OSError, ValueError) as exc:
+        raise ValueError(
+            f'{project}: Project.toml or Manifest file cannot be read: {exc}'
+        ) from exc
+    table = manifest.get('deps', manifest)
+    return [
+        name
+        for name in direct
+        if any('git-tree-sha1' in item for item in table.get(name, []))
+        and not any((Path(entry) / 'packages' / name).is_dir() for entry in entries)
+    ]
 
 
 def _sh_quote(value: str) -> str:
