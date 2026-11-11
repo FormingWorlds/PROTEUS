@@ -52,7 +52,7 @@ SEALED_SPECIES = (*vol_list, *noble_gases)
 SEALED_ELEMENTS = tuple(vol_element_list)
 LEAK_ELEMENTS = (*vol_element_list, *noble_gases)
 
-# seal_path: the crust the seal reads in the step.
+# seal_path: the crust a closed seal reads; 0 while open.
 PATH_OPEN, PATH_MESH, PATH_LID = 0, 1, 2
 # Mass fraction of each sealed element in each sealed species [1].
 _WEIGHTS = {

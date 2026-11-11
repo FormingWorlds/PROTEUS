@@ -1313,7 +1313,7 @@ def GetHelpfileKeys():
 
     # Melt inventory held under a closed crust (outgas.lid_seal), and its leak
     keys.append('seal_active')       # whether the lid seal holds the melt inventory [1]
-    keys.append('seal_path')         # crust the seal reads: 0 open, 1 mesh crust, 2 sub-grid lid [1]
+    keys.append('seal_path')         # crust a closed seal reads: 0 open, 1 mesh crust, 2 sub-grid lid [1]
     keys.append('seal_t_close')      # time the seal last closed [yr]
     keys.append('seal_delta')        # crust thickness the seal reads [m]
     keys.append('seal_phi_top')      # melt fraction of the top mesh cell [1]
