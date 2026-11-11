@@ -1,11 +1,12 @@
 # Volatiles held under a closed crust
 
-This tutorial shows how a crust that closes over the magma ocean holds the volatiles of the melt, and how they then leak out.
+This tutorial shows how a crust that closes over the magma ocean holds the volatiles of the melt, and how they then leak out down to a floor.
 You run the same planet twice, once with the lid seal and once without it.
-Then you read when the seal closed, check the leak against its exact solution, and compare the 2 atmospheres.
+Then you read when the seal closed, check when each volatile starts to leak, and compare the 2 atmospheres.
 
 When the seal closes, the volatiles dissolved in the melt move to the `{x}_kg_sealed` columns, and the chemistry stops.
 While the seal holds, the held volatiles reach the atmosphere only by a leak with the relaxation time `tau_leak`, and by volcanism if `crust_rate` is above 0.
+The leak stops at the floor `{x}_kg_eq`: the mass that melt and crystals dissolve at the pressure of the atmosphere.
 [Volatiles held under a closed crust](../Explanations/outgas.md#volatiles-held-under-a-closed-crust) explains the rule.
 
 ## Prerequisites
@@ -84,71 +85,88 @@ The seal closes when the top mesh cell freezes.
 The top cell of this mesh is 65.8 km thick, so the crust jumps from 0 to 65.8 km in one step, and any `delta_close` up to 65.8 km closes the seal at the same step.
 About a fifth of the mantle is still molten, and its dissolved water and CO$_2$ are now held under the crust.
 
-## Step 5: check the leak against its exact solution
+## Step 5: when does each volatile start to leak?
 
-With `crust_rate = 0`, the held mass decays as $M(t) = M_c\, e^{-(t - t_c)/\tau}$, with $M_c$ the held mass at the closing time $t_c$ and $\tau$ = `tau_leak`:
+At closure the held water is the water dissolved in the melt.
+Its floor also counts the crystals, with the partition coefficient $D$ = `outgas.D_const_H2O` = 0.0017, so the held water starts below its floor.
+It leaks only once the floor falls under it.
+With the pressures fixed, that happens when the global melt fraction $\Phi$ falls below $(\Phi_c - D)/(1 - D)$, with $\Phi_c$ the value at closure:
 
 ```python
-tau = 1.0e5
+D = 0.0017
 held = on.iloc[k:]
-exact = close['H2O_kg_sealed'] * np.exp(-(held['Time'] - close['Time']) / tau)
-print(f"largest relative error {np.max(np.abs(held['H2O_kg_sealed'] / exact - 1)):.1e}")
-print(f"held at {on['Time'].iloc[-1]:.0f} yr: {on['H2O_kg_sealed'].iloc[-1] / close['H2O_kg_sealed']:.3f} of the closing value")
+print(f"floor / held water on the first held step: {held['H2O_kg_eq'].iloc[1] / held['H2O_kg_sealed'].iloc[1]:.4f}")
+for s in ('CO2', 'H2O'):
+    leaks = held[f'{s}_kg_sealed'].diff() < 0
+    first = held[leaks].iloc[0]
+    print(f"{s} first leaks at {first['Time']:.0f} yr, Phi = {first['Phi_global']:.5f}")
+print(f"(Phi_c - D) / (1 - D) = {(close['Phi_global'] - D) / (1 - D):.5f}")
+leaks = held['H2O_kg_sealed'].diff() < 0
+print(f"held / floor of water on the rows where it leaks: at least {(held['H2O_kg_sealed'] / held['H2O_kg_eq'])[leaks].min():.6f}")
 ```
 
 The run printed:
 
 ```text
-largest relative error 1.6e-15
-held at 140000 yr: 0.650 of the closing value
+floor / held water on the first held step: 1.0062
+CO2 first leaks at 97020 yr, Phi = 0.19167
+H2O first leaks at 97599 yr, Phi = 0.19039
+(Phi_c - D) / (1 - D) = 0.19048
+held / floor of water on the rows where it leaks: at least 1.000156
 ```
 
-The code uses the exact solution over each step, so only round-off remains, whatever the step length.
+CO$_2$ has $D$ = 0, so its floor starts at the held mass and it leaks from the first held step.
+Water does not leak on the first 7 held steps; it starts once $\Phi$ falls below 0.19048, about 660 yr after closure.
+From then on it stays just above its floor: the leak stops there, whatever `tau_leak` is.
 
 ## Step 6: compare the 2 atmospheres
 
 ```python
 end_on, end_off = on.iloc[-1], off.iloc[-1]
-print(f"H2O in the atmosphere at 140 kyr: seal {end_on['H2O_kg_atm']:.2e} kg, no seal {end_off['H2O_kg_atm']:.2e} kg")
+print(f"H2O in the atmosphere at 140 kyr: seal {end_on['H2O_kg_atm']:.3e} kg, no seal {end_off['H2O_kg_atm']:.3e} kg")
 print(f"surface pressure: seal {end_on['P_surf']:.3f} bar, no seal {end_off['P_surf']:.3f} bar")
-print(f"H2O in the melt without the seal: {end_off['H2O_kg_liquid']:.2e} kg")
+print(f"held H2O: {end_on['H2O_kg_sealed']:.3e} kg, floor {end_on['H2O_kg_eq']:.3e} kg")
+print(f"H2O in the melt without the seal: {end_off['H2O_kg_liquid']:.3e} kg")
 print(f"mantle melt fraction without the seal: {end_off['Phi_global']:.3f}")
 ```
 
 The run printed:
 
 ```text
-H2O in the atmosphere at 140 kyr: seal 2.41e+18 kg, no seal 2.23e+15 kg
-surface pressure: seal 1.316 bar, no seal 1.035 bar
-H2O in the melt without the seal: 6.92e+18 kg
+H2O in the atmosphere at 140 kyr: seal 2.209e+15 kg, no seal 2.231e+15 kg
+surface pressure: seal 1.014 bar, no seal 1.035 bar
+held H2O: 6.923e+18 kg, floor 6.920e+18 kg
+H2O in the melt without the seal: 6.923e+18 kg
 mantle melt fraction without the seal: 0.135
 ```
 
 Before the closing step the 2 runs agree to the last digit.
-After it they part.
-Without the seal, the chemistry keeps the water dissolved in the melt, because the melt is still 13.5 % of the mantle at 140 kyr and water is very soluble.
-With the seal, the leak takes a fixed share of the held water per year, and it does not depend on the solubility, so 35 % of the held water reaches the atmosphere in 43 kyr.
-`tau_leak` therefore sets how fast a sealed planet degasses; with the defaults, `tau_leak` infinite and `crust_rate = 0`, the held water stays under the crust.
+After it they part, but not by much.
+The melt is still 13.5 % of the mantle at 140 kyr, and water is very soluble, so in both runs almost all the water stays in the mantle.
+With the seal, the leak lets out only the water above the floor; the atmosphere then holds about 1 % less water than without the seal.
+The floor counts the water in the crystals and the held gas keeps its species, so the 2 runs need not agree exactly.
 
-The block plots the water in the atmosphere and under the crust:
+The block plots the water in the atmosphere, and the held water against its floor:
 
 ```python
 import matplotlib.pyplot as plt
 
-fig, ax = plt.subplots(figsize=(7.5, 4))
-ax.plot(on['Time'] / 1e3, on['H2O_kg_atm'], label='atmosphere, seal')
-ax.plot(off['Time'] / 1e3, off['H2O_kg_atm'], '--', label='atmosphere, no seal')
-ax.plot(held['Time'] / 1e3, held['H2O_kg_sealed'], ':', label='held under the crust')
-ax.set_yscale('log')
-ax.set_xlabel('Time [kyr]')
-ax.set_ylabel('H$_2$O mass [kg]')
+fig, (ax, ax2) = plt.subplots(2, 1, figsize=(7.5, 6), sharex=True)
+ax.plot(on['Time'] / 1e3, on['H2O_kg_atm'], label='seal')
+ax.plot(off['Time'] / 1e3, off['H2O_kg_atm'], '--', label='no seal')
+ax.set_ylabel('H$_2$O in the atmosphere [kg]')
 ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1.0))
+on_floor = held[held['H2O_kg_eq'] > 0]
+ax2.plot(on_floor['Time'] / 1e3, on_floor['H2O_kg_sealed'] / on_floor['H2O_kg_eq'] - 1)
+ax2.axhline(0.0, ls=':')
+ax2.set_ylabel('held / floor - 1')
+ax2.set_xlabel('Time [kyr]')
 fig.tight_layout()
 fig.savefig('output/tutorial_lid_seal/water.png', dpi=150)
 ```
 
 ## Step 7: try it yourself
 
-- Set `tau_leak` to `1e4` or `1e6` and run again: the share of the held water that reaches the atmosphere by 140 kyr changes with $1 - e^{-(t - t_c)/\tau}$.
-- Set `crust_rate` above 0 to add the volcanic leak; the columns `{e}_kg_leak_volc` and `{e}_kg_leak_tau` show the 2 parts in each step, and `seal_volc_capped` shows the steps where the crust production was cut to the melt mass.
+- Set `tau_leak` to `1e2` and run again: the leak follows the floor more closely, and the water in the atmosphere at 140 kyr changes by less than 0.1 %.
+- Set `crust_rate` above 0 to add the volcanic leak; the columns `{e}_kg_leak_volc` and `{e}_kg_leak_tau` show the 2 parts in each step, and `seal_volc_capped` shows the steps where the crust production was cut to the melt mass. Both parts stop at the same floor.
 - Set `delta_close` to 0.3 m: on this mesh the seal closes at the same step, because a crust on the mesh is 0 or a whole cell. A thin crust closes the seal earlier only through the Aragog sub-grid lid.

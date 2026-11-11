@@ -312,7 +312,8 @@ class LidSeal:
         Top-cell melt fraction [1] at or above which a closed seal opens; `none`
         means `phi_close + 0.05`.
     tau_leak: float
-        Relaxation time [yr] of the sealed inventory; inf holds it.
+        Relaxation time [yr] of the sealed inventory toward its dissolved
+        equilibrium with the atmosphere; inf holds it.
     chi_d: float
         Degassing efficiency [1] of the melt that reaches the crust (Schaefer &
         Sasselov (2015)[^cite-schaefer2015], Table 3).

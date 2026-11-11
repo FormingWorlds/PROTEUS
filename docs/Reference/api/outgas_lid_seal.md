@@ -1,6 +1,6 @@
 # `proteus.outgas.lid_seal`
 
-The melt inventory held under a closed crust, and its leak to the atmosphere.
+The melt inventory held under a closed crust, and its leak to the atmosphere down to the dissolved equilibrium.
 
 For how this part works, see [Outgassing, rock vapour and volatile trapping](../../Explanations/outgas.md#volatiles-held-under-a-closed-crust).
 
