@@ -123,7 +123,7 @@ This case has no plot: it checks one step against an identity.
 
 **Why it matters.** The adaptive step of a PROTEUS run changes from step to step; in the held part of the tutorial run it is 40 to 160 yr, shorter than the 358 yr steps of this test. The error of the step must stay small against the gas each species holds.
 
-This case has no plot; the table gives its result. Each error is the largest over the 6 masses, as a fraction of the inventory of its species, except the last column.
+This case has no plot; the table gives its result. Each error is the largest over the 6 masses, as a fraction of the inventory of its species, except the last column. The error cut is the error of 120 steps over that of 480 steps; 4 is the first-order value.
 
 | $\tau$ \[yr\] | 120 steps | 480 steps | Error cut | Largest per mass, 120 steps |
 |---|---|---|---|---|
@@ -134,9 +134,9 @@ This case has no plot; the table gives its result. Each error is the largest ove
 | $10^6$ | $2.1\times10^{-6}$ | $5.3\times10^{-7}$ | 4.00 | $4.3\times10^{-4}$ |
 | $10^7$ | $2.4\times10^{-6}$ | $5.9\times10^{-7}$ | 3.99 | $1.2\times10^{-3}$ |
 
-At $\tau$ = 100 yr the step is not short against the leak ($\lambda \Delta t$ = 3.6), so the cut there is not tested.
+The cut is asserted only where the step is short against the leak ($\lambda \Delta t < 0.1$), which is $\tau \ge 10^4$ yr. At $\tau$ = 100 yr and 1 kyr, $\lambda \Delta t$ is 3.6 and 0.36, so the cut in those 2 rows is shown for context and not tested.
 
-**Known limit.** Per mass, the error can be larger than per inventory. At 120 steps of 358 yr it reaches $1.9\times10^{-3}$ of the held CO$_2$ and N$_2$, which sit at a floor that moves with the melt fraction. It reaches $1.2\times10^{-3}$ of the atmospheric water at $\tau$ = 10 Myr, because the first leaking step is resolved only to one step. As a fraction of the mass a species moved into the atmosphere, it reaches 0.9 % (CO$_2$ at $\tau$ = 10 Myr). The error over the inventory is at most $4.4\times10^{-5}$.
+**Known limit.** Per mass, the error can be larger than per inventory. At 120 steps of 358 yr it reaches $1.9\times10^{-3}$ of the held CO$_2$ and N$_2$, which sit at a floor that moves with the melt fraction. It reaches $1.2\times10^{-3}$ of the atmospheric water at $\tau$ = 10 Myr, because the first leaking step is resolved only to one step. As a fraction of the mass a species moved into the atmosphere, it reaches 0.9 % (CO$_2$ at $\tau$ = 10 Myr). The error over the inventory is at most $4.4\times10^{-5}$. The test asserts only the error over the inventory and the cut; the per-mass numbers are results of the same run.
 
 ??? info "Test details"
     - Reference: Radau integration of $dM_i/dt = -(1/\tau) \max(M_i - M_{\mathrm{eq},i}, 0)$ with the laws written in the test.
@@ -202,7 +202,7 @@ This case has no plot: it checks the row of the first leak of each species.
 
 **Why this check exists.** The leak law must keep the floor on every row of a full PROTEUS run, with escape, all species and the adaptive step. A run that leaks past the floor, or code that no longer gives the numbers of that run, fails this check.
 
-**What it tests.** The [tutorial](../../Tutorials/lid_seal.md) runs 3 times: with the seal and $\tau$ = 100 kyr, with the seal and $\tau$ infinite, and without the seal. Rows of these runs are stored in `tests/data/lid_seal/`. The test replays the held span of the run with $\tau$ = 100 kyr from its closing row through the escape and leak code, with the stored escape and melt fraction of each step. The replay must give the held water, its floor `H2O_kg_eq` and the atmospheric water of the run on every row; it compares water only, so the IW offset, which the water law does not take, is checked by `tests/outgas/test_lid_seal.py::test_the_floor_takes_the_closing_iw_offset_and_the_surface_pressure`. On every held row where the held water fell, it must end at or above its floor. From the closing row on, the atmospheric water must lie at or above the run with $\tau$ infinite, and at the end at 1.5 times it or more. From the first held step on, it must lie below the open run.
+**What it tests.** The [tutorial](../../Tutorials/lid_seal.md) runs 3 times: with the seal and $\tau$ = 100 kyr, with the seal and $\tau$ infinite, and without the seal. Rows of these runs are stored in `tests/data/lid_seal/`. The test replays the held span of the run with $\tau$ = 100 kyr from its closing row through the escape and leak code, with the stored escape and melt fraction of each step. The replay must give the held water, its floor `H2O_kg_eq` and the atmospheric water of the run on every row; it compares water only, so the closing temperature and the IW offset, which the water law does not take, are checked by `tests/outgas/test_lid_seal.py::test_the_floor_takes_the_closing_iw_offset_and_the_surface_pressure`. On every held row where the held water fell, it must end at or above its floor. From the closing row on, the atmospheric water must lie at or above the run with $\tau$ infinite, and at the end at 1.5 times it or more. From the first held step on, it must lie below the open run.
 
 **How we know the right answer.** The stored run is the reference for the replay. The floor check follows from the law. The run with $\tau$ infinite leaks nothing, and the open run keeps its melt in equilibrium with the atmosphere at all times, so they bound a run that leaks toward the floor.
 
@@ -227,7 +227,7 @@ The tests in `tests/outgas/test_lid_seal.py` and the code itself also check, wit
 - with the defaults (`tau_leak` infinite, `crust_rate = 0`) no floor is computed and every column stays the same to the last bit, with solubility on or off;
 - after every step that leaks, the code checks that each species ends at or above its floor, at $e^{-\lambda_i \Delta t}$ of its starting distance; a step that ignores the floor or leaks too little stops the run;
 - a negative or non-finite floor, a closing temperature that is not finite and above 0 K, a non-finite IW offset, and sweeps over the species that do not settle stop the run with an error;
-- a step whose residual changes sign more than once over its bracket, sampled at 17 leaks, stops the run with an error; a CO$_2$ leak above $83.15\,T/23$ bar, where the CO$_2$ law of Dixon et al. (1995) falls with pressure, still has one solution and finishes;
+- a step whose residual changes sign more than once at 17 samples over its bracket stops the run with an error (3 made-up floors pin this: 3 roots, a narrow fold, and roots beyond the bracket that must not stop it); a CO$_2$ leak above $83.15\,T/23$ bar, where the CO$_2$ law of Dixon et al. (1995) falls with pressure, still has one solution and finishes;
 - a sealed row resumes only with a finite closing temperature above 0 K and a closing melt fraction in \[0, 1\];
 - with front trapping the floor reservoir leaves out the crystal share at closure, $D_i (1 - \Phi_c) M_\mathrm{mantle}$, and without trapping it keeps it (`tests/outgas/test_lid_seal.py::test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_closure`);
 - in one step the 2 leak parts of each element sum to the drop of its held mass and to the rise of its atmospheric mass; each species splits its leak in the ratio of its 2 rates;

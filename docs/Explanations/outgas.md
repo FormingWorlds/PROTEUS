@@ -342,7 +342,7 @@ If the history does not account for all of the trapped mass, the rest returns in
 
 **Question.** When a crust closes over the magma ocean, can the volatiles dissolved in the melt still reach the atmosphere?
 
-**Short answer.** With `outgas.lid_seal.enabled = true`, a crust that is thick enough holds the dissolved volatiles in the melt below it: this is the **seal**. While the seal holds, the chemistry is frozen and the held volatiles reach the atmosphere only by a slow leak, down to the mass the melt and crystals can hold at the pressure of the atmosphere (the floor). [Volatiles held under a closed crust](lid_seal.md) explains when the seal closes and opens, the leak and its floor, and their limits.
+**Short answer.** With `outgas.lid_seal.enabled = true`, a crust that is thick enough holds the dissolved volatiles in the melt below it: this is the **seal**. While the seal holds, the chemistry is frozen. The held volatiles reach the atmosphere only by a slow leak, which stops at the floor: the mass the melt and crystals can hold at the pressure of the atmosphere. [Volatiles held under a closed crust](lid_seal.md) explains when the seal closes and opens, the leak and its floor, and their limits.
 
 **Where this is checked.** [Volatiles under a closed crust](../Validation/outgas/lid_seal.md).
 

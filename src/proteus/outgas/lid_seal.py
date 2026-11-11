@@ -495,9 +495,10 @@ def _check_floors(config: Config, hf_row: dict, before: dict, leak: dict, frac: 
     floor is ``exp(-lam dt)`` times the distance it started at; both to round-off
     of its held mass before the step (1e-12 and 1e-9 of it). Its step residual,
     sampled at ``SCAN_POINTS`` leaks over the bracket with the others at their
-    final leaks, changes sign once: a law that falls with pressure (CO2, CO and
-    CH4 at high pressure) gives a second solution only where the floor falls
-    faster than the leak fills the atmosphere.
+    final leaks, changes sign at most once at those samples; roots closer than
+    one sample spacing, and coupled solutions of several species, pass. A law
+    that falls with pressure (CO2, CO and CH4 at high pressure) gives a second
+    solution only where the floor falls faster than the leak fills the atmosphere.
     """
     per_kg = {s: hf_row[f'{s}_mol_atm'] / hf_row[f'{s}_kg_atm'] for s in leak if leak[s] > 0.0}
     floor_of = _floor_model(config, hf_row, per_kg)

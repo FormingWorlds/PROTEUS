@@ -6,11 +6,11 @@ The short answer: with `outgas.lid_seal.enabled = true`, a crust that is thick e
 
 The seal opens again in 3 cases: the crust thins, the top cell of the mesh holds a set share of melt again (35 % by default), or a giant impact happens. With the default, `false`, the seal never closes.
 
-**Why it matters.** Without the seal, the chemistry keeps the melt in equilibrium with the atmosphere at every step, so a crust does not change where the volatiles go. With it, the atmosphere gets the gas of the melt only through the leak.
+**Why it matters.** Without the seal, the chemistry keeps the melt in equilibrium with the atmosphere at every step, so a crust does not change where the volatiles go. With it, the atmosphere gets the gas of the melt only through the leak, which changes the atmospheric mass, the surface pressure and the mass that escape can take. In the [tutorial](../Tutorials/lid_seal.md) the effect is small, about 1 % less water in the atmosphere at 140 kyr, because water is very soluble and most of it stays in the mantle in both runs.
 
 The seal is one path of the outgassing step; [Outgassing, rock vapour and volatile trapping](outgas.md) gives the order of the steps around it.
 
-**Terms used on this page.**
+## Terms used on this page
 
 - **Seal**: the state in which a closed crust holds the volatiles of the melt below it.
 - **Held mass**: the mass of a species or element that the seal holds below the crust, in the `_kg_sealed` columns.
@@ -80,6 +80,7 @@ The symbols are:
 - $M_\mathrm{melt} = \Phi M_\mathrm{mantle}$ and $M_\mathrm{solid} = (1 - \Phi) M_\mathrm{mantle}$: the melt and the solid mass of the mantle \[kg\], with the global melt fraction $\Phi$.
 - $D_i$: `outgas.D_const_<species>`, the crystal/melt partition coefficient \[1\].
 - $R_i$: the reservoir of species $i$ \[kg\], the melt and the crystals in equilibrium with it.
+- $\lambda_i = 1/\tau + k_i$: the leak rate of species $i$ \[yr$^{-1}$\].
 
 The first term relaxes the held mass with the time $\tau$. The second is volcanism: melt with the concentration $X_{\mathrm{melt},i} = M_i/R_i$ reaches the crust at the rate $\dot M_c$ and degasses the share $\chi_d$ of its excess over the solubility, $X_{\mathrm{melt},i} - X_{\mathrm{eq},i}$. Both terms act on the same distance to the floor, so the law is one relaxation. The leaked mass splits between them in the ratio $(1/\tau) : k_i$.
 
@@ -99,7 +100,7 @@ The floor is $M_{\mathrm{eq},i} = X_{\mathrm{eq},i}\, R_i$, with $X_{\mathrm{eq}
 
 The floor is one way: a species below its floor does not move, because gas does not dissolve back through the crust.
 
-**Example.** In the [tutorial](../Tutorials/lid_seal.md) the seal closes at $\Phi = 0.192$. The held water is the dissolved water of the melt, while its floor also counts the crystals at $D = 0.0017$. The floor is therefore 1.0072 times the held water, and water starts to leak only when $\Phi$ falls below 0.19048. CO$_2$ ($D = 0$) leaks from the first held step.
+**Example.** In the [tutorial](../Tutorials/lid_seal.md) the seal closes at $\Phi_c = 0.19186$. The held water is the dissolved water of the melt, while its floor also counts the crystals at $D = 0.0017$. The floor is therefore 1.0072 times the held water, and water starts to leak only when $\Phi$ falls below 0.19048. CO$_2$ ($D = 0$) leaks from the first held step.
 
 ## One step of the leak
 
@@ -112,18 +113,22 @@ $$
 
 - For a constant floor this is the exact solution, whatever the step length.
 - For $\tau \to 0$ it gives the gas-melt equilibrium of the frozen species; for $\lambda_i = 0$ nothing moves.
-- Brent's method finds $L_i$ for each species; sweeps over the species repeat until no leak changes by more than $10^{-14}$ of its held mass, because the floors couple through the surface pressure and the mean molar mass.
+- a root finder (Brent's method) finds $L_i$ for each species; sweeps over the species repeat until no leak changes by more than $10^{-14}$ of its held mass, because the floors couple through the surface pressure and the mean molar mass.
 
-After each step the code checks that every species that leaked ends at or above its floor, at $e^{-\lambda_i \Delta t}$ of its starting distance from it, and that its step has one solution; otherwise the run stops with an error. With `tau_leak` infinite and `crust_rate = 0` the step computes no floor and changes no column.
+After each step the code checks that every species that leaked ends at or above its floor, at $e^{-\lambda_i \Delta t}$ of its starting distance from it, and that a sample of its step shows one solution ([Laws that fall with pressure](#laws-that-fall-with-pressure)); otherwise the run stops with an error. With `tau_leak` infinite and `crust_rate = 0` the step computes no floor and changes no column.
 
 ## Limits of the leak
 
-- **First order in the step.** Within a step the floor moves for 2 reasons: the melt fraction falls, and the leak fills the atmosphere. The step takes the floor of its end state, so its result is first order in $\Delta t$. In a test on a melt-fraction path like that of the tutorial, with 120 steps of 358 yr, the error is at most $4.4\times10^{-5}$ of the inventory of each species (held plus atmospheric mass), at most $1.9\times10^{-3}$ of a held or atmospheric mass, and at most 0.9 % of the mass a species moved into the atmosphere. [Validation](../Validation/outgas/lid_seal.md#the-step-converges-to-the-continuous-law) gives the details.
+- **Laws that fall with pressure.** The CO$_2$, CO and CH$_4$ laws fall with pressure at high pressure; [Laws that fall with pressure](#laws-that-fall-with-pressure) says when a step can then have more than one solution.
+- **First order in the step.** Within a step the floor moves for 3 reasons: the melt fraction falls, the leak fills the atmosphere, and escape thins it. The step takes the floor of its end state, so its error falls in proportion to $\Delta t$. In the test on a melt-fraction path like that of the tutorial (120 steps of 358 yr, escape off) the error is at most $4.4\times10^{-5}$ of the inventory of each species, which is the held plus the atmospheric mass; per held or atmospheric mass it can reach $1.9\times10^{-3}$. [Validation](../Validation/outgas/lid_seal.md#the-step-converges-to-the-continuous-law) gives the table.
 - **Crystals at closure.** The CALLIOPE solve dissolves volatiles in the melt only, while $R_i$ also counts the crystals. At closure the held mass is therefore below its floor by the factor $1 + D_i (1 - \Phi)/\Phi$.
 - **Crystals at opening.** When the seal opens, the whole held mass returns to the melt, the share counted in the crystals included.
 - **Erupted melt.** Of the volatile in the melt that reaches the crust, only the degassed share leaves the held mass; the rest stays counted as held.
-- **Laws that fall with pressure.** The CO$_2$ law of Dixon et al. (1995)[^cite-dixon1995] falls with pressure above $83.15\,T/23$ bar, about 5400 bar at 1500 K. At a fixed composition the CO and CH$_4$ laws also fall with the surface pressure, CO above about 7000 bar and CH$_4$ above about 5200 bar. A step can then have a second solution only where the floor falls faster than the leak adds gas to the atmosphere. The check after each step samples the step of each species at 17 leaks and stops the run if it finds more than one solution.
 - **Frozen chemistry.** The held and leaked gas keep their species; the floor does not see a change of speciation in the atmosphere.
+
+## Laws that fall with pressure
+
+The CO$_2$ law of Dixon et al. (1995)[^cite-dixon1995] falls with pressure above $83.15\,T/23$ bar, about 5400 bar at 1500 K. At a fixed composition the CO and CH$_4$ laws also fall with the surface pressure, CO above about 7000 bar and CH$_4$ above about 5200 bar. A fall alone does not give the step a second solution: the floor must fall faster than the leak adds gas to the atmosphere. In the tests, a CO$_2$ leak at 5000 and 6000 bar on an Earth-like planet has one solution; only a floor made up for the test gives more. After each step the code samples the step of each species alone at 17 leaks, with the others at their final leaks, and stops the run if the samples show more than one solution. Roots closer together than one sample spacing, and several solutions of the coupled species, pass this check.
 
 ## Settings of the seal
 
@@ -162,7 +167,7 @@ These output columns show what the seal does ([full list](../Reference/output.md
 - `seal_delta` \[m\] and `seal_phi_top` \[1\]: the crust thickness and the melt fraction of the top mesh cell that the seal reads in the step. On the mesh, `seal_delta` is the depth of the top run of cells below `phi_solid` while the seal is open, and below `phi_open` while it holds and on the step where it opens, so it can jump on the first held step.
 - `seal_path` \[1\]: the crust that a closed seal reads in the step: 1 for the crust on the mesh, 2 for the sub-grid lid; 0 while the seal is open, also when `seal_delta` comes from the sub-grid lid.
 - `{sp}_kg_sealed`, `{sp}_mol_sealed` and `{e}_kg_sealed`: the held mass of each species and element.
-- `{sp}_kg_eq` \[kg\]: the floor of the leak of each soluble species at the end of the step (see [The floor of the leak](#the-floor-of-the-leak)); 0 while the seal is open, with `outgas.calliope.solubility = false`, and on held steps with no leak rate (`tau_leak` infinite and no crust production).
+- `{sp}_kg_eq` \[kg\]: the floor of each soluble species at the end of the step; 0 while the seal is open, on the step where it closes, with `outgas.calliope.solubility = false`, and on held steps with no leak rate (`tau_leak` infinite and no crust production) or nothing held.
 - `seal_Tmagma_close` \[K\]: the magma temperature of the chemistry solve that closed the seal.
 - `seal_phi_close` \[1\]: the global melt fraction of the step that closed the seal.
 - `{e}_kg_leak_tau` and `{e}_kg_leak_volc` \[kg\]: the mass of each element that leaked in the step by relaxation and by volcanism.
