@@ -349,11 +349,13 @@ def floor_leak(mass: float, frac: float, floor_of) -> float:
     with ``M_eq = floor_of(L)`` [kg] taken at the state after the leak ``L``. The
     residual is <= 0 at ``L = 0`` and >= 0 at ``L = frac mass``, so the root is
     bracketed for any continuous floor. Raises ``ValueError`` on a floor that is
-    not finite.
+    negative or not finite.
     """
     floor = floor_of(0.0)
-    if not np.isfinite(floor):
-        raise ValueError(f'Lid seal: dissolved equilibrium {floor} kg is not finite')
+    if not (np.isfinite(floor) and floor >= 0.0):
+        raise ValueError(
+            f'Lid seal: dissolved equilibrium {floor} kg is negative or not finite'
+        )
     if floor >= mass:
         return 0.0
     return brentq(
