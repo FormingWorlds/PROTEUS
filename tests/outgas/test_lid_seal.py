@@ -1207,21 +1207,45 @@ def test_equilibrium_fractions_are_zero_with_solubility_off():
     assert set(off.values()) == {0.0}
 
 
-@pytest.mark.parametrize(('p_co2', 'stops'), [(5.0e3, False), (6.0e3, True)])
-def test_a_co2_leak_above_the_peak_of_the_dixon_law_stops_the_step(p_co2, stops):
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('p_co2', [5.0e3, 6.0e3])
+def test_a_co2_leak_above_the_peak_of_the_dixon_law_finishes_its_step(p_co2):
     """The Dixon et al. (1995) CO2 solubility peaks at 83.15 T/23 bar (5423 bar at
-    1500 K) and falls above it, where the step can have more than one solution: a
-    step that leaves CO2 above that pressure stops, one below it does not."""
+    1500 K) and falls above it, but on an Earth-like planet it falls too slowly to
+    give the step a second solution: the step finishes on its relaxation on both
+    sides of the peak."""
     a_co2 = p_co2 * 1e5 * 4.0 * np.pi * R_INT**2 / GRAVITY
-    row = _eq_row({'CO2': a_co2}, {})
-    row = _eq_row({'CO2': a_co2}, {'CO2': 1.1 * _floor(row, 'CO2')})
-    cfg = _config(solubility=True, tau_leak=1.0e3)
-    if stops:
-        with pytest.raises(RuntimeError, match='Dixon'):
-            leak_step(cfg, row, 1.0e3)
-    else:
-        leak_step(cfg, row, 1.0e3)
-        assert 83.15 * T_SEAL / 23.0 > row['CO2_bar'] > p_co2
+    m0 = 1.1 * _floor(_eq_row({'CO2': a_co2}, {}), 'CO2')
+    row = _eq_row({'CO2': a_co2}, {'CO2': m0})
+    leak_step(_config(solubility=True, tau_leak=1.0e3), row, 1.0e3)
+    m_eq, keep = _floor(row, 'CO2'), np.exp(-1.0)
+    assert row['CO2_kg_sealed'] - m_eq == pytest.approx(keep * (m0 - m_eq), rel=1e-9)
+    assert row['CO2_bar'] > p_co2
+
+
+@pytest.mark.physics_invariant
+def test_a_step_with_more_than_one_solution_stops():
+    """A floor that falls with the gas the leak adds, faster than the leak itself,
+    gives the step residual 3 roots; the step must stop rather than take one."""
+    from proteus.outgas import lid_seal
+
+    m0, a0, frac = 1.0e19, 1.0e18, -np.expm1(-1.0)
+    width = 0.01 * frac * m0
+
+    def model(config, hf_row, per_kg):
+        def floor_of(leak, s):
+            x = hf_row[f'{s}_kg_atm'] + leak.get(s, 0.0) - a0
+            return m0 - (x + width * np.cos(3.0 * np.pi * x / (frac * m0))) / frac
+
+        return floor_of
+
+    row = _eq_row({'CO2': a0}, {'CO2': m0})
+    with (
+        patch.object(lid_seal, '_floor_model', model),
+        pytest.raises(RuntimeError, match='more than one solution'),
+    ):
+        leak_step(_config(solubility=True, tau_leak=1.0e3), row, 1.0e3)
+    assert row['CO2_kg_sealed'] < m0
 
 
 @pytest.mark.physics_invariant
