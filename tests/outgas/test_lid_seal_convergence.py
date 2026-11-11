@@ -4,8 +4,8 @@ Invariant checked: along a falling melt fraction, with escape off and H2O, CO2
 and N2 dissolving, the end-point exponential step of ``leak_step`` gives the
 atmospheric and sealed masses of ``dM_i/dt = -(1/tau) max(M_i - M_eq,i, 0)``
 integrated by Radau, for tau from 1e2 to 1e7 yr: each error is below 1e-4 of
-the inventory of its species, and the step is first order where it is short
-against the leak. The reference evaluates the solubility laws written out here,
+the inventory of its species and below ATM_TOL of its atmospheric mass, and the
+step is first order where it is short against the leak. The reference evaluates the solubility laws written out here,
 not the CALLIOPE classes.
 """
 
@@ -26,6 +26,9 @@ FO2 = 2.0  # [log10] IW offset of the closing solve, as in _eq_row
 D = {'H2O': 0.0017, 'CO2': 0.0, 'N2': 0.0}
 ATM0 = {'H2O': 1.0e17, 'CO2': 5.0e16, 'N2': 1.0e16}  # [kg]
 PHI0, PHI1, SPAN, STEPS = 0.19, 0.135, 4.3e4, 120  # melt fraction path over SPAN [yr]
+# Error over each atmospheric mass at STEPS: largest 1.15e-3 (H2O, tau 1e7), bound with a
+# 30 % margin; a floor taken at the start of the step gives 2.3e-3 (tau 1e7) to 0.16.
+ATM_TOL = 1.5e-3
 
 
 def _x_eq(p, p_tot):
@@ -91,12 +94,15 @@ def _reference(tau):
 @pytest.mark.parametrize('tau', [1.0e2, 1.0e3, 1.0e4, 1.0e5, 1.0e6, 1.0e7])
 def test_leak_step_converges_to_the_continuous_law(tau):
     """End state of 120 and 480 steps against Radau. Each error over the
-    inventory of its species (held plus atmosphere) is below 1e-4, and where
-    the step is short against the leak (lam dt < 0.1) 4 times more steps cut
-    the largest error by at least 3.5, the first order of the end-point step."""
+    inventory of its species (held plus atmosphere) is below 1e-4 and each error
+    of an atmospheric mass over that mass below ATM_TOL, and where the step is
+    short against the leak (lam dt < 0.1) 4 times more steps cut the largest
+    error by at least 3.5, the first order of the end-point step."""
     ref = _reference(tau)
     inventory = np.tile(ref[:3] + ref[3:], 2)
-    err = {n: np.abs(_code(tau, n) - ref) / inventory for n in (STEPS, 4 * STEPS)}
+    code = {n: _code(tau, n) for n in (STEPS, 4 * STEPS)}
+    err = {n: np.abs(code[n] - ref) / inventory for n in code}
     assert err[STEPS].max() < 1e-4
+    assert (np.abs(code[STEPS][:3] - ref[:3]) / ref[:3]).max() < ATM_TOL
     if SPAN / STEPS / tau < 0.1:
         assert err[STEPS].max() / err[4 * STEPS].max() > 3.5

@@ -25,6 +25,7 @@ from proteus.outgas.common import element_masses_from_species
 from proteus.outgas.compaction import BRANCH_REMELT
 from proteus.outgas.lid_seal import (
     _LAW,
+    LEAK_ELEMENTS,
     S2_CUTOFF,
     SEALED_ELEMENTS,
     SEALED_SPECIES,
@@ -37,6 +38,7 @@ from proteus.outgas.lid_seal import (
     leak_rates,
     leak_step,
     open_seal,
+    reservoirs,
     restore_seal_state,
     run_lid_seal_step,
     seal_enabled,
@@ -458,8 +460,9 @@ def test_leak_refreshes_the_atmosphere_from_the_masses():
     assert row['Ar_kg_atm'] > 0.0
 
 
-def _step(row, interior, sealed, *, init_stage=False, **seal):
+def _step(row, interior, sealed, *, init_stage=False, trap_mode='none', **seal):
     cfg = _config(**seal)
+    cfg.outgas.trap_mode = trap_mode
     with (
         patch('proteus.outgas.wrapper.run_outgassing_and_vapourisation') as solve,
         patch('proteus.outgas.wrapper.check_ic_oxygen_budget'),
@@ -1464,3 +1467,122 @@ def test_under_front_trapping_the_volcanic_rate_takes_the_floor_reservoir():
         0.02 * 1.0e15 / (M_MANTLE * (1.0e-3 + D_H2O * 0.999)), rel=1e-14
     )
     assert k_front / k_none == pytest.approx(2.042, rel=1e-3)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'phi', [0.0, -1.0e-12, 1.0 + 1.0e-12], ids=['solid', 'below-0', 'above-1']
+)
+def test_a_front_trapping_closure_at_either_end_of_the_melt_fraction_holds_and_resumes(phi):
+    """A closure stores the global melt fraction clipped to [0, 1], so a seal that
+    closes on a fully solid mantle, or with round-off past either end, holds, leaks
+    and resumes under front trapping; on a solid mantle the floor reservoir is 0."""
+    row = {**_row(phi=phi), 'lid_weight': 1.0, 'lid_delta': 0.31, 'esc_rate_total': 0.0}
+    assert _step(row, _interior([0.6, 0.2]), False, delta_close=0.3, trap_mode='front')[0]
+    clipped = min(max(phi, 0.0), 1.0)
+    assert row['seal_phi_close'] == row['seal_phi_max'] == clipped
+    row['fO2_shift_IW_derived'] = 2.0
+    sealed0 = row['H2O_kg_sealed']
+    kw = {'delta_close': 0.3, 'trap_mode': 'front', 'tau_leak': 1.0e3}
+    assert _step(row, _interior([0.6, 0.2]), True, **kw)[0]
+    assert row['H2O_kg_sealed'] == pytest.approx(sealed0 * np.exp(-10.0 / 1.0e3), rel=1e-13)
+    front = _config()
+    front.outgas.trap_mode = 'front'
+    assert reservoirs(front, row)[0]['H2O'] == pytest.approx(clipped * M_MANTLE, rel=1e-15)
+    assert restore_seal_state(front, row) is True
+
+
+@pytest.mark.physics_invariant
+def test_front_trapping_counts_the_crystals_formed_after_the_highest_melt_fraction():
+    """A sealed mantle that remelts past Phi_c (0.2) to 0.3 and freezes to 0.15:
+    the burial ledger remelts the youngest solid first, so the crystals formed after
+    the highest melt fraction since closure hold sealed volatiles and the floor
+    reservoir is M_mantle (Phi + D max(Phi_max - Phi, 0)), Phi_max = 0.3."""
+    row = {**_sealed_row(phi=0.2), 'lid_weight': 1.0, 'lid_delta': 0.5, 'esc_rate_total': 0.0}
+    row.update({'seal_active': 1.0, 'seal_path': 2.0, 'seal_phi_max': 0.2})
+    kw = {'delta_close': 0.3, 'trap_mode': 'front', 'solubility': True, 'tau_leak': 1.0e3}
+    for phi in (0.25, 0.3, 0.15):
+        row['Phi_global'] = phi
+        assert _step(row, _interior([0.6, 0.2]), True, **kw)[0]
+    assert row['seal_phi_max'] == 0.3 and row['seal_phi_close'] == 0.2
+    x_eq = _floor(row, 'H2O') / (M_MANTLE * 0.15)
+    expect = x_eq * M_MANTLE * (0.15 + D_H2O * (0.3 - 0.15))
+    assert row['H2O_kg_eq'] == pytest.approx(expect, rel=1e-10)
+
+
+@pytest.mark.physics_invariant
+def test_noble_gas_leak_columns_hold_the_drop_of_the_sealed_mass_split_by_rate():
+    """A noble gas leaks as a species: its leak columns sum to the drop of its
+    sealed mass and split between relaxation and volcanism as 1/tau : k."""
+    row = _eq_row({'H2O': 1.0e17, 'He': 1.0e15}, {'H2O': 3.0e20, 'He': 1.0e16})
+    cfg = _config(tau_leak=1.0e3, crust_rate=1.0e20)
+    inv_tau, k = leak_rates(cfg, row, 1.0e3)[0]['He']
+    leak_step(cfg, row, 1.0e3)
+    tau_part, volc_part = row['He_kg_leak_tau'], row['He_kg_leak_volc']
+    assert tau_part + volc_part == pytest.approx(1.0e16 - row['He_kg_sealed'], rel=1e-12)
+    assert volc_part > 0.0 and volc_part / tau_part == pytest.approx(k / inv_tau, rel=1e-12)
+
+
+def test_the_cumulative_leak_adds_the_leak_of_every_step():
+    """seal_leak_kg_cum adds each step's element and noble-gas leak to the total of
+    the steps before it."""
+    row = {**_sealed_row(), 'seal_leak_kg_cum': 0.0, 'esc_rate_total': 0.0}
+    cfg, steps = _config(tau_leak=1.0e4), []
+    for _ in range(2):
+        leak_step(cfg, row, 1.0e3)
+        steps.append(
+            sum(row[f'{e}_kg_leak_tau'] + row[f'{e}_kg_leak_volc'] for e in LEAK_ELEMENTS)
+        )
+    assert min(steps) > 0.0
+    assert row['seal_leak_kg_cum'] == pytest.approx(sum(steps), rel=1e-14)
+
+
+@pytest.mark.parametrize(
+    ('key', 'bad'),
+    [
+        *(('seal_Tmagma_close', b) for b in (float('nan'), 0.0, -1.0, None)),
+        *(('seal_phi_max', b) for b in (float('nan'), -0.1, 1.5, None)),
+    ],
+    ids=str,
+)
+def test_a_sealed_front_row_resumes_only_with_its_closing_state(key, bad):
+    """A sealed last row needs seal_Tmagma_close > 0 K and, under front trapping,
+    seal_phi_max in [0, 1]; a missing or unreadable value stops the resume."""
+    row = {**_sealed_row(), 'seal_active': 1.0, 'seal_phi_max': 0.4}
+    front = _config()
+    front.outgas.trap_mode = 'front'
+    assert restore_seal_state(front, dict(row)) is True
+    row.pop(key)
+    if bad is not None:
+        row[key] = bad
+    with pytest.raises(ValueError, match=key):
+        restore_seal_state(front, row)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('falls', 'stops'), [(True, True), (False, False)], ids=['falls', 'flat']
+)
+def test_a_zero_leak_step_with_a_second_solution_stops(falls, stops):
+    """A floor at or above the held mass gives no leak; if it falls with the gas a
+    leak would add, faster than the leak fills the atmosphere, the step residual
+    turns negative inside the bracket and has further roots, so the step stops
+    rather than take L = 0. A floor that stays above the held mass passes."""
+    m0, a0 = 1.0e19, 1.0e18
+    row = _eq_row({'CO2': a0}, {'CO2': m0})
+    per = 1.0 / eval_gas_mmw('CO2')
+
+    def model(config, hf_row, per_kg):  # the floor reads the leak through the moles
+        def floor_of(leak, s):
+            x = (hf_row[f'{s}_mol_atm'] + leak.get(s, 0.0) * per_kg.get(s, 0.0)) / per - a0
+            return max(1.001 * m0 - 3.0 * x, 0.2 * m0) if falls else 1.001 * m0
+
+        return floor_of
+
+    with patch('proteus.outgas.lid_seal._floor_model', model):
+        if stops:
+            with pytest.raises(RuntimeError, match='more than one solution'):
+                leak_step(_config(solubility=True, tau_leak=1.0e3), row, 1.0e3)
+        else:
+            leak_step(_config(solubility=True, tau_leak=1.0e3), row, 1.0e3)
+    assert row['CO2_kg_sealed'] == m0
