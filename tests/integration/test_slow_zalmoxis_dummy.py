@@ -14,8 +14,10 @@ invariants.
 Invariants asserted:
 
 - Helpfile has at least 2 rows.
-- ``R_int`` is consistent with the Earth-like scale (5.5e6-6.5e6 m
-  for 1 M_Earth at a typical mantle density).
+- ``R_int`` is consistent with the Earth-like scale (5.5e6-6.7e6 m
+  for 1 M_Earth: the initial structure follows the T_cmb = 6000 K
+  adiabat of a molten mantle, 6.61e6 m, and later rows contract to
+  about 6.22e6 m).
 - ``M_int`` mass closure: ``M_int + M_atm`` matches ``M_planet``
   within rel=1e-3 (conservation invariant; tests/AGENTS.md, Discriminating values).
 - ``R_core / R_int`` lands in [0.55, 0.75] for cmf=0.55 under
@@ -110,7 +112,7 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
     - Helpfile has at least 2 rows.
     - The interior structure module is the real Zalmoxis wrapper,
       not the dummy scaling-law fallback (discrimination guard).
-    - Earth-scale R_int: 5.5e6 < R_int < 6.5e6 m at every row.
+    - Earth-scale R_int: 5.5e6 < R_int < 6.7e6 m at every row.
     - Mass closure: M_int + M_atm = M_planet within rel=1e-3.
     - Core-radius ratio: 0.50 < R_core/R_int < 0.60 (input
       ``core_frac = 0.55`` in dummy.toml, radius mode).
@@ -148,15 +150,13 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
         'structure module silently swapped away from zalmoxis'
     )
 
-    # Earth-scale R_int at every row. The Earth radius is 6.371e6 m;
-    # a self-consistent PALEOS solve on 1 M_Earth lands within a few
-    # percent of that. The window 5.5e6 - 6.5e6 m discriminates a
-    # mass-vs-radius confusion (where R_int would land at M_Earth in
-    # kg, ~6e24, off by 18 orders of magnitude).
+    # Earth-scale R_int (Earth 6.371e6 m): the start is the T_cmb = 6000 K adiabat of a molten
+    # mantle (6.61e6 m), later rows contract to about 6.22e6 m; the window also catches a
+    # mass-radius mix-up (M_Earth in kg, ~6e24).
     r_int = hf['R_int'].to_numpy()
     assert np.all(np.isfinite(r_int)), 'R_int contains NaN or Inf'
     assert np.all(r_int > 5.5e6), f'R_int below Earth scale: min={r_int.min():.3e} m'
-    assert np.all(r_int < 6.5e6), f'R_int above Earth scale: max={r_int.max():.3e} m'
+    assert np.all(r_int < 6.7e6), f'R_int above Earth scale: max={r_int.max():.3e} m'
 
     # R_int follows the branch's one-time baseline hand-off, then settles.
     # The IC solve sets the maximal-radius structure; on the first non-init
