@@ -2503,6 +2503,8 @@ def test_a_thin_mantle_keeps_the_core_mass_of_the_solve(tmp_path, monkeypatch):
     assert hf_row['M_int'] - hf_row['M_core'] == pytest.approx(mantle, rel=1e-12)
     assert cmb_radius == pytest.approx(float(model['radii'][55]), rel=1e-15)
     assert hf_row['M_core'] < float(mass[55])  # the node mass is the wrong value
+    core_volume = 4.0 / 3.0 * np.pi * cmb_radius**3
+    assert hf_row['core_density'] * core_volume == pytest.approx(cmb_mass, rel=1e-12)
 
 
 def test_zalmoxis_solver_passes_callable_when_jax_path_not_viable(tmp_path, monkeypatch):

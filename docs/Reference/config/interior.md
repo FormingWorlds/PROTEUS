@@ -126,9 +126,9 @@ A giant impact adds `core_frac` of the impactor rock to the core mass: the impac
 With an ice layer the mantle is `zalmoxis.mantle_mass_fraction` of the target and the ice layer is the rest; the run stops with an error when the core and mantle fractions leave no ice layer.
 
 The helpfile column `M_core_target` holds this mass.
-Zalmoxis puts the core-mantle boundary of its output at the first grid node at or above the core fraction of the mass it converged to, and `M_core` is the mass inside that node.
-`M_core` is therefore between the target less the mass tolerance of the solve (`zalmoxis.solver_tol_outer`) and the target plus that tolerance and one mantle shell at the boundary.
-For a planet of 1 Earth mass with `core_frac = 0.325` and the default `zalmoxis.num_levels = 150` that shell holds about 1.6 % of the core mass, and the measured range of `M_core` in runs of that planet is 0.1 to 1.5 % above the target.
+With Zalmoxis, `M_core` is the core mass of the solve, which is this target to round-off.
+The core-mantle boundary of the Zalmoxis output (`R_core`, `P_cmb`) is the first grid node at or above that mass, so the mass inside `R_core` is larger than `M_core` by at most one mantle shell.
+`core_density` is `M_core` divided by the volume inside `R_core`.
 The structure takes a changed core mass at its next solve, so a run with no structure update after the init stage keeps the core of its last solve.
 When the target leaves no mantle (a core mass at or above the target mass, which a large buffered oxygen inventory over a hot magma ocean can cause), the run stops with an error that names the masses.
 A run that resumes from a helpfile without the column takes `core_frac` of the structure target of the row of its first structure solve, logs a warning, and keeps that core mass from there.

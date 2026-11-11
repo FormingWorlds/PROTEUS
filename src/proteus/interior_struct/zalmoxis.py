@@ -268,10 +268,9 @@ def validate_zalmoxis_output_schema(
     grid trapezoid instead diverges from the sub-grid-substepped RK45 integral
     across the steep interior density profile, reaching ~10% at high planet mass,
     which would false-reject a structure that actually conserves mass. With the
-    reference supplied, part (b) reduces to a check that the core-mantle split
-    point is well resolved: the residual it measures is the CMB-node snap
-    overshoot ``mass_enclosed[cmb_index] - cmb_mass`` relative to the mantle
-    mass, a fraction of one boundary shell. File-density-column corruption is
+    reference supplied and ``hf_row['M_core']`` equal to ``cmb_mass``, as
+    ``zalmoxis_solver`` writes it, part (b) checks that the row carries the
+    accumulator total and the core-mass target. File-density-column corruption is
     caught downstream by Aragog's EOS-vs-mesh consistency at ``solver.reset()``;
     the radius check (part (a)) catches truncation and column swaps directly.
     When no reference is supplied the check falls back to the grid-trapezoidal
@@ -4029,7 +4028,7 @@ def zalmoxis_solver(
     hf_row['R_int'] = planet_radius
     hf_row['R_core'] = cmb_radius
     hf_row['M_int'] = mass_enclosed[-1]
-    hf_row['M_core'] = mass_enclosed[cmb_index]
+    hf_row['M_core'] = float(cmb_mass)  # the core of the solve, not the mass inside R_core
     hf_row['gravity'] = gravity[-1]
 
     if config.interior_energetics.module == 'boundary':
@@ -4049,7 +4048,7 @@ def zalmoxis_solver(
 
     # Self-consistent core density from Zalmoxis structure
     if cmb_radius > 0:
-        hf_row['core_density'] = mass_enclosed[cmb_index] / (4.0 / 3.0 * np.pi * cmb_radius**3)
+        hf_row['core_density'] = hf_row['M_core'] / (4.0 / 3.0 * np.pi * cmb_radius**3)
     else:
         hf_row['core_density'] = 0.0
 
