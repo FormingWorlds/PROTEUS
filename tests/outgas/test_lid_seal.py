@@ -31,6 +31,7 @@ from proteus.outgas.lid_seal import (
     close_seal,
     closure_state,
     crust_thickness,
+    equilibrium_fractions,
     floor_leak,
     leak_rates,
     leak_step,
@@ -1224,3 +1225,11 @@ def test_restore_refuses_a_sealed_row_without_a_closing_temperature(temp):
     del row['seal_Tmagma_close']
     with pytest.raises(ValueError, match='seal_Tmagma_close'):
         restore_seal_state(_config(), row)
+
+
+def test_equilibrium_fractions_are_zero_with_solubility_off():
+    """With outgas.calliope.solubility off no species dissolves, at any pressure."""
+    bar = dict.fromkeys(gas_list, 50.0)
+    on = equilibrium_fractions(_config(solubility=True), bar, 500.0, T_SEAL, 2.0)
+    off = equilibrium_fractions(_config(), bar, 500.0, T_SEAL, 2.0)
+    assert on['H2O'] > 0.0 and set(off.values()) == {0.0}

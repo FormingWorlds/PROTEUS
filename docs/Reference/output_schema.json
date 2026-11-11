@@ -29374,12 +29374,6 @@
       "function": "calc_surface_pressures_atmodeller"
     },
     {
-      "file": "src/proteus/outgas/lid_seal.py",
-      "kind": "read",
-      "reason": "template <s>_mol_sealed",
-      "function": "_leaks"
-    },
-    {
       "file": "src/proteus/plot/cpl_global.py",
       "kind": "read",
       "reason": "dynamic key k",
