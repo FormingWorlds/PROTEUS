@@ -1375,8 +1375,8 @@ def test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_clo
     crystals formed after closure: X_eq M_mantle (Phi + D_i max(Phi_c - Phi, 0)),
     the melt alone once Phi rises above Phi_c (Phi_c 0.2); without trapping it is
     X_eq M_mantle (Phi + D_i (1 - Phi)). H2O (D 0.0017) and CO2 (D 0.05) leak in
-    the same step with crust production on; the volcanic rate keeps the reservoir
-    M_melt + D_i M_solid, so the leak splits (1/tau) : chi_d Mdot_c / that."""
+    the same step with crust production on; the volcanic rate takes the same
+    reservoir, so the leak splits (1/tau) : chi_d Mdot_c / that."""
     row = _eq_row({'H2O': 1.0e17, 'CO2': 1.0e15}, {'H2O': 3.0e20, 'CO2': 1.0e19}, phi=phi)
     row['seal_phi_close'] = 0.2
     cfg = _config(solubility=True, tau_leak=1.0e3, crust_rate=1.0e20)
@@ -1390,7 +1390,10 @@ def test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_clo
         )
     assert row['H2O_kg_sealed'] < 3.0e20 and not capped
     inv_tau, k = rates['H2O']
-    assert k == pytest.approx(0.02 * 1.0e20 / (M_MANTLE * (phi + D_H2O * (1 - phi))), rel=1e-14)
+    floor_share = share if trap_mode == 'front' else 1.0 - phi
+    assert k == pytest.approx(
+        0.02 * 1.0e20 / (M_MANTLE * (phi + D_H2O * floor_share)), rel=1e-14
+    )
     assert row['H_kg_leak_volc'] / row['H_kg_leak_tau'] == pytest.approx(k / inv_tau, rel=1e-12)
 
 
@@ -1409,3 +1412,22 @@ def test_front_trapping_refuses_an_unreadable_closing_melt_fraction(phi_close):
     cfg.outgas.trap_mode = 'none'
     leak_step(cfg, row, 1.0e3)
     assert row['H2O_kg_sealed'] < 3.0e20
+
+
+@pytest.mark.physics_invariant
+def test_under_front_trapping_the_volcanic_rate_takes_the_floor_reservoir():
+    """The held mass sits in the floor reservoir R'_i = M_mantle (Phi + D_i
+    (Phi_c - Phi)), so its melt concentration is M_i / R'_i and the volcanic rate
+    is chi_d Mdot_c / R'_i: at Phi 0.001, Phi_c 0.19 and D 0.0017 that is 2.04
+    times the rate on M_melt + D_i M_solid, which it stays without trapping."""
+    row = {'M_mantle': M_MANTLE, 'Phi_global': 1.0e-3, 'seal_phi_close': 0.19}
+    cfg = _config(crust_rate=1.0e15)
+    k_none = leak_rates(cfg, row, 1.0)[0]['H2O'][1]
+    cfg.outgas.trap_mode = 'front'
+    k_front = leak_rates(cfg, row, 1.0)[0]['H2O'][1]
+    r_front = M_MANTLE * (1.0e-3 + D_H2O * (0.19 - 1.0e-3))
+    assert k_front == pytest.approx(0.02 * 1.0e15 / r_front, rel=1e-14)
+    assert k_none == pytest.approx(
+        0.02 * 1.0e15 / (M_MANTLE * (1.0e-3 + D_H2O * 0.999)), rel=1e-14
+    )
+    assert k_front / k_none == pytest.approx(2.042, rel=1e-3)
