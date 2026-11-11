@@ -6,7 +6,7 @@ The short answer: with `outgas.lid_seal.enabled = true`, a crust that is thick e
 
 The seal opens again in 3 cases: the crust thins, the top cell of the mesh holds a set share of melt again (35 % by default), or a giant impact happens. With the default, `false`, the seal never closes.
 
-**Why it matters.** Without the seal, the chemistry keeps the melt in equilibrium with the atmosphere at every step, so a crust does not change where the volatiles go. With it, the atmosphere gets the gas of the melt only through the leak, which changes the atmospheric mass, the surface pressure and the mass that escape can take. In the [tutorial](../Tutorials/lid_seal.md) the effect is small, about 1 % less water in the atmosphere at 140 kyr, because water is very soluble and most of it stays in the mantle in both runs.
+**Why it matters.** Without the seal, the chemistry keeps the melt in equilibrium with the atmosphere at every step, so a crust does not change where the volatiles go. With it, the atmosphere gets the gas of the melt only through the leak, which changes the atmospheric mass, the surface pressure and the mass that escape can take. In the [tutorial](../Tutorials/lid_seal.md) the effect is small, 0.43 % less water in the atmosphere at 140 kyr in each of 5 starts that differ only by round-off (their atmospheric water spreads by 0.64 %), because water is very soluble and most of it stays in the mantle in both runs.
 
 The seal is one path of the outgassing step; [Outgassing, rock vapour and volatile trapping](outgas.md) gives the order of the steps around it.
 

@@ -146,7 +146,10 @@ mantle melt fraction without the seal: 0.136
 Before the closing step the 2 runs agree to the last digit.
 After it they part, but not by much.
 The melt is still 13.6 % of the mantle at 140 kyr, and water is very soluble, so in both runs almost all the water stays in the mantle.
-With the seal, the leak lets out only the water above the floor; the atmosphere then holds about 1 % less water than without the seal.
+With the seal, the leak lets out only the water above the floor; the atmosphere then holds 0.44 % less water than without the seal.
+The path before closure is sensitive to round-off, so your run can close at another time and end with a different amount of water.
+In 5 pairs of runs whose initial superheat differs by up to $2.5 \times 10^{-9}$ K, the water in the atmosphere at 140 kyr spreads by 0.64 % between the starts, and the run printed here ends 2.0 % below their mean.
+The difference between the seal and the open run of one start stays between 0.428 % and 0.430 %.
 The floor counts the water in the crystals and the held gas keeps its species, so the 2 runs need not agree exactly.
 
 The block plots the water in the atmosphere, and the held water against its floor:
@@ -170,6 +173,6 @@ fig.savefig('output/tutorial_lid_seal/water.png', dpi=150)
 
 ## Step 7: try it yourself
 
-- Set `tau_leak` to `1e2` and run again: the leak follows the floor more closely, and the water in the atmosphere at 140 kyr changes by less than 0.1 %.
+- Set `tau_leak` to `1e2` and run again: the leak follows the floor more closely, and the water in the atmosphere at 140 kyr changes by less than 0.1 %, less than the spread of 0.64 % between starts that differ only by round-off.
 - Set `crust_rate` above 0 to add the volcanic leak; the columns `{e}_kg_leak_volc` and `{e}_kg_leak_tau` show the 2 parts in each step, and `seal_volc_capped` shows the steps where the crust production was cut to the melt mass. Both parts stop at the same floor.
 - Set `delta_close` to 0.3 m: on this mesh the seal closes at the same step, because a crust on the mesh is 0 or a whole cell. A thin crust closes the seal earlier only through the Aragog sub-grid lid.
