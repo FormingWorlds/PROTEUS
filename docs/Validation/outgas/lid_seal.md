@@ -9,6 +9,7 @@ This page checks the lid seal, `proteus.outgas.lid_seal`. When a crust closes ov
 | `tests/outgas/test_lid_seal_smoke.py::test_equilibrium_fractions_are_the_dissolved_fractions_of_a_solved_row` | Real CALLIOPE solve | The floor fractions against the dissolved fractions of solved rows. | 2026-11-11 |
 | `tests/outgas/test_lid_seal.py::test_relaxation_matches_the_exponential_and_not_the_step_length` | Analytical solution of $dM/dt = -(M - M_\mathrm{eq})/\tau$ | The held mass at a constant floor against the exponential, for steps of 1, 10 and 100 kyr. | 2026-11-11 |
 | `tests/outgas/test_lid_seal.py::test_volcanic_rate_closes_the_mass_balance_of_the_sealed_reservoir` | Schaefer & Sasselov (2015)[^cite-schaefer2015], Eq. 14 and Eq. 17; mass balance | The volcanic rate against its closed form over the global melt fraction. | 2026-11-11 |
+| `tests/outgas/test_lid_seal_convergence.py::test_leak_step_converges_to_the_continuous_law` | Radau integration of the continuous law | The end state of 120 and 480 steps against the reference, for $\tau$ from 100 yr to 10 Myr. | 2026-11-11 |
 | `tests/outgas/test_lid_seal.py::test_a_short_tau_gives_the_equilibrium_partition` | Gas-melt equilibrium, solved independently | The end state of a step with $\tau$ = $10^{-3}\,\Delta t$. | 2026-11-11 |
 | `tests/outgas/test_lid_seal_tutorial.py::test_the_tutorial_atmosphere_lies_between_the_held_and_the_open_run` | Tutorial runs with and without the seal | The water of the tutorial run against its floor and the 2 limits. | 2026-11-11 |
 
@@ -95,6 +96,26 @@ This case has no plot: it checks one step against an identity.
     - Tolerance: relative 1e-9 for the distance to the floor, 1e-12 for the mass moved; exact for a species below its floor.
     - Test ids: `tests/outgas/test_lid_seal.py::test_leak_relaxes_toward_the_floor_of_the_end_state`, `tests/outgas/test_lid_seal.py::test_sealed_mass_below_its_floor_does_not_leak`
     - Command: `pytest tests/outgas/test_lid_seal.py`
+
+## The step converges to the continuous law
+
+**Why this check exists.** Within a step the floor moves, because the melt fraction falls, but the step takes the floor of its end state. The result is then first order in the step length. This check measures how large that error is, and that it falls with the step as a first-order method must.
+
+**What it tests.** Held water, CO$_2$ and N$_2$ start at the melt equilibrium of a closing state, with escape off. The global melt fraction falls linearly from 0.19 to 0.135 over 43 kyr, as in the [tutorial](../../Tutorials/lid_seal.md). The leak step runs this path in 120 and in 480 equal steps, for $\tau$ from 100 yr to 10 Myr. Each atmospheric and held mass at the end is compared with the reference, as a fraction of the inventory of its species: the held mass plus the atmospheric mass. That error must be below $10^{-4}$. Where the step is short against the leak ($\lambda \Delta t < 0.1$), 4 times more steps must cut the largest error by at least 3.5 times.
+
+**How we know the right answer.** A stiff ODE solver (Radau, relative tolerance $10^{-11}$) integrates the same law in continuous time. The test writes the solubility laws out itself, without the CALLIOPE classes.
+
+**Why it matters.** The adaptive step of a PROTEUS run changes from step to step; in the held part of the tutorial run it is 40 to 160 yr, shorter than the 358 yr steps of this test. The error of the step must stay small against the gas each species holds.
+
+This case has no plot: its result is a table of errors, given below.
+
+**Known limit.** Per mass, the error can be larger than per inventory. At 120 steps of 358 yr it reaches $1.9\times10^{-3}$ of the held CO$_2$ and N$_2$, which sit at a floor that moves with the melt fraction. It reaches $1.1\times10^{-3}$ of the atmospheric water at $\tau$ = 10 Myr, because the first leaking step is resolved only to one step. The error over the inventory is at most $4.4\times10^{-5}$.
+
+??? info "Test details"
+    - Reference: Radau integration of $dM_i/dt = -(1/\tau) \max(M_i - M_{\mathrm{eq},i}, 0)$ with the laws written in the test.
+    - Tolerance: $10^{-4}$ of the species inventory; error cut of at least 3.5 times for 4 times more steps where $\lambda \Delta t < 0.1$.
+    - Test id: `tests/outgas/test_lid_seal_convergence.py::test_leak_step_converges_to_the_continuous_law`
+    - Command: `pytest tests/outgas/test_lid_seal_convergence.py`
 
 ## A short relaxation time gives the gas-melt equilibrium
 

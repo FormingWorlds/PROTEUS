@@ -447,7 +447,7 @@ After each step the code checks that every species that leaked ends at or above 
 
 ### Limits of the leak
 
-- **First order in the step.** A floor that moves within a step, as $\Phi$ falls, is taken at the end of the step. The result is then first order in $\Delta t$; [Validation](../Validation/outgas/lid_seal.md) gives the size of the error.
+- **First order in the step.** A floor that moves within a step, as $\Phi$ falls, is taken at the end of the step. The result is then first order in $\Delta t$. On a melt-fraction path like that of the tutorial, in steps of 358 yr, the error stays below $10^{-4}$ of the inventory of each species; [Validation](../Validation/outgas/lid_seal.md#the-step-converges-to-the-continuous-law) gives the details.
 - **Crystals at closure.** The CALLIOPE solve dissolves volatiles in the melt only, while $R_i$ also counts the crystals. At closure the held mass is therefore below its floor by the factor $1 + D_i (1 - \Phi)/\Phi$.
 - **Crystals at opening.** When the seal opens, the whole held mass returns to the melt, the share counted in the crystals included.
 - **Erupted melt.** Of the volatile in the melt that reaches the crust, only the degassed share leaves the held mass; the rest stays counted as held.
