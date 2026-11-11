@@ -1173,6 +1173,37 @@ def test_a_leak_off_its_relaxation_fails_the_floor_check():
     leak_step(cfg, _eq_row(atm, m0), 1.0e3)
 
 
+def test_the_floor_checks_stop_an_end_state_off_by_more_than_round_off():
+    """A leak 1e-8 of the held mass past the solve, at lam dt = 100, ends below the
+    floor it raises; one 1e-7 past it, at lam dt = 1, ends off the relaxation. Both
+    are past the round-off of the checks (1e-12 and 1e-9 of the held mass) and stop."""
+    from proteus.outgas.lid_seal import floor_leak
+
+    atm = {'H2O': 1.0e17}
+    m0 = {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O)}
+    cfg = _config(solubility=True, tau_leak=1.0e3)
+    for dt, extra, match in [
+        (1.0e5, 1e-8, 'below its floor'),
+        (1.0e3, 1e-7, 'above its floor, not'),
+    ]:
+        with (
+            patch(
+                'proteus.outgas.lid_seal.floor_leak',
+                lambda m, f, fl, x=extra: floor_leak(m, f, fl) + x * m,
+            ),
+            pytest.raises(RuntimeError, match=match),
+        ):
+            leak_step(cfg, _eq_row(atm, m0), dt)
+
+
+def test_a_step_zeroes_the_floors_of_the_last_sealed_step():
+    """An open step writes no floor, so the floors of an earlier sealed step read 0."""
+    row = {**_row(), 'lid_weight': 1.0, 'lid_delta': 0.29}
+    row.update({f'{s}_kg_eq': 1.0 for s in soluble_gases})
+    assert _step(row, _interior([0.6, 0.2]), False, delta_close=0.3)[0] is False
+    assert all(row[f'{s}_kg_eq'] == 0.0 for s in soluble_gases)
+
+
 def test_leak_sweeps_that_do_not_settle_stop_the_step():
     """H2O and CO2 couple through the mean molar mass; one sweep cannot settle both."""
     atm = {'H2O': 1.0e17, 'CO2': 5.0e16}
