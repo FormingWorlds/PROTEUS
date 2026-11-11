@@ -152,7 +152,7 @@ Replays of the held span of this run, with one term switched off at a time, give
 
 - the floor counts the water of the crystals formed after closure, with $D$ = 0.0017, which keeps 2.15 points more water in the mantle;
 - the held gas keeps the species it had at closure, while the open run turns CO into CO$_2$ as the magma cools; the sealed atmosphere then holds less oxygen, the kept species lower its surface pressure by 1.7 %, and the water needs 1.86 points more mass in the atmosphere to reach the same partial pressure;
-- the finite leak time leaves 0.12 points more water held, and the rest is 0.03 points;
+- the finite leak time leaves 0.12 points more water held, and the rest is 0.02 points;
 - the closing temperature that the seal keeps for the CO$_2$ law changes nothing here: near 1 bar that law does not depend on temperature.
 
 The path before closure is sensitive to round-off, so your run can close at another time and end with a different amount of water.
