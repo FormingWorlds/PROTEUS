@@ -17,7 +17,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from proteus.config._outgas import LidSeal
+from proteus.config._outgas import Calliope, LidSeal
 from proteus.outgas.common import element_masses_from_species
 from proteus.outgas.compaction import BRANCH_REMELT
 from proteus.outgas.lid_seal import (
@@ -48,9 +48,13 @@ MELT = {'H2O': 3.0e20, 'CO2': 7.0e19}
 ATM = {'H2O': 1.1e20, 'CO2': 4.0e19}
 
 
-def _config(**seal):
-    """Config stand-in with a real LidSeal and the outgas partition coefficients."""
-    outgas = SimpleNamespace(lid_seal=LidSeal(enabled=True, **seal))
+def _config(solubility=False, **seal):
+    """Config stand-in with a real LidSeal and the outgas partition coefficients.
+
+    ``solubility = False`` gives every species a dissolved equilibrium of 0.
+    """
+    outgas = SimpleNamespace(lid_seal=LidSeal(enabled=True, **seal), T_floor=700.0)
+    outgas.calliope = Calliope(solubility=solubility)
     for s in SEALED_SPECIES:
         setattr(outgas, f'D_const_{s}', 0.0)
     outgas.D_const_H2O = 0.0017
@@ -960,3 +964,119 @@ def test_restore_with_the_seal_off_clears_stale_seal_flags():
     row = {**_row(), 'seal_active': 1.0, 'seal_path': 2.0}
     assert restore_seal_state(off, row) is False
     assert row['seal_active'] == row['seal_path'] == 0.0
+
+
+T_SEAL = 1500.0  # [K], magma temperature of the closing solve
+D_H2O = 0.0017  # the stand-in partition coefficient of H2O
+
+
+def _eq_row(atm, sealed, phi=0.3):
+    """A sealed row with the given atmospheric and sealed species masses [kg]."""
+    row = {'Time': 1.0e4, 'M_mantle': M_MANTLE, 'Phi_global': phi, 'R_int': R_INT}
+    row.update({'gravity': GRAVITY, 'seal_active': 1.0, 'esc_rate_total': 0.0})
+    row.update({'seal_Tmagma_close': T_SEAL, 'fO2_shift_IW_derived': 2.0})
+    for s in gas_list:
+        for r in ('atm', 'liquid', 'solid', 'sealed'):
+            row[f'{s}_kg_{r}'] = row[f'{s}_mol_{r}'] = 0.0
+    for r, masses in (('atm', atm), ('sealed', sealed)):
+        for s, kg in masses.items():
+            row[f'{s}_kg_{r}'], row[f'{s}_mol_{r}'] = kg, kg / eval_gas_mmw(s)
+    for e in SEALED_ELEMENTS:
+        row[f'{e}_kg_atm'] = element_masses_from_species(atm).get(e, 0.0)
+        row[f'{e}_kg_sealed'] = element_masses_from_species(sealed).get(e, 0.0)
+        row[f'{e}_kg_liquid'] = 0.0
+        row[f'{e}_kg_total'] = row[f'{e}_kg_atm'] + row[f'{e}_kg_sealed']
+    row['M_atm'] = sum(atm.values())
+    return row
+
+
+def _floor(row, s, d=0.0):
+    """Dissolved equilibrium of H2O or CO2 on the reservoir M_melt + D M_solid [kg].
+
+    Sossi et al. (2023) 524 p^0.5 ppmw for H2O and Dixon et al. (1995) for CO2,
+    at the partial pressure [bar] of the row's atmospheric masses and moles.
+    """
+    n = sum(row[f'{g}_mol_atm'] for g in gas_list)
+    m = sum(row[f'{g}_kg_atm'] for g in gas_list)
+    p = row[f'{s}_mol_atm'] / n * m * GRAVITY / (4.0 * np.pi * R_INT**2) / 1e5
+    if s == 'H2O':
+        x = 524e-6 * np.sqrt(p)
+    else:
+        w = 3.8e-7 * p * np.exp(-23.0 * (p - 1.0) / (83.15 * T_SEAL))
+        x = 1e-2 * 4400.0 * w / (36.6 - 44.0 * w)
+    phi = row['Phi_global']
+    return x * M_MANTLE * (phi + d * (1.0 - phi))
+
+
+@pytest.mark.physics_invariant
+def test_sealed_mass_below_its_floor_does_not_leak():
+    """One-way floor: sealed H2O under its dissolved equilibrium stays sealed at
+    any tau and crust rate, and the atmosphere is left as it was."""
+    m_eq = _floor(_eq_row({'H2O': 1.0e17}, {}), 'H2O', D_H2O)
+    row = _eq_row({'H2O': 1.0e17}, {'H2O': 0.9 * m_eq})
+    before = dict(row)
+    leak_step(_config(solubility=True, tau_leak=1.0e2, crust_rate=1.0e20), row, 1.0e3)
+    assert row['H2O_kg_sealed'] == before['H2O_kg_sealed']
+    assert row['H2O_kg_atm'] == before['H2O_kg_atm']
+    assert row['H_kg_leak_tau'] == row['H_kg_leak_volc'] == 0.0
+    assert row.get('H2O_kg_eq') == pytest.approx(m_eq, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(('tau', 'crust'), [(1.0e3, 0.0), (1.0e5, 0.0), (1.0e4, 1.0e21)])
+def test_leak_relaxes_toward_the_floor_of_the_end_state(tau, crust):
+    """Above its floor the sealed mass relaxes toward the floor of the end state,
+    M_end - M_eq,end = exp(-(1/tau + k) dt) (M_0 - M_eq,end), with M_eq from the
+    atmosphere after the leak; the atmosphere gains what the reservoir loses."""
+    atm = {'H2O': 1.0e17, 'CO2': 5.0e16}
+    m0 = {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O), 'CO2': 1.0e19}
+    row = _eq_row(atm, m0)
+    cfg = _config(solubility=True, tau_leak=tau, crust_rate=crust)
+    rates, _, _ = leak_rates(cfg, row, 1.0e3)
+    leak_step(cfg, row, 1.0e3)
+    for s, d in (('H2O', D_H2O), ('CO2', 0.0)):
+        keep = np.exp(-1.0e3 * sum(rates[s]))
+        m_eq = _floor(row, s, d)
+        assert row[f'{s}_kg_sealed'] - m_eq == pytest.approx(keep * (m0[s] - m_eq), rel=1e-9)
+        assert row[f'{s}_kg_sealed'] >= m_eq
+        gained = row[f'{s}_kg_atm'] - atm[s]
+        assert gained == pytest.approx(m0[s] - row[f'{s}_kg_sealed'], rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_a_short_tau_gives_the_equilibrium_partition():
+    """With tau = 1e-3 dt the step ends at the gas-melt equilibrium of the frozen
+    speciation: H2O and CO2 each split their total so that the sealed mass equals
+    its floor, solved here by nested root finds on the 2 atmospheric masses."""
+    from scipy.optimize import brentq
+
+    atm = {'H2O': 1.0e17, 'CO2': 1.0e17}
+    m0 = {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O), 'CO2': 1.0e19}
+    row = _eq_row(atm, m0)
+    leak_step(_config(solubility=True, tau_leak=1.0), row, 1.0e3)
+    tot = {s: atm[s] + m0[s] for s in atm}
+
+    def co2_of(a_h2o):
+        def gap(a):
+            return tot['CO2'] - a - _floor(_eq_row({'H2O': a_h2o, 'CO2': a}, {}), 'CO2')
+
+        return brentq(gap, atm['CO2'], tot['CO2'], xtol=1e-6, rtol=1e-15)
+
+    def h2o_gap(a):
+        state = _eq_row({'H2O': a, 'CO2': co2_of(a)}, {})
+        return tot['H2O'] - a - _floor(state, 'H2O', D_H2O)
+
+    a_h2o = brentq(h2o_gap, atm['H2O'], tot['H2O'], xtol=1e-6, rtol=1e-15)
+    expected = {'H2O': a_h2o, 'CO2': co2_of(a_h2o)}
+    for s in atm:
+        assert row[f'{s}_kg_atm'] == pytest.approx(expected[s], rel=1e-9)
+        assert row[f'{s}_kg_sealed'] == pytest.approx(tot[s] - expected[s], rel=1e-9)
+
+
+@pytest.mark.parametrize(('t_magma', 'expected'), [(1600.0, 1600.0), (650.0, 700.0)])
+def test_closure_stores_the_magma_temperature_of_the_closing_solve(t_magma, expected):
+    """The seal stores T_magma floored at outgas.T_floor, the temperature of the
+    closing chemistry solve, for the temperature-dependent laws while sealed."""
+    row = {**_row(), 'lid_weight': 1.0, 'lid_delta': 0.31, 'T_magma': t_magma}
+    assert _step(row, _interior([0.6, 0.2]), False, delta_close=0.3)[0] is True
+    assert row.get('seal_Tmagma_close') == expected
