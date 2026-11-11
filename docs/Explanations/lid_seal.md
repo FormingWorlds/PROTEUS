@@ -2,7 +2,11 @@
 
 This page answers one question: **when a crust closes over the magma ocean, can the volatiles dissolved in the melt still reach the atmosphere?**
 
-The short answer: with `outgas.lid_seal.enabled = true`, a crust that is thick enough holds the dissolved volatiles in the melt below it: this is the **seal**. While the seal holds, the chemistry is frozen and the held volatiles reach the atmosphere only by a slow **leak**. The leak stops where the mantle holds as much of a volatile as the melt can dissolve at the pressure of the atmosphere. The seal opens again when the crust thins, when the top cell of the mesh holds a set share of melt again (35 % by default), or on a giant impact. With the default, `false`, the seal never closes.
+The short answer: with `outgas.lid_seal.enabled = true`, a crust that is thick enough holds the dissolved volatiles in the melt below it. This is the **seal**. While the seal holds, the chemistry is frozen. The held volatiles reach the atmosphere only by a slow **leak**, which stops where the mantle holds as much of a volatile as the melt can dissolve at the pressure of the atmosphere.
+
+The seal opens again in 3 cases: the crust thins, the top cell of the mesh holds a set share of melt again (35 % by default), or a giant impact happens. With the default, `false`, the seal never closes.
+
+**Why it matters.** Without the seal, the chemistry keeps the melt in equilibrium with the atmosphere at every step, so a crust does not change where the volatiles go. With it, the atmosphere gets the gas of the melt only through the leak.
 
 The seal is one path of the outgassing step; [Outgassing, rock vapour and volatile trapping](outgas.md) gives the order of the steps around it.
 
@@ -11,34 +15,8 @@ The seal is one path of the outgassing step; [Outgassing, rock vapour and volati
 - **Seal**: the state in which a closed crust holds the volatiles of the melt below it.
 - **Held mass**: the mass of a species or element that the seal holds below the crust, in the `_kg_sealed` columns.
 - **Floor**: the mass of a species that the mantle holds in equilibrium with the atmosphere, in the `_kg_eq` columns. The leak does not go below it.
-
-## How to turn the seal on and read the result
-
-The seal needs the Aragog interior solver, because it reads the melt fraction and the radius of each mesh cell:
-
-```toml
-[interior_energetics]
-module = "aragog"
-
-[outgas.lid_seal]
-enabled = true
-delta_close = 1e4     # crust thickness at which the seal closes [m]
-tau_leak = 1e5        # relaxation time of the held volatiles [yr]
-```
-
-It needs `outgas.module = "calliope"`, an escape reservoir of `"outgas"` or `"bulk"`, and, with the Zalmoxis structure, `interior_struct.zalmoxis.dry_mantle = true`. It cannot be combined with `params.stop.solid.freeze_volatiles = true`, which also freezes the melt inventory, or with `outgas.vapourise = true`. Front trapping (`outgas.trap_mode = "front"`) can run with it. While the seal holds, the melt columns are empty, so trapping buries nothing; mass that a remelt releases from the solid joins the held mass.
-
-These output columns show what the seal does ([full list](../Reference/output.md)):
-
-- `seal_active` \[1\]: 1 while the seal holds, else 0.
-- `seal_delta` \[m\] and `seal_phi_top` \[1\]: the crust thickness and the melt fraction of the top mesh cell that the seal reads in the step. On the mesh, `seal_delta` is the depth of the top run of cells below `phi_solid` while the seal is open, and below `phi_open` while it holds and on the step where it opens, so it can jump on the first held step.
-- `seal_path` \[1\]: the crust that a closed seal reads in the step: 1 for the crust on the mesh, 2 for the sub-grid lid; 0 while the seal is open, also when `seal_delta` comes from the sub-grid lid.
-- `{sp}_kg_sealed`, `{sp}_mol_sealed` and `{e}_kg_sealed`: the held mass of each species and element.
-- `{sp}_kg_eq` \[kg\]: the floor of the leak of each soluble species at the end of the step (see [The floor of the leak](#the-floor-of-the-leak)); 0 while the seal is open, with `outgas.calliope.solubility = false`, and on held steps with no leak rate (`tau_leak` infinite and no crust production).
-- `seal_Tmagma_close` \[K\]: the magma temperature of the chemistry solve that closed the seal.
-- `{e}_kg_leak_tau` and `{e}_kg_leak_volc` \[kg\]: the mass of each element that leaked in the step by relaxation and by volcanism.
-- `seal_leak_kg_cum` \[kg\]: the leaked mass since the start of the run.
-- `seal_open_kg` \[kg\]: the held mass that returned to the melt in a step where the seal opened.
+- **CALLIOPE**: the outgassing chemistry module, which splits the volatiles between the atmosphere and the melt; the seal uses its solubility laws.
+- **Aragog**: the interior solver; its mesh is a set of radial cells, and the seal reads their melt fraction.
 
 ## When the seal closes
 
@@ -80,7 +58,7 @@ The gap between the close and the open values stops a seal that would otherwise 
 - On the mesh, a closed seal counts every top cell with a melt fraction below `phi_open` as crust, and an open seal only those below `phi_solid`. So a top cell that crosses `phi_solid` does not open the seal.
 - A seal closed on the mesh keeps reading the mesh and ignores a sub-grid lid that appears later.
 - A seal closed by the sub-grid lid reads the lid while `lid_weight > 0`. From the first step where `lid_weight` is 0 it reads the mesh crust below `phi_open`, and it stays on the mesh after that. That crust need not hold a solid cell, so the seal can stay closed while every mesh cell holds some melt.
-- On a coarse mesh, `phi_close` and `delta_open` do not act on the mesh path. A crust on the mesh means a solid top cell, which is below `phi_close`. A held mesh crust is at least one cell thick, which is above the default `delta_open`. So the seal opens only when the top cell holds `phi_open` of melt, or on an impact.
+- **On a coarse mesh, 2 of the opening rules never fire.** A crust on the mesh means a solid top cell, and a solid cell is below `phi_close`, so `phi_close` does not act. A held mesh crust is at least one cell thick, which is above the default `delta_open`, so `delta_open` does not act either. The seal then opens only when the top cell holds `phi_open` of melt, or on an impact.
 
 ## The leak
 
@@ -135,16 +113,59 @@ $$
 - For $\tau \to 0$ it gives the gas-melt equilibrium of the frozen species; for $\lambda_i = 0$ nothing moves.
 - Brent's method finds $L_i$ for each species; sweeps over the species repeat until no leak changes by more than $10^{-14}$ of its held mass, because the floors couple through the surface pressure and the mean molar mass.
 
-After each step the code checks that every species that leaked ends at or above its floor, at $e^{-\lambda_i \Delta t}$ of its starting distance from it; otherwise the run stops with an error. With `tau_leak` infinite and `crust_rate = 0` the step computes no floor and changes no column.
+After each step the code checks that every species that leaked ends at or above its floor, at $e^{-\lambda_i \Delta t}$ of its starting distance from it, and that its step has one solution; otherwise the run stops with an error. With `tau_leak` infinite and `crust_rate = 0` the step computes no floor and changes no column.
 
 ## Limits of the leak
 
-- **First order in the step.** A floor that moves within a step, as $\Phi$ falls, is taken at the end of the step. The result is then first order in $\Delta t$. On a melt-fraction path like that of the tutorial, in steps of 358 yr, the error stays below $10^{-4}$ of the inventory of each species; [Validation](../Validation/outgas/lid_seal.md#the-step-converges-to-the-continuous-law) gives the details.
+- **First order in the step.** Within a step the floor moves for 2 reasons: the melt fraction falls, and the leak fills the atmosphere. The step takes the floor of its end state, so its result is first order in $\Delta t$. In a test on a melt-fraction path like that of the tutorial, with 120 steps of 358 yr, the error is at most $4.4\times10^{-5}$ of the inventory of each species (held plus atmospheric mass), at most $1.9\times10^{-3}$ of a held or atmospheric mass, and at most 0.9 % of the mass a species moved into the atmosphere. [Validation](../Validation/outgas/lid_seal.md#the-step-converges-to-the-continuous-law) gives the details.
 - **Crystals at closure.** The CALLIOPE solve dissolves volatiles in the melt only, while $R_i$ also counts the crystals. At closure the held mass is therefore below its floor by the factor $1 + D_i (1 - \Phi)/\Phi$.
 - **Crystals at opening.** When the seal opens, the whole held mass returns to the melt, the share counted in the crystals included.
 - **Erupted melt.** Of the volatile in the melt that reaches the crust, only the degassed share leaves the held mass; the rest stays counted as held.
-- **CO$_2$ at high pressure.** The CO$_2$ law of Dixon et al. (1995)[^cite-dixon1995] falls with pressure above $83.15\,T/23$ bar, about 5400 bar at 1500 K. There a step can have more than one solution, so a step that leaves CO$_2$ above that pressure stops the run with an error. At a fixed composition the CO and CH$_4$ laws also fall with the surface pressure, CO above about 7000 bar and CH$_4$ above about 5200 bar; no check stops a step there.
+- **Laws that fall with pressure.** The CO$_2$ law of Dixon et al. (1995)[^cite-dixon1995] falls with pressure above $83.15\,T/23$ bar, about 5400 bar at 1500 K. At a fixed composition the CO and CH$_4$ laws also fall with the surface pressure, CO above about 7000 bar and CH$_4$ above about 5200 bar. A step can then have a second solution only where the floor falls faster than the leak adds gas to the atmosphere. The check after each step samples the step of each species at 17 leaks and stops the run if it finds more than one solution.
 - **Frozen chemistry.** The held and leaked gas keep their species; the floor does not see a change of speciation in the atmosphere.
+
+## Settings of the seal
+
+The settings of `[outgas.lid_seal]` and their defaults ([full reference](../Reference/config/escape_outgas.md)):
+
+| Setting | Meaning | Default |
+|---|---|---|
+| `delta_close` | crust thickness at or above which the seal can close \[m\] | 10 km |
+| `phi_close` | the top mesh cell must hold less melt than this to close \[1\] | 0.3 |
+| `phi_open` | a closed seal opens at or above this top-cell melt fraction \[1\] | `phi_close + 0.05` |
+| `delta_open` | a closed seal opens below this crust thickness \[m\] | `0.5 delta_close` |
+| `phi_solid` | a mesh cell below this melt fraction counts as crust \[1\] | 0.001 |
+| `tau_leak` | relaxation time of the leak \[yr\] | infinite |
+| `crust_rate` | melt mass that reaches the crust per year \[kg yr$^{-1}$\] | 0 |
+| `chi_d` | share of the volatiles of that melt that degasses \[1\] | 0.02 |
+
+## How to turn the seal on and read the result
+
+The seal needs the Aragog interior solver, because it reads the melt fraction and the radius of each mesh cell:
+
+```toml
+[interior_energetics]
+module = "aragog"
+
+[outgas.lid_seal]
+enabled = true
+delta_close = 1e4     # crust thickness at which the seal closes [m]
+tau_leak = 1e5        # relaxation time of the held volatiles [yr]
+```
+
+The seal needs `outgas.module = "calliope"`, an escape reservoir of `"outgas"` or `"bulk"`, and, with the Zalmoxis structure, `interior_struct.zalmoxis.dry_mantle = true`. It cannot be combined with `params.stop.solid.freeze_volatiles = true`, which also freezes the melt inventory, or with `outgas.vapourise = true`. Front trapping (`outgas.trap_mode = "front"`) can run with it. While the seal holds, the melt columns are empty, so trapping buries nothing; mass that a remelt releases from the solid joins the held mass.
+
+These output columns show what the seal does ([full list](../Reference/output.md)):
+
+- `seal_active` \[1\]: 1 while the seal holds, else 0.
+- `seal_delta` \[m\] and `seal_phi_top` \[1\]: the crust thickness and the melt fraction of the top mesh cell that the seal reads in the step. On the mesh, `seal_delta` is the depth of the top run of cells below `phi_solid` while the seal is open, and below `phi_open` while it holds and on the step where it opens, so it can jump on the first held step.
+- `seal_path` \[1\]: the crust that a closed seal reads in the step: 1 for the crust on the mesh, 2 for the sub-grid lid; 0 while the seal is open, also when `seal_delta` comes from the sub-grid lid.
+- `{sp}_kg_sealed`, `{sp}_mol_sealed` and `{e}_kg_sealed`: the held mass of each species and element.
+- `{sp}_kg_eq` \[kg\]: the floor of the leak of each soluble species at the end of the step (see [The floor of the leak](#the-floor-of-the-leak)); 0 while the seal is open, with `outgas.calliope.solubility = false`, and on held steps with no leak rate (`tau_leak` infinite and no crust production).
+- `seal_Tmagma_close` \[K\]: the magma temperature of the chemistry solve that closed the seal.
+- `{e}_kg_leak_tau` and `{e}_kg_leak_volc` \[kg\]: the mass of each element that leaked in the step by relaxation and by volcanism.
+- `seal_leak_kg_cum` \[kg\]: the leaked mass since the start of the run.
+- `seal_open_kg` \[kg\]: the held mass that returned to the melt in a step where the seal opened.
 
 ## What the seal changes elsewhere
 
