@@ -91,6 +91,8 @@ _LAW = {
 }
 # S2 pressure [bar] below which the CALLIOPE S2 law returns 0.
 S2_CUTOFF = 1.0e-20
+# Leaks at which the end-state check samples the step residual of a species.
+SCAN_POINTS = 17
 # Gauss-Seidel sweeps over the species of a leak step: relative change and limit.
 SWEEP_TOL, SWEEP_MAX = 1.0e-14, 100
 
@@ -481,18 +483,14 @@ def _check_floors(config: Config, hf_row: dict, before: dict, leak: dict, frac: 
 
     A species that leaked ends at or above its floor, and its distance to the
     floor is ``exp(-lam dt)`` times the distance it started at; both to round-off
-    of its held mass before the step (1e-12 and 1e-9 of it).
-    CO2 that leaked must end below ``83.15 T / 23`` bar, the peak of the Dixon et
-    al. (1995) law: above it the law falls with pressure and the step can have
-    more than one solution.
+    of its held mass before the step (1e-12 and 1e-9 of it). Its step residual,
+    sampled at ``SCAN_POINTS`` leaks over the bracket with the others at their
+    final leaks, changes sign once: a law that falls with pressure (CO2, CO and
+    CH4 at high pressure) gives a second solution only where the floor falls
+    faster than the leak fills the atmosphere.
     """
-    floor_of = _floor_model(config, hf_row, {})
-    if leak.get('CO2', 0.0) > 0.0:
-        peak = 83.15 * float(hf_row['seal_Tmagma_close']) / 23.0
-        _check(
-            float(hf_row['CO2_bar']) <= peak,
-            f'CO2 at {hf_row["CO2_bar"]} bar is above {peak} bar, the peak of the Dixon law',
-        )
+    per_kg = {s: hf_row[f'{s}_mol_atm'] / hf_row[f'{s}_kg_atm'] for s in leak if leak[s] > 0.0}
+    floor_of = _floor_model(config, hf_row, per_kg)
     for s in soluble_gases:
         m_eq = hf_row[f'{s}_kg_eq'] = floor_of({}, s)
         if leak.get(s, 0.0) <= 0.0:
@@ -506,6 +504,12 @@ def _check_floors(config: Config, hf_row: dict, before: dict, leak: dict, frac: 
         _check(
             abs(end - m_eq - gap) <= 1e-9 * before[s],
             f'{s} ends {end - m_eq} kg above its floor, not {gap} kg',
+        )
+        grid = np.linspace(0.0, frac[s] * before[s], SCAN_POINTS)
+        res = [x - frac[s] * max(before[s] - floor_of({s: x - leak[s]}, s), 0.0) for x in grid]
+        _check(
+            np.count_nonzero(np.diff(np.greater(res, 0.0))) <= 1,
+            f'the step of {s} has more than one solution',
         )
 
 
