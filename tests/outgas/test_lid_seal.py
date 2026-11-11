@@ -1321,11 +1321,13 @@ def test_a_step_to_a_floor_far_below_the_held_mass_passes_the_floor_check(phi):
 def test_held_s2_leaks_to_a_continuous_floor_at_a_vanishing_s2_pressure(s2_atm):
     """CALLIOPE returns no S2 solubility below 1e-20 bar, which makes the floor
     jump at that pressure. With no or almost no S2 in the atmosphere, held S2
-    must still leak to its floor on the continued square-root law and end on it."""
+    must still leak to its floor on the continued square-root law and end on it,
+    to the round-off of the floor check (1e-12 of the held mass)."""
     atm = {'H2O': 1.0e18, 'CO2': 1.0e18, 'S2': s2_atm}
     row = _eq_row(atm, {'S2': 1.0e11})
     leak_step(_config(solubility=True, tau_leak=1.0e2), row, 1.0e3)
-    assert 0.0 < row['S2_kg_eq'] <= row['S2_kg_sealed'] < 1.0e11
+    assert 0.0 < row['S2_kg_eq'] <= row['S2_kg_sealed'] + 1.0e-12 * 1.0e11
+    assert row['S2_kg_sealed'] < 1.0e11
     assert row['S2_kg_atm'] > s2_atm
 
 
