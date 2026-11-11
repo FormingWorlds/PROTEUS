@@ -62,15 +62,18 @@ def _dissolved_parity(config, row):
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(('shift', 't_magma'), [(-2.0, 1800.0), (2.0, 1000.0)])
 def test_equilibrium_fractions_are_the_dissolved_fractions_of_a_solved_row(shift, t_magma):
-    """At IW-2 and IW+2, with He and Ar on and T_magma above and below
+    """At IW-2 and IW+2, with the 5 noble gases on and T_magma above and below
     T_floor (1200 K), the seal's X_eq of each species equals the dissolved mass
     of the solve over M_mantle Phi_global, to 1e-12."""
-    config = _cold_start_config({'He': True, 'Ar': True}, He_budget=3.0e16)
+    config = _cold_start_config(
+        dict.fromkeys(('He', 'Ne', 'Ar', 'Kr', 'Xe'), True), He_budget=3.0e16
+    )
     config.outgas.fO2_shift_IW = shift
-    config.planet.elements.Ar_budget = 1.0e16
+    for gas, kg in (('Ne', 2.0e15), ('Ar', 1.0e16), ('Kr', 3.0e14), ('Xe', 4.0e13)):
+        setattr(config.planet.elements, f'{gas}_budget', kg)
     row = {**_surface_pressure_hf_row(), 'Phi_global': 0.4, 'T_magma': t_magma}
     solved = _dissolved_parity(config, row)
-    assert solved == {'H2O', 'CO2', 'CO', 'CH4', 'N2', 'S2', 'He', 'Ar'}
+    assert solved == {'H2O', 'CO2', 'CO', 'CH4', 'N2', 'S2', 'He', 'Ne', 'Ar', 'Kr', 'Xe'}
     assert row['fO2_shift_IW_derived'] == shift
 
 

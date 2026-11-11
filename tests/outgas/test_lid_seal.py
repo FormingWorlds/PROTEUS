@@ -1058,6 +1058,7 @@ def test_sealed_mass_below_its_floor_does_not_leak():
     assert row['CO2_kg_sealed'] < before['CO2_kg_sealed']
     for key in ('H2O_kg_sealed', 'H2O_mol_sealed', 'H2O_kg_atm', 'H2O_mol_atm'):
         assert row[key] == before[key], key
+    assert row['H2O_kg_eq'] > m_eq  # the heavier CO2 raises the H2O partial pressure
 
 
 @pytest.mark.physics_invariant
@@ -1235,29 +1236,49 @@ def test_a_co2_leak_above_the_peak_of_the_dixon_law_finishes_its_step(p_co2):
     assert row['CO2_bar'] > p_co2
 
 
-@pytest.mark.physics_invariant
-def test_a_step_with_more_than_one_solution_stops():
-    """A floor that falls with the gas the leak adds, faster than the leak itself,
-    gives the step residual 3 roots; the step must stop rather than take one."""
-    from proteus.outgas import lid_seal
+def _made_up_floor(residual, m0, a0, frac):
+    """A CO2 floor model whose step residual is span residual(u), u = leak / span.
 
-    m0, a0, frac = 1.0e19, 1.0e18, -np.expm1(-1.0)
-    width = 0.01 * frac * m0
+    span = frac m0; the floor reads the leak through the moles, as the code adds them.
+    """
+    per, span = 1.0 / eval_gas_mmw('CO2'), frac * m0
 
     def model(config, hf_row, per_kg):
         def floor_of(leak, s):
-            x = hf_row[f'{s}_kg_atm'] + leak.get(s, 0.0) - a0
-            return m0 - (x + width * np.cos(3.0 * np.pi * x / (frac * m0))) / frac
+            x = (hf_row[f'{s}_mol_atm'] + leak.get(s, 0.0) * per_kg.get(s, 0.0)) / per - a0
+            return m0 - (x - span * residual(x / span)) / frac
 
         return floor_of
 
+    return model
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('residual', 'stops'),
+    [
+        (lambda u: -0.01 * np.cos(3.0 * np.pi * u), True),
+        (lambda u: (u - 0.5) * ((u - 0.5) ** 2 - (1.5 / 16.0) ** 2), True),
+        (lambda u: u - 0.5 if u <= 1.0 else 0.5 * np.cos(4.0 * np.pi * (u - 1.0)), False),
+    ],
+    ids=['3-roots', 'narrow-fold', 'roots-past-the-bracket'],
+)
+def test_a_step_with_more_than_one_solution_stops(residual, stops):
+    """A floor that falls with the gas the leak adds, faster than the leak itself,
+    gives the step residual 3 roots, evenly spaced or 1.5/16 of the bracket apart;
+    the step must stop rather than take one. Roots beyond the bracket [0, frac M]
+    are no solutions of the step, which then finishes on its one root."""
+    m0, a0, frac = 1.0e19, 1.0e18, -np.expm1(-1.0)
     row = _eq_row({'CO2': a0}, {'CO2': m0})
-    with (
-        patch.object(lid_seal, '_floor_model', model),
-        pytest.raises(RuntimeError, match='more than one solution'),
-    ):
-        leak_step(_config(solubility=True, tau_leak=1.0e3), row, 1.0e3)
-    assert row['CO2_kg_sealed'] < m0
+    model = _made_up_floor(residual, m0, a0, frac)
+    with patch('proteus.outgas.lid_seal._floor_model', model):
+        if stops:
+            with pytest.raises(RuntimeError, match='more than one solution'):
+                leak_step(_config(solubility=True, tau_leak=1.0e3), row, 1.0e3)
+            assert row['CO2_kg_sealed'] < m0
+        else:
+            leak_step(_config(solubility=True, tau_leak=1.0e3), row, 1.0e3)
+            assert row['CO2_kg_sealed'] == pytest.approx(m0 - 0.5 * frac * m0, rel=1e-12)
 
 
 @pytest.mark.physics_invariant

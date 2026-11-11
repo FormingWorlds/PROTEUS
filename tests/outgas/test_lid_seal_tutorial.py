@@ -25,18 +25,14 @@ from .test_lid_seal import D_H2O, _assert_legend_clear, _config, _eq_row
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 DATA = Path(__file__).parents[1] / 'data' / 'lid_seal'
-
-
-def _tutorial_config():
-    """The seal and CALLIOPE settings of the tutorial (tau_leak 1e5 yr, crust_rate 0)."""
-    return _config(solubility=True, tau_leak=1.0e5)
+CFG = _config(solubility=True, tau_leak=1.0e5)  # the tutorial settings, crust_rate 0
 
 
 def _closing_row():
     """The stored closing row as a sealed helpfile row, with the frozen solve temperature."""
     rows = pd.read_csv(DATA / 'tutorial_closing_rows.csv', comment='#')
     row = {**_eq_row({}, {}), **rows.iloc[0].to_dict()}
-    row['seal_Tmagma_close'] = max(row['T_magma'], _tutorial_config().outgas.T_floor)
+    row['seal_Tmagma_close'] = max(row['T_magma'], CFG.outgas.T_floor)
     return row, rows
 
 
@@ -50,7 +46,7 @@ def test_the_first_held_steps_of_the_tutorial_follow_the_floor():
     row, rows = _closing_row()
     phi_c = row['Phi_global']
     phi_star = (phi_c - D_H2O) / (1.0 - D_H2O)
-    cfg, first = _tutorial_config(), {}
+    cfg, first = CFG, {}
     for nxt in rows.iloc[1:].itertuples():
         dt = nxt.Time - row['Time']
         row.update({'Time': nxt.Time, 'Phi_global': nxt.Phi_global, 'M_mantle': nxt.M_mantle})
@@ -82,7 +78,7 @@ def test_the_tutorial_atmosphere_lies_between_the_held_and_the_open_run(validati
     held = w[w['seal_active'] > 0.5]
     row, _ = _closing_row()
     assert row['Time'] == held['Time'].iloc[0]
-    cfg, out = _tutorial_config(), []
+    cfg, out = CFG, []
     for r in held.iloc[1:].itertuples():
         dt = r.Time - row['Time']
         row.update({'Time': r.Time, 'Phi_global': r.Phi_global, 'M_mantle': r.M_mantle})
