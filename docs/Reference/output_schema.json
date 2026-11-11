@@ -21854,6 +21854,23 @@
       "consumers_possible": []
     },
     {
+      "name": "seal_phi_close",
+      "unit": "1",
+      "description": "global melt fraction of the closing step",
+      "group": "Quantities for each element",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
       "name": "seal_delta",
       "unit": "m",
       "description": "crust thickness the seal reads",

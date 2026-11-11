@@ -381,7 +381,10 @@ def _floor_model(config: Config, hf_row: dict, per_kg: dict):
     """``M_eq`` [kg] of a species after leaks ``{species: kg}`` into the row's atmosphere.
 
     Moles enter at ``per_kg`` [mol kg-1]; T and the IW offset are those of the
-    closing solve. Raises ``ValueError`` if either is unreadable.
+    closing solve. With ``outgas.trap_mode = 'front'`` the crystals that froze
+    before closure keep their own trapped volatiles, so each reservoir leaves out
+    their share ``D_i (1 - seal_phi_close) M_mantle``. Raises ``ValueError`` if a
+    closing value it reads is unreadable.
     """
     temp = float(hf_row.get('seal_Tmagma_close', np.nan))
     shift = float(hf_row.get('fO2_shift_IW_derived', np.nan))
@@ -391,6 +394,13 @@ def _floor_model(config: Config, hf_row: dict, per_kg: dict):
             'cannot set the dissolved equilibrium'
         )
     reservoir = reservoirs(config, hf_row)[0]
+    if getattr(config.outgas, 'trap_mode', 'none') == 'front':
+        phi_c = float(hf_row.get('seal_phi_close', np.nan))
+        if not 0.0 <= phi_c <= 1.0:
+            raise ValueError(f'Lid seal: seal_phi_close = {phi_c} is not a melt fraction')
+        solid_c = (1.0 - phi_c) * float(hf_row['M_mantle'])
+        d = {s: float(getattr(config.outgas, f'D_const_{s}', 0.0)) for s in reservoir}
+        reservoir = {s: r - d[s] * solid_c for s, r in reservoir.items()}
     kg0, mol0 = _atmosphere(hf_row)
     gravity, r_int = float(hf_row['gravity']), float(hf_row['R_int'])
 
@@ -531,7 +541,8 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
     ------
     ValueError
         If the flag, the path or a sealed mass is not readable, if a sealed row
-        has no closing temperature ``seal_Tmagma_close`` > 0 K, if the row holds
+        has no closing temperature ``seal_Tmagma_close`` > 0 K or no closing melt
+        fraction ``seal_phi_close`` in [0, 1], if the row holds
         sealed mass under an open flag, or if it holds sealed mass with the seal
         off, since nothing could open it then.
     """
@@ -561,6 +572,11 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
     temp = float(hf_row.get('seal_Tmagma_close', np.nan))
     if sealed and not (np.isfinite(temp) and temp > 0.0):
         raise ValueError(f'Resume: a sealed last row needs seal_Tmagma_close > 0 K, not {temp}')
+    phi_c = float(hf_row.get('seal_phi_close', np.nan))
+    if sealed and not 0.0 <= phi_c <= 1.0:
+        raise ValueError(
+            f'Resume: a sealed last row needs seal_phi_close in [0, 1], not {phi_c}'
+        )
     return sealed
 
 
@@ -654,6 +670,7 @@ def run_lid_seal_step(
             moved = close_seal(hf_row)
             hf_row['seal_t_close'] = float(hf_row['Time'])
             hf_row['seal_Tmagma_close'] = max(float(hf_row['T_magma']), config.outgas.T_floor)
+            hf_row['seal_phi_close'] = float(hf_row['Phi_global'])
             log.info(
                 'Lid seal closes (crust %.3e m, top-cell melt fraction %.3f); %.3e kg sealed',
                 delta,

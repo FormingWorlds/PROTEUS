@@ -94,7 +94,8 @@ The floor is $M_{\mathrm{eq},i} = X_{\mathrm{eq},i}\, R_i$, with $X_{\mathrm{eq}
 - CO, CH$_4$ and the noble gases have a floor only where the matching `outgas.calliope.include_*` option is on;
 - below $10^{-20}$ bar, where the CALLIOPE S$_2$ law returns 0, the S$_2$ floor follows the same square-root law of Gaillard et al. (2022)[^cite-gaillard2022] in its partial pressure, so it stays continuous;
 - H$_2$, O$_2$, SO$_2$, H$_2$S and NH$_3$ have no law, so their floor is 0;
-- with `outgas.calliope.solubility = false` every floor is 0, and the held mass decays at the rate $\lambda_i$ of the next section.
+- with `outgas.calliope.solubility = false` every floor is 0, and the held mass decays at the rate $\lambda_i$ of the next section;
+- with front trapping (`outgas.trap_mode = "front"`) the crystals that froze before closure keep their own trapped volatiles, so the reservoir of the floor leaves out their share $D_i (1 - \Phi_c) M_\mathrm{mantle}$, with $\Phi_c$ the global melt fraction at closure, `seal_phi_close`.
 
 The floor is one way: a species below its floor does not move, because gas does not dissolve back through the crust.
 
@@ -163,6 +164,7 @@ These output columns show what the seal does ([full list](../Reference/output.md
 - `{sp}_kg_sealed`, `{sp}_mol_sealed` and `{e}_kg_sealed`: the held mass of each species and element.
 - `{sp}_kg_eq` \[kg\]: the floor of the leak of each soluble species at the end of the step (see [The floor of the leak](#the-floor-of-the-leak)); 0 while the seal is open, with `outgas.calliope.solubility = false`, and on held steps with no leak rate (`tau_leak` infinite and no crust production).
 - `seal_Tmagma_close` \[K\]: the magma temperature of the chemistry solve that closed the seal.
+- `seal_phi_close` \[1\]: the global melt fraction of the step that closed the seal.
 - `{e}_kg_leak_tau` and `{e}_kg_leak_volc` \[kg\]: the mass of each element that leaked in the step by relaxation and by volcanism.
 - `seal_leak_kg_cum` \[kg\]: the leaked mass since the start of the run.
 - `seal_open_kg` \[kg\]: the held mass that returned to the melt in a step where the seal opened.

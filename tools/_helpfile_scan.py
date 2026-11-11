@@ -164,6 +164,8 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
     ('outgas/lid_seal.py', 'leak_step', '<?>_kg_sealed'): _TRAPPED,
     ('outgas/lid_seal.py', 'leak_step', '<?>_mol_sealed'): _TRAPPED_SPECIES,
     ('outgas/lid_seal.py', '_leaks', '<?>_mol_sealed'): _TRAPPED_SPECIES,
+    ('outgas/lid_seal.py', '_check_floors', '<?>_kg_atm'): _TRAPPED_SPECIES,
+    ('outgas/lid_seal.py', '_check_floors', '<?>_mol_atm'): _TRAPPED_SPECIES,
     ('outgas/lid_seal.py', 'leak_step', '<?>_kg_atm'): _TRAPPED,
     ('outgas/lid_seal.py', 'leak_step', '<?>_mol_atm'): _TRAPPED_SPECIES,
     ('outgas/lid_seal.py', 'leak_step', '<?>_kg_leak_tau'): _TRAPPED_ELEMENTS,
