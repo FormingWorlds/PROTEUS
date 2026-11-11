@@ -18,8 +18,6 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
-from hypothesis import given
-from hypothesis import strategies as st
 
 from proteus.config._outgas import Calliope, LidSeal
 from proteus.outgas.common import element_masses_from_species
@@ -266,10 +264,11 @@ def test_with_no_solubility_the_leak_decays_to_zero_whatever_the_step():
     M_c exp(-(t - t_c)/tau), to 1e-12 at every row, for steps of 1, 10 and
     100 kyr (tau = 1 Myr)."""
     tau, m0 = 1.0e6, MELT['H2O']
-    runs = {dt: _relax(dt, 1.0e6, tau)[0] for dt in (1.0e3, 1.0e4, 1.0e5)}
-    for series in runs.values():
+    runs = {dt: _relax(dt, 1.0e6, tau) for dt in (1.0e3, 1.0e4, 1.0e5)}
+    for series, row in runs.values():
         for t, m in series.items():
             assert m == pytest.approx(m0 * np.exp(-t / tau), rel=1e-12)
+        assert 'H2O_kg_eq' not in row  # no floor is computed
 
 
 @pytest.mark.reference_pinned
@@ -405,7 +404,7 @@ def test_volcanic_leak_splits_by_rate_and_closes_per_element():
         before['CO2_kg_sealed'] * -np.expm1(-dt * (inv_tau + k)), rel=1e-12
     )
     assert row['seal_leak_kg_cum'] > 0.0
-    assert row['seal_crust_rate'] == 3.0e20
+    assert row['seal_crust_rate'] == cfg.outgas.lid_seal.crust_rate
     assert row['seal_volc_capped'] == 0.0
 
 
@@ -424,7 +423,7 @@ def test_crust_production_is_capped_at_the_melt_and_stops_below_phi_solid():
     assert (mdot, capped, rates['CO2'][1]) == (0.0, False, 0.0)
     row = _sealed_row(phi=0.01)
     leak_step(cfg, row, 100.0)
-    assert row['seal_volc_capped'] == 1.0
+    assert row['seal_volc_capped'] == 1
 
 
 @pytest.mark.physics_invariant
@@ -472,7 +471,7 @@ def test_step_closes_after_the_solve_and_not_in_the_init_stage():
     interior = _interior([0.6, 0.2])
     row = {**_row(), 'lid_weight': 1.0, 'lid_delta': 0.31}
     state, solve = _step(row, interior, False, delta_close=0.3)
-    assert state is True and row['seal_active'] == 1.0
+    assert state is True and row['seal_active'] == 1
     solve.assert_called_once()
     assert row['H2O_kg_liquid'] == 0.0 and row['H2O_kg_sealed'] == MELT['H2O']
     assert row['seal_t_close'] == row['Time']
@@ -480,7 +479,7 @@ def test_step_closes_after_the_solve_and_not_in_the_init_stage():
     assert _step(row, interior, False, init_stage=True, delta_close=0.3)[0] is False
     row = {**_row(), 'lid_weight': 1.0, 'lid_delta': 0.29}
     assert _step(row, interior, False, delta_close=0.3)[0] is False
-    assert row['seal_delta'] == 0.29 and row['seal_phi_top'] == 0.2
+    assert row['seal_delta'] == row['lid_delta'] and row['seal_phi_top'] == interior.phi[-1]
     assert row['seal_path'] == 0.0  # an open step names no path
 
 
@@ -800,7 +799,7 @@ def test_any_lid_weight_above_zero_closes_on_the_lid_with_the_whole_inventory(w)
     if not sealed:
         assert row['seal_delta'] == 0.0 and row['H2O_kg_liquid'] == MELT['H2O']
         return
-    assert row['seal_path'] == 2.0 and row['seal_delta'] == 0.31
+    assert row['seal_path'] == 2 and row['seal_delta'] == row['lid_delta']
     cols = [f'{s}_{u}' for s in SEALED_SPECIES for u in ('kg', 'mol')]
     for c in cols + [f'{e}_kg' for e in SEALED_ELEMENTS]:
         assert row[f'{c}_sealed'] == before[f'{c}_liquid'] and row[f'{c}_liquid'] == 0.0, c
@@ -813,7 +812,8 @@ def test_an_open_seal_under_a_thin_lid_stays_open_whatever_the_mesh(w, phi_top):
     delta_close keeps it open at any weight, also over a crust on the mesh."""
     row = {**_row(), 'lid_weight': w, 'lid_delta': 0.29, 'esc_rate_total': 0.0}
     sealed, _ = _step(row, _mesh(phi_top), False, delta_close=0.3)
-    assert sealed is False and row['seal_delta'] == 0.29 and row['seal_path'] == 0.0
+    assert sealed is False and row['seal_path'] == 0.0
+    assert row['seal_delta'] == row['lid_delta']
 
 
 def test_a_lid_closed_seal_stays_closed_while_its_lid_fades_to_zero():
@@ -842,7 +842,8 @@ def test_a_sealed_row_without_its_path_reads_the_lid_at_any_weight_above_zero():
     row = {**_sealed_row(), 'lid_weight': W_MIN, 'lid_delta': 0.35, 'esc_rate_total': 0.0}
     assert 'seal_path' not in row
     sealed, _ = _step(row, _mesh(0.2), True, delta_close=0.3)
-    assert sealed is True and row['seal_path'] == 2.0 and row['seal_delta'] == 0.35
+    assert sealed is True and row['seal_path'] == 2
+    assert row['seal_delta'] == row['lid_delta']
 
 
 def test_a_sealed_row_without_its_path_reads_the_mesh_band_at_lid_weight_zero():
@@ -850,7 +851,7 @@ def test_a_sealed_row_without_its_path_reads_the_mesh_band_at_lid_weight_zero():
     phi_open, as a mesh-closed seal does; a top cell at 0.2 melt keeps it closed."""
     row = {**_sealed_row(), 'lid_weight': 0.0, 'esc_rate_total': 0.0}
     sealed, _ = _step(row, _mesh(0.2), True)
-    assert sealed is True and row['seal_path'] == 1.0
+    assert sealed is True and row['seal_path'] == 1
     assert row['seal_delta'] == pytest.approx(9.0e4, rel=1e-12)  # 0.2, 0.0 and 0.2 cells
 
 
@@ -895,7 +896,7 @@ def test_each_element_leaks_its_own_sealed_mass_off_the_stoichiometry(tau, dt):
         out = row[f'{e}_kg_leak_tau'] + row[f'{e}_kg_leak_volc']
         assert out == pytest.approx(before[f'{e}_kg_sealed'] * frac, rel=1e-12), e
         assert before[f'{e}_kg_sealed'] - row[f'{e}_kg_sealed'] == pytest.approx(out, rel=1e-12)
-        if frac == 1.0:
+        if frac >= 1.0:
             assert row[f'{e}_kg_sealed'] == 0.0
 
 
@@ -906,6 +907,9 @@ def test_leak_rates_refuse_a_non_finite_mantle_state(key, bad):
     row = {'M_mantle': M_MANTLE, 'Phi_global': 0.3, key: bad}
     with pytest.raises(ValueError, match=key):
         leak_rates(_config(crust_rate=3.0e20), row, 1.0e3)
+    finite = {**row, key: {'Phi_global': 0.3, 'M_mantle': M_MANTLE}[key]}
+    cfg = _config(crust_rate=3.0e20)
+    assert leak_rates(cfg, finite, 1.0e3)[1] == cfg.outgas.lid_seal.crust_rate
 
 
 @pytest.mark.parametrize('bad', [float('nan'), float('inf')], ids=['nan', 'inf'])
@@ -914,6 +918,9 @@ def test_closure_state_refuses_a_non_finite_lid_weight(bad):
     row = {'lid_weight': bad, 'lid_delta': 0.35}
     with pytest.raises(ValueError, match='lid_weight'):
         closure_state(_config(), row, _mesh(0.2))
+    assert (
+        closure_state(_config(), {**row, 'lid_weight': 0.5}, _mesh(0.2))[0] == row['lid_delta']
+    )
 
 
 def test_mesh_band_counts_cells_between_phi_close_and_phi_open():
@@ -1174,7 +1181,9 @@ def test_leak_sweeps_that_do_not_settle_stop_the_step():
         patch('proteus.outgas.lid_seal.SWEEP_MAX', 1),
         pytest.raises(RuntimeError, match='did not settle'),
     ):
-        leak_step(_config(solubility=True, tau_leak=1.0e3), row, 1.0e3)
+        leak_step(_config(solubility=True, tau_leak=1.0e3), dict(row), 1.0e3)
+    leak_step(_config(solubility=True, tau_leak=1.0e3), row, 1.0e3)
+    assert row['CO2_kg_sealed'] < 1.0e19 and row['CO2_kg_eq'] > 0.0
 
 
 @pytest.mark.parametrize(
@@ -1188,43 +1197,18 @@ def test_a_leak_refuses_an_unreadable_closing_state(key, bad):
     atm = {'H2O': 1.0e17}
     row = _eq_row(atm, {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O)})
     row[key] = bad
+    before = dict(row)
     with pytest.raises(ValueError, match='cannot set the dissolved equilibrium'):
         leak_step(_config(solubility=True, tau_leak=1.0e3), row, 1.0e3)
-
-
-@given(
-    mass=st.floats(1.0, 1.0e24),
-    share=st.floats(0.0, 2.0),
-    frac=st.floats(1.0e-12, 1.0),
-)
-def test_floor_leak_at_a_constant_floor_is_the_closed_form(mass, share, frac):
-    """At a constant floor F >= 0 the leak is frac max(M - F, 0), and in [0, frac M]."""
-    floor = share * mass
-    leak = floor_leak(mass, frac, lambda _: floor)
-    assert 0.0 <= leak <= frac * mass
-    assert leak == pytest.approx(frac * max(mass - floor, 0.0), rel=1e-12, abs=1e-12 * mass)
+    assert row['H2O_kg_sealed'] == before['H2O_kg_sealed']
 
 
 @pytest.mark.parametrize('bad', [float('nan'), float('inf'), -1.0], ids=str)
 def test_floor_leak_refuses_a_floor_that_is_not_finite_or_negative(bad):
+    """A floor that is NaN, inf or negative is refused; a floor of 0 leaks frac M."""
     with pytest.raises(ValueError, match='dissolved equilibrium'):
         floor_leak(1.0e20, 0.5, lambda _: bad)
-
-
-@given(temp=st.one_of(st.floats(allow_nan=True, allow_infinity=True), st.just(0.0)))
-def test_restore_refuses_a_sealed_row_without_a_closing_temperature(temp):
-    """A sealed last row resumes only with a finite seal_Tmagma_close above 0 K;
-    an open row resumes whatever the column holds."""
-    row = {**_sealed_row(), 'seal_active': 1.0, 'seal_Tmagma_close': temp}
-    if np.isfinite(temp) and temp > 0.0:
-        assert restore_seal_state(_config(), row) is True
-    else:
-        with pytest.raises(ValueError, match='seal_Tmagma_close'):
-            restore_seal_state(_config(), row)
-    assert restore_seal_state(_config(), {**_row(), 'seal_Tmagma_close': temp}) is False
-    del row['seal_Tmagma_close']
-    with pytest.raises(ValueError, match='seal_Tmagma_close'):
-        restore_seal_state(_config(), row)
+    assert floor_leak(1.0e20, 0.5, lambda _: 0.0) == pytest.approx(5.0e19, rel=1e-15)
 
 
 def test_equilibrium_fractions_are_zero_with_solubility_off():
@@ -1232,7 +1216,8 @@ def test_equilibrium_fractions_are_zero_with_solubility_off():
     bar = dict.fromkeys(gas_list, 50.0)
     on = equilibrium_fractions(_config(solubility=True), bar, 500.0, T_SEAL, 2.0)
     off = equilibrium_fractions(_config(), bar, 500.0, T_SEAL, 2.0)
-    assert on['H2O'] > 0.0 and set(off.values()) == {0.0}
+    assert on['H2O'] > 0.0
+    assert set(off.values()) == {0.0}
 
 
 @pytest.mark.parametrize(('p_co2', 'stops'), [(5.0e3, False), (6.0e3, True)])

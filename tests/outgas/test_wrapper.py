@@ -3041,5 +3041,5 @@ def test_run_crystallized_leaves_an_element_named_total_to_escape():
     hf_row.update({'He_kg_total': 150.0, 'He_mol_atm': 25000.0, 'He_mol_total': 37500.0})
     run_crystallized(_cryst_cfg(), hf_row, 1.0)
     assert hf_row['He_kg_atm'] == pytest.approx(90.0, rel=1e-12)
-    assert hf_row['He_kg_total'] == 150.0
+    assert hf_row['He_kg_total'] == 150
     assert hf_row['He_mol_total'] == pytest.approx(37500.0 - 2500.0, rel=1e-12)

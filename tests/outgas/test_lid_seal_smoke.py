@@ -71,6 +71,7 @@ def test_equilibrium_fractions_are_the_dissolved_fractions_of_a_solved_row(shift
     row = {**_surface_pressure_hf_row(), 'Phi_global': 0.4, 'T_magma': t_magma}
     solved = _dissolved_parity(config, row)
     assert solved == {'H2O', 'CO2', 'CO', 'CH4', 'N2', 'S2', 'He', 'Ar'}
+    assert row['fO2_shift_IW_derived'] == shift
 
 
 @pytest.mark.physics_invariant

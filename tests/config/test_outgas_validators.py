@@ -211,7 +211,8 @@ def test_lid_seal_refuses_a_derived_phi_open_at_or_above_one():
     with pytest.raises(ValueError, match='phi_open = None'):
         _seal(phi_close=0.95)
     assert _seal(phi_close=0.949).phi_open_value == pytest.approx(0.999, rel=1e-12)
-    assert _seal(phi_close=0.95, phi_open=0.99).phi_open_value == 0.99
+    phi_open = 0.99
+    assert _seal(phi_close=0.95, phi_open=phi_open).phi_open_value == phi_open
 
 
 def test_lid_seal_validator_reads_a_missing_zalmoxis_table_as_dry():
@@ -247,8 +248,9 @@ def test_lid_seal_accepts_the_limits_and_both_regimes():
     10 km closure regimes load."""
     assert _seal(tau_leak=float('inf'), chi_d=0.0).chi_d == 0.0
     assert _seal(chi_d=1.0, crust_rate=0).crust_rate == 0
-    assert _seal(delta_close=2, delta_open=2).delta_open_value == 2.0
-    assert _seal(phi_open=0.3).phi_open_value == 0.3
+    assert _seal(delta_close=2, delta_open=2).delta_open_value == 2
+    phi_open = 0.3
+    assert _seal(phi_open=phi_open).phi_open_value == phi_open
     assert _seal(delta_close=0.3).delta_open_value == pytest.approx(0.15, rel=1e-15)
 
 
