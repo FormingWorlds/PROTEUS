@@ -3,10 +3,12 @@
 Invariants checked: the sealed reservoir and the melt exchange mass without loss
 (close and open conserve every species, element and mole column); the leak of
 one step equals the drop of the sealed mass, per species and per element, and
-splits between relaxation and volcanism in the ratio of their rates; the exact
-step solution does not depend on the step length; the melt concentration of the
-sealed reservoir satisfies its mass balance with the global melt fraction; the
-crust depth is bounded by the lower face of the top solid run.
+splits between relaxation and volcanism in the ratio of their rates; a sealed
+species leaks only down to its dissolved equilibrium and ends each step on the
+relaxation toward the floor of the end state; the exact step solution does not
+depend on the step length; the melt concentration of the sealed reservoir
+satisfies its mass balance with the global melt fraction; the crust depth is
+bounded by the lower face of the top solid run.
 """
 
 from __future__ import annotations
@@ -16,6 +18,8 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from proteus.config._outgas import Calliope, LidSeal
 from proteus.outgas.common import element_masses_from_species
@@ -27,6 +31,7 @@ from proteus.outgas.lid_seal import (
     close_seal,
     closure_state,
     crust_thickness,
+    floor_leak,
     leak_rates,
     leak_step,
     open_seal,
@@ -202,13 +207,16 @@ def test_assert_sealed_row_refuses_melt_mass_and_a_nan_reservoir():
 
 
 @pytest.mark.physics_invariant
-def test_hold_keeps_every_reservoir_bit_identical():
-    """V2: with tau_leak = inf and crust_rate = 0 (the defaults) nothing leaks,
-    and the atmosphere is not recomputed: every column stays equal to the bit."""
-    row = _sealed_row()
+@pytest.mark.parametrize('solubility', [False, True])
+def test_hold_keeps_every_reservoir_bit_identical(solubility):
+    """V2, E2(a): with tau_leak = inf and crust_rate = 0 (the defaults) nothing
+    leaks, no dissolved equilibrium is computed (a NaN closing temperature
+    passes), and the atmosphere is not recomputed: every column stays equal to
+    the bit."""
+    row = {**_sealed_row(), 'seal_Tmagma_close': float('nan')}
     before = dict(row)
     for _ in range(5):
-        leak_step(_config(), row, 1.0e5)
+        leak_step(_config(solubility=solubility), row, 1.0e5)
     assert {k: row[k] for k in before} == before
     assert row['H_kg_leak_tau'] == row['H_kg_leak_volc'] == 0.0
 
@@ -241,22 +249,47 @@ def _relax(dt, t_end, tau):
     return out, row
 
 
-@pytest.mark.reference_pinned
+def _relax_to(floor, dt, t_end, tau, m0):
+    """Sealed mass by row from the step kernel at a constant floor [kg]."""
+    t, m, out = 0.0, m0, {0.0: m0}
+    while t < t_end - 1e-9:
+        m -= floor_leak(m, -np.expm1(-dt / tau), lambda _: floor)
+        t += dt
+        out[round(t)] = m
+    return out
+
+
 @pytest.mark.physics_invariant
-def test_relaxation_matches_the_exponential_and_not_the_step_length(validation_plot):
-    """V3: with crust_rate = 0 the sealed mass decays as M_c exp(-(t - t_c)/tau),
-    to 1e-12 at every row, for steps of 1, 10 and 100 kyr (tau = 1 Myr). The
-    step solution is exact, so the step length enters only at round-off; a
-    forward Euler step would be 5.2 % below the exact answer after 1 Myr at 100 kyr steps."""
+def test_with_no_solubility_the_leak_decays_to_zero_whatever_the_step():
+    """With solubility off every floor is 0 and the sealed mass decays as
+    M_c exp(-(t - t_c)/tau), to 1e-12 at every row, for steps of 1, 10 and
+    100 kyr (tau = 1 Myr)."""
     tau, m0 = 1.0e6, MELT['H2O']
     runs = {dt: _relax(dt, 1.0e6, tau)[0] for dt in (1.0e3, 1.0e4, 1.0e5)}
     for series in runs.values():
         for t, m in series.items():
             assert m == pytest.approx(m0 * np.exp(-t / tau), rel=1e-12)
+
+
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_relaxation_matches_the_exponential_and_not_the_step_length(validation_plot):
+    """E1: at a constant floor M_eq = 0.4 M_0 the step kernel gives
+    M = M_eq + (M_0 - M_eq) exp(-(t - t_c)/tau) to 1e-12 at every row, for steps
+    of 1, 10 and 100 kyr (tau = 1 Myr). The step solution is exact, so the step
+    length enters only at round-off; a forward Euler step would miss the exact
+    distance to the floor by 5.2 % after 1 Myr at 100 kyr steps."""
+    tau, m0 = 1.0e6, MELT['H2O']
+    floor = 0.4 * m0
+    runs = {dt: _relax_to(floor, dt, 1.0e6, tau, m0) for dt in (1.0e3, 1.0e4, 1.0e5)}
+    for series in runs.values():
+        for t, m in series.items():
+            assert m - floor == pytest.approx((m0 - floor) * np.exp(-t / tau), rel=1e-12)
     for t in runs[1.0e5]:
         assert runs[1.0e3][t] == pytest.approx(runs[1.0e5][t], rel=1e-12)
-    euler = m0 * (1.0 - 1.0e5 / tau) ** 10
-    assert abs(runs[1.0e5][1000000] - euler) / runs[1.0e5][1000000] > 0.05
+    euler = (m0 - floor) * (1.0 - 1.0e5 / tau) ** 10
+    gap = runs[1.0e5][1000000] - floor
+    assert abs(gap - euler) / gap > 0.05
 
     def figure():
         import matplotlib.pyplot as plt
@@ -267,11 +300,11 @@ def test_relaxation_matches_the_exponential_and_not_the_step_length(validation_p
         ax.plot(x, np.exp(-x), label='closed form')
         for dt, marker in zip(runs, ('o', 's', '^')):
             t = np.array(sorted(runs[dt]))[:: max(1, int(2.0e5 / dt))]
-            m = np.array([runs[dt][k] for k in t]) / m0
+            m = (np.array([runs[dt][k] for k in t]) - floor) / (m0 - floor)
             ax.plot(t / tau, m, marker, mfc='none', label=f'{dt / 1e3:.0f} kyr steps')
             # Round-off differs between libm builds; plot it at the 1e-12 tolerance.
             ax2.plot(t / tau, np.round(m / np.exp(-t / tau) - 1.0, 12), marker, mfc='none')
-        ax.set_ylabel('Sealed fraction')
+        ax.set_ylabel(r'$(M - M_\mathrm{eq}) / (M_0 - M_\mathrm{eq})$')
         ax.legend(loc='upper right')
         ax2.set_xlabel(r'Time since closure / $\tau$')
         ax2.set_ylabel('Error (to 1e-12)')
@@ -1022,11 +1055,14 @@ def test_sealed_mass_below_its_floor_does_not_leak():
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize(('tau', 'crust'), [(1.0e3, 0.0), (1.0e5, 0.0), (1.0e4, 1.0e21)])
+@pytest.mark.parametrize(
+    ('tau', 'crust'), [(1.0e3, 0.0), (1.0e5, 0.0), (1.0e4, 1.0e21), (float('inf'), 1.0e21)]
+)
 def test_leak_relaxes_toward_the_floor_of_the_end_state(tau, crust):
     """Above its floor the sealed mass relaxes toward the floor of the end state,
     M_end - M_eq,end = exp(-(1/tau + k) dt) (M_0 - M_eq,end), with M_eq from the
-    atmosphere after the leak; the atmosphere gains what the reservoir loses."""
+    atmosphere after the leak; the atmosphere gains what the reservoir loses.
+    E7: the volcanic term alone (tau = inf) stops at the same floor."""
     atm = {'H2O': 1.0e17, 'CO2': 5.0e16}
     m0 = {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O), 'CO2': 1.0e19}
     row = _eq_row(atm, m0)
@@ -1040,6 +1076,8 @@ def test_leak_relaxes_toward_the_floor_of_the_end_state(tau, crust):
         assert row[f'{s}_kg_sealed'] >= m_eq
         gained = row[f'{s}_kg_atm'] - atm[s]
         assert gained == pytest.approx(m0[s] - row[f'{s}_kg_sealed'], rel=1e-12)
+    assert (row['C_kg_leak_volc'] > 0.0) == (crust > 0.0)
+    assert (row['C_kg_leak_tau'] > 0.0) == bool(np.isfinite(tau))
 
 
 @pytest.mark.physics_invariant
@@ -1079,3 +1117,110 @@ def test_closure_stores_the_magma_temperature_of_the_closing_solve(t_magma, expe
     row = {**_row(), 'lid_weight': 1.0, 'lid_delta': 0.31, 'T_magma': t_magma}
     assert _step(row, _interior([0.6, 0.2]), False, delta_close=0.3)[0] is True
     assert row.get('seal_Tmagma_close') == expected
+
+
+@pytest.mark.physics_invariant
+def test_finite_tau_lies_between_the_frozen_and_the_open_atmosphere():
+    """E2b: escape off, H2O the only dissolving species, melt fraction falling
+    from 0.3 to 0.15. At every step the atmospheric H2O of tau = 3 kyr is below
+    the open equilibrium on the melt alone (the closure state, D = 0) and at or
+    above the frozen seal; once it leaks it stays above the frozen value."""
+    from scipy.optimize import brentq
+
+    a0 = 1.0e17
+    m0 = _floor(_eq_row({'H2O': a0}, {}), 'H2O')
+    row = _eq_row({'H2O': a0}, {'H2O': m0})
+    cfg = _config(solubility=True, tau_leak=3.0e3)
+    tot, leaked = a0 + m0, False
+    for phi in np.linspace(0.3, 0.15, 16)[1:]:
+        row['Phi_global'] = phi
+        leak_step(cfg, row, 1.0e3)
+        a = row['H2O_kg_atm']
+
+        def gap(x, phi=phi):
+            return tot - x - _floor(_eq_row({'H2O': x}, {}, phi), 'H2O')
+
+        assert a < brentq(gap, a0, tot, xtol=1e-6, rtol=1e-15)
+        leaked = leaked or a > a0
+        assert a > a0 if leaked else a == a0
+    assert leaked
+
+
+def test_a_leak_off_its_relaxation_fails_the_floor_check():
+    """E8: a step kernel that ignores the floor ends below it, and one that leaks
+    too little ends off the relaxation; the check in the step stops both."""
+    atm = {'H2O': 1.0e17}
+    m0 = {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O)}
+    cfg = _config(solubility=True, tau_leak=1.0e3)
+    with (
+        patch('proteus.outgas.lid_seal.floor_leak', lambda m, f, _: f * m),
+        pytest.raises(RuntimeError, match='below its floor'),
+    ):
+        leak_step(cfg, _eq_row(atm, m0), 1.0e3)
+    with (
+        patch('proteus.outgas.lid_seal.floor_leak', lambda m, f, fl: 1e-6 * f * (m - fl(0.0))),
+        pytest.raises(RuntimeError, match='above its floor, not'),
+    ):
+        leak_step(cfg, _eq_row(atm, m0), 1.0e3)
+    leak_step(cfg, _eq_row(atm, m0), 1.0e3)
+
+
+def test_leak_sweeps_that_do_not_settle_stop_the_step():
+    """H2O and CO2 couple through the mean molar mass; one sweep cannot settle both."""
+    atm = {'H2O': 1.0e17, 'CO2': 5.0e16}
+    row = _eq_row(atm, {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O), 'CO2': 1.0e19})
+    with (
+        patch('proteus.outgas.lid_seal.SWEEP_MAX', 1),
+        pytest.raises(RuntimeError, match='did not settle'),
+    ):
+        leak_step(_config(solubility=True, tau_leak=1.0e3), row, 1.0e3)
+
+
+@pytest.mark.parametrize(
+    ('key', 'bad'),
+    [('seal_Tmagma_close', v) for v in (float('nan'), float('inf'), -1.0, 0.0)]
+    + [('fO2_shift_IW_derived', v) for v in (float('nan'), float('-inf'))],
+    ids=str,
+)
+def test_a_leak_refuses_an_unreadable_closing_state(key, bad):
+    """The floor needs a finite closing temperature above 0 K and a finite IW offset."""
+    atm = {'H2O': 1.0e17}
+    row = _eq_row(atm, {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O)})
+    row[key] = bad
+    with pytest.raises(ValueError, match='cannot set the dissolved equilibrium'):
+        leak_step(_config(solubility=True, tau_leak=1.0e3), row, 1.0e3)
+
+
+@given(
+    mass=st.floats(1.0, 1.0e24),
+    share=st.floats(0.0, 2.0),
+    frac=st.floats(1.0e-12, 1.0),
+)
+def test_floor_leak_at_a_constant_floor_is_the_closed_form(mass, share, frac):
+    """At a constant floor F >= 0 the leak is frac max(M - F, 0), and in [0, frac M]."""
+    floor = share * mass
+    leak = floor_leak(mass, frac, lambda _: floor)
+    assert 0.0 <= leak <= frac * mass
+    assert leak == pytest.approx(frac * max(mass - floor, 0.0), rel=1e-12, abs=1e-12 * mass)
+
+
+@pytest.mark.parametrize('bad', [float('nan'), float('inf'), -1.0], ids=str)
+def test_floor_leak_refuses_a_floor_that_is_not_finite_or_negative(bad):
+    with pytest.raises(ValueError, match='dissolved equilibrium'):
+        floor_leak(1.0e20, 0.5, lambda _: bad)
+
+
+@given(temp=st.one_of(st.floats(allow_nan=True, allow_infinity=True), st.just(0.0)))
+def test_restore_refuses_a_sealed_row_without_a_closing_temperature(temp):
+    """A sealed last row resumes only with a finite seal_Tmagma_close above 0 K;
+    an open row resumes whatever the column holds."""
+    row = {**_sealed_row(), 'seal_active': 1.0, 'seal_Tmagma_close': temp}
+    if np.isfinite(temp) and temp > 0.0:
+        assert restore_seal_state(_config(), row) is True
+    else:
+        with pytest.raises(ValueError, match='seal_Tmagma_close'):
+            restore_seal_state(_config(), row)
+    assert restore_seal_state(_config(), {**_row(), 'seal_Tmagma_close': temp}) is False
+    del row['seal_Tmagma_close']
+    with pytest.raises(ValueError, match='seal_Tmagma_close'):
+        restore_seal_state(_config(), row)
