@@ -66,7 +66,7 @@ def _config(solubility=False, **seal):
     outgas.calliope = Calliope(solubility=solubility)
     for s in SEALED_SPECIES:
         setattr(outgas, f'D_const_{s}', 0.0)
-    outgas.D_const_H2O = 0.0017
+    outgas.D_const_H2O, outgas.trap_mode = 0.0017, 'none'
     return SimpleNamespace(outgas=outgas, escape=SimpleNamespace(reservoir='outgas'))
 
 
@@ -1371,19 +1371,50 @@ def test_the_law_table_covers_every_soluble_gas_and_reads_the_include_flags():
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize(('trap_mode', 'share'), [('front', 0.2 - 0.1), ('none', 1.0 - 0.1)])
+@pytest.mark.parametrize(
+    ('trap_mode', 'phi', 'share'),
+    [('front', 0.1, 0.2 - 0.1), ('front', 0.3, 0.0), ('none', 0.1, 1.0 - 0.1)],
+    ids=['front', 'front-remelted', 'none'],
+)
 def test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_closure(
-    trap_mode, share
+    trap_mode, phi, share
 ):
     """With trap_mode = 'front' the crystals that froze before closure keep their
-    own trapped volatiles, so the floor reservoir leaves out their share
-    D (1 - Phi_c) M_mantle: the floor is X_eq M_mantle (Phi + D (Phi_c - Phi)),
-    against X_eq M_mantle (Phi + D (1 - Phi)) without trapping (Phi_c 0.2, Phi 0.1)."""
-    row = _eq_row({'H2O': 1.0e17}, {'H2O': 3.0e20}, phi=0.1)
+    own trapped volatiles, so the floor reservoir of each species counts only the
+    crystals formed after closure: X_eq M_mantle (Phi + D_i max(Phi_c - Phi, 0)),
+    the melt alone once Phi rises above Phi_c (Phi_c 0.2); without trapping it is
+    X_eq M_mantle (Phi + D_i (1 - Phi)). H2O (D 0.0017) and CO2 (D 0.05) leak in
+    the same step with crust production on; the volcanic rate keeps the reservoir
+    M_melt + D_i M_solid, so the leak splits (1/tau) : chi_d Mdot_c / that."""
+    row = _eq_row({'H2O': 1.0e17, 'CO2': 1.0e15}, {'H2O': 3.0e20, 'CO2': 1.0e19}, phi=phi)
     row['seal_phi_close'] = 0.2
-    cfg = _config(solubility=True, tau_leak=1.0e3)
-    cfg.outgas.trap_mode = trap_mode
+    cfg = _config(solubility=True, tau_leak=1.0e3, crust_rate=1.0e20)
+    cfg.outgas.trap_mode, cfg.outgas.D_const_CO2 = trap_mode, 0.05
+    rates, _, capped = leak_rates(cfg, row, 1.0e3)
     leak_step(cfg, row, 1.0e3)
-    x_eq = _floor(row, 'H2O') / (M_MANTLE * 0.1)
-    assert row['H2O_kg_eq'] == pytest.approx(x_eq * M_MANTLE * (0.1 + D_H2O * share), rel=1e-10)
+    for s, d in (('H2O', D_H2O), ('CO2', 0.05)):
+        x_eq = _floor(row, s) / (M_MANTLE * phi)
+        assert row[f'{s}_kg_eq'] == pytest.approx(
+            x_eq * M_MANTLE * (phi + d * share), rel=1e-10
+        )
+    assert row['H2O_kg_sealed'] < 3.0e20 and not capped
+    inv_tau, k = rates['H2O']
+    assert k == pytest.approx(0.02 * 1.0e20 / (M_MANTLE * (phi + D_H2O * (1 - phi))), rel=1e-14)
+    assert row['H_kg_leak_volc'] / row['H_kg_leak_tau'] == pytest.approx(k / inv_tau, rel=1e-12)
+
+
+@pytest.mark.parametrize('phi_close', [float('nan'), 0.0, -0.1, 1.5, None], ids=str)
+def test_front_trapping_refuses_an_unreadable_closing_melt_fraction(phi_close):
+    """Under front trapping the floor needs a closing melt fraction in (0, 1]; a
+    closure always has melt. Without trapping the floor does not read it."""
+    row = _eq_row({'H2O': 1.0e17}, {'H2O': 3.0e20}, phi=0.1)
+    row.pop('seal_phi_close', None)
+    if phi_close is not None:
+        row['seal_phi_close'] = phi_close
+    cfg = _config(solubility=True, tau_leak=1.0e3)
+    cfg.outgas.trap_mode = 'front'
+    with pytest.raises(ValueError, match='seal_phi_close'):
+        leak_step(cfg, dict(row), 1.0e3)
+    cfg.outgas.trap_mode = 'none'
+    leak_step(cfg, row, 1.0e3)
     assert row['H2O_kg_sealed'] < 3.0e20

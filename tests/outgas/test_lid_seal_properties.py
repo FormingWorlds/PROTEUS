@@ -54,11 +54,16 @@ def test_restore_refuses_a_sealed_row_without_a_closing_temperature(temp):
 
 @given(phi_close=st.one_of(st.floats(allow_nan=True, allow_infinity=True), st.just(1.0)))
 def test_restore_refuses_a_sealed_row_without_a_closing_melt_fraction(phi_close):
-    """A sealed last row resumes only with a finite seal_phi_close in [0, 1]."""
+    """Under front trapping a sealed last row resumes only with a closing melt
+    fraction in (0, 1], so a zero filled for a missing column is refused; without
+    trapping the column is not read."""
     row = {**_sealed_row(), 'seal_active': 1.0, 'seal_phi_close': phi_close}
-    if np.isfinite(phi_close) and 0.0 <= phi_close <= 1.0:
-        assert restore_seal_state(_config(), row) is True
+    front = _config()
+    front.outgas.trap_mode = 'front'
+    if np.isfinite(phi_close) and 0.0 < phi_close <= 1.0:
+        assert restore_seal_state(front, dict(row)) is True
     else:
         with pytest.raises(ValueError, match='seal_phi_close'):
-            restore_seal_state(_config(), row)
-    assert restore_seal_state(_config(), {**_row(), 'seal_phi_close': phi_close}) is False
+            restore_seal_state(front, dict(row))
+    assert restore_seal_state(_config(), dict(row)) is True
+    assert restore_seal_state(front, {**_row(), 'seal_phi_close': phi_close}) is False
