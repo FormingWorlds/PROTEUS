@@ -96,7 +96,9 @@ def _row(phi=0.4):
 def _sealed_row(phi=0.4):
     row = _row(phi)
     close_seal(row)
-    row.update({'seal_Tmagma_close': T_SEAL, 'fO2_shift_IW_derived': 2.0})
+    row.update(
+        {'seal_Tmagma_close': T_SEAL, 'fO2_shift_IW_derived': 2.0, 'seal_phi_close': phi}
+    )
     return row
 
 
@@ -1121,6 +1123,7 @@ def test_closure_stores_the_magma_temperature_of_the_closing_solve(t_magma, expe
     row = {**_row(), 'lid_weight': 1.0, 'lid_delta': 0.31, 'T_magma': t_magma}
     assert _step(row, _interior([0.6, 0.2]), False, delta_close=0.3)[0] is True
     assert row.get('seal_Tmagma_close') == expected
+    assert row.get('seal_phi_close') == row['Phi_global']
 
 
 @pytest.mark.physics_invariant
@@ -1344,3 +1347,22 @@ def test_the_law_table_covers_every_soluble_gas_and_reads_the_include_flags():
     assert x['CO'] == 0.0 and x['Ar'] > 0.0 and x['CH4'] > 0.0
     cfg.outgas.calliope = Calliope(include_Ar=False)
     assert equilibrium_fractions(cfg, bar, 500.0, T_SEAL, 2.0)['Ar'] == 0.0
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(('trap_mode', 'share'), [('front', 0.2 - 0.1), ('none', 1.0 - 0.1)])
+def test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_closure(
+    trap_mode, share
+):
+    """With trap_mode = 'front' the crystals that froze before closure keep their
+    own trapped volatiles, so the floor reservoir leaves out their share
+    D (1 - Phi_c) M_mantle: the floor is X_eq M_mantle (Phi + D (Phi_c - Phi)),
+    against X_eq M_mantle (Phi + D (1 - Phi)) without trapping (Phi_c 0.2, Phi 0.1)."""
+    row = _eq_row({'H2O': 1.0e17}, {'H2O': 3.0e20}, phi=0.1)
+    row['seal_phi_close'] = 0.2
+    cfg = _config(solubility=True, tau_leak=1.0e3)
+    cfg.outgas.trap_mode = trap_mode
+    leak_step(cfg, row, 1.0e3)
+    x_eq = _floor(row, 'H2O') / (M_MANTLE * 0.1)
+    assert row['H2O_kg_eq'] == pytest.approx(x_eq * M_MANTLE * (0.1 + D_H2O * share), rel=1e-10)
+    assert row['H2O_kg_sealed'] < 3.0e20
