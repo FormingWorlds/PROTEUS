@@ -24,12 +24,12 @@ config_version = "3.0"
         remove_sf             = false        # remove spectral file when done
 
     [params.dt]
-        minimum               = 1e1          # minimum time step [yr]
+        minimum               = 1e0          # minimum time step [yr]
         minimum_rel           = 1e-3         # minimum relative time step
         maximum               = 1e7          # maximum time step [yr]
         initial               = 1e1          # initial step size [yr]
         starspec              = 1e9          # recalculate stellar spectrum interval [yr]
-        starinst              = 1e2          # recalculate instellation interval [yr]
+        starinst              = 1e3          # recalculate instellation interval [yr]
         method                = "adaptive"   # proportional | adaptive | maximum
         propconst             = 52.0         # proportionality constant (proportional method)
         atol                  = 0.02         # step size absolute tolerance (adaptive method)
@@ -110,13 +110,13 @@ config_version = "3.0"
         O_mode                = "ic_chemistry"  # ic_chemistry | ppmw | kg | FeO_mantle_wt_pct
         O_budget              = 0.0          # ignored for ic_chemistry mode
         H_mode                = "ppmw"       # oceans | ppmw | kg
-        H_budget              = 630          # unit defined by H_mode; illustrative, Mercury's bulk H is poorly constrained
+        H_budget              = 302.5          # unit defined by H_mode; from Piani+2020 scaled to H for mercury mantle mass
         C_mode                = "ppmw"       # C/H mass ratio | ppmw | kg
-        C_budget              = 10000         # unit defined by C_mode; set per case by the grid
+        C_budget              = 5541.2         # unit defined by C_mode; set per case by the grid
         N_mode                = "ppmw"       # N/H mass ratio | ppmw | kg
-        N_budget              = 424          # unit defined by N_mode; illustrative
+        N_budget              =  756.8          # unit defined by N_mode; EH from Schaefer & Fegley 2017
         S_mode                = "ppmw"       # S/H mass ratio | ppmw | kg
-        S_budget              = 56000         # unit defined by S_mode; illustrative (Mercury's surface is S-rich)
+        S_budget              = 70008.0       # unit defined by S_mode; EH from Schaefer & Fegley 2017
         use_metallicity       = false        # scale C/N/S from solar metallicity; replaces C/N/S budgets
         metallicity           = 1000         # metallicity relative to solar [by mass]
         # Noble gases (opt-in per gas via outgas.calliope.include_*). Mode is
@@ -137,7 +137,7 @@ config_version = "3.0"
 # Stellar model and parameters
 [star]
     mass                      = 1.0          # stellar mass [M_sun]
-    age_ini                   = 0.010        # model start age [Gyr]
+    age_ini                   = 8e-3        # model start age [Gyr]; 8 Myr for indarch meteorite Hf-W dating
     module                    = "mors"       # mors | dummy
     bol_scale                 = 1.0          # bolometric luminosity scaling factor
 
