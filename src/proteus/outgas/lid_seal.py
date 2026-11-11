@@ -23,8 +23,9 @@ X_eq,i``, which their Eq. 14 does not have. ``X_eq,i`` is the CALLIOPE
 solubility law of the species at its partial pressure in the atmosphere, at
 the temperature and IW offset of the closing solve; a species without a law has
 ``M_eq = 0``. Gas does not dissolve back through the crust, so a species below
-its floor stays as it is. Each step solves the law exactly with ``M_eq`` taken
-at the end state, since the leak raises the partial pressure that sets it. The
+its floor stays as it is. Each step takes the exponential step of the law with
+``M_eq`` at the end state, since the leak raises the partial pressure that sets
+it; the step is exact for a constant ``M_eq`` and first order where it moves. The
 seal opens once the top cell holds ``phi_open`` or more melt, the crust is
 thinner than ``delta_open``, or a giant impact remelts the mantle; the sealed
 mass then returns to the melt and the chemistry solve of the same step takes it.
@@ -88,6 +89,8 @@ _LAW = {
     'S2': SolubilityS2(),
     **{g: SolubilityNobleGas(g) for g in noble_gases},
 }
+# S2 pressure [bar] below which the CALLIOPE S2 law returns 0.
+S2_CUTOFF = 1.0e-20
 # Gauss-Seidel sweeps over the species of a leak step: relative change and limit.
 SWEEP_TOL, SWEEP_MAX = 1.0e-14, 100
 
@@ -327,7 +330,9 @@ def equilibrium_fractions(
     ``fo2_shift`` [log10], and the noble gases by Henry's law (Jambon et al.
     1986), each at its partial pressure in ``bar`` [bar]. CO, CH4 and the noble
     gases dissolve only where ``outgas.calliope.include_*`` is set, and every
-    fraction is 0 with ``outgas.calliope.solubility`` off.
+    fraction is 0 with ``outgas.calliope.solubility`` off. Below
+    ``S2_CUTOFF``, where the CALLIOPE S2 law returns 0, the S2 fraction follows
+    the same square-root law in its partial pressure, so the floor stays continuous.
     """
     calliope = config.outgas.calliope
     x = dict.fromkeys(soluble_gases, 0.0)
@@ -335,9 +340,11 @@ def equilibrium_fractions(
         return x
     args = {'CO2': (temp,), 'CO': (p_tot,), 'CH4': (p_tot,), 'N2': (p_tot, temp, fo2_shift)}
     args['S2'] = (temp, fo2_shift)
-    for s in soluble_gases:  # every law is 0 at p = 0; the CO law is not defined there
-        if calliope.is_included(s) and bar[s] > 0.0:
-            x[s] = 1e-6 * float(_LAW[s](bar[s], *args.get(s, ())))
+    for s in soluble_gases:  # every law is 0 at p = 0, where the CO law warns
+        p = bar[s]
+        if calliope.is_included(s) and p > 0.0:
+            q = max(p, S2_CUTOFF) if s == 'S2' else p
+            x[s] = 1e-6 * float(_LAW[s](q, *args.get(s, ()))) * np.sqrt(p / q)
     return x
 
 
@@ -419,8 +426,8 @@ def _leaks(config: Config, hf_row: dict, before: dict, frac: dict) -> dict:
 def leak_step(config: Config, hf_row: dict, dt: float) -> None:
     """Advance the sealed reservoir by ``dt`` [yr] toward its dissolved equilibrium.
 
-    Each species follows ``dM/dt = -(1/tau + k_i) max(M - M_eq, 0)``, solved
-    exactly over the step with ``M_eq`` taken at the end state (:func:`floor_leak`).
+    Each species follows ``dM/dt = -(1/tau + k_i) max(M - M_eq, 0)`` in the
+    exponential step with ``M_eq`` taken at the end state (:func:`floor_leak`).
     The leaked mass splits into its relaxation and volcanic parts in the ratio
     ``(1/tau) : k_i``. Each element of a species leaves in the same mass fraction
     of its sealed total as the species weights of that element give, so the
@@ -473,7 +480,8 @@ def _check_floors(config: Config, hf_row: dict, before: dict, leak: dict, frac: 
     """Write ``{s}_kg_eq`` of the end state and check each leaked species against it.
 
     A species that leaked ends at or above its floor, and its distance to the
-    floor is ``exp(-lam dt)`` times the distance it started at (relative 1e-9).
+    floor is ``exp(-lam dt)`` times the distance it started at; both to round-off
+    of its held mass before the step (1e-12 and 1e-9 of it).
     CO2 that leaked must end below ``83.15 T / 23`` bar, the peak of the Dixon et
     al. (1995) law: above it the law falls with pressure and the step can have
     more than one solution.
@@ -491,7 +499,8 @@ def _check_floors(config: Config, hf_row: dict, before: dict, leak: dict, frac: 
             continue
         end = float(hf_row[f'{s}_kg_sealed'])
         _check(
-            end >= m_eq * (1.0 - 1e-12), f'{s}_kg_sealed = {end} kg below its floor {m_eq} kg'
+            end >= m_eq - 1e-12 * before[s],
+            f'{s}_kg_sealed = {end} kg below its floor {m_eq} kg',
         )
         gap = (1.0 - frac[s]) * (before[s] - m_eq)
         _check(

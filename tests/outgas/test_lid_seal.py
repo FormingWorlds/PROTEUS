@@ -5,8 +5,8 @@ Invariants checked: the sealed reservoir and the melt exchange mass without loss
 one step equals the drop of the sealed mass, per species and per element, and
 splits between relaxation and volcanism in the ratio of their rates; a sealed
 species leaks only down to its dissolved equilibrium and ends each step on the
-relaxation toward the floor of the end state; the exact step solution does not
-depend on the step length; the melt concentration of the sealed reservoir
+relaxation toward the floor of the end state; at a constant floor the step
+solution does not depend on the step length; the melt concentration of the sealed reservoir
 satisfies its mass balance with the global melt fraction; the crust depth is
 bounded by the lower face of the top solid run.
 """
@@ -23,6 +23,7 @@ from proteus.config._outgas import Calliope, LidSeal
 from proteus.outgas.common import element_masses_from_species
 from proteus.outgas.compaction import BRANCH_REMELT
 from proteus.outgas.lid_seal import (
+    S2_CUTOFF,
     SEALED_ELEMENTS,
     SEALED_SPECIES,
     assert_sealed_row,
@@ -1261,3 +1262,23 @@ def test_held_s2_leaks_to_a_continuous_floor_at_a_vanishing_s2_pressure(s2_atm):
     leak_step(_config(solubility=True, tau_leak=1.0e2), row, 1.0e3)
     assert 0.0 < row['S2_kg_eq'] <= row['S2_kg_sealed'] < 1.0e11
     assert row['S2_kg_atm'] > s2_atm
+
+
+def test_the_s2_fraction_continues_the_square_root_law_below_the_cutoff():
+    """At and above S2_CUTOFF the S2 fraction is the CALLIOPE law; below it the
+    same square-root law in the partial pressure, so 100 times less pressure
+    gives 10 times less S2, where CALLIOPE gives 0."""
+    from calliope.solubility import SolubilityS2
+
+    cfg = _config(solubility=True)
+    x = {
+        p: equilibrium_fractions(
+            cfg, {**dict.fromkeys(gas_list, 1.0), 'S2': p}, 2.0, T_SEAL, 2.0
+        )
+        for p in (S2_CUTOFF, 1e-2 * S2_CUTOFF)
+    }
+    assert x[S2_CUTOFF]['S2'] == pytest.approx(
+        1e-6 * SolubilityS2()(S2_CUTOFF, T_SEAL, 2.0), rel=1e-15
+    )
+    assert x[1e-2 * S2_CUTOFF]['S2'] == pytest.approx(0.1 * x[S2_CUTOFF]['S2'], rel=1e-12)
+    assert SolubilityS2()(1e-2 * S2_CUTOFF, T_SEAL, 2.0) == 0.0
