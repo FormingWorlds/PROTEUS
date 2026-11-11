@@ -99,7 +99,8 @@ def _sealed_row(phi=0.4):
     row = _row(phi)
     close_seal(row)
     row.update(
-        {'seal_Tmagma_close': T_SEAL, 'fO2_shift_IW_derived': 2.0, 'seal_phi_close': phi}
+        {'seal_Tmagma_close': T_SEAL, 'fO2_shift_IW_derived': 2.0}
+        | {'seal_phi_close': phi, 'seal_phi_max': phi}
     )
     return row
 
@@ -1127,7 +1128,7 @@ def test_closure_stores_the_magma_temperature_of_the_closing_solve(t_magma, expe
     row = {**_row(), 'lid_weight': 1.0, 'lid_delta': 0.31, 'T_magma': t_magma}
     assert _step(row, _interior([0.6, 0.2]), False, delta_close=0.3)[0] is True
     assert row.get('seal_Tmagma_close') == expected
-    assert row.get('seal_phi_close') == row['Phi_global']
+    assert row.get('seal_phi_close') == row.get('seal_phi_max') == row['Phi_global']
 
 
 @pytest.mark.physics_invariant
@@ -1409,12 +1410,13 @@ def test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_clo
     """With trap_mode = 'front' the crystals that froze before closure keep their
     own trapped volatiles, so the floor reservoir of each species counts only the
     crystals formed after closure: X_eq M_mantle (Phi + D_i max(Phi_c - Phi, 0)),
-    the melt alone once Phi rises above Phi_c (Phi_c 0.2); without trapping it is
+    the melt alone once Phi rises above Phi_c (Phi_c 0.2, here also the highest melt
+    fraction since closure); without trapping it is
     X_eq M_mantle (Phi + D_i (1 - Phi)). H2O (D 0.0017) and CO2 (D 0.05) leak in
     the same step with crust production on; the volcanic rate takes the same
     reservoir, so the leak splits (1/tau) : chi_d Mdot_c / that."""
     row = _eq_row({'H2O': 1.0e17, 'CO2': 1.0e15}, {'H2O': 3.0e20, 'CO2': 1.0e19}, phi=phi)
-    row['seal_phi_close'] = 0.2
+    row['seal_phi_close'] = row['seal_phi_max'] = 0.2
     cfg = _config(solubility=True, tau_leak=1.0e3, crust_rate=1.0e20)
     cfg.outgas.trap_mode, cfg.outgas.D_const_CO2 = trap_mode, 0.05
     rates, _, capped = leak_rates(cfg, row, 1.0e3)
@@ -1433,17 +1435,17 @@ def test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_clo
     assert row['H_kg_leak_volc'] / row['H_kg_leak_tau'] == pytest.approx(k / inv_tau, rel=1e-12)
 
 
-@pytest.mark.parametrize('phi_close', [float('nan'), 0.0, -0.1, 1.5, None], ids=str)
-def test_front_trapping_refuses_an_unreadable_closing_melt_fraction(phi_close):
-    """Under front trapping the floor needs a closing melt fraction in (0, 1]; a
-    closure always has melt. Without trapping the floor does not read it."""
+@pytest.mark.parametrize('phi_max', [float('nan'), -0.1, 1.5, None], ids=str)
+def test_front_trapping_refuses_an_unreadable_highest_melt_fraction(phi_max):
+    """Under front trapping the floor needs the highest melt fraction since
+    closure in [0, 1]. Without trapping the floor does not read it."""
     row = _eq_row({'H2O': 1.0e17}, {'H2O': 3.0e20}, phi=0.1)
-    row.pop('seal_phi_close', None)
-    if phi_close is not None:
-        row['seal_phi_close'] = phi_close
+    row.pop('seal_phi_max', None)
+    if phi_max is not None:
+        row['seal_phi_max'] = phi_max
     cfg = _config(solubility=True, tau_leak=1.0e3)
     cfg.outgas.trap_mode = 'front'
-    with pytest.raises(ValueError, match='seal_phi_close'):
+    with pytest.raises(ValueError, match='seal_phi_max'):
         leak_step(cfg, dict(row), 1.0e3)
     cfg.outgas.trap_mode = 'none'
     leak_step(cfg, row, 1.0e3)
@@ -1456,7 +1458,7 @@ def test_under_front_trapping_the_volcanic_rate_takes_the_floor_reservoir():
     (Phi_c - Phi)), so its melt concentration is M_i / R'_i and the volcanic rate
     is chi_d Mdot_c / R'_i: at Phi 0.001, Phi_c 0.19 and D 0.0017 that is 2.04
     times the rate on M_melt + D_i M_solid, which it stays without trapping."""
-    row = {'M_mantle': M_MANTLE, 'Phi_global': 1.0e-3, 'seal_phi_close': 0.19}
+    row = {'M_mantle': M_MANTLE, 'Phi_global': 1.0e-3, 'seal_phi_max': 0.19}
     cfg = _config(crust_rate=1.0e15)
     k_none = leak_rates(cfg, row, 1.0)[0]['H2O'][1]
     cfg.outgas.trap_mode = 'front'

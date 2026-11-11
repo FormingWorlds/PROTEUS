@@ -1318,6 +1318,7 @@ def GetHelpfileKeys():
     keys.append('seal_t_close')      # time the seal last closed [yr]
     keys.append('seal_Tmagma_close')  # T_magma of the closing chemistry solve [K]
     keys.append('seal_phi_close')  # global melt fraction of the closing step [1]
+    keys.append('seal_phi_max')  # highest global melt fraction since the seal closed [1]
     keys.append('seal_delta')        # crust thickness the seal reads [m]
     keys.append('seal_phi_top')      # melt fraction of the top mesh cell [1]
     keys.append('seal_crust_rate')   # melt mass reaching the crust over the step [kg yr-1]

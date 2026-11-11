@@ -55,21 +55,25 @@ def test_restore_refuses_a_sealed_row_without_a_closing_temperature(temp):
         restore_seal_state(_config(), row)
 
 
-@given(phi_close=st.one_of(st.floats(allow_nan=True, allow_infinity=True), st.just(1.0)))
-def test_restore_refuses_a_sealed_row_without_a_closing_melt_fraction(phi_close):
-    """Under front trapping a sealed last row resumes only with a closing melt
-    fraction in (0, 1], so a zero filled for a missing column is refused; without
-    trapping the column is not read."""
-    row = {**_sealed_row(), 'seal_active': 1.0, 'seal_phi_close': phi_close}
+@given(
+    phi_max=st.one_of(
+        st.floats(allow_nan=True, allow_infinity=True), st.sampled_from([0.4, 1.0])
+    )
+)
+def test_restore_refuses_a_sealed_row_without_its_highest_melt_fraction(phi_max):
+    """Under front trapping a sealed last row resumes only with the highest melt
+    fraction since closure between the closing melt fraction (0.4) and 1, so a
+    zero filled for a missing column is refused; without trapping it is not read."""
+    row = {**_sealed_row(), 'seal_active': 1.0, 'seal_phi_max': phi_max}
     front = _config()
     front.outgas.trap_mode = 'front'
-    if np.isfinite(phi_close) and 0.0 < phi_close <= 1.0:
+    if np.isfinite(phi_max) and 0.4 <= phi_max <= 1.0:
         assert restore_seal_state(front, dict(row)) is True
     else:
-        with pytest.raises(ValueError, match='seal_phi_close'):
+        with pytest.raises(ValueError, match='seal_phi_max'):
             restore_seal_state(front, dict(row))
     assert restore_seal_state(_config(), dict(row)) is True
-    assert restore_seal_state(front, {**_row(), 'seal_phi_close': phi_close}) is False
+    assert restore_seal_state(front, {**_row(), 'seal_phi_max': phi_max}) is False
 
 
 @pytest.mark.physics_invariant

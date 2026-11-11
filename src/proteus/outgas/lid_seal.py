@@ -23,7 +23,7 @@ X_eq,i``, which their Eq. 14 does not have. ``X_eq,i`` is the CALLIOPE
 solubility law of the species at its partial pressure in the atmosphere, at
 the temperature and IW offset of the closing solve; a species without a law has
 ``M_eq = 0``. With front trapping ``R_i`` counts only the crystals formed after
-closure. Gas does not dissolve back through the crust, so a species below
+the highest melt fraction since closure. Gas does not dissolve back through the crust, so a species below
 its floor stays as it is. Each step takes the exponential step of the law with
 ``M_eq`` at the end state, since the leak raises the partial pressure that sets
 it; the step is exact for a constant ``M_eq`` and first order where it moves. The
@@ -166,7 +166,7 @@ def closure_state(
     if lid and path in (PATH_OPEN, PATH_LID):
         if 'lid_delta' not in hf_row:
             raise KeyError('The lid seal needs lid_delta [m] while the sub-grid lid is active')
-        delta, used = float(hf_row['lid_delta']), 2
+        delta, used = float(hf_row['lid_delta']), PATH_LID
     else:
         phi_crust = seal.phi_solid if path == PATH_OPEN else seal.phi_open_value
         delta, used = crust_thickness(interior_o.phi, interior_o.radius, phi_crust), PATH_MESH
@@ -272,11 +272,12 @@ def reservoirs(config: Config, hf_row: dict) -> tuple[dict, float, float]:
 
     With ``outgas.trap_mode = 'front'`` the crystals that froze before closure keep
     their own trapped volatiles, so ``R_i`` counts only the crystals formed after
-    it: ``M_melt + D_i max(Phi_c - Phi, 0) M_mantle`` with ``Phi_c =
-    seal_phi_close``. Returns the reservoirs, the global melt fraction clipped to
-    [0, 1] and the melt mass [kg]. Raises ``ValueError`` if ``M_mantle`` or
-    ``Phi_global`` is not finite, or under front trapping if ``seal_phi_close`` is
-    not in (0, 1].
+    it. Trapping remelts the youngest solid first, so these are the crystals formed
+    after the highest melt fraction since closure, ``Phi_max = seal_phi_max``:
+    ``R_i = M_melt + D_i max(Phi_max - Phi, 0) M_mantle``. Returns the reservoirs,
+    the global melt fraction clipped to [0, 1] and the melt mass [kg]. Raises
+    ``ValueError`` if ``M_mantle`` or ``Phi_global`` is not finite, or under front
+    trapping if ``seal_phi_max`` is not in [0, 1].
     """
     m_mantle, phi = float(hf_row['M_mantle']), float(hf_row['Phi_global'])
     for key, value in (('M_mantle', m_mantle), ('Phi_global', phi)):
@@ -285,12 +286,10 @@ def reservoirs(config: Config, hf_row: dict) -> tuple[dict, float, float]:
     phi = min(max(phi, 0.0), 1.0)
     m_melt, m_solid = phi * m_mantle, (1.0 - phi) * m_mantle
     if config.outgas.trap_mode == 'front':
-        phi_c = float(hf_row.get('seal_phi_close', np.nan))
-        if not 0.0 < phi_c <= 1.0:
-            raise ValueError(
-                f'Lid seal: seal_phi_close = {phi_c} is not the melt fraction of a closure'
-            )
-        m_solid = max(phi_c - phi, 0.0) * m_mantle  # crystals formed after closure
+        phi_max = float(hf_row.get('seal_phi_max', np.nan))
+        if not 0.0 <= phi_max <= 1.0:
+            raise ValueError(f'Lid seal: seal_phi_max = {phi_max} is not a melt fraction')
+        m_solid = max(phi_max - phi, 0.0) * m_mantle  # crystals formed since phi_max
     d = {s: float(getattr(config.outgas, f'D_const_{s}', 0.0)) for s in SEALED_SPECIES}
     return {s: m_melt + d[s] * m_solid for s in SEALED_SPECIES}, phi, m_melt
 
@@ -321,7 +320,7 @@ def _refresh_atmosphere(hf_row: dict) -> None:
     hf_row['P_surf'] = p_surf
     hf_row['P_vol'] = p_surf
     hf_row['M_atm'] = m_atm
-    hf_row['M_vol_atm'] = sum(float(hf_row.get(f'{s}_kg_atm', 0.0)) for s in vol_gas_list)
+    hf_row['M_vol_atm'] = sum(kg[s] for s in vol_gas_list)
     hf_row['atm_kg_per_mol'] = m_atm / n_atm if n_atm > 0.0 else 0.0
     set_element_ratios(hf_row)
 
@@ -496,18 +495,29 @@ def _check_floors(config: Config, hf_row: dict, before: dict, leak: dict, frac: 
 
     A species that leaked ends at or above its floor, and its distance to the
     floor is ``exp(-lam dt)`` times the distance it started at; both to round-off
-    of its held mass before the step (1e-12 and 1e-9 of it). Its step residual,
-    sampled at ``SCAN_POINTS`` leaks over the bracket with the others at their
-    final leaks, changes sign at most once at those samples; roots closer than
-    one sample spacing, and coupled solutions of several species, pass. A law
-    that falls with pressure (CO2, CO and CH4 at high pressure) gives a second
-    solution only where the floor falls faster than the leak fills the atmosphere.
+    of its held mass before the step (1e-12 and 1e-9 of it). The step residual of
+    each species in ``frac``, sampled at ``SCAN_POINTS`` leaks over the bracket
+    with the others at their final leaks, changes sign at most once at those
+    samples, and after a leak of 0 stays above 0; roots closer than one sample
+    spacing, and coupled solutions of several species, pass. A law that falls with
+    pressure (CO2, CO and CH4 at high pressure) gives a second solution only where
+    the floor falls faster than the leak fills the atmosphere.
     """
     per_kg = {s: hf_row[f'{s}_mol_atm'] / hf_row[f'{s}_kg_atm'] for s in leak if leak[s] > 0.0}
+    per_kg |= {s: hf_row[f'{s}_mol_sealed'] / before[s] for s in leak if leak[s] <= 0.0}
     floor_of = _floor_model(config, hf_row, per_kg)
     for s in soluble_gases:
         m_eq = hf_row[f'{s}_kg_eq'] = floor_of({}, s)
-        if leak.get(s, 0.0) <= 0.0:
+        if s not in frac:
+            continue
+        grid = np.linspace(0.0, frac[s] * before[s], SCAN_POINTS)
+        res = [x - frac[s] * max(before[s] - floor_of({s: x - leak[s]}, s), 0.0) for x in grid]
+        above = np.greater(res, 0.0)
+        _check(
+            np.count_nonzero(np.diff(above)) <= 1 and (leak[s] > 0.0 or above[1:].all()),
+            f'the step of {s} has more than one solution',
+        )
+        if leak[s] <= 0.0:
             continue
         end = float(hf_row[f'{s}_kg_sealed'])
         _check(
@@ -518,12 +528,6 @@ def _check_floors(config: Config, hf_row: dict, before: dict, leak: dict, frac: 
         _check(
             abs(end - m_eq - gap) <= 1e-9 * before[s],
             f'{s} ends {end - m_eq} kg above its floor, not {gap} kg',
-        )
-        grid = np.linspace(0.0, frac[s] * before[s], SCAN_POINTS)
-        res = [x - frac[s] * max(before[s] - floor_of({s: x - leak[s]}, s), 0.0) for x in grid]
-        _check(
-            np.count_nonzero(np.diff(np.greater(res, 0.0))) <= 1,
-            f'the step of {s} has more than one solution',
         )
 
 
@@ -546,7 +550,8 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
     ValueError
         If the flag, the path or a sealed mass is not readable, if a sealed row
         has no closing temperature ``seal_Tmagma_close`` > 0 K or, under front
-        trapping, no closing melt fraction ``seal_phi_close`` in (0, 1], if the row holds
+        trapping, no closing and highest melt fractions with 0 <= ``seal_phi_close`` <=
+        ``seal_phi_max`` <= 1 (a column the resume fills with 0 is caught), if the row holds
         sealed mass under an open flag, or if it holds sealed mass with the seal
         off, since nothing could open it then.
     """
@@ -576,10 +581,11 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
     temp = float(hf_row.get('seal_Tmagma_close', np.nan))
     if sealed and not (np.isfinite(temp) and temp > 0.0):
         raise ValueError(f'Resume: a sealed last row needs seal_Tmagma_close > 0 K, not {temp}')
-    phi_c = float(hf_row.get('seal_phi_close', np.nan))
-    if sealed and config.outgas.trap_mode == 'front' and not 0.0 < phi_c <= 1.0:
+    phi_c, phi_max = (float(hf_row.get(k, np.nan)) for k in ('seal_phi_close', 'seal_phi_max'))
+    if sealed and config.outgas.trap_mode == 'front' and not 0.0 <= phi_c <= phi_max <= 1.0:
         raise ValueError(
-            f'Resume: a sealed last row needs seal_phi_close in (0, 1], not {phi_c}'
+            f'Resume: a sealed last row needs 0 <= seal_phi_close <= seal_phi_max <= 1, '
+            f'not {phi_c} and {phi_max}'
         )
     return sealed
 
@@ -657,7 +663,9 @@ def run_lid_seal_step(
             open_seal(hf_row),
         )
         sealed, used = False, PATH_OPEN
+    phi = min(max(float(hf_row['Phi_global']), 0.0), 1.0)
     if sealed:
+        hf_row['seal_phi_max'] = float(np.fmax(hf_row.get('seal_phi_max', np.nan), phi))
         if remelt_returned_mass(hf_row):
             close_seal(hf_row)  # a release this step is under the crust too
         run_crystallized(config, hf_row, dt)
@@ -674,7 +682,7 @@ def run_lid_seal_step(
             moved = close_seal(hf_row)
             hf_row['seal_t_close'] = float(hf_row['Time'])
             hf_row['seal_Tmagma_close'] = max(float(hf_row['T_magma']), config.outgas.T_floor)
-            hf_row['seal_phi_close'] = float(hf_row['Phi_global'])
+            hf_row['seal_phi_close'] = hf_row['seal_phi_max'] = phi
             log.info(
                 'Lid seal closes (crust %.3e m, top-cell melt fraction %.3f); %.3e kg sealed',
                 delta,

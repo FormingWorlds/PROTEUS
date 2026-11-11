@@ -265,9 +265,11 @@ def _phi_open(instance, attribute, value):
 
 
 def _tau_leak(instance, attribute, value):
-    """A real number > 0; inf allowed, NaN refused."""
-    if not (_real(value) and value > 0):
-        raise ValueError(f'tau_leak must be a number > 0 (inf allowed), got {value!r}')
+    """A real number > 0 with a finite rate 1/tau_leak; inf allowed, NaN refused."""
+    if not (_real(value) and value > 0 and math.isfinite(1.0 / value)):
+        raise ValueError(
+            f'tau_leak must be a number > 0 with a finite 1/tau_leak (inf allowed), got {value!r}'
+        )
 
 
 def _unit_interval(instance, attribute, value):

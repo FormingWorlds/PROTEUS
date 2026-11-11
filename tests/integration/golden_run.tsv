@@ -720,6 +720,7 @@ seal_path	const	0.0
 seal_t_close	const	0.0
 seal_Tmagma_close	const	0.0
 seal_phi_close	const	0.0
+seal_phi_max	const	0.0
 seal_delta	const	0.0
 seal_phi_top	const	0.0
 seal_crust_rate	const	0.0
