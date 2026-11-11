@@ -451,7 +451,7 @@ After each step the code checks that every species that leaked ends at or above 
 - **Crystals at closure.** The CALLIOPE solve dissolves volatiles in the melt only, while $R_i$ also counts the crystals. At closure the held mass is therefore below its floor by the factor $1 + D_i (1 - \Phi)/\Phi$.
 - **Crystals at opening.** When the seal opens, the whole held mass returns to the melt, the share counted in the crystals included.
 - **Erupted melt.** Of the volatile in the melt that reaches the crust, only the degassed share leaves the held mass; the rest stays counted as held.
-- **CO$_2$ at high pressure.** The CO$_2$ law of Dixon et al. falls with pressure above $83.15\,T/23$ bar, about 5400 bar at 1500 K. There a step can have more than one solution.
+- **CO$_2$ at high pressure.** The CO$_2$ law of Dixon et al. falls with pressure above $83.15\,T/23$ bar, about 5400 bar at 1500 K. There a step can have more than one solution, so a step that leaves CO$_2$ above that pressure stops the run with an error. At a fixed composition the CO and CH$_4$ laws also fall with the surface pressure, CO above about 7000 bar and CH$_4$ above about 5200 bar; no check stops a step there.
 - **Frozen chemistry.** The held and leaked gas keep their species; the floor does not see a change of speciation in the atmosphere.
 
 ### What the seal changes elsewhere

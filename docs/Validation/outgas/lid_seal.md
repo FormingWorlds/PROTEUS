@@ -179,6 +179,7 @@ The tests in `tests/outgas/test_lid_seal.py` and the code itself also check, wit
 - with the defaults (`tau_leak` infinite, `crust_rate = 0`) no floor is computed and every column stays the same to the last bit, with solubility on or off;
 - after every step that leaks, the code checks that each species ends at or above its floor, at $e^{-\lambda_i \Delta t}$ of its starting distance; a step that ignores the floor or leaks too little stops the run;
 - a negative or non-finite floor, a closing temperature that is not finite and above 0 K, a non-finite IW offset, and sweeps over the species that do not settle stop the run with an error;
+- a step that leaves CO$_2$ above $83.15\,T/23$ bar, where the Dixon et al. CO$_2$ law falls with pressure, stops the run with an error;
 - a sealed row resumes only with a finite closing temperature above 0 K;
 - in one step the 2 leak parts of each element sum to the drop of its held mass and to the rise of its atmospheric mass; each species splits its leak in the ratio of its 2 rates;
 - in one step no more melt than the melt mass reaches the crust, and below `phi_solid` none does;

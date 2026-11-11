@@ -474,8 +474,17 @@ def _check_floors(config: Config, hf_row: dict, before: dict, leak: dict, frac: 
 
     A species that leaked ends at or above its floor, and its distance to the
     floor is ``exp(-lam dt)`` times the distance it started at (relative 1e-9).
+    CO2 that leaked must end below ``83.15 T / 23`` bar, the peak of the Dixon et
+    al. (1995) law: above it the law falls with pressure and the step can have
+    more than one solution.
     """
     floor_of = _floor_model(config, hf_row, {})
+    if leak.get('CO2', 0.0) > 0.0:
+        peak = 83.15 * float(hf_row['seal_Tmagma_close']) / 23.0
+        _check(
+            float(hf_row['CO2_bar']) <= peak,
+            f'CO2 at {hf_row["CO2_bar"]} bar is above {peak} bar, the peak of the Dixon law',
+        )
     for s in soluble_gases:
         m_eq = hf_row[f'{s}_kg_eq'] = floor_of({}, s)
         if leak.get(s, 0.0) <= 0.0:
