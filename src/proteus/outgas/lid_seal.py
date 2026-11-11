@@ -22,8 +22,8 @@ M_i / R_i``, limited here to the excess over the solubility, ``X_melt,i -
 X_eq,i``, which their Eq. 14 does not have. ``X_eq,i`` is the CALLIOPE
 solubility law of the species at its partial pressure in the atmosphere, at
 the temperature and IW offset of the closing solve; a species without a law has
-``M_eq = 0``. With front trapping the floor counts only the crystals formed
-after closure, while ``k_i`` keeps ``R_i``. Gas does not dissolve back through the crust, so a species below
+``M_eq = 0``. With front trapping ``R_i`` counts only the crystals formed after
+closure. Gas does not dissolve back through the crust, so a species below
 its floor stays as it is. Each step takes the exponential step of the law with
 ``M_eq`` at the end state, since the leak raises the partial pressure that sets
 it; the step is exact for a constant ``M_eq`` and first order where it moves. The
@@ -270,9 +270,13 @@ def leak_rates(config: Config, hf_row: dict, dt: float) -> tuple[dict, float, bo
 def reservoirs(config: Config, hf_row: dict) -> tuple[dict, float, float]:
     """Reservoir ``R_i = M_melt + D_i M_solid`` [kg] of each sealed species.
 
-    Returns the reservoirs, the global melt fraction clipped to [0, 1] and the
-    melt mass [kg]. Raises ``ValueError`` if ``M_mantle`` or ``Phi_global`` is
-    not finite.
+    With ``outgas.trap_mode = 'front'`` the crystals that froze before closure keep
+    their own trapped volatiles, so ``R_i`` counts only the crystals formed after
+    it: ``M_melt + D_i max(Phi_c - Phi, 0) M_mantle`` with ``Phi_c =
+    seal_phi_close``. Returns the reservoirs, the global melt fraction clipped to
+    [0, 1] and the melt mass [kg]. Raises ``ValueError`` if ``M_mantle`` or
+    ``Phi_global`` is not finite, or under front trapping if ``seal_phi_close`` is
+    not in (0, 1].
     """
     m_mantle, phi = float(hf_row['M_mantle']), float(hf_row['Phi_global'])
     for key, value in (('M_mantle', m_mantle), ('Phi_global', phi)):
@@ -280,6 +284,13 @@ def reservoirs(config: Config, hf_row: dict) -> tuple[dict, float, float]:
             raise ValueError(f'Lid seal: {key} = {value} is not finite')
     phi = min(max(phi, 0.0), 1.0)
     m_melt, m_solid = phi * m_mantle, (1.0 - phi) * m_mantle
+    if config.outgas.trap_mode == 'front':
+        phi_c = float(hf_row.get('seal_phi_close', np.nan))
+        if not 0.0 < phi_c <= 1.0:
+            raise ValueError(
+                f'Lid seal: seal_phi_close = {phi_c} is not the melt fraction of a closure'
+            )
+        m_solid = max(phi_c - phi, 0.0) * m_mantle  # crystals formed after closure
     d = {s: float(getattr(config.outgas, f'D_const_{s}', 0.0)) for s in SEALED_SPECIES}
     return {s: m_melt + d[s] * m_solid for s in SEALED_SPECIES}, phi, m_melt
 
@@ -382,11 +393,8 @@ def _floor_model(config: Config, hf_row: dict, per_kg: dict):
     """``M_eq`` [kg] of a species after leaks ``{species: kg}`` into the row's atmosphere.
 
     Moles enter at ``per_kg`` [mol kg-1]; T and the IW offset are those of the
-    closing solve. With ``outgas.trap_mode = 'front'`` the crystals that froze
-    before closure keep their own trapped volatiles, so each reservoir counts only
-    the crystals formed after it, ``D_i max(Phi_c - Phi, 0) M_mantle`` with
-    ``Phi_c = seal_phi_close``. Raises ``ValueError`` if a closing value it reads
-    is unreadable.
+    closing solve, and the reservoirs those of :func:`reservoirs`. Raises
+    ``ValueError`` if a closing value it reads is unreadable.
     """
     temp = float(hf_row.get('seal_Tmagma_close', np.nan))
     shift = float(hf_row.get('fO2_shift_IW_derived', np.nan))
@@ -395,18 +403,7 @@ def _floor_model(config: Config, hf_row: dict, per_kg: dict):
             f'Lid seal: seal_Tmagma_close = {temp} K or fO2_shift_IW_derived = {shift} '
             'cannot set the dissolved equilibrium'
         )
-    reservoir, phi, _ = reservoirs(config, hf_row)
-    if config.outgas.trap_mode == 'front':
-        phi_c = float(hf_row.get('seal_phi_close', np.nan))
-        if not 0.0 < phi_c <= 1.0:
-            raise ValueError(
-                f'Lid seal: seal_phi_close = {phi_c} is not the melt fraction of a closure'
-            )
-        frozen = (1.0 - max(phi_c, phi)) * float(
-            hf_row['M_mantle']
-        )  # crystals older than closure
-        d = {s: float(getattr(config.outgas, f'D_const_{s}', 0.0)) for s in reservoir}
-        reservoir = {s: r - d[s] * frozen for s, r in reservoir.items()}
+    reservoir = reservoirs(config, hf_row)[0]
     kg0, mol0 = _atmosphere(hf_row)
     gravity, r_int = float(hf_row['gravity']), float(hf_row['R_int'])
 

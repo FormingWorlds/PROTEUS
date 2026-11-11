@@ -149,9 +149,9 @@ The cut is asserted only where the step is short against the leak ($\lambda \Del
 
 **Why this check exists.** With `outgas.trap_mode = "front"`, the crystals that froze before the seal closed keep their own trapped volatiles. A floor that counted them as room for the held mass would be too high, and the seal would let too little gas leak. A floor below the melt mass would let too much leak.
 
-**What it tests.** Held water ($D$ = 0.0017) and CO$_2$ ($D$ = 0.05) leak for one step of 1 kyr with $\tau$ = 1 kyr and crust production on; the global melt fraction at closure is $\Phi_c$ = 0.2. Here $X_\mathrm{eq}$ is the dissolved mass fraction of a species and $D$ its crystal/melt partition coefficient. With front trapping and $\Phi$ = 0.1, each floor must be $X_\mathrm{eq} M_\mathrm{mantle} (\Phi + D (\Phi_c - \Phi))$; with $\Phi$ = 0.3, above $\Phi_c$, it must be $X_\mathrm{eq} M_\mathrm{mantle} \Phi$, the melt alone. Without trapping it must be $X_\mathrm{eq} M_\mathrm{mantle} (\Phi + D (1 - \Phi))$. In all 3 cases the leak must split by the volcanic rate on $M_\mathrm{melt} + D M_\mathrm{solid}$. A second test requires a closing melt fraction in (0, 1] under front trapping.
+**What it tests.** Held water ($D$ = 0.0017) and CO$_2$ ($D$ = 0.05) leak for one step of 1 kyr with $\tau$ = 1 kyr and crust production on; the global melt fraction at closure is $\Phi_c$ = 0.2. Here $X_\mathrm{eq}$ is the dissolved mass fraction of a species and $D$ its crystal/melt partition coefficient. With front trapping and $\Phi$ = 0.1, each floor must be $X_\mathrm{eq} M_\mathrm{mantle} (\Phi + D (\Phi_c - \Phi))$; with $\Phi$ = 0.3, above $\Phi_c$, it must be $X_\mathrm{eq} M_\mathrm{mantle} \Phi$, the melt alone. Without trapping it must be $X_\mathrm{eq} M_\mathrm{mantle} (\Phi + D (1 - \Phi))$. In all 3 cases the leak must split by the volcanic rate on the same reservoir as the floor; a third test requires that rate, $\chi_d \dot M_c / (M_\mathrm{mantle} (\Phi + D (\Phi_c - \Phi)))$, at $\Phi$ = 0.001, where it is 2.04 times the rate without trapping. Another test requires a closing melt fraction in (0, 1] under front trapping.
 
-**How we know the right answer.** It follows from a mass balance on the crystals: the crystals older than closure leave the reservoir of the floor, and the crystals that form after closure stay in it.
+**How we know the right answer.** It follows from a mass balance on the crystals: the crystals older than closure leave the reservoir, and the crystals that form after closure stay in it. The held mass sits in that reservoir, so its melt concentration, and with it the volcanic rate, uses the same reservoir.
 
 **Why it matters.** It sets how much gas a sealed planet with front trapping releases. At closure the floor equals the held mass, so the held mass leaks as soon as the melt fraction falls.
 
@@ -160,7 +160,7 @@ This case has no plot: it checks closed forms on one step. The rule has no store
 ??? info "Test details"
     - Reference: the closed forms above, from the mass balance on the crystals.
     - Tolerance: relative 1e-10 for the floors, 1e-12 for the leak split.
-    - Test ids: `tests/outgas/test_lid_seal.py::test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_closure`, `tests/outgas/test_lid_seal.py::test_front_trapping_refuses_an_unreadable_closing_melt_fraction`
+    - Test ids: `tests/outgas/test_lid_seal.py::test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_closure`, `tests/outgas/test_lid_seal.py::test_under_front_trapping_the_volcanic_rate_takes_the_floor_reservoir`, `tests/outgas/test_lid_seal.py::test_front_trapping_refuses_an_unreadable_closing_melt_fraction`
     - Command: `pytest tests/outgas/test_lid_seal.py`
 
 ## A short relaxation time gives the gas-melt equilibrium

@@ -79,8 +79,7 @@ The symbols are:
 - $\chi_d$: `chi_d` \[1\], the fraction of the volatiles in that melt that degasses; 0.02 by default, from Table 3 of Schaefer & Sasselov (2015)[^cite-schaefer2015].
 - $M_\mathrm{melt} = \Phi M_\mathrm{mantle}$ and $M_\mathrm{solid} = (1 - \Phi) M_\mathrm{mantle}$: the melt and the solid mass of the mantle \[kg\], with the global melt fraction $\Phi$.
 - $D_i$: `outgas.D_const_<species>`, the crystal/melt partition coefficient \[1\].
-- $R_i$: the reservoir of species $i$ \[kg\], the melt and the crystals in equilibrium with it.
-- $R_{\mathrm{eq},i}$: the reservoir of the floor \[kg\]; it is $R_i$, except with front trapping ([The floor of the leak](#the-floor-of-the-leak)).
+- $R_i$: the reservoir of species $i$ \[kg\], the melt and the crystals in equilibrium with it; with front trapping only the crystals formed after closure ([The floor of the leak](#the-floor-of-the-leak)).
 - $\lambda_i = 1/\tau + k_i$: the leak rate of species $i$ \[yr$^{-1}$\].
 
 The first term relaxes the held mass with the time $\tau$. The second is volcanism: melt with the concentration $X_{\mathrm{melt},i} = M_i/R_i$ reaches the crust at the rate $\dot M_c$ and degasses the share $\chi_d$ of its excess over the solubility, $X_{\mathrm{melt},i} - X_{\mathrm{eq},i}$. Both terms act on the same distance to the floor, so the law is one relaxation. The leaked mass splits between them in the ratio $(1/\tau) : k_i$.
@@ -89,7 +88,7 @@ The volcanic term has the form of Eq. 14 and Eq. 17 of Schaefer & Sasselov (2015
 
 ## The floor of the leak
 
-The floor is $M_{\mathrm{eq},i} = X_{\mathrm{eq},i}\, R_{\mathrm{eq},i}$, with $X_{\mathrm{eq},i}$ \[1\] the mass fraction of species $i$ that the melt dissolves. It uses the solubility laws of the CALLIOPE chemistry solve ([solubility laws](https://proteus-framework.org/CALLIOPE/Explanations/solubility.html), [noble gases](https://proteus-framework.org/CALLIOPE/Explanations/noble_gases.html)):
+The floor is $M_{\mathrm{eq},i} = X_{\mathrm{eq},i}\, R_i$, with $X_{\mathrm{eq},i}$ \[1\] the mass fraction of species $i$ that the melt dissolves. It uses the solubility laws of the CALLIOPE chemistry solve ([solubility laws](https://proteus-framework.org/CALLIOPE/Explanations/solubility.html), [noble gases](https://proteus-framework.org/CALLIOPE/Explanations/noble_gases.html)):
 
 - each law takes the partial pressure of the species in the atmosphere; the CO, CH$_4$ and N$_2$ laws also take the surface pressure;
 - the CO$_2$ law also takes the temperature `seal_Tmagma_close` of the solve that closed the seal; the N$_2$ and S$_2$ laws take that temperature and its IW offset `fO2_shift_IW_derived` (IW: the iron-wüstite oxygen buffer);
@@ -97,7 +96,7 @@ The floor is $M_{\mathrm{eq},i} = X_{\mathrm{eq},i}\, R_{\mathrm{eq},i}$, with $
 - below $10^{-20}$ bar, where the CALLIOPE S$_2$ law returns 0, the S$_2$ floor follows the same square-root law of Gaillard et al. (2022)[^cite-gaillard2022] in its partial pressure, so it stays continuous;
 - H$_2$, O$_2$, SO$_2$, H$_2$S and NH$_3$ have no law, so their floor is 0;
 - with `outgas.calliope.solubility = false` every floor is 0, and the held mass decays at the rate $\lambda_i$ of the next section;
-- with front trapping (`outgas.trap_mode = "front"`) the crystals that froze before closure keep their own trapped volatiles, so the floor counts only the crystals formed after it: $R_{\mathrm{eq},i} = M_\mathrm{melt} + D_i \max(\Phi_c - \Phi, 0)\, M_\mathrm{mantle}$, with $\Phi_c$ the global melt fraction at closure (`seal_phi_close`). Above $\Phi_c$ it counts the melt alone: remelted crystals have returned their trapped mass to the held mass. The volcanic rate $k_i$ keeps $R_i$, so its part of the leak is $\chi_d \dot M_c (M_i - M_{\mathrm{eq},i})/R_i$.
+- with front trapping (`outgas.trap_mode = "front"`) the crystals that froze before closure keep their own trapped volatiles, so the reservoir counts only the crystals formed after it: $R_i = M_\mathrm{melt} + D_i \max(\Phi_c - \Phi, 0)\, M_\mathrm{mantle}$, with $\Phi_c$ the global melt fraction at closure (`seal_phi_close`). Above $\Phi_c$ it counts the melt alone: remelted crystals have returned their trapped mass to the held mass. The volcanic rate $k_i$ takes the same reservoir.
 
 The floor is one way: a species below its floor does not move, because gas does not dissolve back through the crust.
 
