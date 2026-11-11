@@ -46,6 +46,8 @@ GRAVITY = 9.81  # [m s-2]
 # A row holding H2O and CO2 in the melt and the atmosphere; masses chosen apart.
 MELT = {'H2O': 3.0e20, 'CO2': 7.0e19}
 ATM = {'H2O': 1.1e20, 'CO2': 4.0e19}
+T_SEAL = 1500.0  # [K], magma temperature of the closing solve
+D_H2O = 0.0017  # the stand-in partition coefficient of H2O
 
 
 def _config(solubility=False, **seal):
@@ -64,7 +66,7 @@ def _config(solubility=False, **seal):
 def _row(phi=0.4):
     """A helpfile row with species and element reservoirs filled by stoichiometry."""
     row = {'Time': 1.0e4, 'M_mantle': M_MANTLE, 'Phi_global': phi, 'R_int': R_INT}
-    row['gravity'] = GRAVITY
+    row.update({'gravity': GRAVITY, 'T_magma': 1600.0})
     for s in gas_list:
         for r in ('atm', 'liquid', 'solid', 'sealed'):
             row[f'{s}_kg_{r}'] = 0.0
@@ -87,6 +89,7 @@ def _row(phi=0.4):
 def _sealed_row(phi=0.4):
     row = _row(phi)
     close_seal(row)
+    row.update({'seal_Tmagma_close': T_SEAL, 'fO2_shift_IW_derived': 2.0})
     return row
 
 
@@ -964,10 +967,6 @@ def test_restore_with_the_seal_off_clears_stale_seal_flags():
     row = {**_row(), 'seal_active': 1.0, 'seal_path': 2.0}
     assert restore_seal_state(off, row) is False
     assert row['seal_active'] == row['seal_path'] == 0.0
-
-
-T_SEAL = 1500.0  # [K], magma temperature of the closing solve
-D_H2O = 0.0017  # the stand-in partition coefficient of H2O
 
 
 def _eq_row(atm, sealed, phi=0.3):

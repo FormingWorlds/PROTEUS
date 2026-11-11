@@ -166,6 +166,9 @@ gas_list = list(dict.fromkeys(vol_list + noble_gases + vap_list))
 # Gases except rock vapours - tracked separately in M_vaps.
 vol_gas_list = [s for s in gas_list if s not in vap_list]
 
+# Species with a CALLIOPE solubility law; the others do not dissolve in the melt
+soluble_gases = ['H2O', 'CO2', 'CO', 'CH4', 'N2', 'S2', *noble_gases]
+
 # Supported elements: volatiles, rock-forming elements, noble gases (above)
 vol_element_list = ['H', 'O', 'C', 'N', 'S']
 vap_element_list = ['Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K', 'V']

@@ -37,6 +37,7 @@ DOMAIN_LISTS = {
     'element_list',
     'vol_list',
     'noble_gases',
+    'soluble_gases',
     'vap_list',
     'vol_gas_list',
     'vol_element_list',

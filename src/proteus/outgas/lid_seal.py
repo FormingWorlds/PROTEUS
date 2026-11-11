@@ -6,20 +6,28 @@ whether a crust seals the mantle melt from the atmosphere: the crust is at least
 The thickness is the Aragog sub-grid lid ``lid_delta`` while that lid is active
 (``lid_weight > 0``), and otherwise the depth of the top run of solid cells of
 the mesh. When the seal closes, after the chemistry solve of that step, the
-dissolved inventory moves from ``{x}_kg_liquid`` to ``{x}_kg_sealed``. While
-sealed, the chemistry is frozen, escape draws on the atmosphere alone, and each
-sealed species leaks to the atmosphere at
+dissolved inventory moves from ``{x}_kg_liquid`` to ``{x}_kg_sealed`` and the
+magma temperature of that solve is kept as ``seal_Tmagma_close``. While sealed,
+the chemistry is frozen, escape draws on the atmosphere alone, and each sealed
+species leaks to the atmosphere down to its dissolved equilibrium,
 
-    dM_i/dt = -M_i / tau - F_volc,i,    F_volc,i = chi_d Mdot_c X_melt,i,
-    X_melt,i = M_i / (M_melt + D_i M_solid),
+    dM_i/dt = -(1/tau + k_i) max(M_i - M_eq,i, 0),    k_i = chi_d Mdot_c / R_i,
+    M_eq,i = X_eq,i(p) R_i,    R_i = M_melt + D_i M_solid,
 
 with ``tau = tau_leak``, ``Mdot_c = crust_rate`` and ``chi_d`` the degassing
 efficiency of Schaefer & Sasselov (2015, ApJ 801:40, Eq. 14), whose plate
 spreading term ``rho_m F_melt D_melt S`` is replaced by the crust production
-rate. The law is linear in ``M_i``; its solution over a step is exact. The seal
-opens once the top cell holds ``phi_open`` or more melt, the crust is thinner
-than ``delta_open``, or a giant impact remelts the mantle; the sealed mass then
-returns to the melt and the chemistry solve of the same step takes it.
+rate. The volcanic part is their ``chi_d Mdot_c X_melt,i`` with ``X_melt,i =
+M_i / R_i``, limited here to the excess over the solubility, ``X_melt,i -
+X_eq,i``, which their Eq. 14 does not have. ``X_eq,i`` is the CALLIOPE
+solubility law of the species at its partial pressure in the atmosphere, at
+the temperature and IW offset of the closing solve; a species without a law has
+``M_eq = 0``. Gas does not dissolve back through the crust, so a species below
+its floor stays as it is. Each step solves the law exactly with ``M_eq`` taken
+at the end state, since the leak raises the partial pressure that sets it. The
+seal opens once the top cell holds ``phi_open`` or more melt, the crust is
+thinner than ``delta_open``, or a giant impact remelts the mantle; the sealed
+mass then returns to the melt and the chemistry solve of the same step takes it.
 
 The leaked gas enters the atmosphere as the species it was sealed as, with no
 chemistry solve: each species keeps the molar mass of its sealed moles, and the
@@ -33,11 +41,22 @@ import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
+from calliope.solubility import (
+    SolubilityCH4,
+    SolubilityCO,
+    SolubilityCO2,
+    SolubilityH2O,
+    SolubilityN2,
+    SolubilityNobleGas,
+    SolubilityS2,
+)
+from scipy.optimize import brentq
 
 from proteus.outgas.common import element_masses_from_species, set_element_ratios
 from proteus.utils.constants import (
     gas_list,
     noble_gases,
+    soluble_gases,
     vol_element_list,
     vol_gas_list,
     vol_list,
@@ -59,6 +78,18 @@ _WEIGHTS = {
     e: {s: element_masses_from_species({s: 1.0}).get(e, 0.0) for s in SEALED_SPECIES}
     for e in SEALED_ELEMENTS
 }
+# The solubility laws of the CALLIOPE solve, with its arguments [ppmw].
+_LAW = {
+    'H2O': SolubilityH2O(),
+    'CO2': SolubilityCO2(),
+    'CO': SolubilityCO(),
+    'CH4': SolubilityCH4(),
+    'N2': SolubilityN2('dasgupta'),
+    'S2': SolubilityS2(),
+    **{g: SolubilityNobleGas(g) for g in noble_gases},
+}
+# Gauss-Seidel sweeps over the species of a leak step: relative change and limit.
+SWEEP_TOL, SWEEP_MAX = 1.0e-14, 100
 
 
 def seal_enabled(config: Config) -> bool:
@@ -217,12 +248,7 @@ def leak_rates(config: Config, hf_row: dict, dt: float) -> tuple[dict, float, bo
         If ``M_mantle`` or ``Phi_global`` is not finite.
     """
     seal = config.outgas.lid_seal
-    m_mantle, phi = float(hf_row['M_mantle']), float(hf_row['Phi_global'])
-    for key, value in (('M_mantle', m_mantle), ('Phi_global', phi)):
-        if not np.isfinite(value):
-            raise ValueError(f'Lid seal: {key} = {value} is not finite')
-    phi = min(max(phi, 0.0), 1.0)
-    m_melt, m_solid = phi * m_mantle, (1.0 - phi) * m_mantle
+    reservoir, phi, m_melt = reservoirs(config, hf_row)
     mdot = float(seal.crust_rate) if phi >= seal.phi_solid else 0.0
     capped = mdot * dt > m_melt
     if capped:
@@ -230,23 +256,51 @@ def leak_rates(config: Config, hf_row: dict, dt: float) -> tuple[dict, float, bo
     inv_tau = 1.0 / float(seal.tau_leak)
     rates = {}
     for s in SEALED_SPECIES:
-        reservoir = m_melt + float(getattr(config.outgas, f'D_const_{s}', 0.0)) * m_solid
-        k = seal.chi_d * mdot / reservoir if mdot > 0.0 else 0.0
+        k = seal.chi_d * mdot / reservoir[s] if mdot > 0.0 else 0.0
         rates[s] = (inv_tau, k)
     return rates, mdot, capped
 
 
+def reservoirs(config: Config, hf_row: dict) -> tuple[dict, float, float]:
+    """Reservoir ``R_i = M_melt + D_i M_solid`` [kg] of each sealed species.
+
+    Returns the reservoirs, the global melt fraction clipped to [0, 1] and the
+    melt mass [kg]. Raises ``ValueError`` if ``M_mantle`` or ``Phi_global`` is
+    not finite.
+    """
+    m_mantle, phi = float(hf_row['M_mantle']), float(hf_row['Phi_global'])
+    for key, value in (('M_mantle', m_mantle), ('Phi_global', phi)):
+        if not np.isfinite(value):
+            raise ValueError(f'Lid seal: {key} = {value} is not finite')
+    phi = min(max(phi, 0.0), 1.0)
+    m_melt, m_solid = phi * m_mantle, (1.0 - phi) * m_mantle
+    d = {s: float(getattr(config.outgas, f'D_const_{s}', 0.0)) for s in SEALED_SPECIES}
+    return {s: m_melt + d[s] * m_solid for s in SEALED_SPECIES}, phi, m_melt
+
+
+def _pressures(kg: dict, mol: dict, gravity: float, r_int: float) -> tuple[dict, dict, float]:
+    """Mixing ratios [1], partial pressures [bar] and P_surf = M_atm g / A [bar], A = 4 pi R^2."""
+    area = 4.0 * np.pi * r_int**2
+    m_atm, n_atm = sum(kg.values()), sum(mol.values())
+    p_surf = m_atm * gravity / area * 1e-5
+    vmr = {s: n / n_atm if n_atm > 0.0 else 0.0 for s, n in mol.items()}
+    return vmr, {s: x * p_surf for s, x in vmr.items()}, p_surf
+
+
+def _atmosphere(hf_row: dict) -> tuple[dict, dict]:
+    """Species masses [kg] and moles [mol] of the atmosphere of a row."""
+    kg = {s: float(hf_row.get(f'{s}_kg_atm', 0.0)) for s in gas_list}
+    return kg, {s: float(hf_row.get(f'{s}_mol_atm', 0.0)) for s in gas_list}
+
+
 def _refresh_atmosphere(hf_row: dict) -> None:
     """Partial pressures, mixing ratios, element ratios and column masses from the masses."""
-    area = 4.0 * np.pi * float(hf_row['R_int']) ** 2
-    m_atm = sum(float(hf_row.get(f'{s}_kg_atm', 0.0)) for s in gas_list)
-    mol = {s: float(hf_row.get(f'{s}_mol_atm', 0.0)) for s in gas_list}
+    kg, mol = _atmosphere(hf_row)
+    vmr, bar, p_surf = _pressures(kg, mol, float(hf_row['gravity']), float(hf_row['R_int']))
+    m_atm = sum(kg.values())
     n_atm = sum(mol.values())
-    p_surf = m_atm * float(hf_row['gravity']) / area * 1e-5
     for s in gas_list:
-        vmr = mol[s] / n_atm if n_atm > 0.0 else 0.0
-        hf_row[f'{s}_vmr'] = vmr
-        hf_row[f'{s}_bar'] = vmr * p_surf
+        hf_row[f'{s}_vmr'], hf_row[f'{s}_bar'] = vmr[s], bar[s]
     hf_row['P_surf'] = p_surf
     hf_row['P_vol'] = p_surf
     hf_row['M_atm'] = m_atm
@@ -261,34 +315,136 @@ def _check(cond: bool, message: str) -> None:
         raise RuntimeError(f'Lid seal ledger: {message}')
 
 
-def leak_step(config: Config, hf_row: dict, dt: float) -> None:
-    """Advance the sealed reservoir by ``dt`` [yr] with the exact step solution.
+def equilibrium_fractions(
+    config: Config, bar: dict, p_tot: float, temp: float, fo2_shift: float
+) -> dict:
+    """Dissolved mass fraction ``X_eq,i`` [1] of each species of ``soluble_gases``.
 
-    Each species decays as ``M exp(-dt (1/tau + k_i))``; the leaked mass splits
-    into its relaxation and volcanic parts in the ratio ``(1/tau) : k_i``. Each
-    element of a species leaves in the same mass fraction of its sealed total as
-    the species weights of that element give, so the element and species ledgers
-    stay apart from the stoichiometry of the chemistry that filled them.
+    The laws and arguments of the CALLIOPE solve: H2O (Sossi et al. 2023), CO2
+    (Dixon et al. 1995) at ``temp`` [K], CO (Armstrong et al. 2015) and CH4
+    (Ardia et al. 2013) at the total pressure ``p_tot`` [bar], N2 (Dasgupta et
+    al. 2022) and S2 (Gaillard et al. 2022) at ``temp`` and the IW offset
+    ``fo2_shift`` [log10], and the noble gases by Henry's law (Jambon et al.
+    1986), each at its partial pressure in ``bar`` [bar]. CO, CH4 and the noble
+    gases dissolve only where ``outgas.calliope.include_*`` is set, and every
+    fraction is 0 with ``outgas.calliope.solubility`` off.
+    """
+    calliope = config.outgas.calliope
+    x = dict.fromkeys(soluble_gases, 0.0)
+    if not calliope.solubility:
+        return x
+    args = {'CO2': (temp,), 'CO': (p_tot,), 'CH4': (p_tot,), 'N2': (p_tot, temp, fo2_shift)}
+    args['S2'] = (temp, fo2_shift)
+    for s in soluble_gases:  # every law is 0 at p = 0; the CO law is not defined there
+        if calliope.is_included(s) and bar[s] > 0.0:
+            x[s] = 1e-6 * float(_LAW[s](bar[s], *args.get(s, ())))
+    return x
+
+
+def floor_leak(mass: float, frac: float, floor_of) -> float:
+    """Leak [kg] of one sealed species over a step toward the floor of its end state.
+
+    Solves ``L = frac max(mass - floor_of(L), 0)`` with ``frac = 1 - exp(-lam dt)``,
+    the exact step of ``dM/dt = -lam max(M - M_eq, 0)`` for a constant ``M_eq``,
+    with ``M_eq = floor_of(L)`` [kg] taken at the state after the leak ``L``. The
+    residual is <= 0 at ``L = 0`` and >= 0 at ``L = frac mass``, so the root is
+    bracketed for any continuous floor. Raises ``ValueError`` on a floor that is
+    not finite.
+    """
+    floor = floor_of(0.0)
+    if not np.isfinite(floor):
+        raise ValueError(f'Lid seal: dissolved equilibrium {floor} kg is not finite')
+    if floor >= mass:
+        return 0.0
+    return brentq(
+        lambda leak: leak - frac * max(mass - floor_of(leak), 0.0),
+        0.0,
+        frac * mass,
+        xtol=1e-300,
+        rtol=4.0 * np.finfo(float).eps,
+        maxiter=200,
+    )
+
+
+def _floor_model(config: Config, hf_row: dict, per_kg: dict):
+    """``M_eq`` [kg] of a species after leaks ``{species: kg}`` into the row's atmosphere.
+
+    Moles enter at ``per_kg`` [mol kg-1]; T and the IW offset are those of the
+    closing solve. Raises ``ValueError`` if either is unreadable.
+    """
+    temp = float(hf_row.get('seal_Tmagma_close', np.nan))
+    shift = float(hf_row.get('fO2_shift_IW_derived', np.nan))
+    if not (np.isfinite(temp) and temp > 0.0 and np.isfinite(shift)):
+        raise ValueError(
+            f'Lid seal: seal_Tmagma_close = {temp} K or fO2_shift_IW_derived = {shift} '
+            'cannot set the dissolved equilibrium'
+        )
+    reservoir = reservoirs(config, hf_row)[0]
+    kg0, mol0 = _atmosphere(hf_row)
+    gravity, r_int = float(hf_row['gravity']), float(hf_row['R_int'])
+
+    def floor_of(leak: dict, s: str) -> float:
+        kg = {g: m + leak.get(g, 0.0) for g, m in kg0.items()}
+        mol = {g: n + leak.get(g, 0.0) * per_kg.get(g, 0.0) for g, n in mol0.items()}
+        _, bar, p_tot = _pressures(kg, mol, gravity, r_int)
+        return equilibrium_fractions(config, bar, p_tot, temp, shift)[s] * reservoir[s]
+
+    return floor_of
+
+
+def _leaks(config: Config, hf_row: dict, before: dict, frac: dict) -> dict:
+    """Leak [kg] over the step of each species in ``frac``, at the floors of the end state.
+
+    A species without a law leaks ``frac M``; the others solve :func:`floor_leak`
+    in Gauss-Seidel sweeps, since each floor depends on the whole atmosphere.
+    """
+    soluble = [s for s in frac if s in soluble_gases and config.outgas.calliope.solubility]
+    leak = {s: 0.0 if s in soluble else frac[s] * before[s] for s in frac}
+    if not soluble:
+        return leak
+    per_kg = {s: float(hf_row.get(f'{s}_mol_sealed', 0.0)) / before[s] for s in frac}
+    floor_of = _floor_model(config, hf_row, per_kg)
+    for _ in range(SWEEP_MAX):
+        change = 0.0
+        for s in soluble:
+            new = floor_leak(before[s], frac[s], lambda x, s=s: floor_of({**leak, s: x}, s))
+            change, leak[s] = max(change, abs(new - leak[s]) / before[s]), new
+        if change <= SWEEP_TOL:
+            return leak
+    raise RuntimeError(f'Lid seal: leak sweeps did not settle within {SWEEP_MAX} sweeps')
+
+
+def leak_step(config: Config, hf_row: dict, dt: float) -> None:
+    """Advance the sealed reservoir by ``dt`` [yr] toward its dissolved equilibrium.
+
+    Each species follows ``dM/dt = -(1/tau + k_i) max(M - M_eq, 0)``, solved
+    exactly over the step with ``M_eq`` taken at the end state (:func:`floor_leak`).
+    The leaked mass splits into its relaxation and volcanic parts in the ratio
+    ``(1/tau) : k_i``. Each element of a species leaves in the same mass fraction
+    of its sealed total as the species weights of that element give, so the
+    element and species ledgers stay apart from the stoichiometry of the
+    chemistry that filled them.
     """
     rates, mdot, capped = leak_rates(config, hf_row, dt)
     hf_row['seal_crust_rate'] = mdot
     hf_row['seal_volc_capped'] = float(capped)
-    tau_part, volc_part, before = {}, {}, {}
-    for s in SEALED_SPECIES:
-        m = before[s] = float(hf_row.get(f'{s}_kg_sealed', 0.0))
-        inv_tau, k = rates[s]
-        total = inv_tau + k
-        if m <= 0.0 or total <= 0.0:
-            tau_part[s] = volc_part[s] = 0.0
+    before = {s: float(hf_row.get(f'{s}_kg_sealed', 0.0)) for s in SEALED_SPECIES}
+    lam = {s: sum(rates[s]) for s in SEALED_SPECIES}
+    frac = {
+        s: -np.expm1(-dt * lam[s]) for s in SEALED_SPECIES if before[s] > 0.0 and lam[s] > 0.0
+    }
+    leak = _leaks(config, hf_row, before, frac) if frac else {}
+    tau_part, volc_part = dict.fromkeys(SEALED_SPECIES, 0.0), dict.fromkeys(SEALED_SPECIES, 0.0)
+    for s, out in leak.items():
+        if out <= 0.0:
             continue
-        keep = np.exp(-dt * total)
-        leaked = m * -np.expm1(-dt * total)
-        tau_part[s], volc_part[s] = leaked * inv_tau / total, leaked * k / total
+        tau_part[s], volc_part[s] = out * rates[s][0] / lam[s], out * rates[s][1] / lam[s]
         mol = float(hf_row.get(f'{s}_mol_sealed', 0.0))
-        hf_row[f'{s}_kg_sealed'] = m * keep
-        hf_row[f'{s}_mol_sealed'] = mol * keep
-        hf_row[f'{s}_kg_atm'] = float(hf_row.get(f'{s}_kg_atm', 0.0)) + leaked
-        hf_row[f'{s}_mol_atm'] = float(hf_row.get(f'{s}_mol_atm', 0.0)) + mol * (1.0 - keep)
+        moved = mol * (out / before[s])
+        hf_row[f'{s}_kg_sealed'] = before[s] - out
+        hf_row[f'{s}_mol_sealed'] = mol - moved
+        hf_row[f'{s}_kg_atm'] = float(hf_row.get(f'{s}_kg_atm', 0.0)) + out
+        hf_row[f'{s}_mol_atm'] = float(hf_row.get(f'{s}_mol_atm', 0.0)) + moved
 
     leak_kg = sum(tau_part[g] + volc_part[g] for g in noble_gases)
     for g in noble_gases:
@@ -307,6 +463,30 @@ def leak_step(config: Config, hf_row: dict, dt: float) -> None:
     hf_row['seal_leak_kg_cum'] = float(hf_row.get('seal_leak_kg_cum', 0.0)) + leak_kg
     if leak_kg > 0.0:
         _refresh_atmosphere(hf_row)
+    if frac and config.outgas.calliope.solubility:
+        _check_floors(config, hf_row, before, leak, frac)
+
+
+def _check_floors(config: Config, hf_row: dict, before: dict, leak: dict, frac: dict) -> None:
+    """Write ``{s}_kg_eq`` of the end state and check each leaked species against it.
+
+    A species that leaked ends at or above its floor, and its distance to the
+    floor is ``exp(-lam dt)`` times the distance it started at (relative 1e-9).
+    """
+    floor_of = _floor_model(config, hf_row, {})
+    for s in soluble_gases:
+        m_eq = hf_row[f'{s}_kg_eq'] = floor_of({}, s)
+        if leak.get(s, 0.0) <= 0.0:
+            continue
+        end = float(hf_row[f'{s}_kg_sealed'])
+        _check(
+            end >= m_eq * (1.0 - 1e-12), f'{s}_kg_sealed = {end} kg below its floor {m_eq} kg'
+        )
+        gap = (1.0 - frac[s]) * (before[s] - m_eq)
+        _check(
+            abs(end - m_eq - gap) <= 1e-9 * before[s],
+            f'{s} ends {end - m_eq} kg above its floor, not {gap} kg',
+        )
 
 
 def assert_sealed_row(hf_row: dict) -> None:
@@ -326,7 +506,8 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
     Raises
     ------
     ValueError
-        If the flag, the path or a sealed mass is not readable, if the row holds
+        If the flag, the path or a sealed mass is not readable, if a sealed row
+        has no closing temperature ``seal_Tmagma_close`` > 0 K, if the row holds
         sealed mass under an open flag, or if it holds sealed mass with the seal
         off, since nothing could open it then.
     """
@@ -352,7 +533,11 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
         )
     if not on:
         hf_row['seal_active'] = hf_row['seal_path'] = 0.0
-    return on and values[0][1] >= 0.5
+    sealed = on and values[0][1] >= 0.5
+    temp = float(hf_row.get('seal_Tmagma_close', np.nan))
+    if sealed and not (np.isfinite(temp) and temp > 0.0):
+        raise ValueError(f'Resume: a sealed last row needs seal_Tmagma_close > 0 K, not {temp}')
+    return sealed
 
 
 def sealed_mass(hf_row: dict, element: str) -> float:
@@ -380,6 +565,8 @@ def reset_step_columns(hf_row: dict) -> None:
     for e in LEAK_ELEMENTS:
         hf_row[f'{e}_kg_leak_tau'] = 0.0
         hf_row[f'{e}_kg_leak_volc'] = 0.0
+    for s in soluble_gases:
+        hf_row[f'{s}_kg_eq'] = 0.0
 
 
 def run_lid_seal_step(
@@ -442,6 +629,7 @@ def run_lid_seal_step(
         ):
             moved = close_seal(hf_row)
             hf_row['seal_t_close'] = float(hf_row['Time'])
+            hf_row['seal_Tmagma_close'] = max(float(hf_row['T_magma']), config.outgas.T_floor)
             log.info(
                 'Lid seal closes (crust %.3e m, top-cell melt fraction %.3f); %.3e kg sealed',
                 delta,

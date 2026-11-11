@@ -861,6 +861,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `seal_active` | `1` | whether the lid seal holds the melt inventory | `outgas/lid_seal.py` | always | outgas |
 | `seal_path` | `1` | crust a closed seal reads: 0 open, 1 mesh crust, 2 sub-grid lid | `outgas/lid_seal.py` | always | outgas |
 | `seal_t_close` | `yr` | time the seal last closed | `outgas/lid_seal.py` | always | main loop |
+| `seal_Tmagma_close` | `K` | T_magma of the closing chemistry solve | `outgas/lid_seal.py` | always | outgas |
 | `seal_delta` | `m` | crust thickness the seal reads | `outgas/lid_seal.py` | always |   |
 | `seal_phi_top` | `1` | melt fraction of the top mesh cell | `outgas/lid_seal.py` | always |   |
 | `seal_crust_rate` | `kg yr-1` | melt mass reaching the crust over the step | `outgas/lid_seal.py` | always |   |
@@ -899,6 +900,17 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `Kr_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
 | `Xe_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas, utils |
 | `Xe_mol_sealed` | `mol` | number held under the closed crust | `outgas/lid_seal.py` | always | outgas |
+| `H2O_kg_eq` | `kg` | dissolved equilibrium of the sealed reservoir | `outgas/lid_seal.py` | always |   |
+| `CO2_kg_eq` | `kg` | dissolved equilibrium of the sealed reservoir | `outgas/lid_seal.py` | always |   |
+| `CO_kg_eq` | `kg` | dissolved equilibrium of the sealed reservoir | `outgas/lid_seal.py` | always |   |
+| `CH4_kg_eq` | `kg` | dissolved equilibrium of the sealed reservoir | `outgas/lid_seal.py` | always |   |
+| `N2_kg_eq` | `kg` | dissolved equilibrium of the sealed reservoir | `outgas/lid_seal.py` | always |   |
+| `S2_kg_eq` | `kg` | dissolved equilibrium of the sealed reservoir | `outgas/lid_seal.py` | always |   |
+| `He_kg_eq` | `kg` | dissolved equilibrium of the sealed reservoir | `outgas/lid_seal.py` | always |   |
+| `Ne_kg_eq` | `kg` | dissolved equilibrium of the sealed reservoir | `outgas/lid_seal.py` | always |   |
+| `Ar_kg_eq` | `kg` | dissolved equilibrium of the sealed reservoir | `outgas/lid_seal.py` | always |   |
+| `Kr_kg_eq` | `kg` | dissolved equilibrium of the sealed reservoir | `outgas/lid_seal.py` | always |   |
+| `Xe_kg_eq` | `kg` | dissolved equilibrium of the sealed reservoir | `outgas/lid_seal.py` | always |   |
 | `H_kg_sealed` | `kg` | mass held under the closed crust | `outgas/lid_seal.py` | always | outgas, utils |
 | `H_kg_leak_tau` | `kg` | sealed mass leaked by relaxation over the step | `outgas/lid_seal.py` | always |   |
 | `H_kg_leak_volc` | `kg` | sealed mass leaked by volcanism over the step | `outgas/lid_seal.py` | always |   |
@@ -1209,6 +1221,7 @@ A computed key is a helpfile column name constructed dynamically at runtime thro
 - `src/proteus/observe/petitRADTRANS.py::_get_mix`: `dynamic key key` (touches <gas>_vmr)
 - `src/proteus/outgas/atmodeller.py::_populate_volatile_element_reservoirs`: `dynamic key f'{sp}_kg_{r}'` (touches <species>_kg_<reservoir>)
 - `src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller`: `dynamic key key` (touches <element>_kg_total)
+- `src/proteus/outgas/lid_seal.py::_leaks`: `template <s>_mol_sealed`
 - `src/proteus/plot/cpl_global.py::plot_global`: `dynamic key k` (touches F_int, F_atm, F_olr, F_tidal, F_radio)
 - `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: `dynamic key sma_col` (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)
 - `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: `dynamic key ecc_col` (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)

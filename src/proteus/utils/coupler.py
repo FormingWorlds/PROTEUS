@@ -29,6 +29,7 @@ from proteus.utils.constants import (
     noble_gases,
     secs_per_hour,
     secs_per_minute,
+    soluble_gases,
     vol_element_list,
     vol_gas_list,
     vol_list,
@@ -1315,6 +1316,7 @@ def GetHelpfileKeys():
     keys.append('seal_active')       # whether the lid seal holds the melt inventory [1]
     keys.append('seal_path')         # crust a closed seal reads: 0 open, 1 mesh crust, 2 sub-grid lid [1]
     keys.append('seal_t_close')      # time the seal last closed [yr]
+    keys.append('seal_Tmagma_close')  # T_magma of the closing chemistry solve [K]
     keys.append('seal_delta')        # crust thickness the seal reads [m]
     keys.append('seal_phi_top')      # melt fraction of the top mesh cell [1]
     keys.append('seal_crust_rate')   # melt mass reaching the crust over the step [kg yr-1]
@@ -1327,6 +1329,8 @@ def GetHelpfileKeys():
     for s in noble_gases:
         keys.append(s + '_kg_sealed')   # mass held under the closed crust [kg]
         keys.append(s + '_mol_sealed')  # number held under the closed crust [mol]
+    for s in soluble_gases:
+        keys.append(s + '_kg_eq')  # dissolved equilibrium of the sealed reservoir [kg]
     for e in vol_element_list:
         keys.append(e + '_kg_sealed')     # mass held under the closed crust [kg]
         keys.append(e + '_kg_leak_tau')   # sealed mass leaked by relaxation over the step [kg]
@@ -1922,7 +1926,8 @@ def GetHelpfileLidSealKeys():
     return [
         k
         for k in GetHelpfileKeys()
-        if k.startswith('seal_') or k.endswith(('_sealed', '_kg_leak_tau', '_kg_leak_volc'))
+        if k.startswith('seal_')
+        or k.endswith(('_sealed', '_kg_eq', '_kg_leak_tau', '_kg_leak_volc'))
     ]
 
 
