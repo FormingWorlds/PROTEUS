@@ -7,7 +7,7 @@ Then you read when the seal closed, check when each volatile starts to leak, and
 When the seal closes, the volatiles dissolved in the melt move to the `{x}_kg_sealed` columns, and the chemistry stops.
 While the seal holds, the held volatiles reach the atmosphere only by a leak with the relaxation time `tau_leak`, and by volcanism if `crust_rate` is above 0.
 The leak stops at the floor `{x}_kg_eq`: the mass that melt and crystals dissolve at the pressure of the atmosphere.
-[Volatiles held under a closed crust](../Explanations/outgas.md#volatiles-held-under-a-closed-crust) explains the rule.
+[Volatiles held under a closed crust](../Explanations/lid_seal.md) explains the rule.
 
 ## Prerequisites
 
@@ -115,9 +115,11 @@ H2O first leaks at 97599 yr, Phi = 0.19039
 held / floor of water on the rows where it leaks: at least 1.000156
 ```
 
+At closure the floor of the water is $1 + D(1 - \Phi_c)/\Phi_c$ = 1.0072 times the held water.
+On the first held step the ratio is already 1.0062, because $\Phi$ has fallen from 0.19186 to 0.19167, which shrinks the melt in the reservoir of the floor.
 CO$_2$ has $D$ = 0, so its floor starts at the held mass and it leaks from the first held step.
 Water does not leak on the first 7 held steps; it starts once $\Phi$ falls below 0.19048, about 660 yr after closure.
-From then on it stays just above its floor: the leak stops there, whatever `tau_leak` is.
+From then on the held water follows its floor down and stays above it.
 
 ## Step 6: compare the 2 atmospheres
 

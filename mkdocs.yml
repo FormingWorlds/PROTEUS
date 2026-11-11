@@ -57,6 +57,7 @@ nav:
           - Model description: Explanations/model.md
           - Orbital dynamics and tides: Explanations/orbit.md
           - Outgassing, rock vapour and volatile trapping: Explanations/outgas.md
+          - Volatiles held under a closed crust: Explanations/lid_seal.md
       - Software design:
           - Code architecture: Explanations/code_architecture.md
           - Coupling loop: Explanations/coupling_loop.md
