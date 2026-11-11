@@ -333,7 +333,7 @@ If the history does not account for all of the trapped mass, the rest returns in
 
 **Question.** When a crust closes over the magma ocean, can the volatiles dissolved in the melt still reach the atmosphere?
 
-**Short answer.** With `outgas.lid_seal.enabled = true`, a crust that is thick enough holds the dissolved volatiles in the melt below it: this is the **seal**. While the seal holds, the chemistry is frozen and the held volatiles reach the atmosphere only by a slow **leak**. The seal opens again when the crust thins or the melt below it grows. With the default, `false`, the seal never closes.
+**Short answer.** With `outgas.lid_seal.enabled = true`, a crust that is thick enough holds the dissolved volatiles in the melt below it: this is the **seal**. While the seal holds, the chemistry is frozen and the held volatiles reach the atmosphere only by a slow **leak**. The seal opens again when the crust thins, when the top cell of the mesh melts again, or on a giant impact. With the default, `false`, the seal never closes.
 
 ### How to turn the seal on and read the result
 
@@ -354,14 +354,14 @@ It needs `outgas.module = "calliope"`, an escape reservoir of `"outgas"` or `"bu
 These output columns show what the seal does ([full list](../Reference/output.md)):
 
 - `seal_active` \[1\]: 1 while the seal holds, else 0.
-- `seal_delta` \[m\] and `seal_phi_top` \[1\]: the crust thickness and the melt fraction of the top mesh cell that the seal reads in the step. On the mesh, `seal_delta` counts the cells below `phi_solid` while the seal is open and those below `phi_open` while it holds, so it can jump on the first held step.
-- `seal_path` \[1\]: the path that closed the seal: 1 for the crust on the mesh, 2 for the sub-grid lid, 0 while open.
+- `seal_delta` \[m\] and `seal_phi_top` \[1\]: the crust thickness and the melt fraction of the top mesh cell that the seal reads in the step. On the mesh, `seal_delta` is the depth of the top run of cells below `phi_solid` while the seal is open, and below `phi_open` while it holds, so it can jump on the first held step.
+- `seal_path` \[1\]: the crust that the seal reads in the step: 1 for the crust on the mesh, 2 for the sub-grid lid, 0 while open. A seal closed by the sub-grid lid changes to 1 from the step where `lid_weight` is 0.
 - `{sp}_kg_sealed`, `{sp}_mol_sealed` and `{e}_kg_sealed`: the held mass of each species and element.
 - `{e}_kg_leak_tau` and `{e}_kg_leak_volc` \[kg\]: the mass of each element that leaked in the step by relaxation and by volcanism.
 - `seal_leak_kg_cum` \[kg\]: the leaked mass since the start of the run.
 - `seal_open_kg` \[kg\]: the held mass that returned to the melt in a step where the seal opened.
 
-### When the seal closes and opens
+### When the seal closes
 
 The seal reads 2 quantities in each step after the initialisation stage:
 
@@ -378,13 +378,17 @@ Where $\delta$ comes from depends on the state of the crust. The Aragog sub-grid
 
 The seal closes when $\delta \ge$ `delta_close` and $\phi_\mathrm{top} <$ `phi_close`. It closes after the chemistry solve of that step, so it holds the melt inventory of the state where the rule fires. A thin crust over a molten top cell does not close the seal.
 
-A closed seal opens when $\phi_\mathrm{top} \ge$ `phi_open` (default `phi_close + 0.05`), when $\delta <$ `delta_open` (default `0.5 delta_close`), or on a giant-impact step. The gap between the close and the open values stops a seal that would otherwise open and close in each step. On the mesh, a closed seal counts every top cell with a melt fraction below `phi_open` as crust, and an open seal only those below `phi_solid`; so a top cell that crosses `phi_solid` does not open the seal. A closed seal keeps reading the path that closed it. A seal closed on the mesh ignores a sub-grid lid that appears later. A seal closed by the sub-grid lid reads the mesh band from the step where `lid_weight` is 0, and stays on the mesh after that. On a coarse mesh, `phi_close` and `delta_open` do not act on the mesh path: a crust on the mesh means a solid top cell, which is below `phi_close`, and a held mesh crust is at least one cell thick, which is above the default `delta_open`. There the seal opens only when the top cell holds `phi_open` of melt, or on an impact. On opening, the held mass returns to the melt, and the chemistry solve of the same step takes it. The atmosphere then gets the dissolved gas of the melt at once.
-
 The default `delta_close` is 10 km. On a crust that grows on the mesh, a coarse mesh moves the thickness in steps of one cell: on the 79-cell mesh of the [tutorial](../Tutorials/lid_seal.md) the top cell is 65.8 km thick (the mesh is not uniform in radius). The seal then closes when the top cell freezes, for any `delta_close` below that cell. A thin chill crust, with `delta_close` near 0.3 m, closes only through the sub-grid lid.
 
-An open seal reads the sub-grid lid at any `lid_weight` above 0, however small. Aragog writes a weight of $10^{-10}$ or less as 0, so in a run the smallest weight the seal reads is just above $10^{-10}$. A lid with a small weight can therefore close the seal. The seal then holds the whole melt inventory, not a share scaled by the weight. A fall of `lid_weight` to 0 does not by itself open a seal that the sub-grid lid closed, also when the weight falls over several steps: the seal then opens or holds by the rules above on the mesh band. That band need not hold a solid cell, so the seal can stay closed while every mesh cell holds some melt.
-
 The seal covers the whole surface at once. A planet with a molten dayside and a frozen nightside, without heat transport between them, is outside this rule.
+
+### When the seal opens
+
+A closed seal opens when $\phi_\mathrm{top} \ge$ `phi_open` (default `phi_close + 0.05`), when $\delta <$ `delta_open` (default `0.5 delta_close`), or on a giant-impact step. The gap between the close and the open values stops a seal that would otherwise open and close in each step. On the mesh, a closed seal counts every top cell with a melt fraction below `phi_open` as crust, and an open seal only those below `phi_solid`; so a top cell that crosses `phi_solid` does not open the seal. A closed seal keeps reading the path that closed it. A seal closed on the mesh ignores a sub-grid lid that appears later. A seal closed by the sub-grid lid reads the mesh band from the step where `lid_weight` is 0, and stays on the mesh after that. On a coarse mesh, `phi_close` and `delta_open` do not act on the mesh path: a crust on the mesh means a solid top cell, which is below `phi_close`, and a held mesh crust is at least one cell thick, which is above the default `delta_open`. There the seal opens only when the top cell holds `phi_open` of melt, or on an impact. On opening, the held mass returns to the melt, and the chemistry solve of the same step takes it. The atmosphere then gets the dissolved gas of the melt at once.
+
+### A small sub-grid lid
+
+An open seal reads the sub-grid lid at any `lid_weight` above 0, however small. Aragog writes a weight of $10^{-10}$ or less as 0, so in a run the smallest weight the seal reads is just above $10^{-10}$. A lid with a small weight can therefore close the seal. The seal then holds the whole melt inventory, not a share scaled by the weight. A fall of `lid_weight` to 0 does not by itself open a seal that the sub-grid lid closed, also when the weight falls over several steps: the seal then opens or holds by the rules above on the mesh band. That band need not hold a solid cell, so the seal can stay closed while every mesh cell holds some melt.
 
 ### The leak
 
@@ -402,12 +406,12 @@ The symbols are:
 
 - $\tau$: `tau_leak` \[yr\], the relaxation time of the held volatiles. The default, infinity, holds them.
 - $\dot M_c$: `crust_rate` \[kg yr$^{-1}$\], the mass of melt that reaches the crust per year. The default is 0.
-- $\chi_d$: `chi_d` \[1\], the fraction of the volatiles in that melt that degasses; 0.02 by default [^cite-schaefer2015].
+- $\chi_d$: `chi_d` \[1\], the fraction of the volatiles in that melt that degasses; 0.02 by default, from Table 3 of Schaefer & Sasselov (2015)[^cite-schaefer2015].
 - $X_{\mathrm{melt},i}$: the mass fraction of species $i$ in the melt \[1\].
 - $M_\mathrm{melt} = \Phi M_\mathrm{mantle}$ and $M_\mathrm{solid} = (1 - \Phi) M_\mathrm{mantle}$: the melt and the solid mass of the mantle \[kg\], with the global melt fraction $\Phi$.
 - $D_i$: `outgas.D_const_<species>`, the crystal/melt partition coefficient \[1\].
 
-The volcanic term has the form of Eq. 14 and Eq. 17 of Schaefer and Sasselov (2015) [^cite-schaefer2015], with the melt production of plate spreading replaced by $\dot M_c$ and their degree of melting replaced by the global melt fraction $\Phi$. This is an adaptation for a mantle under a closed crust, not a result of that paper. $X_{\mathrm{melt},i}$ follows from the mass balance of the held volatile: it sits in the melt and, at $D_i > 0$, in the crystals in equilibrium with it. So the global melt fraction enters, not the melt fraction of the cells that hold melt. If half the mantle is solid and the other half holds 40 % melt, $\Phi = 0.2$, and at $D_i = 0$ the melt concentration is $M_i/(0.2\,M_\mathrm{mantle})$.
+The volcanic term has the form of Eq. 14 and Eq. 17 of Schaefer & Sasselov (2015), with the melt production of plate spreading replaced by $\dot M_c$ and their degree of melting replaced by the global melt fraction $\Phi$. This is an adaptation for a mantle under a closed crust, not a result of that paper. $X_{\mathrm{melt},i}$ follows from the mass balance of the held volatile: it sits in the melt and, at $D_i > 0$, in the crystals in equilibrium with it. So the global melt fraction enters, not the melt fraction of the cells that hold melt. If half the mantle is solid and the other half holds 40 % melt, $\Phi = 0.2$, and at $D_i = 0$ the melt concentration is $M_i/(0.2\,M_\mathrm{mantle})$.
 
 Both terms are linear in $M_i$, so the code uses the exact solution over a step of length $\Delta t$:
 
@@ -416,7 +420,7 @@ M_i(t + \Delta t) = M_i(t)\, \exp\left[-\Delta t\left(\frac{1}{\tau} + k_i\right
 \qquad k_i = \frac{\chi_d \dot M_c}{M_\mathrm{melt} + D_i M_\mathrm{solid}}.
 $$
 
-The result does not depend on the step length, and $M_i$ cannot become negative. The leaked mass splits between relaxation and volcanism in the ratio $(1/\tau) : k_i$. In one step no more melt than $M_\mathrm{melt}$ can reach the crust: a larger `crust_rate` is cut to $M_\mathrm{melt}/\Delta t$, and `seal_volc_capped` records the cut. A cut step leaks a fixed share of the held mass, so in that regime the result depends on the step length; `seal_volc_capped` shows the steps where this happens. Below `phi_solid`, no melt reaches the crust.
+While $k_i$ stays the same, as with `crust_rate = 0`, the result does not depend on the step length. $M_i$ cannot become negative. The leaked mass splits between relaxation and volcanism in the ratio $(1/\tau) : k_i$. In one step no more melt than $M_\mathrm{melt}$ can reach the crust: a larger `crust_rate` is cut to $M_\mathrm{melt}/\Delta t$, and `seal_volc_capped` records the cut. A cut step leaks a fixed share of the held mass, so in that regime the result depends on the step length; `seal_volc_capped` shows the steps where this happens. Below `phi_solid`, no melt reaches the crust.
 
 The leaked gas enters the atmosphere as the species it was held as, with no new chemistry solve. The partial pressures follow from the masses, as in CALLIOPE: the surface pressure is $M_\mathrm{atm}\, g / (4\pi R^2)$, and each species takes its mole fraction of it.
 
@@ -447,7 +451,7 @@ During a run, an $F_\mathrm{tl}$ outside 0 to 1 stops the run with an error. A f
 
 **Where this is checked.** No Validation case covers these limits.
 
-[^cite-schaefer2015]: Schaefer, L. and Sasselov, D., *[The persistence of oceans on Earth-like planets: insights from the deep-water cycle](https://doi.org/10.1088/0004-637X/801/1/40)*, The Astrophysical Journal, 801, 40, 2015. Eq. 14, Eq. 17 and Table 3.
+[^cite-schaefer2015]: L. Schaefer, D. Sasselov, *[The persistence of oceans on Earth-like planets: insights from the deep-water cycle](https://doi.org/10.1088/0004-637X/801/1/40)*, The Astrophysical Journal, 801, 40, 2015. [SciX](https://scixplorer.org/abs/2015ApJ...801...40S/abstract).
 [^cite-rogers2025]: Rogers, J.G., Young, E.D. and Schlichting, H.E., *[Redefining interiors and envelopes: hydrogen-silicate miscibility and its consequences for the structure and evolution of sub-Neptunes](https://doi.org/10.1093/mnras/staf1940)*, Monthly Notices of the Royal Astronomical Society, 544, 3496, 2025.
 [^cite-sim2024]: Sim, S.J., Hirschmann, M.M. and Hier-Majumder, S., *[Volatile and trace element storage in a crystallizing martian magma ocean](https://doi.org/10.1029/2024JE008346)*, Journal of Geophysical Research: Planets, 129, e2024JE008346, 2024. Eq. 6.
 [^cite-bower2018]: Bower, D.J., Sanan, P. and Wolf, A.S., *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49, 2018.

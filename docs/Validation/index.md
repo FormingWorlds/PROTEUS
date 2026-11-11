@@ -38,6 +38,7 @@ Without `--validation-plots` the tests write nothing, but each plot test compare
 | Outgassing | `outgas/burial_ledger.py` | [Burial ledger for remelting](outgas/burial_ledger.md) | [ledger against a fine grid](outgas/burial_ledger.md#the-ledger-against-a-fine-grid) |
 | Outgassing | `outgas/compaction.py` | [Melt drainage across the freezing front](outgas/compaction.md) | [drainage velocity](outgas/compaction.md#drainage-velocity-in-each-regime) |
 | Outgassing | `outgas/lavatmos.py` | [Rock-vapour molar masses](outgas/lavatmos.md) | [molar masses](outgas/lavatmos.md#molar-masses-from-fastchem-formulas) |
+| Outgassing | `outgas/lid_seal.py` | [Volatiles under a closed crust](outgas/lid_seal.md) | [held mass against the exponential](outgas/lid_seal.md#the-held-mass-decays-as-the-exponential-for-any-step-length) |
 | Outgassing | `outgas/trapping.py` | [Solid-phase volatile trapping](outgas/trapping.md) | [interstitial-melt trapping](outgas/trapping.md#trapping-through-the-interstitial-melt) |
 | Star | `star/dummy.py` | [Stellar luminosity and instellation](star/dummy.md) | [solar luminosity](star/dummy.md#luminosity-of-the-sun) |
 | Star | `star/wrapper.py` | [Stellar wrapper dispatch](star/wrapper.md) | [equilibrium temperature](star/wrapper.md#equilibrium-temperature-of-an-earth-like-planet) |

@@ -238,7 +238,7 @@ def _fraction_open(instance, attribute, value):
 
 
 def _delta_open(instance, attribute, value):
-    """None, or a thickness in (0, delta_close]; delta_close is finite."""
+    """outgas.lid_seal.delta_open [m]: None, or a thickness in (0, delta_close]."""
     if value is None:
         return
     if not (_real(value) and 0 < value <= instance.delta_close):
@@ -249,7 +249,7 @@ def _delta_open(instance, attribute, value):
 
 
 def _phi_open(instance, attribute, value):
-    """None (then phi_close + 0.05 must be below 1), or a number in [phi_close, 1)."""
+    """outgas.lid_seal.phi_open [1]: None (then phi_close + 0.05 must be below 1), or a number in [phi_close, 1)."""
     if value is None:
         if instance.phi_close + PHI_OPEN_BAND >= 1:
             raise ValueError(
@@ -283,7 +283,7 @@ def _finite_nonnegative(instance, attribute, value):
 
 
 def _phi_solid(instance, attribute, value):
-    """A real number in (0, phi_close)."""
+    """outgas.lid_seal.phi_solid [1]: a real number in (0, phi_close)."""
     if not (_real(value) and 0 < value < instance.phi_close):
         raise ValueError(
             f'phi_solid must be a number in (0, phi_close = {instance.phi_close}), got {value!r}'

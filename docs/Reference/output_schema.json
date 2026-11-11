@@ -21805,7 +21805,7 @@
     {
       "name": "seal_path",
       "unit": "1",
-      "description": "path that closed the seal: 0 open, 1 mesh crust, 2 sub-grid lid",
+      "description": "crust the seal reads: 0 open, 1 mesh crust, 2 sub-grid lid",
       "group": "Quantities for each element",
       "origin": "literal",
       "producers": [

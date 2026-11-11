@@ -112,6 +112,7 @@ end_on, end_off = on.iloc[-1], off.iloc[-1]
 print(f"H2O in the atmosphere at 140 kyr: seal {end_on['H2O_kg_atm']:.2e} kg, no seal {end_off['H2O_kg_atm']:.2e} kg")
 print(f"surface pressure: seal {end_on['P_surf']:.3f} bar, no seal {end_off['P_surf']:.3f} bar")
 print(f"H2O in the melt without the seal: {end_off['H2O_kg_liquid']:.2e} kg")
+print(f"mantle melt fraction without the seal: {end_off['Phi_global']:.3f}")
 ```
 
 The run printed:
@@ -120,13 +121,14 @@ The run printed:
 H2O in the atmosphere at 140 kyr: seal 2.41e+18 kg, no seal 2.23e+15 kg
 surface pressure: seal 1.316 bar, no seal 1.035 bar
 H2O in the melt without the seal: 6.92e+18 kg
+mantle melt fraction without the seal: 0.135
 ```
 
 Before the closing step the 2 runs agree to the last digit.
 After it they part.
-Without the seal, the chemistry keeps the water dissolved in the melt, because the melt is still 13 % of the mantle at 140 kyr and water is very soluble.
+Without the seal, the chemistry keeps the water dissolved in the melt, because the melt is still 13.5 % of the mantle at 140 kyr and water is very soluble.
 With the seal, the leak takes a fixed share of the held water per year, and it does not depend on the solubility, so 35 % of the held water reaches the atmosphere in 43 kyr.
-`tau_leak` therefore sets how fast a sealed planet degasses; with the default, infinity, the held water stays under the crust.
+`tau_leak` therefore sets how fast a sealed planet degasses; with the defaults, `tau_leak` infinite and `crust_rate = 0`, the held water stays under the crust.
 
 The block plots the water in the atmosphere and under the crust:
 

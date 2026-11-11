@@ -859,7 +859,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `N_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
 | `S_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
 | `seal_active` | `1` | whether the lid seal holds the melt inventory | `outgas/lid_seal.py` | always | outgas |
-| `seal_path` | `1` | path that closed the seal: 0 open, 1 mesh crust, 2 sub-grid lid | `outgas/lid_seal.py` | always | outgas |
+| `seal_path` | `1` | crust the seal reads: 0 open, 1 mesh crust, 2 sub-grid lid | `outgas/lid_seal.py` | always | outgas |
 | `seal_t_close` | `yr` | time the seal last closed | `outgas/lid_seal.py` | always | main loop |
 | `seal_delta` | `m` | crust thickness the seal reads | `outgas/lid_seal.py` | always |   |
 | `seal_phi_top` | `1` | melt fraction of the top mesh cell | `outgas/lid_seal.py` | always |   |

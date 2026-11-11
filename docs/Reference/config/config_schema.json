@@ -13200,7 +13200,7 @@
       "touches": [
         "delta_close"
       ],
-      "doc": "None, or a thickness in (0, delta_close]; delta_close is finite."
+      "doc": "outgas.lid_seal.delta_open [m]: None, or a thickness in (0, delta_close]."
     },
     {
       "validator": "_phi_open",
@@ -13211,7 +13211,7 @@
       "touches": [
         "phi_close"
       ],
-      "doc": "None (then phi_close + 0.05 must be below 1), or a number in [phi_close, 1)."
+      "doc": "outgas.lid_seal.phi_open [1]: None (then phi_close + 0.05 must be below 1), or a number in [phi_close, 1)."
     },
     {
       "validator": "_phi_solid",
@@ -13222,7 +13222,7 @@
       "touches": [
         "phi_close"
       ],
-      "doc": "A real number in (0, phi_close)."
+      "doc": "outgas.lid_seal.phi_solid [1]: a real number in (0, phi_close)."
     },
     {
       "validator": "max_bigger_than_min",

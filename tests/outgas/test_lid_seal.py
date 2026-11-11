@@ -240,7 +240,7 @@ def test_relaxation_matches_the_exponential_and_not_the_step_length(validation_p
     """V3: with crust_rate = 0 the sealed mass decays as M_c exp(-(t - t_c)/tau),
     to 1e-12 at every row, for steps of 1, 10 and 100 kyr (tau = 1 Myr). The
     step solution is exact, so the step length enters only at round-off; a
-    forward Euler step would be off by 5.5 % after 1 Myr at 100 kyr steps."""
+    forward Euler step would be 5.2 % below the exact answer after 1 Myr at 100 kyr steps."""
     tau, m0 = 1.0e6, MELT['H2O']
     runs = {dt: _relax(dt, 1.0e6, tau)[0] for dt in (1.0e3, 1.0e4, 1.0e5)}
     for series in runs.values():
@@ -249,7 +249,7 @@ def test_relaxation_matches_the_exponential_and_not_the_step_length(validation_p
     for t in runs[1.0e5]:
         assert runs[1.0e3][t] == pytest.approx(runs[1.0e5][t], rel=1e-12)
     euler = m0 * (1.0 - 1.0e5 / tau) ** 10
-    assert abs(runs[1.0e5][1000000] - euler) / euler > 0.05
+    assert abs(runs[1.0e5][1000000] - euler) / runs[1.0e5][1000000] > 0.05
 
     def figure():
         import matplotlib.pyplot as plt
