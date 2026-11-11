@@ -382,9 +382,10 @@ def _floor_model(config: Config, hf_row: dict, per_kg: dict):
 
     Moles enter at ``per_kg`` [mol kg-1]; T and the IW offset are those of the
     closing solve. With ``outgas.trap_mode = 'front'`` the crystals that froze
-    before closure keep their own trapped volatiles, so each reservoir leaves out
-    their share ``D_i (1 - seal_phi_close) M_mantle``. Raises ``ValueError`` if a
-    closing value it reads is unreadable.
+    before closure keep their own trapped volatiles, so each reservoir counts only
+    the crystals formed after it, ``D_i max(Phi_c - Phi, 0) M_mantle`` with
+    ``Phi_c = seal_phi_close``. Raises ``ValueError`` if a closing value it reads
+    is unreadable.
     """
     temp = float(hf_row.get('seal_Tmagma_close', np.nan))
     shift = float(hf_row.get('fO2_shift_IW_derived', np.nan))
@@ -393,14 +394,18 @@ def _floor_model(config: Config, hf_row: dict, per_kg: dict):
             f'Lid seal: seal_Tmagma_close = {temp} K or fO2_shift_IW_derived = {shift} '
             'cannot set the dissolved equilibrium'
         )
-    reservoir = reservoirs(config, hf_row)[0]
-    if getattr(config.outgas, 'trap_mode', 'none') == 'front':
+    reservoir, phi, _ = reservoirs(config, hf_row)
+    if config.outgas.trap_mode == 'front':
         phi_c = float(hf_row.get('seal_phi_close', np.nan))
-        if not 0.0 <= phi_c <= 1.0:
-            raise ValueError(f'Lid seal: seal_phi_close = {phi_c} is not a melt fraction')
-        solid_c = (1.0 - phi_c) * float(hf_row['M_mantle'])
+        if not 0.0 < phi_c <= 1.0:
+            raise ValueError(
+                f'Lid seal: seal_phi_close = {phi_c} is not the melt fraction of a closure'
+            )
+        frozen = (1.0 - max(phi_c, phi)) * float(
+            hf_row['M_mantle']
+        )  # crystals older than closure
         d = {s: float(getattr(config.outgas, f'D_const_{s}', 0.0)) for s in reservoir}
-        reservoir = {s: r - d[s] * solid_c for s, r in reservoir.items()}
+        reservoir = {s: r - d[s] * frozen for s, r in reservoir.items()}
     kg0, mol0 = _atmosphere(hf_row)
     gravity, r_int = float(hf_row['gravity']), float(hf_row['R_int'])
 
@@ -542,8 +547,8 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
     ------
     ValueError
         If the flag, the path or a sealed mass is not readable, if a sealed row
-        has no closing temperature ``seal_Tmagma_close`` > 0 K or no closing melt
-        fraction ``seal_phi_close`` in [0, 1], if the row holds
+        has no closing temperature ``seal_Tmagma_close`` > 0 K or, under front
+        trapping, no closing melt fraction ``seal_phi_close`` in (0, 1], if the row holds
         sealed mass under an open flag, or if it holds sealed mass with the seal
         off, since nothing could open it then.
     """
@@ -574,9 +579,9 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
     if sealed and not (np.isfinite(temp) and temp > 0.0):
         raise ValueError(f'Resume: a sealed last row needs seal_Tmagma_close > 0 K, not {temp}')
     phi_c = float(hf_row.get('seal_phi_close', np.nan))
-    if sealed and not 0.0 <= phi_c <= 1.0:
+    if sealed and config.outgas.trap_mode == 'front' and not 0.0 < phi_c <= 1.0:
         raise ValueError(
-            f'Resume: a sealed last row needs seal_phi_close in [0, 1], not {phi_c}'
+            f'Resume: a sealed last row needs seal_phi_close in (0, 1], not {phi_c}'
         )
     return sealed
 
