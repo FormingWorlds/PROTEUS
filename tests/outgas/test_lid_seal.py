@@ -389,9 +389,12 @@ def test_crust_production_is_capped_at_the_melt_and_stops_below_phi_solid():
 @pytest.mark.physics_invariant
 def test_leak_refreshes_the_atmosphere_from_the_masses():
     """After a leak, P_surf = M_atm g / (4 pi R^2), the mixing ratios sum to 1
-    and follow the moles, and the mean molar mass is M_atm over the moles."""
+    and follow the moles, the mean molar mass is M_atm over the moles, and
+    M_vol_atm counts the leaked Ar but not the rock vapour SiO."""
     cfg = _config(tau_leak=1.0e4)
-    row = {**_sealed_row(), 'M_vol_atm': 0.0}
+    row = {**_sealed_row(), 'M_vol_atm': 0.0, 'Ar_kg_sealed': 1.0e18, 'SiO_kg_atm': 5.0e18}
+    row['Ar_mol_sealed'] = 1.0e18 / eval_gas_mmw('Ar')
+    row['SiO_mol_atm'] = 5.0e18 / eval_gas_mmw('SiO')
     leak_step(cfg, row, 1.0e3)
     m_atm = sum(row[f'{s}_kg_atm'] for s in gas_list)
     assert row['M_atm'] == pytest.approx(m_atm, rel=1e-15)
@@ -406,6 +409,8 @@ def test_leak_refreshes_the_atmosphere_from_the_masses():
     assert row['H2O_bar'] == pytest.approx(row['H2O_vmr'] * row['P_surf'], rel=1e-14)
     m_vol = sum(row[f'{s}_kg_atm'] for s in vol_gas_list)
     assert row['M_vol_atm'] == pytest.approx(m_vol, rel=1e-15) and m_vol > sum(ATM.values())
+    assert row['M_vol_atm'] == pytest.approx(m_atm - row['SiO_kg_atm'], rel=1e-15)
+    assert row['Ar_kg_atm'] > 0.0
 
 
 def _step(row, interior, sealed, *, init_stage=False, **seal):
@@ -833,21 +838,15 @@ def test_delta_close_decides_the_closure_on_both_paths(lid, thickness, expected)
     assert row['seal_path'] == (float(1 + lid) if expected else 0.0)
 
 
-def _off_stoichiometry_row():
-    """A sealed row whose element masses are the stoichiometric sum times 1 - 2e-5."""
-    row = _sealed_row()
-    for e in SEALED_ELEMENTS:
-        row[f'{e}_kg_sealed'] *= 1.0 - 2.0e-5
-    return row
-
-
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(('tau', 'dt'), [(1.0e4, 1.0e3), (3.0, 1.0e4)], ids=['part', 'drain'])
 def test_each_element_leaks_its_own_sealed_mass_off_the_stoichiometry(tau, dt):
     """Element masses apart from the species stoichiometry leak in the same
     fraction as the species: the leak of each element equals the drop of its
     sealed mass and that fraction of its held mass; a drained reservoir ends at 0."""
-    row = _off_stoichiometry_row()
+    row = _sealed_row()
+    for e in SEALED_ELEMENTS:  # element masses off the species stoichiometry
+        row[f'{e}_kg_sealed'] *= 1.0 - 2.0e-5
     before = dict(row)
     leak_step(_config(tau_leak=tau), row, dt)
     frac = -np.expm1(-dt / tau)
