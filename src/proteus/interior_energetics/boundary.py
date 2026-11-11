@@ -10,11 +10,15 @@ from scipy.integrate import solve_ivp
 
 from proteus.atmos_clim.common import Atmos_t
 from proteus.interior_energetics.common import Interior_t
+from proteus.interior_energetics.radiogenic import (
+    radio_t0_years,
+    radiogenic_heating,
+    radionuclide_inventory,
+)
 from proteus.interior_energetics.timestep import next_step
 from proteus.utils.constants import (
     const_G,
     const_R,
-    radnuc_data,
     secs_per_year,
 )
 
@@ -176,11 +180,9 @@ class BoundaryRunner:
 
         # Radioactive heating parameters
         self.use_radiogenic_heating = config.interior_energetics.heat_radiogenic
-        self.age_ini = config.star.age_ini
-        self.radio_tref = config.interior_energetics.radio_tref  # in Gyr
-        self.U_abun = config.interior_energetics.radio_U * 1e-6  # Convert ppm to kg/kg
-        self.Th_abun = config.interior_energetics.radio_Th * 1e-6  # Convert ppm to kg/kg
-        self.K_abun = config.interior_energetics.radio_K * 1e-6  # Convert ppm to kg/kg
+        # (isotope, element ppmw, isotope mass ratio) at model time radio_t0_yr [yr]
+        self.radio_inventory = radionuclide_inventory(config)
+        self.radio_t0_yr = radio_t0_years(config)
 
         # use tidal heating from orbit module if enabled, otherwise zero
         self.use_tidal_heating = config.interior_energetics.heat_tidal
@@ -394,7 +396,7 @@ class BoundaryRunner:
 
     def radioactive_heating(self, t: float) -> float:
         """
-        Calculate the volumetric radioactive heating rate as a function of time.
+        Calculate the radioactive heating rate per unit mantle mass at time t.
 
         Parameters
         ----------
@@ -404,51 +406,11 @@ class BoundaryRunner:
         Returns
         -------
         float
-            Radioactive heating rate per unit volume [W/kg]
+            Radioactive heating rate per unit mantle mass [W/kg]
         """
-        # Get radioactive constants from radnuc_data
-
-        radio_t0 = (self.radio_tref - self.age_ini) * 1e9 * secs_per_year
-
-        # Radioactive isotope properties from radnuc_data
-        # Convert half-lives to decay constants: lambda = ln(2) / half-life
-        K_decay_constant = np.log(2) / (radnuc_data['k40']['halflife'] * secs_per_year)  # 1/s
-        K_heat_production = radnuc_data['k40']['heatprod']  # W/kg of K-40
-        K40_abun = self.K_abun * radnuc_data['k40']['abundance']  # kg(K-40)/kg(mantle)
-
-        Th_decay_constant = np.log(2) / (
-            radnuc_data['th232']['halflife'] * secs_per_year
-        )  # 1/s
-        Th_heat_production = radnuc_data['th232']['heatprod']  # W/kg of Th-232
-        Th232_abun = self.Th_abun * radnuc_data['th232']['abundance']  # kg(Th-232)/kg(mantle)
-
-        U238_decay_constant = np.log(2) / (
-            radnuc_data['u238']['halflife'] * secs_per_year
-        )  # 1/s
-        U238_heat_production = radnuc_data['u238']['heatprod']  # W/kg of U-238
-        U238_abun = self.U_abun * radnuc_data['u238']['abundance']  # kg(U-238)/kg(mantle)
-
-        U235_decay_constant = np.log(2) / (
-            radnuc_data['u235']['halflife'] * secs_per_year
-        )  # 1/s
-        U235_heat_production = radnuc_data['u235']['heatprod']  # W/kg of U-235
-        U235_abun = self.U_abun * radnuc_data['u235']['abundance']  # kg(U-235)/kg(mantle)
-
-        # Calculate heating contributions from each isotope
-        K_term = K40_abun * K_heat_production * np.exp(K_decay_constant * (radio_t0 - t))
-        U238_term = (
-            U238_abun * U238_heat_production * np.exp(U238_decay_constant * (radio_t0 - t))
-        )
-        U235_term = (
-            U235_abun * U235_heat_production * np.exp(U235_decay_constant * (radio_t0 - t))
-        )
-        Th_term = Th232_abun * Th_heat_production * np.exp(Th_decay_constant * (radio_t0 - t))
-        H_total = K_term + U238_term + U235_term + Th_term
-
-        if self.use_radiogenic_heating:
-            return H_total
-        else:
+        if not self.use_radiogenic_heating:
             return 0.0
+        return radiogenic_heating(self.radio_inventory, self.radio_t0_yr, t / secs_per_year)
 
     def melt_fraction(self, T_p: float) -> float:
         """

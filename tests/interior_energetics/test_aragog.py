@@ -5037,7 +5037,7 @@ def _k40(t0_years=0.0):
     return _Radionuclide(
         name='k40',
         t0_years=t0_years,
-        abundance=k40['abundance'],
+        abundance=1.1668e-4,  # 40K/K mass ratio, present day
         concentration=310.0,
         heat_production=k40['heatprod'],
         half_life_years=k40['halflife'],

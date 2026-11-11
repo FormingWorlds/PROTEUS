@@ -6804,7 +6804,7 @@
           "value": 0
         }
       ],
-      "description": "Reference age for setting radioactive decay [Gyr].",
+      "description": "Stellar age at which the radionuclide inputs below apply [Gyr]; 4.567 is the present day, 0 the formation of the Solar System.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 2,
@@ -6817,7 +6817,7 @@
       "class": "Interior",
       "type": "float",
       "accepts_none": false,
-      "default": "0.0",
+      "default": "23500.0",
       "choices": null,
       "bounds": [
         {
@@ -6825,7 +6825,7 @@
           "value": 0
         }
       ],
-      "description": "Concentration (ppmw) of aluminium-26 at reference age t=radio_tref; 1.23 is the canonical early solar system value.",
+      "description": "Total aluminium concentration in the mantle at radio_tref [ppmw].",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 3,
@@ -6833,7 +6833,7 @@
       "group_qualifier": null
     },
     {
-      "path": "interior_energetics.radio_Fe",
+      "path": "interior_energetics.radio_Al26_abund",
       "toml_section": "interior_energetics",
       "class": "Interior",
       "type": "float",
@@ -6844,12 +6844,62 @@
         {
           "op": ">=",
           "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 1
         }
       ],
-      "description": "Concentration (ppmw) of iron-60 at reference age t=radio_tref.",
+      "description": "Mass ratio 26Al/Al at radio_tref [kg/kg]; 5.25e-5 is the canonical early Solar System 26Al/27Al value, 0 the present day.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 4,
+      "group": "Heating",
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.radio_Fe",
+      "toml_section": "interior_energetics",
+      "class": "Interior",
+      "type": "float",
+      "accepts_none": false,
+      "default": "62600.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Total iron concentration in the mantle at radio_tref [ppmw].",
+      "doc_source": "attributes",
+      "group_order": 2,
+      "group_position": 5,
+      "group": "Heating",
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.radio_Fe60_abund",
+      "toml_section": "interior_energetics",
+      "class": "Interior",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 1
+        }
+      ],
+      "description": "Mass ratio 60Fe/Fe at radio_tref [kg/kg]; 1e-8 is an early Solar System 60Fe/56Fe estimate, 0 the present day.",
+      "doc_source": "attributes",
+      "group_order": 2,
+      "group_position": 6,
       "group": "Heating",
       "group_qualifier": null
     },
@@ -6867,10 +6917,35 @@
           "value": 0
         }
       ],
-      "description": "Concentration (ppmw) of potassium-40 at reference age t=radio_tref.",
+      "description": "Total potassium concentration in the mantle at radio_tref [ppmw].",
       "doc_source": "attributes",
       "group_order": 2,
-      "group_position": 5,
+      "group_position": 7,
+      "group": "Heating",
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.radio_K40_abund",
+      "toml_section": "interior_energetics",
+      "class": "Interior",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.00011668",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 1
+        }
+      ],
+      "description": "Mass ratio 40K/K at radio_tref [kg/kg].",
+      "doc_source": "attributes",
+      "group_order": 2,
+      "group_position": 8,
       "group": "Heating",
       "group_qualifier": null
     },
@@ -6888,10 +6963,60 @@
           "value": 0
         }
       ],
-      "description": "Concentration (ppmw) of uranium at reference age t=radio_tref.",
+      "description": "Total uranium concentration in the mantle at radio_tref [ppmw].",
       "doc_source": "attributes",
       "group_order": 2,
-      "group_position": 6,
+      "group_position": 9,
+      "group": "Heating",
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.radio_U235_abund",
+      "toml_section": "interior_energetics",
+      "class": "Interior",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0072045",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 1
+        }
+      ],
+      "description": "Mass ratio 235U/U at radio_tref [kg/kg].",
+      "doc_source": "attributes",
+      "group_order": 2,
+      "group_position": 10,
+      "group": "Heating",
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.radio_U238_abund",
+      "toml_section": "interior_energetics",
+      "class": "Interior",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.9927955",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 1
+        }
+      ],
+      "description": "Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund + radio_U238_abund must not exceed 1.",
+      "doc_source": "attributes",
+      "group_order": 2,
+      "group_position": 11,
       "group": "Heating",
       "group_qualifier": null
     },
@@ -6909,10 +7034,35 @@
           "value": 0
         }
       ],
-      "description": "Concentration (ppmw) of thorium-232 at reference age t=radio_tref.",
+      "description": "Total thorium concentration in the mantle at radio_tref [ppmw].",
       "doc_source": "attributes",
       "group_order": 2,
-      "group_position": 7,
+      "group_position": 12,
+      "group": "Heating",
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.radio_Th232_abund",
+      "toml_section": "interior_energetics",
+      "class": "Interior",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 1
+        }
+      ],
+      "description": "Mass ratio 232Th/Th at radio_tref [kg/kg].",
+      "doc_source": "attributes",
+      "group_order": 2,
+      "group_position": 13,
       "group": "Heating",
       "group_qualifier": null
     },
@@ -12931,6 +13081,17 @@
         "trans_mixing"
       ],
       "doc": "SPIDER requires at least one energy transport term to be enabled."
+    },
+    {
+      "validator": "valid_uranium_abund",
+      "module": "_interior.py",
+      "attached_to": [
+        "interior_energetics.radio_U238_abund"
+      ],
+      "touches": [
+        "radio_U235_abund"
+      ],
+      "doc": "Reject 235U/U + 238U/U above 1 (both mass ratios, kg/kg)."
     },
     {
       "validator": "max_bigger_than_min",

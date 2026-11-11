@@ -40,6 +40,7 @@ from proteus.interior_energetics.aragog_phase import (
     check_solver_buoyancy,
 )
 from proteus.interior_energetics.common import Interior_t
+from proteus.interior_energetics.radiogenic import radio_t0_years, radionuclide_inventory
 from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, TDEP_EOS_PREFIXES
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
@@ -1271,38 +1272,19 @@ class AragogRunner:
 
         radionuclides = []
         if config.interior_energetics.heat_radiogenic:
-            # offset by age_ini, which converts model simulation time to the
-            # actual age
-            radio_t0 = config.interior_energetics.radio_tref - config.star.age_ini
-            radio_t0 *= 1e9  # Convert Gyr to yr
-
-            def _append_radnuc(_iso, _cnc):
+            # Model time of the configured radionuclide inputs [yr]
+            radio_t0 = radio_t0_years(config)
+            for _iso, _cnc, _abund in radionuclide_inventory(config):
                 radionuclides.append(
                     _Radionuclide(
                         name=_iso,
                         t0_years=radio_t0,
-                        abundance=radnuc_data[_iso]['abundance'],
+                        abundance=_abund,
                         concentration=_cnc,
                         heat_production=radnuc_data[_iso]['heatprod'],
                         half_life_years=radnuc_data[_iso]['halflife'],
                     )
                 )
-
-            if config.interior_energetics.radio_Al > 0.0:
-                _append_radnuc('al26', config.interior_energetics.radio_Al)
-
-            if config.interior_energetics.radio_Fe > 0.0:
-                _append_radnuc('fe60', config.interior_energetics.radio_Fe)
-
-            if config.interior_energetics.radio_K > 0.0:
-                _append_radnuc('k40', config.interior_energetics.radio_K)
-
-            if config.interior_energetics.radio_Th > 0.0:
-                _append_radnuc('th232', config.interior_energetics.radio_Th)
-
-            if config.interior_energetics.radio_U > 0.0:
-                _append_radnuc('u235', config.interior_energetics.radio_U)
-                _append_radnuc('u238', config.interior_energetics.radio_U)
 
         param = Parameters(
             boundary_conditions=boundary_conditions,

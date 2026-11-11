@@ -244,12 +244,18 @@ controlled parity tests.
 |---|---|---|---|
 | `heat_tidal` | bool | `false` | Include tidal heating?. |
 | `heat_radiogenic` | bool | `true` | Include radiogenic heat production?. |
-| `radio_tref` | float | `4.567` | Reference age for setting radioactive decay \[Gyr\]. Must be >= 0. |
-| `radio_Al` | float | `0.0` | Concentration (ppmw) of aluminium-26 at reference age t=radio_tref; 1.23 is the canonical early solar system value. Must be >= 0. |
-| `radio_Fe` | float | `0.0` | Concentration (ppmw) of iron-60 at reference age t=radio_tref. Must be >= 0. |
-| `radio_K` | float | `310.0` | Concentration (ppmw) of potassium-40 at reference age t=radio_tref. Must be >= 0. |
-| `radio_U` | float | `0.031` | Concentration (ppmw) of uranium at reference age t=radio_tref. Must be >= 0. |
-| `radio_Th` | float | `0.124` | Concentration (ppmw) of thorium-232 at reference age t=radio_tref. Must be >= 0. |
+| `radio_tref` | float | `4.567` | Stellar age at which the radionuclide inputs below apply \[Gyr\]; 4.567 is the present day, 0 the formation of the Solar System. Must be >= 0. |
+| `radio_Al` | float | `23500.0` | Total aluminium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
+| `radio_Al26_abund` | float | `0.0` | Mass ratio 26Al/Al at radio_tref \[kg/kg\]; 5.25e-5 is the canonical early Solar System 26Al/27Al value, 0 the present day. Must be >= 0 and <= 1. |
+| `radio_Fe` | float | `62600.0` | Total iron concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
+| `radio_Fe60_abund` | float | `0.0` | Mass ratio 60Fe/Fe at radio_tref \[kg/kg\]; 1e-8 is an early Solar System 60Fe/56Fe estimate, 0 the present day. Must be >= 0 and <= 1. |
+| `radio_K` | float | `310.0` | Total potassium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
+| `radio_K40_abund` | float | `0.00011668` | Mass ratio 40K/K at radio_tref \[kg/kg\]. Must be >= 0 and <= 1. |
+| `radio_U` | float | `0.031` | Total uranium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
+| `radio_U235_abund` | float | `0.0072045` | Mass ratio 235U/U at radio_tref \[kg/kg\]. Must be >= 0 and <= 1. |
+| `radio_U238_abund` | float | `0.9927955` | Mass ratio 238U/U at radio_tref \[kg/kg\]; radio_U235_abund + radio_U238_abund must not exceed 1. Must be >= 0 and <= 1. |
+| `radio_Th` | float | `0.124` | Total thorium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
+| `radio_Th232_abund` | float | `1.0` | Mass ratio 232Th/Th at radio_tref \[kg/kg\]. Must be >= 0 and <= 1. |
 
 **Rheology and convection**
 
@@ -489,6 +495,7 @@ Cross-field constraints enforced when the config file loads:
 - Validate Boundary backend's solidus/liquidus ordering.
 - Dummy interior requires the liquidus to sit above the solidus.
 - SPIDER requires at least one energy transport term to be enabled.
+- Reject 235U/U + 238U/U above 1 (both mass ratios, kg/kg).
 - Validate Zalmoxis EOS format strings and reject unsupported miscibility options.
 <!-- END GENERATED: config-constraints interior -->
 

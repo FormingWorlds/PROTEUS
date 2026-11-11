@@ -78,6 +78,16 @@ def _check_top_cell_dt_rel_dT_pair(aragog) -> None:
         )
 
 
+def valid_uranium_abund(instance, attribute, value):
+    """Reject 235U/U + 238U/U above 1 (both mass ratios, kg/kg)."""
+    total = instance.radio_U235_abund + value
+    if total > 1.0 + 1e-9:
+        raise ValueError(
+            'interior_energetics.radio_U235_abund + radio_U238_abund must not '
+            f'exceed 1, got {instance.radio_U235_abund} + {value} = {total}'
+        )
+
+
 def valid_spider(instance, attribute, value):
     """SPIDER requires at least one energy transport term to be enabled."""
     if instance.module != 'spider':
@@ -743,18 +753,33 @@ class Interior:
         automatically as sigma * T_magma^4. Set to a positive value to
         prescribe a specific initial flux. Set to 0 for zero initial flux.
     radio_tref: float
-        Reference age for setting radioactive decay [Gyr].
-    radio_K: float
-        Concentration (ppmw) of potassium-40 at reference age t=radio_tref.
-    radio_U: float
-        Concentration (ppmw) of uranium at reference age t=radio_tref.
-    radio_Th: float
-        Concentration (ppmw) of thorium-232 at reference age t=radio_tref.
+        Stellar age at which the radionuclide inputs below apply [Gyr];
+        4.567 is the present day, 0 the formation of the Solar System.
     radio_Al: float
-        Concentration (ppmw) of aluminium-26 at reference age t=radio_tref;
-        1.23 is the canonical early solar system value.
+        Total aluminium concentration in the mantle at radio_tref [ppmw].
+    radio_Al26_abund: float
+        Mass ratio 26Al/Al at radio_tref [kg/kg]; 5.25e-5 is the canonical
+        early Solar System 26Al/27Al value, 0 the present day.
     radio_Fe: float
-        Concentration (ppmw) of iron-60 at reference age t=radio_tref.
+        Total iron concentration in the mantle at radio_tref [ppmw].
+    radio_Fe60_abund: float
+        Mass ratio 60Fe/Fe at radio_tref [kg/kg]; 1e-8 is an early Solar
+        System 60Fe/56Fe estimate, 0 the present day.
+    radio_K: float
+        Total potassium concentration in the mantle at radio_tref [ppmw].
+    radio_K40_abund: float
+        Mass ratio 40K/K at radio_tref [kg/kg].
+    radio_U: float
+        Total uranium concentration in the mantle at radio_tref [ppmw].
+    radio_U235_abund: float
+        Mass ratio 235U/U at radio_tref [kg/kg].
+    radio_U238_abund: float
+        Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund +
+        radio_U238_abund must not exceed 1.
+    radio_Th: float
+        Total thorium concentration in the mantle at radio_tref [ppmw].
+    radio_Th232_abund: float
+        Mass ratio 232Th/Th at radio_tref [kg/kg].
     heat_radiogenic: bool
         Include radiogenic heat production?
     heat_tidal: bool
@@ -882,11 +907,19 @@ class Interior:
     tmagma_rtol: float = field(default=0.02, validator=ge(0))
 
     radio_tref: float = field(default=4.567, validator=ge(0))
-    radio_Al: float = field(default=0.0, validator=ge(0))
-    radio_Fe: float = field(default=0.0, validator=ge(0))
+    radio_Al: float = field(default=2.35e4, validator=ge(0))
+    radio_Al26_abund: float = field(default=0.0, validator=(ge(0), le(1)))
+    radio_Fe: float = field(default=6.26e4, validator=ge(0))
+    radio_Fe60_abund: float = field(default=0.0, validator=(ge(0), le(1)))
     radio_K: float = field(default=310.0, validator=ge(0))
+    radio_K40_abund: float = field(default=1.1668e-4, validator=(ge(0), le(1)))
     radio_U: float = field(default=0.031, validator=ge(0))
+    radio_U235_abund: float = field(default=0.0072045, validator=(ge(0), le(1)))
+    radio_U238_abund: float = field(
+        default=0.9927955, validator=(ge(0), le(1), valid_uranium_abund)
+    )
     radio_Th: float = field(default=0.124, validator=ge(0))
+    radio_Th232_abund: float = field(default=1.0, validator=(ge(0), le(1)))
 
     rfront_loc: float = field(default=0.4, validator=(gt(0), lt(1)))
     rfront_wid: float = field(default=0.2, validator=(gt(0), lt(1)))
@@ -1153,10 +1186,16 @@ DOC_GROUPS = {
                 'heat_radiogenic',
                 'radio_tref',
                 'radio_Al',
+                'radio_Al26_abund',
                 'radio_Fe',
+                'radio_Fe60_abund',
                 'radio_K',
+                'radio_K40_abund',
                 'radio_U',
+                'radio_U235_abund',
+                'radio_U238_abund',
                 'radio_Th',
+                'radio_Th232_abund',
             ),
         ),
         (

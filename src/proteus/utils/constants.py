@@ -323,38 +323,31 @@ noble_solar_mass_ratio = {
     'Xe': 2.32e-8,
 }
 
-# Radionuclide values below are from Ruedas (2017), via SPIDER
-# Natural concentrations (provided in config file) can
-#      be obtained from Turcotte & Schubert, 2014, p. 170
+# Radionuclide heat production and half-life, from Ruedas (2017) via SPIDER.
+# The isotope/element mass ratios and element concentrations are config inputs.
 radnuc_data = {
     'al26': {
-        'abundance': 1.0,  # 26Al/Al (user sets concentration as ppmw of Al)
-        'heatprod': 0.3583,  # W/kg (Ruedas 2017)
+        'heatprod': 0.3583,  # W/kg of 26Al
         'halflife': 0.717e6,  # yr
     },
     'fe60': {
-        'abundance': 1.0,  # 60Fe/Fe (user sets concentration as ratio)
-        'heatprod': 3.6579e-2,  # W/kg (Ruedas 2017)
+        'heatprod': 3.6579e-2,  # W/kg of 60Fe
         'halflife': 2.62e6,  # yr
     },
     'k40': {
-        'abundance': 1.1668e-4,  # 40K/K
-        'heatprod': 2.8761e-5,  # W/kg
+        'heatprod': 2.8761e-5,  # W/kg of 40K
         'halflife': 1.248e9,  # yr
     },
     'th232': {
-        'abundance': 1.0,  # 232Th/Th
-        'heatprod': 2.6368e-5,  # W/kg
+        'heatprod': 2.6368e-5,  # W/kg of 232Th
         'halflife': 14e9,  # yr
     },
     'u235': {
-        'abundance': 0.0072045,  # 235U/U
-        'heatprod': 5.68402e-4,  # W/kg
+        'heatprod': 5.68402e-4,  # W/kg of 235U
         'halflife': 0.704e9,  # yr
     },
     'u238': {
-        'abundance': 0.9927955,  # 238U/U
-        'heatprod': 9.4946e-5,  # W/kg
+        'heatprod': 9.4946e-5,  # W/kg of 238U
         'halflife': 4.468e9,  # yr
     },
 }

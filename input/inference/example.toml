@@ -350,12 +350,20 @@ config_version = "3.0"
     # Heating
     heat_tidal                = false        # tidal heating (requires orbit.module != "none")
     heat_radiogenic           = true         # radiogenic heating
-    radio_tref                = 4.567        # reference age for concentrations [Gyr]; 4.567 = present-day BSE
-    radio_Al                  = 0.0          # 26Al [ppmw]; 1.23 = canonical (26Al/27Al = 5.25e-5)
-    radio_Fe                  = 0.0          # 60Fe [ppmw]; 6.3e-4 = canonical (60Fe/56Fe = 1e-8)
-    radio_K                   = 310.0        # 40K [ppmw of element]; BSE value
-    radio_U                   = 0.031        # U [ppmw of element]; BSE value
-    radio_Th                  = 0.124        # Th [ppmw of element]; BSE value
+    # Radionuclides: total element [ppmw of mantle] and isotope/element mass ratio [kg/kg],
+    # both at stellar age radio_tref; these are present-day bulk silicate Earth values.
+    radio_tref                = 4.567        # stellar age of the values below [Gyr]; 4.567 = present day
+    radio_Al                  = 2.35e4       # total Al [ppmw]
+    radio_Al26_abund          = 0.0          # 26Al/Al; 5.25e-5 at Solar System formation
+    radio_Fe                  = 6.26e4       # total Fe [ppmw]
+    radio_Fe60_abund          = 0.0          # 60Fe/Fe; ~1e-8 at Solar System formation
+    radio_K                   = 310.0        # total K [ppmw]
+    radio_K40_abund           = 1.1668e-4    # 40K/K
+    radio_U                   = 0.031        # total U [ppmw]
+    radio_U235_abund          = 0.0072045    # 235U/U
+    radio_U238_abund          = 0.9927955    # 238U/U
+    radio_Th                  = 0.124        # total Th [ppmw]
+    radio_Th232_abund         = 1.0          # 232Th/Th
 
     # Rheology and convection
     rfront_loc                = 0.30         # rheological front centre [melt fraction]

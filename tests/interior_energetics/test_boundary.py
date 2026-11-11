@@ -119,9 +119,17 @@ def mock_config():
         solid_log10visc=22.0,
         melt_log10visc=2.0,
         radio_tref=4.567,  # Gyr (Solar System age)
-        radio_U=0.031,  # ppm (BSE abundance)
-        radio_Th=0.124,  # ppm (BSE abundance)
-        radio_K=310,  # ppm (BSE abundance)
+        radio_Al=2.35e4,  # ppmw (BSE)
+        radio_Al26_abund=0.0,  # kg/kg, present day
+        radio_Fe=6.26e4,  # ppmw (BSE)
+        radio_Fe60_abund=0.0,  # kg/kg, present day
+        radio_U=0.031,  # ppmw (BSE)
+        radio_U235_abund=0.0072045,  # kg/kg
+        radio_U238_abund=0.9927955,  # kg/kg
+        radio_Th=0.124,  # ppmw (BSE)
+        radio_Th232_abund=1.0,  # kg/kg
+        radio_K=310,  # ppmw (BSE)
+        radio_K40_abund=1.1668e-4,  # kg/kg
     )
     # BoundaryRunner reads no structure settings: masses and radii come from hf_row.
     interior_struct = SimpleNamespace()
@@ -651,6 +659,15 @@ def test_q_m_zero_temperature_difference(boundary_runner):
 # =============================================================================
 
 
+# (isotope, element ppmw, isotope/element mass ratio) for 20 ppb U, 79 ppb Th, 143 ppm K
+_EARTH_RADIO_INVENTORY = [
+    ('k40', 143.0, 1.1668e-4),
+    ('th232', 0.079, 1.0),
+    ('u235', 0.020, 0.0072045),
+    ('u238', 0.020, 0.9927955),
+]
+
+
 def test_radioactive_heating_disabled(boundary_runner):
     """
     Test radioactive heating returns 0 when disabled in config.
@@ -681,11 +698,9 @@ def test_radioactive_heating_enabled_positive(boundary_runner):
     **Expected Behavior**: H > 0 W/kg (energy from radioactive decay).
     """
     boundary_runner.use_radiogenic_heating = True
-    boundary_runner.age_ini = 0.0  # Gyr (Solar System age reference)
-    boundary_runner.radio_tref = 4.567  # Gyr
-    boundary_runner.U_abun = 20.0e-9  # kg U / kg mantle
-    boundary_runner.Th_abun = 79.0e-9  # kg Th / kg mantle
-    boundary_runner.K_abun = 143.0e-6  # kg K / kg mantle
+    # Inputs at the present day, 4.567 Gyr after the model start [yr]
+    boundary_runner.radio_t0_yr = 4.567e9
+    boundary_runner.radio_inventory = _EARTH_RADIO_INVENTORY
 
     t = 0.0  # s (at formation)
 
@@ -710,11 +725,8 @@ def test_radioactive_heating_decay_with_time(boundary_runner):
     **Expected Behavior**: H decreases monotonically; H(t₁) > H(t₂) for t₁ < t₂.
     """
     boundary_runner.use_radiogenic_heating = True
-    boundary_runner.age_ini = 0.0
-    boundary_runner.radio_tref = 4.567
-    boundary_runner.U_abun = 20.0e-9
-    boundary_runner.Th_abun = 79.0e-9
-    boundary_runner.K_abun = 143.0e-6
+    boundary_runner.radio_t0_yr = 4.567e9
+    boundary_runner.radio_inventory = _EARTH_RADIO_INVENTORY
 
     t_early = 1e6 * secs_per_year  # 1 Myr
     t_late = 1e9 * secs_per_year  # 1 Gyr
