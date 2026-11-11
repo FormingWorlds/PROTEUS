@@ -3,9 +3,10 @@
 Invariants checked:
   - heat production follows ``C * 1e-6 * X * h * 2**((t0 - t) / t_half)`` and
     halves after one half-life;
-  - inputs given at Solar System formation (``input/planets/mercury.toml``) and
-    at the present day (``input/all_options.toml``) give the same K, U and Th
-    heating history, because one set is the other decayed back in time;
+  - the K, U and Th inputs at Solar System formation in
+    ``input/planets/mercury.toml`` give the heating history of the present-day
+    Mercury values of Jaggi et al. (2021, Appendix A), because one set is the
+    other decayed back in time;
   - isotopes with a zero element total or a zero ratio are left out.
 """
 
@@ -120,30 +121,35 @@ def test_heating_matches_closed_form_and_halves_after_one_half_life():
 @pytest.mark.physics_invariant
 def test_mercury_formation_inputs_reproduce_present_day_heating():
     """K, U and Th given at Solar System formation (mercury.toml) give the heating
-    history of the present-day bulk silicate Earth inputs (all_options.toml) at every
-    stellar age. The 5 significant digits of the config values set the 5e-5 tolerance."""
+    history of the present-day Mercury mantle of Jaggi et al. (2021, Appendix A:
+    K 403 ppmw, U 28 ppbw, Th 49 ppbw, 40K/K 1.17e-4, 235U/U 0.007, 238U/U 0.993)
+    at every stellar age. The 5 significant digits of the config values set the
+    5e-5 tolerance."""
     merc = _config_from_toml(_INPUT / 'planets' / 'mercury.toml', age_ini=0.0)
     pres = _config_from_toml(_INPUT / 'all_options.toml', age_ini=0.0)
+    pres_ie = pres.interior_energetics
+    pres_ie.radio_K, pres_ie.radio_U, pres_ie.radio_Th = 403.0, 0.028, 0.049  # ppmw
+    pres_ie.radio_K40_abund = 1.17e-4  # kg/kg
+    pres_ie.radio_U235_abund, pres_ie.radio_U238_abund = 0.007, 0.993
     ages = np.array([0.0, 1.0e7, 1.0e9, 4.567e9])  # stellar age [yr]
     h_merc = radiogenic_heating(_kut(radionuclide_inventory(merc)), radio_t0_years(merc), ages)
     h_pres = radiogenic_heating(_kut(radionuclide_inventory(pres)), radio_t0_years(pres), ages)
     np.testing.assert_allclose(h_merc, h_pres, rtol=5e-5)
-    # Today's value is near 7.4e-12 W/kg, at formation about 4.7 times larger
-    assert h_pres[-1] == pytest.approx(7.36e-12, rel=1e-2)
-    assert h_pres[0] / h_pres[-1] == pytest.approx(4.70, rel=1e-2)
+    # Today's value is near 5.4e-12 W/kg, at formation about 6.3 times larger
+    assert h_pres[-1] == pytest.approx(5.40e-12, rel=1e-2)
+    assert h_pres[0] / h_pres[-1] == pytest.approx(6.32, rel=1e-2)
 
     # Wrong set-up 1: formation ratios with present-day element totals (U, Th not grown)
     ie = merc.interior_energetics
     wrong = _config_from_toml(_INPUT / 'planets' / 'mercury.toml', age_ini=0.0)
-    wrong.interior_energetics.radio_U = pres.interior_energetics.radio_U
-    wrong.interior_energetics.radio_Th = pres.interior_energetics.radio_Th
+    wrong.interior_energetics.radio_U = pres_ie.radio_U
+    wrong.interior_energetics.radio_Th = pres_ie.radio_Th
     h_wrong = radiogenic_heating(_kut(radionuclide_inventory(wrong)), 0.0, ages)
     assert np.all(np.abs(h_wrong / h_pres - 1.0) > 0.05)
-    # Wrong set-up 2: present-day ratios read as formation values (no back-scaling)
-    wrong2 = _config_from_toml(_INPUT / 'all_options.toml', age_ini=0.0)
-    wrong2.interior_energetics.radio_tref = 0.0
-    h_wrong2 = radiogenic_heating(_kut(radionuclide_inventory(wrong2)), 0.0, ages)
-    # 4.7 times too low at formation, still 0.56 of the right value today
-    assert np.all(np.abs(h_wrong2 / h_pres - 1.0) > 0.4)
+    # Wrong set-up 2: present-day values read as formation values (no back-scaling)
+    pres_ie.radio_tref = 0.0
+    h_wrong2 = radiogenic_heating(_kut(radionuclide_inventory(pres)), 0.0, ages)
+    # 6.3 times too low at formation, still 0.6 of the right value today
+    assert np.all(np.abs(h_wrong2 / h_pres - 1.0) > 0.3)
     # The formation 235U/U + 238U/U still sums to 1
     assert ie.radio_U235_abund + ie.radio_U238_abund == pytest.approx(1.0, abs=1e-9)
