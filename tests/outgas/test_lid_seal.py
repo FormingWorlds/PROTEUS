@@ -1235,3 +1235,29 @@ def test_a_co2_leak_above_the_peak_of_the_dixon_law_stops_the_step(p_co2, stops)
     else:
         leak_step(cfg, row, 1.0e3)
         assert 83.15 * T_SEAL / 23.0 > row['CO2_bar'] > p_co2
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('phi', [1e-5, 1e-6])
+def test_a_step_to_a_floor_far_below_the_held_mass_passes_the_floor_check(phi):
+    """With tau much shorter than the step the held CO2 drops to a floor below
+    1e-5 of it; the end state then carries the round-off of the held mass, and
+    the floor check must allow that round-off, not 1e-12 of the floor."""
+    for m0 in np.geomspace(1.0e19, 1.0e21, 10):
+        row = _eq_row({'CO2': 1.0e15}, {'CO2': m0}, phi=phi)
+        leak_step(_config(solubility=True, tau_leak=1.0), row, 1.0e3)
+        assert row['CO2_kg_eq'] < 1.0e-5 * m0
+        assert abs(row['CO2_kg_sealed'] - row['CO2_kg_eq']) <= 1.0e-12 * m0
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('s2_atm', [0.0, 1.0e-3])
+def test_held_s2_leaks_to_a_continuous_floor_at_a_vanishing_s2_pressure(s2_atm):
+    """CALLIOPE returns no S2 solubility below 1e-20 bar, which makes the floor
+    jump at that pressure. With no or almost no S2 in the atmosphere, held S2
+    must still leak to its floor on the continued square-root law and end on it."""
+    atm = {'H2O': 1.0e18, 'CO2': 1.0e18, 'S2': s2_atm}
+    row = _eq_row(atm, {'S2': 1.0e11})
+    leak_step(_config(solubility=True, tau_leak=1.0e2), row, 1.0e3)
+    assert 0.0 < row['S2_kg_eq'] <= row['S2_kg_sealed'] < 1.0e11
+    assert row['S2_kg_atm'] > s2_atm
