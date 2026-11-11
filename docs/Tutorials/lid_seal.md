@@ -145,12 +145,20 @@ mantle melt fraction without the seal: 0.136
 
 Before the closing step the 2 runs agree to the last digit.
 After it they part, but not by much.
-The melt is still 13.6 % of the mantle at 140 kyr, and water is very soluble, so in both runs almost all the water stays in the mantle.
-With the seal, the leak lets out only the water above the floor; the atmosphere then holds 0.44 % less water than without the seal.
+The melt is still 13.6 % of the mantle at 140 kyr, and in both runs almost all the water stays in the mantle.
+With the seal, the atmosphere holds 0.44 % less water than without the seal.
+This small difference is the sum of 2 larger model terms of opposite sign, not a delay of the leak.
+Replays of the held span of this run, with one term switched off at a time, give the terms in percentage points of the water in the atmosphere of the open run:
+
+- the floor counts the water of the crystals formed after closure, with $D$ = 0.0017, which keeps 2.15 points more water in the mantle;
+- the held gas keeps the species it had at closure, while the open run turns CO into CO$_2$ as the magma cools; the sealed atmosphere then holds less oxygen, the kept species lower its surface pressure by 1.7 %, and the water needs 1.86 points more mass in the atmosphere to reach the same partial pressure;
+- the finite leak time leaves 0.12 points more water held, and the rest is 0.03 points;
+- the closing temperature that the seal keeps for the CO$_2$ law changes nothing here: near 1 bar that law does not depend on temperature.
+
 The path before closure is sensitive to round-off, so your run can close at another time and end with a different amount of water.
 In 5 pairs of runs whose initial superheat differs by up to $2.5 \times 10^{-9}$ K, the water in the atmosphere at 140 kyr spreads by 0.64 % between the starts, and the run printed here ends 2.0 % below their mean.
-The difference between the seal and the open run of one start stays between 0.428 % and 0.430 %.
-The floor counts the water in the crystals and the held gas keeps its species, so the 2 runs need not agree exactly.
+Over these 5 pairs and the run printed here, the seal run holds between 0.428 % and 0.438 % less water than the open run of the same start; the printed run is at 0.438 %.
+`tests/data/lid_seal/tutorial_ensemble.csv` holds these end values.
 
 The block plots the water in the atmosphere, and the held water against its floor:
 

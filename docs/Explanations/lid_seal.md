@@ -6,7 +6,7 @@ The short answer: with `outgas.lid_seal.enabled = true`, a crust that is thick e
 
 The seal opens again in 3 cases: the crust thins, the top cell of the mesh holds a set share of melt again (35 % by default), or a giant impact happens. With the default, `false`, the seal never closes.
 
-**Why it matters.** Without the seal, the chemistry keeps the melt in equilibrium with the atmosphere at every step, so a crust does not change where the volatiles go. With it, the atmosphere gets the gas of the melt only through the leak, which changes the atmospheric mass, the surface pressure and the mass that escape can take. In the [tutorial](../Tutorials/lid_seal.md) the effect is small, 0.43 % less water in the atmosphere at 140 kyr in each of 5 starts that differ only by round-off (their atmospheric water spreads by 0.64 %), because water is very soluble and most of it stays in the mantle in both runs.
+**Why it matters.** Without the seal, the chemistry keeps the melt in equilibrium with the atmosphere at every step, so a crust does not change where the volatiles go. With it, the atmosphere gets the gas of the melt only through the leak, which changes the atmospheric mass, the surface pressure and the mass that escape can take. In the [tutorial](../Tutorials/lid_seal.md) the difference is small: the seal run holds 0.428 % to 0.438 % less water in the atmosphere at 140 kyr than the open run, over the printed run and 5 starts that differ only by round-off (their atmospheric water spreads by 0.64 %). It is the sum of 2 larger model terms of opposite sign: the crystals that the floor counts with $D_i$ keep water in the mantle, and the held gas keeps the species of the closing solve, which lowers the surface pressure, so more water stays in the atmosphere.
 
 The seal is one path of the outgassing step; [Outgassing, rock vapour and volatile trapping](outgas.md) gives the order of the steps around it.
 
@@ -20,7 +20,7 @@ The seal is one path of the outgassing step; [Outgassing, rock vapour and volati
 
 ## When the seal closes
 
-In each step the seal reads 2 quantities; it does not close during the initialisation stage:
+In each step the seal reads 2 quantities; it does not close during the initialisation stage or in a step with a giant impact:
 
 - the crust thickness $\delta$ \[m\];
 - the melt fraction $\phi_\mathrm{top}$ \[1\] of the top cell of the interior mesh.
@@ -58,7 +58,7 @@ The gap between the close and the open values stops a seal that would otherwise 
 - On the mesh, a closed seal counts every top cell with a melt fraction below `phi_open` as crust, and an open seal only those below `phi_solid`. So a top cell that crosses `phi_solid` does not open the seal.
 - A seal closed on the mesh keeps reading the mesh and ignores a sub-grid lid that appears later.
 - A seal closed by the sub-grid lid reads the lid while `lid_weight > 0`. From the first step where `lid_weight` is 0 it reads the mesh crust below `phi_open`, and it stays on the mesh after that. That crust need not hold a solid cell, so the seal can stay closed while every mesh cell holds some melt.
-- **On a coarse mesh, 2 of the opening rules never fire.** A crust on the mesh means a solid top cell, and a solid cell is below `phi_close`, so `phi_close` does not act. A held mesh crust is at least one cell thick, which is above the default `delta_open`, so `delta_open` does not act either. The seal then opens only when the top cell holds `phi_open` of melt, or on an impact.
+- **On a coarse mesh, `phi_close` and `delta_open` never decide anything.** A crust on the mesh means a solid top cell, and a solid cell is below `phi_close`, so the `phi_close` condition of the closure is always met. A held mesh crust is at least one cell thick, which is above the default `delta_open`, so `delta_open` does not act. The seal then opens only when the top cell holds `phi_open` of melt, or on an impact.
 
 ## The leak
 
@@ -75,7 +75,7 @@ $$
 The symbols are:
 
 - $\tau$: `tau_leak` \[yr\], the relaxation time of the held volatiles. The default, infinity, holds them.
-- $\dot M_c$: `crust_rate` \[kg yr$^{-1}$\], the mass of melt that reaches the crust per year. The default is 0.
+- $\dot M_c$: `crust_rate` \[kg yr$^{-1}$\], the mass of melt that reaches the crust per year. The default is 0. It is 0 when $\Phi$ is below `phi_solid`, and in one step it is cut to the melt mass; `seal_volc_capped` marks such a step.
 - $\chi_d$: `chi_d` \[1\], the fraction of the volatiles in that melt that degasses; 0.02 by default, from Table 3 of Schaefer & Sasselov (2015)[^cite-schaefer2015].
 - $M_\mathrm{melt} = \Phi M_\mathrm{mantle}$ and $M_\mathrm{solid} = (1 - \Phi) M_\mathrm{mantle}$: the melt and the solid mass of the mantle \[kg\], with the global melt fraction $\Phi$.
 - $D_i$: `outgas.D_const_<species>`, the crystal/melt partition coefficient \[1\].
@@ -96,7 +96,7 @@ The floor is $M_{\mathrm{eq},i} = X_{\mathrm{eq},i}\, R_i$, with $X_{\mathrm{eq}
 - below $10^{-20}$ bar, where the CALLIOPE S$_2$ law returns 0, the S$_2$ floor follows the same square-root law of Gaillard et al. (2022)[^cite-gaillard2022] in its partial pressure, so it stays continuous;
 - H$_2$, O$_2$, SO$_2$, H$_2$S and NH$_3$ have no law, so their floor is 0;
 - with `outgas.calliope.solubility = false` every floor is 0, and the held mass decays at the rate $\lambda_i$ of the next section;
-- with front trapping (`outgas.trap_mode = "front"`) the crystals that froze before closure keep their own trapped volatiles, so the reservoir counts only the crystals formed after it: $R_i = M_\mathrm{melt} + D_i \max(\Phi_c - \Phi, 0)\, M_\mathrm{mantle}$, with $\Phi_c$ the global melt fraction at closure (`seal_phi_close`). Above $\Phi_c$ it counts the melt alone: remelted crystals have returned their trapped mass to the held mass. The volcanic rate $k_i$ takes the same reservoir.
+- with front trapping (`outgas.trap_mode = "front"`) the crystals that froze before closure keep their own trapped volatiles, so the reservoir counts only the crystals formed after it. Trapping remelts the youngest solid first, so these are the crystals formed after the highest global melt fraction since closure, $\Phi_\mathrm{max}$ (`seal_phi_max`, at closure the closing value $\Phi_c$): $R_i = M_\mathrm{melt} + D_i \max(\Phi_\mathrm{max} - \Phi, 0)\, M_\mathrm{mantle}$. At $\Phi_\mathrm{max}$ it counts the melt alone: remelted crystals have returned their trapped mass to the held mass. The volcanic rate $k_i$ takes the same reservoir.
 
 The floor is one way: a species below its floor does not move, because gas does not dissolve back through the crust.
 
@@ -140,8 +140,8 @@ The settings of `[outgas.lid_seal]` and their defaults ([full reference](../Refe
 | `phi_close` | the top mesh cell must hold less melt than this to close \[1\] | 0.3 |
 | `phi_open` | a closed seal opens at or above this top-cell melt fraction \[1\] | `phi_close + 0.05` |
 | `delta_open` | a closed seal opens below this crust thickness \[m\] | `0.5 delta_close` |
-| `phi_solid` | a mesh cell below this melt fraction counts as crust \[1\] | 0.001 |
-| `tau_leak` | relaxation time of the leak \[yr\] | infinite |
+| `phi_solid` | a mesh cell below this melt fraction counts as crust, and below this global melt fraction the mantle makes no crust \[1\] | 0.001 |
+| `tau_leak` | relaxation time of the leak, with a finite rate $1/\tau$ \[yr\] | infinite |
 | `crust_rate` | melt mass that reaches the crust per year \[kg yr$^{-1}$\] | 0 |
 | `chi_d` | share of the volatiles of that melt that degasses \[1\] | 0.02 |
 
@@ -168,8 +168,11 @@ These output columns show what the seal does ([full list](../Reference/output.md
 - `seal_path` \[1\]: the crust that a closed seal reads in the step: 1 for the crust on the mesh, 2 for the sub-grid lid; 0 while the seal is open, also when `seal_delta` comes from the sub-grid lid.
 - `{sp}_kg_sealed`, `{sp}_mol_sealed` and `{e}_kg_sealed`: the held mass of each species and element.
 - `{sp}_kg_eq` \[kg\]: the floor of each soluble species at the end of the step; 0 while the seal is open, on the step where it closes, with `outgas.calliope.solubility = false`, and on held steps with no leak rate (`tau_leak` infinite and no crust production) or nothing held.
-- `seal_Tmagma_close` \[K\]: the magma temperature of the chemistry solve that closed the seal.
-- `seal_phi_close` \[1\]: the global melt fraction of the step that closed the seal.
+- `seal_t_close` \[yr\]: the time the seal last closed.
+- `seal_Tmagma_close` \[K\]: the magma temperature of the chemistry solve that closed the seal, at least `outgas.T_floor`.
+- `seal_phi_close` \[1\]: the global melt fraction of the step that closed the seal, clipped to \[0, 1\].
+- `seal_phi_max` \[1\]: the highest global melt fraction since the seal closed, clipped to \[0, 1\]; the reservoir of the floor reads it under front trapping.
+- `seal_crust_rate` \[kg yr$^{-1}$\] and `seal_volc_capped` \[1\]: the rate at which melt reaches the crust in the step, and whether `crust_rate dt` was cut to the melt mass.
 - `{e}_kg_leak_tau` and `{e}_kg_leak_volc` \[kg\]: the mass of each element that leaked in the step by relaxation and by volcanism.
 - `seal_leak_kg_cum` \[kg\]: the leaked mass since the start of the run.
 - `seal_open_kg` \[kg\]: the held mass that returned to the melt in a step where the seal opened.

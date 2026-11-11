@@ -8794,7 +8794,7 @@
       "default": "inf",
       "choices": null,
       "bounds": null,
-      "description": "Relaxation time [yr] of the sealed inventory toward its dissolved equilibrium with the atmosphere; inf holds it.",
+      "description": "Relaxation time [yr] of the sealed inventory toward its dissolved equilibrium with the atmosphere, > 0 with a finite rate 1/tau_leak; inf holds it.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

@@ -18,7 +18,7 @@ A section whose part of the code has a Validation case ends with a link to it. F
 ## Terms used on this page
 
 - **Volatile**: an element or molecule that can be a gas at the surface. PROTEUS tracks 5 volatile elements: H, C, N, O and S. It also tracks 11 species made from them: H$_2$O, CO$_2$, H$_2$, CO, CH$_4$, N$_2$, NH$_3$, S$_2$, SO$_2$, H$_2$S and O$_2$. The noble gases He, Ne, Ar, Kr and Xe are tracked too.
-- **Reservoir**: a place where a volatile can be. Each species and each element has 3: the atmosphere (`_kg_atm`), the melt (`_kg_liquid`) and the solid mantle (`_kg_solid`). The 5 volatile elements have a fourth, `_kg_condensed`, for condensates.
+- **Reservoir**: a place where a volatile can be. Each species and each element has 3: the atmosphere (`_kg_atm`), the melt (`_kg_liquid`) and the solid mantle (`_kg_solid`). The 5 volatile elements have a fourth, `_kg_condensed`, for condensates. With the lid seal, the volatile species and elements and the noble gases also have `_kg_sealed`.
 - **Condensate**: a solid or liquid that forms from the gas at the surface, for example graphite. Only atmodeller makes condensates, and only with `outgas.atmodeller.include_condensates = true`. With `outgas.prevent_desaturation = true`, condensed mass stays condensed: later solves cannot turn it back into gas. With `atmos_clim.surface_d = surface_k = 'saturation'`, the condensed layers form the conductive skin at the surface ([model overview](model.md#atmosphere-climate-agni-janus)).
 - **Element total**: `{e}_kg_total`, the mass of element `{e}` in the whole planet \[kg\]. Here `{e}` stands for an element symbol, and `{sp}` below stands for a species name.
 - **Budget**: the mass of an element that the planet starts with, from the config.
@@ -32,7 +32,7 @@ A section whose part of the code has a Validation case ends with a link to it. F
 - **Trapping**: the step that moves volatiles from the melt into the mantle that froze in the step, set by `outgas.trap_mode`.
 - **Seal**: the state in which a closed crust holds the volatiles of the melt below it, with `outgas.lid_seal.enabled = true`; the held mass is in `_kg_sealed`. See [Volatiles held under a closed crust](#volatiles-held-under-a-closed-crust).
 - **Trapped (buried) mass**: volatile mass that moved from the melt to the solid mantle when the mantle froze, recorded in `_kg_trapped`. This page uses "trapped" and "buried" for it. See [Volatile trapping](#volatile-trapping-in-the-freezing-mantle).
-- **Desiccated**: the state of a planet that has lost its volatiles. For each volatile and noble gas, the mass that can still escape or outgas is below the mass threshold. Trapped mass, and condensed mass kept with `outgas.prevent_desaturation = true`, do not count.
+- **Desiccated**: the state of a planet that has lost its volatiles. For each volatile and noble gas, the mass that can still escape or outgas is below the mass threshold. Trapped mass, and condensed mass kept with `outgas.prevent_desaturation = true`, do not count. Mass held under a closed lid seal (`_kg_sealed`) does count.
 - **Rock vapour**: gas of rock-forming elements and their compounds, such as SiO, Na, Mg and Fe, above a hot melt surface.
 - **Giant impact**: a collision of the planet with another large body, which adds mass and can melt the mantle again. See [Accretion](model.md#accretion-morrigan).
 - **Initialisation stage**: the first 4 iterations of a run. They set up the starting state, and the mantle does not evolve in them. The time is set back to 0 after each of them except the last, which ends the stage and keeps its time.
@@ -59,6 +59,7 @@ The outgassing step takes the first of these 4 paths that applies:
     - The atmosphere is emptied.
     - The melt is emptied, except with `outgas.trap_mode = "front"`. Then the melt keeps its mass, so that buried mass can return to the melt if the mantle melts again.
     - The solid mantle and the condensates keep their mass.
+    - The held mass of the lid seal is emptied with the atmosphere.
     - Rock vapour can still enter the atmosphere (see [Rock vapour](#rock-vapour-from-the-melt-surface)).
 - **Crystallised** (`run_crystallized`). This path needs `params.stop.solid.freeze_volatiles = true`.
     - It starts when $\Phi$ falls to the solid limit `params.stop.solid.phi_crit` or below. It stays on after that; only a giant impact turns it off.

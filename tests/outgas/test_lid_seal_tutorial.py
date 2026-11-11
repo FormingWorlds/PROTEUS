@@ -5,7 +5,8 @@ leak starts for each species at the step the floor predicts; replayed over the
 whole held span with the stored escape and melt fraction, the code gives the
 held water, its floor and the atmospheric water of the run on every row, held
 water that leaked ends at or above its floor, and the water in the atmosphere
-lies between the run that holds it and the open run.
+lies between the run that holds it and the open run; the seal effect of the
+printed run and of 5 round-off starts lies in the band the tutorial quotes.
 The data are rows of the tutorial runs that their header names.
 """
 
@@ -73,7 +74,9 @@ def test_the_tutorial_atmosphere_lies_between_the_held_and_the_open_run(validati
     row on which the held water fell ends at or above its floor. From the closing
     row on, the water in the atmosphere is at or above the run that holds it
     (tau_leak inf) and 1.5 times it at the end; from the first held step on, it
-    is below the open run."""
+    is below the open run. That last order pins this run only: it comes from the
+    crystals the floor counts with D_H2O, and with D_H2O = 0 the held run ends
+    above the open run."""
     w = pd.read_csv(DATA / 'tutorial_water.csv', comment='#')
     held = w[w['seal_active'] > 0.5]
     row, _ = _closing_row()
@@ -117,3 +120,23 @@ def test_the_tutorial_atmosphere_lies_between_the_held_and_the_open_run(validati
         return fig
 
     validation_plot(figure, 'outgas_lid_seal_tutorial_water')
+
+
+def test_the_seal_effect_of_the_tutorial_lies_in_one_band_over_round_off_starts():
+    """The stored end values of the printed run and of 5 starts whose initial
+    superheat differs by up to 2.5e-9 K, each with the seal on and off: the seal
+    run holds 0.428 % to 0.438 % less water in the atmosphere at 140 kyr than the
+    open run of its start, 0.44 % in the printed run; the water of the 5 starts
+    spreads by 0.64 % and the printed run ends 2.0 % below their mean."""
+    d = pd.read_csv(DATA / 'tutorial_ensemble.csv', comment='#')
+    less = 100.0 * (1.0 - d['seal_atm'] / d['open_atm'])
+    printed, starts = d['run'] == 'printed', d[d['run'] != 'printed']
+    assert len(starts) == 5 and starts['dT'].max() < 2.5e-9 * (1 + 1e-6)
+    assert (round(less.min(), 3), round(less.max(), 3), round(less[printed].item(), 2)) == (
+        0.428,
+        0.438,
+        0.44,
+    )
+    assert round(100.0 * np.ptp(starts['seal_atm']) / starts['seal_atm'].mean(), 2) == 0.64
+    below = 1.0 - d.loc[printed, 'seal_atm'].item() / starts['seal_atm'].mean()
+    assert round(100.0 * below, 1) == 2.0
