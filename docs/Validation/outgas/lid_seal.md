@@ -24,6 +24,7 @@ Each case below has the same layout: why the check exists, what it tests, how we
 | `tests/outgas/test_lid_seal.py::test_volcanic_rate_closes_the_mass_balance_of_the_sealed_reservoir` | Schaefer & Sasselov (2015)[^cite-schaefer2015], Eq. 14 and Eq. 17; mass balance | The volcanic rate against its closed form over the global melt fraction. | 2026-11-11 |
 | `tests/outgas/test_lid_seal_convergence.py::test_leak_step_converges_to_the_continuous_law` | Radau integration of the continuous law | The end state of 120 and 480 steps against the reference, for $\tau$ from 100 yr to 10 Myr. | 2026-11-11 |
 | `tests/outgas/test_lid_seal.py::test_leak_relaxes_toward_the_floor_of_the_end_state` | Exact step at the floor of the end state | Held water and CO$_2$ after one step, with and without volcanism. | 2026-11-11 |
+| `tests/outgas/test_lid_seal.py::test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_closure` | Mass balance on the crystals | The floor under front trapping, below and above the closing melt fraction. | 2026-11-11 |
 | `tests/outgas/test_lid_seal.py::test_a_short_tau_gives_the_equilibrium_partition` | Gas-melt equilibrium, solved independently | The end state of a step with $\tau$ = $10^{-3}\,\Delta t$. | 2026-11-11 |
 | `tests/outgas/test_lid_seal.py::test_finite_tau_lies_between_the_frozen_and_the_open_atmosphere` | Open equilibrium and held state, solved in the test | Atmospheric water over a falling melt fraction. | 2026-11-11 |
 | `tests/outgas/test_lid_seal_tutorial.py::test_the_first_held_steps_of_the_tutorial_follow_the_floor` | Closed form of the first leaking row | The first held steps of the stored tutorial run. | 2026-11-11 |
@@ -144,6 +145,24 @@ The cut is asserted only where the step is short against the leak ($\lambda \Del
     - Test id: `tests/outgas/test_lid_seal_convergence.py::test_leak_step_converges_to_the_continuous_law`
     - Command: `pytest tests/outgas/test_lid_seal_convergence.py`
 
+## With front trapping the floor leaves out the crystals that froze before closure
+
+**Why this check exists.** With `outgas.trap_mode = "front"`, the crystals that froze before the seal closed keep their own trapped volatiles. A floor that counted them as room for the held mass would be too high, and the seal would let too little gas leak. A floor below the melt mass would let too much leak.
+
+**What it tests.** Held water ($D$ = 0.0017) and CO$_2$ ($D$ = 0.05) leak for one step of 1 kyr with $\tau$ = 1 kyr and crust production on; the global melt fraction at closure is $\Phi_c$ = 0.2. Here $X_\mathrm{eq}$ is the dissolved mass fraction of a species and $D$ its crystal/melt partition coefficient. With front trapping and $\Phi$ = 0.1, each floor must be $X_\mathrm{eq} M_\mathrm{mantle} (\Phi + D (\Phi_c - \Phi))$; with $\Phi$ = 0.3, above $\Phi_c$, it must be $X_\mathrm{eq} M_\mathrm{mantle} \Phi$, the melt alone. Without trapping it must be $X_\mathrm{eq} M_\mathrm{mantle} (\Phi + D (1 - \Phi))$. In all 3 cases the leak must split by the volcanic rate on $M_\mathrm{melt} + D M_\mathrm{solid}$. A second test requires a closing melt fraction in (0, 1] under front trapping.
+
+**How we know the right answer.** It follows from a mass balance on the crystals: the crystals older than closure leave the reservoir of the floor, and the crystals that form after closure stay in it.
+
+**Why it matters.** It sets how much gas a sealed planet with front trapping releases. At closure the floor equals the held mass, so the held mass leaks as soon as the melt fraction falls.
+
+This case has no plot: it checks closed forms on one step. The rule has no stored run of its own; on the tutorial run with front trapping, a replay of the held span with this rule gives 1.467e15 kg of water in the atmosphere at 140 kyr, against 1.438e15 kg without it.
+
+??? info "Test details"
+    - Reference: the closed forms above, from the mass balance on the crystals.
+    - Tolerance: relative 1e-10 for the floors, 1e-12 for the leak split.
+    - Test ids: `tests/outgas/test_lid_seal.py::test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_closure`, `tests/outgas/test_lid_seal.py::test_front_trapping_refuses_an_unreadable_closing_melt_fraction`
+    - Command: `pytest tests/outgas/test_lid_seal.py`
+
 ## A short relaxation time gives the gas-melt equilibrium
 
 **Why this check exists.** For $\tau$ much shorter than the step, the leak must end at the gas-melt equilibrium of the frozen species: each held mass equals its floor. A step that solved the species one at a time, without the coupling through the surface pressure and the mean molar mass, would miss it.
@@ -202,7 +221,7 @@ This case has no plot: it checks the row of the first leak of each species.
 
 **Why this check exists.** The leak law must keep the floor on every row of a full PROTEUS run, with escape, all species and the adaptive step. A run that leaks past the floor, or code that no longer gives the numbers of that run, fails this check.
 
-**What it tests.** The [tutorial](../../Tutorials/lid_seal.md) runs 3 times: with the seal and $\tau$ = 100 kyr, with the seal and $\tau$ infinite, and without the seal. Rows of these runs are stored in `tests/data/lid_seal/`. The test replays the held span of the run with $\tau$ = 100 kyr from its closing row through the escape and leak code, with the stored escape and melt fraction of each step. The replay must give the held water, its floor `H2O_kg_eq` and the atmospheric water of the run on every row; it compares water only, so the closing temperature and the IW offset, which the water law does not take, are checked by `tests/outgas/test_lid_seal.py::test_the_floor_takes_the_closing_iw_offset_and_the_surface_pressure`. On every held row where the held water fell, it must end at or above its floor. From the closing row on, the atmospheric water must lie at or above the run with $\tau$ infinite, and at the end at 1.5 times it or more. From the first held step on, it must lie below the open run.
+**What it tests.** The [tutorial](../../Tutorials/lid_seal.md) runs 3 times: with the seal and $\tau$ = 100 kyr, with the seal and $\tau$ infinite, and without the seal. Rows of these runs are stored in `tests/data/lid_seal/`. The test replays the held span of the run with $\tau$ = 100 kyr from its closing row through the escape and leak code, with the stored escape and melt fraction of each step. The replay must give the held water, its floor `H2O_kg_eq` and the atmospheric water of the run on every row; it compares water only, so the IW offset, which the water law does not take, is checked by `tests/outgas/test_lid_seal.py::test_the_floor_takes_the_closing_iw_offset_and_the_surface_pressure`, and the closing temperature of the CO$_2$ law by `tests/outgas/test_lid_seal.py::test_leak_relaxes_toward_the_floor_of_the_end_state`. On every held row where the held water fell, it must end at or above its floor. From the closing row on, the atmospheric water must lie at or above the run with $\tau$ infinite, and at the end at 1.5 times it or more. From the first held step on, it must lie below the open run.
 
 **How we know the right answer.** The stored run is the reference for the replay. The floor check follows from the law. The run with $\tau$ infinite leaks nothing, and the open run keeps its melt in equilibrium with the atmosphere at all times, so they bound a run that leaks toward the floor.
 
@@ -227,9 +246,8 @@ The tests in `tests/outgas/test_lid_seal.py` and the code itself also check, wit
 - with the defaults (`tau_leak` infinite, `crust_rate = 0`) no floor is computed and every column stays the same to the last bit, with solubility on or off;
 - after every step that leaks, the code checks that each species ends at or above its floor, at $e^{-\lambda_i \Delta t}$ of its starting distance; a step that ignores the floor or leaks too little stops the run;
 - a negative or non-finite floor, a closing temperature that is not finite and above 0 K, a non-finite IW offset, and sweeps over the species that do not settle stop the run with an error;
-- a step whose residual changes sign more than once at 17 samples over its bracket stops the run with an error (3 made-up floors pin this: 3 roots, a narrow fold, and roots beyond the bracket that must not stop it); a CO$_2$ leak above $83.15\,T/23$ bar, where the CO$_2$ law of Dixon et al. (1995) falls with pressure, still has one solution and finishes;
-- a sealed row resumes only with a finite closing temperature above 0 K and a closing melt fraction in \[0, 1\];
-- with front trapping the floor reservoir leaves out the crystal share at closure, $D_i (1 - \Phi_c) M_\mathrm{mantle}$, and without trapping it keeps it (`tests/outgas/test_lid_seal.py::test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_closure`);
+- a step whose residual changes sign more than once at 17 samples over its bracket stops the run with an error (3 made-up floors pin this: 3 roots, a narrow fold, and roots beyond the bracket that must not stop it); a CO$_2$ leak above $83.15\,T/23$ bar, where the CO$_2$ law of Dixon et al. (1995) falls with pressure, still has one solution and finishes; the check samples each species alone, with the others at their final leaks, so roots closer together than one sample spacing and several solutions of the coupled species pass it, and in the tests only a made-up floor gives a second solution;
+- a sealed row resumes only with a finite closing temperature above 0 K and, under front trapping, a closing melt fraction in (0, 1\];
 - in one step the 2 leak parts of each element sum to the drop of its held mass and to the rise of its atmospheric mass; each species splits its leak in the ratio of its 2 rates;
 - in one step no more melt than the melt mass reaches the crust, and below `phi_solid` none does;
 - after a leak, the surface pressure is $M_\mathrm{atm}\,g/(4\pi R^2)$ and the mixing ratios follow the moles;

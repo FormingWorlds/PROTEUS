@@ -80,6 +80,7 @@ The symbols are:
 - $M_\mathrm{melt} = \Phi M_\mathrm{mantle}$ and $M_\mathrm{solid} = (1 - \Phi) M_\mathrm{mantle}$: the melt and the solid mass of the mantle \[kg\], with the global melt fraction $\Phi$.
 - $D_i$: `outgas.D_const_<species>`, the crystal/melt partition coefficient \[1\].
 - $R_i$: the reservoir of species $i$ \[kg\], the melt and the crystals in equilibrium with it.
+- $R_{\mathrm{eq},i}$: the reservoir of the floor \[kg\]; it is $R_i$, except with front trapping ([The floor of the leak](#the-floor-of-the-leak)).
 - $\lambda_i = 1/\tau + k_i$: the leak rate of species $i$ \[yr$^{-1}$\].
 
 The first term relaxes the held mass with the time $\tau$. The second is volcanism: melt with the concentration $X_{\mathrm{melt},i} = M_i/R_i$ reaches the crust at the rate $\dot M_c$ and degasses the share $\chi_d$ of its excess over the solubility, $X_{\mathrm{melt},i} - X_{\mathrm{eq},i}$. Both terms act on the same distance to the floor, so the law is one relaxation. The leaked mass splits between them in the ratio $(1/\tau) : k_i$.
@@ -88,7 +89,7 @@ The volcanic term has the form of Eq. 14 and Eq. 17 of Schaefer & Sasselov (2015
 
 ## The floor of the leak
 
-The floor is $M_{\mathrm{eq},i} = X_{\mathrm{eq},i}\, R_i$, with $X_{\mathrm{eq},i}$ \[1\] the mass fraction of species $i$ that the melt dissolves. It uses the solubility laws of the CALLIOPE chemistry solve ([solubility laws](https://proteus-framework.org/CALLIOPE/Explanations/solubility.html), [noble gases](https://proteus-framework.org/CALLIOPE/Explanations/noble_gases.html)):
+The floor is $M_{\mathrm{eq},i} = X_{\mathrm{eq},i}\, R_{\mathrm{eq},i}$, with $X_{\mathrm{eq},i}$ \[1\] the mass fraction of species $i$ that the melt dissolves. It uses the solubility laws of the CALLIOPE chemistry solve ([solubility laws](https://proteus-framework.org/CALLIOPE/Explanations/solubility.html), [noble gases](https://proteus-framework.org/CALLIOPE/Explanations/noble_gases.html)):
 
 - each law takes the partial pressure of the species in the atmosphere; the CO, CH$_4$ and N$_2$ laws also take the surface pressure;
 - the CO$_2$ law also takes the temperature `seal_Tmagma_close` of the solve that closed the seal; the N$_2$ and S$_2$ laws take that temperature and its IW offset `fO2_shift_IW_derived` (IW: the iron-wüstite oxygen buffer);
@@ -96,11 +97,11 @@ The floor is $M_{\mathrm{eq},i} = X_{\mathrm{eq},i}\, R_i$, with $X_{\mathrm{eq}
 - below $10^{-20}$ bar, where the CALLIOPE S$_2$ law returns 0, the S$_2$ floor follows the same square-root law of Gaillard et al. (2022)[^cite-gaillard2022] in its partial pressure, so it stays continuous;
 - H$_2$, O$_2$, SO$_2$, H$_2$S and NH$_3$ have no law, so their floor is 0;
 - with `outgas.calliope.solubility = false` every floor is 0, and the held mass decays at the rate $\lambda_i$ of the next section;
-- with front trapping (`outgas.trap_mode = "front"`) the crystals that froze before closure keep their own trapped volatiles, so the reservoir of the floor leaves out their share $D_i (1 - \Phi_c) M_\mathrm{mantle}$, with $\Phi_c$ the global melt fraction at closure, `seal_phi_close`.
+- with front trapping (`outgas.trap_mode = "front"`) the crystals that froze before closure keep their own trapped volatiles, so the floor counts only the crystals formed after it: $R_{\mathrm{eq},i} = M_\mathrm{melt} + D_i \max(\Phi_c - \Phi, 0)\, M_\mathrm{mantle}$, with $\Phi_c$ the global melt fraction at closure (`seal_phi_close`). Above $\Phi_c$ it counts the melt alone: remelted crystals have returned their trapped mass to the held mass. The volcanic rate $k_i$ keeps $R_i$, so its part of the leak is $\chi_d \dot M_c (M_i - M_{\mathrm{eq},i})/R_i$.
 
 The floor is one way: a species below its floor does not move, because gas does not dissolve back through the crust.
 
-**Example.** In the [tutorial](../Tutorials/lid_seal.md) the seal closes at $\Phi_c = 0.19186$. The held water is the dissolved water of the melt, while its floor also counts the crystals at $D = 0.0017$. The floor is therefore 1.0072 times the held water, and water starts to leak only when $\Phi$ falls below 0.19048. CO$_2$ ($D = 0$) leaks from the first held step.
+**Example.** Without front trapping (the default), in the [tutorial](../Tutorials/lid_seal.md) the seal closes at $\Phi_c = 0.19186$. The held water is the dissolved water of the melt, while its floor also counts the crystals at $D = 0.0017$. The floor is therefore 1.0072 times the held water, and water starts to leak only when $\Phi$ falls below 0.19048. CO$_2$ ($D = 0$) leaks from the first held step.
 
 ## One step of the leak
 
@@ -113,22 +114,22 @@ $$
 
 - For a constant floor this is the exact solution, whatever the step length.
 - For $\tau \to 0$ it gives the gas-melt equilibrium of the frozen species; for $\lambda_i = 0$ nothing moves.
-- a root finder (Brent's method) finds $L_i$ for each species; sweeps over the species repeat until no leak changes by more than $10^{-14}$ of its held mass, because the floors couple through the surface pressure and the mean molar mass.
+- A root finder (Brent's method) finds $L_i$ for each species; sweeps over the species repeat until no leak changes by more than $10^{-14}$ of its held mass, because the floors couple through the surface pressure and the mean molar mass.
 
 After each step the code checks that every species that leaked ends at or above its floor, at $e^{-\lambda_i \Delta t}$ of its starting distance from it, and that a sample of its step shows one solution ([Laws that fall with pressure](#laws-that-fall-with-pressure)); otherwise the run stops with an error. With `tau_leak` infinite and `crust_rate = 0` the step computes no floor and changes no column.
 
 ## Limits of the leak
 
 - **Laws that fall with pressure.** The CO$_2$, CO and CH$_4$ laws fall with pressure at high pressure; [Laws that fall with pressure](#laws-that-fall-with-pressure) says when a step can then have more than one solution.
-- **First order in the step.** Within a step the floor moves for 3 reasons: the melt fraction falls, the leak fills the atmosphere, and escape thins it. The step takes the floor of its end state, so its error falls in proportion to $\Delta t$. In the test on a melt-fraction path like that of the tutorial (120 steps of 358 yr, escape off) the error is at most $4.4\times10^{-5}$ of the inventory of each species, which is the held plus the atmospheric mass; per held or atmospheric mass it can reach $1.9\times10^{-3}$. [Validation](../Validation/outgas/lid_seal.md#the-step-converges-to-the-continuous-law) gives the table.
-- **Crystals at closure.** The CALLIOPE solve dissolves volatiles in the melt only, while $R_i$ also counts the crystals. At closure the held mass is therefore below its floor by the factor $1 + D_i (1 - \Phi)/\Phi$.
+- **First order in the step.** Within a step the floor moves for 3 reasons: the melt fraction falls, the leak fills the atmosphere, and escape thins it. The step takes the floor of its end state, so its error falls in proportion to $\Delta t$ where the step is short against the leak ($\lambda_i \Delta t < 0.1$); at $\tau$ = 100 yr, where $\lambda_i \Delta t$ is 3.6, 4 times more steps cut it only 2.35 times. In the test on a melt-fraction path like that of the tutorial (120 steps of 358 yr, escape off) the error is at most $4.4\times10^{-5}$ of the inventory of each species, which is the held plus the atmospheric mass; per held or atmospheric mass it can reach $1.9\times10^{-3}$. [Validation](../Validation/outgas/lid_seal.md#the-step-converges-to-the-continuous-law) gives the table.
+- **Crystals at closure.** The CALLIOPE solve dissolves volatiles in the melt only. Without front trapping, $R_i$ also counts the crystals, so at closure the held mass is below its floor by the factor $1 + D_i (1 - \Phi)/\Phi$. With front trapping the factor is 1 at closure.
 - **Crystals at opening.** When the seal opens, the whole held mass returns to the melt, the share counted in the crystals included.
 - **Erupted melt.** Of the volatile in the melt that reaches the crust, only the degassed share leaves the held mass; the rest stays counted as held.
 - **Frozen chemistry.** The held and leaked gas keep their species; the floor does not see a change of speciation in the atmosphere.
 
 ## Laws that fall with pressure
 
-The CO$_2$ law of Dixon et al. (1995)[^cite-dixon1995] falls with pressure above $83.15\,T/23$ bar, about 5400 bar at 1500 K. At a fixed composition the CO and CH$_4$ laws also fall with the surface pressure, CO above about 7000 bar and CH$_4$ above about 5200 bar. A fall alone does not give the step a second solution: the floor must fall faster than the leak adds gas to the atmosphere. In the tests, a CO$_2$ leak at 5000 and 6000 bar on an Earth-like planet has one solution; only a floor made up for the test gives more. After each step the code samples the step of each species alone at 17 leaks, with the others at their final leaks, and stops the run if the samples show more than one solution. Roots closer together than one sample spacing, and several solutions of the coupled species, pass this check.
+The CO$_2$ law of Dixon et al. (1995)[^cite-dixon1995] falls with pressure above $83.15\,T/23$ bar, about 5400 bar at 1500 K. At a fixed composition the CO and CH$_4$ laws also fall with the surface pressure, CO above about 7000 bar and CH$_4$ above about 5200 bar. A fall alone does not give the step a second solution: the floor must fall faster than the leak adds gas to the atmosphere. The code checks each step for more than one solution and stops the run if it finds one; [Validation](../Validation/outgas/lid_seal.md#invariants-checked-alongside) says what this check can and cannot see.
 
 ## Settings of the seal
 

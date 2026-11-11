@@ -1236,23 +1236,6 @@ def test_a_co2_leak_above_the_peak_of_the_dixon_law_finishes_its_step(p_co2):
     assert row['CO2_bar'] > p_co2
 
 
-def _made_up_floor(residual, m0, a0, frac):
-    """A CO2 floor model whose step residual is span residual(u), u = leak / span.
-
-    span = frac m0; the floor reads the leak through the moles, as the code adds them.
-    """
-    per, span = 1.0 / eval_gas_mmw('CO2'), frac * m0
-
-    def model(config, hf_row, per_kg):
-        def floor_of(leak, s):
-            x = (hf_row[f'{s}_mol_atm'] + leak.get(s, 0.0) * per_kg.get(s, 0.0)) / per - a0
-            return m0 - (x - span * residual(x / span)) / frac
-
-        return floor_of
-
-    return model
-
-
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(
     ('residual', 'stops'),
@@ -1270,7 +1253,15 @@ def test_a_step_with_more_than_one_solution_stops(residual, stops):
     are no solutions of the step, which then finishes on its one root."""
     m0, a0, frac = 1.0e19, 1.0e18, -np.expm1(-1.0)
     row = _eq_row({'CO2': a0}, {'CO2': m0})
-    model = _made_up_floor(residual, m0, a0, frac)
+    per, span = 1.0 / eval_gas_mmw('CO2'), frac * m0
+
+    def model(config, hf_row, per_kg):  # the floor reads the leak through the moles
+        def floor_of(leak, s):
+            x = (hf_row[f'{s}_mol_atm'] + leak.get(s, 0.0) * per_kg.get(s, 0.0)) / per - a0
+            return m0 - (x - span * residual(x / span)) / frac
+
+        return floor_of
+
     with patch('proteus.outgas.lid_seal._floor_model', model):
         if stops:
             with pytest.raises(RuntimeError, match='more than one solution'):

@@ -22,7 +22,8 @@ M_i / R_i``, limited here to the excess over the solubility, ``X_melt,i -
 X_eq,i``, which their Eq. 14 does not have. ``X_eq,i`` is the CALLIOPE
 solubility law of the species at its partial pressure in the atmosphere, at
 the temperature and IW offset of the closing solve; a species without a law has
-``M_eq = 0``. Gas does not dissolve back through the crust, so a species below
+``M_eq = 0``. With front trapping the floor counts only the crystals formed
+after closure, while ``k_i`` keeps ``R_i``. Gas does not dissolve back through the crust, so a species below
 its floor stays as it is. Each step takes the exponential step of the law with
 ``M_eq`` at the end state, since the leak raises the partial pressure that sets
 it; the step is exact for a constant ``M_eq`` and first order where it moves. The
