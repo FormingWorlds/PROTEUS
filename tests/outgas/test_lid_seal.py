@@ -18,11 +18,13 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
+from calliope.solubility import SolubilityS2
 
 from proteus.config._outgas import Calliope, LidSeal
 from proteus.outgas.common import element_masses_from_species
 from proteus.outgas.compaction import BRANCH_REMELT
 from proteus.outgas.lid_seal import (
+    _LAW,
     S2_CUTOFF,
     SEALED_ELEMENTS,
     SEALED_SPECIES,
@@ -40,7 +42,7 @@ from proteus.outgas.lid_seal import (
     seal_enabled,
     sealed_mass,
 )
-from proteus.utils.constants import gas_list, vol_gas_list
+from proteus.utils.constants import gas_list, soluble_gases, vol_gas_list
 from proteus.utils.helper import eval_gas_mmw
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -1038,7 +1040,8 @@ def _floor(row, s, d=0.0):
 @pytest.mark.physics_invariant
 def test_sealed_mass_below_its_floor_does_not_leak():
     """One-way floor: sealed H2O under its dissolved equilibrium stays sealed at
-    any tau and crust rate, and the atmosphere is left as it was."""
+    any tau and crust rate, and the atmosphere is left as it was; with CO2
+    leaking in the same step, the H2O mass and moles stay equal to the bit."""
     m_eq = _floor(_eq_row({'H2O': 1.0e17}, {}), 'H2O', D_H2O)
     row = _eq_row({'H2O': 1.0e17}, {'H2O': 0.9 * m_eq})
     before = dict(row)
@@ -1047,6 +1050,12 @@ def test_sealed_mass_below_its_floor_does_not_leak():
     assert row['H2O_kg_atm'] == before['H2O_kg_atm']
     assert row['H_kg_leak_tau'] == row['H_kg_leak_volc'] == 0.0
     assert row.get('H2O_kg_eq') == pytest.approx(m_eq, rel=1e-12)
+    row = _eq_row({'H2O': 1.0e17, 'CO2': 1.0e15}, {'H2O': 0.9 * m_eq, 'CO2': 1.0e19})
+    before = dict(row)
+    leak_step(_config(solubility=True, tau_leak=1.0e2), row, 1.0e3)
+    assert row['CO2_kg_sealed'] < before['CO2_kg_sealed']
+    for key in ('H2O_kg_sealed', 'H2O_mol_sealed', 'H2O_kg_atm', 'H2O_mol_atm'):
+        assert row[key] == before[key], key
 
 
 @pytest.mark.physics_invariant
@@ -1274,12 +1283,11 @@ def test_held_s2_leaks_to_a_continuous_floor_at_a_vanishing_s2_pressure(s2_atm):
     assert row['S2_kg_atm'] > s2_atm
 
 
+@pytest.mark.physics_invariant
 def test_the_s2_fraction_continues_the_square_root_law_below_the_cutoff():
     """At and above S2_CUTOFF the S2 fraction is the CALLIOPE law; below it the
     same square-root law in the partial pressure, so 100 times less pressure
     gives 10 times less S2, where CALLIOPE gives 0."""
-    from calliope.solubility import SolubilityS2
-
     cfg = _config(solubility=True)
     x = {
         p: equilibrium_fractions(
@@ -1288,9 +1296,11 @@ def test_the_s2_fraction_continues_the_square_root_law_below_the_cutoff():
         for p in (S2_CUTOFF, 1e-2 * S2_CUTOFF)
     }
     assert x[S2_CUTOFF]['S2'] == pytest.approx(
-        1e-6 * SolubilityS2()(S2_CUTOFF, T_SEAL, 2.0), rel=1e-15
+        1e-6 * SolubilityS2()(S2_CUTOFF, T_SEAL, 2.0), rel=1e-15, abs=0.0
     )
-    assert x[1e-2 * S2_CUTOFF]['S2'] == pytest.approx(0.1 * x[S2_CUTOFF]['S2'], rel=1e-12)
+    assert x[1e-2 * S2_CUTOFF]['S2'] == pytest.approx(
+        0.1 * x[S2_CUTOFF]['S2'], rel=1e-12, abs=0.0
+    )
     assert SolubilityS2()(1e-2 * S2_CUTOFF, T_SEAL, 2.0) == 0.0
 
 
@@ -1326,9 +1336,6 @@ def test_the_floor_takes_the_closing_iw_offset_and_the_surface_pressure():
 def test_the_law_table_covers_every_soluble_gas_and_reads_the_include_flags():
     """Every species of soluble_gases has a law, and a species switched off in
     outgas.calliope (here CO and Ar) gets no dissolved fraction at any pressure."""
-    from proteus.outgas.lid_seal import _LAW
-    from proteus.utils.constants import soluble_gases
-
     assert set(_LAW) == set(soluble_gases)
     cfg = _config(solubility=True)
     cfg.outgas.calliope = Calliope(include_CO=False, include_Ar=True)

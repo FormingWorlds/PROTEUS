@@ -11,22 +11,18 @@ not the CALLIOPE classes.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import numpy as np
 import pytest
 from scipy.integrate import solve_ivp
 
-from proteus.config._outgas import Calliope, LidSeal
-from proteus.outgas.common import element_masses_from_species
-from proteus.outgas.lid_seal import SEALED_ELEMENTS, SEALED_SPECIES, leak_step
-from proteus.utils.constants import gas_list
+from proteus.outgas.lid_seal import leak_step
 from proteus.utils.helper import eval_gas_mmw
+
+from .test_lid_seal import GRAVITY, M_MANTLE, R_INT, T_SEAL, _config, _eq_row
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-M_MANTLE, R_INT, GRAVITY = 4.0e24, 6.371e6, 9.81  # [kg], [m], [m s-2]
-T_SEAL, FO2 = 1500.0, 2.0  # [K], [log10 IW offset] of the closing solve
+FO2 = 2.0  # [log10] IW offset of the closing solve, as in _eq_row
 D = {'H2O': 0.0017, 'CO2': 0.0, 'N2': 0.0}
 ATM0 = {'H2O': 1.0e17, 'CO2': 5.0e16, 'N2': 1.0e16}  # [kg]
 PHI0, PHI1, SPAN, STEPS = 0.19, 0.135, 4.3e4, 120  # melt fraction path over SPAN [yr]
@@ -68,23 +64,7 @@ def _closure():
 
 def _code(tau, steps):
     """Atmospheric and sealed masses [kg] at SPAN from leak_step in equal steps."""
-    outgas = SimpleNamespace(lid_seal=LidSeal(enabled=True, tau_leak=tau), T_floor=700.0)
-    outgas.calliope = Calliope()
-    for s in SEALED_SPECIES:
-        setattr(outgas, f'D_const_{s}', D.get(s, 0.0))
-    cfg = SimpleNamespace(outgas=outgas)
-    sealed = _closure()
-    row = {'M_mantle': M_MANTLE, 'R_int': R_INT, 'gravity': GRAVITY, 'esc_rate_total': 0.0}
-    row.update({'seal_Tmagma_close': T_SEAL, 'fO2_shift_IW_derived': FO2})
-    for s in gas_list:
-        for r in ('atm', 'sealed'):
-            row[f'{s}_kg_{r}'] = row[f'{s}_mol_{r}'] = 0.0
-    for r, masses in (('atm', ATM0), ('sealed', sealed)):
-        for s, kg in masses.items():
-            row[f'{s}_kg_{r}'], row[f'{s}_mol_{r}'] = kg, kg / eval_gas_mmw(s)
-    for e in SEALED_ELEMENTS:
-        row[f'{e}_kg_atm'] = element_masses_from_species(ATM0).get(e, 0.0)
-        row[f'{e}_kg_sealed'] = element_masses_from_species(sealed).get(e, 0.0)
+    cfg, row = _config(solubility=True, tau_leak=tau), _eq_row(ATM0, _closure(), phi=PHI0)
     for t in np.linspace(0.0, SPAN, steps + 1)[1:]:
         row['Phi_global'] = _phi(t)
         leak_step(cfg, row, SPAN / steps)

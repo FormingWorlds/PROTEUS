@@ -22,6 +22,7 @@ from .test_lid_seal import _config, _row, _sealed_row
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
+@pytest.mark.physics_invariant
 @given(
     mass=st.floats(1.0, 1.0e24),
     share=st.floats(0.0, 2.0),
