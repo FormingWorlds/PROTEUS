@@ -24,17 +24,17 @@ config_version = "3.0"
         remove_sf             = false        # remove spectral file when done
 
     [params.dt]
-        minimum               = 1e2          # minimum time step [yr]; small enough for the controller to resolve solidification
+        minimum               = 1e1          # minimum time step [yr]
         minimum_rel           = 1e-3         # minimum relative time step
         maximum               = 1e7          # maximum time step [yr]
-        initial               = 3e1          # initial step size [yr]
+        initial               = 1e1          # initial step size [yr]
         starspec              = 1e9          # recalculate stellar spectrum interval [yr]
         starinst              = 1e2          # recalculate instellation interval [yr]
         method                = "adaptive"   # proportional | adaptive | maximum
         propconst             = 52.0         # proportionality constant (proportional method)
         atol                  = 0.02         # step size absolute tolerance (adaptive method)
-        rtol                  = 0.24         # step size relative tolerance (adaptive method)
-        scale_incr            = 1.5          # growth factor on successful adaptive step
+        rtol                  = 0.20         # step size relative tolerance (adaptive method)
+        scale_incr            = 1.4          # growth factor on successful adaptive step
         scale_decr            = 0.8          # shrink factor on rejected adaptive step
         window                = 3            # lookback window for adaptive comparison [steps]
         max_growth_factor     = 0.0          # cap on dt growth ratio between consecutive steps; 0 = disabled
@@ -59,17 +59,17 @@ config_version = "3.0"
 
         [params.stop.solid]                  # solidification criterion
             enabled           = true
-            phi_crit          = 0.02         # stop when global melt fraction < phi_crit
+            phi_crit          = 0.03         # stop when global melt fraction < phi_crit
             freeze_volatiles  = true        # freeze mantle volatiles at solidification
 
         [params.stop.radeqm]                 # radiative equilibrium criterion
-            enabled           = true
+            enabled           = false
             atol              = 1.0          # |F_int - F_atm| tolerance [W m-2]
             rtol              = 1e-3         # relative tolerance
 
         [params.stop.escape]                 # atmosphere loss criterion
             enabled           = true
-            p_stop            = 0.1          # stop when surface pressure < p_stop [bar]
+            p_stop            = 0.5          # stop when surface pressure < p_stop [bar]
 
         [params.stop.disint]                 # planetary disintegration criterion
             enabled           = false
@@ -90,7 +90,7 @@ config_version = "3.0"
     tcmb_init                 = 6000         # CMB temperature [K] (adiabatic_from_cmb)
     tcenter_init              = 6000         # center temperature [K] (linear only)
     delta_T_super             = 100.0        # min superheat above the liquidus [K] (liquidus_super); small value starts the interior near the liquidus for a stable default run
-    ini_entropy               = 4200.0       # initial specific entropy [J/kg/K] (isentropic only)
+    ini_entropy               = 4500.0       # initial specific entropy [J/kg/K] (isentropic only)
     ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (isentropic only)
     f_accretion               = 0.04         # accretion heat retention [0-1] (accretion only)
     f_differentiation         = 0.50         # differentiation heat retention [0-1] (accretion only)
@@ -184,8 +184,8 @@ config_version = "3.0"
     module                    = "spider"      # zalmoxis | dummy | spider
     core_frac_mode            = "radius"     # radius | mass
     core_frac                 = 0.828        # core radius fraction; Mercury ~2020 km / 2440 km
-    core_density              = 6980         # core density [kg m-3]; Mercury core
-    core_heatcap              = 800          # core heat capacity [J K-1 kg-1]
+    core_density              = 7200         # core density [kg m-3]; Mercury core
+    core_heatcap              = 850          # core heat capacity [J K-1 kg-1]
     melting_dir               = "Wolf_Bower+2018"  # melting curve folder in FWL_DATA
     eos_dir                   = "1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa/"  # EOS folder in FWL_DATA
 
@@ -257,7 +257,7 @@ config_version = "3.0"
 
     # Grid and solver tolerances (shared by Aragog + SPIDER; ignored for dummy)
     num_levels                = 40           # radial grid levels (energetics domain only); minimum allowed
-    rtol                      = 1.0e-7       # relative ODE solver tolerance
+    rtol                      = 1.0e-6       # relative ODE solver tolerance
     atol                      = 1.0e-8      # absolute ODE solver tolerance
     flux_guess                = 1e4           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
 
@@ -387,7 +387,7 @@ config_version = "3.0"
     T_floor                   = 1200.0        # outgassing temperature floor [K]; clamped from below
     solver_rtol               = 1e-3         # relative mass/equilibrium tolerance
     solver_atol               = 1e-6         # absolute mass/equilibrium tolerance
-    prevent_desaturation      = true         # condensates never re-vapourise, so each condensed layer only grows (its activity can fall below 1)
+    prevent_desaturation      = true         # condensates never re-vapourise
 
     [outgas.calliope]
         # Species switches (false = excluded entirely from equilibrium calculation)
@@ -442,10 +442,10 @@ config_version = "3.0"
     module                    = "agni"       # agni | janus | dummy
 
     # Grid and spectral setup (shared by agni + janus)
-    spectral_group            = "Proudspire"  # opacity k-table set
-    spectral_bands            = "32"         # wavenumber bands in k-table
+    spectral_group            = "Cliffshade"  # opacity k-table set
+    spectral_bands            = "64"         # wavenumber bands in k-table
     num_levels                = 40           # vertical atmosphere levels (min 15)
-    p_top                     = 1.0e-3       # top-of-atmosphere pressure [bar]
+    p_top                     = 2.0e-4       # top-of-atmosphere pressure [bar]
     p_obs                     = 'none'       # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
@@ -463,7 +463,7 @@ config_version = "3.0"
     surface_k                 = 'saturation' # conductive skin conductivity [W/m/K]
 
     # Solver limits (agni, janus only)
-    tmp_minimum               = 0.5          # temperature floor [K]
+    tmp_minimum               = 5.0          # temperature floor [K]
 
     [atmos_clim.agni]
         # Physics switches
@@ -489,14 +489,15 @@ config_version = "3.0"
 
         # Solver tuning (rarely need to change)
         solution_atol         = 0.5          # Newton solver absolute tolerance [W/m2]
-        solution_rtol         = 0.15         # Newton solver relative tolerance
+        solution_rtol         = 0.14         # Newton solver relative tolerance
         psurf_thresh          = 0.1          # skip full RCE when P_surf below this [bar]
         dx_max                = 100.0        # max Newton step per iteration [K]; wide cap lets the RCE solve reach equilibrium from a hot start within max_steps
         dx_max_ini            = 200.0         # max Newton step during first few PROTEUS loops [K]
         max_steps             = 200          # max Newton iterations per call
         perturb_all           = true        # recompute full Jacobian each iteration
         ini_profile           = "isothermal" # initial T(p) guess: isothermal | loglinear | dry_adiabat | analytic
-        ls_default            = 2            # linesearch method: 0 (none) | 1 (golden section) | 2 (backtracking)
+        ls_default            = 3            # linesearch method: 0 (none) | 1 (golden section) | 2 (backtracking)
+        broyden             = false        # Broyden Jacobian update (true = faster, less robust)
         fdo                   = 2            # finite-difference order for Jacobian: 2 | 4
         check_safe_gas        = true         # require at least one gas with opacity+thermo data
         load_all_opacities    = false
@@ -512,6 +513,11 @@ config_version = "3.0"
         # Hydrostatic integration
         hydrograv_constg      = false         # constant gravity with height
         hydrograv_selfg       = true        # no atmospheric self-gravity; AGNI rejects it alongside constg
+        hydrograv_steps     = 8192          # Number of steps to use when calculating heights and gravity.
+        hydrograv_maxdr     = 1e6     # Maximum step size to use when calculating heights [m]
+        hydrograv_hilldr    = 1e3      # Maximum step size to use beyond the Hill radius [m]
+        hydrograv_mindr     = 1e-5          # Minimum step size to use when calculating heights [m]
+        hydrograv_ming      = 1e-3          # Minimum allowed gravity in the atmosphere [m/s^2]
 
     [atmos_clim.janus]
         F_atm_bc              = 0            # outgoing flux boundary: 0 (TOA) | 1 (surface)
@@ -535,7 +541,7 @@ config_version = "3.0"
     [escape.zephyrus]
         Pxuv                  = 5e-5         # XUV opacity pressure level [bar]
         efficiency            = 0.1          # escape efficiency
-        tidal                 = true        # tidal contribution
+        tidal                 = false        # tidal contribution
 
     [escape.dummy]
         rate                  = 0.0          # bulk escape rate [kg s-1]
