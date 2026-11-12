@@ -522,23 +522,6 @@ def natural_sort(lst):
     return sorted(lst, key=alphanum_key)
 
 
-def create_tmp_folder():
-    """Create a folder for temporary files"""
-
-    # Try $TMPDIR environment variable used on e.g. Habrok
-    tmp_dir = os.environ.get('TMPDIR')
-    if (not tmp_dir) or (not os.path.isdir(tmp_dir)):
-        tmp_dir = '/tmp'
-
-    # Append random name to /tmp
-    tmp_dir = tmp_dir + '/proteus_%d/' % np.random.randint(int(1e12), int(1e13 - 1))
-
-    # Make empty
-    safe_rm(tmp_dir)
-    os.makedirs(tmp_dir)
-    return tmp_dir
-
-
 def safe_rm(fpath: str):
     """
     Safely remove a file or folder

@@ -118,6 +118,20 @@ def _clear_atmodeller_model_cache():
     _MODEL_CACHE.clear()
 
 
+@pytest.fixture
+def system_tmp(tmp_path, monkeypatch):
+    """An empty folder standing in for the system temporary directory.
+
+    Sets both ``$TMPDIR`` and ``tempfile.tempdir``: code can name its folders
+    from either, and a check on one folder cannot see a leak into the other.
+    """
+    path = tmp_path / 'system_tmp'
+    path.mkdir()
+    monkeypatch.setenv('TMPDIR', str(path))
+    monkeypatch.setattr('tempfile.tempdir', str(path))
+    return path
+
+
 # =============================================================================
 # Physical Parameters for Earth-like Test Scenarios
 # =============================================================================
