@@ -100,7 +100,8 @@ def _sealed_row(phi=0.4):
     close_seal(row)
     row.update(
         {'seal_Tmagma_close': T_SEAL, 'fO2_shift_IW_derived': 2.0}
-        | {'seal_phi_close': phi, 'seal_phi_max': phi}
+        | {'seal_phi_close': phi, 'seal_phi_max': phi, 'seal_t_close': row['Time']}
+        | {'seal_xtal_kg': 0.0, 'seal_tl_kg': 0.0}
     )
     return row
 
@@ -466,15 +467,24 @@ def test_leak_refreshes_the_atmosphere_from_the_masses():
     assert row['Ar_kg_atm'] > 0.0
 
 
-def _step(row, interior, sealed, *, init_stage=False, trap_mode='none', **seal):
+def _step(row, interior, sealed, *, init_stage=False, trap_mode='none', hf_all=None, **seal):
     cfg = _config(**seal)
     cfg.outgas.trap_mode = trap_mode
+    kw = {} if hf_all is None else {'hf_all': hf_all}
     with (
         patch('proteus.outgas.wrapper.run_outgassing_and_vapourisation') as solve,
         patch('proteus.outgas.wrapper.check_ic_oxygen_budget'),
     ):
         state = run_lid_seal_step(
-            {}, cfg, row, interior, sealed, first_iter=False, init_stage=init_stage, dt=10.0
+            {},
+            cfg,
+            row,
+            interior,
+            sealed,
+            first_iter=False,
+            init_stage=init_stage,
+            dt=10.0,
+            **kw,
         )
     return state, solve
 
@@ -1613,6 +1623,66 @@ def test_front_trapping_counts_the_crystals_formed_after_the_highest_melt_fracti
     x_eq = _floor(row, 'H2O') / (M_MANTLE * 0.15)
     expect = x_eq * M_MANTLE * (0.15 + D_H2O * (0.3 - 0.15))
     assert row['H2O_kg_eq'] == pytest.approx(expect, rel=1e-10)
+
+
+def _front_held_steps(steps, phi0=0.3):
+    """Held steps under front trapping from a closure at ``phi0``; each step is
+    (Phi, F_tl) and records trap_dM_RM = M_mantle (Phi_prev - Phi) and trap_F_tl, as
+    trapping does before the seal step. Returns the row and the completed rows."""
+    import pandas as pd
+
+    row = {**_sealed_row(phi=phi0), 'lid_weight': 1.0, 'lid_delta': 0.5, 'esc_rate_total': 0.0}
+    row.update({'seal_active': 1.0, 'seal_path': 2.0})
+    done = [dict(row)]
+    for phi, f_tl in steps:
+        rise = phi > row['Phi_global']
+        row['trap_dM_RM'] = M_MANTLE * (row['Phi_global'] - phi)
+        row['trap_F_tl'], row['trap_branch'] = (
+            (0.0, float(BRANCH_REMELT)) if rise else (f_tl, 2.0)
+        )
+        row['Phi_global'], row['Time'] = phi, row['Time'] + 10.0
+        kw = {'hf_all': pd.DataFrame(done)} if rise else {}
+        assert _step(
+            row, _interior([0.6, 0.2]), True, delta_close=0.3, trap_mode='front', **kw
+        )[0]
+        done.append(dict(row))
+    front = _config()
+    front.outgas.trap_mode = 'front'
+    return row, reservoirs(front, row)[0]
+
+
+@pytest.mark.physics_invariant
+def test_a_front_trapping_floor_counts_what_the_open_scheme_buries_over_the_same_steps():
+    """Held steps freeze the mantle from Phi 0.3 to 0.12 at a trapped melt fraction
+    F_tl of 0.02, 0.1 and 0.35. The floor reservoir of each species is the melt plus
+    the mass the open front scheme buries over the same steps at a unit melt
+    concentration, sum_k [(1 - F_tl,k) D_i + F_tl,k] dM_RM,k (Sim et al. 2024,
+    Eq. 6): H2O at D 0.0017 and CO2 at D 0, which the lattice D_i alone leaves out."""
+    from proteus.outgas.trapping import trapped_mass
+
+    steps = ((0.27, 0.02), (0.2, 0.1), (0.12, 0.35))
+    row, res = _front_held_steps(steps)
+    dm = M_MANTLE * np.diff([0.3, *(p for p, _ in steps)]) * -1.0
+    for s, d in (('H2O', D_H2O), ('CO2', 0.0)):
+        buried = sum(trapped_mass(d, f, 1.0, m, np.inf)[0] for m, (_, f) in zip(dm, steps))
+        assert res[s] == pytest.approx(0.12 * M_MANTLE + buried, rel=1e-14), s
+
+
+@pytest.mark.physics_invariant
+def test_a_held_remelt_returns_the_youngest_crystals_with_their_trapped_melt():
+    """Closure at Phi 0.3, freezing to 0.2 at F_tl 0.1 and to 0.1 at F_tl 0.4, then a
+    remelt to 0.15: the burial ledger remelts the youngest solid first, so half of
+    the second layer and its trapped melt return. Crystals left: 0.9 (0.1) + 0.6
+    (0.05) = 0.12, trapped melt 0.1 (0.1) + 0.4 (0.05) = 0.03, in M_mantle; a share
+    of the mean F_tl would leave 0.0375. A remelt past closure (0.35) leaves none."""
+    row, res = _front_held_steps(((0.2, 0.1), (0.1, 0.4), (0.15, 0.0)))
+    assert (row['seal_xtal_kg'], row['seal_tl_kg']) == pytest.approx(
+        (0.12 * M_MANTLE, 0.03 * M_MANTLE), rel=1e-13
+    )
+    assert res['H2O'] == pytest.approx(M_MANTLE * (0.15 + D_H2O * 0.12 + 0.03), rel=1e-13)
+    assert res['CO2'] == pytest.approx(M_MANTLE * (0.15 + 0.03), rel=1e-13)
+    row, res = _front_held_steps(((0.2, 0.1), (0.1, 0.4), (0.35, 0.0)))
+    assert (row['seal_xtal_kg'], row['seal_tl_kg'], res['H2O']) == (0.0, 0.0, 0.35 * M_MANTLE)
 
 
 @pytest.mark.physics_invariant
