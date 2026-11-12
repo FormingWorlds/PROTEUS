@@ -38,7 +38,7 @@ These output columns show what the seal does ([full list](../Reference/output.md
 - `seal_t_close` \[yr\]: the time the seal last closed.
 - `seal_Tmagma_close` \[K\]: the magma temperature of the chemistry solve that closed the seal, at least `outgas.T_floor`.
 - `seal_phi_close` \[1\]: the global melt fraction of the step that closed the seal, clipped to \[0, 1\].
-- `seal_phi_max` \[1\]: the highest global melt fraction since the seal closed, clipped to \[0, 1\]; the reservoir of the floor reads it under front trapping.
+- `seal_xtal_kg` and `seal_tl_kg` \[kg\]: under front trapping, the crystals formed since the seal closed and the melt trapped in them, which the reservoir of the floor counts; a remelt removes the youngest first.
 - `seal_crust_rate` \[kg yr$^{-1}$\] and `seal_volc_capped` \[1\]: the rate at which melt reaches the crust in the step, and whether `crust_rate dt` was cut to the melt mass.
 - `{e}_kg_leak_tau` and `{e}_kg_leak_volc` \[kg\]: the mass of each element that leaked in the step by relaxation and by volcanism.
 - `seal_leak_kg_cum` \[kg\]: the leaked mass since the start of the run.
