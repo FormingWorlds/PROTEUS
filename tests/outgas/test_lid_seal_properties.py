@@ -2,10 +2,12 @@
 
 Invariants checked: at a constant floor the step kernel gives the closed form
 for any held mass, floor and step fraction; a sealed row resumes only with a
-finite closing temperature above 0 K; under front trapping the floor reservoir
-counts the crystals formed after the highest melt fraction since closure, for any
-path of the melt fraction, and without trapping it is the melt for any partition
-coefficient; tau_leak is accepted only with a finite rate 1/tau_leak.
+finite closing temperature above 0 K and, under front trapping, finite crystal
+masses >= 0; under front trapping the floor reservoir counts the solid formed
+since closure as trapping buries it, youngest solid remelting first, for any path
+of the melt fraction and the trapped melt fraction, and without trapping it is
+the melt for any partition coefficient; tau_leak is accepted only with a finite
+rate 1/tau_leak.
 """
 
 from __future__ import annotations

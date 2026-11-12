@@ -483,9 +483,16 @@ def _step(row, interior, sealed, *, init_stage=False, trap_mode='none', hf_all=N
         patch('proteus.outgas.wrapper.check_ic_oxygen_budget'),
     ):
         state = run_lid_seal_step(
-            {}, cfg, row, interior, sealed, hf_all=hf_all, first_iter=False,
-            init_stage=init_stage, dt=10.0,
-        )  # fmt: skip
+            {},
+            cfg,
+            row,
+            interior,
+            sealed,
+            hf_all=hf_all,
+            first_iter=False,
+            init_stage=init_stage,
+            dt=10.0,
+        )
     return state, solve
 
 
@@ -519,9 +526,16 @@ def test_an_open_step_checks_the_oxygen_budget_and_a_held_step_does_not():
             patch('proteus.outgas.wrapper.check_ic_oxygen_budget') as check,
         ):
             run_lid_seal_step(
-                {}, cfg, row, interior, sealed, hf_all=None, first_iter=False,
-                init_stage=False, dt=10.0,
-            )  # fmt: skip
+                {},
+                cfg,
+                row,
+                interior,
+                sealed,
+                hf_all=None,
+                first_iter=False,
+                init_stage=False,
+                dt=10.0,
+            )
         assert row['seal_active'] == float(sealed)
         assert check.call_count == (0 if sealed else 1), sealed
         if not sealed:
@@ -1788,15 +1802,13 @@ def test_the_cumulative_leak_adds_the_leak_of_every_step():
     ('key', 'bad'),
     [
         *(('seal_Tmagma_close', b) for b in (float('nan'), 0.0, -1.0, None)),
-        *(('seal_xtal_kg', b) for b in (float('nan'), -1.0, float('inf'), None)),
-        *(('seal_tl_kg', b) for b in (float('nan'), -1.0, float('inf'), None)),
     ],
     ids=str,
 )
 def test_a_sealed_front_row_resumes_only_with_its_closing_state(key, bad):
-    """A sealed last row needs seal_Tmagma_close > 0 K and, under front trapping,
-    crystals since closure and their trapped melt as finite masses >= 0; a missing
-    or unreadable value stops the resume."""
+    """A sealed last row needs seal_Tmagma_close > 0 K, also under front trapping;
+    a missing or unreadable value stops the resume. The property tests cover the
+    crystal masses."""
     row = {**_sealed_row(), 'seal_active': 1.0, 'seal_xtal_kg': 1.0e22, 'seal_tl_kg': 1.0e21}
     front = _config()
     front.outgas.trap_mode = 'front'
