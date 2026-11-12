@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import sys
 
 from attrs import define, field, validators
 
@@ -221,8 +222,10 @@ class Lavatmos:
 
 
 def _real(value) -> bool:
-    """Whether ``value`` is an int or float and not a bool (TOML ``true`` is a bool)."""
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    """Whether ``value`` is an int or float in the float range, not a bool (TOML ``true``)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return isinstance(value, float) or abs(value) <= sys.float_info.max
 
 
 def _finite_positive(instance, attribute, value):
@@ -266,11 +269,7 @@ def _phi_open(instance, attribute, value):
 
 def _tau_leak(instance, attribute, value):
     """A real number > 0 with a finite rate 1/tau_leak; inf allowed, NaN refused."""
-    try:
-        ok = _real(value) and value > 0 and math.isfinite(1.0 / value)
-    except OverflowError:  # an int beyond the float range
-        ok = False
-    if not ok:
+    if not (_real(value) and value > 0 and math.isfinite(1.0 / value)):
         raise ValueError(
             f'tau_leak must be a number > 0 with a finite 1/tau_leak (inf allowed), got {value!r}'
         )

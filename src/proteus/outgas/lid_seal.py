@@ -453,8 +453,6 @@ def leak_step(config: Config, hf_row: dict, dt: float) -> None:
     chemistry that filled them.
     """
     rates, mdot, capped = leak_rates(config, hf_row, dt)
-    hf_row['seal_crust_rate'] = mdot
-    hf_row['seal_volc_capped'] = float(capped)
     before = {s: float(hf_row.get(f'{s}_kg_sealed', 0.0)) for s in SEALED_SPECIES}
     lam = {s: sum(rates[s]) for s in SEALED_SPECIES}
     frac = {
@@ -462,10 +460,21 @@ def leak_step(config: Config, hf_row: dict, dt: float) -> None:
     }
     leak = _leaks(config, hf_row, before, frac) if frac else {}
     tau_part, volc_part = dict.fromkeys(SEALED_SPECIES, 0.0), dict.fromkeys(SEALED_SPECIES, 0.0)
+    with np.errstate(over='ignore', invalid='ignore'):  # the check below stops an overflow
+        for s, out in leak.items():
+            if out > 0.0:
+                tau_part[s], volc_part[s] = (
+                    out * rates[s][0] / lam[s],
+                    out * rates[s][1] / lam[s],
+                )
+    _check(
+        all(np.isfinite(tau_part[s] + volc_part[s]) for s in leak),
+        'the leak is not finite; tau_leak is too short',
+    )
+    hf_row['seal_crust_rate'], hf_row['seal_volc_capped'] = mdot, float(capped)
     for s, out in leak.items():
         if out <= 0.0:
             continue
-        tau_part[s], volc_part[s] = out * rates[s][0] / lam[s], out * rates[s][1] / lam[s]
         mol = float(hf_row.get(f'{s}_mol_sealed', 0.0))
         moved = mol * (out / before[s])
         hf_row[f'{s}_kg_sealed'] = before[s] - out
@@ -487,9 +496,6 @@ def leak_step(config: Config, hf_row: dict, dt: float) -> None:
         hf_row[f'{e}_kg_sealed'] = max(sealed_e - out, 0.0)
         hf_row[f'{e}_kg_atm'] = float(hf_row.get(f'{e}_kg_atm', 0.0)) + out
         leak_kg += out
-    _check(
-        np.isfinite(leak_kg), f'the leak of {leak_kg} kg is not finite; tau_leak is too short'
-    )
     hf_row['seal_leak_kg_cum'] = float(hf_row.get('seal_leak_kg_cum', 0.0)) + leak_kg
     if leak_kg > 0.0:
         _refresh_atmosphere(hf_row)
@@ -557,10 +563,11 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
     ValueError
         If the flag, the path or a sealed mass is not readable, if a sealed row
         has no closing temperature ``seal_Tmagma_close`` > 0 K or, under front
-        trapping, no closing and highest melt fractions with 0 <= ``seal_phi_close`` <=
-        ``seal_phi_max`` <= 1 (a column the resume fills with 0 is caught), if the row holds
-        sealed mass under an open flag, or if it holds sealed mass with the seal
-        off, since nothing could open it then.
+        trapping, no closing and highest melt fractions with 0 <=
+        ``seal_phi_close`` <= ``seal_phi_max`` <= 1 (a zero-filled ``seal_phi_max``
+        is caught when ``seal_phi_close`` > 0), if the row holds sealed mass under
+        an open flag, or if it holds sealed mass with the seal off, since nothing
+        could open it then.
     """
     on = seal_enabled(config)
     names = (*SEALED_SPECIES, *SEALED_ELEMENTS)
