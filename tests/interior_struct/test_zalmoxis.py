@@ -2815,6 +2815,97 @@ def test_zalmoxis_solver_seeds_only_from_the_same_planet(tmp_path, monkeypatch, 
     assert kwargs['initial_radii'] is expected[1]
 
 
+def _structure_seed(key):
+    """Cache entry with density seed and adiabat seed (pressure, mass) for the planet ``key``."""
+    r = np.linspace(0.0, 6.4e6, 4)
+    return {
+        **_density_seed(key),
+        'radii': r,
+        'pressure': np.array([3.6e11, 2.0e11, 5.0e10, 1.0e5]),
+        'mass_enclosed': 5.97e24 * (r / 6.4e6) ** 3,
+    }
+
+
+@pytest.mark.parametrize(
+    'case, passed',
+    [
+        ('same_planet', True),
+        ('other_planet', False),
+        ('main_without_seed', False),
+        ('cache_without_pressure', False),
+        ('jax_arrays', False),
+    ],
+)
+def test_zalmoxis_solver_passes_the_adiabat_seed_of_the_same_planet(
+    tmp_path, monkeypatch, case, passed
+):
+    """The cached radii, pressure and mass_enclosed reach Zalmoxis as ``adiabat_seed`` only for
+    the same planet, on the numpy path, from a cache that holds them, and when the installed
+    ``zalmoxis.solver.main`` takes the argument; otherwise the call has no such keyword, as
+    for a Zalmoxis release before the seeded re-solve."""
+    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
+
+    owner = _gate_config('PALEOS:MgSiO3')
+    if case == 'other_planet':
+        owner.planet.mass_tot += 0.1
+    seed = _structure_seed(zalmoxis_wrapper._structure_cache_key(owner))
+    if case == 'cache_without_pressure':
+        seed['pressure'] = None
+    monkeypatch.setattr(
+        zalmoxis_wrapper, '_MAIN_TAKES_ADIABAT_SEED', case != 'main_without_seed'
+    )
+    r_arr, t_arr = _cooled_mantle_arrays(_plausible_model_results())
+    cached = {k: seed[k] for k in ('radii', 'pressure', 'mass_enclosed')}
+
+    main_mock, *_ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        lambda r, P: float(np.interp(r, r_arr, t_arr)),
+        use_jax=case == 'jax_arrays',
+        density_cache=seed,
+    )
+
+    kwargs = main_mock.call_args.kwargs
+    assert ('adiabat_seed' in kwargs) is passed
+    if passed:
+        assert kwargs['adiabat_seed'].keys() == cached.keys()
+        assert all(kwargs['adiabat_seed'][k] is cached[k] for k in cached)
+
+
+def test_zalmoxis_solver_caches_the_structure_for_the_next_seed(tmp_path, monkeypatch):
+    """After a solve the cache holds copies of the returned radii, pressure, mass_enclosed and
+    density under this planet's key."""
+    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
+
+    r_arr, t_arr = _cooled_mantle_arrays(_plausible_model_results())
+    _, _, _, _, model_results, *_ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        lambda r, P: float(np.interp(r, r_arr, t_arr)),
+        use_jax=False,
+    )
+    cache = zalmoxis_wrapper._density_cache
+    assert cache['key'] == zalmoxis_wrapper._structure_cache_key(_gate_config('PALEOS:MgSiO3'))
+    for k in ('radii', 'pressure', 'mass_enclosed'):
+        np.testing.assert_array_equal(cache[k], model_results[k])
+        assert cache[k] is not model_results[k]
+
+
+def test_the_seed_detection_reads_the_installed_zalmoxis():
+    """The flag says whether the installed ``zalmoxis.solver.main`` has an ``adiabat_seed``
+    parameter."""
+    import zalmoxis.solver
+
+    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
+
+    has = 'adiabat_seed' in inspect.signature(zalmoxis.solver.main).parameters
+    assert zalmoxis_wrapper._MAIN_TAKES_ADIABAT_SEED is has
+
+
 def test_zalmoxis_solver_withholds_callable_on_wet_in_envelope_profile(tmp_path, monkeypatch):
     """In-envelope wet solves feed the arrays to the JAX path.
 
