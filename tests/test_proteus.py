@@ -5049,12 +5049,14 @@ def test_with_the_lid_seal_on_the_loop_carries_its_state_and_clears_it_on_desicc
     """With the seal on the loop calls the seal step instead of the chemistry
     solve, hands each step the state the previous one returned, and checks the
     element closure. Once the run is desiccated the closure check is off, and the
-    next step takes the desiccated branch, which clears the seal."""
-    states, seen = [True, True, True], []
+    next step takes the desiccated branch, which clears the seal. Each step gets
+    the completed rows of the run, which a remelt under front trapping reads."""
+    states, seen, history = [True, True, True], [], []
 
     def _make(p):
-        def _seal_step(_dirs, _config, hf_row, _interior, sealed, **_kw):
+        def _seal_step(_dirs, _config, hf_row, _interior, sealed, **kw):
             seen.append(sealed)
+            history.append(kw['hf_all'] is p.hf_all)
             _write_post_outgas_row(hf_row, len(seen) - 1, vapour=False)
             p.desiccated = len(seen) >= 2  # the run desiccates on the second step
             return states[len(seen) - 1]
@@ -5063,7 +5065,7 @@ def test_with_the_lid_seal_on_the_loop_carries_its_state_and_clears_it_on_desicc
 
     p, rows, guard_calls, step = _run_seal_loop(tmp_path, True, _make)
     assert rows == []
-    assert seen == [False, True]
+    assert seen == [False, True] and history == [True, True]
     closure = [kw['check_element_closure'] for _, kw in guard_calls]
     assert closure[0] is True and set(closure[1:]) == {False} and len(closure) > 2
     assert p.desiccated is True and p.lid_sealed is False
