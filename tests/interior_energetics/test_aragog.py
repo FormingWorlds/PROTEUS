@@ -58,6 +58,8 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_struct.core_heatcap = 880.0
     config.interior_energetics.num_levels = 20
     config.interior_energetics.aragog.mass_coordinates = False
+    config.interior_energetics.aragog.cmb_cell_thickness = 1000.0
+    config.interior_energetics.aragog.surface_cell_thickness = 'uniform'
     config.interior_energetics.trans_conduction = True
     config.interior_energetics.trans_convection = True
     config.interior_energetics.trans_grav_sep = False
@@ -3338,6 +3340,7 @@ def test_setup_solver_passes_the_rheology_to_the_solid_phase(tmp_path, enabled):
     config.interior_struct.eos_dir = None
     config.planet.mass_tot = 1.0
     config.interior_energetics.aragog.rheology.enabled = enabled
+    config.interior_energetics.aragog.rheology.mlt_bottom_slope = 0.5
     solid, liquid = tmp_path / 'solid.dat', tmp_path / 'liquid.dat'
     solid.write_text('dummy')
     liquid.write_text('dummy')
@@ -3379,7 +3382,8 @@ def test_setup_solver_passes_the_rheology_to_the_solid_phase(tmp_path, enabled):
     by_phase = {c.kwargs['melt_fraction']: c.kwargs for c in mock_phase.call_args_list}
     assert 'rheology' not in by_phase[1]
     if enabled:
-        assert by_phase[0].get('rheology') == SolidRheologyParams(enabled=True)
+        want = SolidRheologyParams(enabled=True, mlt_bottom_slope=0.5)
+        assert by_phase[0].get('rheology') == want
     else:
         assert 'rheology' not in by_phase[0]
 

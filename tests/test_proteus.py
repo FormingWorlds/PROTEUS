@@ -50,6 +50,8 @@ def _record_matching_separation_laws(config, output, buoyancy='mixture'):
     aragog.allow_resume_law_change = False
     aragog.rheology.enabled = False  # a record without the rheology table ran with it off
     aragog.lid_mush_base = False  # and without the lid
+    aragog.cmb_cell_thickness = 0.0  # and on the uniform mesh
+    aragog.surface_cell_thickness = 'uniform'
     text = (
         "[interior_energetics]\nmodule = 'aragog'\n\n[interior_energetics.aragog]\n"
         f"separation_viscosity = 'mixture'\nseparation_buoyancy = '{buoyancy}'\n"
