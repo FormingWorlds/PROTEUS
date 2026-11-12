@@ -202,18 +202,18 @@ def _log_jax_nonviable_once(core_eos: str, mantle_eos: str) -> bool:
     return True
 
 
-# Module-level cache of the last structure for seeding the next Zalmoxis call: the density
-# seeds the Picard iteration, and radii, pressure and mass_enclosed are the adiabat_seed that
-# lets a re-solve skip the Newton root and the blend ramp. `key` is the planet that owns it.
-_density_cache = {
-    'density': None,
-    'radii': None,
-    'pressure': None,
-    'mass_enclosed': None,
-    'key': None,
-}
-# Zalmoxis releases before the seeded re-solve have no adiabat_seed argument
-_MAIN_TAKES_ADIABAT_SEED = 'adiabat_seed' in inspect.signature(main).parameters
+# Last structure of the planet `key`: density and radii seed the Picard iteration, radii,
+# pressure and mass_enclosed are the adiabat_seed of the next start-up re-solve
+_density_cache = dict.fromkeys(('density', 'radii', 'pressure', 'mass_enclosed', 'key'))
+
+
+def _takes_adiabat_seed(fn):
+    """True when ``fn`` (``zalmoxis.solver.main``) has an ``adiabat_seed`` parameter; Zalmoxis
+    releases before the seeded re-solve have none."""
+    return 'adiabat_seed' in inspect.signature(fn).parameters
+
+
+_MAIN_TAKES_ADIABAT_SEED = _takes_adiabat_seed(main)
 
 
 def _structure_cache_key(config):
@@ -3531,25 +3531,8 @@ def zalmoxis_solver(
             model_results.get('miscibility_iterations', 0),
         )
     else:
-        # _tf_effective carries the temperature-source decision hoisted
-        # above: the callable is withheld only when the JAX inner path
-        # will actually consume temperature_arrays (JAX-viable EOS
-        # layout and, on wet solves, an in-envelope VolatileProfile);
-        # on any other configuration the numpy path runs and the
-        # callable passes through. Warm-starts
-        # stay disabled on the JAX path: they drive Anderson into
-        # oscillation and do not help otherwise, because the inner
-        # Picard plateau at diff=0.1 is set by the lever-rule EOS kink,
-        # not by initial density quality, so warm-start cannot collapse
-        # the bail count.
-        # Reuse the cached density profile as a Picard seed only when it
-        # belongs to this same planet; otherwise start cold. Seeding never
-        # changes the converged result, only the iteration count. The seed
-        # and the central-pressure hint follow the temperature-source
-        # dispatch: they are withheld only on the JAX-arrays path (where
-        # warm-starts drive Anderson into oscillation) and applied on the
-        # numpy path, where they cut the Newton iteration count for
-        # repeated re-solves of the same planet.
+        # Seeds of the same planet go to the numpy path only (warm starts drive the JAX Anderson
+        # loop into oscillation); the adiabat seed can move the result within the mass tolerance
         _seed_match = not _drop_callable and _density_cache.get('key') == _structure_cache_key(
             config
         )
@@ -3862,9 +3845,7 @@ def zalmoxis_solver(
         hf_row['struct_mass_desync_frac'],
     )
 
-    # Cache density for next call's Picard seeding. Applied on the numpy path
-    # regardless of use_anderson, and withheld on the JAX-arrays path where
-    # warm-starts drive Anderson into oscillation.
+    # Cache the structure on every path; only the read above is withheld on the JAX-arrays path
     _density_cache['density'] = density.copy()
     _density_cache['radii'] = np.asarray(radii).copy()
     _density_cache['pressure'] = np.asarray(pressure).copy()
