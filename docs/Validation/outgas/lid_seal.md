@@ -67,7 +67,7 @@ This case has no plot: it compares numbers that agree to round-off.
     - Reference: analytical solution of $dM/dt = -(M - M_\mathrm{eq})/\tau$.
     - Tolerance: relative 1e-12 at every step, and between the 1 kyr and 100 kyr steps; the first-order step must be off by more than 5 %.
     - Test ids: `tests/outgas/test_lid_seal.py::test_relaxation_matches_the_exponential_and_not_the_step_length`, `tests/outgas/test_lid_seal.py::test_with_no_solubility_the_leak_decays_to_zero_whatever_the_step`
-    - Command: `pytest -m reference_pinned tests/outgas/test_lid_seal.py --validation-plots`
+    - Commands: `pytest -m reference_pinned tests/outgas/test_lid_seal.py --validation-plots` for the plot, `pytest tests/outgas/test_lid_seal.py -k no_solubility` for the decay to zero
 
 ## The volcanic rate closes the mass balance of the held volatile
 
@@ -169,7 +169,7 @@ This case has no plot: it checks closed forms on one step. The rule has no store
 ??? info "Test details"
     - Reference: the closed forms above, from the mass balance on the crystals.
     - Tolerance: relative 1e-10 for the floors, 1e-12 for the leak split.
-    - Test ids: `tests/outgas/test_lid_seal.py::test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_closure`, `tests/outgas/test_lid_seal.py::test_under_front_trapping_the_volcanic_rate_takes_the_floor_reservoir`, `tests/outgas/test_lid_seal.py::test_front_trapping_refuses_an_unreadable_closing_melt_fraction`
+    - Test ids: `tests/outgas/test_lid_seal.py::test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_closure`, `tests/outgas/test_lid_seal.py::test_under_front_trapping_the_volcanic_rate_takes_the_floor_reservoir`, `tests/outgas/test_lid_seal.py::test_front_trapping_refuses_an_unreadable_highest_melt_fraction`
     - Command: `pytest tests/outgas/test_lid_seal.py`
 
 ## A short relaxation time gives the gas-melt equilibrium
