@@ -810,6 +810,36 @@ def test_a_remelt_release_under_the_seal_reaches_the_sealed_reservoir():
     assert row['H2O_kg_sealed'] == pytest.approx(MELT['H2O'] + released, rel=1e-12)
 
 
+@pytest.mark.physics_invariant
+def test_a_remelt_that_releases_element_mass_alone_reaches_the_sealed_reservoir():
+    """A remelt with an empty species ledger releases only the element remainder
+    (1e3 kg of H), so trap_kg_step is 0; the held step still puts it under the
+    crust, and the H mass is conserved across trapped, sealed and atmosphere."""
+    import pandas as pd
+
+    from proteus.outgas.trapping import run_trapping
+
+    row = {**_sealed_row(phi=0.2), 'lid_weight': 1.0, 'lid_delta': 0.5, 'esc_rate_total': 0.0}
+    row.update({'H_kg_solid': 1.0e3, 'H_kg_trapped': 1.0e3})
+    h0 = row['H_kg_sealed'] + row['H_kg_solid'] + row['H_kg_atm']
+    hf_all = pd.DataFrame([{**row, 'Phi_global': 0.2, 'Time': row['Time'] - 10.0}])
+    row['Phi_global'] = 0.25
+    cfg = SimpleNamespace(
+        outgas=SimpleNamespace(trap_mode='front', D_const_H2O=0.0017, mass_thresh=1e16),
+        interior_energetics=SimpleNamespace(rfront_loc=0.5),
+    )
+    run_trapping(cfg, row, hf_all, None)
+    assert row['trap_kg_step'] == 0.0 and row['trap_branch'] == float(BRANCH_REMELT)
+    released = row['H_kg_liquid']
+    assert 0.0 < released <= 1.0e3
+    state, _ = _step(row, _interior([0.6, 0.2]), True, delta_close=0.3)
+    assert state is True and row['H_kg_liquid'] == 0.0
+    assert row['H_kg_sealed'] + row['H_kg_solid'] + row['H_kg_atm'] == pytest.approx(
+        h0, rel=1e-15
+    )
+    assert row['H_kg_solid'] == pytest.approx(1.0e3 - released, rel=1e-12)
+
+
 def _lid_seq(steps, delta=False, **seal):
     """Run a sequence of (lid_weight, lid_delta, phi_top) steps; return the states,
     with seal_delta as a third entry when ``delta`` is set."""
