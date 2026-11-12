@@ -5086,7 +5086,7 @@ def test_a_resume_restores_the_lid_seal_state_from_the_last_row(tmp_path, caplog
         _resume_with_patches(p, df)
     restore.assert_called_once()
     assert restore.call_args.args[0] is p.config
-    assert restore.call_args.args[1]['seal_t_close'] == 250.0
+    assert restore.call_args.args[1]['seal_t_close'] == pytest.approx(250.0, abs=0.0)
     assert p.lid_sealed is sealed
     logged = 'Resuming with the lid seal closed since t = 2.500e+02 yr' in caplog.text
     assert logged is sealed

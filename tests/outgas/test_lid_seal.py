@@ -17,6 +17,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
+import pandas as pd
 import pytest
 from calliope.solubility import SolubilityS2
 
@@ -29,6 +30,7 @@ from proteus.outgas.lid_seal import (
     S2_CUTOFF,
     SEALED_ELEMENTS,
     SEALED_SPECIES,
+    add_crystals,
     assert_sealed_row,
     close_seal,
     closure_state,
@@ -791,6 +793,9 @@ def test_an_element_leak_that_is_not_finite_stops_the_step():
     row['H2O_kg_sealed'] = 1.0e-320
     with pytest.raises(RuntimeError, match='not finite'):
         leak_step(_config(tau_leak=1.0e3), row, 1.0e3)
+    row = _sealed_row()  # the same step with the water of the row finishes
+    leak_step(_config(tau_leak=1.0e3), row, 1.0e3)
+    assert np.isfinite(row['H_kg_leak_tau']) and row['H_kg_leak_tau'] > 0.0
 
 
 def test_restore_seal_state_reads_the_row_and_refuses_stranded_mass():
@@ -822,8 +827,6 @@ def _bury_and_remelt(row):
     Returns the released mass [kg] and the water in sealed, solid and atmosphere
     before the release [kg].
     """
-    import pandas as pd
-
     from proteus.outgas.trapping import run_trapping
 
     buried = 2.0e19
@@ -860,8 +863,6 @@ def test_a_remelt_that_releases_element_mass_alone_reaches_the_sealed_reservoir(
     """A remelt with an empty species ledger releases only the element remainder
     (1e3 kg of H), so trap_kg_step is 0; the held step still puts it under the
     crust, and the H mass is conserved across trapped, sealed and atmosphere."""
-    import pandas as pd
-
     from proteus.outgas.trapping import run_trapping
 
     row = {**_sealed_row(phi=0.2), 'lid_weight': 1.0, 'lid_delta': 0.5, 'esc_rate_total': 0.0}
@@ -1313,6 +1314,9 @@ def test_the_floor_checks_stop_an_end_state_off_by_more_than_round_off():
             pytest.raises(RuntimeError, match=match),
         ):
             leak_step(cfg, _eq_row(atm, m0), dt)
+    row = _eq_row(atm, m0)  # without the offset the same steps pass
+    leak_step(cfg, row, 1.0e3)
+    assert row['H2O_kg_eq'] <= row['H2O_kg_sealed'] < m0['H2O']
 
 
 def test_a_step_zeroes_the_floors_of_the_last_sealed_step():
@@ -1530,6 +1534,7 @@ def test_co_ch4_and_noble_gas_fractions_follow_the_calliope_laws_and_arguments()
     want.update({g: SolubilityNobleGas(g)(bar[g]) for g in noble_gases})
     for g, ppmw in want.items():
         assert ppmw > 0.0 and x[g] == pytest.approx(1e-6 * ppmw, rel=1e-14), g
+    assert len({round(x[g], 20) for g in want}) == len(want)  # no 2 laws agree here
 
 
 @pytest.mark.physics_invariant
@@ -1633,8 +1638,6 @@ def _front_held_steps(steps, phi0=0.3, trap_mode='front'):
     """Held steps under front trapping from a closure at ``phi0``; each step is
     (Phi, F_tl) and records trap_dM_RM = M_mantle (Phi_prev - Phi) and trap_F_tl, as
     trapping does before the seal step. Returns the row and its reservoirs [kg]."""
-    import pandas as pd
-
     row = {**_sealed_row(phi=phi0), 'lid_weight': 1.0, 'lid_delta': 0.5, 'esc_rate_total': 0.0}
     row.update({'seal_active': 1.0, 'seal_path': 2.0})
     done = [dict(row)]
@@ -1709,15 +1712,13 @@ def test_opening_the_seal_zeroes_the_crystals_and_a_new_closure_starts_from_none
     assert reservoirs(front, row)[0]['H2O'] == 0.1 * M_MANTLE
 
 
+@pytest.mark.physics_invariant
 def test_a_held_remelt_reads_only_the_rows_since_the_last_closure():
     """An earlier held episode (closure at Phi 0.5, freezing to 0.4) lies before the
     last closure at t = 30 yr and Phi 0.3; a remelt to 0.45 past that closure leaves
-    no crystals, since the ledger starts at the last closing row. A ledger over
-    all rows would keep half of the first episode's layer, 0.05 M_mantle."""
-    import pandas as pd
-
-    from proteus.outgas.lid_seal import add_crystals
-
+    no crystals, since the ledger starts at the last closing row, and a remelt to
+    0.25 keeps the half of the last layer above it, 0.05 M_mantle. A ledger over
+    all rows would keep half or all of the first episode's layer as well."""
     xtal = [0.0, 0.1, 0.0, 0.0, 0.1]  # [M_mantle]; the last episode froze 0.3 -> 0.2
     hf_all = pd.DataFrame(
         {
@@ -1727,40 +1728,71 @@ def test_a_held_remelt_reads_only_the_rows_since_the_last_closure():
             'seal_tl_kg': [0.0] * 5,
         }
     )
-    row = {'Time': 50.0, 'Phi_global': 0.45, 'seal_t_close': 30.0, 'trap_F_tl': 0.0}
-    row.update(
-        {'trap_dM_RM': -0.25 * M_MANTLE, 'seal_xtal_kg': 0.1 * M_MANTLE, 'seal_tl_kg': 0.0}
-    )
-    add_crystals(row, hf_all)
-    assert (row['seal_xtal_kg'], row['seal_tl_kg']) == (0.0, 0.0)
+    rows = {}
+    for phi in (0.45, 0.25):
+        row = {'Time': 50.0, 'Phi_global': phi, 'seal_t_close': 30.0, 'trap_F_tl': 0.0}
+        row.update({'trap_dM_RM': (0.2 - phi) * M_MANTLE, 'seal_xtal_kg': 0.1 * M_MANTLE})
+        row['seal_tl_kg'] = 0.0
+        add_crystals(row, hf_all)
+        rows[phi] = (row['seal_xtal_kg'], row['seal_tl_kg'])
+    assert rows[0.45] == (0.0, 0.0)
+    assert rows[0.25] == pytest.approx((0.05 * M_MANTLE, 0.0), rel=1e-13)
 
 
-@pytest.mark.parametrize('t_close', [float('nan'), 1.0e9], ids=['nan', 'after-every-row'])
+@pytest.mark.parametrize(
+    't_close', [float('nan'), 1.0e9, None], ids=['nan', 'after-every-row', 'missing']
+)
 def test_a_held_remelt_without_its_closing_row_stops(t_close):
     """A held remelt rebuilds the crystals from the rows since seal_t_close; with no
-    such row (a closing time that is NaN or later than every row) it stops."""
-    import pandas as pd
-
-    from proteus.outgas.lid_seal import add_crystals
-
+    such row (a closing time that is NaN, later than every row or missing) it stops
+    and leaves the crystal columns as they were."""
     hf_all = pd.DataFrame({'Time': [0.0, 10.0], 'Phi_global': [0.3, 0.2]})
     hf_all['seal_xtal_kg'], hf_all['seal_tl_kg'] = [0.0, 0.1 * M_MANTLE], [0.0, 0.0]
     row = {'Time': 20.0, 'Phi_global': 0.25, 'seal_t_close': t_close, 'trap_F_tl': 0.0}
     row.update(
         {'trap_dM_RM': -0.05 * M_MANTLE, 'seal_xtal_kg': 0.1 * M_MANTLE, 'seal_tl_kg': 0.0}
     )
+    if t_close is None:
+        row.pop('seal_t_close')
     with pytest.raises(ValueError, match='seal_t_close'):
         add_crystals(row, hf_all)
+    assert (row['seal_xtal_kg'], row['seal_tl_kg']) == (0.1 * M_MANTLE, 0.0)
+
+
+NAN = float('nan')
 
 
 @pytest.mark.parametrize(
-    ('phi', 'ok'), [(0.1, False), (0.3, True), (0.35, True)], ids=['below', 'at', 'above']
+    ('phi', 'phi_c', 'xtal', 'tl', 'ok'),
+    [
+        (0.1, 0.3, 0.0, 0.0, False),
+        (0.1, 0.3, 1.0e22, 0.0, True),
+        (0.1, 0.3, 0.0, 1.0e22, True),
+        (0.3, 0.3, 0.0, 0.0, True),
+        (0.35, 0.3, 0.0, 0.0, True),
+        (NAN, 0.3, 0.0, 0.0, False),
+        (0.1, NAN, 0.0, 0.0, False),
+    ],
+    ids=[
+        'below',
+        'below-crystals',
+        'below-trapped-melt',
+        'at',
+        'above',
+        'nan-phi',
+        'nan-close',
+    ],
 )
-def test_a_sealed_front_row_below_its_closing_melt_fraction_needs_its_crystals(phi, ok):
+def test_a_sealed_front_row_below_its_closing_melt_fraction_needs_its_crystals(
+    phi, phi_c, xtal, tl, ok
+):
     """Under front trapping, a sealed row below its closing melt fraction (0.3) has
     frozen solid since closure, so crystal columns that are both 0, as a resume
-    fills missing columns, stop the resume; at or above it no solid is held."""
+    fills missing columns, stop the resume, and so does a melt fraction that cannot
+    be compared; crystals alone (F_tl 0) or trapped melt alone (F_tl 1) resume, and
+    at or above it no solid is held."""
     row = {**_sealed_row(phi=0.3), 'seal_active': 1.0, 'Phi_global': phi}
+    row.update({'seal_phi_close': phi_c, 'seal_xtal_kg': xtal, 'seal_tl_kg': tl})
     front = _config()
     front.outgas.trap_mode = 'front'
     if ok:
@@ -1768,7 +1800,7 @@ def test_a_sealed_front_row_below_its_closing_melt_fraction_needs_its_crystals(p
     else:
         with pytest.raises(ValueError, match='seal_xtal_kg'):
             restore_seal_state(front, row)
-        assert restore_seal_state(_config(), row) is True
+    assert restore_seal_state(_config(), row) is True
 
 
 @pytest.mark.physics_invariant
@@ -1798,14 +1830,8 @@ def test_the_cumulative_leak_adds_the_leak_of_every_step():
     assert row['seal_leak_kg_cum'] == pytest.approx(sum(steps), rel=1e-14)
 
 
-@pytest.mark.parametrize(
-    ('key', 'bad'),
-    [
-        *(('seal_Tmagma_close', b) for b in (float('nan'), 0.0, -1.0, None)),
-    ],
-    ids=str,
-)
-def test_a_sealed_front_row_resumes_only_with_its_closing_state(key, bad):
+@pytest.mark.parametrize('bad', [float('nan'), 0.0, -1.0, None], ids=str)
+def test_a_sealed_front_row_resumes_only_with_its_closing_state(bad):
     """A sealed last row needs seal_Tmagma_close > 0 K, also under front trapping;
     a missing or unreadable value stops the resume. The property tests cover the
     crystal masses."""
@@ -1813,10 +1839,10 @@ def test_a_sealed_front_row_resumes_only_with_its_closing_state(key, bad):
     front = _config()
     front.outgas.trap_mode = 'front'
     assert restore_seal_state(front, dict(row)) is True
-    row.pop(key)
+    row.pop('seal_Tmagma_close')
     if bad is not None:
-        row[key] = bad
-    with pytest.raises(ValueError, match=key):
+        row['seal_Tmagma_close'] = bad
+    with pytest.raises(ValueError, match='seal_Tmagma_close'):
         restore_seal_state(front, row)
 
 

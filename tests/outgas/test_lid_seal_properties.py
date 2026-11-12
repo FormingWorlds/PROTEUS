@@ -74,6 +74,8 @@ def test_restore_refuses_a_sealed_row_without_a_closing_temperature(temp):
 MASS = st.one_of(st.floats(allow_nan=True, allow_infinity=True), st.sampled_from([0.0, 1.0e22]))
 
 
+@example(key='seal_xtal_kg', mass=float('inf'))
+@example(key='seal_tl_kg', mass=float('inf'))
 @given(key=st.sampled_from(CRYSTAL_COLUMNS), mass=MASS)
 def test_restore_refuses_a_sealed_row_without_its_crystal_masses(key, mass):
     """Under front trapping a sealed last row resumes only with finite crystal and
