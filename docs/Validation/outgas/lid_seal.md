@@ -29,6 +29,7 @@ Each case below has the same layout: why the check exists, what it tests, how we
 | `tests/outgas/test_lid_seal.py::test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_closure` | Mass balance on the solid formed since closure | The floor under front trapping, with the solid formed since closure and after a remelt past closure. | 2026-11-12 |
 | `tests/outgas/test_lid_seal.py::test_a_front_trapping_floor_counts_what_the_open_scheme_buries_over_the_same_steps` | Burial of the open front scheme (`trapped_mass`, Sim et al. (2024)[^cite-sim2024], Eq. 6) | The floor reservoir over held steps at a trapped melt fraction that changes per step. | 2026-11-12 |
 | `tests/outgas/test_lid_seal.py::test_a_held_remelt_returns_the_youngest_crystals_with_their_trapped_melt` | Hand sums over the layers, youngest first | The crystals and trapped melt left after a held remelt. | 2026-11-12 |
+| `tests/outgas/test_lid_seal.py::test_a_sealed_front_row_below_its_closing_melt_fraction_needs_its_crystals` | Definition of the crystal columns | The resume refusal of a sealed row without crystals, and its edges. | 2026-11-12 |
 | `tests/outgas/test_lid_seal.py::test_a_short_tau_gives_the_equilibrium_partition` | Gas-melt equilibrium, solved independently | The end state of a step with $\tau$ = $10^{-3}\,\Delta t$. | 2026-11-12 |
 | `tests/outgas/test_lid_seal.py::test_finite_tau_lies_between_the_frozen_and_the_open_atmosphere` | Open equilibrium and held state, solved in the test | Atmospheric water over a falling melt fraction. | 2026-11-11 |
 | `tests/outgas/test_lid_seal_tutorial.py::test_the_closing_row_of_the_tutorial_sits_on_its_floor` | Dissolved masses of the closing solve | The closing row and first held steps of the stored tutorial run. | 2026-11-12 |
@@ -153,7 +154,7 @@ The cut is asserted only where the step is short against the leak ($\lambda \Del
 
 ## With front trapping the floor counts the solid formed since closure
 
-**Why this check exists.** With `outgas.trap_mode = "front"`, the solid that froze before the seal closed keeps its own trapped volatiles, so it must not count in the floor. A floor that counted it would be too high, and the seal would let too little gas leak. A floor below the melt mass would let too much leak. The solid that freezes since closure holds part of the held volatile, and the floor must count it with the trapped melt fraction of its own step.
+**Why this check exists.** With `outgas.trap_mode = "front"`, the solid that froze before the seal closed keeps its own trapped volatiles, so it must not count in the floor. A floor that counted it would be too high, and the seal would let too little gas leak. A floor below the melt mass would let too much leak. The solid that has frozen since closure holds part of the held volatile, and the floor must count it with the trapped melt fraction of its own step.
 
 **What it tests.** Here $X_\mathrm{eq}$ is the dissolved mass fraction of a species. In the first test, held water ($D$ = 0.0017) and CO$_2$ ($D$ = 0.05) leak for one step of 1 kyr with $\tau$ = 1 kyr and crust production on; $\Phi_c$ = 0.2. The tests require:
 
@@ -167,45 +168,48 @@ The cut is asserted only where the step is short against the leak ($\lambda \Del
 
 **Why it matters.** It sets how much gas a sealed planet with front trapping releases. At closure the floor equals the held mass, so the held mass leaks as soon as the melt fraction falls.
 
-**Known limit.** The floor puts the held mass at one melt concentration over the melt and the solid formed since closure, while trapping on an open mantle fixes each layer at the concentration of its own step. The tests check the size of the reservoir, not the concentration of each layer. A replay of the held span of the run below with each layer fixed at the concentration of its own step gives 0.55 % more water in the atmosphere at 140 kyr.
+This case has no plot: it checks closed forms over 1 to 3 steps. The rule has no stored run of its own. To see it in a full run, copy `input/tutorials/tutorial_lid_seal.toml` and set `outgas.trap_mode = "front"`. That run gives 1.339e15 kg of water in the atmosphere at 140 kyr; a replay of its held span with a floor that counts all solid since the start of the run, at the same partition, gives 6.799e14 kg, 0.51 times as much.
 
-This case has no plot: it checks closed forms over 1 to 3 steps. The rule has no stored run of its own. To see it in a full run, copy `input/tutorials/tutorial_lid_seal.toml` and set `outgas.trap_mode = "front"`. That run gives 1.339e15 kg of water in the atmosphere at 140 kyr; a replay of its held span with a floor that counts all solid since the start of the run, at the same partition, gives 6.799e14 kg.
+**Known limit.** The floor puts the held mass at one melt concentration over the melt and the solid formed since closure, while trapping on an open mantle fixes each layer at the concentration of its own step. The tests check the size of the reservoir, not the concentration of each layer. A replay of the held span of the run above with each layer fixed at the concentration of its own step gives 0.55 % more water in the atmosphere at 140 kyr.
 
 ??? info "Test details"
     - Reference: the closed forms above, from the mass balance on the solid; Sim et al. (2024), Eq. 6, through `trapped_mass`.
-    - Tolerance: relative 1e-10 for the floors, 1e-12 for the leak split, 1e-14 for the buried sum.
+    - Tolerance: relative 1e-10 for the floors, 1e-12 for the leak split, 1e-14 for the buried sum and the volcanic rate.
     - Test ids: `tests/outgas/test_lid_seal.py::test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_closure`, `tests/outgas/test_lid_seal.py::test_under_front_trapping_the_volcanic_rate_takes_the_floor_reservoir`, `tests/outgas/test_lid_seal.py::test_a_front_trapping_floor_counts_what_the_open_scheme_buries_over_the_same_steps`
     - Command: `pytest tests/outgas/test_lid_seal.py`
 
 ## The crystal columns of the seal start at zero and are checked on resume
 
-**Why this check exists.** Under front trapping the seal keeps 2 masses: the crystals formed since closure and the melt trapped in them. If one seal left its masses behind, the next seal would count solid that never froze under it, and its floor would be too high. A resume fills a missing column with 0, so a sealed run could also restart with its solid dropped.
+**Why this check exists.** Under front trapping the seal keeps 2 masses: the crystals formed since closure (`seal_xtal_kg`) and the melt trapped in them (`seal_tl_kg`). If one seal left its masses behind, the next seal would count solid that never froze under it, and its floor would be too high. A resume fills a missing column with 0, so a sealed run could also restart with its solid dropped.
 
-**What it tests.**
+**What it tests.** The tests set up rows and steps and assert exact values:
 
 - both masses are finite and not negative, on every held row and on resume;
 - both are 0 after the seal opens and at a new closure, also when the old row still carries crystals;
 - a closure at a melt fraction of 0, also with round-off below 0, holds and resumes;
 - a held step takes its crystals only from a trapping step with a finite crystallised mass and a trapped melt fraction in \[0, 1\];
-- a resumed sealed row below $\Phi_c$ with both masses at 0, or with a melt fraction that is NaN, is refused; with crystals alone or trapped melt alone it resumes, and at or above $\Phi_c$ it resumes. A zero-filled `seal_phi_close` turns this refusal off.
+- a resumed sealed row with both masses at 0 is refused when its `Phi_global` is below `seal_phi_close` ($\Phi_c$), and when either of the 2 is not finite or missing; with crystals alone or trapped melt alone it resumes, and with `Phi_global` at or above `seal_phi_close` it resumes;
+- a resumed sealed row needs a closing time `seal_t_close` above 0 yr, because a held remelt replays the rows from that time on.
 
-**How we know the right answer.** A row below $\Phi_c$ has frozen solid since closure, so both masses at 0 cannot occur in a run. These are exact statements of the rules of the code, and the tests check them by assertion.
+**How we know the right answer.** No outside source exists for this case. Both masses count the solid formed since closure, so both are 0 at closure and at opening. A row below $\Phi_c$ has frozen solid since closure, so both masses at 0 cannot occur in a run, and the seal never closes at 0 yr, because it does not close in the initialisation stage. The tests assert these states exactly.
 
-**Why it matters.** It protects the floor of every later held step.
+**Why it matters.** A wrong crystal mass moves the floor and the volcanic rate of every later held step under front trapping, so the atmosphere gets the wrong amount of gas.
+
+**Known limit.** A resume fills a missing column with 0. A row whose `seal_phi_close` is 0 passes the refusal for a finite `Phi_global`, because a clipped `Phi_global` is never below 0; a test pins this.
 
 This case has no plot: it checks exact states and refusals.
 
 ??? info "Test details"
-    - Reference: the rules of the code stated above.
-    - Tolerance: exact for the zeros and the refusals; relative 1e-15 for the reservoir after a closure.
-    - Test ids: `tests/outgas/test_lid_seal.py::test_front_trapping_refuses_an_unreadable_crystal_mass`, `tests/outgas/test_lid_seal.py::test_a_front_trapping_closure_at_either_end_of_the_melt_fraction_holds_and_resumes`, `tests/outgas/test_lid_seal.py::test_opening_the_seal_zeroes_the_crystals_and_a_new_closure_starts_from_none`, `tests/outgas/test_lid_seal.py::test_a_sealed_front_row_below_its_closing_melt_fraction_needs_its_crystals`, `tests/outgas/test_lid_seal_properties.py::test_restore_refuses_a_sealed_row_without_its_crystal_masses`, `tests/outgas/test_lid_seal_properties.py::test_a_held_step_takes_its_crystals_only_from_a_readable_trapping_step`
+    - Reference: none outside the code; the states follow from the definition of the 2 masses.
+    - Tolerance: exact for the zeros and the refusals; relative 1e-15 for the reservoir after a closure, 1e-13 for the held water after one step.
+    - Test ids: `tests/outgas/test_lid_seal.py::test_front_trapping_refuses_an_unreadable_crystal_mass`, `tests/outgas/test_lid_seal.py::test_a_front_trapping_closure_at_either_end_of_the_melt_fraction_holds_and_resumes`, `tests/outgas/test_lid_seal.py::test_opening_the_seal_zeroes_the_crystals_and_a_new_closure_starts_from_none`, `tests/outgas/test_lid_seal.py::test_a_sealed_front_row_below_its_closing_melt_fraction_needs_its_crystals`, `tests/outgas/test_lid_seal.py::test_a_sealed_front_row_resumes_only_with_a_closing_time_after_the_start`, `tests/outgas/test_lid_seal_properties.py::test_restore_refuses_a_sealed_row_without_its_crystal_masses`, `tests/outgas/test_lid_seal_properties.py::test_a_held_step_takes_its_crystals_only_from_a_readable_trapping_step`
     - Command: `pytest tests/outgas/test_lid_seal.py tests/outgas/test_lid_seal_properties.py`
 
 ## A remelt under the seal returns the youngest solid first
 
 **Why this check exists.** A remelt while the seal holds must return the youngest solid first, with its own trapped melt. A reservoir that gives every layer the mean $F_\mathrm{tl}$ keeps the wrong trapped melt. A remelt past closure must leave no solid in the reservoir, and the solid of an earlier seal must not come back.
 
-**What it tests.** The seal closes at $\Phi$ = 0.3, freezes to 0.2 at $F_\mathrm{tl}$ = 0.1 and to 0.1 at $F_\mathrm{tl}$ = 0.4, and remelts to 0.15. It keeps $0.12\,M_\mathrm{mantle}$ of crystals and $0.03\,M_\mathrm{mantle}$ of trapped melt, because half of the youngest layer returns; a share at the mean $F_\mathrm{tl}$ would keep $0.0375\,M_\mathrm{mantle}$ of trapped melt. A remelt past closure keeps none. With an earlier held episode before the last closure, a remelt past that closure also keeps none, and a remelt with no row since the closing time stops the run. A property test requires the same as a stack of layers over any path of $\Phi$ and $F_\mathrm{tl}$.
+**What it tests.** The seal closes at $\Phi$ = 0.3, freezes to 0.2 at $F_\mathrm{tl}$ = 0.1 and to 0.1 at $F_\mathrm{tl}$ = 0.4, and remelts to 0.15. It keeps $0.12\,M_\mathrm{mantle}$ of crystals and $0.03\,M_\mathrm{mantle}$ of trapped melt, because half of the youngest layer returns; a share at the mean $F_\mathrm{tl}$ would keep $0.0375\,M_\mathrm{mantle}$ of trapped melt. A remelt past closure keeps none. With an earlier held episode before the last closure, a remelt past that closure also keeps none, and a remelt to 0.25 keeps the part of the last layer above it, $0.05\,M_\mathrm{mantle}$. A remelt with no row since the closing time stops the run and leaves both masses as they were. A property test requires the same as a stack of layers over any path of $\Phi$ and $F_\mathrm{tl}$.
 
 **How we know the right answer.** Trapping remelts the youngest solid first, so a remelt removes the youngest layers with their own $F_\mathrm{tl}$. The layer sums are written out by hand in the test, and the property test builds its own stack of layers.
 
@@ -309,7 +313,7 @@ The tests in `tests/outgas/test_lid_seal.py` and the code itself also check, wit
     - a species that takes no leak in the step must keep its residual above 0 at every sample after a leak of 0, so a second solution next to a leak of 0 also stops the run (a made-up floor that falls stops it, a flat one does not);
     - a CO$_2$ leak above $83.15\,T/23$ bar, where the CO$_2$ law of Dixon et al. (1995) falls with pressure, still has one solution and finishes;
     - roots closer together than one sample spacing, and several solutions of the coupled species, pass the scan; in the tests only a made-up floor gives a second solution;
-- a sealed row resumes only with a finite closing temperature above 0 K and, under front trapping, crystal and trapped melt masses (`seal_xtal_kg`, `seal_tl_kg`) that are finite and not negative, and not both 0 below the closing melt fraction or with a melt fraction that is NaN;
+- a sealed row resumes only with a finite closing temperature above 0 K and, under front trapping, crystal and trapped melt masses (`seal_xtal_kg`, `seal_tl_kg`) that are finite and not negative, and not both 0 below the closing melt fraction or with a melt fraction that is not finite, and a closing time above 0 yr;
 - in one step the 2 leak parts of each element sum to the drop of its held mass and to the rise of its atmospheric mass; each species splits its leak in the ratio of its 2 rates;
 - in one step no more melt than the melt mass reaches the crust, and below `phi_solid` none does;
 - after a leak, the surface pressure is $M_\mathrm{atm}\,g/(4\pi R^2)$ and the mixing ratios follow the moles;

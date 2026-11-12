@@ -24,7 +24,7 @@ The seal also needs:
 
 It cannot be combined with `params.stop.solid.freeze_volatiles = true`, which also freezes the melt inventory, or with `outgas.vapourise = true`.
 
-With the defaults `tau_leak = inf` and `crust_rate = 0`, no held mass leaves while the seal holds. The desiccation check counts the held mass, so a planet whose held mass of any volatile element or noble gas is above `outgas.mass_thresh` does not count as desiccated while the seal holds; a planet is desiccated when it has lost its volatiles ([definition](../Explanations/outgas.md#terms-used-on-this-page)). Set a finite `tau_leak` or a positive `crust_rate` to let the held volatiles reach the atmosphere.
+With the defaults `tau_leak = inf` and `crust_rate = 0`, no held mass leaves while the seal holds. The desiccation check counts the held mass. While the seal holds, a planet is therefore not desiccated if the held mass of any volatile element or noble gas is above `outgas.mass_thresh`. A planet is desiccated when it has lost its volatiles ([definition](../Explanations/outgas.md#terms-used-on-this-page)). Set a finite `tau_leak` or a positive `crust_rate` to let the held volatiles reach the atmosphere.
 
 ## Read the output
 
@@ -43,3 +43,15 @@ These output columns show what the seal does ([full list](../Reference/output.md
 - `{e}_kg_leak_tau` and `{e}_kg_leak_volc` \[kg\]: the mass of each element that leaked in the step by relaxation and by volcanism.
 - `seal_leak_kg_cum` \[kg\]: the leaked mass since the start of the run.
 - `seal_open_kg` \[kg\]: the held mass that returned to the melt in a step where the seal opened.
+
+## Resume a sealed run
+
+`proteus start -c <config.toml> --resume` continues a run that stopped while the seal held. The resume stops with an error in these cases:
+
+- the last row is sealed and `seal_Tmagma_close` is not finite or not above 0 K;
+- the last row holds sealed mass, but the seal is off in the config (resume with `outgas.lid_seal.enabled = true`) or `seal_active` is 0;
+- with front trapping, `seal_xtal_kg` or `seal_tl_kg` is not finite or negative;
+- with front trapping, both are 0 while `Phi_global` is below `seal_phi_close` or either melt fraction is not finite;
+- with front trapping, `seal_t_close` is not above 0 yr.
+
+A resume fills a missing column with 0. [Validation](../Validation/outgas/lid_seal.md#the-crystal-columns-of-the-seal-start-at-zero-and-are-checked-on-resume) checks these cases.
