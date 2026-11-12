@@ -5406,6 +5406,38 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.cmb_cell_thickness",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000.0",
+      "choices": null,
+      "bounds": null,
+      "description": "Radial thickness [m] of the mesh cell at the CMB: 0 (the uniform mesh at that end) or a finite value of at least 2 m, below the uniform cell (R_int - R_core) / (num_levels - 1), which aragog checks when it builds the mesh. The cells grow away from the CMB with a tanh stretching. A resume keeps the value its run was written with.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.surface_cell_thickness",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float or str",
+      "accepts_none": false,
+      "default": "\"uniform\"",
+      "choices": null,
+      "bounds": null,
+      "description": "Radial thickness [m] of the mesh cell at the surface, on the same terms as cmb_cell_thickness, or 'uniform': the top cell of the uniform mesh of the same coordinate mode (with mass_coordinates the top cell of the uniform mass-coordinate mesh). With cmb_cell_thickness = 0 and 'uniform' the mesh is the uniform mesh. A resume keeps the value its run was written with.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.backend",
       "toml_section": "interior_energetics.aragog",
       "class": "Aragog",
@@ -5601,7 +5633,32 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Use the temperature- and pressure-dependent solid viscosity and the stagnant-lid closure of ``aragog.rheology.SolidRheologyParams``, with its defaults for every other parameter. False uses the constant ``solid_log10visc``.",
+      "description": "Use the temperature- and pressure-dependent solid viscosity and the stagnant-lid closure of ``aragog.rheology.SolidRheologyParams``, with its defaults for every other parameter but ``mlt_bottom_slope``. False uses the constant ``solid_log10visc``.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.rheology.mlt_bottom_slope",
+      "toml_section": "interior_energetics.aragog.rheology",
+      "class": "Rheology",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.82",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 1
+        }
+      ],
+      "description": "Slope of the viscous-branch mixing length above the CMB, l = slope (r - r_cmb), in (0, 1]. The default 0.82 is the value of Tachinami et al. (2011, ApJ 726:70, App. A) at which the mixing-length Nusselt number at the base of the mantle matches those of parameterised convection and boundary-layer theory. Read only with ``enabled``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

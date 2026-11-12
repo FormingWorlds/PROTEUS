@@ -7,8 +7,14 @@ config with it first. A changed ``separation_viscosity`` or ``separation_buoyanc
 would switch the melt drainage law at the resume row; the resume stops unless
 ``interior_energetics.aragog.allow_resume_law_change`` is set.
 
+The mesh end cells (``cmb_cell_thickness``, ``surface_cell_thickness``) must stay: the
+snapshot entropy is put back node by node, so other end cells would move every node. The
+allow switch does not cover them. ``rheology.mlt_bottom_slope`` is a law like the two above
+when the rheology is on in the run and in the resume.
+
 A record that names the Aragog module and lacks ``separation_viscosity`` counts as
-aragog's ``'melt'``. A record of another interior module holds no Aragog law. Any law
+aragog's ``'melt'``, one that lacks the cell fields as the uniform mesh (both 0), one with the
+rheology on and no slope as 1.0. A record of another interior module holds no Aragog law. Any law
 the record does not hold must be set in the config file of the resume; the allow switch
 does not stand in for a missing record.
 """
@@ -25,6 +31,11 @@ LAW_FIELDS = ('separation_viscosity', 'separation_buoyancy')
 UNRECORDED_VISCOSITY = 'melt'  # aragog's default, which a record without the field ran under
 RHEOLOGY_KEY = 'interior_energetics.aragog.rheology.enabled'
 LID_KEY = 'interior_energetics.aragog.lid_mush_base'
+SLOPE_KEY = 'interior_energetics.aragog.rheology.mlt_bottom_slope'
+MESH_FIELDS = ('cmb_cell_thickness', 'surface_cell_thickness')
+# Values a record without the field ran under: the uniform mesh, and aragog's earlier slope.
+UNRECORDED_CELL = 0.0
+UNRECORDED_SLOPE = 1.0
 # The permission to switch a separation law holds for one resume, so the record keeps it off.
 RECORD_OVERRIDES = {'interior_energetics.aragog.allow_resume_law_change': False}
 
@@ -69,6 +80,54 @@ def _unrecorded(key: str, stored_path: str, module, config_path) -> str:
         f'{key} is not recorded in {where}: {hint}; set it in {config_path} to the law the '
         'run used (allow_resume_law_change does not cover a law the run did not record)'
     )
+
+
+def _same_cell(field, old, new, old_cmb, new_cmb) -> bool:
+    """True where the recorded and the new value give the same end cell. With no CMB cell on
+    either side, 0 and 'uniform' at the surface are both the uniform mesh."""
+    if old == new:
+        return True
+    uniform_mesh = (0, 'uniform')
+    return (
+        field == 'surface_cell_thickness'
+        and old_cmb == 0
+        and new_cmb == 0
+        and old in uniform_mesh
+        and new in uniform_mesh
+    )
+
+
+def _check_mesh(aragog, stored, module, stored_path, config_path, refusals, notes) -> None:
+    """Refuse a resume on other mesh end cells than the run's; warn where they are unknown."""
+    if module != 'aragog' and not stored:  # no Aragog table: the mesh of the run is unknown
+        for field in MESH_FIELDS:
+            notes.append(
+                (
+                    logging.WARNING,
+                    f'interior_energetics.aragog.{field} is not recorded for this run; it '
+                    f'resumes under {getattr(aragog, field)!r}, and the snapshot entropy is put '
+                    'back node by node on that mesh',
+                )
+            )
+        return
+    old = {f: stored.get(f, UNRECORDED_CELL) for f in MESH_FIELDS}
+    for field in MESH_FIELDS:
+        new = getattr(aragog, field)
+        if _same_cell(
+            field, old[field], new, old['cmb_cell_thickness'], aragog.cmb_cell_thickness
+        ):
+            continue
+        source = (
+            stored_path
+            if field in stored
+            else f'not recorded in {stored_path}: the uniform mesh'
+        )
+        refusals.append(
+            f'interior_energetics.aragog.{field} is {new!r} in {config_path}, but the run was '
+            f'written with {old[field]!r} ({source}); the snapshot entropy is put back node by '
+            f'node, so the resume must keep the mesh of the run: set it to {old[field]!r} '
+            '(allow_resume_law_change does not cover the mesh)'
+        )
 
 
 def check_resume_separation_laws(
@@ -162,6 +221,14 @@ def check_resume_separation_laws(
         old = bool(stored.get('lid_mush_base', False))
         if old != aragog.lid_mush_base:
             switch('lid_mush_base', LID_KEY, old, aragog.lid_mush_base)
+    _check_mesh(aragog, stored, module, stored_path, config_path, refusals, notes)
+    rheology = stored.get('rheology')
+    if aragog.rheology.enabled and isinstance(rheology, dict) and rheology.get('enabled'):
+        old = rheology.get('mlt_bottom_slope', UNRECORDED_SLOPE)
+        if old != aragog.rheology.mlt_bottom_slope:
+            switch(
+                'rheology.mlt_bottom_slope', SLOPE_KEY, old, aragog.rheology.mlt_bottom_slope
+            )
     if refusals:
         raise ResumeSeparationLawError('Resume refused:\n  ' + '\n  '.join(refusals))
     for level, note in notes:

@@ -271,6 +271,10 @@ OVERRIDES = {
     # 2.0 finite-differenced the AGNI jacobian at every step; the 3.0 default
     # updates it with Broyden's method in between.
     'atmos_clim.agni.broyden': False,
+    # 2.0 built the Aragog mesh uniform at both ends; the 3.0 defaults refine the CMB cell to
+    # 1000 m and set the top cell by rule.
+    'interior_energetics.aragog.cmb_cell_thickness': 0.0,
+    'interior_energetics.aragog.surface_cell_thickness': 0.0,
 }
 
 # Element-budget fields consumed by the element handler (not mapped directly).

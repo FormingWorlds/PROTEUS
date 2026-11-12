@@ -41,10 +41,18 @@ def structure_bool(val, _cls):
     return val
 
 
+def structure_float_or_str(val, _cls):
+    """Return a number or a string as it is; the field validator checks the value."""
+    if isinstance(val, bool) or not isinstance(val, (int, float, str)):
+        raise TypeError(f'must be a number or a string, got {val!r}')
+    return val
+
+
 # PROTEUS's own converter, so importing PROTEUS leaves the global cattrs converter as it is
 converter = cattrs.Converter()
 converter.register_structure_hook(Union[int, Literal['none']], structure_k_val)
 converter.register_structure_hook(bool, structure_bool)
+converter.register_structure_hook(float | str, structure_float_or_str)
 
 
 def _is_explicit_zero(value: object) -> bool:

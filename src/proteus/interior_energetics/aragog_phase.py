@@ -250,7 +250,8 @@ def solid_rheology_kwargs(config: Config) -> dict:
     -------
     dict
         Empty when the rheology is off, so that the aragog defaults apply; otherwise
-        ``{'rheology': SolidRheologyParams(enabled=True)}``.
+        ``{'rheology': SolidRheologyParams(enabled=True, mlt_bottom_slope=...)}`` with the
+        configured slope and the aragog defaults for the rest.
 
     Raises
     ------
@@ -268,7 +269,12 @@ def solid_rheology_kwargs(config: Config) -> dict:
             'interior_energetics.aragog.rheology.enabled = true needs an aragog whose entropy '
             'solver reads the rheology; the installed aragog does not'
         )
-    return {'rheology': SolidRheologyParams(enabled=True)}
+    rheology = config.interior_energetics.aragog.rheology
+    return {
+        'rheology': SolidRheologyParams(
+            enabled=True, mlt_bottom_slope=rheology.mlt_bottom_slope
+        )
+    }
 
 
 def build_jax_phase_params(config: Config) -> PhaseParams:

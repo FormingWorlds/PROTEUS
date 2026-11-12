@@ -1200,6 +1200,8 @@ class AragogRunner:
             adiabatic_bulk_modulus=config.interior_energetics.adiabatic_bulk_modulus,
             adams_williamson_beta=config.interior_energetics.adams_williamson_beta,
             mass_coordinates=config.interior_energetics.aragog.mass_coordinates,
+            cmb_cell_thickness=config.interior_energetics.aragog.cmb_cell_thickness,
+            surface_cell_thickness=config.interior_energetics.aragog.surface_cell_thickness,
             # Upper BC of the Adams-Williamson P(r) integration, set once here
             # and not updated later: 0 in a fresh run (no atmosphere step yet);
             # a resume restores the run's value in update_solver. bar -> Pa.

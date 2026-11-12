@@ -69,6 +69,23 @@ def _valid_bool(instance, attribute, value):
         raise TypeError(f'`{attribute.name}` must be a bool, got {value!r}')
 
 
+def _valid_number(instance, attribute, value):
+    """Require an int or a float; refuse a bool, which a TOML true would give."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f'`{attribute.name}` must be a number, got {value!r}')
+
+
+def _valid_cell_thickness(instance, attribute, value):
+    """Accept 0 or a finite number of at least 2 m, and "uniform" for the surface cell."""
+    if attribute.name == 'surface_cell_thickness' and value == 'uniform':
+        return
+    _valid_number(instance, attribute, value)
+    if not (value == 0 or (math.isfinite(value) and value >= 2.0)):
+        raise ValueError(
+            f'`{attribute.name}` must be 0 or finite and at least 2 m, got {value}'
+        )
+
+
 def _valid_lid_delta_on(instance, attribute, value):
     """Accept None or a finite number above 0; reject a bool, a string, NaN and the rest."""
     if value is None:
@@ -376,10 +393,16 @@ class Rheology:
     enabled : bool
         Use the temperature- and pressure-dependent solid viscosity and the stagnant-lid
         closure of ``aragog.rheology.SolidRheologyParams``, with its defaults for every
-        other parameter. False uses the constant ``solid_log10visc``.
+        other parameter but ``mlt_bottom_slope``. False uses the constant ``solid_log10visc``.
+    mlt_bottom_slope : float
+        Slope of the viscous-branch mixing length above the CMB, l = slope (r - r_cmb), in
+        (0, 1]. The default 0.82 is the value of Tachinami et al. (2011, ApJ 726:70, App. A)
+        at which the mixing-length Nusselt number at the base of the mantle matches those of
+        parameterised convection and boundary-layer theory. Read only with ``enabled``.
     """
 
     enabled: bool = field(default=False, validator=_valid_bool)
+    mlt_bottom_slope: float = field(default=0.82, validator=(_valid_number, gt(0), le(1)))
 
 
 @define
@@ -429,6 +452,19 @@ class Aragog:
     """
 
     mass_coordinates: bool = field(default=True)
+    cmb_cell_thickness: float = field(default=1000.0, validator=_valid_cell_thickness)
+    """Radial thickness [m] of the mesh cell at the CMB: 0 (the uniform mesh at that end) or a
+    finite value of at least 2 m, below the uniform cell (R_int - R_core) / (num_levels - 1),
+    which aragog checks when it builds the mesh. The cells grow away from the CMB with a tanh
+    stretching. A resume keeps the value its run was written with."""
+    surface_cell_thickness: float | str = field(
+        default='uniform', validator=_valid_cell_thickness
+    )
+    """Radial thickness [m] of the mesh cell at the surface, on the same terms as
+    cmb_cell_thickness, or 'uniform': the top cell of the uniform mesh of the same coordinate
+    mode (with mass_coordinates the top cell of the uniform mass-coordinate mesh). With
+    cmb_cell_thickness = 0 and 'uniform' the mesh is the uniform mesh. A resume keeps the value
+    its run was written with."""
     backend: str = field(default='jax', validator=in_(('numpy', 'jax')))
     atol_temperature_equivalent: float = field(default=1.0e-8, validator=gt(0))
     """Effective temperature-scale absolute tolerance [K] for Aragog's ODE integrator.
