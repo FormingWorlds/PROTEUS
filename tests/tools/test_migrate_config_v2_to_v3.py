@@ -219,6 +219,8 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.aragog.scalar_gravity_override',
         'interior_energetics.aragog.separation_buoyancy',
         'interior_energetics.aragog.rheology.enabled',
+        # Read only with the rheology on, which a migrated config keeps off.
+        'interior_energetics.aragog.rheology.mlt_bottom_slope',
         'interior_energetics.aragog.separation_viscosity',
         'interior_energetics.aragog.solver_method',
         'interior_energetics.aragog.temperature_step_cap',

@@ -751,7 +751,7 @@ def test_numpy_setup_solver_site_delegates_to_the_shared_builder():
 
 def _rheology_config(enabled):
     """A config namespace holding only the rheology switch."""
-    aragog = SimpleNamespace(rheology=SimpleNamespace(enabled=enabled))
+    aragog = SimpleNamespace(rheology=SimpleNamespace(enabled=enabled, mlt_bottom_slope=0.82))
     return SimpleNamespace(interior_energetics=SimpleNamespace(aragog=aragog))
 
 
@@ -796,9 +796,15 @@ def test_jax_phase_params_carry_the_rheology_switch():
     if not hasattr(__import__('aragog.solver').solver.EntropySolver, '_rheology_enabled'):
         pytest.skip('the installed aragog solver does not read the rheology')
     config = _make_full_config()
-    config.interior_energetics.aragog.rheology = SimpleNamespace(enabled=True)
-    assert build_jax_phase_params(config).rheology == SolidRheologyParams(enabled=True)
-    config.interior_energetics.aragog.rheology = SimpleNamespace(enabled=False)
+    config.interior_energetics.aragog.rheology = SimpleNamespace(
+        enabled=True, mlt_bottom_slope=0.5
+    )
+    assert build_jax_phase_params(config).rheology == SolidRheologyParams(
+        enabled=True, mlt_bottom_slope=0.5
+    )
+    config.interior_energetics.aragog.rheology = SimpleNamespace(
+        enabled=False, mlt_bottom_slope=0.5
+    )
     assert build_jax_phase_params(config).rheology.enabled is False
 
 

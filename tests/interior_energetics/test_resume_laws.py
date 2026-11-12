@@ -186,10 +186,15 @@ def test_a_change_from_a_record_that_names_no_module_is_refused(tmp_path):
 
 
 def test_the_recorded_laws_of_a_record_that_names_no_module_resume_quietly(tmp_path, caplog):
-    """The same record and the laws it holds resume with no switch and no note."""
+    """The same record and the laws it holds resume with no switch and no note; its Aragog
+    table holds no cell fields, so the run was on the uniform mesh, which the resume keeps."""
     out = _record_without_module(tmp_path)
     config, path = _user_config(
-        tmp_path, separation_buoyancy='solid', separation_viscosity='mixture'
+        tmp_path,
+        separation_buoyancy='solid',
+        separation_viscosity='mixture',
+        cmb_cell_thickness=0.0,
+        surface_cell_thickness=0.0,
     )
     with caplog.at_level(logging.DEBUG, logger=LOGGER):
         assert check_resume_separation_laws(config, path, out) == []
@@ -331,14 +336,15 @@ def test_an_allowed_switch_recorded_by_a_real_write_resumes_under_the_new_law(tm
 
 def test_a_record_that_names_no_module_but_holds_the_laws_needs_no_law_in_the_file(tmp_path):
     """A record without interior_energetics.module that holds both laws is compared like any
-    record, so a config file that sets neither law resumes when its defaults match."""
+    record, so a config file that sets neither law resumes when its defaults match. The record
+    holds no cell fields (the uniform mesh), which the file keeps."""
     out = tmp_path / 'run'
     out.mkdir()
     (out / 'init_coupler.toml').write_text(
         "[interior_energetics.aragog]\nseparation_viscosity = 'mixture'\n"
         "separation_buoyancy = 'mixture'\n"
     )
-    config, path = _user_config(tmp_path)
+    config, path = _user_config(tmp_path, cmb_cell_thickness=0.0, surface_cell_thickness=0.0)
     assert 'separation_' not in path.read_text()  # the file sets neither law
     assert check_resume_separation_laws(config, path, out) == []
 
@@ -385,9 +391,10 @@ def _rheology_run(folder, enabled):
     config, _ = _user_config(out)
     config.write(out / 'init_coupler.toml')
     doc = tomlkit.parse((out / 'init_coupler.toml').read_text())
-    del doc['interior_energetics']['aragog']['rheology']
-    if enabled is not None:
-        doc['interior_energetics']['aragog']['rheology'] = {'enabled': enabled}
+    if enabled is None:
+        del doc['interior_energetics']['aragog']['rheology']
+    else:
+        doc['interior_energetics']['aragog']['rheology']['enabled'] = enabled
     (out / 'init_coupler.toml').write_text(tomlkit.dumps(doc))
     return out
 
@@ -526,3 +533,133 @@ def test_a_run_without_a_usable_record_does_not_check_the_rheology_or_the_lid(
     for key in ('rheology.enabled', 'lid_mush_base'):
         mine = [m for m in noted if key in m]
         assert len(mine) == 1 and 'not recorded' in mine[0] and 'True' in mine[0]
+
+
+def _mesh_run(folder, drop=(), **aragog):
+    """A run directory whose record holds the given aragog fields, minus ``drop``."""
+    return _stored_run(folder, drop=drop, **aragog)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('allow', [False, True])
+@pytest.mark.parametrize(
+    'field, stored, new',
+    [
+        ('cmb_cell_thickness', 1000.0, 0.0),
+        ('cmb_cell_thickness', 1000.0, 500.0),
+        ('surface_cell_thickness', 'uniform', 0.0),
+        ('surface_cell_thickness', 20000.0, 'uniform'),
+    ],
+)
+def test_a_changed_mesh_end_cell_refuses_the_resume_even_when_laws_may_change(
+    tmp_path, allow, field, stored, new
+):
+    """The snapshot entropy is put back node by node, so a resume on other end cells would
+    move every node: refused, also with allow_resume_law_change."""
+    out = _mesh_run(tmp_path, **{field: stored})
+    config, path = _user_config(tmp_path, **{field: new, 'allow_resume_law_change': allow})
+    with pytest.raises(ResumeSeparationLawError, match=field) as err:
+        check_resume_separation_laws(config, path, out)
+    assert 'node' in str(err.value)
+
+
+def test_unchanged_end_cells_resume_quietly(tmp_path, caplog):
+    """The default end cells on both sides give no switch and no warning."""
+    out = _mesh_run(tmp_path)
+    config, path = _user_config(tmp_path)
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert check_resume_separation_laws(config, path, out) == []
+    assert [r for r in caplog.records if r.name == LOGGER] == []
+
+
+def test_a_record_without_the_end_cells_ran_on_the_uniform_mesh(tmp_path):
+    """A record that names the Aragog module and lacks both cell fields ran on the uniform
+    mesh: a resume under the new defaults is refused, one with both cells at 0 goes on."""
+    out = _mesh_run(tmp_path, drop=('cmb_cell_thickness', 'surface_cell_thickness'))
+    config, path = _user_config(tmp_path)
+    with pytest.raises(ResumeSeparationLawError, match='cmb_cell_thickness') as err:
+        check_resume_separation_laws(config, path, out)
+    assert 'surface_cell_thickness' in str(err.value)
+    config, path = _user_config(tmp_path, cmb_cell_thickness=0.0, surface_cell_thickness=0.0)
+    assert check_resume_separation_laws(config, path, out) == []
+
+
+def test_uniform_and_0_at_the_surface_with_no_cmb_cell_are_the_same_mesh(tmp_path):
+    """With the CMB cell at 0, "uniform" and 0 at the surface both give the uniform mesh, so a
+    resume may change one into the other."""
+    out = _mesh_run(tmp_path, cmb_cell_thickness=0.0, surface_cell_thickness=0.0)
+    config, path = _user_config(tmp_path, cmb_cell_thickness=0.0)
+    assert config.interior_energetics.aragog.surface_cell_thickness == 'uniform'
+    assert check_resume_separation_laws(config, path, out) == []
+
+
+def test_a_run_without_a_usable_record_warns_about_the_end_cells(tmp_path, caplog):
+    """With no record of the Aragog table the end cells of the run are unknown: the resume
+    goes on and warns once for each cell field."""
+    out = tmp_path / 'run'
+    out.mkdir()
+    text = MINIMAL.read_text() + (
+        '\n[interior_energetics.aragog]\n'
+        "    separation_viscosity = 'mixture'\n    separation_buoyancy = 'mixture'\n"
+    )
+    path = tmp_path / 'user.toml'
+    path.write_text(text)
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert check_resume_separation_laws(read_config_object(path), path, out) == []
+    noted = [r.getMessage() for r in caplog.records if r.name == LOGGER]
+    for key in ('cmb_cell_thickness', 'surface_cell_thickness'):
+        assert len([m for m in noted if key in m and 'not recorded' in m]) == 1
+
+
+def _slope_case(folder, stored, new, allow=False):
+    """A rheology-on run recording slope ``stored`` (None: no slope field) and its resume."""
+    out = Path(folder) / 'run'
+    out.mkdir()
+    config, _ = _user_config(out)
+    config.write(out / 'init_coupler.toml')
+    doc = tomlkit.parse((out / 'init_coupler.toml').read_text())
+    rheology = {'enabled': True}
+    if stored is not None:
+        rheology['mlt_bottom_slope'] = stored
+    doc['interior_energetics']['aragog']['rheology'] = rheology
+    (out / 'init_coupler.toml').write_text(tomlkit.dumps(doc))
+    text = MINIMAL.read_text() + (
+        f'\n[interior_energetics.aragog]\n    allow_resume_law_change = {str(allow).lower()}\n'
+        f'[interior_energetics.aragog.rheology]\n    enabled = true\n    mlt_bottom_slope = {new}\n'
+    )
+    path = Path(folder) / 'user.toml'
+    path.write_text(text)
+    return read_config_object(path), path, out
+
+
+@pytest.mark.parametrize('stored, new', [(0.82, 1.0), (1.0, 0.82), (None, 0.82)])
+def test_a_changed_slope_refuses_the_resume(tmp_path, stored, new):
+    """The slope sets the viscous mixing length at the CMB; a resume that changes it is
+    refused. A record without the slope ran under 1.0."""
+    config, path, out = _slope_case(tmp_path, stored, new)
+    with pytest.raises(ResumeSeparationLawError, match='mlt_bottom_slope') as err:
+        check_resume_separation_laws(config, path, out)
+    assert f'written with {1.0 if stored is None else stored!r}' in str(err.value)
+
+
+def test_the_allow_switch_lets_the_slope_change_and_reports_it(tmp_path, caplog):
+    """With allow_resume_law_change the slope switches with one warning naming both values."""
+    config, path, out = _slope_case(tmp_path, 1.0, 0.82, allow=True)
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert check_resume_separation_laws(config, path, out) == [
+            ('rheology.mlt_bottom_slope', 1.0, 0.82)
+        ]
+    warned = [r.getMessage() for r in caplog.records if r.name == LOGGER]
+    assert len(warned) == 1 and '1.0' in warned[0] and '0.82' in warned[0]
+
+
+def test_the_slope_is_not_compared_with_the_rheology_off(tmp_path):
+    """With the rheology off the slope is not read, so a change does not stop a resume."""
+    out = _stored_run(tmp_path)
+    text = (
+        MINIMAL.read_text()
+        + '\n[interior_energetics.aragog.rheology]\n    mlt_bottom_slope = 0.5\n'
+    )
+    path = tmp_path / 'user.toml'
+    path.write_text(text)
+    assert check_resume_separation_laws(read_config_object(path), path, out) == []
