@@ -12,7 +12,7 @@ the chemistry is frozen, escape draws on the atmosphere alone, and each sealed
 species leaks to the atmosphere down to its dissolved equilibrium,
 
     dM_i/dt = -(1/tau + k_i) max(M_i - M_eq,i, 0),    k_i = chi_d Mdot_c / R_i,
-    M_eq,i = X_eq,i(p) R_i,    R_i = M_melt + D_i M_solid,
+    M_eq,i = X_eq,i(p) R_i,    R_i = M_melt,
 
 with ``tau = tau_leak``, ``Mdot_c = crust_rate`` and ``chi_d`` the degassing
 efficiency of Schaefer & Sasselov (2015, ApJ 801:40, Eq. 14), whose plate
@@ -22,8 +22,8 @@ M_i / R_i``, limited here to the excess over the solubility, ``X_melt,i -
 X_eq,i``, which their Eq. 14 does not have. ``X_eq,i`` is the CALLIOPE
 solubility law of the species at its partial pressure in the atmosphere, at
 the temperature and IW offset of the closing solve; a species without a law has
-``M_eq = 0``. With front trapping ``R_i`` counts only the crystals formed after
-the highest melt fraction since closure. Gas does not dissolve back through the crust, so a species below
+``M_eq = 0``. With front trapping ``R_i`` also counts ``D_i`` times the crystals
+formed after the highest melt fraction since closure. Gas does not dissolve back through the crust, so a species below
 its floor stays as it is. Each step takes the exponential step of the law with
 ``M_eq`` at the end state, since the leak raises the partial pressure that sets
 it; the step is exact for a constant ``M_eq`` and first order where it moves. The
@@ -233,7 +233,8 @@ def leak_rates(config: Config, hf_row: dict, dt: float) -> tuple[dict, float, bo
     Parameters
     ----------
     config : Config
-        Model configuration; reads ``outgas.lid_seal`` and ``outgas.D_const_*``.
+        Model configuration; reads ``outgas.lid_seal``, ``outgas.trap_mode`` and
+        ``outgas.D_const_*``.
     hf_row : dict
         Row with ``M_mantle`` [kg] and ``Phi_global`` [1].
     dt : float
@@ -268,12 +269,13 @@ def leak_rates(config: Config, hf_row: dict, dt: float) -> tuple[dict, float, bo
 
 
 def reservoirs(config: Config, hf_row: dict) -> tuple[dict, float, float]:
-    """Reservoir ``R_i = M_melt + D_i M_solid`` [kg] of each sealed species.
+    """Reservoir ``R_i`` [kg] of each sealed species.
 
-    With ``outgas.trap_mode = 'front'`` the crystals that froze before closure keep
-    their own trapped volatiles, so ``R_i`` counts only the crystals formed after
-    it. Trapping remelts the youngest solid first, so these are the crystals formed
-    after the highest melt fraction since closure, ``Phi_max = seal_phi_max``:
+    Without trapping ``R_i = M_melt``, the reservoir of the open solve. With
+    ``outgas.trap_mode = 'front'`` the crystals formed after closure also hold the
+    species at ``D_i`` times the melt concentration. Trapping remelts the youngest
+    solid first, so these are the crystals formed after the highest melt fraction
+    since closure, ``Phi_max = seal_phi_max``:
     ``R_i = M_melt + D_i max(Phi_max - Phi, 0) M_mantle``. Returns the reservoirs,
     the global melt fraction clipped to [0, 1] and the melt mass [kg]. Raises
     ``ValueError`` if ``M_mantle`` or ``Phi_global`` is not finite, or under front
@@ -284,12 +286,13 @@ def reservoirs(config: Config, hf_row: dict) -> tuple[dict, float, float]:
         if not np.isfinite(value):
             raise ValueError(f'Lid seal: {key} = {value} is not finite')
     phi = min(max(phi, 0.0), 1.0)
-    m_melt, m_solid = phi * m_mantle, (1.0 - phi) * m_mantle
-    if config.outgas.trap_mode == 'front':
-        phi_max = float(hf_row.get('seal_phi_max', np.nan))
-        if not 0.0 <= phi_max <= 1.0:
-            raise ValueError(f'Lid seal: seal_phi_max = {phi_max} is not a melt fraction')
-        m_solid = max(phi_max - phi, 0.0) * m_mantle  # crystals formed since phi_max
+    m_melt = phi * m_mantle
+    if config.outgas.trap_mode != 'front':
+        return dict.fromkeys(SEALED_SPECIES, m_melt), phi, m_melt
+    phi_max = float(hf_row.get('seal_phi_max', np.nan))
+    if not 0.0 <= phi_max <= 1.0:
+        raise ValueError(f'Lid seal: seal_phi_max = {phi_max} is not a melt fraction')
+    m_solid = max(phi_max - phi, 0.0) * m_mantle  # crystals formed since phi_max
     d = {s: float(getattr(config.outgas, f'D_const_{s}', 0.0)) for s in SEALED_SPECIES}
     return {s: m_melt + d[s] * m_solid for s in SEALED_SPECIES}, phi, m_melt
 
