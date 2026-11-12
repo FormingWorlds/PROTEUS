@@ -15,7 +15,7 @@ import pytest
 
 pytest.importorskip('hypothesis')
 
-from hypothesis import assume, given, settings
+from hypothesis import assume, example, given, settings
 from hypothesis import strategies as st
 
 from proteus.config._outgas import LidSeal
@@ -126,6 +126,7 @@ def _stack(phi_c, path):
 
 @pytest.mark.physics_invariant
 @settings(max_examples=60, deadline=None)
+@example(phi_c=1.0 + 1.0e-9, path=[(0.0, 1.0)])
 @given(
     phi_c=st.floats(-1.0e-9, 1.0 + 1.0e-9),
     path=st.lists(st.tuples(st.floats(0.0, 1.0), st.floats(0.0, 1.0)), max_size=5),
@@ -134,14 +135,15 @@ def test_the_front_reservoir_counts_the_solid_since_closure_as_trapping_buries_i
     """A seal closing at any melt fraction, also past either end by round-off, and
     held over any path of (Phi, F_tl): the crystals and trapped melt left are those
     of a layer stack in which the youngest solid melts first, and the front
-    reservoir of H2O is M_melt + D M_xtal + M_tl, between the melt and the mantle."""
+    reservoir of H2O is M_melt + D M_xtal + M_tl, between the melt and the mantle
+    (past it by the round-off of a closing Phi above 1, which trapping differences)."""
     row, res = _front_held_steps(path, phi0=phi_c)
     xtal, tl = _stack(phi_c, path)
     assert row['seal_xtal_kg'] == pytest.approx(xtal * M_MANTLE, rel=1e-12, abs=1.0e12)
     assert row['seal_tl_kg'] == pytest.approx(tl * M_MANTLE, rel=1e-12, abs=1.0e12)
     m_melt = min(max(row['Phi_global'], 0.0), 1.0) * M_MANTLE
     assert res['H2O'] == m_melt + D_H2O * row['seal_xtal_kg'] + row['seal_tl_kg']
-    assert m_melt <= res['H2O'] <= M_MANTLE * (1.0 + 1.0e-12)
+    assert m_melt <= res['H2O'] <= M_MANTLE * (max(phi_c, 1.0) + 1.0e-12)  # dM_RM is unclipped
 
 
 @pytest.mark.physics_invariant

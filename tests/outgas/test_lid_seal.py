@@ -1675,6 +1675,88 @@ def test_a_held_remelt_returns_the_youngest_crystals_with_their_trapped_melt():
     assert (row['seal_xtal_kg'], row['seal_tl_kg'], res['H2O']) == (0.0, 0.0, 0.35 * M_MANTLE)
 
 
+def test_opening_the_seal_zeroes_the_crystals_and_a_new_closure_starts_from_none():
+    """After held freezing to Phi 0.1 under front trapping, the opening step leaves
+    seal_xtal_kg and seal_tl_kg at 0 on the open row; a row that still carries
+    crystals closes with both at 0, so the new reservoir is the melt alone."""
+    row, _ = _front_held_steps(((0.2, 0.1), (0.1, 0.4)))
+    assert row['seal_xtal_kg'] > 0.0 and row['seal_tl_kg'] > 0.0
+    row.update({'lid_delta': 0.1, 'trap_dM_RM': 0.0, 'trap_F_tl': 0.0})
+    assert (
+        _step(row, _interior([0.6, 0.2]), True, delta_close=0.3, trap_mode='front')[0] is False
+    )
+    assert (row['seal_xtal_kg'], row['seal_tl_kg']) == (0.0, 0.0)
+    row = {**_row(phi=0.1), 'lid_weight': 1.0, 'lid_delta': 0.31, 'esc_rate_total': 0.0}
+    row.update({'seal_xtal_kg': 0.15 * M_MANTLE, 'seal_tl_kg': 0.05 * M_MANTLE})
+    assert _step(row, _interior([0.6, 0.2]), False, delta_close=0.3, trap_mode='front')[0]
+    front = _config()
+    front.outgas.trap_mode = 'front'
+    assert (row['seal_xtal_kg'], row['seal_tl_kg']) == (0.0, 0.0)
+    assert reservoirs(front, row)[0]['H2O'] == 0.1 * M_MANTLE
+
+
+def test_a_held_remelt_reads_only_the_rows_since_the_last_closure():
+    """An earlier held episode (closure at Phi 0.5, freezing to 0.4) lies before the
+    last closure at t = 30 yr and Phi 0.3; a remelt to 0.45 past that closure leaves
+    no crystals, since the ledger starts at the last closing row. A ledger over
+    all rows would keep half of the first episode's layer, 0.05 M_mantle."""
+    import pandas as pd
+
+    from proteus.outgas.lid_seal import add_crystals
+
+    xtal = [0.0, 0.1, 0.0, 0.0, 0.1]  # [M_mantle]; the last episode froze 0.3 -> 0.2
+    hf_all = pd.DataFrame(
+        {
+            'Time': [0.0, 10.0, 20.0, 30.0, 40.0],
+            'Phi_global': [0.5, 0.4, 0.3, 0.3, 0.2],
+            'seal_xtal_kg': [x * M_MANTLE for x in xtal],
+            'seal_tl_kg': [0.0] * 5,
+        }
+    )
+    row = {'Time': 50.0, 'Phi_global': 0.45, 'seal_t_close': 30.0, 'trap_F_tl': 0.0}
+    row.update(
+        {'trap_dM_RM': -0.25 * M_MANTLE, 'seal_xtal_kg': 0.1 * M_MANTLE, 'seal_tl_kg': 0.0}
+    )
+    add_crystals(row, hf_all)
+    assert (row['seal_xtal_kg'], row['seal_tl_kg']) == (0.0, 0.0)
+
+
+@pytest.mark.parametrize('t_close', [float('nan'), 1.0e9], ids=['nan', 'after-every-row'])
+def test_a_held_remelt_without_its_closing_row_stops(t_close):
+    """A held remelt rebuilds the crystals from the rows since seal_t_close; with no
+    such row (a closing time that is NaN or later than every row) it stops."""
+    import pandas as pd
+
+    from proteus.outgas.lid_seal import add_crystals
+
+    hf_all = pd.DataFrame({'Time': [0.0, 10.0], 'Phi_global': [0.3, 0.2]})
+    hf_all['seal_xtal_kg'], hf_all['seal_tl_kg'] = [0.0, 0.1 * M_MANTLE], [0.0, 0.0]
+    row = {'Time': 20.0, 'Phi_global': 0.25, 'seal_t_close': t_close, 'trap_F_tl': 0.0}
+    row.update(
+        {'trap_dM_RM': -0.05 * M_MANTLE, 'seal_xtal_kg': 0.1 * M_MANTLE, 'seal_tl_kg': 0.0}
+    )
+    with pytest.raises(ValueError, match='seal_t_close'):
+        add_crystals(row, hf_all)
+
+
+@pytest.mark.parametrize(
+    ('phi', 'ok'), [(0.1, False), (0.3, True), (0.35, True)], ids=['below', 'at', 'above']
+)
+def test_a_sealed_front_row_below_its_closing_melt_fraction_needs_its_crystals(phi, ok):
+    """Under front trapping, a sealed row below its closing melt fraction (0.3) has
+    frozen solid since closure, so crystal columns that are both 0, as a resume
+    fills missing columns, stop the resume; at or above it no solid is held."""
+    row = {**_sealed_row(phi=0.3), 'seal_active': 1.0, 'Phi_global': phi}
+    front = _config()
+    front.outgas.trap_mode = 'front'
+    if ok:
+        assert restore_seal_state(front, row) is True
+    else:
+        with pytest.raises(ValueError, match='seal_xtal_kg'):
+            restore_seal_state(front, row)
+        assert restore_seal_state(_config(), row) is True
+
+
 @pytest.mark.physics_invariant
 def test_noble_gas_leak_columns_hold_the_drop_of_the_sealed_mass_split_by_rate():
     """A noble gas leaks as a species: its leak columns sum to the drop of its
