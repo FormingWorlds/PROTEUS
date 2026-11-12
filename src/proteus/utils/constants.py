@@ -323,31 +323,40 @@ noble_solar_mass_ratio = {
     'Xe': 2.32e-8,
 }
 
-# Radionuclide heat production and half-life, from Ruedas (2017) via SPIDER.
-# The isotope/element mass ratios and element concentrations are config inputs.
+# Radionuclide heat production and half-life from Ruedas (2017) via SPIDER; isotope molar
+# mass [kg mol-1] from AME2020. Isotope/element mass ratios and element totals are config inputs.
 radnuc_data = {
     'al26': {
         'heatprod': 0.3583,  # W/kg of 26Al
         'halflife': 0.717e6,  # yr
+        'mass': 2.5986892e-2,  # kg/mol
     },
     'fe60': {
         'heatprod': 3.6579e-2,  # W/kg of 60Fe
         'halflife': 2.62e6,  # yr
+        'mass': 5.9934071e-2,  # kg/mol
     },
     'k40': {
         'heatprod': 2.8761e-5,  # W/kg of 40K
         'halflife': 1.248e9,  # yr
+        'mass': 3.9963998e-2,  # kg/mol
     },
     'th232': {
         'heatprod': 2.6368e-5,  # W/kg of 232Th
         'halflife': 14e9,  # yr
+        'mass': 2.3203806e-1,  # kg/mol
     },
     'u235': {
         'heatprod': 5.68402e-4,  # W/kg of 235U
         'halflife': 0.704e9,  # yr
+        'mass': 2.3504393e-1,  # kg/mol
     },
     'u238': {
         'heatprod': 9.4946e-5,  # W/kg of 238U
         'halflife': 4.468e9,  # yr
+        'mass': 2.3805079e-1,  # kg/mol
     },
 }
+
+# Upper limit on radiogenic heating at the model start [W/kg]
+RADIO_HEATING_MAX = 1.0e-4

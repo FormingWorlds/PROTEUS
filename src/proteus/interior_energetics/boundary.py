@@ -10,11 +10,7 @@ from scipy.integrate import solve_ivp
 
 from proteus.atmos_clim.common import Atmos_t
 from proteus.interior_energetics.common import Interior_t
-from proteus.interior_energetics.radiogenic import (
-    radio_t0_years,
-    radiogenic_heating,
-    radionuclide_inventory,
-)
+from proteus.interior_energetics.radiogenic import radiogenic_heating, radiogenic_inputs
 from proteus.interior_energetics.timestep import next_step
 from proteus.utils.constants import (
     const_G,
@@ -181,8 +177,9 @@ class BoundaryRunner:
         # Radioactive heating parameters
         self.use_radiogenic_heating = config.interior_energetics.heat_radiogenic
         # (isotope, element ppmw, isotope mass ratio) at model time radio_t0_yr [yr]
-        self.radio_inventory = radionuclide_inventory(config)
-        self.radio_t0_yr = radio_t0_years(config)
+        self.radio_inventory, self.radio_t0_yr = (
+            radiogenic_inputs(config) if self.use_radiogenic_heating else ([], 0.0)
+        )
 
         # use tidal heating from orbit module if enabled, otherwise zero
         self.use_tidal_heating = config.interior_energetics.heat_tidal

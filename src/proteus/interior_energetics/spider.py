@@ -19,7 +19,7 @@ from proteus.interior_energetics.common import (
     _mantle_note,
     get_file_tides,
 )
-from proteus.interior_energetics.radiogenic import radio_t0_years, radionuclide_inventory
+from proteus.interior_energetics.radiogenic import radiogenic_inputs
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import radnuc_data
@@ -1126,10 +1126,10 @@ def _try_spider(
 
     # radionuclides
     if config.interior_energetics.heat_radiogenic:
-        # Model time of the configured radionuclide inputs [yr]
-        radio_t0 = radio_t0_years(config)
+        # Inventory and its model time [yr], heating clipped at the model start
+        inventory, radio_t0 = radiogenic_inputs(config)
         radnuc_names = []
-        for _iso, _cnc, _abund in radionuclide_inventory(config):
+        for _iso, _cnc, _abund in inventory:
             radnuc_names.append(_iso)
             call_sequence.extend([f'-{_iso}_t0', '%.5e' % radio_t0])
             call_sequence.extend([f'-{_iso}_concentration', '%.5e' % _cnc])

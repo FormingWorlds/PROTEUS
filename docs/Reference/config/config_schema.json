@@ -6898,7 +6898,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 26Al/Al at radio_tref [kg/kg]; 5.25e-5 is the canonical early Solar System 26Al/27Al value, 0 the present day.",
+      "description": "Mass ratio 26Al/Al at radio_tref [kg/kg]. The canonical early Solar System 26Al/27Al = 5.25e-5 (atoms) is 5.0563e-5 kg/kg.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 4,
@@ -6944,7 +6944,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 60Fe/Fe at radio_tref [kg/kg]; 1e-8 is an early Solar System 60Fe/56Fe estimate, 0 the present day.",
+      "description": "Mass ratio 60Fe/Fe at radio_tref [kg/kg]. An early Solar System 60Fe/56Fe = 1e-8 (atoms) is 9.8472e-9 kg/kg.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 6,
@@ -6978,7 +6978,7 @@
       "class": "Interior",
       "type": "float",
       "accepts_none": false,
-      "default": "0.00011668",
+      "default": "0.00011926",
       "choices": null,
       "bounds": [
         {
@@ -6990,7 +6990,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 40K/K at radio_tref [kg/kg].",
+      "description": "Mass ratio 40K/K at radio_tref [kg/kg]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017) as a mass ratio.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 8,
@@ -7024,7 +7024,7 @@
       "class": "Interior",
       "type": "float",
       "accepts_none": false,
-      "default": "0.0072045",
+      "default": "0.0071141",
       "choices": null,
       "bounds": [
         {
@@ -7036,7 +7036,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 235U/U at radio_tref [kg/kg].",
+      "description": "Mass ratio 235U/U at radio_tref [kg/kg]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017) as a mass ratio.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 10,
@@ -7049,7 +7049,7 @@
       "class": "Interior",
       "type": "float",
       "accepts_none": false,
-      "default": "0.9927955",
+      "default": "0.9928859",
       "choices": null,
       "bounds": [
         {
@@ -7061,7 +7061,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund + radio_U238_abund must not exceed 1.",
+      "description": "Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017) as a mass ratio.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 11,

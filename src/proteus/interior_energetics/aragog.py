@@ -42,7 +42,7 @@ from proteus.interior_energetics.aragog_phase import (
     check_solver_buoyancy,
 )
 from proteus.interior_energetics.common import Interior_t
-from proteus.interior_energetics.radiogenic import radio_t0_years, radionuclide_inventory
+from proteus.interior_energetics.radiogenic import radiogenic_inputs
 from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, TDEP_EOS_PREFIXES
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
@@ -1497,9 +1497,9 @@ class AragogRunner:
 
         radionuclides = []
         if config.interior_energetics.heat_radiogenic:
-            # Model time of the configured radionuclide inputs [yr]
-            radio_t0 = radio_t0_years(config)
-            for _iso, _cnc, _abund in radionuclide_inventory(config):
+            # Inventory and its model time [yr], heating clipped at the model start
+            inventory, radio_t0 = radiogenic_inputs(config)
+            for _iso, _cnc, _abund in inventory:
                 radionuclides.append(
                     _Radionuclide(
                         name=_iso,

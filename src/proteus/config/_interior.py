@@ -860,24 +860,27 @@ class Interior:
     radio_Al: float
         Total aluminium concentration in the mantle at radio_tref [ppmw].
     radio_Al26_abund: float
-        Mass ratio 26Al/Al at radio_tref [kg/kg]; 5.25e-5 is the canonical
-        early Solar System 26Al/27Al value, 0 the present day.
+        Mass ratio 26Al/Al at radio_tref [kg/kg]. The canonical early Solar
+        System 26Al/27Al = 5.25e-5 (atoms) is 5.0563e-5 kg/kg.
     radio_Fe: float
         Total iron concentration in the mantle at radio_tref [ppmw].
     radio_Fe60_abund: float
-        Mass ratio 60Fe/Fe at radio_tref [kg/kg]; 1e-8 is an early Solar
-        System 60Fe/56Fe estimate, 0 the present day.
+        Mass ratio 60Fe/Fe at radio_tref [kg/kg]. An early Solar System
+        60Fe/56Fe = 1e-8 (atoms) is 9.8472e-9 kg/kg.
     radio_K: float
         Total potassium concentration in the mantle at radio_tref [ppmw].
     radio_K40_abund: float
-        Mass ratio 40K/K at radio_tref [kg/kg].
+        Mass ratio 40K/K at radio_tref [kg/kg]. The default is the present-day
+        atom ratio 1.1668e-4 of Ruedas (2017) as a mass ratio.
     radio_U: float
         Total uranium concentration in the mantle at radio_tref [ppmw].
     radio_U235_abund: float
-        Mass ratio 235U/U at radio_tref [kg/kg].
+        Mass ratio 235U/U at radio_tref [kg/kg]. The default is the present-day
+        atom ratio 0.0072045 of Ruedas (2017) as a mass ratio.
     radio_U238_abund: float
         Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund +
-        radio_U238_abund must not exceed 1.
+        radio_U238_abund must not exceed 1. The default is the present-day
+        atom ratio 0.9927955 of Ruedas (2017) as a mass ratio.
     radio_Th: float
         Total thorium concentration in the mantle at radio_tref [ppmw].
     radio_Th232_abund: float
@@ -1014,11 +1017,11 @@ class Interior:
     radio_Fe: float = field(default=6.26e4, validator=ge(0))
     radio_Fe60_abund: float = field(default=0.0, validator=(ge(0), le(1)))
     radio_K: float = field(default=310.0, validator=ge(0))
-    radio_K40_abund: float = field(default=1.1668e-4, validator=(ge(0), le(1)))
+    radio_K40_abund: float = field(default=1.1926e-4, validator=(ge(0), le(1)))
     radio_U: float = field(default=0.031, validator=ge(0))
-    radio_U235_abund: float = field(default=0.0072045, validator=(ge(0), le(1)))
+    radio_U235_abund: float = field(default=0.0071141, validator=(ge(0), le(1)))
     radio_U238_abund: float = field(
-        default=0.9927955, validator=(ge(0), le(1), valid_uranium_abund)
+        default=0.9928859, validator=(ge(0), le(1), valid_uranium_abund)
     )
     radio_Th: float = field(default=0.124, validator=ge(0))
     radio_Th232_abund: float = field(default=1.0, validator=(ge(0), le(1)))

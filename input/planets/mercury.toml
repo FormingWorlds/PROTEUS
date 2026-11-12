@@ -24,16 +24,16 @@ config_version = "3.0"
         remove_sf             = false        # remove spectral file when done
 
     [params.dt]
-        minimum               = 1e0          # minimum time step [yr]
+        minimum               = 1.0          # minimum time step [yr]
         minimum_rel           = 1e-3         # minimum relative time step
         maximum               = 1e7          # maximum time step [yr]
-        initial               = 1e1          # initial step size [yr]
+        initial               = 5.0          # initial step size [yr]
         starspec              = 1e9          # recalculate stellar spectrum interval [yr]
         starinst              = 1e3          # recalculate instellation interval [yr]
         method                = "adaptive"   # proportional | adaptive | maximum
         propconst             = 52.0         # proportionality constant (proportional method)
         atol                  = 0.02         # step size absolute tolerance (adaptive method)
-        rtol                  = 0.20         # step size relative tolerance (adaptive method)
+        rtol                  = 0.18         # step size relative tolerance (adaptive method)
         scale_incr            = 1.4          # growth factor on successful adaptive step
         scale_decr            = 0.8          # shrink factor on rejected adaptive step
         window                = 3            # lookback window for adaptive comparison [steps]
@@ -69,7 +69,7 @@ config_version = "3.0"
 
         [params.stop.escape]                 # atmosphere loss criterion
             enabled           = true
-            p_stop            = 0.5          # stop when surface pressure < p_stop [bar]
+            p_stop            = 0.1          # stop when surface pressure < p_stop [bar]
 
         [params.stop.disint]                 # planetary disintegration criterion
             enabled           = false
@@ -282,18 +282,19 @@ config_version = "3.0"
     heat_radiogenic           = true         # radiogenic heating
 
     # Radionuclides: total element [ppmw of mantle] and isotope/element mass ratio [kg/kg] at Solar System formation (radio_tref = 0)
-    # K, U, Th: Jaggi et al. (2021) Appendix A present-day values (K 403 ppmw, U 28 ppbw, Th 49 ppbw,
-    # 40K/K 1.17e-4, 235U/U 0.007, 238U/U 0.993) decayed back 4.567 Gyr
+    # K, U, Th: Jaggi et al. (2021) Appendix A present-day values (K 403 ppmw, U 28 ppbw, Th 49 ppbw, atom ratios
+    # 40K/K 1.17e-4, 235U/U 0.007, 238U/U 0.993) as mass ratios, decayed back 4.567 Gyr
+    # 26Al/27Al = 5.25e-5 and 60Fe/56Fe = 1e-8 are atom ratios (56Fe is 91.754% of Fe atoms), here by mass
     radio_tref                = 0.0          # stellar age of the values below [Gyr]
     radio_Al                  = 19500.0       # total Al [ppmw]
-    radio_Al26_abund          = 5.25e-5      # 26Al/Al, canonical initial value
+    radio_Al26_abund          = 5.0563e-5    # 26Al/Al, canonical initial value
     radio_Fe                  = 6.26e4       # total Fe [ppmw]
-    radio_Fe60_abund          = 1.0e-8       # 60Fe/Fe, initial value
-    radio_K                   = 403.55       # total K [ppmw]
-    radio_K40_abund           = 1.4764e-3    # 40K/K
-    radio_U                   = 0.074052     # total U [ppmw]
-    radio_U235_abund          = 0.23745      # 235U/U
-    radio_U238_abund          = 0.76255      # 238U/U
+    radio_Fe60_abund          = 9.8472e-9    # 60Fe/Fe, initial value
+    radio_K                   = 403.56       # total K [ppmw]
+    radio_K40_abund           = 1.5090e-3    # 40K/K
+    radio_U                   = 0.073836     # total U [ppmw]
+    radio_U235_abund          = 0.23515      # 235U/U
+    radio_U238_abund          = 0.76485      # 238U/U
     radio_Th                  = 0.061432     # total Th [ppmw]
     radio_Th232_abund         = 1.0          # 232Th/Th
 
@@ -485,7 +486,7 @@ config_version = "3.0"
         oceans                = false         # surface liquid water oceans
         latent_heat           = false        # latent heat from condensation/evaporation
         real_gas              = false        # real-gas EOS where available
-        chemistry             = "eq"       # atmospheric chemistry: none | eq (FastChem)
+        chemistry             = "none"       # atmospheric chemistry: none | eq (FastChem)
         mlt_criterion         = "s"          # convection criterion: s (Schwarzschild) | l (Ledoux)
 
         # Surface properties

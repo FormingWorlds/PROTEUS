@@ -2606,21 +2606,24 @@ def test_try_spider_resume_ic2(tmp_path):
 
 @pytest.mark.unit
 def test_try_spider_heat_radiogen(tmp_path):
-    """_try_spider adds radionuclide flags when heat_radiogenic is True."""
+    """_try_spider adds radionuclide flags when heat_radiogenic is True: the Mercury
+    inputs at Solar System formation reach SPIDER with 6 significant digits and a
+    negative t0, 8 Myr before the model start."""
     from proteus.interior_energetics.spider import _try_spider
 
     dirs, config, hf_row, eos_base, mc_base, _ = _setup_spider_env(tmp_path)
 
     # Enable radiogenic heat
     config.interior_energetics.heat_radiogenic = True
-    config.interior_energetics.radio_tref = 4.5  # Gyr
-    config.star.age_ini = 0.1  # Gyr
+    config.interior_energetics.radio_tref = 0.0  # Gyr
+    config.star.age_ini = 0.008  # Gyr
     ie = config.interior_energetics
-    ie.radio_Al, ie.radio_Al26_abund = 2.35e4, 0.0  # ppmw, kg/kg: no 26Al
-    ie.radio_Fe, ie.radio_Fe60_abund = 0.0, 1e-8  # no Fe: no 60Fe
-    ie.radio_K, ie.radio_K40_abund = 240e-9, 1.17e-4  # ppmw, kg/kg
-    ie.radio_Th, ie.radio_Th232_abund = 80e-9, 1.0
-    ie.radio_U, ie.radio_U235_abund, ie.radio_U238_abund = 20e-9, 7.2e-3, 0.9928
+    ie.radio_Al, ie.radio_Al26_abund = 1.95e4, 0.0  # ppmw, kg/kg: no 26Al
+    ie.radio_Fe, ie.radio_Fe60_abund = 0.0, 9.8472e-9  # no Fe: no 60Fe
+    # input/planets/mercury.toml: K, Th, U [ppmw] and mass ratios at formation
+    ie.radio_K, ie.radio_K40_abund = 403.56, 1.5090e-3
+    ie.radio_Th, ie.radio_Th232_abund = 0.061432, 1.0
+    ie.radio_U, ie.radio_U235_abund, ie.radio_U238_abund = 0.073836, 0.23515, 0.76485
 
     with (
         patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
@@ -2666,14 +2669,20 @@ def test_try_spider_heat_radiogen(tmp_path):
     def _flag(name):
         return float(call_args[call_args.index(name) + 1])
 
-    # Ratios come from the config and concentrations keep their significant digits
-    assert _flag('-k40_abundance') == pytest.approx(1.17e-4, rel=1e-4)
-    assert _flag('-u235_abundance') == pytest.approx(7.2e-3, rel=1e-4)
-    assert _flag('-u238_abundance') == pytest.approx(0.9928, rel=1e-4)
-    assert _flag('-k40_concentration') == pytest.approx(240e-9, rel=1e-4)
-    assert _flag('-u238_concentration') == pytest.approx(20e-9, rel=1e-4)
-    # Model time of the inputs: (4.5 - 0.1) Gyr after the start, in yr
-    assert _flag('-k40_t0') == pytest.approx(4.4e9, rel=1e-4)
+    assert call_args[call_args.index('-radionuclide_names') + 1] == 'k40,th232,u235,u238'
+    # Ratios come from the config and concentrations keep their significant digits;
+    # '%.5f' would send U as 0.07384, 5e-5 off
+    assert _flag('-k40_abundance') == pytest.approx(1.5090e-3, rel=1e-6)
+    assert _flag('-th232_abundance') == pytest.approx(1.0, rel=1e-6)
+    assert _flag('-u235_abundance') == pytest.approx(0.23515, rel=1e-6)
+    assert _flag('-u238_abundance') == pytest.approx(0.76485, rel=1e-6)
+    assert _flag('-k40_concentration') == pytest.approx(403.56, rel=1e-6)
+    assert _flag('-th232_concentration') == pytest.approx(0.061432, rel=1e-6)
+    assert _flag('-u235_concentration') == pytest.approx(0.073836, rel=1e-6)
+    assert _flag('-u238_concentration') == pytest.approx(0.073836, rel=1e-6)
+    # Model time of the inputs: (0 - 0.008) Gyr, 8 Myr before the start, in yr
+    assert _flag('-k40_t0') == pytest.approx(-8.0e6, rel=1e-6)
+    assert _flag('-u235_t0') == pytest.approx(-8.0e6, rel=1e-6)
 
 
 @pytest.mark.unit

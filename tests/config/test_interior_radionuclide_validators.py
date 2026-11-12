@@ -1,8 +1,7 @@
 """Unit tests for the radionuclide fields of ``proteus.config._interior.Interior``.
 
-Covers the present-day defaults of the element totals [ppmw] and isotope/element
-mass ratios [kg/kg], the [0, 1] bounds on each ratio, and the check that
-235U/U + 238U/U does not exceed 1.
+Covers the [0, 1] bounds on each isotope/element mass ratio [kg/kg] and the
+check that 235U/U + 238U/U does not exceed 1.
 """
 
 from __future__ import annotations
