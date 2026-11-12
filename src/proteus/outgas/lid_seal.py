@@ -329,11 +329,10 @@ def add_crystals(hf_row: dict, hf_all) -> None:
         hf_row['seal_xtal_kg'] += (1.0 - f_tl) * dm
         hf_row['seal_tl_kg'] += f_tl * dm
     elif dm < 0.0:
-        since = hf_all[hf_all['Time'] >= float(hf_row['seal_t_close'])]
+        t_close = float(hf_row.get('seal_t_close', np.nan))
+        since = hf_all[hf_all['Time'] >= t_close]
         if since.empty:
-            raise ValueError(
-                f'Lid seal: no row since seal_t_close = {hf_row["seal_t_close"]} yr'
-            )
+            raise ValueError(f'Lid seal: no row since seal_t_close = {t_close} yr')
         held = since[list(CRYSTAL_COLUMNS)].to_numpy(dtype=float)
         phi = np.append(since['Phi_global'].to_numpy(dtype=float), float(hf_row['Phi_global']))
         layers = build_ledger(phi, np.vstack([held, held[-1:]]))
@@ -611,9 +610,10 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
         has no closing temperature ``seal_Tmagma_close`` > 0 K or, under front
         trapping, no finite crystal masses ``seal_xtal_kg`` and ``seal_tl_kg``
         >= 0 kg, or both at 0 below its closing melt fraction ``seal_phi_close``
-        (missing columns read as 0), if the row holds sealed mass under an open
-        flag, or if it holds sealed mass with the seal off, since nothing could
-        open it then.
+        or with either melt fraction NaN (missing crystal columns read as 0; a
+        zero-filled ``seal_phi_close`` turns this check off), if the row holds
+        sealed mass under an open flag, or if it holds sealed mass with the seal
+        off, since nothing could open it then.
     """
     on = seal_enabled(config)
     names = (*SEALED_SPECIES, *SEALED_ELEMENTS)
@@ -645,7 +645,7 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
         xtal, tl = _crystal_masses(hf_row)
         phi = min(max(float(hf_row.get('Phi_global', np.nan)), 0.0), 1.0)
         phi_c = float(hf_row.get('seal_phi_close', np.nan))
-        if xtal + tl == 0.0 and phi < phi_c:
+        if xtal + tl == 0.0 and not phi >= phi_c:  # NaN on either side is refused
             raise ValueError(
                 f'Resume: a sealed row at Phi_global = {phi} below seal_phi_close = {phi_c} '
                 'holds no seal_xtal_kg or seal_tl_kg'
