@@ -3004,6 +3004,7 @@ def test_sealed_mass_blocks_desiccation_and_a_desiccation_empties_the_rest():
     row['H2O_mol_sealed'] = 5e17
     row.update({'H_kg_leak_tau': 3e12, 'seal_crust_rate': 5e10, 'seal_active': 1.0})
     row.update({'seal_delta': 6e4, 'seal_phi_top': 2e-4, 'seal_path': 1.0})
+    row.update({'seal_xtal_kg': 3e22, 'seal_tl_kg': 1e21})
     assert check_desiccation(config, row) is True
     with patch('proteus.outgas.wrapper.record_volatile_change'):
         run_desiccated({}, config, row, False)
@@ -3012,6 +3013,7 @@ def test_sealed_mass_blocks_desiccation_and_a_desiccation_empties_the_rest():
     assert row['M_desiccated'] == pytest.approx(1e15, rel=1e-12)
     assert row['H_kg_leak_tau'] == row['seal_crust_rate'] == row['seal_active'] == 0.0
     assert row['seal_delta'] == row['seal_phi_top'] == row['seal_path'] == 0.0
+    assert row['seal_xtal_kg'] == row['seal_tl_kg'] == 0.0
 
 
 def test_run_outgassing_writes_the_element_ratios_of_the_atmosphere():

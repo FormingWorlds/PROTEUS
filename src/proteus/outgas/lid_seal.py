@@ -22,8 +22,9 @@ M_i / R_i``, limited here to the excess over the solubility, ``X_melt,i -
 X_eq,i``, which their Eq. 14 does not have. ``X_eq,i`` is the CALLIOPE
 solubility law of the species at its partial pressure in the atmosphere, at
 the temperature and IW offset of the closing solve; a species without a law has
-``M_eq = 0``. With front trapping ``R_i`` also counts ``D_i`` times the
-crystals formed after the highest melt fraction since closure. Gas does not
+``M_eq = 0``. With front trapping ``R_i`` also counts the crystals formed since
+closure at ``(1 - F_tl) D_i + F_tl``, with the trapped melt fraction ``F_tl`` of
+the step that froze them, as trapping buries them. Gas does not
 dissolve back through the crust, so a species below its floor stays as it is.
 Each step takes the exponential step of the law with ``M_eq`` at the end state,
 since the leak raises the partial pressure that sets it; the step is exact for
@@ -55,6 +56,7 @@ from calliope.solubility import (
 )
 from scipy.optimize import brentq
 
+from proteus.outgas.burial_ledger import build_ledger, ledger_total
 from proteus.outgas.common import element_masses_from_species, set_element_ratios
 from proteus.utils.constants import (
     gas_list,
@@ -72,6 +74,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 SEALED_SPECIES = (*vol_list, *noble_gases)
 SEALED_ELEMENTS = tuple(vol_element_list)
+CRYSTAL_COLUMNS = ('seal_xtal_kg', 'seal_tl_kg')  # crystals since closure, trapped melt [kg]
 LEAK_ELEMENTS = (*vol_element_list, *noble_gases)
 
 # seal_path: the crust a closed seal reads; 0 while open.
@@ -274,13 +277,13 @@ def reservoirs(config: Config, hf_row: dict) -> tuple[dict, float, float]:
 
     Without trapping ``R_i = M_melt``, the reservoir of the open solve. With
     ``outgas.trap_mode = 'front'`` the crystals formed after closure also hold the
-    species at ``D_i`` times the melt concentration. Trapping remelts the youngest
-    solid first, so these are the crystals formed after the highest melt fraction
-    since closure, ``Phi_max = seal_phi_max``:
-    ``R_i = M_melt + D_i max(Phi_max - Phi, 0) M_mantle``. Returns the reservoirs,
-    the global melt fraction clipped to [0, 1] and the melt mass [kg]. Raises
-    ``ValueError`` if ``M_mantle`` or ``Phi_global`` is not finite, or under front
-    trapping if ``seal_phi_max`` is not in [0, 1].
+    species, as the open front scheme buries it: ``R_i = M_melt + D_i M_xtal + M_tl``
+    with the crystals ``M_xtal = seal_xtal_kg`` and their trapped melt
+    ``M_tl = seal_tl_kg`` (:func:`add_crystals`), so a step that froze ``dM`` at the
+    trapped melt fraction ``F_tl`` adds ``[(1 - F_tl) D_i + F_tl] dM``. Returns the
+    reservoirs, the global melt fraction clipped to [0, 1] and the melt mass [kg].
+    Raises ``ValueError`` if ``M_mantle`` or ``Phi_global`` is not finite, or under
+    front trapping if a crystal column is not a finite mass >= 0.
     """
     m_mantle, phi = float(hf_row['M_mantle']), float(hf_row['Phi_global'])
     for key, value in (('M_mantle', m_mantle), ('Phi_global', phi)):
@@ -290,12 +293,37 @@ def reservoirs(config: Config, hf_row: dict) -> tuple[dict, float, float]:
     m_melt = phi * m_mantle
     if config.outgas.trap_mode != 'front':
         return dict.fromkeys(SEALED_SPECIES, m_melt), phi, m_melt
-    phi_max = float(hf_row.get('seal_phi_max', np.nan))
-    if not 0.0 <= phi_max <= 1.0:
-        raise ValueError(f'Lid seal: seal_phi_max = {phi_max} is not a melt fraction')
-    m_solid = max(phi_max - phi, 0.0) * m_mantle  # crystals formed since phi_max
+    xtal, tl = (float(hf_row.get(k, np.nan)) for k in CRYSTAL_COLUMNS)
+    if not (xtal >= 0.0 and tl >= 0.0 and np.isfinite(xtal + tl)):
+        raise ValueError(f'Lid seal: seal_xtal_kg = {xtal} or seal_tl_kg = {tl} is not a mass')
     d = {s: float(getattr(config.outgas, f'D_const_{s}', 0.0)) for s in SEALED_SPECIES}
-    return {s: m_melt + d[s] * m_solid for s in SEALED_SPECIES}, phi, m_melt
+    return {s: m_melt + d[s] * xtal + tl for s in SEALED_SPECIES}, phi, m_melt
+
+
+def add_crystals(hf_row: dict, hf_all) -> None:
+    """Add the crystals of a held step under front trapping, as the open scheme buries them.
+
+    A step that freezes ``dM = trap_dM_RM`` [kg] at the trapped melt fraction
+    ``F_tl = trap_F_tl`` adds ``(1 - F_tl) dM`` to the crystals ``seal_xtal_kg`` and
+    ``F_tl dM`` to their trapped melt ``seal_tl_kg``. A remelt returns the youngest
+    crystals first: the burial ledger of the rows of ``hf_all`` from ``seal_t_close``
+    on is replayed to the melt fraction of the step. Raises ``ValueError`` if
+    ``trap_dM_RM`` is not finite or ``trap_F_tl`` is not in [0, 1].
+    """
+    dm, f_tl = (float(hf_row.get(k, np.nan)) for k in ('trap_dM_RM', 'trap_F_tl'))
+    if not (np.isfinite(dm) and 0.0 <= f_tl <= 1.0):
+        raise ValueError(
+            f'Lid seal: trap_dM_RM = {dm} kg or trap_F_tl = {f_tl} is not readable'
+        )
+    if dm > 0.0:
+        hf_row['seal_xtal_kg'] += (1.0 - f_tl) * dm
+        hf_row['seal_tl_kg'] += f_tl * dm
+    elif dm < 0.0:
+        since = hf_all[hf_all['Time'] >= float(hf_row['seal_t_close'])]
+        held = since[list(CRYSTAL_COLUMNS)].to_numpy(dtype=float)
+        phi = np.append(since['Phi_global'].to_numpy(dtype=float), float(hf_row['Phi_global']))
+        layers = build_ledger(phi, np.vstack([held, held[-1:]]))
+        hf_row['seal_xtal_kg'], hf_row['seal_tl_kg'] = map(float, ledger_total(layers, 2))
 
 
 def _pressures(kg: dict, mol: dict, gravity: float, r_int: float) -> tuple[dict, dict, float]:
@@ -546,7 +574,10 @@ def _check_floors(config: Config, hf_row: dict, before: dict, leak: dict, frac: 
 
 
 def assert_sealed_row(hf_row: dict) -> None:
-    """Invariants of a sealed row: no melt inventory, sealed masses finite and >= 0."""
+    """Invariants of a sealed row: no melt inventory; sealed masses and crystals finite, >= 0."""
+    for k in CRYSTAL_COLUMNS:
+        mass = float(hf_row.get(k, 0.0))
+        _check(np.isfinite(mass) and mass >= 0.0, f'{k} = {mass} kg')
     for name in (*SEALED_SPECIES, *SEALED_ELEMENTS):
         sealed = float(hf_row.get(f'{name}_kg_sealed', 0.0))
         _check(np.isfinite(sealed) and sealed >= 0.0, f'{name}_kg_sealed = {sealed} kg')
@@ -564,9 +595,8 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
     ValueError
         If the flag, the path or a sealed mass is not readable, if a sealed row
         has no closing temperature ``seal_Tmagma_close`` > 0 K or, under front
-        trapping, no closing and highest melt fractions with 0 <=
-        ``seal_phi_close`` <= ``seal_phi_max`` <= 1 (a zero-filled ``seal_phi_max``
-        is caught when ``seal_phi_close`` > 0), if the row holds sealed mass under
+        trapping, no finite crystal masses ``seal_xtal_kg`` and ``seal_tl_kg`` >= 0 kg,
+        if the row holds sealed mass under
         an open flag, or if it holds sealed mass with the seal off, since nothing
         could open it then.
     """
@@ -596,11 +626,15 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
     temp = float(hf_row.get('seal_Tmagma_close', np.nan))
     if sealed and not (np.isfinite(temp) and temp > 0.0):
         raise ValueError(f'Resume: a sealed last row needs seal_Tmagma_close > 0 K, not {temp}')
-    phi_c, phi_max = (float(hf_row.get(k, np.nan)) for k in ('seal_phi_close', 'seal_phi_max'))
-    if sealed and config.outgas.trap_mode == 'front' and not 0.0 <= phi_c <= phi_max <= 1.0:
+    xtal, tl = (float(hf_row.get(k, np.nan)) for k in CRYSTAL_COLUMNS)
+    if (
+        sealed
+        and config.outgas.trap_mode == 'front'
+        and not (xtal >= 0.0 and tl >= 0.0 and np.isfinite(xtal + tl))
+    ):
         raise ValueError(
-            f'Resume: a sealed last row needs 0 <= seal_phi_close <= seal_phi_max <= 1, '
-            f'not {phi_c} and {phi_max}'
+            f'Resume: a sealed last row needs seal_xtal_kg and seal_tl_kg >= 0 kg, '
+            f'not {xtal} and {tl}'
         )
     return sealed
 
@@ -618,7 +652,14 @@ def clear_seal(hf_row: dict) -> None:
     for n in SEALED_SPECIES:
         hf_row[f'{n}_mol_sealed'] = 0.0
     reset_step_columns(hf_row)
-    for k in ('seal_active', 'seal_path', 'seal_delta', 'seal_phi_top'):
+    for k in (
+        'seal_active',
+        'seal_path',
+        'seal_delta',
+        'seal_phi_top',
+        'seal_xtal_kg',
+        'seal_tl_kg',
+    ):
         hf_row[k] = 0.0
 
 
@@ -641,6 +682,7 @@ def run_lid_seal_step(
     interior_o,
     sealed: bool,
     *,
+    hf_all,
     first_iter: bool,
     init_stage: bool,
     dt: float,
@@ -651,7 +693,9 @@ def run_lid_seal_step(
     it (never in the initialisation stage or on an impact step). A sealed step
     opens first when the band is crossed or an impact remelts the mantle;
     otherwise escape is applied to the atmosphere as on a crystallized mantle and
-    the sealed reservoir leaks over ``dt`` [yr].
+    the sealed reservoir leaks over ``dt`` [yr]. Under front trapping a held step
+    adds its crystals (:func:`add_crystals`), reading the completed rows ``hf_all``
+    on a remelt.
     """
     from proteus.outgas.compaction import BRANCH_REMELT
     from proteus.outgas.wrapper import (
@@ -680,7 +724,8 @@ def run_lid_seal_step(
         sealed, used = False, PATH_OPEN
     phi = min(max(float(hf_row['Phi_global']), 0.0), 1.0)
     if sealed:
-        hf_row['seal_phi_max'] = float(np.fmax(hf_row.get('seal_phi_max', np.nan), phi))
+        if config.outgas.trap_mode == 'front':
+            add_crystals(hf_row, hf_all)
         if float(hf_row.get('trap_branch', 0.0)) == BRANCH_REMELT:
             close_seal(hf_row)  # a release, also of element mass alone, is under the crust too
         run_crystallized(config, hf_row, dt)
@@ -697,7 +742,8 @@ def run_lid_seal_step(
             moved = close_seal(hf_row)
             hf_row['seal_t_close'] = float(hf_row['Time'])
             hf_row['seal_Tmagma_close'] = max(float(hf_row['T_magma']), config.outgas.T_floor)
-            hf_row['seal_phi_close'] = hf_row['seal_phi_max'] = phi
+            hf_row['seal_phi_close'] = phi
+            hf_row['seal_xtal_kg'] = hf_row['seal_tl_kg'] = 0.0
             log.info(
                 'Lid seal closes (crust %.3e m, top-cell melt fraction %.3f); %.3e kg sealed',
                 delta,

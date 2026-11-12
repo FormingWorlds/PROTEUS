@@ -299,8 +299,8 @@ Each iteration carries the previous row forward and overwrites only the columns 
 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
-| `trap_dM_RM` | `kg` | mantle mass crystallised this step, negative when it remelted | `outgas/trapping.py` | always |   |
-| `trap_F_tl` | `1` | trapped melt fraction applied this step | `outgas/trapping.py` | always |   |
+| `trap_dM_RM` | `kg` | mantle mass crystallised this step, negative when it remelted | `outgas/trapping.py` | always | outgas |
+| `trap_F_tl` | `1` | trapped melt fraction applied this step | `outgas/trapping.py` | always | outgas |
 | `trap_kg_step` | `kg` | volatile mass buried this step, negative when remelting released it | `outgas/trapping.py` | always | outgas |
 | `trap_kg_cumulative` | `kg` | net volatile mass buried since the run began | `outgas/trapping.py` | always | outgas |
 | `trap_branch` | `1` | drainage regime code: 0 no front (a freezing step still buries by crystal partitioning), 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting | `outgas/trapping.py` | always | outgas |
@@ -860,10 +860,11 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `S_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
 | `seal_active` | `1` | whether the lid seal holds the melt inventory | `outgas/lid_seal.py` | always | outgas |
 | `seal_path` | `1` | crust a closed seal reads: 0 open, 1 mesh crust, 2 sub-grid lid | `outgas/lid_seal.py` | always | outgas |
-| `seal_t_close` | `yr` | time the seal last closed | `outgas/lid_seal.py` | always | main loop |
+| `seal_t_close` | `yr` | time the seal last closed | `outgas/lid_seal.py` | always | main loop, outgas |
 | `seal_Tmagma_close` | `K` | T_magma of the closing chemistry solve | `outgas/lid_seal.py` | always | outgas |
-| `seal_phi_close` | `1` | global melt fraction of the closing step | `outgas/lid_seal.py` | always | outgas |
-| `seal_phi_max` | `1` | highest global melt fraction since the seal closed | `outgas/lid_seal.py` | always | outgas |
+| `seal_phi_close` | `1` | global melt fraction of the closing step | `outgas/lid_seal.py` | always |   |
+| `seal_xtal_kg` | `kg` | crystals formed since closure, under front trapping | `outgas/lid_seal.py` | always | outgas |
+| `seal_tl_kg` | `kg` | melt trapped in those crystals | `outgas/lid_seal.py` | always | outgas |
 | `seal_delta` | `m` | crust thickness the seal reads | `outgas/lid_seal.py` | always |   |
 | `seal_phi_top` | `1` | melt fraction of the top mesh cell | `outgas/lid_seal.py` | always |   |
 | `seal_crust_rate` | `kg yr-1` | melt mass reaching the crust over the step | `outgas/lid_seal.py` | always |   |

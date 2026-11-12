@@ -1490,6 +1490,7 @@ class Proteus:
                     self.hf_row,
                     self.interior_o,
                     self.lid_sealed,
+                    hf_all=self.hf_all,
                     first_iter=first_iter,
                     init_stage=self.init_stage,
                     dt=self.interior_o.dt,

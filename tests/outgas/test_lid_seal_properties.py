@@ -15,13 +15,26 @@ import pytest
 
 pytest.importorskip('hypothesis')
 
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from proteus.config._outgas import LidSeal
-from proteus.outgas.lid_seal import floor_leak, reservoirs, restore_seal_state
+from proteus.outgas.lid_seal import (
+    CRYSTAL_COLUMNS,
+    add_crystals,
+    floor_leak,
+    reservoirs,
+    restore_seal_state,
+)
 
-from .test_lid_seal import D_H2O, M_MANTLE, _config, _interior, _row, _sealed_row, _step
+from .test_lid_seal import (
+    D_H2O,
+    M_MANTLE,
+    _config,
+    _front_held_steps,
+    _row,
+    _sealed_row,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -56,68 +69,97 @@ def test_restore_refuses_a_sealed_row_without_a_closing_temperature(temp):
         restore_seal_state(_config(), row)
 
 
-@given(
-    phi_max=st.one_of(
-        st.floats(allow_nan=True, allow_infinity=True), st.sampled_from([0.4, 1.0])
-    )
-)
-def test_restore_refuses_a_sealed_row_without_its_highest_melt_fraction(phi_max):
-    """Under front trapping a sealed last row resumes only with the highest melt
-    fraction since closure between the closing melt fraction (0.4) and 1, so a
-    zero filled for a missing column is refused; without trapping it is not read."""
-    row = {**_sealed_row(), 'seal_active': 1.0, 'seal_phi_max': phi_max}
+MASS = st.one_of(st.floats(allow_nan=True, allow_infinity=True), st.sampled_from([0.0, 1.0e22]))
+
+
+@given(key=st.sampled_from(CRYSTAL_COLUMNS), mass=MASS)
+def test_restore_refuses_a_sealed_row_without_its_crystal_masses(key, mass):
+    """Under front trapping a sealed last row resumes only with finite crystal and
+    trapped melt masses >= 0 since closure; without trapping they are not read."""
+    row = {**_sealed_row(), 'seal_active': 1.0, key: mass}
     front = _config()
     front.outgas.trap_mode = 'front'
-    if np.isfinite(phi_max) and 0.4 <= phi_max <= 1.0:
+    if np.isfinite(mass) and mass >= 0.0:
         assert restore_seal_state(front, dict(row)) is True
     else:
-        with pytest.raises(ValueError, match='seal_phi_max'):
+        with pytest.raises(ValueError, match=key):
             restore_seal_state(front, dict(row))
     assert restore_seal_state(_config(), dict(row)) is True
-    assert restore_seal_state(front, {**_row(), 'seal_phi_max': phi_max}) is False
+    assert restore_seal_state(front, {**_row(), key: mass}) is False
+
+
+@given(
+    dm=st.one_of(st.floats(allow_nan=True, allow_infinity=True), st.sampled_from([0.0, 1e22])),
+    f_tl=st.one_of(st.floats(allow_nan=True, allow_infinity=True), st.sampled_from([0.0, 1.0])),
+)
+def test_a_held_step_takes_its_crystals_only_from_a_readable_trapping_step(dm, f_tl):
+    """A held freezing step adds (1 - F_tl) dM_RM crystals and F_tl dM_RM trapped
+    melt for a finite dM_RM >= 0 and F_tl in [0, 1]; a value that is not finite or
+    an F_tl outside [0, 1] stops the step."""
+    readable = np.isfinite(dm) and 0.0 <= f_tl <= 1.0
+    assume(not (readable and dm < 0.0))  # a remelt reads the completed rows instead
+    row = {**_sealed_row(), 'trap_dM_RM': dm, 'trap_F_tl': f_tl}
+    if not readable:
+        with pytest.raises(ValueError, match='trap_dM_RM'):
+            add_crystals(row, None)
+        return
+    add_crystals(row, None)
+    assert (row['seal_xtal_kg'], row['seal_tl_kg']) == ((1.0 - f_tl) * dm, f_tl * dm)
+
+
+def _stack(phi_c, path):
+    """Crystals and trapped melt left since closure [M_mantle], youngest solid melting first."""
+    layers, prev = [], phi_c
+    for phi, f_tl in path:
+        if phi < prev:
+            layers.append([phi, prev, f_tl])
+        while phi > prev and layers and layers[-1][0] < phi:
+            if layers[-1][1] <= phi:
+                layers.pop()
+            else:
+                layers[-1][0] = phi
+        prev = phi
+    return sum((h - lo) * (1 - f) for lo, h, f in layers), sum(
+        (h - lo) * f for lo, h, f in layers
+    )
 
 
 @pytest.mark.physics_invariant
 @settings(max_examples=60, deadline=None)
-@given(phi_c=st.floats(-1.0e-9, 1.0 + 1.0e-9), path=st.lists(st.floats(0.0, 1.0), max_size=5))
-def test_the_front_reservoir_follows_the_highest_melt_fraction_since_closure(phi_c, path):
+@given(
+    phi_c=st.floats(-1.0e-9, 1.0 + 1.0e-9),
+    path=st.lists(st.tuples(st.floats(0.0, 1.0), st.floats(0.0, 1.0)), max_size=5),
+)
+def test_the_front_reservoir_counts_the_solid_since_closure_as_trapping_buries_it(phi_c, path):
     """A seal closing at any melt fraction, also past either end by round-off, and
-    held over any path of the melt fraction: seal_phi_max is the highest clipped
-    melt fraction since closure and the front reservoir of H2O is M_mantle (Phi +
-    D max(Phi_max - Phi, 0)), between the melt and the melt plus D times the solid."""
-    row = {**_row(phi=phi_c), 'lid_weight': 1.0, 'lid_delta': 0.5, 'esc_rate_total': 0.0}
-    kw = {'delta_close': 0.3, 'trap_mode': 'front', 'tau_leak': 1.0e3}
-    assert _step(row, _interior([0.6, 0.2]), False, **kw)[0]
-    row['fO2_shift_IW_derived'] = 2.0
-    for phi in path:
-        row['Phi_global'] = phi
-        assert _step(row, _interior([0.6, 0.2]), True, **kw)[0]
-    top = max([min(max(phi_c, 0.0), 1.0), *path])
-    assert row['seal_phi_max'] == top
-    phi = min(max(row['Phi_global'], 0.0), 1.0)
-    front = _config()
-    front.outgas.trap_mode = 'front'
-    r_h2o = reservoirs(front, row)[0]['H2O']
-    assert r_h2o == pytest.approx(M_MANTLE * (phi + D_H2O * (top - phi)), rel=1e-14, abs=1.0)
-    assert phi * M_MANTLE <= r_h2o <= M_MANTLE * (phi + D_H2O * (1.0 - phi)) * (1 + 1e-15)
+    held over any path of (Phi, F_tl): the crystals and trapped melt left are those
+    of a layer stack in which the youngest solid melts first, and the front
+    reservoir of H2O is M_melt + D M_xtal + M_tl, between the melt and the mantle."""
+    row, res = _front_held_steps(path, phi0=phi_c)
+    xtal, tl = _stack(phi_c, path)
+    assert row['seal_xtal_kg'] == pytest.approx(xtal * M_MANTLE, rel=1e-12, abs=1.0e12)
+    assert row['seal_tl_kg'] == pytest.approx(tl * M_MANTLE, rel=1e-12, abs=1.0e12)
+    m_melt = min(max(row['Phi_global'], 0.0), 1.0) * M_MANTLE
+    assert res['H2O'] == m_melt + D_H2O * row['seal_xtal_kg'] + row['seal_tl_kg']
+    assert m_melt <= res['H2O'] <= M_MANTLE * (1.0 + 1.0e-12)
 
 
 @pytest.mark.physics_invariant
 @given(
     phi=st.floats(-1.0e-9, 1.0 + 1.0e-9),
     d=st.floats(0.0, 1.0e3),
-    phi_max=st.one_of(st.none(), st.floats(allow_nan=True, allow_infinity=True)),
+    mass=st.one_of(st.none(), st.floats(allow_nan=True, allow_infinity=True)),
 )
-def test_without_trapping_the_floor_reservoir_is_the_melt(phi, d, phi_max):
+def test_without_trapping_the_floor_reservoir_is_the_melt(phi, d, mass):
     """trap_mode = 'none': for any melt fraction, also past either end by
-    round-off, any partition coefficient and any stored seal_phi_max (or none),
+    round-off, any partition coefficient and any stored crystal masses (or none),
     every sealed species has the reservoir M_mantle Phi of the clipped Phi."""
     cfg = _config()
     for s in ('H2O', 'CO2', 'N2'):
         setattr(cfg.outgas, f'D_const_{s}', d)
     row = {'M_mantle': M_MANTLE, 'Phi_global': phi}
-    if phi_max is not None:
-        row['seal_phi_max'] = phi_max
+    if mass is not None:
+        row['seal_xtal_kg'] = row['seal_tl_kg'] = mass
     res, clipped, m_melt = reservoirs(cfg, row)
     assert clipped == min(max(phi, 0.0), 1.0) and m_melt == clipped * M_MANTLE
     assert set(res.values()) == {m_melt}

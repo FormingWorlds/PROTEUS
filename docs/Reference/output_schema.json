@@ -3566,7 +3566,9 @@
           "condition": "always"
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "outgas"
+      ],
       "consumers_possible": []
     },
     {
@@ -3581,7 +3583,9 @@
           "condition": "always"
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "outgas"
+      ],
       "consumers_possible": []
     },
     {
@@ -21832,7 +21836,8 @@
         }
       ],
       "consumers": [
-        "main loop"
+        "main loop",
+        "outgas"
       ],
       "consumers_possible": []
     },
@@ -21865,15 +21870,30 @@
           "condition": "always"
         }
       ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "seal_xtal_kg",
+      "unit": "kg",
+      "description": "crystals formed since closure, under front trapping",
+      "group": "Quantities for each element",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/lid_seal.py",
+          "condition": "always"
+        }
+      ],
       "consumers": [
         "outgas"
       ],
       "consumers_possible": []
     },
     {
-      "name": "seal_phi_max",
-      "unit": "1",
-      "description": "highest global melt fraction since the seal closed",
+      "name": "seal_tl_kg",
+      "unit": "kg",
+      "description": "melt trapped in those crystals",
       "group": "Quantities for each element",
       "origin": "literal",
       "producers": [
