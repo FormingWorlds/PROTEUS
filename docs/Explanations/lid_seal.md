@@ -69,7 +69,7 @@ $$
 \qquad
 k_i = \frac{\chi_d\, \dot M_c}{R_i},
 \qquad
-R_i = M_\mathrm{melt} + D_i\, M_\mathrm{solid}.
+R_i = M_\mathrm{melt}.
 $$
 
 The symbols are:
@@ -77,9 +77,9 @@ The symbols are:
 - $\tau$: `tau_leak` \[yr\], the relaxation time of the held volatiles. The default, infinity, holds them.
 - $\dot M_c$: `crust_rate` \[kg yr$^{-1}$\], the mass of melt that reaches the crust per year. The default is 0. It is 0 when $\Phi$ is below `phi_solid`, and in one step it is cut to the melt mass; `seal_volc_capped` marks such a step.
 - $\chi_d$: `chi_d` \[1\], the fraction of the volatiles in that melt that degasses; 0.02 by default, from Table 3 of Schaefer & Sasselov (2015)[^cite-schaefer2015].
-- $M_\mathrm{melt} = \Phi M_\mathrm{mantle}$ and $M_\mathrm{solid} = (1 - \Phi) M_\mathrm{mantle}$: the melt and the solid mass of the mantle \[kg\], with the global melt fraction $\Phi$.
-- $D_i$: `outgas.D_const_<species>`, the crystal/melt partition coefficient \[1\].
-- $R_i$: the reservoir of species $i$ \[kg\], the melt and the crystals in equilibrium with it; with front trapping only the crystals formed after closure ([The floor of the leak](#the-floor-of-the-leak)).
+- $M_\mathrm{melt} = \Phi M_\mathrm{mantle}$: the melt mass of the mantle \[kg\], with the global melt fraction $\Phi$.
+- $R_i$: the reservoir of species $i$ \[kg\], the melt, as in the CALLIOPE solve; with front trapping it also counts the crystals formed after closure ([The floor of the leak](#the-floor-of-the-leak)).
+- $D_i$: `outgas.D_const_<species>`, the crystal/melt partition coefficient \[1\]; the seal uses it only with front trapping.
 - $\lambda_i = 1/\tau + k_i$: the leak rate of species $i$ \[yr$^{-1}$\].
 
 The first term relaxes the held mass with the time $\tau$. The second is volcanism: melt with the concentration $X_{\mathrm{melt},i} = M_i/R_i$ reaches the crust at the rate $\dot M_c$ and degasses the share $\chi_d$ of its excess over the solubility, $X_{\mathrm{melt},i} - X_{\mathrm{eq},i}$. Both terms act on the same distance to the floor, so the law is one relaxation. The leaked mass splits between them in the ratio $(1/\tau) : k_i$.
@@ -96,11 +96,12 @@ The floor is $M_{\mathrm{eq},i} = X_{\mathrm{eq},i}\, R_i$, with $X_{\mathrm{eq}
 - below $10^{-20}$ bar, where the CALLIOPE S$_2$ law returns 0, the S$_2$ floor follows the same square-root law of Gaillard et al. (2022)[^cite-gaillard2022] in its partial pressure, so it stays continuous;
 - H$_2$, O$_2$, SO$_2$, H$_2$S and NH$_3$ have no law, so their floor is 0;
 - with `outgas.calliope.solubility = false` every floor is 0, and the held mass decays at the rate $\lambda_i$ of the next section;
+- without trapping (the default) the reservoir is the melt, $R_i = M_\mathrm{melt}$, because the CALLIOPE solve dissolves volatiles in the melt only. At closure each held mass therefore equals its floor;
 - with front trapping (`outgas.trap_mode = "front"`) the crystals that froze before closure keep their own trapped volatiles, so the reservoir counts only the crystals formed after it. Trapping remelts the youngest solid first, so these are the crystals formed after the highest global melt fraction since closure, $\Phi_\mathrm{max}$ (`seal_phi_max`, at closure the closing value $\Phi_c$): $R_i = M_\mathrm{melt} + D_i \max(\Phi_\mathrm{max} - \Phi, 0)\, M_\mathrm{mantle}$. At $\Phi_\mathrm{max}$ it counts the melt alone: remelted crystals have returned their trapped mass to the held mass. The volcanic rate $k_i$ takes the same reservoir.
 
 The floor is one way: a species below its floor does not move, because gas does not dissolve back through the crust.
 
-**Example.** Without front trapping (the default), in the [tutorial](../Tutorials/lid_seal.md) the seal closes at $\Phi_c = 0.19250$. The held water is the dissolved water of the melt, while its floor also counts the crystals at $D = 0.0017$. The floor is therefore 1.0071 times the held water, and water starts to leak only when $\Phi$ falls below 0.19113. CO$_2$ ($D = 0$) leaks from the first held step.
+**Example.** Without front trapping (the default), in the [tutorial](../Tutorials/lid_seal.md) the seal closes at $\Phi_c = 0.19250$. The held water is the dissolved water of the melt and equals its floor. When $\Phi$ falls, the floor falls with it, so water, CO$_2$, CO and CH$_4$ leak from the first held step.
 
 ## One step of the leak
 
@@ -121,8 +122,8 @@ After each step the code checks that every species that leaked ends at or above 
 
 - **Laws that fall with pressure.** The CO$_2$, CO and CH$_4$ laws fall with pressure at high pressure; [Laws that fall with pressure](#laws-that-fall-with-pressure) says when a step can then have more than one solution.
 - **First order in the step.** Within a step the floor moves for 3 reasons: the melt fraction falls, the leak fills the atmosphere, and escape thins it. The step takes the floor of its end state, so its error falls in proportion to $\Delta t$ where the step is short against the leak ($\lambda_i \Delta t < 0.1$); at $\tau$ = 100 yr, where $\lambda_i \Delta t$ is 3.6, 4 times more steps cut it only 2.35 times. In the test on a melt-fraction path like that of the tutorial (120 steps of 358 yr, escape off) the error is at most $4.4\times10^{-5}$ of the inventory of each species, which is the held plus the atmospheric mass; per held or atmospheric mass it can reach $1.9\times10^{-3}$. [Validation](../Validation/outgas/lid_seal.md#the-step-converges-to-the-continuous-law) gives the table.
-- **Crystals at closure.** The CALLIOPE solve dissolves volatiles in the melt only. Without front trapping, $R_i$ also counts the crystals, so at closure the held mass is below its floor by the factor $1 + D_i (1 - \Phi)/\Phi$. With front trapping the factor is 1 at closure.
-- **Crystals at opening.** When the seal opens, the whole held mass returns to the melt, the share counted in the crystals included.
+- **Crystals.** Without trapping the floor counts no crystals, as the CALLIOPE solve, so closure is a fixed point of the leak. The partition coefficient $D_i$ acts only with front trapping.
+- **Crystals at opening.** When the seal opens, the whole held mass returns to the melt. With front trapping this includes the share counted in the crystals formed after closure.
 - **Erupted melt.** Of the volatile in the melt that reaches the crust, only the degassed share leaves the held mass; the rest stays counted as held.
 - **Frozen chemistry.** The held and leaked gas keep their species; the floor does not see a change of speciation in the atmosphere.
 
