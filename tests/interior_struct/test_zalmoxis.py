@@ -2890,20 +2890,31 @@ def test_zalmoxis_solver_caches_the_structure_for_the_next_seed(tmp_path, monkey
     )
     cache = zalmoxis_wrapper._density_cache
     assert cache['key'] == zalmoxis_wrapper._structure_cache_key(_gate_config('PALEOS:MgSiO3'))
-    for k in ('radii', 'pressure', 'mass_enclosed'):
+    for k in ('radii', 'pressure', 'mass_enclosed', 'density'):
         np.testing.assert_array_equal(cache[k], model_results[k])
         assert cache[k] is not model_results[k]
 
 
-def test_the_seed_detection_reads_the_installed_zalmoxis():
-    """The flag says whether the installed ``zalmoxis.solver.main`` has an ``adiabat_seed``
-    parameter."""
-    import zalmoxis.solver
+def test_the_seed_detection_reads_the_signature_of_main():
+    """A main with an ``adiabat_seed`` parameter takes the seed, also behind a wrapper that
+    keeps its signature; a main without it, or one that takes only ``**kwargs``, does not."""
+    import functools
 
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
 
-    has = 'adiabat_seed' in inspect.signature(zalmoxis.solver.main).parameters
-    assert zalmoxis_wrapper._MAIN_TAKES_ADIABAT_SEED is has
+    def new(cfg, md, melt, inp, adiabat_seed=None):
+        return cfg
+
+    def old(cfg, md, melt, inp, initial_radii=None):
+        return cfg
+
+    def opaque(*args, **kwargs):
+        return args
+
+    wrapped = functools.wraps(new)(lambda *a, **k: new(*a, **k))
+    takes = zalmoxis_wrapper._takes_adiabat_seed
+    assert (takes(new), takes(wrapped), takes(old), takes(opaque)) == (True, True, False, False)
+    assert zalmoxis_wrapper._MAIN_TAKES_ADIABAT_SEED is takes(zalmoxis_wrapper.main)
 
 
 def test_zalmoxis_solver_withholds_callable_on_wet_in_envelope_profile(tmp_path, monkeypatch):
