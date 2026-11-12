@@ -714,6 +714,14 @@ def test_leak_refreshes_the_element_ratios_of_the_atmosphere():
     assert abs(row['C/H_atm'] / before - 1.0) > 1e-3
 
 
+@pytest.mark.parametrize('tau', [1.0e-290, 1.0e-300])
+def test_a_leak_too_fast_for_the_float_range_stops_the_step(tau):
+    """A tau_leak whose rate overflows the split of the leak stops the step
+    instead of writing an infinite or NaN leak."""
+    with pytest.raises(RuntimeError, match='not finite'):
+        leak_step(_config(tau_leak=tau), _sealed_row(), 1.0e3)
+
+
 def test_restore_seal_state_reads_the_row_and_refuses_stranded_mass():
     """Resume: the seal state comes from seal_active; a row with sealed mass
     under a config with the seal off is refused, since nothing could open it."""
@@ -1544,12 +1552,14 @@ def test_the_cumulative_leak_adds_the_leak_of_every_step():
     [
         *(('seal_Tmagma_close', b) for b in (float('nan'), 0.0, -1.0, None)),
         *(('seal_phi_max', b) for b in (float('nan'), -0.1, 1.5, None)),
+        *(('seal_phi_close', b) for b in (float('nan'), -0.1, 0.5, None)),
     ],
     ids=str,
 )
 def test_a_sealed_front_row_resumes_only_with_its_closing_state(key, bad):
     """A sealed last row needs seal_Tmagma_close > 0 K and, under front trapping,
-    seal_phi_max in [0, 1]; a missing or unreadable value stops the resume."""
+    0 <= seal_phi_close <= seal_phi_max <= 1 (here 0.4); a missing or unreadable
+    value stops the resume."""
     row = {**_sealed_row(), 'seal_active': 1.0, 'seal_phi_max': 0.4}
     front = _config()
     front.outgas.trap_mode = 'front'
