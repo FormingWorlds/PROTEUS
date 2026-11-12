@@ -714,6 +714,7 @@ def test_leak_refreshes_the_element_ratios_of_the_atmosphere():
     assert abs(row['C/H_atm'] / before - 1.0) > 1e-3
 
 
+@pytest.mark.filterwarnings('error::RuntimeWarning')
 @pytest.mark.parametrize('tau', [1.0e-288, 1.0e-290, 1.0e-300])
 def test_a_leak_too_fast_for_the_float_range_stops_the_step(tau):
     """A tau_leak whose rate overflows the split of the leak stops the step
@@ -723,6 +724,28 @@ def test_a_leak_too_fast_for_the_float_range_stops_the_step(tau):
     with pytest.raises(RuntimeError, match='not finite'):
         leak_step(_config(tau_leak=tau), row, 1.0e3)
     assert row == before
+
+
+def test_a_nan_leak_stops_the_step_before_it_writes(monkeypatch):
+    """A leak that comes out NaN stops the step before it writes a column."""
+    monkeypatch.setattr(
+        'proteus.outgas.lid_seal._leaks', lambda c, r, b, f: dict.fromkeys(f, np.nan)
+    )
+    row = _sealed_row()
+    before = dict(row)
+    with pytest.raises(RuntimeError, match='not finite'):
+        leak_step(_config(tau_leak=1.0e4), row, 1.0e3)
+    assert row == before
+
+
+@pytest.mark.filterwarnings('ignore::RuntimeWarning')
+def test_an_element_leak_that_is_not_finite_stops_the_step():
+    """An element held next to almost no mass of its species gives an element
+    share that overflows; the step stops instead of finishing with a NaN leak."""
+    row = _sealed_row()
+    row['H2O_kg_sealed'] = 1.0e-320
+    with pytest.raises(RuntimeError, match='not finite'):
+        leak_step(_config(tau_leak=1.0e3), row, 1.0e3)
 
 
 def test_restore_seal_state_reads_the_row_and_refuses_stranded_mass():
