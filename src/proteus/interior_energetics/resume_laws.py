@@ -82,21 +82,6 @@ def _unrecorded(key: str, stored_path: str, module, config_path) -> str:
     )
 
 
-def _same_cell(field, old, new, old_cmb, new_cmb) -> bool:
-    """True where the recorded and the new value give the same end cell. With no CMB cell on
-    either side, 0 and 'uniform' at the surface are both the uniform mesh."""
-    if old == new:
-        return True
-    uniform_mesh = (0, 'uniform')
-    return (
-        field == 'surface_cell_thickness'
-        and old_cmb == 0
-        and new_cmb == 0
-        and old in uniform_mesh
-        and new in uniform_mesh
-    )
-
-
 def _check_mesh(aragog, stored, module, stored_path, config_path, refusals, notes) -> None:
     """Refuse a resume on other mesh end cells than the run's; warn where they are unknown."""
     if module != 'aragog' and not stored:  # no Aragog table: the mesh of the run is unknown
@@ -111,10 +96,15 @@ def _check_mesh(aragog, stored, module, stored_path, config_path, refusals, note
             )
         return
     old = {f: stored.get(f, UNRECORDED_CELL) for f in MESH_FIELDS}
+    # with no CMB cell on either side, 0 and 'uniform' at the surface are both the uniform mesh
+    no_cmb = old['cmb_cell_thickness'] == aragog.cmb_cell_thickness == 0
     for field in MESH_FIELDS:
         new = getattr(aragog, field)
-        if _same_cell(
-            field, old[field], new, old['cmb_cell_thickness'], aragog.cmb_cell_thickness
+        if old[field] == new or (
+            no_cmb
+            and field == 'surface_cell_thickness'
+            and old[field] in (0, 'uniform')
+            and new in (0, 'uniform')
         ):
             continue
         source = (
