@@ -214,6 +214,7 @@ def open_seal(hf_row: dict) -> float:
     """Return the sealed inventory to the melt; return the species kg moved.
 
     Every column is checked before any mass moves, so a refused row is left as it was.
+    The crystals since closure, ``seal_xtal_kg`` and ``seal_tl_kg``, are zeroed.
     """
     names = (*SEALED_SPECIES, *SEALED_ELEMENTS)
     kg = {n: _checked(hf_row.get(f'{n}_kg_sealed', 0.0), f'{n}_kg_sealed') for n in names}
@@ -227,6 +228,7 @@ def open_seal(hf_row: dict) -> float:
     for n in SEALED_SPECIES:
         hf_row[f'{n}_mol_liquid'] = float(hf_row.get(f'{n}_mol_liquid', 0.0)) + mol[n]
         hf_row[f'{n}_mol_sealed'] = 0.0
+    hf_row['seal_xtal_kg'] = hf_row['seal_tl_kg'] = 0.0
     hf_row['seal_open_kg'] = sum(kg[n] for n in SEALED_SPECIES)
     return hf_row['seal_open_kg']
 
@@ -276,11 +278,12 @@ def reservoirs(config: Config, hf_row: dict) -> tuple[dict, float, float]:
     """Reservoir ``R_i`` [kg] of each sealed species.
 
     Without trapping ``R_i = M_melt``, the reservoir of the open solve. With
-    ``outgas.trap_mode = 'front'`` the crystals formed after closure also hold the
+    ``outgas.trap_mode = 'front'`` the solid formed after closure also holds the
     species, as the open front scheme buries it: ``R_i = M_melt + D_i M_xtal + M_tl``
     with the crystals ``M_xtal = seal_xtal_kg`` and their trapped melt
     ``M_tl = seal_tl_kg`` (:func:`add_crystals`), so a step that froze ``dM`` at the
-    trapped melt fraction ``F_tl`` adds ``[(1 - F_tl) D_i + F_tl] dM``. Returns the
+    trapped melt fraction ``F_tl`` adds ``[(1 - F_tl) D_i + F_tl] dM``. The held mass
+    takes one melt concentration over the whole reservoir. Returns the
     reservoirs, the global melt fraction clipped to [0, 1] and the melt mass [kg].
     Raises ``ValueError`` if ``M_mantle`` or ``Phi_global`` is not finite, or under
     front trapping if a crystal column is not a finite mass >= 0.
@@ -293,11 +296,17 @@ def reservoirs(config: Config, hf_row: dict) -> tuple[dict, float, float]:
     m_melt = phi * m_mantle
     if config.outgas.trap_mode != 'front':
         return dict.fromkeys(SEALED_SPECIES, m_melt), phi, m_melt
+    xtal, tl = _crystal_masses(hf_row)
+    d = {s: float(getattr(config.outgas, f'D_const_{s}', 0.0)) for s in SEALED_SPECIES}
+    return {s: m_melt + d[s] * xtal + tl for s in SEALED_SPECIES}, phi, m_melt
+
+
+def _crystal_masses(hf_row: dict) -> tuple[float, float]:
+    """``seal_xtal_kg`` and ``seal_tl_kg`` [kg]; ``ValueError`` unless both are finite and >= 0."""
     xtal, tl = (float(hf_row.get(k, np.nan)) for k in CRYSTAL_COLUMNS)
     if not (xtal >= 0.0 and tl >= 0.0 and np.isfinite(xtal + tl)):
         raise ValueError(f'Lid seal: seal_xtal_kg = {xtal} or seal_tl_kg = {tl} is not a mass')
-    d = {s: float(getattr(config.outgas, f'D_const_{s}', 0.0)) for s in SEALED_SPECIES}
-    return {s: m_melt + d[s] * xtal + tl for s in SEALED_SPECIES}, phi, m_melt
+    return xtal, tl
 
 
 def add_crystals(hf_row: dict, hf_all) -> None:
@@ -308,7 +317,8 @@ def add_crystals(hf_row: dict, hf_all) -> None:
     ``F_tl dM`` to their trapped melt ``seal_tl_kg``. A remelt returns the youngest
     crystals first: the burial ledger of the rows of ``hf_all`` from ``seal_t_close``
     on is replayed to the melt fraction of the step. Raises ``ValueError`` if
-    ``trap_dM_RM`` is not finite or ``trap_F_tl`` is not in [0, 1].
+    ``trap_dM_RM`` is not finite, ``trap_F_tl`` is not in [0, 1], or a remelt finds
+    no row since ``seal_t_close``.
     """
     dm, f_tl = (float(hf_row.get(k, np.nan)) for k in ('trap_dM_RM', 'trap_F_tl'))
     if not (np.isfinite(dm) and 0.0 <= f_tl <= 1.0):
@@ -320,6 +330,10 @@ def add_crystals(hf_row: dict, hf_all) -> None:
         hf_row['seal_tl_kg'] += f_tl * dm
     elif dm < 0.0:
         since = hf_all[hf_all['Time'] >= float(hf_row['seal_t_close'])]
+        if since.empty:
+            raise ValueError(
+                f'Lid seal: no row since seal_t_close = {hf_row["seal_t_close"]} yr'
+            )
         held = since[list(CRYSTAL_COLUMNS)].to_numpy(dtype=float)
         phi = np.append(since['Phi_global'].to_numpy(dtype=float), float(hf_row['Phi_global']))
         layers = build_ledger(phi, np.vstack([held, held[-1:]]))
@@ -595,10 +609,11 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
     ValueError
         If the flag, the path or a sealed mass is not readable, if a sealed row
         has no closing temperature ``seal_Tmagma_close`` > 0 K or, under front
-        trapping, no finite crystal masses ``seal_xtal_kg`` and ``seal_tl_kg`` >= 0 kg,
-        if the row holds sealed mass under
-        an open flag, or if it holds sealed mass with the seal off, since nothing
-        could open it then.
+        trapping, no finite crystal masses ``seal_xtal_kg`` and ``seal_tl_kg``
+        >= 0 kg, or both at 0 below its closing melt fraction ``seal_phi_close``
+        (missing columns read as 0), if the row holds sealed mass under an open
+        flag, or if it holds sealed mass with the seal off, since nothing could
+        open it then.
     """
     on = seal_enabled(config)
     names = (*SEALED_SPECIES, *SEALED_ELEMENTS)
@@ -626,16 +641,15 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
     temp = float(hf_row.get('seal_Tmagma_close', np.nan))
     if sealed and not (np.isfinite(temp) and temp > 0.0):
         raise ValueError(f'Resume: a sealed last row needs seal_Tmagma_close > 0 K, not {temp}')
-    xtal, tl = (float(hf_row.get(k, np.nan)) for k in CRYSTAL_COLUMNS)
-    if (
-        sealed
-        and config.outgas.trap_mode == 'front'
-        and not (xtal >= 0.0 and tl >= 0.0 and np.isfinite(xtal + tl))
-    ):
-        raise ValueError(
-            f'Resume: a sealed last row needs seal_xtal_kg and seal_tl_kg >= 0 kg, '
-            f'not {xtal} and {tl}'
-        )
+    if sealed and config.outgas.trap_mode == 'front':
+        xtal, tl = _crystal_masses(hf_row)
+        phi = min(max(float(hf_row.get('Phi_global', np.nan)), 0.0), 1.0)
+        phi_c = float(hf_row.get('seal_phi_close', np.nan))
+        if xtal + tl == 0.0 and phi < phi_c:
+            raise ValueError(
+                f'Resume: a sealed row at Phi_global = {phi} below seal_phi_close = {phi_c} '
+                'holds no seal_xtal_kg or seal_tl_kg'
+            )
     return sealed
 
 

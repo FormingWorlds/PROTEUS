@@ -1068,7 +1068,7 @@ class Proteus:
                         self.config.params.stop.solid.phi_crit,
                     )
 
-            # The seal state is in the row; no history is replayed.
+            # The seal state is in the row; a held remelt reads the rows since closure.
             self.lid_sealed = restore_seal_state(self.config, self.hf_row)
             if self.lid_sealed:
                 log.info(
