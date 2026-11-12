@@ -16,7 +16,13 @@ delta_close = 1e4     # crust thickness at which the seal closes [m]
 tau_leak = 1e5        # relaxation time of the held volatiles [yr]
 ```
 
-The seal needs `outgas.module = "calliope"`, an escape reservoir of `"outgas"` or `"bulk"`, and, with the Zalmoxis structure, `interior_struct.zalmoxis.dry_mantle = true`. It cannot be combined with `params.stop.solid.freeze_volatiles = true`, which also freezes the melt inventory, or with `outgas.vapourise = true`.
+The seal also needs:
+
+- `outgas.module = "calliope"`;
+- `escape.reservoir = "outgas"` (the default) or `"bulk"`;
+- with the Zalmoxis structure, `interior_struct.zalmoxis.dry_mantle = true` (the default).
+
+It cannot be combined with `params.stop.solid.freeze_volatiles = true`, which also freezes the melt inventory, or with `outgas.vapourise = true`.
 
 ## Read the output
 

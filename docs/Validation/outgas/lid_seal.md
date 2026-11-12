@@ -126,7 +126,7 @@ This case has no plot: it checks one step against an identity.
 
 This case has no plot; the table gives its result. Each error is the largest over the 6 masses, as a fraction of the inventory of its species, except the last column. The error cut is the error of 120 steps over that of 480 steps; 4 is the first-order value.
 
-| $\tau$ \[yr\] | 120 steps | 480 steps | Error cut | Largest per mass, 120 steps |
+| $\tau$ \[yr\] | 120 steps | 480 steps | Error cut | Largest per held or atmospheric mass, 120 steps |
 |---|---|---|---|---|
 | $10^2$ | $2.2\times10^{-5}$ | $9.2\times10^{-6}$ | 2.35 | $1.0\times10^{-3}$ |
 | $10^3$ | $4.1\times10^{-5}$ | $1.1\times10^{-5}$ | 3.82 | $1.9\times10^{-3}$ |
@@ -134,6 +134,8 @@ This case has no plot; the table gives its result. Each error is the largest ove
 | $10^5$ | $1.7\times10^{-5}$ | $4.3\times10^{-6}$ | 4.00 | $5.6\times10^{-4}$ |
 | $10^6$ | $2.1\times10^{-6}$ | $5.3\times10^{-7}$ | 4.00 | $4.4\times10^{-4}$ |
 | $10^7$ | $2.4\times10^{-6}$ | $6.0\times10^{-7}$ | 3.99 | $1.2\times10^{-3}$ |
+
+Only the error over each atmospheric mass is asserted per mass (below $1.5\times10^{-3}$); the $1.9\times10^{-3}$ entries are the held CO$_2$ and N$_2$ (see the Known limit below).
 
 The cut is asserted only where the step is short against the leak ($\lambda \Delta t < 0.1$), which is $\tau \ge 10^4$ yr. At $\tau$ = 100 yr and 1 kyr, $\lambda \Delta t$ is 3.6 and 0.36, so the cut in those 2 rows is shown for context and not tested.
 
@@ -255,7 +257,11 @@ The tests in `tests/outgas/test_lid_seal.py` and the code itself also check, wit
 - with the defaults (`tau_leak` infinite, `crust_rate = 0`) no floor is computed and every column stays the same to the last bit, with solubility on or off;
 - after every step that leaks, the code checks that each species ends at or above its floor, at $e^{-\lambda_i \Delta t}$ of its starting distance; a step that ignores the floor or leaks too little stops the run;
 - a negative or non-finite floor, a leak that is not finite, a closing temperature that is not finite and above 0 K, a non-finite IW offset, and sweeps over the species that do not settle stop the run with an error;
-- a step whose residual changes sign more than once at 17 samples over its bracket stops the run with an error (3 made-up floors pin this: 3 roots, a narrow fold, and roots beyond the bracket that must not stop it); a species that takes no leak in the step must keep its residual above 0 over the bracket, so a second solution next to a leak of 0 also stops the run (a made-up floor that falls stops it, a flat one does not); a CO$_2$ leak above $83.15\,T/23$ bar, where the CO$_2$ law of Dixon et al. (1995) falls with pressure, still has one solution and finishes; the check samples each species alone, with the others at their final leaks, so roots closer together than one sample spacing and several solutions of the coupled species pass it, and in the tests only a made-up floor gives a second solution;
+- the code scans each step for a second solution. For each species with held mass and a leak rate, it samples the step residual (a trial leak minus the leak that the step law gives at the end state of that trial) at 17 leaks over the bracket, with the other species at their final leaks:
+    - a residual that changes sign more than once stops the run with an error; 3 made-up floors pin this: 3 roots, a narrow fold, and roots beyond the bracket that must not stop it;
+    - a species that takes no leak in the step must keep its residual above 0 at every sample after a leak of 0, so a second solution next to a leak of 0 also stops the run (a made-up floor that falls stops it, a flat one does not);
+    - a CO$_2$ leak above $83.15\,T/23$ bar, where the CO$_2$ law of Dixon et al. (1995) falls with pressure, still has one solution and finishes;
+    - roots closer together than one sample spacing, and several solutions of the coupled species, pass the scan; in the tests only a made-up floor gives a second solution;
 - a sealed row resumes only with a finite closing temperature above 0 K and, under front trapping, closing and highest melt fractions with 0 <= `seal_phi_close` <= `seal_phi_max` <= 1;
 - in one step the 2 leak parts of each element sum to the drop of its held mass and to the rise of its atmospheric mass; each species splits its leak in the ratio of its 2 rates;
 - in one step no more melt than the melt mass reaches the crust, and below `phi_solid` none does;

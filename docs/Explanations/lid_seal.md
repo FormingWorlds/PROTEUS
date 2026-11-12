@@ -2,11 +2,11 @@
 
 This page answers one question: **when a crust closes over the magma ocean, can the volatiles dissolved in the melt still reach the atmosphere?**
 
-The short answer: with `outgas.lid_seal.enabled = true`, a crust that is thick enough holds the dissolved volatiles in the melt below it. This is the **seal**. While the seal holds, the chemistry is frozen. The held volatiles reach the atmosphere only by a slow **leak**, which stops where the mantle holds as much of a volatile as the melt can dissolve at the pressure of the atmosphere.
+The short answer: with `outgas.lid_seal.enabled = true`, a crust that is thick enough holds the dissolved volatiles in the melt below it. This is the **seal**. While the seal holds, the chemistry is frozen. The held volatiles reach the atmosphere only by a slow **leak**, which stops where the melt holds as much of a volatile as it can dissolve at the pressure of the atmosphere.
 
 The seal opens again in 3 cases: the crust thins, the top cell of the mesh holds a set share of melt again (35 % by default), or a giant impact happens. With the default, `false`, the seal never closes.
 
-**Why it matters.** Without the seal, the chemistry keeps the melt in equilibrium with the atmosphere at every step, so a crust does not change where the volatiles go. With the seal, the atmosphere gets the gas of the melt only through the leak. This changes the atmospheric mass, the surface pressure and the mass that escape can take. In the [tutorial](../Tutorials/lid_seal.md) the effect is small: at 140 kyr the seal run holds 1.714 % to 1.751 % more water in the atmosphere than the open run, over the printed run and 5 starts that differ only by round-off (their atmospheric water spreads by 0.65 %). The largest term is the frozen chemistry of the held gas ([Limits of the leak](#limits-of-the-leak)).
+**Why it matters.** Without the seal, the chemistry keeps the melt in equilibrium with the atmosphere at every step, so a crust does not change where the volatiles go. With the seal, the atmosphere gets the gas of the melt only through the leak. This changes the atmospheric mass, the surface pressure and the mass that escape can take. In the [tutorial](../Tutorials/lid_seal.md) the effect is small: at 140 kyr the seal run holds 1.714 % to 1.751 % more water in the atmosphere than the open run, over the printed run and 5 starts that differ only by round-off; the water of the 5 starts spreads by 0.65 %, and the printed run lies 2.0 % below their mean. The largest term is the frozen chemistry of the held gas ([Limits of the leak](#limits-of-the-leak)).
 
 The seal is one path of the outgassing step; [Outgassing, rock vapour and volatile trapping](outgas.md) gives the order of the steps around it.
 
@@ -63,7 +63,7 @@ The gap between the close and the open values stops a seal that would otherwise 
 
 ## The leak
 
-While the seal holds, the held mass $M_i$ \[kg\] of each species $i$ leaks toward a floor $M_{\mathrm{eq},i}$ \[kg\], the mass that the mantle holds in equilibrium with the present atmosphere:
+While the seal holds, the held mass $M_i$ \[kg\] of each species $i$ leaks toward a floor $M_{\mathrm{eq},i}$ \[kg\], the mass that the melt holds in equilibrium with the present atmosphere:
 
 $$
 \frac{dM_i}{dt} = -\left(\frac{1}{\tau} + k_i\right) \max\left(M_i - M_{\mathrm{eq},i},\ 0\right),
@@ -117,7 +117,7 @@ $$
 - For $\tau \to 0$ it gives the gas-melt equilibrium of the frozen species; for $\lambda_i = 0$ nothing moves.
 - A root finder (Brent's method) finds $L_i$ for each species; sweeps over the species repeat until no leak changes by more than $10^{-14}$ of its held mass, because the floors couple through the surface pressure and the mean molar mass.
 
-After each step the code checks that every species that leaked ends at or above its floor, at $e^{-\lambda_i \Delta t}$ of its starting distance from it, and that a sample of the step of every species, also one that took no leak, shows one solution ([Laws that fall with pressure](#laws-that-fall-with-pressure)); otherwise the run stops with an error. With `tau_leak` infinite and `crust_rate = 0` the step computes no floor and changes no column.
+After each step the code checks that every species that leaked ends at or above its floor, at $e^{-\lambda_i \Delta t}$ of its starting distance from it, and that a sample of the step of every species with held mass and a leak rate, also one whose leak came out as 0, shows one solution ([Laws that fall with pressure](#laws-that-fall-with-pressure)); otherwise the run stops with an error. With `tau_leak` infinite and `crust_rate = 0` the step computes no floor and changes no column.
 
 ## Limits of the leak
 
@@ -134,7 +134,7 @@ The CO$_2$ law of Dixon et al. (1995)[^cite-dixon1995] falls with pressure above
 
 ## Settings of the seal
 
-The 8 settings of `[outgas.lid_seal]`, with their units, defaults and limits, are in the [config reference](../Reference/config/escape_outgas.md#lid-seal-outgaslid_seal). The 3 you change first are `tau_leak` (default infinite: the volatiles stay held), `crust_rate` (default 0: no volcanic leak) and `delta_close` (default 10 km).
+The settings of `[outgas.lid_seal]`, with their units and defaults, are in the [config reference](../Reference/config/escape_outgas.md#lid-seal-outgaslid_seal). The 3 you change first are `tau_leak` (default infinite: the volatiles stay held), `crust_rate` (default 0: no volcanic leak) and `delta_close` (default 10 km).
 
 ## What the seal needs
 
