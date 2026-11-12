@@ -653,7 +653,7 @@ def run_lid_seal_step(
     otherwise escape is applied to the atmosphere as on a crystallized mantle and
     the sealed reservoir leaks over ``dt`` [yr].
     """
-    from proteus.outgas.trapping import remelt_returned_mass
+    from proteus.outgas.compaction import BRANCH_REMELT
     from proteus.outgas.wrapper import (
         check_ic_oxygen_budget,
         run_crystallized,
@@ -681,8 +681,8 @@ def run_lid_seal_step(
     phi = min(max(float(hf_row['Phi_global']), 0.0), 1.0)
     if sealed:
         hf_row['seal_phi_max'] = float(np.fmax(hf_row.get('seal_phi_max', np.nan), phi))
-        if remelt_returned_mass(hf_row):
-            close_seal(hf_row)  # a release this step is under the crust too
+        if float(hf_row.get('trap_branch', 0.0)) == BRANCH_REMELT:
+            close_seal(hf_row)  # a release, also of element mass alone, is under the crust too
         run_crystallized(config, hf_row, dt)
         leak_step(config, hf_row, dt)
         assert_sealed_row(hf_row)
