@@ -1038,8 +1038,8 @@ def _eq_row(atm, sealed, phi=0.3):
     return row
 
 
-def _floor(row, s, d=0.0):
-    """Dissolved equilibrium of H2O or CO2 on the reservoir M_melt + D M_solid [kg].
+def _floor(row, s):
+    """Dissolved equilibrium of H2O or CO2 on the melt reservoir M_melt [kg].
 
     Sossi et al. (2023) 524 p^0.5 ppmw for H2O and Dixon et al. (1995) for CO2,
     at the partial pressure [bar] of the row's atmospheric masses and moles.
@@ -1053,7 +1053,7 @@ def _floor(row, s, d=0.0):
         w = 3.8e-7 * p * np.exp(-23.0 * (p - 1.0) / (83.15 * T_SEAL))
         x = 1e-2 * 4400.0 * w / (36.6 - 44.0 * w)
     phi = row['Phi_global']
-    return x * M_MANTLE * (phi + d * (1.0 - phi))
+    return x * M_MANTLE * phi
 
 
 @pytest.mark.physics_invariant

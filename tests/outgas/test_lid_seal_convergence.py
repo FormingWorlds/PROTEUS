@@ -5,8 +5,8 @@ and N2 dissolving, the end-point exponential step of ``leak_step`` gives the
 atmospheric and sealed masses of ``dM_i/dt = -(1/tau) max(M_i - M_eq,i, 0)``
 integrated by Radau, for tau from 1e2 to 1e7 yr: each error is below 1e-4 of
 the inventory of its species and below ATM_TOL of its atmospheric mass, and the
-step is first order where it is short against the leak. The reference evaluates the solubility laws written out here,
-not the CALLIOPE classes.
+step is first order where it is short against the leak. The reference evaluates
+the solubility laws written out here, not the CALLIOPE classes.
 """
 
 from __future__ import annotations

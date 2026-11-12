@@ -22,14 +22,15 @@ M_i / R_i``, limited here to the excess over the solubility, ``X_melt,i -
 X_eq,i``, which their Eq. 14 does not have. ``X_eq,i`` is the CALLIOPE
 solubility law of the species at its partial pressure in the atmosphere, at
 the temperature and IW offset of the closing solve; a species without a law has
-``M_eq = 0``. With front trapping ``R_i`` also counts ``D_i`` times the crystals
-formed after the highest melt fraction since closure. Gas does not dissolve back through the crust, so a species below
-its floor stays as it is. Each step takes the exponential step of the law with
-``M_eq`` at the end state, since the leak raises the partial pressure that sets
-it; the step is exact for a constant ``M_eq`` and first order where it moves. The
-seal opens once the top cell holds ``phi_open`` or more melt, the crust is
-thinner than ``delta_open``, or a giant impact remelts the mantle; the sealed
-mass then returns to the melt and the chemistry solve of the same step takes it.
+``M_eq = 0``. With front trapping ``R_i`` also counts ``D_i`` times the
+crystals formed after the highest melt fraction since closure. Gas does not
+dissolve back through the crust, so a species below its floor stays as it is.
+Each step takes the exponential step of the law with ``M_eq`` at the end state,
+since the leak raises the partial pressure that sets it; the step is exact for
+a constant ``M_eq`` and first order where it moves. The seal opens once the top
+cell holds ``phi_open`` or more melt, the crust is thinner than ``delta_open``,
+or a giant impact remelts the mantle; the sealed mass then returns to the melt
+and the chemistry solve of the same step takes it.
 
 The leaked gas enters the atmosphere as the species it was sealed as, with no
 chemistry solve: each species keeps the molar mass of its sealed moles, and the
@@ -486,6 +487,9 @@ def leak_step(config: Config, hf_row: dict, dt: float) -> None:
         hf_row[f'{e}_kg_sealed'] = max(sealed_e - out, 0.0)
         hf_row[f'{e}_kg_atm'] = float(hf_row.get(f'{e}_kg_atm', 0.0)) + out
         leak_kg += out
+    _check(
+        np.isfinite(leak_kg), f'the leak of {leak_kg} kg is not finite; tau_leak is too short'
+    )
     hf_row['seal_leak_kg_cum'] = float(hf_row.get('seal_leak_kg_cum', 0.0)) + leak_kg
     if leak_kg > 0.0:
         _refresh_atmosphere(hf_row)
