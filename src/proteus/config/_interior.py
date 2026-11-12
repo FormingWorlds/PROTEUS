@@ -470,8 +470,8 @@ class Aragog:
     """Radial thickness [m] of the mesh cell at the CMB: 0 (the uniform mesh at that end) or a
     finite value of at least 2 m. The cells grow away from the CMB with a tanh stretching. A
     value at or above the bottom cell of the uniform mesh of the same coordinate mode gives no
-    CMB refinement: aragog keeps that uniform bottom cell and logs it. A resume keeps the value
-    its run was written with."""
+    CMB refinement, and aragog logs it: with the 'uniform' or 0 surface cell the mesh keeps that
+    uniform bottom cell. A resume keeps the value its run was written with."""
     surface_cell_thickness: float | str = field(
         default='uniform', validator=_valid_cell_thickness
     )
