@@ -2365,6 +2365,8 @@ def variable_is_logarithmic(varname: str) -> bool:
         'eccentricity',
         'params.stop.time.maximum',
         'planet.elements.H_budget',
+        'planet.elements.C_budget',
+        'planet.elements.S_budget',
         'orbit.semimajoraxis',
         'atm_kg_per_mol',
     ):

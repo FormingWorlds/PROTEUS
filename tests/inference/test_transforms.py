@@ -488,3 +488,17 @@ def test_J_returns_bad_value_for_user_failure_code(monkeypatch):
         failure_codes=[96],
     )
     assert y_flagged.item() == pytest.approx(obj_mod.BAD_OBJ_VALUE, rel=1e-9)
+
+
+@pytest.mark.parametrize('key', ['planet.elements.C_budget', 'planet.elements.S_budget'])
+def test_uniform_unit_draws_give_a_log_uniform_element_ratio_prior(key):
+    """Uniform draws in the unit cube give a C/H or S/H prior uniform in log10 on [0.1, 4].
+
+    The fraction below 1 is log10(1/0.1) / log10(4/0.1) = 0.624; a prior uniform in the
+    ratio itself puts (1 - 0.1) / (4 - 0.1) = 0.231 there, far outside the tolerance.
+    """
+    bounds = _bounds((0.1, 4.0))
+    u = torch.linspace(0.0, 1.0, 100_001, dtype=torch.double).unsqueeze(-1)
+    x = tr_mod.unnormalize_parameters(u, bounds, [key])[:, 0]
+    assert x[50_000].item() == pytest.approx((0.1 * 4.0) ** 0.5, rel=_RTOL)
+    assert (x < 1.0).double().mean().item() == pytest.approx(1.0 / 1.6020599913, abs=1e-4)

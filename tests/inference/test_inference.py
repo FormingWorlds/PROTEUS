@@ -222,6 +222,8 @@ def test_parameter_bounds_rejects_a_log_scaled_range_that_reaches_zero():
     assert linear['outgas.fO2_shift_IW'] == (pytest.approx(-4.0), pytest.approx(0.0))
     assert inference_mod.variable_is_logarithmic('outgas.fO2_shift_IW') is False
     assert inference_mod.variable_is_logarithmic('planet.elements.H_budget') is True
+    assert inference_mod.variable_is_logarithmic('planet.elements.C_budget') is True
+    assert inference_mod.variable_is_logarithmic('planet.elements.S_budget') is True
 
 
 def test_the_config_check_refuses_a_number_for_a_bool_field():
