@@ -13,6 +13,7 @@ Testing standards and documentation:
 
 Functions tested:
 - read_mantle_mesh(): Load and check the structure module's mantle profile
+- MantleProfile.shell_mass(): Mantle mass implied by the profile's density
 - integrate_adiabat(): dT/dP = nabla_ad T / P down the mantle
 - melt_profile(): Local melt fraction and the adiabat-liquidus crossing
 - liquidus_crossing_radius(): Bracketed crossing of the liquidus
@@ -36,13 +37,15 @@ with the solidus below it by the mushy-zone factor at every pressure.
 from __future__ import annotations
 
 import os
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import pytest
 
 from proteus.interior_energetics.adiabat import (
     MAX_LEVELS,
+    PRES_FLOOR,
     AdiabatMeltModel,
     MantleProfile,
     evaluate_melting_curve,
@@ -200,12 +203,21 @@ def test_read_mantle_mesh_reports_a_missing_structure_handover(tmp_path):
 
 @pytest.mark.parametrize(
     'corruption',
-    ['too_few_columns', 'descending_radius', 'negative_density', 'single_level'],
+    [
+        'too_few_columns',
+        'descending_radius',
+        'negative_density',
+        'single_level',
+        'pressure_rising_outward',
+        'non_positive_pressure',
+    ],
     ids=[
         'three_column_file',
         'radius_written_surface_first',
         'density_column_went_negative',
         'mesh_truncated_to_one_level',
+        'pressure_column_written_surface_first',
+        'pressure_offset_below_zero',
     ],
 )
 def test_read_mantle_mesh_rejects_a_malformed_profile(tmp_path, corruption):
@@ -225,6 +237,11 @@ def test_read_mantle_mesh_rejects_a_malformed_profile(tmp_path, corruption):
         density = density.copy()
         density[3] = -1.0
         _write_mesh(tmp_path, radius, pressure, density, gravity)
+    elif corruption == 'pressure_rising_outward':
+        _write_mesh(tmp_path, radius, pressure[::-1], density, gravity)
+    elif corruption == 'non_positive_pressure':
+        # Still decreasing outward, but the top levels sit at or below zero.
+        _write_mesh(tmp_path, radius, pressure - pressure[-1] - 10.0, density, gravity)
     else:
         cols = np.column_stack([radius, pressure, density, gravity, gravity])[-1:]
         np.savetxt(path, cols, fmt='%.17e')
@@ -416,6 +433,38 @@ def test_integrate_adiabat_refuses_a_non_physical_anchor():
         integrate_adiabat(profile, -1200.0, lambda p, t: 0.3)
 
 
+@pytest.mark.physics_invariant
+def test_integrate_adiabat_carries_the_anchor_through_the_sub_bar_levels():
+    """Levels below one bar keep the magma temperature; the adiabat starts at one bar.
+
+    The dT/dP = nabla T / P form carries no mantle information below the
+    pressure floor, so the stepping must skip it. Stepping from 1 kPa instead
+    would compound the isentrope over two extra decades of pressure and put
+    the core-mantle boundary near 10000 K rather than 6300 K.
+    """
+    n = 400
+    pressure = np.geomspace(1.0e10, 1.0e3, n)
+    profile = MantleProfile(
+        radius=np.linspace(R_CORE, R_INT, n),
+        pressure=pressure,
+        density=np.full(n, 4500.0),
+        gravity=np.full(n, 10.0),
+    )
+    tmp_top, nabla = 2000.0, 0.1
+
+    temperature = integrate_adiabat(profile, tmp_top, lambda p, t: nabla)
+
+    # Every level shallower than the floor stays at the anchor exactly.
+    np.testing.assert_array_equal(temperature[pressure < PRES_FLOOR], tmp_top)
+    # Below it, the analytical isentrope anchored at the shallowest stepped level.
+    p_anchor = float(np.min(pressure[pressure >= PRES_FLOOR]))
+    expected_cmb = tmp_top * (pressure[0] / p_anchor) ** nabla
+    # rel=3e-2: first-order stepping over about 285 log-uniform levels.
+    assert temperature[0] == pytest.approx(expected_cmb, rel=3e-2)
+    assert temperature[0] < 0.8 * tmp_top * (pressure[0] / pressure[-1]) ** nabla
+    assert np.all(np.diff(temperature) <= 0.0)
+
+
 # ============================================================================
 # melt_profile and the liquidus crossing
 # ============================================================================
@@ -572,6 +621,42 @@ def test_mass_melt_fraction_lags_volume_when_density_increases_inward():
 
 
 @pytest.mark.physics_invariant
+def test_shell_mass_is_the_closed_form_shell_for_a_uniform_density():
+    """The profile's own mass is 4/3 pi rho (R^3 - r^3) at uniform density.
+
+    Closed-form check of the shell integral: dropping the 4 pi, or weighting by
+    r instead of r^2, misses the closed form by far more than the trapezoid
+    error of a 60-level mesh.
+    """
+    profile = _make_profile(rho_cmb=4500.0, rho_top=4500.0)
+    expected = 4.0 / 3.0 * np.pi * 4500.0 * (R_INT**3 - R_CORE**3)
+
+    # rel=1e-3: trapezoid error of r^2 over 60 levels is about 1e-4.
+    assert profile.shell_mass() == pytest.approx(expected, rel=1e-3)
+    # Scale guard: an Earth-like mantle is a few 1e24 kg.
+    assert 1.0e24 < profile.shell_mass() < 1.0e25
+
+
+def test_melt_fractions_of_a_collapsed_shell_are_zero():
+    """A profile with no volume or mass has no melt, rather than a NaN.
+
+    Limit-input behaviour: dividing by the zero shell integral would hand a NaN
+    melt fraction to the energy budget.
+    """
+    n = 10
+    collapsed = MantleProfile(
+        radius=np.full(n, R_INT),
+        pressure=np.linspace(1.0e10, 1.0e5, n),
+        density=np.full(n, 4500.0),
+        gravity=np.full(n, 10.0),
+    )
+    phi = np.ones(n)
+
+    assert volume_melt_fraction(collapsed, phi) == pytest.approx(0.0, abs=1e-15)
+    assert mass_melt_fraction(collapsed, phi) == pytest.approx(0.0, abs=1e-15)
+
+
+@pytest.mark.physics_invariant
 def test_melt_fractions_agree_on_a_uniform_mantle():
     """With uniform density the mass and volume melt fractions coincide.
 
@@ -654,6 +739,61 @@ def test_load_melting_curves_names_the_missing_file(monkeypatch, tmp_path):
     message = str(excinfo.value)
     assert 'proteus get interiordata' in message
     assert 'linear' in message
+
+
+def _write_curve_folder(tmp_path, name, solidus, liquidus):
+    """Write a melting curve folder under a stand-in FWL_DATA directory."""
+    folder = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / name
+    folder.mkdir(parents=True)
+    np.savetxt(folder / 'solidus_P-T.dat', solidus, header='P [Pa]  T [K]')
+    np.savetxt(folder / 'liquidus_P-T.dat', liquidus, header='P [Pa]  T [K]')
+    return folder
+
+
+@pytest.mark.physics_invariant
+def test_load_melting_curves_reads_the_tabulated_folder(monkeypatch, tmp_path):
+    """Outside Zalmoxis the curves come from the configured folder, as T(P).
+
+    The files hold pressure [Pa] in the first column and temperature [K] in the
+    second. Reading them the other way round, or swapping the two files, puts
+    the liquidus below the solidus and moves the midpoint values below.
+    """
+    _write_curve_folder(
+        tmp_path,
+        'TestCurves',
+        np.array([[0.0, 1500.0], [1.0e11, 4000.0]]),
+        np.array([[0.0, 2000.0], [1.0e11, 4500.0]]),
+    )
+    monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path, raising=False)
+
+    solidus, liquidus = load_melting_curves(_mesh_config(melting_dir='TestCurves'))
+
+    # Linear interpolation between the tabulated points.
+    assert float(solidus(5.0e10)) == pytest.approx(2750.0, rel=1e-12)
+    assert float(liquidus(5.0e10)) == pytest.approx(3250.0, rel=1e-12)
+    pressures = np.linspace(0.0, 1.0e11, 11)
+    assert np.all(liquidus(pressures) > solidus(pressures))
+    assert np.all(np.diff(solidus(pressures)) > 0.0)
+
+
+def test_load_melting_curves_refuses_an_unreadable_file(monkeypatch, tmp_path):
+    """A curve file without a temperature column is refused, naming the file.
+
+    Error contract: an unreadable solidus must stop the run, not leave the
+    melt model with no curve to evaluate.
+    """
+    folder = _write_curve_folder(
+        tmp_path,
+        'BrokenCurves',
+        np.array([[0.0, 1500.0], [1.0e11, 4000.0]]),
+        np.array([[0.0, 2000.0], [1.0e11, 4500.0]]),
+    )
+    np.savetxt(folder / 'solidus_P-T.dat', np.array([0.0, 1.0e11]))
+    monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path, raising=False)
+
+    with pytest.raises(ValueError, match='solidus') as excinfo:
+        load_melting_curves(_mesh_config(melting_dir='BrokenCurves'))
+    assert 'BrokenCurves' in str(excinfo.value)
 
 
 # Fei et al. (2021) pin their MgSiO3 liquidus to 6000 K at the 140 GPa
@@ -917,6 +1057,73 @@ def test_zalmoxis_nabla_ad_reports_a_missing_dependency(monkeypatch):
     message = str(excinfo.value)
     assert 'zalmoxis' in message.lower()
     assert 'linear' in message
+
+
+def _fake_zalmoxis_mixing(monkeypatch, gradient):
+    """Stand in for zalmoxis.mixing, recording each gradient lookup."""
+    calls = []
+
+    class LayerMixture:
+        def __init__(self, components, fractions):
+            self.components = components
+            self.fractions = fractions
+
+    def get_mixed_nabla_ad(pressure, temperature, mixture, mat_dicts, cache, sol, liq):
+        calls.append((pressure, temperature, mixture, mat_dicts, cache, sol, liq))
+        return gradient(pressure, temperature)
+
+    mixing = ModuleType('zalmoxis.mixing')
+    mixing.LayerMixture = LayerMixture
+    mixing.get_mixed_nabla_ad = get_mixed_nabla_ad
+    monkeypatch.setitem(sys.modules, 'zalmoxis.mixing', mixing)
+    monkeypatch.setattr(
+        'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+        lambda: {'PALEOS:MgSiO3': 'tables'},
+    )
+    return calls
+
+
+@pytest.mark.physics_invariant
+def test_zalmoxis_nabla_ad_passes_the_pressure_and_temperature_through(monkeypatch):
+    """The gradient is the Zalmoxis lookup at (P, T) for a pure mantle EOS.
+
+    The stand-in gradient depends on pressure and temperature differently, so
+    swapped arguments, a wrong mixture or a dropped cache all show up.
+    """
+    calls = _fake_zalmoxis_mixing(monkeypatch, lambda p, t: 0.2 + 1.0e-12 * p + 1.0e-5 * t)
+    cache = {}
+    solidus, liquidus = (lambda p: 2000.0), (lambda p: 2500.0)
+
+    nabla_ad = zalmoxis_nabla_ad(_mesh_config(), cache, solidus, liquidus)
+    value = nabla_ad(5.0e10, 3000.0)
+
+    assert isinstance(value, float)
+    assert value == pytest.approx(0.2 + 0.05 + 0.03, rel=1e-12)
+    pressure, temperature, mixture, mat_dicts, used_cache, sol, liq = calls[0]
+    assert (pressure, temperature) == (5.0e10, 3000.0)
+    assert mixture.components == ['PALEOS:MgSiO3']
+    assert mixture.fractions == [1.0]
+    assert mat_dicts == {'PALEOS:MgSiO3': 'tables'}
+    assert used_cache is cache
+    assert sol is solidus and liq is liquidus
+
+
+def test_zalmoxis_nabla_ad_refuses_an_eos_without_a_gradient(monkeypatch):
+    """An equation of state with no adiabatic gradient stops the adiabat model.
+
+    Error contract: the message names the EOS and the linear melt model, the
+    two ways forward.
+    """
+    _fake_zalmoxis_mixing(monkeypatch, lambda p, t: None)
+    config = _mesh_config(mantle_eos='Seager2007:MgSiO3')
+
+    nabla_ad = zalmoxis_nabla_ad(config, {}, lambda p: 2000.0, lambda p: 2500.0)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        nabla_ad(5.0e10, 3000.0)
+    message = str(excinfo.value)
+    assert 'Seager2007:MgSiO3' in message
+    assert 'melt_model = "linear"' in message
 
 
 @pytest.mark.physics_invariant

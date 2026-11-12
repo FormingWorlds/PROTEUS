@@ -97,7 +97,7 @@ def patch_adiabat_inputs(
     """
     monkeypatch.setattr(
         'proteus.interior_energetics.adiabat.zalmoxis_nabla_ad',
-        lambda config, cache, sol, liq: (lambda p, t: dtdp * p / t),
+        lambda config, cache, sol, liq: lambda p, t: dtdp * p / t,
     )
     monkeypatch.setattr(
         'proteus.interior_energetics.adiabat.load_melting_curves',

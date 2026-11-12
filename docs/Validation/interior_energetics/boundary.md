@@ -21,8 +21,8 @@ While the mantle is partially molten, Schaefer et al. (2016) charge sensible
 heat only to the magma ocean above the solidification radius $r_s$, and add the
 latent heat the front releases as it moves:
 
-$$\left[\tfrac{4}{3}\pi\rho c_p\,(R^3 - r_s^3)
-- 4\pi r_s^2 \rho L \frac{\mathrm{d}r_s}{\mathrm{d}T_p}\right]\frac{\mathrm{d}T_p}{\mathrm{d}t}
+$$\left\lbrack \tfrac{4}{3}\pi\rho c_p\,(R^3 - r_s^3)
+- 4\pi r_s^2 \rho L \frac{\mathrm{d}r_s}{\mathrm{d}T_p}\right\rbrack \frac{\mathrm{d}T_p}{\mathrm{d}t}
 = -4\pi R^2 q_m + M_\mathrm{mantle}\,(Q_\mathrm{radio} + Q_\mathrm{tidal}).$$
 
 With a uniform density, the molten mass above the front is

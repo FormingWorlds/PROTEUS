@@ -1861,6 +1861,31 @@ def test_boundary_runner_mantle_mass_closes_structure_budget(
     assert runner.surface_gravity == pytest.approx(const_G * M_int / R_int**2, rel=1e-12)
 
 
+@pytest.mark.parametrize('core_share', [1.0, 1.2], ids=['no_mantle', 'core_heavier'])
+def test_boundary_runner_refuses_a_structure_without_mantle_mass(
+    core_share,
+    mock_config,
+    mock_dirs,
+    mock_hf_row,
+    mock_hf_all,
+    mock_interior,
+    mock_atmos,
+):
+    """An interior no heavier than its core is refused, naming both masses.
+
+    Error contract: a zero or negative mantle mass would give a zero heat
+    capacity and a non-physical mantle density, so the runner stops at setup.
+    """
+    hf_row = {**mock_hf_row, 'M_core': core_share * mock_hf_row['M_int']}
+
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        with pytest.raises(ValueError, match='M_int > M_core') as excinfo:
+            BoundaryRunner(
+                mock_config, mock_dirs, hf_row, mock_hf_all, mock_interior, mock_atmos
+            )
+    assert 'M_core' in str(excinfo.value)
+
+
 # =============================================================================
 # Regression freeze: shared helpers must not move boundary's numbers
 # =============================================================================
@@ -2652,6 +2677,23 @@ def test_top_melt_fraction_is_the_top_level_of_the_adiabat(mock_config, tmp_path
     # Edge cases: below the top solidus and above the top liquidus.
     assert top.top_melt_fraction(top.T_solidus_top - 1.0) == pytest.approx(0.0, abs=1e-15)
     assert top.top_melt_fraction(top.T_liquidus_top + 1.0) == pytest.approx(1.0, rel=1e-15)
+
+
+@pytest.mark.physics_invariant
+def test_top_melt_fraction_is_a_step_when_the_top_curves_meet(
+    mock_config, tmp_path, monkeypatch
+):
+    """Coincident top melting curves give a sharp front, not a division by zero.
+
+    Limit-input behaviour: with no mushy interval at the top level the mantle
+    top is solid below the melting temperature and molten at or above it.
+    """
+    top, _, _ = _top_and_global_runners(mock_config, tmp_path, monkeypatch)
+    top.T_solidus_top = top.T_liquidus_top = 1800.0
+
+    assert top.top_melt_fraction(1799.0) == pytest.approx(0.0, abs=1e-15)
+    assert top.top_melt_fraction(1800.0) == pytest.approx(1.0, rel=1e-15)
+    assert top.top_melt_fraction(1801.0) == pytest.approx(1.0, rel=1e-15)
 
 
 @pytest.mark.physics_invariant
