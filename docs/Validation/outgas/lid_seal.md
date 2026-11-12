@@ -2,7 +2,7 @@
 
 ## What this page checks
 
-This page checks the lid seal (`proteus.outgas.lid_seal`). It is the part of the model that holds the volatiles dissolved in the magma ocean once a crust closes over it. While the seal holds, the volatiles reach the atmosphere only by a slow leak. The leak stops at a floor: the mass that the melt and the crystals hold in equilibrium with the atmosphere. [Volatiles held under a closed crust](../../Explanations/lid_seal.md) explains the model.
+This page checks the lid seal (`proteus.outgas.lid_seal`). It is the part of the model that holds the volatiles dissolved in the magma ocean once a crust closes over it. While the seal holds, the volatiles reach the atmosphere only by a slow leak. The leak stops at a floor: the mass that the melt holds in equilibrium with the atmosphere; with front trapping the floor also counts the crystals formed after the highest melt fraction since closure. [Volatiles held under a closed crust](../../Explanations/lid_seal.md) explains the model.
 
 Validation here means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the atmosphere gets the held volatiles too early, too late or in the wrong amount, or more than the melt would release, and the mass of an element is not conserved.
 
@@ -28,7 +28,7 @@ Each case below has the same layout: why the check exists, what it tests, how we
 | `tests/outgas/test_lid_seal.py::test_a_short_tau_gives_the_equilibrium_partition` | Gas-melt equilibrium, solved independently | The end state of a step with $\tau$ = $10^{-3}\,\Delta t$. | 2026-11-12 |
 | `tests/outgas/test_lid_seal.py::test_finite_tau_lies_between_the_frozen_and_the_open_atmosphere` | Open equilibrium and held state, solved in the test | Atmospheric water over a falling melt fraction. | 2026-11-11 |
 | `tests/outgas/test_lid_seal_tutorial.py::test_the_closing_row_of_the_tutorial_sits_on_its_floor` | Dissolved masses of the closing solve | The closing row and first held steps of the stored tutorial run. | 2026-11-12 |
-| `tests/outgas/test_lid_seal_tutorial.py::test_the_tutorial_atmosphere_lies_above_the_held_run_and_crosses_the_open_run` | Stored tutorial runs with and without the seal | The held span of the tutorial run replayed through the code, against the run, its floor and the 2 limits. | 2026-11-11 |
+| `tests/outgas/test_lid_seal_tutorial.py::test_the_tutorial_atmosphere_lies_above_the_held_run_and_crosses_the_open_run` | Stored tutorial runs with and without the seal | The held span of the tutorial run replayed through the code, against the run, its floor and the 2 limits. | 2026-11-12 |
 
 ## The floor uses the dissolved fractions of the chemistry solve
 
@@ -81,7 +81,7 @@ This case has no plot: it compares numbers that agree to round-off.
 
 It also checks the closed form $1/(D + \Phi(1 - D))$ of the scaled rate over $\Phi$ from 0.01 to 1 with front trapping and $\Phi_\mathrm{max}$ = 1, for $D$ = 0, 0.01, 0.1 and 1; the curve for $D$ = 0 is also the rate without trapping.
 
-**How we know the right answer.** The held volatile sits in the melt and, at $D > 0$, in the crystals in equilibrium with it. Mass balance then gives the melt concentration. The volcanic rate has the form of Eq. 14 and Eq. 17 of Schaefer & Sasselov (2015); replacing their melt production by $\dot M_c$, their degree of melting by $\Phi$, and their concentration by its excess over the solubility is an adaptation. The hand-written state checks the adapted formula, not a published value.
+**How we know the right answer.** The held volatile sits in the melt and, with front trapping at $D > 0$, also in the crystals formed since closure, in equilibrium with it. Mass balance then gives the melt concentration. The volcanic rate has the form of Eq. 14 and Eq. 17 of Schaefer & Sasselov (2015); replacing their melt production by $\dot M_c$, their degree of melting by $\Phi$, and their concentration by its excess over the solubility is an adaptation. The hand-written state checks the adapted formula, not a published value.
 
 **Why it matters.** With `crust_rate > 0`, this rate sets how fast the held volatiles reach the atmosphere.
 
@@ -137,11 +137,11 @@ This case has no plot; the table gives its result. Each error is the largest ove
 
 The cut is asserted only where the step is short against the leak ($\lambda \Delta t < 0.1$), which is $\tau \ge 10^4$ yr. At $\tau$ = 100 yr and 1 kyr, $\lambda \Delta t$ is 3.6 and 0.36, so the cut in those 2 rows is shown for context and not tested.
 
-**Known limit.** Per mass, the error can be larger than per inventory. At 120 steps of 358 yr it reaches $1.9\times10^{-3}$ of the held CO$_2$ and N$_2$, which sit at a floor that moves with the melt fraction. It reaches $1.2\times10^{-3}$ of the atmospheric water at $\tau$ = 10 Myr, because the first leaking step is resolved only to one step. As a fraction of the mass a species moved into the atmosphere, it reaches 0.9 % (CO$_2$ at $\tau$ = 10 Myr). The error over the inventory is at most $4.4\times10^{-5}$. The test asserts only the error over the inventory and the cut; the per-mass numbers are results of the same run.
+**Known limit.** Per mass, the error can be larger than per inventory. At 120 steps of 358 yr it reaches $1.9\times10^{-3}$ of the held CO$_2$ and N$_2$, which sit at a floor that moves with the melt fraction. It reaches $1.2\times10^{-3}$ of the atmospheric water at $\tau$ = 10 Myr, because the first leaking step is resolved only to one step. As a fraction of the mass a species moved into the atmosphere, it reaches 0.9 % (CO$_2$ at $\tau$ = 10 Myr). The error over the inventory is at most $4.4\times10^{-5}$. The test asserts the error over the inventory, the error over each atmospheric mass (below $1.5\times10^{-3}$) and the cut; the errors per held mass are results of the same run.
 
 ??? info "Test details"
     - Reference: Radau integration of $dM_i/dt = -(1/\tau) \max(M_i - M_{\mathrm{eq},i}, 0)$ with the laws written in the test.
-    - Tolerance: $10^{-4}$ of the species inventory; error cut of at least 3.5 times for 4 times more steps where $\lambda \Delta t < 0.1$.
+    - Tolerance: $10^{-4}$ of the species inventory and $1.5\times10^{-3}$ of each atmospheric mass; error cut of at least 3.5 times for 4 times more steps where $\lambda \Delta t < 0.1$.
     - Test id: `tests/outgas/test_lid_seal_convergence.py::test_leak_step_converges_to_the_continuous_law`
     - Command: `pytest tests/outgas/test_lid_seal_convergence.py`
 
@@ -149,7 +149,14 @@ The cut is asserted only where the step is short against the leak ($\lambda \Del
 
 **Why this check exists.** With `outgas.trap_mode = "front"`, the crystals that froze before the seal closed keep their own trapped volatiles. A floor that counted them as room for the held mass would be too high, and the seal would let too little gas leak. A floor below the melt mass would let too much leak.
 
-**What it tests.** Held water ($D$ = 0.0017) and CO$_2$ ($D$ = 0.05) leak for one step of 1 kyr with $\tau$ = 1 kyr and crust production on; the global melt fraction at closure is $\Phi_c$ = 0.2. Here $X_\mathrm{eq}$ is the dissolved mass fraction of a species and $D$ its crystal/melt partition coefficient. With front trapping and $\Phi$ = 0.1, each floor must be $X_\mathrm{eq} M_\mathrm{mantle} (\Phi + D (\Phi_c - \Phi))$; with $\Phi$ = 0.3, above $\Phi_c$, it must be $X_\mathrm{eq} M_\mathrm{mantle} \Phi$, the melt alone. Without trapping it must be $X_\mathrm{eq} M_\mathrm{mantle} \Phi$, the melt alone, for any $D$. In all 3 cases the leak must split by the volcanic rate on the same reservoir as the floor; a third test requires that rate, $\chi_d \dot M_c / (M_\mathrm{mantle} (\Phi + D (\Phi_c - \Phi)))$, at $\Phi$ = 0.001, with $\Phi_c$ = 0.19 and the water value $D$ = 0.0017, where it is 0.757 times the rate without trapping, $\chi_d \dot M_c / (\Phi M_\mathrm{mantle})$. A sealed mantle that remelts past $\Phi_c$ = 0.2 to 0.3 and freezes to 0.15 must give the floor $X_\mathrm{eq} M_\mathrm{mantle} (\Phi + D (\Phi_\mathrm{max} - \Phi))$ with $\Phi_\mathrm{max}$ = 0.3, the highest melt fraction since closure, and a property test requires this over any path of the melt fraction. Other tests require $\Phi_\mathrm{max}$ (`seal_phi_max`) in \[0, 1\] under front trapping, and a closure at a melt fraction of 0 to hold.
+**What it tests.** Held water ($D$ = 0.0017) and CO$_2$ ($D$ = 0.05) leak for one step of 1 kyr with $\tau$ = 1 kyr and crust production on; the global melt fraction at closure is $\Phi_c$ = 0.2. Here $X_\mathrm{eq}$ is the dissolved mass fraction of a species and $D$ its crystal/melt partition coefficient. The tests require:
+
+- with front trapping and $\Phi$ = 0.1, each floor is $X_\mathrm{eq} M_\mathrm{mantle} (\Phi + D (\Phi_c - \Phi))$;
+- with front trapping and $\Phi$ = 0.3, above $\Phi_c$, the floor is $X_\mathrm{eq} M_\mathrm{mantle} \Phi$, the melt alone;
+- without trapping, the floor is $X_\mathrm{eq} M_\mathrm{mantle} \Phi$, the melt alone, for any $D$;
+- in all 3 cases, the leak splits by the volcanic rate on the same reservoir as the floor; a third test requires that rate, $\chi_d \dot M_c / (M_\mathrm{mantle} (\Phi + D (\Phi_c - \Phi)))$, at $\Phi$ = 0.001, with $\Phi_c$ = 0.19 and the water value $D$ = 0.0017, where it is 0.757 times the rate without trapping, $\chi_d \dot M_c / (\Phi M_\mathrm{mantle})$;
+- a sealed mantle that remelts past $\Phi_c$ = 0.2 to 0.3 and freezes to 0.15 gives the floor $X_\mathrm{eq} M_\mathrm{mantle} (\Phi + D (\Phi_\mathrm{max} - \Phi))$ with $\Phi_\mathrm{max}$ = 0.3, the highest melt fraction since closure, and a property test requires this over any path of the melt fraction;
+- $\Phi_\mathrm{max}$ (`seal_phi_max`) stays in \[0, 1\] under front trapping, and a closure at a melt fraction of 0 holds.
 
 **How we know the right answer.** It follows from a mass balance on the crystals: the crystals older than closure leave the reservoir, and the crystals that form after closure stay in it. Trapping remelts the youngest solid first, so after a remelt the crystals that stay are those formed after the highest melt fraction since closure. The held mass sits in that reservoir, so its melt concentration, and with it the volcanic rate, uses the same reservoir.
 
@@ -189,7 +196,7 @@ This case has no plot: it checks one end state.
 
 **How we know the right answer.** The open state is the equilibrium on the melt alone, which is also the floor without trapping; a finite $\tau$ lags behind it. The test computes the open state with its own root find.
 
-**Why it matters.** A leak that overshoots its floor, or one that runs the wrong way, fails this check. The band holds for this one-species state only: in a full run the held gas keeps its species and the open run does not, and the tutorial case below shows a run whose seal leaves more water in the atmosphere than the open run.
+**Why it matters.** This is the simple limit of a full run, and the band holds for this one-species state only: in a full run the held gas keeps its species and the open run does not, and the tutorial case below shows a run whose seal leaves more water in the atmosphere than the open run.
 
 This case has no plot: the next case shows the same band on the tutorial run.
 
@@ -247,9 +254,9 @@ The tests in `tests/outgas/test_lid_seal.py` and the code itself also check, wit
 - closing and opening the seal moves every species, element and mole column between the melt and the held reservoir without loss, and a row that cannot be read is refused before any mass moves;
 - with the defaults (`tau_leak` infinite, `crust_rate = 0`) no floor is computed and every column stays the same to the last bit, with solubility on or off;
 - after every step that leaks, the code checks that each species ends at or above its floor, at $e^{-\lambda_i \Delta t}$ of its starting distance; a step that ignores the floor or leaks too little stops the run;
-- a negative or non-finite floor, a closing temperature that is not finite and above 0 K, a non-finite IW offset, and sweeps over the species that do not settle stop the run with an error;
-- a step whose residual changes sign more than once at 17 samples over its bracket stops the run with an error (3 made-up floors pin this: 3 roots, a narrow fold, and roots beyond the bracket that must not stop it); a CO$_2$ leak above $83.15\,T/23$ bar, where the CO$_2$ law of Dixon et al. (1995) falls with pressure, still has one solution and finishes; the check samples each species alone, with the others at their final leaks, so roots closer together than one sample spacing and several solutions of the coupled species pass it, and in the tests only a made-up floor gives a second solution;
-- a sealed row resumes only with a finite closing temperature above 0 K and, under front trapping, a closing melt fraction in (0, 1\];
+- a negative or non-finite floor, a leak that is not finite, a closing temperature that is not finite and above 0 K, a non-finite IW offset, and sweeps over the species that do not settle stop the run with an error;
+- a step whose residual changes sign more than once at 17 samples over its bracket stops the run with an error (3 made-up floors pin this: 3 roots, a narrow fold, and roots beyond the bracket that must not stop it); a species that takes no leak in the step must keep its residual above 0 over the bracket, so a second solution next to a leak of 0 also stops the run (a made-up floor that falls stops it, a flat one does not); a CO$_2$ leak above $83.15\,T/23$ bar, where the CO$_2$ law of Dixon et al. (1995) falls with pressure, still has one solution and finishes; the check samples each species alone, with the others at their final leaks, so roots closer together than one sample spacing and several solutions of the coupled species pass it, and in the tests only a made-up floor gives a second solution;
+- a sealed row resumes only with a finite closing temperature above 0 K and, under front trapping, closing and highest melt fractions with 0 <= `seal_phi_close` <= `seal_phi_max` <= 1;
 - in one step the 2 leak parts of each element sum to the drop of its held mass and to the rise of its atmospheric mass; each species splits its leak in the ratio of its 2 rates;
 - in one step no more melt than the melt mass reaches the crust, and below `phi_solid` none does;
 - after a leak, the surface pressure is $M_\mathrm{atm}\,g/(4\pi R^2)$ and the mixing ratios follow the moles;

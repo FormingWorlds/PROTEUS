@@ -140,11 +140,13 @@ Before the closing step the 2 runs agree to the last digit.
 After it they part, but not by much.
 The melt is still 13.6 % of the mantle at 140 kyr, and in both runs almost all the water stays in the mantle.
 With the seal, the atmosphere holds 1.71 % more water than without the seal.
-Replays of the held span of this run, with one term switched off at a time, give the terms in percentage points of the water in the atmosphere of the open run:
+Replays of the held span of this run, with one term switched off at a time, split the 1.71 % into 3 terms, in percentage points of the water in the atmosphere of the open run:
 
-- the held gas keeps the species it had at closure, while the open run turns CO into CO$_2$ as the magma cools; the sealed atmosphere then holds less oxygen, the kept species lower its surface pressure by 1.76 %, and the water needs 1.86 points more mass in the atmosphere to reach the same partial pressure;
-- the finite leak time keeps 0.08 points of water held, and the rest is $-0.07$ points;
-- the closing temperature that the seal keeps for the CO$_2$ law changes nothing here: near 1 bar that law does not depend on temperature.
+- $+1.86$: the held gas keeps the species it had at closure, while the open run turns CO into CO$_2$ as the magma cools; the sealed atmosphere then holds less oxygen, the kept species lower its surface pressure by 1.76 %, and the water needs more mass in the atmosphere to reach the same partial pressure;
+- $-0.08$: the finite leak time keeps this water held;
+- $-0.07$: the rest.
+
+The output above shows a surface pressure 2.5 % lower in total; the kept species alone lower it by 1.76 %. The closing temperature that the seal keeps for the CO$_2$ law changes nothing here: near 1 bar that law does not depend on temperature.
 
 The first term is a known limit of the frozen chemistry: at 140 kyr the sealed atmosphere holds 24.6 % more CO and 6.3 % less CO$_2$ than the open run ([Limits of the leak](../Explanations/lid_seal.md#limits-of-the-leak)).
 

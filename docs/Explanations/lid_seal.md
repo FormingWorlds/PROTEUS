@@ -6,7 +6,7 @@ The short answer: with `outgas.lid_seal.enabled = true`, a crust that is thick e
 
 The seal opens again in 3 cases: the crust thins, the top cell of the mesh holds a set share of melt again (35 % by default), or a giant impact happens. With the default, `false`, the seal never closes.
 
-**Why it matters.** Without the seal, the chemistry keeps the melt in equilibrium with the atmosphere at every step, so a crust does not change where the volatiles go. With it, the atmosphere gets the gas of the melt only through the leak, which changes the atmospheric mass, the surface pressure and the mass that escape can take. In the [tutorial](../Tutorials/lid_seal.md) the difference is small: the seal run holds 1.714 % to 1.751 % more water in the atmosphere at 140 kyr than the open run, over the printed run and 5 starts that differ only by round-off (their atmospheric water spreads by 0.65 %). The largest term is the frozen chemistry of the held gas: it keeps the species of the closing solve, which lowers the surface pressure, so more water stays in the atmosphere ([Limits of the leak](#limits-of-the-leak)).
+**Why it matters.** Without the seal, the chemistry keeps the melt in equilibrium with the atmosphere at every step, so a crust does not change where the volatiles go. With the seal, the atmosphere gets the gas of the melt only through the leak. This changes the atmospheric mass, the surface pressure and the mass that escape can take. In the [tutorial](../Tutorials/lid_seal.md) the effect is small: at 140 kyr the seal run holds 1.714 % to 1.751 % more water in the atmosphere than the open run, over the printed run and 5 starts that differ only by round-off (their atmospheric water spreads by 0.65 %). The largest term is the frozen chemistry of the held gas ([Limits of the leak](#limits-of-the-leak)).
 
 The seal is one path of the outgassing step; [Outgassing, rock vapour and volatile trapping](outgas.md) gives the order of the steps around it.
 
@@ -14,7 +14,8 @@ The seal is one path of the outgassing step; [Outgassing, rock vapour and volati
 
 - **Seal**: the state in which a closed crust holds the volatiles of the melt below it.
 - **Held mass**: the mass of a species or element that the seal holds below the crust, in the `_kg_sealed` columns.
-- **Floor**: the mass of a species that the mantle holds in equilibrium with the atmosphere, in the `_kg_eq` columns. The leak does not go below it.
+- **Floor**: the mass of a species that the melt holds in equilibrium with the atmosphere, in the `_kg_eq` columns; with front trapping it also counts the crystals formed after the highest melt fraction since closure. The leak does not go below it.
+- **Open run**: the same planet with the seal off; its chemistry keeps the melt in equilibrium with the atmosphere at every step.
 - **CALLIOPE**: the outgassing chemistry module, which splits the volatiles between the atmosphere and the melt; the seal uses its solubility laws.
 - **Aragog**: the interior solver; its mesh is a set of radial cells, and the seal reads their melt fraction.
 
@@ -116,12 +117,12 @@ $$
 - For $\tau \to 0$ it gives the gas-melt equilibrium of the frozen species; for $\lambda_i = 0$ nothing moves.
 - A root finder (Brent's method) finds $L_i$ for each species; sweeps over the species repeat until no leak changes by more than $10^{-14}$ of its held mass, because the floors couple through the surface pressure and the mean molar mass.
 
-After each step the code checks that every species that leaked ends at or above its floor, at $e^{-\lambda_i \Delta t}$ of its starting distance from it, and that a sample of its step shows one solution ([Laws that fall with pressure](#laws-that-fall-with-pressure)); otherwise the run stops with an error. With `tau_leak` infinite and `crust_rate = 0` the step computes no floor and changes no column.
+After each step the code checks that every species that leaked ends at or above its floor, at $e^{-\lambda_i \Delta t}$ of its starting distance from it, and that a sample of the step of every species, also one that took no leak, shows one solution ([Laws that fall with pressure](#laws-that-fall-with-pressure)); otherwise the run stops with an error. With `tau_leak` infinite and `crust_rate = 0` the step computes no floor and changes no column.
 
 ## Limits of the leak
 
 - **Laws that fall with pressure.** The CO$_2$, CO and CH$_4$ laws fall with pressure at high pressure; [Laws that fall with pressure](#laws-that-fall-with-pressure) says when a step can then have more than one solution.
-- **First order in the step.** Within a step the floor moves for 3 reasons: the melt fraction falls, the leak fills the atmosphere, and escape thins it. The step takes the floor of its end state, so its error falls in proportion to $\Delta t$ where the step is short against the leak ($\lambda_i \Delta t < 0.1$); at $\tau$ = 100 yr, where $\lambda_i \Delta t$ is 3.6, 4 times more steps cut it only 2.35 times. In the test on a melt-fraction path like that of the tutorial (120 steps of 358 yr, escape off) the error is at most $4.4\times10^{-5}$ of the inventory of each species, which is the held plus the atmospheric mass; per held or atmospheric mass it can reach $1.9\times10^{-3}$. [Validation](../Validation/outgas/lid_seal.md#the-step-converges-to-the-continuous-law) gives the table.
+- **First order in the step.** Within a step the floor moves for 3 reasons: the melt fraction falls, the leak fills the atmosphere, and escape thins it. The step takes the floor of its end state, so its error falls in proportion to $\Delta t$ where the step is short against the leak ($\lambda_i \Delta t < 0.1$). In the convergence test the error is at most $4.4\times10^{-5}$ of the inventory of each species, the held plus the atmospheric mass; [Validation](../Validation/outgas/lid_seal.md#the-step-converges-to-the-continuous-law) gives the table and the errors per mass.
 - **Crystals.** Without trapping the floor counts no crystals, as the CALLIOPE solve, so closure is a fixed point of the leak. The partition coefficient $D_i$ acts only with front trapping.
 - **Crystals at opening.** When the seal opens, the whole held mass returns to the melt. With front trapping this includes the share counted in the crystals formed after closure.
 - **Erupted melt.** Of the volatile in the melt that reaches the crust, only the degassed share leaves the held mass; the rest stays counted as held.
