@@ -234,7 +234,7 @@ This case has no plot: it checks the floor at closure and the row of the first l
 
 **How we know the right answer.** The stored run is the reference for the replay. The floor check follows from the law. The run with $\tau$ infinite leaks nothing, so a run that leaks lies at or above it. The open run is no bound: replays of the held span with one term switched off at a time show that the species the held gas keeps from the closing solve raise the atmospheric water by 1.86 percentage points of the open run's value through a lower surface pressure, and that the finite leak time lowers it by 0.08 points. The run ends 1.71 % above the open run. On the first 9 held steps, about 750 yr, the leak lags its falling floor and the run lies up to 0.052 % below the open run.
 
-**Known limit.** The held gas keeps its species, while the open run takes oxygen from the redox buffer of the melt as the magma cools. At 140 kyr the sealed atmosphere holds 24.6 % more CO and 6.3 % less CO$_2$ than the open run ([Limits of the leak](../../Explanations/lid_seal.md#limits-of-the-leak)).
+**Known limit.** The held gas keeps its species, while the open run takes oxygen from the redox buffer of the melt as the magma cools. At 140 kyr the sealed atmosphere holds 24.6 % more CO and 6.3 % less CO$_2$ than the open run ([Limits of the leak](../../Explanations/lid_seal.md#limits-of-the-leak)). A gas that re-speciates at fixed atmospheric elements does not close this gap: replayed over the held span, it moves water, CO$_2$ and CO by at most 0.11 percentage points, because the oxygen comes from the melt.
 
 **Why it matters.** This is the result a user sees: how much water a planet under a closed crust releases.
 
