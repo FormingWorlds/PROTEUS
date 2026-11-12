@@ -129,6 +129,33 @@ def test_a_config_file_cell_that_is_not_a_number_or_a_string_is_refused(tmp_path
         read_config_object(path)
 
 
+@pytest.mark.parametrize(
+    ('section', 'name', 'value'),
+    [
+        ('interior_energetics.aragog.rheology', 'mlt_bottom_slope', 'true'),
+        ('interior_energetics.aragog.rheology', 'mlt_bottom_slope', '"0.9"'),
+        ('interior_energetics.aragog', 'cmb_cell_thickness', 'true'),
+        ('interior_energetics.aragog', 'cmb_cell_thickness', '"3000"'),
+    ],
+)
+def test_a_config_file_slope_or_cmb_cell_that_is_a_bool_or_a_string_is_refused(
+    tmp_path, section, name, value
+):
+    """The number hook refuses a TOML bool or string, which float() would take as a number."""
+    path = tmp_path / 'user.toml'
+    path.write_text(MINIMAL.read_text() + f'\n[{section}]\n    {name} = {value}\n')
+    with pytest.raises(ValueError, match=f'{name}: must be a number'):
+        read_config_object(path)
+
+
+def test_an_int_cell_beyond_the_float_range_is_refused_as_not_finite():
+    """An int that no float holds is refused like an infinite cell, not with OverflowError."""
+    with pytest.raises(Exception) as exc:  # noqa: B017, PT011
+        Aragog(cmb_cell_thickness=10**400)
+    assert exc.type is ValueError, exc.type
+    assert 'cmb_cell_thickness` must be 0 or finite' in str(exc.value)
+
+
 @pytest.mark.parametrize(('cmb', 'surface'), [(2500.0, 7000.0), (0.0, 'uniform'), (0.0, 0.0)])
 def test_setup_solver_passes_the_end_cells_to_the_aragog_mesh(tmp_path, cmb, surface):
     """The mesh parameters aragog receives hold the configured end cells."""
