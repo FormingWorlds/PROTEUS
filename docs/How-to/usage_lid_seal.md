@@ -24,7 +24,7 @@ The seal also needs:
 
 It cannot be combined with `params.stop.solid.freeze_volatiles = true`, which also freezes the melt inventory, or with `outgas.vapourise = true`.
 
-With the defaults `tau_leak = inf` and `crust_rate = 0`, no held mass leaves while the seal holds. The desiccation check counts the held mass, so a planet whose held mass of any volatile element or noble gas is above `outgas.mass_thresh` does not count as desiccated ([the state of a planet that has lost its volatiles](../Explanations/outgas.md#terms-used-on-this-page)) while the seal holds. Set a finite `tau_leak` or a positive `crust_rate` to let the held volatiles reach the atmosphere.
+With the defaults `tau_leak = inf` and `crust_rate = 0`, no held mass leaves while the seal holds. The desiccation check counts the held mass, so a planet whose held mass of any volatile element or noble gas is above `outgas.mass_thresh` does not count as desiccated while the seal holds; a planet is desiccated when it has lost its volatiles ([definition](../Explanations/outgas.md#terms-used-on-this-page)). Set a finite `tau_leak` or a positive `crust_rate` to let the held volatiles reach the atmosphere.
 
 ## Read the output
 

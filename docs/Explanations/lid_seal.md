@@ -80,7 +80,7 @@ The symbols are:
 - $\dot M_c$: `crust_rate` \[kg yr$^{-1}$\], the mass of melt that reaches the crust per year. The default is 0. It is 0 when $\Phi$ is below `phi_solid`, and in one step it is cut to the melt mass; `seal_volc_capped` marks such a step.
 - $\chi_d$: `chi_d` \[1\], the fraction of the volatiles in that melt that degasses; 0.02 by default, from Table 3 of Schaefer & Sasselov (2015)[^cite-schaefer2015].
 - $M_\mathrm{melt} = \Phi M_\mathrm{mantle}$: the melt mass of the mantle \[kg\], with the global melt fraction $\Phi$.
-- $R_i$: the reservoir of species $i$ \[kg\], the melt, as in the CALLIOPE solve; with front trapping it also counts the solid formed after closure, crystals and trapped melt ([The reservoir with front trapping](#the-reservoir-with-front-trapping)).
+- $R_i$: the reservoir of species $i$ \[kg\], the melt, as in the CALLIOPE solve; with front trapping it also counts the solid formed since closure, crystals and trapped melt ([The reservoir with front trapping](#the-reservoir-with-front-trapping)).
 - $D_i$: `outgas.D_const_<species>`, the crystal/melt partition coefficient \[1\]; the seal uses it only with front trapping.
 - $\lambda_i = 1/\tau + k_i$: the leak rate of species $i$ \[yr$^{-1}$\].
 
@@ -107,7 +107,7 @@ The floor is one way: a species below its floor does not move, because gas does 
 
 ### The reservoir with front trapping
 
-With front trapping, the solid that froze before closure keeps its own trapped volatiles and is not part of the reservoir. The reservoir counts only the solid formed after closure, as [trapping](outgas.md#the-burial-rule) buries it. A step that freezes the mass $\Delta M$ \[kg\] splits it by the trapped melt fraction $F_\mathrm{tl}$ \[1\] (`trap_F_tl`):
+With front trapping, the solid that froze before closure keeps its own trapped volatiles and is not part of the reservoir. The reservoir counts only the solid formed since closure, as [trapping](outgas.md#the-burial-rule) buries it. A step that freezes the mass $\Delta M$ \[kg\] splits it by the trapped melt fraction $F_\mathrm{tl}$ \[1\] (`trap_F_tl`):
 
 - $(1 - F_\mathrm{tl})\,\Delta M$ is crystals, which hold the species at $D_i$ times its melt concentration;
 - $F_\mathrm{tl}\,\Delta M$ is trapped melt, which holds the species at the melt concentration.
@@ -139,7 +139,7 @@ After each step the code checks that every species that leaked ends at or above 
 
 - **Laws that fall with pressure.** The CO$_2$, CO and CH$_4$ laws fall with pressure at high pressure; [Laws that fall with pressure](#laws-that-fall-with-pressure) says when a step can then have more than one solution.
 - **First order in the step.** Within a step the floor moves for 3 reasons: the melt fraction falls, the leak fills the atmosphere, and escape thins it. The step takes the floor of its end state, so its error falls in proportion to $\Delta t$ where the step is short against the leak ($\lambda_i \Delta t < 0.1$). [Validation](../Validation/outgas/lid_seal.md#the-step-converges-to-the-continuous-law) gives the size of the error.
-- **Crystals.** Without trapping the floor counts no crystals, as the CALLIOPE solve, so closure is a fixed point of the leak. With front trapping it counts the solid formed after closure at $(1 - F_\mathrm{tl}) D_i + F_\mathrm{tl}$ but at one melt concentration; layers fixed at the concentration of their own step, as in trapping, give 0.55 % more water in the atmosphere of the front-trapping tutorial at 140 kyr. At opening the whole held mass returns to the melt.
+- **Crystals.** Without trapping the floor counts no crystals, as the CALLIOPE solve, so closure is a fixed point of the leak. With front trapping it counts the solid formed since closure at $(1 - F_\mathrm{tl}) D_i + F_\mathrm{tl}$ but at one melt concentration; layers fixed at the concentration of their own step, as in trapping, give 0.55 % more water in the atmosphere of the [tutorial run with front trapping](../Validation/outgas/lid_seal.md#with-front-trapping-the-floor-counts-the-solid-formed-since-closure) at 140 kyr. At opening all held mass returns to the melt.
 - **Erupted melt.** Of the volatile in the melt that reaches the crust, only the degassed share leaves the held mass; the rest stays counted as held.
 - **Frozen chemistry.** The held and leaked gas keep the species they had at closure; the floor does not see a change of speciation in the atmosphere. The open run keeps its atmosphere in equilibrium with the redox buffer of the melt, which gives oxygen to the gas as the magma cools and turns CO into CO$_2$. In the [tutorial](../Tutorials/lid_seal.md) at 140 kyr the sealed atmosphere therefore holds 24.6 % more CO, 6.3 % less CO$_2$ and 1.7 % more water than the open run, at a 2.5 % lower surface pressure. A gas that re-speciates at fixed atmospheric elements does not close this gap, because the oxygen comes from the melt ([Validation](../Validation/outgas/lid_seal.md#the-tutorial-atmosphere-lies-above-the-held-run-and-crosses-the-open-run)).
 
