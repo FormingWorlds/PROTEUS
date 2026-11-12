@@ -609,9 +609,10 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
         If the flag, the path or a sealed mass is not readable, if a sealed row
         has no closing temperature ``seal_Tmagma_close`` > 0 K or, under front
         trapping, no finite crystal masses ``seal_xtal_kg`` and ``seal_tl_kg``
-        >= 0 kg, or both at 0 below its closing melt fraction ``seal_phi_close``
-        or with either melt fraction NaN (missing crystal columns read as 0; a
-        zero-filled ``seal_phi_close`` turns this check off), if the row holds
+        >= 0 kg, or both at 0 below its closing melt fraction ``seal_phi_close`` or
+        with a melt fraction that is not finite (a resume reads missing ``seal_``
+        columns as 0 before this check, so a zero-filled ``seal_phi_close`` turns
+        it off), or no closing time ``seal_t_close`` > 0 yr, if the row holds
         sealed mass under an open flag, or if it holds sealed mass with the seal
         off, since nothing could open it then.
     """
@@ -643,13 +644,18 @@ def restore_seal_state(config: Config, hf_row: dict) -> bool:
         raise ValueError(f'Resume: a sealed last row needs seal_Tmagma_close > 0 K, not {temp}')
     if sealed and config.outgas.trap_mode == 'front':
         xtal, tl = _crystal_masses(hf_row)
-        phi = min(max(float(hf_row.get('Phi_global', np.nan)), 0.0), 1.0)
+        phi = float(hf_row.get('Phi_global', np.nan))
         phi_c = float(hf_row.get('seal_phi_close', np.nan))
-        if xtal + tl == 0.0 and not phi >= phi_c:  # NaN on either side is refused
+        if xtal + tl == 0.0 and not (
+            np.isfinite(phi + phi_c) and min(max(phi, 0.0), 1.0) >= phi_c
+        ):
             raise ValueError(
-                f'Resume: a sealed row at Phi_global = {phi} below seal_phi_close = {phi_c} '
+                f'Resume: a sealed row with Phi_global = {phi} and seal_phi_close = {phi_c} '
                 'holds no seal_xtal_kg or seal_tl_kg'
             )
+        t_close = float(hf_row.get('seal_t_close', np.nan))
+        if not (np.isfinite(t_close) and t_close > 0.0):
+            raise ValueError(f'Resume: a sealed row needs seal_t_close > 0 yr, not {t_close}')
     return sealed
 
 
