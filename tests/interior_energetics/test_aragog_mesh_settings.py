@@ -45,12 +45,12 @@ def _aragog_defaults():
 
 
 def test_the_proteus_defaults_are_the_aragog_defaults():
-    """The 3 PROTEUS defaults equal those of the installed aragog: 1000 m, "uniform", 0.82."""
+    """The 3 PROTEUS defaults equal those of the installed aragog: 3000 m, "uniform", 0.82."""
     cmb, surface, slope = _aragog_defaults()
     a = Aragog()
     assert (a.cmb_cell_thickness, a.surface_cell_thickness) == (cmb, surface)
     assert Rheology().mlt_bottom_slope == slope
-    assert (cmb, surface, slope) == (1000.0, 'uniform', 0.82)
+    assert (cmb, surface, slope) == (3000.0, 'uniform', 0.82)
 
 
 def _kept(name, value):
