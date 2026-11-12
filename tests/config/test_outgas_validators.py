@@ -180,7 +180,10 @@ def test_lid_seal_defaults_hold_and_derive_the_open_band():
         *(('delta_close', b) for b in (*_SEAL_BAD, 0.0, -1.0, float('inf'))),
         *(('phi_close', b) for b in (*_SEAL_BAD, 0.0, 1.0, -0.1)),
         *(('tau_leak', b) for b in (*_SEAL_BAD, 0.0, -1.0, 1.0e-310, 5.0e-324)),
-        pytest.param('tau_leak', 10**400, id='tau_leak-int-beyond-float'),
+        *(
+            pytest.param(f, 10**400, id=f'{f}-int-beyond-float')
+            for f in ('delta_close', 'tau_leak', 'crust_rate')
+        ),
         *(('chi_d', b) for b in (*_SEAL_BAD, -1e-9, 1.0 + 1e-9)),
         *(('crust_rate', b) for b in (*_SEAL_BAD, -1.0, float('inf'))),
         *(('phi_solid', b) for b in (*_SEAL_BAD, 0.0, 0.3, 0.5)),

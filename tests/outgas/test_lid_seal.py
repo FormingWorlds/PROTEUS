@@ -714,12 +714,15 @@ def test_leak_refreshes_the_element_ratios_of_the_atmosphere():
     assert abs(row['C/H_atm'] / before - 1.0) > 1e-3
 
 
-@pytest.mark.parametrize('tau', [1.0e-290, 1.0e-300])
+@pytest.mark.parametrize('tau', [1.0e-288, 1.0e-290, 1.0e-300])
 def test_a_leak_too_fast_for_the_float_range_stops_the_step(tau):
     """A tau_leak whose rate overflows the split of the leak stops the step
-    instead of writing an infinite or NaN leak."""
+    before it writes a column, so no infinite or NaN leak reaches the row."""
+    row = _sealed_row()
+    before = dict(row)
     with pytest.raises(RuntimeError, match='not finite'):
-        leak_step(_config(tau_leak=tau), _sealed_row(), 1.0e3)
+        leak_step(_config(tau_leak=tau), row, 1.0e3)
+    assert row == before
 
 
 def test_restore_seal_state_reads_the_row_and_refuses_stranded_mass():
