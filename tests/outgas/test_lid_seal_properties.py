@@ -86,7 +86,7 @@ def test_restore_refuses_a_sealed_row_without_its_crystal_masses(key, mass):
     if np.isfinite(mass) and mass >= 0.0:
         assert restore_seal_state(front, dict(row)) is True
     else:
-        with pytest.raises(ValueError, match=key):
+        with pytest.raises(ValueError, match=f'{key} = '):
             restore_seal_state(front, dict(row))
     assert restore_seal_state(_config(), dict(row)) is True
     assert restore_seal_state(front, {**_row(), key: mass}) is False

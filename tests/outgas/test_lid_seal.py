@@ -1759,9 +1759,6 @@ def test_a_held_remelt_without_its_closing_row_stops(t_close):
     assert (row['seal_xtal_kg'], row['seal_tl_kg']) == (0.1 * M_MANTLE, 0.0)
 
 
-NAN = float('nan')
-
-
 @pytest.mark.parametrize(
     ('phi', 'phi_c', 'xtal', 'tl', 'ok'),
     [
@@ -1770,8 +1767,12 @@ NAN = float('nan')
         (0.1, 0.3, 0.0, 1.0e22, True),
         (0.3, 0.3, 0.0, 0.0, True),
         (0.35, 0.3, 0.0, 0.0, True),
-        (NAN, 0.3, 0.0, 0.0, False),
-        (0.1, NAN, 0.0, 0.0, False),
+        (float('nan'), 0.3, 0.0, 0.0, False),
+        (0.1, float('nan'), 0.0, 0.0, False),
+        (float('inf'), 0.3, 0.0, 0.0, False),
+        (0.1, -float('inf'), 0.0, 0.0, False),
+        (0.5, None, 0.0, 0.0, False),
+        (0.1, 0.0, 0.0, 0.0, True),
     ],
     ids=[
         'below',
@@ -1781,6 +1782,10 @@ NAN = float('nan')
         'above',
         'nan-phi',
         'nan-close',
+        'inf-phi',
+        'minus-inf-close',
+        'missing-close',
+        'zero-filled-close',
     ],
 )
 def test_a_sealed_front_row_below_its_closing_melt_fraction_needs_its_crystals(
@@ -1788,11 +1793,14 @@ def test_a_sealed_front_row_below_its_closing_melt_fraction_needs_its_crystals(
 ):
     """Under front trapping, a sealed row below its closing melt fraction (0.3) has
     frozen solid since closure, so crystal columns that are both 0, as a resume
-    fills missing columns, stop the resume, and so does a melt fraction that cannot
-    be compared; crystals alone (F_tl 0) or trapped melt alone (F_tl 1) resume, and
-    at or above it no solid is held."""
+    fills missing columns, stop the resume, and so does a melt fraction that is not
+    finite or missing; crystals alone (F_tl 0) or trapped melt alone (F_tl 1)
+    resume, at or above it no solid is held, and a zero-filled closing melt
+    fraction lets the row pass."""
     row = {**_sealed_row(phi=0.3), 'seal_active': 1.0, 'Phi_global': phi}
     row.update({'seal_phi_close': phi_c, 'seal_xtal_kg': xtal, 'seal_tl_kg': tl})
+    if phi_c is None:
+        row.pop('seal_phi_close')
     front = _config()
     front.outgas.trap_mode = 'front'
     if ok:
@@ -1800,6 +1808,24 @@ def test_a_sealed_front_row_below_its_closing_melt_fraction_needs_its_crystals(
     else:
         with pytest.raises(ValueError, match='seal_xtal_kg'):
             restore_seal_state(front, row)
+    assert restore_seal_state(_config(), row) is True
+
+
+@pytest.mark.parametrize('t_close', [0.0, -5.0, float('nan'), None], ids=str)
+def test_a_sealed_front_row_resumes_only_with_a_closing_time_after_the_start(t_close):
+    """Under front trapping a held remelt replays the rows from seal_t_close on, so a
+    sealed row resumes only with a finite closing time above 0 yr (the seal never
+    closes in the initialisation stage); a zero-filled time would replay every row.
+    Without trapping the closing time is not read."""
+    row = {**_sealed_row(), 'seal_active': 1.0, 'seal_xtal_kg': 1.0e22, 'seal_tl_kg': 0.0}
+    front = _config()
+    front.outgas.trap_mode = 'front'
+    assert restore_seal_state(front, dict(row)) is True
+    row.pop('seal_t_close')
+    if t_close is not None:
+        row['seal_t_close'] = t_close
+    with pytest.raises(ValueError, match='seal_t_close'):
+        restore_seal_state(front, row)
     assert restore_seal_state(_config(), row) is True
 
 
