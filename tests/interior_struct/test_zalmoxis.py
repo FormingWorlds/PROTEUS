@@ -2895,6 +2895,43 @@ def test_zalmoxis_solver_caches_the_structure_for_the_next_seed(tmp_path, monkey
         assert cache[k] is not model_results[k]
 
 
+@pytest.mark.parametrize('opaque', [True, False], ids=['wrapper_without_wraps', 'real_main'])
+def test_a_main_without_the_seed_parameter_is_logged_once(
+    tmp_path, monkeypatch, caplog, opaque
+):
+    """A main whose signature has no adiabat_seed (here a wrapper without functools.wraps)
+    gets one INFO line per process that names its signature, also over 2 solves; the real
+    main of this Zalmoxis gets none."""
+    import zalmoxis.solver
+
+    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
+
+    def wrapper(*args, **kwargs):
+        return zalmoxis.solver.main(*args, **kwargs)
+
+    fn = wrapper if opaque else zalmoxis.solver.main
+    monkeypatch.setattr(
+        zalmoxis_wrapper, '_MAIN_TAKES_ADIABAT_SEED', zalmoxis_wrapper._takes_adiabat_seed(fn)
+    )
+    monkeypatch.setattr(zalmoxis_wrapper, '_SEED_SIGNATURE', str(inspect.signature(fn)))
+    zalmoxis_wrapper._log_no_adiabat_seed.cache_clear()
+    r_arr, t_arr = _cooled_mantle_arrays(_plausible_model_results())
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_struct.zalmoxis'):
+        for _ in range(2):
+            _run_gate_solver(
+                tmp_path,
+                monkeypatch,
+                'PALEOS:MgSiO3',
+                (r_arr, t_arr),
+                lambda r, P: float(np.interp(r, r_arr, t_arr)),
+                use_jax=False,
+            )
+    lines = [r for r in caplog.records if 'takes no adiabat_seed' in r.getMessage()]
+    assert len(lines) == (1 if opaque else 0)
+    if opaque:
+        assert lines[0].levelno == logging.INFO and '(*args, **kwargs)' in lines[0].getMessage()
+
+
 def test_the_seed_detection_reads_the_signature_of_main():
     """A main with an ``adiabat_seed`` parameter takes the seed, also behind a wrapper that
     keeps its signature; a main without it, or one that takes only ``**kwargs``, does not."""
