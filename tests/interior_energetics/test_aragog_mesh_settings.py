@@ -115,6 +115,20 @@ def test_a_config_file_sets_the_three_fields(tmp_path):
     assert a.rheology.mlt_bottom_slope == 0.5
 
 
+@pytest.mark.parametrize('value', ['true', '[1.0, 2.0]', '{ a = 1 }'])
+def test_a_config_file_cell_that_is_not_a_number_or_a_string_is_refused(tmp_path, value):
+    """The number-or-string hook refuses a TOML bool, array or table with the field name."""
+    path = tmp_path / 'user.toml'
+    path.write_text(
+        MINIMAL.read_text()
+        + f'\n[interior_energetics.aragog]\n    surface_cell_thickness = {value}\n'
+    )
+    with pytest.raises(
+        ValueError, match='surface_cell_thickness: must be a number or a string'
+    ):
+        read_config_object(path)
+
+
 @pytest.mark.parametrize(('cmb', 'surface'), [(2500.0, 7000.0), (0.0, 'uniform'), (0.0, 0.0)])
 def test_setup_solver_passes_the_end_cells_to_the_aragog_mesh(tmp_path, cmb, surface):
     """The mesh parameters aragog receives hold the configured end cells."""
