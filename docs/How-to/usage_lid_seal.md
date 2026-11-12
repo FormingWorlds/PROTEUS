@@ -24,7 +24,7 @@ The seal also needs:
 
 It cannot be combined with `params.stop.solid.freeze_volatiles = true`, which also freezes the melt inventory, or with `outgas.vapourise = true`.
 
-With the defaults `tau_leak = inf` and `crust_rate = 0`, no held mass leaves while the seal holds. The desiccation check counts the held mass, so a planet whose held mass of any volatile element or noble gas is above `outgas.mass_thresh` does not count as desiccated while the seal holds. Set a finite `tau_leak` or a positive `crust_rate` to let the held volatiles reach the atmosphere.
+With the defaults `tau_leak = inf` and `crust_rate = 0`, no held mass leaves while the seal holds. The desiccation check counts the held mass, so a planet whose held mass of any volatile element or noble gas is above `outgas.mass_thresh` does not count as desiccated ([the state of a planet that has lost its volatiles](../Explanations/outgas.md#terms-used-on-this-page)) while the seal holds. Set a finite `tau_leak` or a positive `crust_rate` to let the held volatiles reach the atmosphere.
 
 ## Read the output
 
@@ -38,7 +38,7 @@ These output columns show what the seal does ([full list](../Reference/output.md
 - `seal_t_close` \[yr\]: the time the seal last closed.
 - `seal_Tmagma_close` \[K\]: the magma temperature of the chemistry solve that closed the seal, at least `outgas.T_floor`.
 - `seal_phi_close` \[1\]: the global melt fraction of the step that closed the seal, clipped to \[0, 1\].
-- `seal_xtal_kg` and `seal_tl_kg` \[kg\]: under front trapping, the crystals formed since the seal closed and the melt trapped in them, which the reservoir of the floor counts; a remelt removes the youngest first.
+- `seal_xtal_kg` and `seal_tl_kg` \[kg\]: under front trapping, the crystals formed since the seal closed and the melt trapped in them, which the reservoir of the floor counts; a remelt removes the youngest first. Both are 0 at closure and while the seal is open.
 - `seal_crust_rate` \[kg yr$^{-1}$\] and `seal_volc_capped` \[1\]: the rate at which melt reaches the crust in the step, and whether `crust_rate dt` was cut to the melt mass.
 - `{e}_kg_leak_tau` and `{e}_kg_leak_volc` \[kg\]: the mass of each element that leaked in the step by relaxation and by volcanism.
 - `seal_leak_kg_cum` \[kg\]: the leaked mass since the start of the run.

@@ -15,6 +15,7 @@ The seal is one path of the outgassing step; [Outgassing, rock vapour and volati
 - **Seal**: the state in which a closed crust holds the volatiles of the melt below it.
 - **Held mass**: the mass of a species or element that the seal holds below the crust, in the `_kg_sealed` columns.
 - **Floor**: the mass of a species that the melt holds in equilibrium with the atmosphere, in the `_kg_eq` columns; with front trapping it also counts the solid formed since closure. The leak does not go below it.
+- **Front trapping**: the option `outgas.trap_mode = "front"`, in which the freezing mantle keeps a share of each volatile; [Volatile trapping in the freezing mantle](outgas.md#volatile-trapping-in-the-freezing-mantle) explains it.
 - **Open run**: the same planet with the seal off; its chemistry keeps the melt in equilibrium with the atmosphere at every step.
 - **CALLIOPE**: the outgassing chemistry module, which splits the volatiles between the atmosphere and the melt; the seal uses its solubility laws.
 - **Aragog**: the interior solver; its mesh is a set of radial cells, and the seal reads their melt fraction.
@@ -79,7 +80,7 @@ The symbols are:
 - $\dot M_c$: `crust_rate` \[kg yr$^{-1}$\], the mass of melt that reaches the crust per year. The default is 0. It is 0 when $\Phi$ is below `phi_solid`, and in one step it is cut to the melt mass; `seal_volc_capped` marks such a step.
 - $\chi_d$: `chi_d` \[1\], the fraction of the volatiles in that melt that degasses; 0.02 by default, from Table 3 of Schaefer & Sasselov (2015)[^cite-schaefer2015].
 - $M_\mathrm{melt} = \Phi M_\mathrm{mantle}$: the melt mass of the mantle \[kg\], with the global melt fraction $\Phi$.
-- $R_i$: the reservoir of species $i$ \[kg\], the melt, as in the CALLIOPE solve; with front trapping it also counts the crystals formed after closure ([The floor of the leak](#the-floor-of-the-leak)).
+- $R_i$: the reservoir of species $i$ \[kg\], the melt, as in the CALLIOPE solve; with front trapping it also counts the solid formed after closure, crystals and trapped melt ([The reservoir with front trapping](#the-reservoir-with-front-trapping)).
 - $D_i$: `outgas.D_const_<species>`, the crystal/melt partition coefficient \[1\]; the seal uses it only with front trapping.
 - $\lambda_i = 1/\tau + k_i$: the leak rate of species $i$ \[yr$^{-1}$\].
 
@@ -98,11 +99,26 @@ The floor is $M_{\mathrm{eq},i} = X_{\mathrm{eq},i}\, R_i$, with $X_{\mathrm{eq}
 - H$_2$, O$_2$, SO$_2$, H$_2$S and NH$_3$ have no law, so their floor is 0;
 - with `outgas.calliope.solubility = false` every floor is 0, and the held mass decays at the rate $\lambda_i$ of the next section;
 - without trapping (the default) the reservoir is the melt, $R_i = M_\mathrm{melt}$, because the CALLIOPE solve dissolves volatiles in the melt only. At closure each held mass therefore equals its floor;
-- with front trapping (`outgas.trap_mode = "front"`) the crystals that froze before closure keep their own trapped volatiles, so the reservoir counts only the solid formed after it, as [trapping](outgas.md#the-burial-rule) buries it. A step that freezes the mass $\Delta M$ at the trapped melt fraction $F_\mathrm{tl}$ (`trap_F_tl`) adds $(1 - F_\mathrm{tl})\,\Delta M$ of crystals, which hold the species at $D_i$ times its melt concentration, and $F_\mathrm{tl}\,\Delta M$ of trapped melt, which holds it at the melt concentration. With their sums since closure, $M_\mathrm{xtal}$ (`seal_xtal_kg`) and $M_\mathrm{tl}$ (`seal_tl_kg`), the reservoir is $R_i = M_\mathrm{melt} + D_i M_\mathrm{xtal} + M_\mathrm{tl}$, so each step adds $[(1 - F_\mathrm{tl}) D_i + F_\mathrm{tl}]\,\Delta M$, the effective partition coefficient of trapping. A remelt returns the youngest solid first, as in trapping, and a remelt past the closing melt fraction leaves the melt alone. The volcanic rate $k_i$ takes the same reservoir.
+- with front trapping (`outgas.trap_mode = "front"`) the reservoir also counts the solid formed since closure ([The reservoir with front trapping](#the-reservoir-with-front-trapping)). The volcanic rate $k_i$ takes the same reservoir.
 
 The floor is one way: a species below its floor does not move, because gas does not dissolve back through the crust.
 
 **Example.** Without front trapping (the default), in the [tutorial](../Tutorials/lid_seal.md) the seal closes at $\Phi_c = 0.19250$. The held water is the dissolved water of the melt and equals its floor. When $\Phi$ falls, the floor falls with it, so water, CO$_2$, CO and CH$_4$ leak from the first held step.
+
+### The reservoir with front trapping
+
+With front trapping, the solid that froze before closure keeps its own trapped volatiles and is not part of the reservoir. The reservoir counts only the solid formed after closure, as [trapping](outgas.md#the-burial-rule) buries it. A step that freezes the mass $\Delta M$ \[kg\] splits it by the trapped melt fraction $F_\mathrm{tl}$ \[1\] (`trap_F_tl`):
+
+- $(1 - F_\mathrm{tl})\,\Delta M$ is crystals, which hold the species at $D_i$ times its melt concentration;
+- $F_\mathrm{tl}\,\Delta M$ is trapped melt, which holds the species at the melt concentration.
+
+With $M_\mathrm{xtal}$ (`seal_xtal_kg`) and $M_\mathrm{tl}$ (`seal_tl_kg`) the sums of these 2 masses since closure \[kg\], the reservoir is
+
+$$
+R_i = M_\mathrm{melt} + D_i M_\mathrm{xtal} + M_\mathrm{tl},
+$$
+
+so each step adds $[(1 - F_\mathrm{tl}) D_i + F_\mathrm{tl}]\,\Delta M$, the effective partition coefficient of trapping. A remelt returns the youngest solid first, as in trapping, and a remelt past the closing melt fraction leaves the melt alone. Both columns are 0 at closure and while the seal is open.
 
 ## One step of the leak
 
@@ -123,7 +139,7 @@ After each step the code checks that every species that leaked ends at or above 
 
 - **Laws that fall with pressure.** The CO$_2$, CO and CH$_4$ laws fall with pressure at high pressure; [Laws that fall with pressure](#laws-that-fall-with-pressure) says when a step can then have more than one solution.
 - **First order in the step.** Within a step the floor moves for 3 reasons: the melt fraction falls, the leak fills the atmosphere, and escape thins it. The step takes the floor of its end state, so its error falls in proportion to $\Delta t$ where the step is short against the leak ($\lambda_i \Delta t < 0.1$). [Validation](../Validation/outgas/lid_seal.md#the-step-converges-to-the-continuous-law) gives the size of the error.
-- **Crystals.** Without trapping the floor counts no crystals, as the CALLIOPE solve, so closure is a fixed point of the leak. With front trapping it counts the solid formed after closure at the effective partition coefficient of trapping, $(1 - F_\mathrm{tl}) D_i + F_\mathrm{tl}$. When the seal opens, the whole held mass returns to the melt, the crystal share included.
+- **Crystals.** Without trapping the floor counts no crystals, as the CALLIOPE solve, so closure is a fixed point of the leak. With front trapping it counts the solid formed after closure at $(1 - F_\mathrm{tl}) D_i + F_\mathrm{tl}$, the size that trapping buries, but at one melt concentration, where trapping fixes each layer at the concentration of its own step. When the seal opens, the whole held mass returns to the melt, the share in the solid included.
 - **Erupted melt.** Of the volatile in the melt that reaches the crust, only the degassed share leaves the held mass; the rest stays counted as held.
 - **Frozen chemistry.** The held and leaked gas keep the species they had at closure; the floor does not see a change of speciation in the atmosphere. The open run keeps its atmosphere in equilibrium with the redox buffer of the melt, which gives oxygen to the gas as the magma cools and turns CO into CO$_2$. In the [tutorial](../Tutorials/lid_seal.md) at 140 kyr the sealed atmosphere therefore holds 24.6 % more CO, 6.3 % less CO$_2$ and 1.7 % more water than the open run, at a 2.5 % lower surface pressure. A gas that re-speciates at fixed atmospheric elements does not close this gap, because the oxygen comes from the melt ([Validation](../Validation/outgas/lid_seal.md#the-tutorial-atmosphere-lies-above-the-held-run-and-crosses-the-open-run)).
 
