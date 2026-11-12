@@ -5009,3 +5009,82 @@ def test_a_frozen_mantle_escapes_over_many_steps_with_every_element_closing(
     # hydrogen that escaped, beyond the 1e-4 closure limit on the final total.
     gap = (1.0 - 1.0 / _CALLIOPE_SPECIES_OVER_ELEMENTS) * (h_start - h_end)
     assert gap / h_end > 1.0e-4
+
+
+def _run_seal_loop(tmp_path, enabled, make_seal_step=lambda _p: None):
+    """Drive 3 main-loop steps with the lid seal ``enabled`` or not, the seal step
+    replaced by ``make_seal_step(p)``; return the instance, the recorded outgas
+    rows, the mass-check calls and the patched seal step."""
+    p = _make_main_loop_proteus(
+        tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
+    )
+    p.config.outgas.lid_seal.enabled = enabled
+    rows, guard_calls = [], []
+    with patch(
+        'proteus.outgas.lid_seal.run_lid_seal_step', side_effect=make_seal_step(p)
+    ) as step:
+        _run_main_loop_recording_mass(
+            p,
+            stop_at_loop=3,
+            rows=rows,
+            row_writer=lambda row, n: _write_post_outgas_row(row, n, vapour=False),
+            guard_calls=guard_calls,
+        )
+    return p, rows, guard_calls, step
+
+
+def test_with_the_lid_seal_off_the_loop_keeps_the_chemistry_solve(tmp_path):
+    """With outgas.lid_seal.enabled false every step runs the chemistry solve,
+    never the seal step, and the element closure check stays off without trapping."""
+    p, rows, guard_calls, step = _run_seal_loop(tmp_path, False)
+    step.assert_not_called()
+    assert len(rows) == len(guard_calls) > 0
+    assert {kw['check_element_closure'] for _, kw in guard_calls} == {False}
+    assert p.lid_sealed is False
+
+
+def test_with_the_lid_seal_on_the_loop_carries_its_state_and_clears_it_on_desiccation(
+    tmp_path,
+):
+    """With the seal on the loop calls the seal step instead of the chemistry
+    solve, hands each step the state the previous one returned, and checks the
+    element closure. Once the run is desiccated the closure check is off, and the
+    next step takes the desiccated branch, which clears the seal."""
+    states, seen = [True, True, True], []
+
+    def _make(p):
+        def _seal_step(_dirs, _config, hf_row, _interior, sealed, **_kw):
+            seen.append(sealed)
+            _write_post_outgas_row(hf_row, len(seen) - 1, vapour=False)
+            p.desiccated = len(seen) >= 2  # the run desiccates on the second step
+            return states[len(seen) - 1]
+
+        return _seal_step
+
+    p, rows, guard_calls, step = _run_seal_loop(tmp_path, True, _make)
+    assert rows == []
+    assert seen == [False, True]
+    closure = [kw['check_element_closure'] for _, kw in guard_calls]
+    assert closure[0] is True and set(closure[1:]) == {False} and len(closure) > 2
+    assert p.desiccated is True and p.lid_sealed is False
+
+
+@pytest.mark.parametrize('sealed', [True, False])
+def test_a_resume_restores_the_lid_seal_state_from_the_last_row(tmp_path, caplog, sealed):
+    """A resume reads the seal state from the last row and logs when a closed
+    seal closed."""
+    p = _make_proteus_instance(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    df = _make_hf_df()
+    df['seal_t_close'] = [0.0, 0.0, 0.0, 250.0, 250.0]
+    with (
+        caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'),
+        patch('proteus.outgas.lid_seal.restore_seal_state', return_value=sealed) as restore,
+    ):
+        _resume_with_patches(p, df)
+    restore.assert_called_once()
+    assert restore.call_args.args[0] is p.config
+    assert restore.call_args.args[1]['seal_t_close'] == 250.0
+    assert p.lid_sealed is sealed
+    logged = 'Resuming with the lid seal closed since t = 2.500e+02 yr' in caplog.text
+    assert logged is sealed

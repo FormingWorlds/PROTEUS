@@ -44,7 +44,7 @@ from proteus.outgas.lid_seal import (
     seal_enabled,
     sealed_mass,
 )
-from proteus.utils.constants import gas_list, soluble_gases, vol_gas_list
+from proteus.utils.constants import gas_list, noble_gases, soluble_gases, vol_gas_list
 from proteus.utils.helper import eval_gas_mmw
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -495,6 +495,26 @@ def test_step_closes_after_the_solve_and_not_in_the_init_stage():
     assert _step(row, interior, False, delta_close=0.3)[0] is False
     assert row['seal_delta'] == row['lid_delta'] and row['seal_phi_top'] == interior.phi[-1]
     assert row['seal_path'] == 0.0  # an open step names no path
+
+
+def test_an_open_step_checks_the_oxygen_budget_and_a_held_step_does_not():
+    """The open step runs the oxygen budget check after its solve, once; a held
+    step has no solve and does not run it."""
+    cfg, interior = _config(delta_close=0.3), _interior([0.6, 0.2])
+    rows = {False: {**_row(), 'lid_weight': 1.0, 'lid_delta': 0.1}}
+    rows[True] = {**_sealed_row(), 'lid_weight': 1.0, 'lid_delta': 0.5, 'esc_rate_total': 0.0}
+    for sealed, row in rows.items():
+        with (
+            patch('proteus.outgas.wrapper.run_outgassing_and_vapourisation'),
+            patch('proteus.outgas.wrapper.check_ic_oxygen_budget') as check,
+        ):
+            run_lid_seal_step(
+                {}, cfg, row, interior, sealed, first_iter=False, init_stage=False, dt=10.0
+            )
+        assert row['seal_active'] == float(sealed)
+        assert check.call_count == (0 if sealed else 1), sealed
+        if not sealed:
+            assert check.call_args.args == (cfg, row)
 
 
 @pytest.mark.parametrize(
@@ -1465,6 +1485,25 @@ def test_the_law_table_covers_every_soluble_gas_and_reads_the_include_flags():
     assert x['CO'] == 0.0 and x['Ar'] > 0.0 and x['CH4'] > 0.0
     cfg.outgas.calliope = Calliope(include_Ar=False)
     assert equilibrium_fractions(cfg, bar, 500.0, T_SEAL, 2.0)['Ar'] == 0.0
+
+
+def test_co_ch4_and_noble_gas_fractions_follow_the_calliope_laws_and_arguments():
+    """CO and CH4 dissolve at their partial pressure and the total pressure, each
+    noble gas by its own Henry's law at its partial pressure, as in the CALLIOPE
+    solve; every species has its own pressure so a swapped law or argument fails."""
+    from calliope.solubility import SolubilityCH4, SolubilityCO, SolubilityNobleGas
+
+    cfg = _config(solubility=True)
+    cfg.outgas.calliope = Calliope(
+        **{f'include_{g}': True for g in ('CO', 'CH4', *noble_gases)}
+    )
+    bar = {g: 3.0 + i for i, g in enumerate(gas_list)}
+    p_tot, temp = 700.0, 1650.0
+    x = equilibrium_fractions(cfg, bar, p_tot, temp, 2.0)
+    want = {'CO': SolubilityCO()(bar['CO'], p_tot), 'CH4': SolubilityCH4()(bar['CH4'], p_tot)}
+    want.update({g: SolubilityNobleGas(g)(bar[g]) for g in noble_gases})
+    for g, ppmw in want.items():
+        assert ppmw > 0.0 and x[g] == pytest.approx(1e-6 * ppmw, rel=1e-14), g
 
 
 @pytest.mark.physics_invariant
