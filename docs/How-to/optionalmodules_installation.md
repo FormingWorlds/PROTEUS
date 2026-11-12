@@ -47,6 +47,8 @@ written in Julia.
 bash tools/get_lovepy.sh
 ```
 
+LovePy goes into the default environment of your Julia depot. When an install moves to a new depot, `bash install.sh` runs this step again if the Julia 1.13 default environment of the old `~/.julia` holds LovePy, and prints the other packages of that environment, which stay behind. In any other move, run it again yourself, or a tidal run stops at `using LovePy` when it prepares the tides module. This step resolves LovePy again, so its dependencies can change, and `rev` is `main` and pins no commit. The stay command of the installation page keeps the old depot and its versions.
+
 ## Multi-phase tidal response (Obliqua)
 
 The installer sets Obliqua up automatically. Obliqua computes the multi-phase

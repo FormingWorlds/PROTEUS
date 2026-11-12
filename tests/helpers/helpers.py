@@ -26,6 +26,22 @@ NEGLECT = [
 ]
 
 
+def julia_problem(exe: str | None) -> str | None:
+    """Return why ``exe`` cannot run the real depot checks: no binary, a launcher, another version."""
+    if exe is None:
+        return 'no Julia binary found'
+    real = Path(exe).resolve()
+    if real.name == 'julialauncher' or (real.parent / 'juliaup').exists():
+        return f'{exe} is the juliaup launcher, which does not see a scratch HOME'
+    try:
+        done = subprocess.run([exe, '--version'], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f'{exe} --version did not answer: {exc}'
+    if not done.stdout.startswith('julia version 1.13'):
+        return f'{exe} is {done.stdout.strip()}; these checks need 1.13'
+    return None
+
+
 def resize_to_match(image1_path, image2_path):
     img1 = Image.open(image1_path)
     img2 = Image.open(image2_path)

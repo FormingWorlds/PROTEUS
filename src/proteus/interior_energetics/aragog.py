@@ -31,12 +31,14 @@ from aragog.parser import (
     _SolverParameters,
 )
 from proteus.accretion.common import snap_to_impact
+from proteus.atmos_clim.common import lid_acts, lid_flux_cap, lid_flux_slope
 from proteus.interior_energetics import aragog_core, aragog_resume
 from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
 from proteus.interior_energetics.aragog_phase import (
     BuoyancyMismatchError,
     build_jax_phase_params,
     build_mixed_phase_params,
+    solid_rheology_kwargs,
     check_solver_buoyancy,
 )
 from proteus.interior_energetics.common import Interior_t
@@ -44,7 +46,7 @@ from proteus.interior_energetics.radiogenic import radio_t0_years, radionuclide_
 from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, TDEP_EOS_PREFIXES
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
-from proteus.utils.constants import radnuc_data
+from proteus.utils.constants import radnuc_data, secs_per_year
 from proteus.utils.data import (
     RELOCATE_HINT,
     resolve_lookup_table_dir,
@@ -516,6 +518,202 @@ def resolve_core_density(
     return rho_core
 
 
+def _lid_surface_of_row(hf_row: dict, surface_bc_mode: str, lid_on: bool) -> float | None:
+    """Surface temperature [K] that the Aragog lid takes from the atmosphere, or None.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row, with ``T_surf`` from the atmosphere.
+    surface_bc_mode : str
+        Interior surface boundary condition; only ``'flux'`` has a surface to take.
+    lid_on : bool
+        Whether the lid runs with its base at the solidus.
+
+    Returns
+    -------
+    float or None
+        ``T_surf``, or None when the lid takes the flux value or no lid runs.
+    """
+    T_surf = float(hf_row.get('T_surf', 0.0))
+    return T_surf if lid_on and surface_bc_mode == 'flux' and T_surf > 0.0 else None
+
+
+# relative gap of an explicit lid_delta_on to the skin value that warns
+LID_ONSET_TOLERANCE = 0.10
+
+
+def lid_delta_on_of(config) -> float:
+    """Onset thickness [m] of the Aragog sub-grid lid.
+
+    By default ``solid_cond * surface_d / surface_k``: a linear lid of the solid conductivity has
+    at this thickness the conductance of the skin, so the lid joins the skin coupling at its
+    onset. An explicit ``interior_energetics.aragog.lid_delta_on`` is used as given and warns
+    when it differs from that value by more than ``LID_ONSET_TOLERANCE``.
+
+    Raises
+    ------
+    ValueError
+        For a saturation skin without an explicit value: such a skin has no fixed thickness.
+        A loaded config refuses the lid on a saturation skin; this guards a config built
+        without the loader.
+    """
+    atm, ie = config.atmos_clim, config.interior_energetics
+    # the skin validator makes surface_d and surface_k both numbers or both 'saturation'
+    skin = None
+    if not isinstance(atm.surface_d, str):
+        skin = float(ie.solid_cond) * float(atm.surface_d) / float(atm.surface_k)
+    explicit = ie.aragog.lid_delta_on
+    if explicit is None:
+        if skin is None:
+            raise ValueError(
+                'interior_energetics.aragog.lid_delta_on must be set for a saturation skin: '
+                'the skin has no fixed thickness to derive the lid onset thickness from'
+            )
+        return skin
+    value = float(explicit)
+    # the relative tolerance 1e-12 keeps both ends of the band inside it under round-off
+    if skin is not None and abs(value / skin - 1.0) > LID_ONSET_TOLERANCE * (1.0 + 1.0e-12):
+        log.warning(
+            'interior_energetics.aragog.lid_delta_on = %.6g m differs from the skin value '
+            'solid_cond * surface_d / surface_k = %.6g m by more than %.0f %%: the lid onset '
+            'does not match the conductance of the skin',
+            value,
+            skin,
+            100.0 * LID_ONSET_TOLERANCE,
+        )
+    return value
+
+
+def _lid_onset_out(interior_o) -> float:
+    """Onset thickness [m] of the sub-grid lid in the solver, 0 without the lid or a solver."""
+    solver = getattr(interior_o, 'aragog_solver', None)
+    bc = getattr(getattr(solver, 'parameters', None), 'boundary_conditions', None)
+    if bc is None or not getattr(bc, 'subgrid_lid', False):
+        return 0.0
+    return float(bc.lid_delta_on)
+
+
+def _lid_out(out, name: str) -> float:
+    """Lid value ``name`` of a solver output as a float, 0 where it is NaN or absent.
+
+    An Aragog without the sub-grid lid has no lid fields; its rows then read as no lid.
+    """
+    return float(np.nan_to_num(float(getattr(out, name, np.nan))))
+
+
+def _set_lid_surface(bc, hf_row: dict, slope: float | None = None) -> None:
+    """Hold the lid surface of the next interior step at the atmosphere surface, with its cap.
+
+    Parameters
+    ----------
+    bc : object
+        Boundary parameters of the Aragog solver; ``lid_surface_temperature``,
+        ``lid_surface_flux_cap`` and ``lid_surface_flux_slope`` are set on it.
+    hf_row : dict
+        Current helpfile row after the atmosphere step.
+    slope : float or None
+        Slope ``F'`` of the atmosphere flux with the surface [W m-2 K-1] for the cap; it is
+        set only with a cap.
+    """
+    bc.lid_surface_temperature = _lid_surface_of_row(
+        hf_row,
+        'flux' if getattr(bc, 'outer_boundary_condition', None) == 4 else 'grey_body',
+        getattr(bc, 'lid_mush_base', False),
+    )
+    bc.lid_surface_flux_cap = (
+        lid_flux_cap(hf_row) if bc.lid_surface_temperature is not None else None
+    )
+    bc.lid_surface_flux_slope = slope if bc.lid_surface_flux_cap is not None else None
+
+
+# end surface above the held one [K] at which the cap counts as acting at the end of a call
+LID_CAP_DT_ACT = 1.0e-6
+# relative difference of secant and tangent below which a re-solve changes nothing
+LID_RESOLVE_RTOL = 1.0e-3
+
+
+def lid_cap_secant(T_held: float, T_end: float, F_held: float, F_end: float) -> float:
+    """Secant [W m-2 K-1] of the atmosphere flux between the held and the end surface, at least 0;
+    0 where it is not finite or the end surface is not above the held one."""
+    if not T_end > T_held:
+        return 0.0
+    secant = (F_end - F_held) / (T_end - T_held)
+    return secant if np.isfinite(secant) and secant > 0.0 else 0.0
+
+
+def lid_resolve_skip(tangent: float, secant: float) -> bool:
+    """True where the secant equals the tangent within ``LID_RESOLVE_RTOL``."""
+    return abs(secant - tangent) <= LID_RESOLVE_RTOL * max(abs(secant), abs(tangent))
+
+
+def _call_start(solver, interior_o=None) -> dict:
+    """State of the solver that a call starts from and a second solve of it must see again,
+    with the stall window of ``interior_o`` (a second solve of the step books it once)."""
+    params = getattr(getattr(solver, 'parameters', None), 'solver', None)
+    window = getattr(interior_o, 'aragog_step_progress', None)
+    return {
+        'progress': None if window is None else list(window),
+        'had_sol': hasattr(solver, '_solution'),
+        'sol': getattr(solver, '_solution', None),
+        'lid_init': getattr(solver, '_lid_init', None),
+        'compression': getattr(solver, '_last_compression_J', None),
+        'end_time': getattr(params, 'end_time', None),
+    }
+
+
+def _restore_call_start(solver, snap: dict, interior_o=None) -> None:
+    """Put the solver back to the state of :func:`_call_start` (a solve clears a set start lid),
+    and the stall window of ``interior_o``."""
+    if interior_o is not None and snap.get('progress') is not None:
+        interior_o.aragog_step_progress = list(snap['progress'])
+    if snap['had_sol']:
+        solver._solution = snap['sol']
+    elif hasattr(solver, '_solution'):
+        del solver._solution
+    solver._lid_init = snap['lid_init']
+    if snap['compression'] is not None:
+        solver._last_compression_J = snap['compression']
+    if snap['end_time'] is not None:
+        solver.parameters.solver.end_time = snap['end_time']
+
+
+def _surface_flux_of_step(
+    out, hf_row: dict, surface_bc_mode: str, t_end: float | None
+) -> float:
+    """Surface flux [W/m^2] of a step that the row books as ``F_int``.
+
+    Parameters
+    ----------
+    out : SolverOutput
+        Aragog output of the step.
+    hf_row : dict
+        Row at the start of the step, with ``F_atm``, ``Time`` [yr] and ``lid_weight``.
+    surface_bc_mode : str
+        ``'grey_body'`` books the surface node; ``'flux'`` books ``F_atm``, unless a lid acts
+        at the start or at the end of the step.
+    t_end : float or None
+        End of the step [yr]; None for a state with no step.
+
+    Returns
+    -------
+    float
+        With a live lid at the start or the end of the step in flux mode, the flux of the step
+        integral ``-step_dE_F_int_J / (A dt)``: the lid sets its own surface flux from the
+        temperature of the atmosphere, and it differs from ``F_atm`` inside the step. The test
+        reads the weight alone, not :func:`lid_acts`: the step integral is the loss of the step
+        in any case, so a weight without a conductance books it too.
+    """
+    if surface_bc_mode == 'grey_body':
+        return float(out.heat_flux[-1])
+    dt_yr = 0.0 if t_end is None else float(t_end) - float(hf_row['Time'])
+    lid = _lid_out(out, 'lid_weight') > 0.0 or float(hf_row.get('lid_weight', 0.0)) > 0.0
+    if not lid or dt_yr <= 0.0:
+        return float(hf_row['F_atm'])
+    area = 4.0 * np.pi * float(out.r_basic[-1]) ** 2
+    return -float(out.step_dE_F_int_J) / (area * dt_yr * secs_per_year)
+
+
 def _estimate_T_pot(out) -> float:
     """Estimate potential temperature from SolverOutput.
 
@@ -665,7 +863,9 @@ class AragogRunner:
                     config, build_row, interior_o, dirs['output'], mesh_file=pending[1]
                 )
             if config.params.resume:
-                AragogRunner.update_solver(dt, hf_row, interior_o, output_dir=dirs['output'])
+                AragogRunner.update_solver(
+                    dt, hf_row, interior_o, output_dir=dirs['output'], hf_all=hf_all
+                )
             _t_init = time.perf_counter()
             interior_o.aragog_solver.initialize()
             check_solver_buoyancy(config, solver=interior_o.aragog_solver)
@@ -734,13 +934,18 @@ class AragogRunner:
                             solver,
                             aragog_core.snapshot_core_state(interior_o, solver),
                         )
+                    # The stored lid first: a new solver otherwise starts the phantom lid, which
+                    # refuses a top cell below the full floor gap or in the heat-jump band.
+                    restore_lid_start(solver, dirs['output'], hf_row['Time'])
                     solver.set_initial_entropy(S_snap)
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
                         float(np.mean(S_snap)),
                     )
                     if pending is not None:
-                        AragogRunner._replay_structure_update(config, hf_row, interior_o, dt)
+                        AragogRunner._replay_structure_update(
+                            config, hf_row, interior_o, dt, hf_all=hf_all
+                        )
             else:
                 # Fresh run: set entropy IC from Zalmoxis T(r) profile
                 AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
@@ -770,11 +975,15 @@ class AragogRunner:
                 )
             else:
                 interior_o._stale_struct_steps = 0
-            AragogRunner._apply_structure_update(config, hf_row, interior_o, dt)
+            AragogRunner._apply_structure_update(config, hf_row, interior_o, dt, hf_all=hf_all)
 
     @staticmethod
     def _apply_structure_update(
-        config: Config, hf_row: dict, interior_o: Interior_t, dt: float
+        config: Config,
+        hf_row: dict,
+        interior_o: Interior_t,
+        dt: float,
+        hf_all: pd.DataFrame | None = None,
     ):
         """Move the solver to the structure of ``hf_row`` and hand it its entropy again."""
         if interior_o.ic == 1:
@@ -789,7 +998,7 @@ class AragogRunner:
                 interior_o._last_entropy = S_last
         else:
             AragogRunner.update_structure(config, hf_row, interior_o)
-            AragogRunner.update_solver(dt, hf_row, interior_o)
+            AragogRunner.update_solver(dt, hf_row, interior_o, hf_all=hf_all)
         # Refresh before reset() to evaluate new mesh pressures against
         # the updated table ceiling on impact steps.
         AragogRunner._refresh_entropy_eos(config, interior_o)
@@ -847,7 +1056,11 @@ class AragogRunner:
 
     @staticmethod
     def _replay_structure_update(
-        config: Config, hf_row: dict, interior_o: Interior_t, dt: float
+        config: Config,
+        hf_row: dict,
+        interior_o: Interior_t,
+        dt: float,
+        hf_all: pd.DataFrame | None = None,
     ):
         """Apply the structure update that was pending when the resumed run stopped.
 
@@ -863,7 +1076,7 @@ class AragogRunner:
         previous = getattr(solver, '_solution', None)
         try:
             solver._solution = state_solution(solver._S0, hf_row['Time'])
-            AragogRunner._apply_structure_update(config, hf_row, interior_o, dt)
+            AragogRunner._apply_structure_update(config, hf_row, interior_o, dt, hf_all=hf_all)
         finally:
             solver._solution = previous
         log.info(
@@ -908,6 +1121,14 @@ class AragogRunner:
                 config, hf_row, interior_o, outdir
             )
 
+        lid_kw = {}
+        if config.interior_energetics.aragog.lid_mush_base:
+            lid_kw['lid_delta_on'] = lid_delta_on_of(config)
+            log.info(
+                'Aragog sub-grid lid onset thickness lid_delta_on = %.6g m',
+                lid_kw['lid_delta_on'],
+            )
+
         boundary_conditions = _BoundaryConditionsParameters(
             # 4 = prescribed heat flux (PROTEUS coupling mode, from hf_row['F_atm'])
             # 1 = native grey-body (emissivity * sigma * (T^4 - T_eqm^4))
@@ -933,7 +1154,10 @@ class AragogRunner:
             param_utbl_const=config.interior_energetics.param_utbl_const,
             # core BC mode (the 'energy_balance' option is available)
             core_bc=core_bc_str,
+            subgrid_lid=config.interior_energetics.aragog.lid_mush_base,
+            lid_mush_base=config.interior_energetics.aragog.lid_mush_base,
             core_module_params=core_module_params,
+            **lid_kw,
         )
 
         # Define the inner_radius for the mesh.
@@ -1266,6 +1490,7 @@ class AragogRunner:
             thermal_conductivity=float(config.interior_energetics.solid_cond),
             thermal_expansivity=LOOK_UP_DIR / 'thermal_exp_solid.dat',
             entropy=entropy_solid_arg,
+            **solid_rheology_kwargs(config),
         )
 
         phase_mixed = build_mixed_phase_params(config, solidus_path, liquidus_path)
@@ -1574,6 +1799,9 @@ class AragogRunner:
                     # source and CMB boundary-layer Ra_crit; None/0 in every other mode.
                     core_module_budget=getattr(solver, '_core_module_budget', None),
                     core_module_q_radio=float(getattr(solver, '_core_module_q_radio', 0.0)),
+                    lid_params=(
+                        solver.jax_lid_params() if getattr(solver, '_lid_on', False) else None
+                    ),
                     core_module_ra_crit_cmb=getattr(solver, '_core_module_ra_crit_cmb', None),
                 )
                 return rhs_fn, jac_fn
@@ -1996,8 +2224,15 @@ class AragogRunner:
             log.warning('Entropy IC cross-check skipped (expected error: %s)', e)
 
     @staticmethod
-    def update_solver(dt: float, hf_row: dict, interior_o: Interior_t, output_dir: str = None):
-        """Update solver for next coupling step (entropy formulation)."""
+    def update_solver(
+        dt: float,
+        hf_row: dict,
+        interior_o: Interior_t,
+        output_dir: str = None,
+        hf_all: pd.DataFrame | None = None,
+    ):
+        """Update solver for next coupling step (entropy formulation); ``hf_all`` gives the
+        slope of the lid cap from the last 2 rows."""
         solver = interior_o.aragog_solver
         solver.parameters.solver.start_time = hf_row['Time']
         solver.parameters.solver.end_time = hf_row['Time'] + dt
@@ -2050,8 +2285,12 @@ class AragogRunner:
         if S_field is not None:
             interior_o._last_entropy = S_field
 
-        # Update boundary conditions (F_atm from atmosphere module)
-        solver.parameters.boundary_conditions.outer_boundary_value = hf_row['F_atm']
+        # Update boundary conditions (F_atm from atmosphere module); the open part of a live
+        # lid takes lid_F_open, also checked against the solver, since a resume can turn it off
+        bc = solver.parameters.boundary_conditions
+        live = getattr(bc, 'subgrid_lid', False) and lid_acts(hf_row)
+        bc.outer_boundary_value = hf_row['lid_F_open'] if live else hf_row['F_atm']
+        _set_lid_surface(bc, hf_row, lid_flux_slope(hf_all, hf_row))
 
         # Update equilibrium temperature (tracks stellar luminosity evolution).
         # SPIDER receives fresh T_eqm at every call via -teqm (spider.py:748).
@@ -2215,8 +2454,10 @@ class AragogRunner:
         # Mirrors SPIDER's _try_spider retry ladder in spider.py.
         solver = interior_o.aragog_solver
         S0_entry, written = solver._S0.copy(), None
+        snap = _call_start(solver, interior_o)
         try:
             out = self._solve_with_retry(hf_row, interior_o, S0_entry)
+            out = self._correct_lid_cap(hf_row, interior_o, S0_entry, out, snap)
 
             # The actual integration endpoint, not the requested end_time (dt_actual is
             # shorter when the solver exits early); a step aimed at an impact ends on it,
@@ -2265,6 +2506,8 @@ class AragogRunner:
             # The row of this step is skipped or the run stops: the solver holds the state
             # the call started from, and a snapshot of the end state does not stay on disk.
             solver._solution = state_solution(S0_entry, hf_row['Time'])
+            if snap['progress'] is not None:  # a row that is not written books no stall entry
+                interior_o.aragog_step_progress = list(snap['progress'])
             if written is not None:
                 discard_snapshot(dirs['output'], written)
             raise
@@ -2274,6 +2517,56 @@ class AragogRunner:
         self._store_profiles(interior_o, out)
 
         return sim_time, output
+
+    def _correct_lid_cap(self, hf_row, interior_o, S0_entry, out, snap):
+        """Solve the call once more with the secant slope where the cap acted at its end.
+
+        The cap acts at the end where the lid surface ends above the held one. The secant of the
+        atmosphere flux between the held and the end surface (``self._lid_flux_at``) replaces
+        the slope of the call, and the call runs again from its start; a secant equal to the
+        slope (:func:`lid_resolve_skip`) or no flux provider keeps the first solve. The count
+        and the wall time of the re-solves are kept on ``interior_o``.
+
+        Returns
+        -------
+        SolverOutput
+            ``out`` or the output of the re-solve.
+        """
+        flux_at = getattr(self, '_lid_flux_at', None)
+        if flux_at is None:
+            return out
+        solver = interior_o.aragog_solver
+        bc = solver.parameters.boundary_conditions
+        T_held = getattr(bc, 'lid_surface_temperature', None)
+        cap = getattr(bc, 'lid_surface_flux_cap', None)
+        T_end = float(getattr(out, 'lid_T_surface', float('nan')))
+        if T_held is None or cap is None or not T_end > T_held + LID_CAP_DT_ACT:
+            return out
+        tangent = float(bc.lid_surface_flux_slope or 0.0)
+        secant = lid_cap_secant(T_held, T_end, float(hf_row['F_atm']), float(flux_at(T_end)))
+        if lid_resolve_skip(tangent, secant):
+            return out
+        t0 = time.perf_counter()
+        _restore_call_start(solver, snap, interior_o)
+        bc.lid_surface_flux_slope = secant
+        out2 = self._solve_with_retry(hf_row, interior_o, S0_entry)
+        wall = time.perf_counter() - t0
+        interior_o.lid_cap_resolves = getattr(interior_o, 'lid_cap_resolves', 0) + 1
+        interior_o.lid_cap_resolve_wall = (
+            getattr(interior_o, 'lid_cap_resolve_wall', 0.0) + wall
+        )
+        log.info(
+            'Lid cap re-solve %d: held surface %.3f K, end %.3f K, slope %.4g -> secant %.4g W/m2/K, '
+            '%.1f s (%.1f s in all)',
+            interior_o.lid_cap_resolves,
+            T_held,
+            T_end,
+            tangent,
+            secant,
+            wall,
+            interior_o.lid_cap_resolve_wall,
+        )
+        return out2
 
     def _solve_with_retry(self, hf_row, interior_o, S0_entry=None) -> SolverOutput:
         """Run aragog_solver.solve() with a failure-mode-branched retry ladder.
@@ -2824,11 +3117,21 @@ class AragogRunner:
                 t_end_yr = float(hf_row.get('Time', 0.0)) if t_end is None else float(t_end)
                 H_radio_per_kg = sum(float(r.get_heating(t_end_yr)) for r in radionuclides)
                 F_radio = H_radio_per_kg * float(out.M_mantle) / area_surf
+        F_int = _surface_flux_of_step(out, hf_row, surface_bc_mode, t_end)
 
         return {
             'M_mantle': out.M_mantle,
             'M_core': hf_row.get('M_core', 0.0),
             'T_magma': out.T_magma,
+            'lid_weight': _lid_out(out, 'lid_weight'),
+            'lid_conductance': _lid_out(out, 'lid_conductance'),
+            'lid_delta': _lid_out(out, 'lid_delta'),
+            'lid_delta_on': _lid_onset_out(interior_o),
+            'lid_T_surface': _lid_out(out, 'lid_T_surface'),
+            'lid_T_base': _lid_out(out, 'lid_T_base'),
+            'lid_T_node': float(out.T_basic[-1]),
+            # the lid booking exists only in flux mode; grey_body books the surface node
+            'lid_F_diff': F_int - hf_row['F_atm'] if surface_bc_mode == 'flux' else 0.0,
             'Phi_global': out.Phi_global,
             'RF_depth': out.RF_depth,
             # In flux mode Aragog is driven by F_atm, so its integrated
@@ -2838,9 +3141,7 @@ class AragogRunner:
             # so this column reflects the interior solver rather than the
             # atmosphere. out.heat_flux is positive-outward (W/m^2), the same
             # sign convention as F_atm.
-            'F_int': (
-                float(out.heat_flux[-1]) if surface_bc_mode == 'grey_body' else hf_row['F_atm']
-            ),
+            'F_int': F_int,
             'M_mantle_liquid': out.M_mantle_liquid,
             'M_mantle_solid': out.M_mantle_solid,
             'Phi_global_vol': out.Phi_global_vol,
@@ -2995,6 +3296,7 @@ class AragogRunner:
                 ('dSdr_cmb_state', dSdr_cmb, 'J kg-1 K-1 m-1'),
                 ('T_core_state', T_core, 'K'),
                 ('mesh_surface_pressure', mesh_surface_pressure, 'Pa'),
+                *lid_snapshot_fields(out),
                 *aragog_core.frozen_profile_fields(core_profile),
             ):
                 if value is None:
@@ -3262,6 +3564,80 @@ def _snapshot_scalar(output_dir: str, time: float, name: str) -> tuple[float | N
             return None, 'absent'
         value = float(np.asarray(raw).item())
     return (value, 'ok') if np.isfinite(value) else (None, 'not finite')
+
+
+def lid_snapshot_fields(out) -> list[tuple[str, float, str]]:
+    """Sub-grid lid state of a solver output as snapshot scalars.
+
+    Parameters
+    ----------
+    out : SolverOutput
+        Aragog output; ``lid_delta`` is NaN with the lid off and 0 for a lid
+        handed over to the mesh.
+
+    Returns
+    -------
+    list of (name, value, units)
+        ``lid_delta_state`` [m] and ``lid_E_state`` [J m-2], with
+        ``lid_handover_time_state`` [yr] when the hand-over time is known;
+        empty with the lid off.
+    """
+    delta = float(getattr(out, 'lid_delta', float('nan')))
+    if np.isnan(delta):
+        return []
+    fields = [
+        ('lid_delta_state', delta, 'm'),
+        ('lid_E_state', float(getattr(out, 'lid_E', float('nan'))), 'J m-2'),
+    ]
+    t_ho = float(getattr(out, 'lid_handover_time', float('nan')))
+    if np.isfinite(t_ho):
+        fields.append(('lid_handover_time_state', t_ho, 'yr'))
+    return fields
+
+
+def restore_lid_start(solver, output_dir: str, time: float) -> None:
+    """Hand the sub-grid lid of the snapshot at ``time`` to the solver on resume.
+
+    A solver with the lid off takes nothing. A snapshot without a finite lid
+    thickness and energy starts the phantom lid at ``lid_delta_lo`` and says
+    so at WARNING. Call it before ``set_initial_entropy``, which builds the
+    lid start of a new solver from the set lid.
+
+    Parameters
+    ----------
+    solver : EntropySolver
+        Aragog solver of the resumed run.
+    output_dir : str
+        Run output directory.
+    time : float
+        Time of the snapshot [yr].
+
+    Raises
+    ------
+    ValueError
+        For a stored lid that ``set_initial_lid`` refuses: a thickness at or
+        below 0 other than the handed-over ``(0, 0)``, a negative hand-over
+        time, or a hand-over time with a live lid.
+    """
+    if not getattr(solver, '_n_lid', 0):
+        return
+    delta, status_d = _snapshot_scalar(output_dir, time, 'lid_delta_state')
+    E_lid, status_e = _snapshot_scalar(output_dir, time, 'lid_E_state')
+    if delta is None or E_lid is None:
+        log.warning(
+            'Snapshot lid thickness is %s and lid energy is %s; the sub-grid lid '
+            'restarts as the phantom lid at lid_delta_lo.',
+            status_d,
+            status_e,
+        )
+        return
+    t_ho, _ = _snapshot_scalar(output_dir, time, 'lid_handover_time_state')
+    try:
+        solver.set_initial_lid(delta, E_lid, float('nan') if t_ho is None else t_ho)
+    except ValueError as e:
+        raise ValueError(
+            f'Resume: the lid of the snapshot at t = {time} yr is refused: {e}'
+        ) from e
 
 
 def get_all_output_times(output_dir: str):

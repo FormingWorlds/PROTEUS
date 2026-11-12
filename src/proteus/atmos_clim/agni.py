@@ -15,6 +15,7 @@ from scipy.interpolate import PchipInterpolator
 from proteus.atmos_clim.common import (
     clip_radius_to_hill,
     get_oarr_from_parr,
+    lid_boundary,
     require_spfile_path,
 )
 from proteus.atmos_clim.spectral_cache import cache_key, seed_from_cache, store_in_cache
@@ -1166,11 +1167,9 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     # Update surface temperature(s)
     _validate_surface_state(hf_row, dirs)
     atmos.tmp_surf = float(hf_row['T_surf'])
-    atmos.tmp_magma = float(hf_row['T_magma'])
 
     # Surface CBL
-    atmos.skin_d = float(hf_row['boundary_layer_thickness'])
-    atmos.skin_k = float(hf_row['boundary_layer_conductivity'])
+    atmos.skin_d, atmos.skin_k, atmos.tmp_magma = lid_boundary(hf_row)
 
     # ---------------------
     # Transparent mode?

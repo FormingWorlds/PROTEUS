@@ -1015,3 +1015,76 @@ def test_rundummyatm_saturation_skin_cools_the_surface_as_it_thickens():
     F_atm = [r['F_atm'] for r in results]
     assert T_surf[0] > T_surf[1] > T_surf[2] > 0.0
     assert F_atm[0] > F_atm[1] > F_atm[2] > 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_rundummyatm_solves_the_parallel_balance_of_a_lid():
+    """Under a live lid the dummy finds the surface temperature of the parallel balance of the
+    lid part (from the lid base) and the open part (from the top node), not of the skin and
+    T_magma alone."""
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.0
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.0
+    config.atmos_clim.surf_state = 'skin'
+    config.planet.prevent_warming = False
+    hf_row = {
+        'boundary_layer_thickness': 0.01,
+        'boundary_layer_conductivity': 2.0,
+        'T_magma': 1600.0,
+        'lid_weight': 0.5,
+        'lid_conductance': 100.0,
+        'lid_T_base': 1440.0,
+        'lid_T_node': 1550.0,
+        'albedo_pl': 0.0,
+        'F_ins': 0.0,
+        'atm_kg_per_mol': 0.030,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'P_surf': 1e5,
+    }
+    out = RunDummyAtm({}, config, hf_row)
+    T = out['T_surf']
+    G_skin = 2.0 / 0.01
+    parallel = 0.5 * 100.0 * (1440.0 - T) + 0.5 * G_skin * (1550.0 - T)
+    assert out['F_atm'] == pytest.approx(parallel, rel=1e-6)
+    assert 0.0 < T < 1440.0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('surf_state', ['skin', 'fixed'])
+def test_dummy_net_flux_is_the_flux_of_the_run(surf_state):
+    """net_flux at the surface temperature of a RunDummyAtm call gives the F_atm of that call."""
+    from proteus.atmos_clim.dummy import RunDummyAtm, net_flux
+
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.5
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.1
+    config.atmos_clim.surf_state = surf_state
+    config.planet.prevent_warming = False
+    config.interior_energetics.module = 'aragog'
+    hf_row = {
+        'boundary_layer_thickness': 1000.0,
+        'boundary_layer_conductivity': 2.0,
+        'T_magma': 1800.0,
+        'T_surf': 1800.0,
+        'albedo_pl': 0.3,
+        'F_ins': 1361.0,
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+    }
+    out = RunDummyAtm({}, config, hf_row)
+    assert net_flux(config, hf_row, out['T_surf']) == pytest.approx(out['F_atm'], rel=1e-12)
+    T = 1500.0
+    want = const_sigma * (0.5 * T) ** 4 + 1361.0 * 0.7 * 0.1 - 1361.0 * 0.7 * 0.9
+    assert net_flux(config, hf_row, T) == pytest.approx(want, rel=1e-12)
