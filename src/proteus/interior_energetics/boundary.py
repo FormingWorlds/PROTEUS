@@ -14,9 +14,9 @@ from proteus.interior_energetics.common import (
     d_solidification_radius_dT,
     eval_rheoparam,
     melt_fraction_linear,
-    radiogenic_specific_heating,
     solidification_radius,
 )
+from proteus.interior_energetics.radiogenic import radiogenic_heating, radiogenic_inputs
 from proteus.interior_energetics.resolved_mantle import (
     get_melt_curve,
     mantle_shells,
@@ -250,13 +250,10 @@ class BoundaryRunner:
 
         # Radioactive heating parameters
         self.use_radiogenic_heating = config.interior_energetics.heat_radiogenic
-        self.age_ini = config.star.age_ini
-        self.radio_tref = config.interior_energetics.radio_tref  # in Gyr
-        self.U_abun = config.interior_energetics.radio_U * 1e-6  # Convert ppm to kg/kg
-        self.Th_abun = config.interior_energetics.radio_Th * 1e-6  # Convert ppm to kg/kg
-        self.K_abun = config.interior_energetics.radio_K * 1e-6  # Convert ppm to kg/kg
-        self.Al_abun = config.interior_energetics.radio_Al * 1e-6  # Convert ppm to kg/kg
-        self.Fe_abun = config.interior_energetics.radio_Fe * 1e-6  # Convert ppm to kg/kg
+        # (isotope, element ppmw, isotope mass ratio) at model time radio_t0_yr [yr]
+        self.radio_inventory, self.radio_t0_yr = (
+            radiogenic_inputs(config) if self.use_radiogenic_heating else ([], 0.0)
+        )
 
         # Tidal heating from the orbit module if enabled, otherwise zero. The
         # tides module returns a rate per shell, so the heat it deposits is
@@ -476,7 +473,7 @@ class BoundaryRunner:
 
     def radioactive_heating(self, t: float) -> float:
         """
-        Calculate the specific radioactive heating rate as a function of time.
+        Calculate the radioactive heating rate per unit mantle mass at time t.
 
         Parameters
         ----------
@@ -486,26 +483,11 @@ class BoundaryRunner:
         Returns
         -------
         float
-            Radioactive heating rate per unit mass [W/kg]
+            Radioactive heating rate per unit mantle mass [W/kg]
         """
         if not self.use_radiogenic_heating:
             return 0.0
-
-        # Offset by age_ini, which converts model simulation time to the actual age
-        t0_yr = (self.radio_tref - self.age_ini) * 1e9
-
-        return radiogenic_specific_heating(
-            t / secs_per_year,
-            t0_yr,
-            {
-                'al26': self.Al_abun,
-                'fe60': self.Fe_abun,
-                'k40': self.K_abun,
-                'th232': self.Th_abun,
-                'u235': self.U_abun,
-                'u238': self.U_abun,
-            },
-        )
+        return radiogenic_heating(self.radio_inventory, self.radio_t0_yr, t / secs_per_year)
 
     def melt_fraction(self, T_p: float) -> float:
         """

@@ -53,6 +53,7 @@ from proteus.interior_energetics.boundary import BoundaryRunner
 from proteus.utils.constants import (
     M_earth,
     const_G,
+    radnuc_data,
     secs_per_year,
 )
 
@@ -137,11 +138,17 @@ def mock_config():
         solid_log10visc=22.0,
         melt_log10visc=2.0,
         radio_tref=4.567,  # Gyr (Solar System age)
-        radio_U=0.031,  # ppm (BSE abundance)
-        radio_Th=0.124,  # ppm (BSE abundance)
-        radio_K=310,  # ppm (BSE abundance)
-        radio_Al=0.0,  # ppm; short-lived, off by default
-        radio_Fe=0.0,  # ppm; short-lived, off by default
+        radio_Al=2.35e4,  # ppmw (BSE)
+        radio_Al26_abund=0.0,  # kg/kg, present day
+        radio_Fe=6.26e4,  # ppmw (BSE)
+        radio_Fe60_abund=0.0,  # kg/kg, present day
+        radio_U=0.031,  # ppmw (BSE)
+        radio_U235_abund=0.0071141,  # kg/kg
+        radio_U238_abund=0.9928859,  # kg/kg
+        radio_Th=0.124,  # ppmw (BSE)
+        radio_Th232_abund=1.0,  # kg/kg
+        radio_K=310,  # ppmw (BSE)
+        radio_K40_abund=1.1926e-4,  # kg/kg
     )
     # BoundaryRunner reads no structure settings: masses and radii come from hf_row.
     interior_struct = SimpleNamespace()
@@ -673,6 +680,27 @@ def test_q_m_zero_temperature_difference(boundary_runner):
 # =============================================================================
 
 
+# (isotope, element ppmw, isotope/element mass ratio) for 20 ppb U, 79 ppb Th, 143 ppm K
+_EARTH_RADIO_INVENTORY = [
+    ('k40', 143.0, 1.1926e-4),
+    ('th232', 0.079, 1.0),
+    ('u235', 0.020, 0.0071141),
+    ('u238', 0.020, 0.9928859),
+]
+
+
+def _earth_heating(t_years: float) -> float:
+    """Heating of _EARTH_RADIO_INVENTORY [W/kg] at t_years before the present day [yr]."""
+    return sum(
+        c
+        * 1e-6
+        * x
+        * radnuc_data[iso]['heatprod']
+        * 2.0 ** (t_years / radnuc_data[iso]['halflife'])
+        for iso, c, x in _EARTH_RADIO_INVENTORY
+    )
+
+
 def test_radioactive_heating_disabled(boundary_runner):
     """
     Test radioactive heating returns 0 when disabled in config.
@@ -695,19 +723,18 @@ def test_radioactive_heating_disabled(boundary_runner):
 
 def test_radioactive_heating_enabled_positive(boundary_runner):
     """
-    Test radioactive heating is positive when enabled.
+    Test radioactive heating at the model start is the present-day value decayed back.
 
     **Physical Scenario**: radiogenic_heat = True; heating from K-40, U-238,
-    U-235, Th-232 decay chains in silicate mantle.
+    U-235, Th-232 decay chains in silicate mantle, inputs at the present day.
 
-    **Expected Behavior**: H > 0 W/kg (energy from radioactive decay).
+    **Expected Behavior**: at t = 0 s, 4.567 Gyr before the inputs, H equals
+    sum C * 1e-6 * X * h * 2**(4.567 Gyr / t_half), about 2.0e-11 W/kg.
     """
     boundary_runner.use_radiogenic_heating = True
-    boundary_runner.age_ini = 0.0  # Gyr (Solar System age reference)
-    boundary_runner.radio_tref = 4.567  # Gyr
-    boundary_runner.U_abun = 20.0e-9  # kg U / kg mantle
-    boundary_runner.Th_abun = 79.0e-9  # kg Th / kg mantle
-    boundary_runner.K_abun = 143.0e-6  # kg K / kg mantle
+    # Inputs at the present day, 4.567 Gyr after the model start [yr]
+    boundary_runner.radio_t0_yr = 4.567e9
+    boundary_runner.radio_inventory = _EARTH_RADIO_INVENTORY
 
     t = 0.0  # s (at formation)
 
@@ -715,6 +742,9 @@ def test_radioactive_heating_enabled_positive(boundary_runner):
 
     # Should be positive at t=0 (maximum heating)
     assert h_radio > 0
+    assert h_radio == pytest.approx(_earth_heating(4.567e9), rel=1e-12)
+    # A dropped t0 gives the present-day value, 4.5e-12 W/kg, at the model start
+    assert abs(h_radio / _earth_heating(0.0) - 1.0) > 1.0
     # Discriminating scale check: H_radio at formation is ~1e-11 W/kg for
     # Earth-like crustal abundances (Turcotte & Schubert 2014, ch. 4.5). A
     # regression that returned a kg/g unit-mismatched value would land outside
@@ -732,11 +762,8 @@ def test_radioactive_heating_decay_with_time(boundary_runner):
     **Expected Behavior**: H decreases monotonically; H(t₁) > H(t₂) for t₁ < t₂.
     """
     boundary_runner.use_radiogenic_heating = True
-    boundary_runner.age_ini = 0.0
-    boundary_runner.radio_tref = 4.567
-    boundary_runner.U_abun = 20.0e-9
-    boundary_runner.Th_abun = 79.0e-9
-    boundary_runner.K_abun = 143.0e-6
+    boundary_runner.radio_t0_yr = 4.567e9
+    boundary_runner.radio_inventory = _EARTH_RADIO_INVENTORY
 
     t_early = 1e6 * secs_per_year  # 1 Myr
     t_late = 1e9 * secs_per_year  # 1 Gyr
@@ -746,6 +773,10 @@ def test_radioactive_heating_decay_with_time(boundary_runner):
 
     # Early heating should exceed late heating (radioactive decay)
     assert h_early > h_late
+    # 1 Gyr of model time is 3.567 Gyr before the inputs
+    assert h_late == pytest.approx(_earth_heating(3.567e9), rel=1e-12)
+    # Time not converted from s, or converted to Gyr: both land on the t = 0 value
+    assert abs(h_late / _earth_heating(4.567e9) - 1.0) > 0.1
     # Positivity invariant: each isotope contributes a non-negative
     # decay term, so the sum is strictly positive while any half-life
     # > 0. A sign-flip in the exp(-lambda t) factor would invert the
@@ -1893,43 +1924,6 @@ def test_boundary_runner_refuses_a_structure_without_mantle_mass(
 
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_radioactive_heating_matches_values_frozen_before_the_shared_helper(
-    boundary_runner,
-):
-    """Radiogenic heating is unchanged by routing through the shared helper.
-
-    Cross-implementation check against values recorded from this module's own
-    previous hand-rolled decay loop, at the undepleted-mantle abundances used
-    elsewhere in this file. The shared helper groups the decay exponent
-    differently, so agreement is required only to 1e-12 relative; the observed
-    difference is one unit in the last place.
-    """
-    boundary_runner.use_radiogenic_heating = True
-    boundary_runner.age_ini = 0.0
-    boundary_runner.radio_tref = 4.567
-    boundary_runner.U_abun = 20.0e-9
-    boundary_runner.Th_abun = 79.0e-9
-    boundary_runner.K_abun = 143.0e-6
-    boundary_runner.Al_abun = 0.0
-    boundary_runner.Fe_abun = 0.0
-
-    frozen = {
-        0.0: 1.98516237777628535e-11,
-        1.0: 1.19887610223852725e-11,
-        4.567: 4.53016900062606112e-12,
-    }
-    for t_gyr, expected in frozen.items():
-        heat = boundary_runner.radioactive_heating(t_gyr * 1e9 * secs_per_year)
-        assert heat == pytest.approx(expected, rel=1e-12)
-
-    # Monotonic decay across the frozen samples, and positivity throughout.
-    values = [boundary_runner.radioactive_heating(t * 1e9 * secs_per_year) for t in frozen]
-    assert all(later < earlier for earlier, later in zip(values, values[1:]))
-    assert all(v > 0.0 for v in values)
-
-
-@pytest.mark.physics_invariant
-@pytest.mark.reference_pinned
 def test_solidification_front_matches_values_frozen_before_the_shared_helper(
     boundary_runner,
 ):
@@ -1962,38 +1956,6 @@ def test_solidification_front_matches_values_frozen_before_the_shared_helper(
         boundary_runner.core_radius <= boundary_runner.r_s(t) <= boundary_runner.planet_radius
         for t in frozen
     )
-
-
-@pytest.mark.physics_invariant
-def test_radioactive_heating_includes_short_lived_isotopes(boundary_runner):
-    """Aluminium-26 and iron-60 now contribute when they are configured.
-
-    The backend previously read only uranium, thorium and potassium, so a run
-    that set radio_Al got no aluminium-26 heating while SPIDER and Aragog gave
-    it the dominant early source. Evaluated at the reference age so the
-    inventory is isolated from the decay law.
-    """
-    boundary_runner.use_radiogenic_heating = True
-    boundary_runner.age_ini = 0.0
-    boundary_runner.radio_tref = 0.0
-    boundary_runner.U_abun = 20.0e-9
-    boundary_runner.Th_abun = 79.0e-9
-    boundary_runner.K_abun = 143.0e-6
-    boundary_runner.Al_abun = 0.0
-    boundary_runner.Fe_abun = 0.0
-
-    base = boundary_runner.radioactive_heating(0.0)
-    boundary_runner.Al_abun = 1.23e-6  # canonical 26Al/27Al = 5.25e-5
-    with_al = boundary_runner.radioactive_heating(0.0)
-    boundary_runner.Al_abun = 0.0
-    boundary_runner.Fe_abun = 6.3e-10
-    with_fe = boundary_runner.radioactive_heating(0.0)
-
-    assert with_al - base == pytest.approx(1.23e-6 * 0.3583, rel=1e-9)
-    assert with_fe - base == pytest.approx(6.3e-10 * 3.6579e-2, rel=1e-9)
-    # Aluminium-26 dominates the long-lived background by four orders.
-    assert with_al > 1e4 * base
-    assert base > 0.0
 
 
 @pytest.mark.physics_invariant

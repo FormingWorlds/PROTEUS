@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.special import erf
 
-from proteus.utils.constants import B_ein, radnuc_data
+from proteus.utils.constants import B_ein
 from proteus.utils.data import find_lookup_table_dir
 from proteus.utils.helper import MissingDataError, generates_paleos_tables
 
@@ -92,42 +92,6 @@ def melt_fraction_linear(tmp: float, tmp_sol: float, tmp_liq: float) -> float:
         # molten, with no mushy zone to interpolate across.
         return 1.0 if tmp >= tmp_liq else 0.0
     return float(np.clip((tmp - tmp_sol) / (tmp_liq - tmp_sol), 0.0, 1.0))
-
-
-def radiogenic_specific_heating(
-    t_yr: float, t0_yr: float, concentrations: dict[str, float]
-) -> float:
-    """
-    Specific radiogenic heating rate of the mantle from decaying isotopes.
-
-    Each entry of `concentrations` maps a key of `radnuc_data` to the mass
-    fraction of the parent element (or of the isotope itself, where the
-    tabulated isotopic abundance is unity) at reference time `t0_yr`.
-    Non-positive entries are skipped, so an isotope the user has not enabled
-    contributes exactly zero.
-
-    Parameters
-    ----------
-        t_yr : float
-            Model time at which to evaluate the heating [yr].
-        t0_yr : float
-            Reference time at which `concentrations` apply [yr].
-        concentrations : dict
-            Map of `radnuc_data` key to elemental mass fraction [kg kg-1].
-
-    Returns
-    ----------
-        heat : float
-            Specific heating rate [W kg-1].
-    """
-    heat = 0.0
-    for iso, conc in concentrations.items():
-        if conc <= 0.0:
-            continue
-        data = radnuc_data[iso]
-        decay = np.log(2.0) / data['halflife']  # [yr-1]
-        heat += conc * data['abundance'] * data['heatprod'] * np.exp(-decay * (t_yr - t0_yr))
-    return float(heat)
 
 
 def solidification_radius(

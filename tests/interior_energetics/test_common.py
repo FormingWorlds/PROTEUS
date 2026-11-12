@@ -16,7 +16,6 @@ Functions tested:
   density/radius profile, pinned against the uniform-density-sphere analytic
   value and the SPIDER surface-first array-reversal contract.
 - melt_fraction_linear(): Linear-in-temperature melt fraction, clipped to [0, 1]
-- radiogenic_specific_heating(): Decaying isotope heating from mass fractions
 - solidification_radius(): Position of the crystallisation front
 - d_solidification_radius_dT(): Front migration rate with temperature
 """
@@ -33,10 +32,8 @@ from proteus.interior_energetics.common import (
     Interior_t,
     d_solidification_radius_dT,
     melt_fraction_linear,
-    radiogenic_specific_heating,
     solidification_radius,
 )
-from proteus.utils.constants import radnuc_data
 
 # Each test patches FWL_DATA and the import-time constant proteus.utils.data.FWL_DATA_DIR,
 # so no table read falls through to the real multi-gigabyte EOS data.
@@ -1516,35 +1513,6 @@ _R_INT = 6.371e6  # m
 _R_CORE = 3.4e6  # m
 _TMP_SOL = 1500.0  # K
 _TMP_LIQ = 2500.0  # K
-
-
-@pytest.mark.unit
-@pytest.mark.physics_invariant
-@pytest.mark.reference_pinned
-def test_radiogenic_specific_heating_halves_over_one_half_life():
-    """One half-life of decay must remove exactly half the heating rate.
-
-    Analytical limit of the decay law H(t) = H(t0) * 2**(-(t - t0) / t_half).
-    Uses Th-232 alone (tabulated isotopic abundance 1.0) so the pinned ratio
-    depends on nothing but the exponent, and evaluates over three successive
-    half-lives so a regression cannot be tuned to pass at a single point.
-    """
-    half = radnuc_data['th232']['halflife']
-    conc = {'th232': 1.0e-7}
-    ref = radiogenic_specific_heating(0.0, 0.0, conc)
-
-    # Positivity: a decaying inventory always heats, never cools.
-    assert ref > 0.0
-    for n in (1, 2, 3):
-        decayed = radiogenic_specific_heating(n * half, 0.0, conc)
-        assert decayed / ref == pytest.approx(0.5**n, rel=1e-12)
-
-    # Sign guard on the exponent: an exp(+lambda*t) regression amplifies
-    # rather than decays, landing at 2**n instead of 2**-n.
-    assert radiogenic_specific_heating(half, 0.0, conc) < ref
-    # Scale guard: 0.1 ppmw of Th-232 at its tabulated heat production is
-    # ~2.6e-12 W/kg, not ~2.6e-6 (an unconverted ppmw) or ~2.6e-18.
-    assert 1e-13 < ref < 1e-10
 
 
 @pytest.mark.unit
