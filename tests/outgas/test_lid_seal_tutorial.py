@@ -21,7 +21,7 @@ import pytest
 from proteus.outgas.lid_seal import leak_step
 from proteus.outgas.wrapper import run_crystallized
 
-from .test_lid_seal import D_H2O, _assert_legend_clear, _config, _eq_row
+from .test_lid_seal import _assert_legend_clear, _config, _eq_row
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -38,32 +38,32 @@ def _closing_row():
 
 
 @pytest.mark.physics_invariant
-def test_the_first_held_steps_of_the_tutorial_follow_the_floor():
-    """On the stored closing row the held water is the dissolved water of the
-    melt, below its floor on melt plus crystals by 1 + D (1 - Phi)/Phi. Replayed
-    with escape off over the stored melt fractions, CO2, CO and CH4 leak from the
-    first held step, and water only from the first step with Phi below
-    (Phi_c - D)/(1 - D), where the floor falls under it."""
+def test_the_closing_row_of_the_tutorial_sits_on_its_floor():
+    """Without trapping the floor reservoir is the melt, so on the stored closing
+    row each held species is the dissolved mass of the closing solve and equals
+    its floor (relative 1e-15): closure is a fixed point of the leak. Replayed
+    with escape off over the stored melt fractions, H2O, CO2, CO and CH4 leak
+    from the first held step, as the falling melt fraction lowers each floor."""
     row, rows = _closing_row()
-    phi_c = row['Phi_global']
-    phi_star = (phi_c - D_H2O) / (1.0 - D_H2O)
-    cfg, first = CFG, {}
+    at_close = dict(row)
+    leak_step(CFG, at_close, 1.0e-9)
+    for s in ('H2O', 'CO2', 'CO', 'CH4'):
+        assert at_close[f'{s}_kg_eq'] == pytest.approx(row[f'{s}_kg_sealed'], rel=1e-15, abs=0)
+    first = {}
     for nxt in rows.iloc[1:].itertuples():
         dt = nxt.Time - row['Time']
         row.update({'Time': nxt.Time, 'Phi_global': nxt.Phi_global, 'M_mantle': nxt.M_mantle})
         before = {s: row[f'{s}_kg_sealed'] for s in ('H2O', 'CO2', 'CO', 'CH4')}
-        leak_step(cfg, row, dt)
+        leak_step(CFG, row, dt)
         for s, m in before.items():
             if row[f'{s}_kg_sealed'] < m:
                 first.setdefault(s, int(nxt.row))
-        if 'H2O' not in first:
-            assert row['H2O_kg_eq'] > row['H2O_kg_sealed']
-    k = int(rows['row'].iloc[0])
-    h2o = int(rows['row'][rows['Phi_global'] < phi_star].iloc[0])
-    assert first == {'CO2': k + 1, 'CO': k + 1, 'CH4': k + 1, 'H2O': h2o}
-    assert h2o > k + 1
+    assert first == dict.fromkeys(('H2O', 'CO2', 'CO', 'CH4'), int(rows['row'].iloc[0]) + 1)
 
 
+@pytest.mark.xfail(
+    strict=True, reason='stored tutorial run holds the floor on melt plus crystals'
+)
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_the_tutorial_atmosphere_lies_between_the_held_and_the_open_run(validation_plot):

@@ -330,21 +330,25 @@ def test_relaxation_matches_the_exponential_and_not_the_step_length(validation_p
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_volcanic_rate_closes_the_mass_balance_of_the_sealed_reservoir(validation_plot):
-    """The volcanic rate k_i = chi_d Mdot_c / (M_melt + D_i M_solid) of the
-    Schaefer & Sasselov (2015, ApJ 801:40) Eq. 14 and Eq. 17 form, with the
-    global melt fraction. (a) X_melt (M_melt + D M_solid) == M_i; (b) half the
-    mantle solid, half at phi 0.4, D = 0: X_melt = M_i / (0.2 M_mantle), which a
-    local melt fraction (0.4) halves; (c) Eq. 14 written out with test inputs."""
+    """The volcanic rate k_i = chi_d Mdot_c / R_i of the Schaefer & Sasselov
+    (2015, ApJ 801:40) Eq. 14 and Eq. 17 form, with the global melt fraction:
+    R_i = M_melt without trapping, M_melt + D_i M_solid under front trapping with
+    the seal closed on a molten mantle (seal_phi_max 1). (a) X_melt R_i == M_i;
+    (b) half the mantle solid, half at phi 0.4: X_melt = M_i / (0.2 M_mantle),
+    which a local melt fraction (0.4) halves; (c) Eq. 14 written out."""
     cfg = _config(crust_rate=1.0e12, chi_d=0.02)
-    rates, mdot, capped = leak_rates(cfg, {'M_mantle': M_MANTLE, 'Phi_global': 0.2}, 1.0)
+    row = {'M_mantle': M_MANTLE, 'Phi_global': 0.2, 'seal_phi_max': 1.0}
+    rates, mdot, capped = leak_rates(cfg, row, 1.0)
     assert (mdot, capped) == (1.0e12, False)
+    assert rates['H2O'] == rates['CO2']  # without trapping both take the melt
     m_i = 1.0e20
     k_co2 = rates['CO2'][1]  # D = 0
     x_melt = k_co2 * m_i / (0.02 * mdot)
     assert x_melt * 0.2 * M_MANTLE == pytest.approx(m_i, rel=1e-14)
     assert x_melt == pytest.approx(m_i / (0.2 * M_MANTLE), rel=1e-14)
     assert abs(x_melt - m_i / (0.4 * M_MANTLE)) / x_melt > 0.4  # local melt fraction
-    k_h2o = rates['H2O'][1]  # D = 0.0017
+    cfg.outgas.trap_mode = 'front'
+    k_h2o = leak_rates(cfg, row, 1.0)[0]['H2O'][1]  # D = 0.0017
     x_h2o = k_h2o * m_i / (0.02 * mdot)
     assert x_h2o * (0.2 * M_MANTLE + 0.0017 * 0.8 * M_MANTLE) == pytest.approx(m_i, rel=1e-14)
     # Eq. 14, r = rho_m F D_melt S X chi_d, with rho_m F D_melt S = Mdot_c in kg yr-1
@@ -356,11 +360,8 @@ def test_volcanic_rate_closes_the_mass_balance_of_the_sealed_reservoir(validatio
     curves = {}
     for d in (0.0, 0.01, 0.1, 1.0):
         cfg_d = _config(crust_rate=1.0e12)
-        cfg_d.outgas.D_const_CO2 = d
-        k = [
-            leak_rates(cfg_d, {'M_mantle': M_MANTLE, 'Phi_global': p}, 1.0)[0]['CO2'][1]
-            for p in grid
-        ]
+        cfg_d.outgas.D_const_CO2, cfg_d.outgas.trap_mode = d, 'front'
+        k = [leak_rates(cfg_d, {**row, 'Phi_global': p}, 1.0)[0]['CO2'][1] for p in grid]
         curves[d] = np.array(k) * M_MANTLE / (0.02 * 1.0e12)
         assert curves[d] == pytest.approx(1.0 / (d + grid * (1.0 - d)), rel=1e-13)
 
@@ -426,7 +427,11 @@ def test_crust_production_is_capped_at_the_melt_and_stops_below_phi_solid():
     assert capped is True
     assert mdot == pytest.approx(0.01 * M_MANTLE / 100.0, rel=1e-15)
     assert rates['CO2'][1] * 100.0 == pytest.approx(0.5, rel=1e-14)
-    assert rates['H2O'][1] * 100.0 < 0.5  # D > 0 spreads the volatile over the crystals
+    assert rates['H2O'][1] == rates['CO2'][1]  # without trapping the reservoir is the melt
+    cfg.outgas.trap_mode = 'front'
+    row = {'M_mantle': M_MANTLE, 'Phi_global': 0.01, 'seal_phi_max': 0.2}
+    assert leak_rates(cfg, row, 100.0)[0]['H2O'][1] * 100.0 < 0.5  # D > 0: the crystals too
+    cfg.outgas.trap_mode = 'none'
     rates, mdot, capped = leak_rates(cfg, {'M_mantle': M_MANTLE, 'Phi_global': 5e-4}, 100.0)
     assert (mdot, capped, rates['CO2'][1]) == (0.0, False, 0.0)
     row = _sealed_row(phi=0.01)
@@ -1048,7 +1053,7 @@ def test_sealed_mass_below_its_floor_does_not_leak():
     """One-way floor: sealed H2O under its dissolved equilibrium stays sealed at
     any tau and crust rate, and the atmosphere is left as it was; with CO2
     leaking in the same step, the H2O mass and moles stay equal to the bit."""
-    m_eq = _floor(_eq_row({'H2O': 1.0e17}, {}), 'H2O', D_H2O)
+    m_eq = _floor(_eq_row({'H2O': 1.0e17}, {}), 'H2O')
     row = _eq_row({'H2O': 1.0e17}, {'H2O': 0.9 * m_eq})
     before = dict(row)
     leak_step(_config(solubility=True, tau_leak=1.0e2, crust_rate=1.0e20), row, 1.0e3)
@@ -1075,14 +1080,14 @@ def test_leak_relaxes_toward_the_floor_of_the_end_state(tau, crust):
     atmosphere after the leak; the atmosphere gains what the reservoir loses.
     The volcanic term alone (tau = inf) stops at the same floor."""
     atm = {'H2O': 1.0e17, 'CO2': 5.0e16}
-    m0 = {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O), 'CO2': 1.0e19}
+    m0 = {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O'), 'CO2': 1.0e19}
     row = _eq_row(atm, m0)
     cfg = _config(solubility=True, tau_leak=tau, crust_rate=crust)
     rates, _, _ = leak_rates(cfg, row, 1.0e3)
     leak_step(cfg, row, 1.0e3)
-    for s, d in (('H2O', D_H2O), ('CO2', 0.0)):
+    for s in ('H2O', 'CO2'):
         keep = np.exp(-1.0e3 * sum(rates[s]))
-        m_eq = _floor(row, s, d)
+        m_eq = _floor(row, s)
         assert row[f'{s}_kg_sealed'] - m_eq == pytest.approx(keep * (m0[s] - m_eq), rel=1e-9)
         assert row[f'{s}_kg_sealed'] >= m_eq
         gained = row[f'{s}_kg_atm'] - atm[s]
@@ -1099,7 +1104,7 @@ def test_a_short_tau_gives_the_equilibrium_partition():
     from scipy.optimize import brentq
 
     atm = {'H2O': 1.0e17, 'CO2': 1.0e17}
-    m0 = {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O), 'CO2': 1.0e19}
+    m0 = {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O'), 'CO2': 1.0e19}
     row = _eq_row(atm, m0)
     leak_step(_config(solubility=True, tau_leak=1.0), row, 1.0e3)
     tot = {s: atm[s] + m0[s] for s in atm}
@@ -1112,7 +1117,7 @@ def test_a_short_tau_gives_the_equilibrium_partition():
 
     def h2o_gap(a):
         state = _eq_row({'H2O': a, 'CO2': co2_of(a)}, {})
-        return tot['H2O'] - a - _floor(state, 'H2O', D_H2O)
+        return tot['H2O'] - a - _floor(state, 'H2O')
 
     a_h2o = brentq(h2o_gap, atm['H2O'], tot['H2O'], xtol=1e-6, rtol=1e-15)
     expected = {'H2O': a_h2o, 'CO2': co2_of(a_h2o)}
@@ -1162,7 +1167,7 @@ def test_a_leak_off_its_relaxation_fails_the_floor_check():
     """A step kernel that ignores the floor ends below it, and one that leaks
     too little ends off the relaxation; the check in the step stops both."""
     atm = {'H2O': 1.0e17}
-    m0 = {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O)}
+    m0 = {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O')}
     cfg = _config(solubility=True, tau_leak=1.0e3)
     with (
         patch('proteus.outgas.lid_seal.floor_leak', lambda m, f, _: f * m),
@@ -1184,7 +1189,7 @@ def test_the_floor_checks_stop_an_end_state_off_by_more_than_round_off():
     from proteus.outgas.lid_seal import floor_leak
 
     atm = {'H2O': 1.0e17}
-    m0 = {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O)}
+    m0 = {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O')}
     cfg = _config(solubility=True, tau_leak=1.0e3)
     for dt, extra, match in [
         (1.0e5, 1e-8, 'below its floor'),
@@ -1211,7 +1216,7 @@ def test_a_step_zeroes_the_floors_of_the_last_sealed_step():
 def test_leak_sweeps_that_do_not_settle_stop_the_step():
     """H2O and CO2 couple through the mean molar mass; one sweep cannot settle both."""
     atm = {'H2O': 1.0e17, 'CO2': 5.0e16}
-    row = _eq_row(atm, {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O), 'CO2': 1.0e19})
+    row = _eq_row(atm, {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O'), 'CO2': 1.0e19})
     with (
         patch('proteus.outgas.lid_seal.SWEEP_MAX', 1),
         pytest.raises(RuntimeError, match='did not settle'),
@@ -1230,7 +1235,7 @@ def test_leak_sweeps_that_do_not_settle_stop_the_step():
 def test_a_leak_refuses_an_unreadable_closing_state(key, bad):
     """The floor needs a finite closing temperature above 0 K and a finite IW offset."""
     atm = {'H2O': 1.0e17}
-    row = _eq_row(atm, {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O', D_H2O)})
+    row = _eq_row(atm, {'H2O': 2.0 * _floor(_eq_row(atm, {}), 'H2O')})
     row[key] = bad
     before = dict(row)
     with pytest.raises(ValueError, match='cannot set the dissolved equilibrium'):
@@ -1401,7 +1406,7 @@ def test_the_law_table_covers_every_soluble_gas_and_reads_the_include_flags():
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(
     ('trap_mode', 'phi', 'share'),
-    [('front', 0.1, 0.2 - 0.1), ('front', 0.3, 0.0), ('none', 0.1, 1.0 - 0.1)],
+    [('front', 0.1, 0.2 - 0.1), ('front', 0.3, 0.0), ('none', 0.1, 0.0)],
     ids=['front', 'front-remelted', 'none'],
 )
 def test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_closure(
@@ -1411,8 +1416,8 @@ def test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_clo
     own trapped volatiles, so the floor reservoir of each species counts only the
     crystals formed after closure: X_eq M_mantle (Phi + D_i max(Phi_c - Phi, 0)),
     the melt alone once Phi rises above Phi_c (Phi_c 0.2, here also the highest melt
-    fraction since closure); without trapping it is
-    X_eq M_mantle (Phi + D_i (1 - Phi)). H2O (D 0.0017) and CO2 (D 0.05) leak in
+    fraction since closure); without trapping it is the melt alone,
+    X_eq M_mantle Phi. H2O (D 0.0017) and CO2 (D 0.05) leak in
     the same step with crust production on; the volcanic rate takes the same
     reservoir, so the leak splits (1/tau) : chi_d Mdot_c / that."""
     row = _eq_row({'H2O': 1.0e17, 'CO2': 1.0e15}, {'H2O': 3.0e20, 'CO2': 1.0e19}, phi=phi)
@@ -1428,10 +1433,7 @@ def test_with_front_trapping_the_floor_leaves_out_the_crystals_formed_before_clo
         )
     assert row['H2O_kg_sealed'] < 3.0e20 and not capped
     inv_tau, k = rates['H2O']
-    floor_share = share if trap_mode == 'front' else 1.0 - phi
-    assert k == pytest.approx(
-        0.02 * 1.0e20 / (M_MANTLE * (phi + D_H2O * floor_share)), rel=1e-14
-    )
+    assert k == pytest.approx(0.02 * 1.0e20 / (M_MANTLE * (phi + D_H2O * share)), rel=1e-14)
     assert row['H_kg_leak_volc'] / row['H_kg_leak_tau'] == pytest.approx(k / inv_tau, rel=1e-12)
 
 
@@ -1456,8 +1458,8 @@ def test_front_trapping_refuses_an_unreadable_highest_melt_fraction(phi_max):
 def test_under_front_trapping_the_volcanic_rate_takes_the_floor_reservoir():
     """The held mass sits in the floor reservoir R'_i = M_mantle (Phi + D_i
     (Phi_c - Phi)), so its melt concentration is M_i / R'_i and the volcanic rate
-    is chi_d Mdot_c / R'_i: at Phi 0.001, Phi_c 0.19 and D 0.0017 that is 2.04
-    times the rate on M_melt + D_i M_solid, which it stays without trapping."""
+    is chi_d Mdot_c / R'_i: at Phi 0.001, Phi_c 0.19 and D 0.0017 that is 0.757
+    times the rate on the melt alone, chi_d Mdot_c / M_melt, without trapping."""
     row = {'M_mantle': M_MANTLE, 'Phi_global': 1.0e-3, 'seal_phi_max': 0.19}
     cfg = _config(crust_rate=1.0e15)
     k_none = leak_rates(cfg, row, 1.0)[0]['H2O'][1]
@@ -1465,10 +1467,8 @@ def test_under_front_trapping_the_volcanic_rate_takes_the_floor_reservoir():
     k_front = leak_rates(cfg, row, 1.0)[0]['H2O'][1]
     r_front = M_MANTLE * (1.0e-3 + D_H2O * (0.19 - 1.0e-3))
     assert k_front == pytest.approx(0.02 * 1.0e15 / r_front, rel=1e-14)
-    assert k_none == pytest.approx(
-        0.02 * 1.0e15 / (M_MANTLE * (1.0e-3 + D_H2O * 0.999)), rel=1e-14
-    )
-    assert k_front / k_none == pytest.approx(2.042, rel=1e-3)
+    assert k_none == pytest.approx(0.02 * 1.0e15 / (M_MANTLE * 1.0e-3), rel=1e-14)
+    assert k_front / k_none == pytest.approx(0.7568, rel=1e-4)
 
 
 @pytest.mark.physics_invariant

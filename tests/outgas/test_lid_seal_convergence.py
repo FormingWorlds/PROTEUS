@@ -23,11 +23,10 @@ from .test_lid_seal import GRAVITY, M_MANTLE, R_INT, T_SEAL, _config, _eq_row
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 FO2 = 2.0  # [log10] IW offset of the closing solve, as in _eq_row
-D = {'H2O': 0.0017, 'CO2': 0.0, 'N2': 0.0}
 ATM0 = {'H2O': 1.0e17, 'CO2': 5.0e16, 'N2': 1.0e16}  # [kg]
 PHI0, PHI1, SPAN, STEPS = 0.19, 0.135, 4.3e4, 120  # melt fraction path over SPAN [yr]
 # Error over each atmospheric mass at STEPS: largest 1.15e-3 (H2O, tau 1e7), bound with a
-# 30 % margin; a floor taken at the start of the step gives 2.3e-3 (tau 1e7) to 0.16.
+# 30 % margin; a floor taken at the start of the step gives 2.4e-3 (tau 1e7) to 0.046.
 ATM_TOL = 1.5e-3
 
 
@@ -52,7 +51,7 @@ def _floors(atm, phi):
     n = {s: atm[s] / eval_gas_mmw(s) for s in atm}
     p_tot = sum(atm.values()) * GRAVITY / (4.0 * np.pi * R_INT**2) / 1e5
     x = _x_eq({s: n[s] / sum(n.values()) * p_tot for s in atm}, p_tot)
-    return {s: x[s] * M_MANTLE * (phi + D[s] * (1.0 - phi)) for s in atm}
+    return {s: x[s] * M_MANTLE * phi for s in atm}
 
 
 def _phi(t):
@@ -60,9 +59,8 @@ def _phi(t):
 
 
 def _closure():
-    """Sealed masses [kg] at closure: the melt-only equilibrium of the closing solve."""
-    x = _floors(ATM0, PHI0)
-    return {s: x[s] * PHI0 / (PHI0 + D[s] * (1.0 - PHI0)) for s in ATM0}
+    """Sealed masses [kg] at closure: the melt equilibrium of the closing solve."""
+    return _floors(ATM0, PHI0)
 
 
 def _code(tau, steps):

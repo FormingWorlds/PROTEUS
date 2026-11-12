@@ -4,7 +4,8 @@ Invariants checked: at a constant floor the step kernel gives the closed form
 for any held mass, floor and step fraction; a sealed row resumes only with a
 finite closing temperature above 0 K; under front trapping the floor reservoir
 counts the crystals formed after the highest melt fraction since closure, for any
-path of the melt fraction; tau_leak is accepted only with a finite rate 1/tau_leak.
+path of the melt fraction, and without trapping it is the melt for any partition
+coefficient; tau_leak is accepted only with a finite rate 1/tau_leak.
 """
 
 from __future__ import annotations
@@ -99,6 +100,27 @@ def test_the_front_reservoir_follows_the_highest_melt_fraction_since_closure(phi
     r_h2o = reservoirs(front, row)[0]['H2O']
     assert r_h2o == pytest.approx(M_MANTLE * (phi + D_H2O * (top - phi)), rel=1e-14, abs=1.0)
     assert phi * M_MANTLE <= r_h2o <= M_MANTLE * (phi + D_H2O * (1.0 - phi)) * (1 + 1e-15)
+
+
+@pytest.mark.physics_invariant
+@given(
+    phi=st.floats(-1.0e-9, 1.0 + 1.0e-9),
+    d=st.floats(0.0, 1.0e3),
+    phi_max=st.one_of(st.none(), st.floats(allow_nan=True, allow_infinity=True)),
+)
+def test_without_trapping_the_floor_reservoir_is_the_melt(phi, d, phi_max):
+    """trap_mode = 'none': for any melt fraction, also past either end by
+    round-off, any partition coefficient and any stored seal_phi_max (or none),
+    every sealed species has the reservoir M_mantle Phi of the clipped Phi."""
+    cfg = _config()
+    for s in ('H2O', 'CO2', 'N2'):
+        setattr(cfg.outgas, f'D_const_{s}', d)
+    row = {'M_mantle': M_MANTLE, 'Phi_global': phi}
+    if phi_max is not None:
+        row['seal_phi_max'] = phi_max
+    res, clipped, m_melt = reservoirs(cfg, row)
+    assert clipped == min(max(phi, 0.0), 1.0) and m_melt == clipped * M_MANTLE
+    assert set(res.values()) == {m_melt}
 
 
 @given(tau=st.floats(min_value=0.0, exclude_min=True, allow_infinity=True))
