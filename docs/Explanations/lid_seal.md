@@ -125,7 +125,7 @@ After each step the code checks that every species that leaked ends at or above 
 - **Crystals.** Without trapping the floor counts no crystals, as the CALLIOPE solve, so closure is a fixed point of the leak. The partition coefficient $D_i$ acts only with front trapping.
 - **Crystals at opening.** When the seal opens, the whole held mass returns to the melt. With front trapping this includes the share counted in the crystals formed after closure.
 - **Erupted melt.** Of the volatile in the melt that reaches the crust, only the degassed share leaves the held mass; the rest stays counted as held.
-- **Frozen chemistry.** The held and leaked gas keep their species; the floor does not see a change of speciation in the atmosphere.
+- **Frozen chemistry.** The held and leaked gas keep the species they had at closure; the floor does not see a change of speciation in the atmosphere. The open run keeps its atmosphere in equilibrium with the redox buffer of the melt, which gives oxygen to the gas as the magma cools and turns CO into CO$_2$. In the [tutorial](../Tutorials/lid_seal.md) at 140 kyr the sealed atmosphere therefore holds 24.6 % more CO, 6.3 % less CO$_2$ and 1.7 % more water than the open run, at a 2.5 % lower surface pressure. A gas that re-speciates at fixed atmospheric elements does not close this gap: replayed over the held span of the tutorial, it moves water, CO$_2$ and CO by at most 0.11 percentage points, because the oxygen comes from the melt.
 
 ## Laws that fall with pressure
 

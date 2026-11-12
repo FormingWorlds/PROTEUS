@@ -28,7 +28,7 @@ Each case below has the same layout: why the check exists, what it tests, how we
 | `tests/outgas/test_lid_seal.py::test_a_short_tau_gives_the_equilibrium_partition` | Gas-melt equilibrium, solved independently | The end state of a step with $\tau$ = $10^{-3}\,\Delta t$. | 2026-11-12 |
 | `tests/outgas/test_lid_seal.py::test_finite_tau_lies_between_the_frozen_and_the_open_atmosphere` | Open equilibrium and held state, solved in the test | Atmospheric water over a falling melt fraction. | 2026-11-11 |
 | `tests/outgas/test_lid_seal_tutorial.py::test_the_closing_row_of_the_tutorial_sits_on_its_floor` | Dissolved masses of the closing solve | The closing row and first held steps of the stored tutorial run. | 2026-11-12 |
-| `tests/outgas/test_lid_seal_tutorial.py::test_the_tutorial_atmosphere_lies_between_the_held_and_the_open_run` | Stored tutorial runs with and without the seal | The held span of the tutorial run replayed through the code, against the run, its floor and the 2 limits. | 2026-11-11 |
+| `tests/outgas/test_lid_seal_tutorial.py::test_the_tutorial_atmosphere_lies_above_the_held_run_and_crosses_the_open_run` | Stored tutorial runs with and without the seal | The held span of the tutorial run replayed through the code, against the run, its floor and the 2 limits. | 2026-11-11 |
 
 ## The floor uses the dissolved fractions of the chemistry solve
 
@@ -189,7 +189,7 @@ This case has no plot: it checks one end state.
 
 **How we know the right answer.** The open state is the equilibrium on the melt alone, which is also the floor without trapping; a finite $\tau$ lags behind it. The test computes the open state with its own root find.
 
-**Why it matters.** A leak that overshoots its floor, or one that runs the wrong way, fails this check. The band holds for this one-species state only: in a full run the held gas keeps its species and the open run does not, and the tutorial case below shows a run whose seal leaves more water in the atmosphere than the open run when the floor does not count the crystals.
+**Why it matters.** A leak that overshoots its floor, or one that runs the wrong way, fails this check. The band holds for this one-species state only: in a full run the held gas keeps its species and the open run does not, and the tutorial case below shows a run whose seal leaves more water in the atmosphere than the open run.
 
 This case has no plot: the next case shows the same band on the tutorial run.
 
@@ -217,25 +217,27 @@ This case has no plot: it checks the floor at closure and the row of the first l
     - Test id: `tests/outgas/test_lid_seal_tutorial.py::test_the_closing_row_of_the_tutorial_sits_on_its_floor`
     - Command: `pytest tests/outgas/test_lid_seal_tutorial.py`
 
-## The tutorial atmosphere lies between the held and the open run
+## The tutorial atmosphere lies above the held run and crosses the open run
 
 **Why this check exists.** The leak law must keep the floor on every row of a full PROTEUS run, with escape, all species and the adaptive step. A run that leaks past the floor, or code that no longer gives the numbers of that run, fails this check.
 
-**What it tests.** The [tutorial](../../Tutorials/lid_seal.md) runs 3 times: with the seal and $\tau$ = 100 kyr, with the seal and $\tau$ infinite, and without the seal. Rows of these runs are stored in `tests/data/lid_seal/`. The test replays the held span of the run with $\tau$ = 100 kyr from its closing row through the escape and leak code, with the stored escape and melt fraction of each step. The replay must give the held water, its floor `H2O_kg_eq` and the atmospheric water of the run on every row; it compares water only, so the IW offset, which the water law does not take, is checked by `tests/outgas/test_lid_seal.py::test_the_floor_takes_the_closing_iw_offset_and_the_surface_pressure`, and the closing temperature of the CO$_2$ law by `tests/outgas/test_lid_seal.py::test_leak_relaxes_toward_the_floor_of_the_end_state`. On every held row where the held water fell, it must end at or above its floor. From the closing row on, the atmospheric water must lie at or above the run with $\tau$ infinite, and at the end at 1.5 times it or more. From the first held step on, it must lie below the open run; this order pins this run only.
+**What it tests.** The [tutorial](../../Tutorials/lid_seal.md) runs 3 times: with the seal and $\tau$ = 100 kyr, with the seal and $\tau$ infinite, and without the seal. Rows of these runs are stored in `tests/data/lid_seal/`. The test replays the held span of the run with $\tau$ = 100 kyr from its closing row through the escape and leak code, with the stored escape and melt fraction of each step. The replay must give the held water, its floor `H2O_kg_eq` and the atmospheric water of the run on every row; it compares water only, so the IW offset, which the water law does not take, is checked by `tests/outgas/test_lid_seal.py::test_the_floor_takes_the_closing_iw_offset_and_the_surface_pressure`, and the closing temperature of the CO$_2$ law by `tests/outgas/test_lid_seal.py::test_leak_relaxes_toward_the_floor_of_the_end_state`. On every held row where the held water fell, it must end at or above its floor. From the closing row on, the atmospheric water must lie at or above the run with $\tau$ infinite, and at the end at 1.5 times it or more. Against the open run it must lie lower on the first held steps, cross it once, and end more than 1 % above it; this order pins this run only.
 
-**How we know the right answer.** The stored run is the reference for the replay. The floor check follows from the law. The run with $\tau$ infinite leaks nothing, so a run that leaks lies at or above it. The open run is no bound: replays of the held span with one term switched off at a time show that the crystals the floor counts with $D$ keep 2.15 percentage points of the open run's atmospheric water in the mantle, and that the species the held gas keeps from the closing solve raise it by 1.86 points through a lower surface pressure. With $D_{\mathrm{H_2O}}$ = 0 the replayed run ends 1.71 % above the open run.
+**How we know the right answer.** The stored run is the reference for the replay. The floor check follows from the law. The run with $\tau$ infinite leaks nothing, so a run that leaks lies at or above it. The open run is no bound: replays of the held span with one term switched off at a time show that the species the held gas keeps from the closing solve raise the atmospheric water by 1.86 percentage points of the open run's value through a lower surface pressure, and that the finite leak time lowers it by 0.08 points. The run ends 1.71 % above the open run. On the first 9 held steps, about 750 yr, the leak lags its falling floor and the run lies up to 0.05 % below the open run.
+
+**Known limit.** The held gas keeps its species, while the open run takes oxygen from the redox buffer of the melt as the magma cools. At 140 kyr the sealed atmosphere holds 24.6 % more CO and 6.3 % less CO$_2$ than the open run ([Limits of the leak](../../Explanations/lid_seal.md#limits-of-the-leak)).
 
 **Why it matters.** This is the result a user sees: how much water a planet under a closed crust releases.
 
 ![Water in the atmosphere of the 3 tutorial runs against time, and the distance of the held water to its floor](../../assets/validation/outgas_lid_seal_tutorial_water.svg#only-light){ width="80%" }
 ![Water in the atmosphere of the 3 tutorial runs against time, and the distance of the held water to its floor](../../assets/validation/outgas_lid_seal_tutorial_water_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The upper panel shows the water in the atmosphere, in units of $10^{15}$ kg, against time in kyr for the open run, the seal with $\tau$ = 100 kyr, and the seal with $\tau$ infinite. The seal closes at 98 kyr. The lower panel shows, for the seal with $\tau$ = 100 kyr, how far the held water lies above its floor, as a fraction of the held water. Below the dotted zero line the held water is below its floor and does not leak. A pass means that the seal curve lies between the 2 other curves, and the lower curve is at or above zero on every row where the held water fell.
+**How to read the plot.** The upper panel shows the water in the atmosphere, in units of $10^{15}$ kg, against time in kyr for the open run, the seal with $\tau$ = 100 kyr, and the seal with $\tau$ infinite. The seal closes at 98 kyr. The lower panel shows, for the seal with $\tau$ = 100 kyr, how far the held water lies above its floor, as a fraction of the held water. Below the dotted zero line the held water is below its floor and does not leak. A pass means that the seal curve lies at or above the curve with $\tau$ infinite and crosses the open curve once, and the lower curve is at or above zero on every row where the held water fell.
 
 ??? info "Test details"
     - Reference: tutorial runs with the seal ($\tau$ = 100 kyr and infinite) and without it, with CALLIOPE 26.11.8.
-    - Tolerance: relative 1e-12 for the replay and for the floor; inequalities on every row; the atmospheric water at the end at least 1.5 times that of the run with $\tau$ infinite.
-    - Test id: `tests/outgas/test_lid_seal_tutorial.py::test_the_tutorial_atmosphere_lies_between_the_held_and_the_open_run`
+    - Tolerance: relative 1e-12 for the replay and for the floor; inequalities on every row; the atmospheric water at the end at least 1.5 times that of the run with $\tau$ infinite and more than 1 % above the open run.
+    - Test id: `tests/outgas/test_lid_seal_tutorial.py::test_the_tutorial_atmosphere_lies_above_the_held_run_and_crosses_the_open_run`
     - Command: `pytest -m reference_pinned tests/outgas/test_lid_seal_tutorial.py --validation-plots`
 
 ## Invariants checked alongside

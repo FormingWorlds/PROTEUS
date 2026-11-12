@@ -6,7 +6,7 @@ Then you read when the seal closed, check when each volatile starts to leak, and
 
 When the seal closes, the volatiles dissolved in the melt move to the `{x}_kg_sealed` columns, and the chemistry stops.
 While the seal holds, the held volatiles reach the atmosphere only by a leak with the relaxation time `tau_leak`, and by volcanism if `crust_rate` is above 0.
-The leak stops at the floor `{x}_kg_eq`: the mass that melt and crystals dissolve at the pressure of the atmosphere.
+The leak stops at the floor `{x}_kg_eq`: the mass that the melt dissolves at the pressure of the atmosphere.
 [Volatiles held under a closed crust](../Explanations/lid_seal.md) explains the rule.
 
 ## Prerequisites
@@ -88,20 +88,17 @@ About a fifth of the mantle is still molten, and its dissolved water and CO$_2$ 
 
 ## Step 5: when does each volatile start to leak?
 
-At closure the held water is the water dissolved in the melt.
-Its floor also counts the crystals, with the partition coefficient $D$ = `outgas.D_const_H2O` = 0.0017, so the held water starts below its floor.
-It leaks only once the floor falls under it.
-With the pressures fixed, that happens when the global melt fraction $\Phi$ falls below $(\Phi_c - D)/(1 - D)$, with $\Phi_c$ the value at closure:
+At closure the held mass of each volatile is the mass dissolved in the melt.
+Without trapping, its floor counts the melt alone, so each held volatile starts on its floor.
+When the global melt fraction $\Phi$ falls, the melt shrinks, the floor falls below the held mass, and the volatile leaks:
 
 ```python
-D = 0.0017
 held = on.iloc[k:]
-print(f"floor / held water on the first held step: {held['H2O_kg_eq'].iloc[1] / held['H2O_kg_sealed'].iloc[1]:.4f}")
+print(f"floor / held water on the first held step: {held['H2O_kg_eq'].iloc[1] / held['H2O_kg_sealed'].iloc[1]:.6f}")
 for s in ('CO2', 'H2O'):
     leaks = held[f'{s}_kg_sealed'].diff() < 0
     first = held[leaks].iloc[0]
     print(f"{s} first leaks at {first['Time']:.0f} yr, Phi = {first['Phi_global']:.5f}")
-print(f"(Phi_c - D) / (1 - D) = {(close['Phi_global'] - D) / (1 - D):.5f}")
 leaks = held['H2O_kg_sealed'].diff() < 0
 print(f"held / floor of water on the rows where it leaks: at least {(held['H2O_kg_sealed'] / held['H2O_kg_eq'])[leaks].min():.6f}")
 ```
@@ -109,17 +106,13 @@ print(f"held / floor of water on the rows where it leaks: at least {(held['H2O_k
 The run printed:
 
 ```text
-floor / held water on the first held step: 1.0061
+floor / held water on the first held step: 0.999727
 CO2 first leaks at 97890 yr, Phi = 0.19231
-H2O first leaks at 98470 yr, Phi = 0.19105
-(Phi_c - D) / (1 - D) = 0.19113
-held / floor of water on the rows where it leaks: at least 1.000127
+H2O first leaks at 97890 yr, Phi = 0.19231
+held / floor of water on the rows where it leaks: at least 1.000273
 ```
 
-At closure the floor of the water is $1 + D(1 - \Phi_c)/\Phi_c$ = 1.0071 times the held water.
-On the first held step the ratio is already 1.0061, because $\Phi$ has fallen from 0.19250 to 0.19231, which shrinks the melt in the reservoir of the floor.
-CO$_2$ has $D$ = 0, so its floor starts at the held mass and it leaks from the first held step.
-Water does not leak on the first 7 held steps; it starts once $\Phi$ falls below 0.19113, about 660 yr after closure.
+On the first held step $\Phi$ falls from 0.19250 to 0.19231, and water and CO$_2$ leak from that step on.
 From then on the held water follows its floor down and stays above it.
 
 ## Step 6: compare the 2 atmospheres
@@ -136,7 +129,7 @@ print(f"mantle melt fraction without the seal: {end_off['Phi_global']:.3f}")
 The run printed:
 
 ```text
-H2O in the atmosphere at 140 kyr: seal 2.113e+15 kg, no seal 2.122e+15 kg
+H2O in the atmosphere at 140 kyr: seal 2.158e+15 kg, no seal 2.122e+15 kg
 surface pressure: seal 1.037 bar, no seal 1.064 bar
 held H2O: 6.923e+18 kg, floor 6.920e+18 kg
 H2O in the melt without the seal: 6.923e+18 kg
@@ -146,14 +139,14 @@ mantle melt fraction without the seal: 0.136
 Before the closing step the 2 runs agree to the last digit.
 After it they part, but not by much.
 The melt is still 13.6 % of the mantle at 140 kyr, and in both runs almost all the water stays in the mantle.
-With the seal, the atmosphere holds 0.44 % less water than without the seal.
-This small difference is the sum of 2 larger model terms of opposite sign, not a delay of the leak.
+With the seal, the atmosphere holds 1.71 % more water than without the seal.
 Replays of the held span of this run, with one term switched off at a time, give the terms in percentage points of the water in the atmosphere of the open run:
 
-- the floor counts the water of the crystals formed after closure, with $D$ = 0.0017, which keeps 2.15 points more water in the mantle;
-- the held gas keeps the species it had at closure, while the open run turns CO into CO$_2$ as the magma cools; the sealed atmosphere then holds less oxygen, the kept species lower its surface pressure by 1.7 %, and the water needs 1.86 points more mass in the atmosphere to reach the same partial pressure;
-- the finite leak time leaves 0.12 points more water held, and the rest is 0.02 points;
+- the held gas keeps the species it had at closure, while the open run turns CO into CO$_2$ as the magma cools; the sealed atmosphere then holds less oxygen, the kept species lower its surface pressure by 1.76 %, and the water needs 1.86 points more mass in the atmosphere to reach the same partial pressure;
+- the finite leak time keeps 0.08 points of water held, and the rest is $-0.07$ points;
 - the closing temperature that the seal keeps for the CO$_2$ law changes nothing here: near 1 bar that law does not depend on temperature.
+
+The first term is a known limit of the frozen chemistry: at 140 kyr the sealed atmosphere holds 24.6 % more CO and 6.3 % less CO$_2$ than the open run ([Limits of the leak](../Explanations/lid_seal.md#limits-of-the-leak)).
 
 The path before closure is sensitive to round-off, so your run can close at another time and end with a different amount of water.
 In 5 pairs of runs whose initial superheat differs by up to $2.5 \times 10^{-9}$ K, the water in the atmosphere at 140 kyr spreads by 0.64 % between the starts, and the run printed here ends 2.0 % below their mean.
