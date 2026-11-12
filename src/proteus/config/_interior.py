@@ -80,7 +80,11 @@ def _valid_cell_thickness(instance, attribute, value):
     if attribute.name == 'surface_cell_thickness' and value == 'uniform':
         return
     _valid_number(instance, attribute, value)
-    if not (value == 0 or (math.isfinite(value) and value >= 2.0)):
+    try:
+        ok = value == 0 or (math.isfinite(value) and value >= 2.0)
+    except OverflowError:  # an int that no float holds
+        ok = False
+    if not ok:
         raise ValueError(
             f'`{attribute.name}` must be 0 or finite and at least 2 m, got {value}'
         )
@@ -412,7 +416,7 @@ class Rheology:
     """
 
     enabled: bool = field(default=False, validator=_valid_bool)
-    mlt_bottom_slope: float = field(default=0.82, validator=(_valid_number, gt(0), le(1)))
+    mlt_bottom_slope: float | int = field(default=0.82, validator=(_valid_number, gt(0), le(1)))
 
 
 @define
@@ -462,7 +466,7 @@ class Aragog:
     """
 
     mass_coordinates: bool = field(default=True)
-    cmb_cell_thickness: float = field(default=3000.0, validator=_valid_cell_thickness)
+    cmb_cell_thickness: float | int = field(default=3000.0, validator=_valid_cell_thickness)
     """Radial thickness [m] of the mesh cell at the CMB: 0 (the uniform mesh at that end) or a
     finite value of at least 2 m. The cells grow away from the CMB with a tanh stretching. A
     value at or above the bottom cell of the uniform mesh of the same coordinate mode gives no
@@ -471,11 +475,13 @@ class Aragog:
     surface_cell_thickness: float | str = field(
         default='uniform', validator=_valid_cell_thickness
     )
-    """Radial thickness [m] of the mesh cell at the surface, on the same terms as
-    cmb_cell_thickness, or 'uniform': the top cell of the uniform mesh of the same coordinate
-    mode (with mass_coordinates the top cell of the uniform mass-coordinate mesh). With
-    cmb_cell_thickness = 0 and 'uniform' the mesh is the uniform mesh. A resume keeps the value
-    its run was written with."""
+    """Radial thickness [m] of the mesh cell at the surface: 0 (the uniform mesh at that end),
+    'uniform' (the top cell of the uniform mesh of the same coordinate mode; with
+    mass_coordinates the top cell of the uniform mass-coordinate mesh), or a finite value of at
+    least 2 m and below the uniform radial cell (R_int - R_core)/(num_levels - 1). It has no
+    fallback: aragog refuses a larger value when it builds the mesh. With cmb_cell_thickness = 0
+    and 'uniform' the mesh is the uniform mesh. A resume keeps the value its run was written
+    with."""
     backend: str = field(default='jax', validator=in_(('numpy', 'jax')))
     atol_temperature_equivalent: float = field(default=1.0e-8, validator=gt(0))
     """Effective temperature-scale absolute tolerance [K] for Aragog's ODE integrator.
