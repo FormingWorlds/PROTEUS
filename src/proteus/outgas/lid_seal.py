@@ -468,7 +468,7 @@ def leak_step(config: Config, hf_row: dict, dt: float) -> None:
                     out * rates[s][1] / lam[s],
                 )
     _check(
-        all(np.isfinite(tau_part[s] + volc_part[s]) for s in leak),
+        all(np.isfinite(out + tau_part[s] + volc_part[s]) for s, out in leak.items()),
         'the leak is not finite; tau_leak is too short',
     )
     hf_row['seal_crust_rate'], hf_row['seal_volc_capped'] = mdot, float(capped)
@@ -496,6 +496,7 @@ def leak_step(config: Config, hf_row: dict, dt: float) -> None:
         hf_row[f'{e}_kg_sealed'] = max(sealed_e - out, 0.0)
         hf_row[f'{e}_kg_atm'] = float(hf_row.get(f'{e}_kg_atm', 0.0)) + out
         leak_kg += out
+    _check(np.isfinite(leak_kg), f'the element leak of {leak_kg} kg is not finite')
     hf_row['seal_leak_kg_cum'] = float(hf_row.get('seal_leak_kg_cum', 0.0)) + leak_kg
     if leak_kg > 0.0:
         _refresh_atmosphere(hf_row)
