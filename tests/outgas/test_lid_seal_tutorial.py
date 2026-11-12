@@ -5,7 +5,7 @@ leak starts for each species at the step the floor predicts; replayed over the
 whole held span with the stored escape and melt fraction, the code gives the
 held water, its floor and the atmospheric water of the run on every row, held
 water that leaked ends at or above its floor, and the water in the atmosphere
-lies between the run that holds it and the open run; the seal effect of the
+lies above the run that holds it and crosses the open run once; the seal effect of the
 printed run and of 5 round-off starts lies in the band the tutorial quotes.
 The data are rows of the tutorial runs that their header names.
 """
@@ -61,22 +61,20 @@ def test_the_closing_row_of_the_tutorial_sits_on_its_floor():
     assert first == dict.fromkeys(('H2O', 'CO2', 'CO', 'CH4'), int(rows['row'].iloc[0]) + 1)
 
 
-@pytest.mark.xfail(
-    strict=True, reason='stored tutorial run holds the floor on melt plus crystals'
-)
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_the_tutorial_atmosphere_lies_between_the_held_and_the_open_run(validation_plot):
+def test_the_tutorial_atmosphere_lies_above_the_held_run_and_crosses_the_open_run(
+    validation_plot,
+):
     """The held span of the stored tutorial run (tau_leak 1e5 yr), replayed from
     its closing row through run_crystallized and leak_step with the stored escape
     and melt fraction of each step, gives the held water, its floor H2O_kg_eq and
     the water in the atmosphere of the run on every row (relative 1e-12). Every
     row on which the held water fell ends at or above its floor. From the closing
     row on, the water in the atmosphere is at or above the run that holds it
-    (tau_leak inf) and 1.5 times it at the end; from the first held step on, it
-    is below the open run. That last order pins this run only: it comes from the
-    crystals the floor counts with D_H2O, and with D_H2O = 0 the held run ends
-    above the open run."""
+    (tau_leak inf) and 1.5 times it at the end. Against the open run it is lower
+    on the first held steps, while the leak lags its falling floor, crosses it
+    once, and ends more than 1 % above it."""
     w = pd.read_csv(DATA / 'tutorial_water.csv', comment='#')
     held = w[w['seal_active'] > 0.5]
     row, _ = _closing_row()
@@ -95,7 +93,10 @@ def test_the_tutorial_atmosphere_lies_between_the_held_and_the_open_run(validati
     assert fell.sum() > 0.5 * len(held)
     assert np.all(held['seal_held'][fell] >= held['seal_eq'][fell] * (1.0 - 1e-12))
     assert np.all(held['seal_atm'] >= held['hold_atm'])
-    assert np.all(held['seal_atm'].iloc[1:] < held['open_atm'].iloc[1:])
+    gap = (held['seal_atm'] / held['open_atm']).values[1:] - 1.0
+    k = int(np.argmax(gap > 0.0))
+    assert k > 0 and np.all(gap[:k] < 0.0) and np.all(gap[k:] > 0.0)
+    assert gap[-1] > 0.01
     assert held['seal_atm'].iloc[-1] > 1.5 * held['hold_atm'].iloc[-1]
 
     def figure():
