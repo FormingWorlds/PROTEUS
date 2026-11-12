@@ -886,6 +886,71 @@ def test_setup_solver_passes_the_interior_rtol_to_aragog(tmp_path, rtol):
     assert sp.call_args.kwargs['rtol'] == pytest.approx(1e-8 if rtol is None else rtol)
 
 
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_setup_solver_passes_the_configured_radionuclides(tmp_path):
+    """The Mercury inputs at Solar System formation, 8 Myr before the model start,
+    reach Aragog as six isotopes with t0 = -8e6 yr and the config ratios; the
+    heating Aragog evaluates from them, with its own ppm scaling, equals
+    radiogenic_heating at 0, 1 Myr and 1 Gyr of model time."""
+    pytest.importorskip('aragog')
+    from aragog.parser import _PPM, radionuclide_heating
+
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.interior_energetics.radiogenic import (
+        radiogenic_heating,
+        radionuclide_inventory,
+    )
+
+    config = _make_aragog_config(struct_module='spider')
+    ie = config.interior_energetics
+    ie.heat_radiogenic = True
+    ie.radio_tref, config.star.age_ini = 0.0, 0.008  # Gyr
+    # input/planets/mercury.toml: element totals [ppmw] and mass ratios at formation
+    ie.radio_Al, ie.radio_Al26_abund = 1.95e4, 5.0563e-5
+    ie.radio_Fe, ie.radio_Fe60_abund = 6.26e4, 9.8472e-9
+    ie.radio_K, ie.radio_K40_abund = 403.56, 1.5090e-3
+    ie.radio_Th, ie.radio_Th232_abund = 0.061432, 1.0
+    ie.radio_U, ie.radio_U235_abund, ie.radio_U238_abund = 0.073836, 0.23515, 0.76485
+
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters') as mock_params,
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
+
+    rads = mock_params.call_args.kwargs['radionuclides']
+    assert [r.name for r in rads] == ['al26', 'fe60', 'k40', 'th232', 'u235', 'u238']
+    np.testing.assert_allclose([r.t0_years for r in rads], -8.0e6, rtol=1e-12)
+    np.testing.assert_allclose(
+        [r.abundance for r in rads],
+        [5.0563e-5, 9.8472e-9, 1.5090e-3, 1.0, 0.23515, 0.76485],
+        rtol=1e-12,
+    )
+    np.testing.assert_allclose(  # ppm, scaled by Aragog itself
+        [r.concentration for r in rads], [1.95e4, 6.26e4, 403.56, 0.061432, 0.073836, 0.073836]
+    )
+    inventory = radionuclide_inventory(config)
+    for t in (0.0, 1.0e6, 1.0e9):  # model time [yr]
+        aragog_h = sum(
+            radionuclide_heating(
+                t,
+                r.heat_production * r.abundance * r.concentration * _PPM,
+                r.t0_years,
+                r.half_life_years,
+            )
+            for r in rads
+        )
+        assert aragog_h == pytest.approx(radiogenic_heating(inventory, -8.0e6, t), rel=1e-12)
+    # 26Al dominates at the start: 1.9e-10 W/kg, 11 half-lives below its value at t0
+    h0 = radiogenic_heating(inventory, -8.0e6, 0.0)
+    assert 1e-10 < h0 < 3e-10
+    assert abs(radiogenic_heating(inventory, 0.0, 0.0) / h0 - 1.0) > 10.0  # t0 dropped
+
+
 def test_setup_or_update_solver_tracks_stale_structure_steps():
     """The stale-structure counter increments while stale and resets when fresh.
 
@@ -5138,7 +5203,7 @@ def _k40(t0_years=0.0):
     return _Radionuclide(
         name='k40',
         t0_years=t0_years,
-        abundance=k40['abundance'],
+        abundance=1.1926e-4,  # 40K/K mass ratio, present day
         concentration=310.0,
         heat_production=k40['heatprod'],
         half_life_years=k40['halflife'],
