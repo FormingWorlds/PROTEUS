@@ -202,13 +202,18 @@ def _log_jax_nonviable_once(core_eos: str, mantle_eos: str) -> bool:
     return True
 
 
-# Module-level cache for density seeding between Zalmoxis calls.
-# Stores the last successful density profile so the next call can
-# use it as a starting point for the Picard iteration. The cache only
-# seeds the iterative solver; it never changes the converged result.
-# `key` records which planet the seed belongs to so an in-process
-# multi-planet driver does not seed one planet from another.
-_density_cache = {'density': None, 'radii': None, 'key': None}
+# Module-level cache of the last structure for seeding the next Zalmoxis call: the density
+# seeds the Picard iteration, and radii, pressure and mass_enclosed are the adiabat_seed that
+# lets a re-solve skip the Newton root and the blend ramp. `key` is the planet that owns it.
+_density_cache = {
+    'density': None,
+    'radii': None,
+    'pressure': None,
+    'mass_enclosed': None,
+    'key': None,
+}
+# Zalmoxis releases before the seeded re-solve have no adiabat_seed argument
+_MAIN_TAKES_ADIABAT_SEED = 'adiabat_seed' in inspect.signature(main).parameters
 
 
 def _structure_cache_key(config):
@@ -3550,6 +3555,16 @@ def zalmoxis_solver(
         )
         _seed_density = _density_cache['density'] if _seed_match else None
         _seed_radii = _density_cache['radii'] if _seed_match else None
+        _seed_kw = {}
+        if (
+            _seed_match
+            and _MAIN_TAKES_ADIABAT_SEED
+            and _density_cache.get('pressure') is not None
+        ):
+            # Zalmoxis uses it only when it computes the adiabat itself (start-up solves)
+            _seed_kw['adiabat_seed'] = {
+                k: _density_cache[k] for k in ('radii', 'pressure', 'mass_enclosed')
+            }
         model_results = main(
             config_params,
             material_dictionaries=mat_dicts,
@@ -3561,6 +3576,7 @@ def zalmoxis_solver(
             p_center_hint=None if _drop_callable else hf_row.get('P_center'),
             initial_density=_seed_density,
             initial_radii=_seed_radii,
+            **_seed_kw,
         )
 
     # Extract results from the model
@@ -3851,6 +3867,8 @@ def zalmoxis_solver(
     # warm-starts drive Anderson into oscillation.
     _density_cache['density'] = density.copy()
     _density_cache['radii'] = np.asarray(radii).copy()
+    _density_cache['pressure'] = np.asarray(pressure).copy()
+    _density_cache['mass_enclosed'] = np.asarray(mass_enclosed).copy()
     _density_cache['key'] = _structure_cache_key(config)
 
     # Final results of the Zalmoxis interior model. One summary line at INFO so
