@@ -134,50 +134,11 @@ The CO$_2$ law of Dixon et al. (1995)[^cite-dixon1995] falls with pressure above
 
 ## Settings of the seal
 
-The settings of `[outgas.lid_seal]` and their defaults ([full reference](../Reference/config/escape_outgas.md)):
+The 8 settings of `[outgas.lid_seal]`, with their units, defaults and limits, are in the [config reference](../Reference/config/escape_outgas.md#lid-seal-outgaslid_seal). The 3 you change first are `tau_leak` (default infinite: the volatiles stay held), `crust_rate` (default 0: no volcanic leak) and `delta_close` (default 10 km).
 
-| Setting | Meaning | Default |
-|---|---|---|
-| `delta_close` | crust thickness at or above which the seal can close \[m\] | 10 km |
-| `phi_close` | the top mesh cell must hold less melt than this to close \[1\] | 0.3 |
-| `phi_open` | a closed seal opens at or above this top-cell melt fraction \[1\] | `phi_close + 0.05` |
-| `delta_open` | a closed seal opens below this crust thickness \[m\] | `0.5 delta_close` |
-| `phi_solid` | a mesh cell below this melt fraction counts as crust, and below this global melt fraction the mantle makes no crust \[1\] | 0.001 |
-| `tau_leak` | relaxation time of the leak, with a finite rate $1/\tau$ \[yr\] | infinite |
-| `crust_rate` | melt mass that reaches the crust per year \[kg yr$^{-1}$\] | 0 |
-| `chi_d` | share of the volatiles of that melt that degasses \[1\] | 0.02 |
+## What the seal needs
 
-## How to turn the seal on and read the result
-
-The seal needs the Aragog interior solver, because it reads the melt fraction and the radius of each mesh cell:
-
-```toml
-[interior_energetics]
-module = "aragog"
-
-[outgas.lid_seal]
-enabled = true
-delta_close = 1e4     # crust thickness at which the seal closes [m]
-tau_leak = 1e5        # relaxation time of the held volatiles [yr]
-```
-
-The seal needs `outgas.module = "calliope"`, an escape reservoir of `"outgas"` or `"bulk"`, and, with the Zalmoxis structure, `interior_struct.zalmoxis.dry_mantle = true`. It cannot be combined with `params.stop.solid.freeze_volatiles = true`, which also freezes the melt inventory, or with `outgas.vapourise = true`. Front trapping (`outgas.trap_mode = "front"`) can run with it. While the seal holds, the melt columns are empty, so trapping buries nothing; mass that a remelt releases from the solid joins the held mass.
-
-These output columns show what the seal does ([full list](../Reference/output.md)):
-
-- `seal_active` \[1\]: 1 while the seal holds, else 0.
-- `seal_delta` \[m\] and `seal_phi_top` \[1\]: the crust thickness and the melt fraction of the top mesh cell that the seal reads in the step. On the mesh, `seal_delta` is the depth of the top run of cells below `phi_solid` while the seal is open, and below `phi_open` while it holds and on the step where it opens, so it can jump on the first held step.
-- `seal_path` \[1\]: the crust that a closed seal reads in the step: 1 for the crust on the mesh, 2 for the sub-grid lid; 0 while the seal is open, also when `seal_delta` comes from the sub-grid lid.
-- `{sp}_kg_sealed`, `{sp}_mol_sealed` and `{e}_kg_sealed`: the held mass of each species and element.
-- `{sp}_kg_eq` \[kg\]: the floor of each soluble species at the end of the step; 0 while the seal is open, on the step where it closes, with `outgas.calliope.solubility = false`, and on held steps with no leak rate (`tau_leak` infinite and no crust production) or nothing held.
-- `seal_t_close` \[yr\]: the time the seal last closed.
-- `seal_Tmagma_close` \[K\]: the magma temperature of the chemistry solve that closed the seal, at least `outgas.T_floor`.
-- `seal_phi_close` \[1\]: the global melt fraction of the step that closed the seal, clipped to \[0, 1\].
-- `seal_phi_max` \[1\]: the highest global melt fraction since the seal closed, clipped to \[0, 1\]; the reservoir of the floor reads it under front trapping.
-- `seal_crust_rate` \[kg yr$^{-1}$\] and `seal_volc_capped` \[1\]: the rate at which melt reaches the crust in the step, and whether `crust_rate dt` was cut to the melt mass.
-- `{e}_kg_leak_tau` and `{e}_kg_leak_volc` \[kg\]: the mass of each element that leaked in the step by relaxation and by volcanism.
-- `seal_leak_kg_cum` \[kg\]: the leaked mass since the start of the run.
-- `seal_open_kg` \[kg\]: the held mass that returned to the melt in a step where the seal opened.
+The seal needs the Aragog interior solver, because it reads the melt fraction and the radius of each mesh cell. [Lid seal](../How-to/usage_lid_seal.md) gives the settings that turn it on, the settings it needs, and the output columns that show what it does. Front trapping (`outgas.trap_mode = "front"`) can run with it. While the seal holds, the melt columns are empty, so trapping buries nothing; mass that a remelt releases from the solid joins the held mass.
 
 ## What the seal changes elsewhere
 
