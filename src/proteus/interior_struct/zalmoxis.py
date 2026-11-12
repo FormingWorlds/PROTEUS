@@ -214,6 +214,17 @@ def _takes_adiabat_seed(fn):
 
 
 _MAIN_TAKES_ADIABAT_SEED = _takes_adiabat_seed(main)
+_SEED_SIGNATURE = str(inspect.signature(main))
+
+
+@functools.cache
+def _log_no_adiabat_seed(signature):
+    """Log once per process and signature that main takes no adiabat_seed."""
+    log.info(
+        'zalmoxis.solver.main%s takes no adiabat_seed: the start-up structure re-solves of '
+        'this run start without the seed (Newton root and adiabat ramp each time).',
+        signature,
+    )
 
 
 def _structure_cache_key(config):
@@ -3539,6 +3550,8 @@ def zalmoxis_solver(
         _seed_density = _density_cache['density'] if _seed_match else None
         _seed_radii = _density_cache['radii'] if _seed_match else None
         _seed_kw = {}
+        if not _MAIN_TAKES_ADIABAT_SEED:
+            _log_no_adiabat_seed(_SEED_SIGNATURE)
         if (
             _seed_match
             and _MAIN_TAKES_ADIABAT_SEED
