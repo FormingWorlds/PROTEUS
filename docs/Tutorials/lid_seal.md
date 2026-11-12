@@ -149,8 +149,8 @@ Replays of the held span of this run, with one term switched off at a time, give
 The first term is a known limit of the frozen chemistry: at 140 kyr the sealed atmosphere holds 24.6 % more CO and 6.3 % less CO$_2$ than the open run ([Limits of the leak](../Explanations/lid_seal.md#limits-of-the-leak)).
 
 The path before closure is sensitive to round-off, so your run can close at another time and end with a different amount of water.
-In 5 pairs of runs whose initial superheat differs by up to $2.5 \times 10^{-9}$ K, the water in the atmosphere at 140 kyr spreads by 0.64 % between the starts, and the run printed here ends 2.0 % below their mean.
-Over these 5 pairs and the run printed here, the seal run holds between 0.428 % and 0.438 % less water than the open run of the same start; the printed run is at 0.438 %.
+In 5 pairs of runs whose initial superheat differs by up to $2.5 \times 10^{-9}$ K, the water in the atmosphere at 140 kyr spreads by 0.65 % between the starts, and the run printed here ends 2.0 % below their mean.
+Over these 5 pairs and the run printed here, the seal run holds between 1.714 % and 1.751 % more water than the open run of the same start; the printed run is at 1.714 %.
 `tests/data/lid_seal/tutorial_ensemble.csv` holds these end values.
 
 The block plots the water in the atmosphere, and the held water against its floor:
@@ -174,6 +174,6 @@ fig.savefig('output/tutorial_lid_seal/water.png', dpi=150)
 
 ## Step 7: try it yourself
 
-- Set `tau_leak` to `1e2` and run again: the leak follows the floor more closely, and the water in the atmosphere at 140 kyr changes by less than 0.1 %, less than the spread of 0.64 % between starts that differ only by round-off.
+- Set `tau_leak` to `1e2` and run again: the leak follows the floor more closely, and the water in the atmosphere at 140 kyr changes by less than 0.1 %, less than the spread of 0.65 % between starts that differ only by round-off.
 - Set `crust_rate` above 0 to add the volcanic leak; the columns `{e}_kg_leak_volc` and `{e}_kg_leak_tau` show the 2 parts in each step, and `seal_volc_capped` shows the steps where the crust production was cut to the melt mass. Both parts stop at the same floor.
 - Set `delta_close` to 0.3 m: on this mesh the seal closes at the same step, because a crust on the mesh is 0 or a whole cell. A thin crust closes the seal earlier only through the Aragog sub-grid lid.
