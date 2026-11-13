@@ -29,6 +29,7 @@ from proteus.utils.coupler import ZeroHelpfileRow  # noqa: E402
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
 RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
+SOCRATES_MAX_PATH = 132
 
 # AGNI ends a solve once the flux residual is within solution_atol + solution_rtol |F|, so
 # solving a converged state again moves T only within that band: 0.15 K was measured for
@@ -97,6 +98,9 @@ def _make_snapshot(tmpdir: str):
     cfg.params.out.write_mod = 0
     runner.init_directories()
     dirs = runner.directories
+    # The SOCRATES tools read file names of at most 132 characters and loop on a longer one
+    longest = os.path.join(dirs['output/offchem'], 'agni', 'socstar.dat')
+    assert len(longest) <= SOCRATES_MAX_PATH, f'{len(longest)} characters: {longest}'
     os.makedirs(os.path.join(dirs['output'], 'data'), exist_ok=True)
     os.makedirs(dirs['output/offchem'], exist_ok=True)
 
