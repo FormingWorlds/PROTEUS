@@ -1452,7 +1452,8 @@ def test_init_agni_atmos_stops_before_socrates_on_a_file_name_above_132_bytes(
             assert ctx.fake_agni.last_setup_kwargs is None
             assert ctx.fake_agni.last_allocate_input_star is None
             status = ctx.output_dir / 'status'
-            assert status.is_file() and status.read_text().splitlines()[0] == '22'
+            assert status.is_file()
+            assert status.read_text().splitlines()[:1] == ['22']
         else:
             try:
                 init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, io_dir=io_dir)
@@ -1460,6 +1461,31 @@ def test_init_agni_atmos_stops_before_socrates_on_a_file_name_above_132_bytes(
                 pytest.fail(f'{nbytes} bytes, star {star}: {err}')
             assert ctx.fake_agni.last_allocate_input_star == (str(ctx.sflux) if star else '')
             assert not (ctx.output_dir / 'status').exists()
+
+
+@pytest.mark.unit
+def test_a_cache_hit_runs_no_socrates_tool_and_has_no_file_name_limit(monkeypatch, tmp_path):
+    """A spectral file seeded from the cache needs no star insertion, so a 133-byte
+    io_dir/socstar.dat path does not stop the run."""
+    limit = agni_mod.SOCRATES_MAX_PATH
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    monkeypatch.setattr(agni_mod, 'SOCRATES_MAX_PATH', limit)
+    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None)
+    (cache / f'{key}.sf').write_text('cached', encoding='utf-8')
+    (cache / f'{key}.sf_k').write_text('cached k', encoding='utf-8')
+    ctx.config.atmos_clim.rayleigh = False
+    with tempfile.TemporaryDirectory(prefix='a') as short:
+        io_dir = os.path.join(short, 'x' * (133 - len(short) - len('/x/socstar.dat') + 1))
+        assert len(os.fsencode(os.path.join(io_dir, 'socstar.dat'))) == 133
+        try:
+            init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, io_dir=io_dir)
+        except ValueError as err:
+            pytest.fail(f'cache hit: {err}')
+        assert ctx.fake_agni.last_allocate_input_star == ''
+        assert (Path(io_dir) / 'runtime.sf').read_text() == 'cached'
+    assert not (ctx.output_dir / 'status').exists()
 
 
 @pytest.mark.unit
