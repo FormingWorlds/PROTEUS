@@ -383,6 +383,11 @@ def run_vulcan(
 
     log.info(f"    using '{network_file}' network")
     vcfg.network = os.path.join(vulcan.paths.THERMO_DIR, network_file)
+    if not os.path.isfile(vcfg.network):
+        raise FileNotFoundError(
+            f'VULCAN network file not found: {vcfg.network}. VULCAN reads its data from its '
+            'git clone; install it with tools/get_vulcan.sh.'
+        )
     vcfg.atom_list = ele_arr
     vcfg.use_photo = config.atmos_chem.photo_on
     vcfg.use_ion = False
