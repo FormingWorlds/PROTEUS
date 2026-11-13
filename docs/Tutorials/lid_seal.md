@@ -1,0 +1,182 @@
+# Volatiles held under a closed crust
+
+This tutorial shows how a crust that closes over the magma ocean holds the volatiles of the melt, and how they then leak out down to a floor.
+You run the same planet twice, once with the lid seal and once without it.
+Then you read when the seal closed, check when each volatile starts to leak, and compare the 2 atmospheres.
+
+When the seal closes, the volatiles dissolved in the melt move to the `{x}_kg_sealed` columns, and the chemistry stops.
+While the seal holds, the held volatiles reach the atmosphere only by a leak with the relaxation time `tau_leak`, and by volcanism if `crust_rate` is above 0.
+The leak stops at the floor `{x}_kg_eq`: the mass that the melt dissolves at the pressure of the atmosphere.
+[Volatiles held under a closed crust](../Explanations/lid_seal.md) explains the rule.
+
+## Prerequisites
+
+- PROTEUS installed with `bash install.sh` (see the [installation guide](../How-to/installation.md)), with the Aragog interior, and its environment active (`conda activate proteus`).
+- `FWL_DATA` set; the first run downloads the interior data.
+- `tomlkit` and `matplotlib`; both come with `pip install -e ".[develop]"`.
+
+Run the commands from the PROTEUS folder. Run the Python blocks in one Python session, in the order of the steps.
+Each run took about 20 minutes on a workstation.
+The printed values come from runs with CALLIOPE 26.11.8.
+
+## Step 1: the configuration
+
+The configuration is `input/tutorials/tutorial_lid_seal.toml`.
+An Earth-mass planet at 1 AU cools from a magma ocean under a grey (dummy) atmosphere, with the Aragog interior and the CALLIOPE chemistry.
+Its seal section is:
+
+```toml
+[outgas.lid_seal]
+    enabled = true
+    tau_leak = 1.0e5             # [yr]; delta_close stays at its default, 10 km
+```
+
+The seal closes when the crust is at least `delta_close` thick (default 10 km) and the top mesh cell holds less than `phi_close` of melt (default 0.3).
+Here no sub-grid lid runs, so the crust is the top run of solid mesh cells.
+The run stops at 140 kyr.
+
+## Step 2: run the planet with the seal
+
+```console
+proteus start --offline -c input/tutorials/tutorial_lid_seal.toml
+```
+
+The output goes to `output/tutorial_lid_seal/`.
+
+## Step 3: run the same planet without the seal
+
+The block writes a copy of the configuration with the seal off and its own output folder:
+
+```python
+import tomlkit
+
+cfg = tomlkit.parse(open('input/tutorials/tutorial_lid_seal.toml').read())
+cfg['params']['out']['path'] = 'tutorial_lid_seal_off'
+cfg['outgas']['lid_seal']['enabled'] = False
+open('input/tutorials/tutorial_lid_seal_off.toml', 'w').write(tomlkit.dumps(cfg))
+```
+
+```console
+proteus start --offline -c input/tutorials/tutorial_lid_seal_off.toml
+```
+
+## Step 4: when did the seal close?
+
+```python
+import numpy as np
+import pandas as pd
+
+on = pd.read_csv('output/tutorial_lid_seal/runtime_helpfile.csv', sep=r'\s+')
+off = pd.read_csv('output/tutorial_lid_seal_off/runtime_helpfile.csv', sep=r'\s+')
+k = int(np.flatnonzero(on['seal_active'].values > 0.5)[0])
+close = on.iloc[k]
+print(f"closed at {close['Time']:.0f} yr, crust {close['seal_delta'] / 1e3:.1f} km, "
+      f"top-cell melt fraction {close['seal_phi_top']:.1e}, mantle melt fraction {close['Phi_global']:.3f}")
+print(f"held: H2O {close['H2O_kg_sealed']:.3e} kg, CO2 {close['CO2_kg_sealed']:.3e} kg")
+```
+
+The run printed:
+
+```text
+closed at 97005 yr, crust 65.8 km, top-cell melt fraction 2.5e-04, mantle melt fraction 0.192
+held: H2O 6.924e+18 kg, CO2 2.849e+17 kg
+```
+
+The seal closes when the top mesh cell freezes.
+The top cell of this mesh is 65.8 km thick, so the crust jumps from 0 to 65.8 km in one step, and any `delta_close` up to 65.8 km closes the seal at the same step.
+About a fifth of the mantle is still molten, and its dissolved water and CO$_2$ are now held under the crust.
+
+## Step 5: when does each volatile start to leak?
+
+At closure the held mass of each volatile is the mass dissolved in the melt.
+Without trapping, its floor counts the melt alone, so each held volatile starts on its floor.
+When the global melt fraction $\Phi$ falls, the melt shrinks, the floor falls below the held mass, and the volatile leaks:
+
+```python
+held = on.iloc[k:]
+print(f"floor / held water on the first held step: {held['H2O_kg_eq'].iloc[1] / held['H2O_kg_sealed'].iloc[1]:.6f}")
+for s in ('CO2', 'H2O'):
+    leaks = held[f'{s}_kg_sealed'].diff() < 0
+    first = held[leaks].iloc[0]
+    print(f"{s} first leaks at {first['Time']:.0f} yr, Phi = {first['Phi_global']:.5f}")
+leaks = held['H2O_kg_sealed'].diff() < 0
+print(f"held / floor of water on the rows where it leaks: at least {(held['H2O_kg_sealed'] / held['H2O_kg_eq'])[leaks].min():.6f}")
+```
+
+The run printed:
+
+```text
+floor / held water on the first held step: 0.999722
+CO2 first leaks at 97087 yr, Phi = 0.19160
+H2O first leaks at 97087 yr, Phi = 0.19160
+held / floor of water on the rows where it leaks: at least 1.000278
+```
+
+On the first held step $\Phi$ falls from 0.19179 to 0.19160, and water and CO$_2$ leak from that step on.
+From then on the held water follows its floor down and stays above it.
+
+## Step 6: compare the 2 atmospheres
+
+```python
+end_on, end_off = on.iloc[-1], off.iloc[-1]
+print(f"H2O in the atmosphere at 140 kyr: seal {end_on['H2O_kg_atm']:.3e} kg, no seal {end_off['H2O_kg_atm']:.3e} kg")
+print(f"surface pressure: seal {end_on['P_surf']:.3f} bar, no seal {end_off['P_surf']:.3f} bar")
+print(f"held H2O: {end_on['H2O_kg_sealed']:.3e} kg, floor {end_on['H2O_kg_eq']:.3e} kg")
+print(f"H2O in the melt without the seal: {end_off['H2O_kg_liquid']:.3e} kg")
+print(f"mantle melt fraction without the seal: {end_off['Phi_global']:.3f}")
+```
+
+The run printed:
+
+```text
+H2O in the atmosphere at 140 kyr: seal 2.203e+15 kg, no seal 2.165e+15 kg
+surface pressure: seal 1.037 bar, no seal 1.064 bar
+held H2O: 6.923e+18 kg, floor 6.920e+18 kg
+H2O in the melt without the seal: 6.923e+18 kg
+mantle melt fraction without the seal: 0.135
+```
+
+Before the closing step the 2 runs agree to the last digit.
+After it they part, but not by much.
+The melt is still 13.5 % of the mantle at 140 kyr, and in both runs almost all the water stays in the mantle.
+With the seal, the atmosphere holds 1.75 % more water than without the seal.
+Replays of the held span of this run, with one term switched off at a time, split the 1.75 % into 3 terms, in percentage points of the water in the atmosphere of the open run:
+
+- $+1.89$: the held gas keeps the species it had at closure, while the open run turns CO into CO$_2$ as the magma cools; the sealed atmosphere then holds less oxygen, the kept species lower its surface pressure by 1.80 %, and the water needs more mass in the atmosphere to reach the same partial pressure;
+- $-0.08$: the finite leak time keeps this water held;
+- $-0.07$: the rest.
+
+The output above shows a surface pressure 2.6 % lower in total; the kept species alone lower it by 1.80 %. The closing temperature that the seal keeps for the CO$_2$ law changes nothing here: near 1 bar that law does not depend on temperature.
+
+The first term is a known limit of the frozen chemistry: at 140 kyr the sealed atmosphere holds 25.2 % more CO and 6.4 % less CO$_2$ than the open run ([Limits of the leak](../Explanations/lid_seal.md#limits-of-the-leak)).
+
+The path before closure is sensitive to round-off, so your run can close at another time and end with a different amount of water.
+Over the run printed here and 5 starts whose initial superheat differs by up to $2.5 \times 10^{-9}$ K, the closing time varies by 843 yr and the water in the atmosphere at 140 kyr by 2.09 % with the seal and by 2.05 % without it.
+The seal run and the open run of one start agree to the last digit before closure, so the seal effect is their difference at the same start: between 1.715 % and 1.753 % over the 6 starts; the printed run is at 1.748 %.
+A seal run and an open run of different starts can differ by less than this, or in the other direction.
+`tests/data/lid_seal/tutorial_ensemble.csv` holds these end values.
+
+The block plots the water in the atmosphere, and the held water against its floor:
+
+```python
+import matplotlib.pyplot as plt
+
+fig, (ax, ax2) = plt.subplots(2, 1, figsize=(7.5, 6), sharex=True)
+ax.plot(on['Time'] / 1e3, on['H2O_kg_atm'], label='seal')
+ax.plot(off['Time'] / 1e3, off['H2O_kg_atm'], '--', label='no seal')
+ax.set_ylabel('H$_2$O in the atmosphere [kg]')
+ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1.0))
+on_floor = held[held['H2O_kg_eq'] > 0]
+ax2.plot(on_floor['Time'] / 1e3, on_floor['H2O_kg_sealed'] / on_floor['H2O_kg_eq'] - 1)
+ax2.axhline(0.0, ls=':')
+ax2.set_ylabel('held / floor - 1')
+ax2.set_xlabel('Time [kyr]')
+fig.tight_layout()
+fig.savefig('output/tutorial_lid_seal/water.png', dpi=150)
+```
+
+## Step 7: try it yourself
+
+- Set `tau_leak` to `1e2` and run again: the leak follows the floor more closely, and the water in the atmosphere at 140 kyr changes by less than 0.1 %.
+- Set `crust_rate` above 0 to add the volcanic leak; the columns `{e}_kg_leak_volc` and `{e}_kg_leak_tau` show the 2 parts in each step, and `seal_volc_capped` shows the steps where the crust production was cut to the melt mass. Both parts stop at the same floor.
+- Set `delta_close` to 0.3 m: on this mesh the seal closes at the same step, because a crust on the mesh is 0 or a whole cell. A thin crust closes the seal earlier only through the Aragog sub-grid lid.

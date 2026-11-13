@@ -25,6 +25,7 @@ nav:
               - Running and output: How-to/usage_running.md
               - Initial thermal conditions: How-to/usage_initial_conditions.md
               - Core evolution: How-to/usage_core_evolution.md
+              - Lid seal: How-to/usage_lid_seal.md
               - Parameter grids: How-to/usage_grids.md
               - Postprocessing and chemistry: How-to/usage_postprocessing.md
               - Choose stellar spectrum: How-to/switch_spectrum.md
@@ -50,12 +51,14 @@ nav:
       - Solar System CHILI intercomparison: Tutorials/chili_intercomparison.md
       - Orbit and tidal evolution: Tutorials/orbit_tides.md
       - Giant impacts with a partial re-melt: Tutorials/giant_impact_remelt.md
+      - Volatiles held under a closed crust: Tutorials/lid_seal.md
 
   - Explanations:
       - Scientific background:
           - Model description: Explanations/model.md
           - Orbital dynamics and tides: Explanations/orbit.md
           - Outgassing, rock vapour and volatile trapping: Explanations/outgas.md
+          - Volatiles held under a closed crust: Explanations/lid_seal.md
       - Software design:
           - Code architecture: Explanations/code_architecture.md
           - Coupling loop: Explanations/coupling_loop.md
@@ -88,6 +91,7 @@ nav:
           - Melt drainage across the freezing front (compaction.py): Validation/outgas/compaction.md
           - Burial ledger for remelting (burial_ledger.py): Validation/outgas/burial_ledger.md
           - Solid-phase volatile trapping (trapping.py): Validation/outgas/trapping.md
+          - Volatiles under a closed crust (lid_seal.py): Validation/outgas/lid_seal.md
       - Star:
           - Stellar luminosity and instellation (dummy.py): Validation/star/dummy.md
           - Stellar wrapper dispatch (wrapper.py): Validation/star/wrapper.md
@@ -123,6 +127,7 @@ nav:
               - Volatile trapping: Reference/api/outgas_trapping.md
               - Melt drainage: Reference/api/outgas_compaction.md
               - Burial ledger: Reference/api/outgas_burial_ledger.md
+              - Lid seal: Reference/api/outgas_lid_seal.md
 
   - Community:
       - Contact: Community/contact.md

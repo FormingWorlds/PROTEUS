@@ -112,6 +112,7 @@ from proteus.outgas.compaction import (
     porosity_from_densities,
     volume_to_mass_fraction,
 )
+from proteus.outgas.lid_seal import sealed_mass
 from proteus.utils.constants import noble_gases, secs_per_year, vol_element_list, vol_list
 from proteus.utils.helper import eval_gas_mmw
 
@@ -412,13 +413,18 @@ def locked_condensed_mass(hf_row: dict, element: str, config: Config | None = No
 def unreachable_mass(hf_row: dict, element: str, config: Config | None = None) -> float:
     """Whole-planet mass of one element beyond the reach of escape and outgassing [kg].
 
-    The mass trapped in the solid mantle, plus the condensed reservoir when
-    condensates are kept from re-vapourising. The escape step subtracts this mass
-    from the mass available to escape, and the desiccation gate subtracts it from
-    the inventory it tests, so a planet whose atmosphere and melt have both emptied
-    still registers as desiccated.
+    The mass trapped in the solid mantle, the mass the lid seal holds, plus the
+    condensed reservoir when condensates are kept from re-vapourising. The escape
+    step subtracts this mass from the mass available to escape, and the desiccation
+    gate subtracts it from the inventory it tests, so a planet whose atmosphere and
+    melt have both emptied still registers as desiccated. The gate adds the sealed
+    mass back: a planet that holds sealed volatiles is not desiccated.
     """
-    return locked_solid_mass(hf_row, element) + locked_condensed_mass(hf_row, element, config)
+    return (
+        locked_solid_mass(hf_row, element)
+        + sealed_mass(hf_row, element)
+        + locked_condensed_mass(hf_row, element, config)
+    )
 
 
 def escapable_inventory(hf_row: dict, element: str, config: Config | None = None) -> float:
