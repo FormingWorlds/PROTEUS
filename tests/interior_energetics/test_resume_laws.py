@@ -535,11 +535,6 @@ def test_a_run_without_a_usable_record_does_not_check_the_rheology_or_the_lid(
         assert len(mine) == 1 and 'not recorded' in mine[0] and 'True' in mine[0]
 
 
-def _mesh_run(folder, drop=(), **aragog):
-    """A run directory whose record holds the given aragog fields, minus ``drop``."""
-    return _stored_run(folder, drop=drop, **aragog)
-
-
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize('allow', [False, True])
 @pytest.mark.parametrize(
@@ -556,7 +551,7 @@ def test_a_changed_mesh_end_cell_refuses_the_resume_even_when_laws_may_change(
 ):
     """The snapshot entropy is put back node by node, so a resume on other end cells would
     move every node: refused, also with allow_resume_law_change."""
-    out = _mesh_run(tmp_path, **{field: stored})
+    out = _stored_run(tmp_path, **{field: stored})
     config, path = _user_config(tmp_path, **{field: new, 'allow_resume_law_change': allow})
     with pytest.raises(ResumeSeparationLawError, match=field) as err:
         check_resume_separation_laws(config, path, out)
@@ -565,7 +560,7 @@ def test_a_changed_mesh_end_cell_refuses_the_resume_even_when_laws_may_change(
 
 def test_unchanged_end_cells_resume_quietly(tmp_path, caplog):
     """The default end cells on both sides give no switch and no warning."""
-    out = _mesh_run(tmp_path)
+    out = _stored_run(tmp_path)
     config, path = _user_config(tmp_path)
     with caplog.at_level(logging.WARNING, logger=LOGGER):
         assert check_resume_separation_laws(config, path, out) == []
@@ -575,7 +570,7 @@ def test_unchanged_end_cells_resume_quietly(tmp_path, caplog):
 def test_a_record_without_the_end_cells_ran_on_the_uniform_mesh(tmp_path):
     """A record that names the Aragog module and lacks both cell fields ran on the uniform
     mesh: a resume under the new defaults is refused, one with both cells at 0 goes on."""
-    out = _mesh_run(tmp_path, drop=('cmb_cell_thickness', 'surface_cell_thickness'))
+    out = _stored_run(tmp_path, drop=('cmb_cell_thickness', 'surface_cell_thickness'))
     config, path = _user_config(tmp_path)
     with pytest.raises(ResumeSeparationLawError, match='cmb_cell_thickness') as err:
         check_resume_separation_laws(config, path, out)
@@ -587,7 +582,7 @@ def test_a_record_without_the_end_cells_ran_on_the_uniform_mesh(tmp_path):
 def test_uniform_and_0_at_the_surface_with_no_cmb_cell_are_the_same_mesh(tmp_path):
     """With the CMB cell at 0, "uniform" and 0 at the surface both give the uniform mesh, so a
     resume may change one into the other."""
-    out = _mesh_run(tmp_path, cmb_cell_thickness=0.0, surface_cell_thickness=0.0)
+    out = _stored_run(tmp_path, cmb_cell_thickness=0.0, surface_cell_thickness=0.0)
     config, path = _user_config(tmp_path, cmb_cell_thickness=0.0)
     assert config.interior_energetics.aragog.surface_cell_thickness == 'uniform'
     assert check_resume_separation_laws(config, path, out) == []
