@@ -657,6 +657,26 @@ runs:
         # develop extras so that their tests run in CI rather than skip.
         pip install -e ".[develop,vulcan,atmodeller,inference]"
 
+    - name: Verify VULCAN runs from its clone
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        python - <<'PY'
+        import os
+
+        import vulcan
+        import vulcan.paths as paths
+
+        clone = os.path.realpath(os.path.join(os.environ['GITHUB_WORKSPACE'], 'VULCAN'))
+        src = os.path.realpath(vulcan.__file__)
+        assert src.startswith(clone + os.sep), f'vulcan imported from {src}, not from {clone}'
+        network = os.path.join(paths.THERMO_DIR, 'CHO_photo_network.txt')
+        assert os.path.isfile(network), f'VULCAN network file missing: {network}'
+        fastchem = os.path.join(paths.FASTCHEM_DIR, 'fastchem')
+        assert os.access(fastchem, os.X_OK), f'FastChem not built: {fastchem}'
+        print('vulcan:', src, '| network:', network, '| fastchem:', fastchem)
+        PY
+
     # ------------------------------------------------------------------
     # 8b. Paired-branch submodules (aragog, Zalmoxis). When PROTEUS is on a
     # feature branch that the submodule also carries, install that submodule
