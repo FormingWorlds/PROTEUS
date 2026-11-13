@@ -1654,6 +1654,35 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
     interior_o.zalmoxis_fail_count = 0
 
 
+@pytest.mark.unit
+def test_a_failed_structure_update_restores_the_core_mass_of_the_solve():
+    """A solve that writes M_core and M_core_solve and then raises (a schema violation
+    raises after both writes) leaves both keys at their values before the call."""
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    interior_o = _mock_interior_o()
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'M_int': 5.972e24,
+        'M_core': 1.95e24,
+        'M_core_solve': 1.94e24,
+    }
+
+    def failing_solver(cfg, outdir, row, *a, **k):
+        row.update(M_core=2.1e24, M_core_solve=2.0e24)
+        raise RuntimeError('zalmoxis_output.dat schema violation')
+
+    with patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=failing_solver):
+        update_structure_from_interior(
+            _mock_dirs(), config, hf_row, interior_o, 0.0, 3000.0, 0.8
+        )
+    assert (hf_row['M_core'], hf_row['M_core_solve']) == (1.95e24, 1.94e24)
+    assert interior_o.structure_stale is True
+
+
 # ============================================================================
 # Post-acceptance mass-anchor guard
 # ============================================================================
