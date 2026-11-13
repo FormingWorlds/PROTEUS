@@ -120,12 +120,12 @@ proteus plot -c input/tutorials/tutorial_earth.toml all
   ![Earth tutorial output](../assets/tutorials/earth_global_log.avif#only-light){ width="100%" }
   ![Earth tutorial output](../assets/tutorials/earth_global_log_dark.avif#only-dark){ width="100%" }
   <figcaption><b>Multi-panel overview of the PROTEUS Earth analogue tutorial run.</b>
-  (a) Upward heat flux components: radiogenic heating (magenta, ~0.2 W m<sup>-2</sup>), net interior flux (dashed orange), net atmospheric flux (solid, grey/white), outgoing longwave radiation (OLR, red), and absorbed stellar flux (ASF, dashed blue, ~226 to ~227 W m<sup>-2</sup>). Tidal heating (dark yellow) is zero in this run. The net fluxes decline from ~2 &times; 10<sup>5</sup> W m<sup>-2</sup> at 10<sup>3</sup> yr, where the time axis starts, to ~140 W m<sup>-2</sup> over ~3.8 Myr.
-  (b) Surface partial pressures: at the start of the time axis the total surface pressure (dashed) is ~210 bar and O<sub>2</sub> (yellow-green, ~120 bar) is the largest species; O<sub>2</sub> collapses within the first ~2 &times; 10<sup>4</sup> yr as the surface cools. CO<sub>2</sub> (orange) holds ~36-61 bar; H<sub>2</sub>O (blue) rises from ~4 bar to ~280 bar as it exsolves during solidification. CO (gold) falls from ~33 bar to ~16 bar and H<sub>2</sub> (green) rises from ~0.2 bar to ~35 bar.
-  (c) Surface temperature (solid) declining from ~3200 K to ~1760 K at termination; the magma temperature (dashed orange) starts near 4100 K on this axis.
-  (d) Surface gas mole fractions: O<sub>2</sub> (yellow-green) is the largest species at the start of the axis (~58%) and collapses; CO<sub>2</sub> (orange) then dominates, peaking near 61%, with CO (gold) at up to ~34%; H<sub>2</sub>O (blue) rises to dominate late, crossing CO<sub>2</sub> around 1.2 &times; 10<sup>6</sup> yr and reaching ~76%.
+  (a) Upward heat flux components: radiogenic heating (magenta, ~0.2 W m<sup>-2</sup>), net interior flux (dashed orange), net atmospheric flux (solid, grey/white), outgoing longwave radiation (OLR, red), and absorbed stellar flux (ASF, dashed blue, ~226 to ~227 W m<sup>-2</sup>). Tidal heating (dark yellow) is zero in this run. The net fluxes decline from ~2 &times; 10<sup>5</sup> W m<sup>-2</sup> at 10<sup>3</sup> yr, where the time axis starts, to ~130 W m<sup>-2</sup> over ~3.9 Myr.
+  (b) Surface partial pressures: at the start of the time axis the total surface pressure (dashed) is ~140 bar and O<sub>2</sub> (yellow-green, ~54 bar) is the largest species; O<sub>2</sub> collapses within the first ~3 &times; 10<sup>4</sup> yr as the surface cools. CO<sub>2</sub> (orange) holds ~39-63 bar; H<sub>2</sub>O (blue) rises from ~4 bar to ~290 bar as it exsolves during solidification. CO (gold) falls from ~39 bar to ~15 bar and H<sub>2</sub> (green) rises from ~0.4 bar to ~31 bar.
+  (c) Surface temperature (solid) declining from ~3200 K to ~1770 K at termination; the magma temperature (dashed orange) starts near 4100 K on this axis.
+  (d) Surface gas mole fractions: O<sub>2</sub> (yellow-green) is the largest species at the start of the axis (~38%) and collapses; CO<sub>2</sub> (orange) then dominates, peaking near 61%, with CO (gold) at up to ~39%; H<sub>2</sub>O (blue) rises to dominate late, crossing CO<sub>2</sub> around 1.2 &times; 10<sup>6</sup> yr and reaching ~77%.
   (e) Mantle evolution: the dashed purple line marks the core mass fraction (0.325); the rheological front (orange) starts at the core-mantle boundary in radius (~0.48 of the planet radius, above the mass-fraction reference) and propagates outward as the mantle solidifies; the global melt fraction (dotted) decreases from 1.0 to 0.05.
-  (f) Volatile partitioning into the interior: H<sub>2</sub>O (blue) starts almost fully dissolved in the melt (~99.6%) and falls to ~45% at the &Phi; = 5% termination, the residual melt still retaining much of the water. CO<sub>2</sub> (orange) is far less soluble, starting at ~15% interior and dropping to ~0.5%.</figcaption>
+  (f) Volatile partitioning into the interior: H<sub>2</sub>O (blue) starts almost fully dissolved in the melt (~99.6%) and falls to ~45% at the &Phi; = 5% termination, the residual melt still retaining much of the water. CO<sub>2</sub> (orange) is far less soluble, starting at ~14% interior and dropping to ~0.5%.</figcaption>
 </figure>
 
 ### Thermal evolution (a, c)
@@ -141,11 +141,11 @@ stellar flux (ASF, dashed blue) is ~226 W m$^{-2}$ at 1 AU
 reduced by the geometry factor, Bond albedo, and zenith angle).
 
 The surface temperature (c, solid) decreases from ~3300 K to
-~1760 K at termination over ~3.8 Myr; the magma temperature (dashed
+~1770 K at termination over ~3.9 Myr; the magma temperature (dashed
 orange) tracks above it, starting near 4300 K. The decline slows after
 ~10$^5$ yr, when the melt fraction has dropped to ~0.75 and latent
 heat release buffers the cooling. At termination the net interior and
-atmospheric fluxes have fallen to ~138 W m$^{-2}$ (OLR ~365 W m$^{-2}$,
+atmospheric fluxes have fallen to ~134 W m$^{-2}$ (OLR ~361 W m$^{-2}$,
 absorbed stellar flux ~227 W m$^{-2}$).
 
 ### Atmospheric evolution (b, d)
@@ -153,20 +153,20 @@ absorbed stellar flux ~227 W m$^{-2}$).
 The atmosphere passes through three compositional stages as the mantle
 solidifies:
 
-1. **Superheated initial state** (t $\lesssim$ 4 $\times$ 10$^3$ yr): at the fully
+1. **Superheated initial state** (t $\lesssim$ 1.5 $\times$ 10$^3$ yr): at the fully
    molten, superheated initial condition the atmosphere holds
-   ~300 bar and O$_2$ is its largest species (~72 mol%,
-   ~210 bar), next to CO$_2$ (~50 bar) and CO (~31 bar).
+   ~180 bar and O$_2$ is its largest species (~52 mol%,
+   ~95 bar), next to CO$_2$ (~43 bar) and CO (~40 bar).
    This O$_2$ collapses as the surface cools towards ~3000 K, falling below
-   10 bar within the first ~8 $\times$ 10$^3$ yr and to a negligible
+   10 bar within the first ~6 $\times$ 10$^3$ yr and to a negligible
    partial pressure by ~10$^5$ yr.
 
-2. **CO$_2$-dominated phase** (~4 $\times$ 10$^3$ to ~1.2 $\times$ 10$^6$ yr): as O$_2$
+2. **CO$_2$-dominated phase** (~1.5 $\times$ 10$^3$ to ~1.2 $\times$ 10$^6$ yr): as O$_2$
    collapses, CO$_2$ becomes the dominant species. Its mole fraction peaks
-   near 61% around 5 $\times$ 10$^4$ yr, where the partial pressure is
-   ~59 bar and CO holds another ~33%; the partial
-   pressure then rises to a broad maximum of ~61 bar
-   near 3 $\times$ 10$^5$ yr (b, d). H$_2$O begins at only ~4 bar, with
+   near 61% around 1.4 $\times$ 10$^5$ yr, where the partial pressure is
+   ~61 bar and CO holds another ~30%; the partial
+   pressure then rises to a broad maximum of ~63 bar
+   near 3.6 $\times$ 10$^5$ yr (b, d). H$_2$O begins at only ~4 bar, with
    nearly all water dissolved in the silicate melt (~99.6% interior at the
    start, f), and rises through this phase as the crystallizing mantle
    exsolves it.
@@ -174,14 +174,14 @@ solidifies:
 3. **H$_2$O-dominated phase** (t > ~1.2 $\times$ 10$^6$ yr): H$_2$O overtakes
    CO$_2$ in mole fraction around 1.2 $\times$ 10$^6$ yr (d) and keeps
    rising as the melt crystallizes. It dominates the final atmosphere at
-   ~76 mol% (~280 bar), with CO$_2$ at
-   ~9.7 mol% (~36 bar) and H$_2$ at ~9.6 mol%
-   (~35 bar). The total surface pressure at termination is
+   ~77 mol% (~290 bar), with CO$_2$ at
+   ~10 mol% (~39 bar) and H$_2$ at ~8 mol%
+   (~31 bar). The total surface pressure at termination is
    ~370 bar.
 
 The reduced species CO and H$_2$ are not negligible at IW+2: CO falls from
-~33 bar to ~16 bar (~4 mol% at the end), while H$_2$ climbs
-from ~0.2 bar to ~35 bar as the mantle solidifies. CH$_4$ is negligible.
+~39 bar to ~15 bar (~4 mol% at the end), while H$_2$ climbs
+from ~0.4 bar to ~31 bar as the mantle solidifies. CH$_4$ is negligible.
 
 ### Mantle evolution (e, f)
 
@@ -203,7 +203,7 @@ interior melt (~99.6%) and falls to ~45% at the $\Phi$ = 5% termination.
 Because water is highly incompatible, the shrinking melt stays water-rich
 even at low melt fraction; the remaining water is released to the
 atmosphere only as crystallization completes. CO$_2$ (orange) is far less
-soluble in silicate melt, starting at ~15% interior and dropping
+soluble in silicate melt, starting at ~14% interior and dropping
 to ~0.5%.
 
 ## Next steps
