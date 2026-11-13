@@ -31,7 +31,7 @@ DEFAULTS = SimpleNamespace(cmb_cell_thickness=3000.0, surface_cell_thickness='un
 def _run(tmp_path, radii_m=RUN, time=5000.0):
     """A run directory with one interior snapshot at ``time`` holding ``radii_m``."""
     data = tmp_path / 'data'
-    data.mkdir()
+    data.mkdir(parents=True)
     with nc.Dataset(snapshot_path_for_time(str(data), time, '_int.nc'), 'w') as ds:
         if radii_m is not None:
             ds.createDimension('basic', radii_m.size)

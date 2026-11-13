@@ -3692,6 +3692,7 @@ class _RestoreSolver:
 
     def __init__(self, n_stag):
         self._n_stag = n_stag
+        self._r_basic_flat = np.linspace(3.5e6, 6.371e6, n_stag + 1)
         self._dSdr_cmb_init = -9.0  # a stale override from before the resume
         self.seen = []
 
@@ -4998,7 +4999,7 @@ def test_core_module_resumed_solver_matches_continuous_frozen_profile(tmp_path):
     mock_solver_res.get_state.return_value = _snapshot_output()
     mock_solver_res.get_current_core_temperature.return_value = 5000.0
     mock_solver_res.get_current_dSdr_cmb.return_value = -2e-11
-    mock_solver_res._r_basic_flat = np.linspace(3.48e6, 6.371e6, 21)
+    mock_solver_res._r_basic_flat = np.linspace(3.5e6, 6.371e6, 7)  # the snapshot mesh
     mock_solver_res._P_stag_flat = np.linspace(136e9, 1e5, 20)
     mock_bc_params_res = {}
     mock_solver_res.parameters.boundary_conditions.core_module_params = mock_bc_params_res

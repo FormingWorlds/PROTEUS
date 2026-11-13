@@ -66,6 +66,7 @@ class _LidSolver:
         from aragog.solver.entropy_solver import EntropySolver
 
         self._n_lid, self._S0, self._n_stag = n_lid, None, 6
+        self._r_basic_flat = np.linspace(3.5e6, 6.371e6, 7)  # the mesh of the snapshot
         self._lid_init = self._lid_handover_time = None
         self._real = EntropySolver.set_initial_lid
         self.seen, self.calls = [], []
@@ -241,3 +242,39 @@ def test_restore_of_missing_nan_and_out_of_range_lid_fields(tmp_path):
             log.removeHandler(handler)
 
     check()
+
+
+def test_a_resume_on_another_mesh_stops_before_the_restore(tmp_path):
+    """A solver built on other radii than the snapshot's is refused before the stored lid or
+    the snapshot entropy reach it."""
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.interior_energetics.resume_laws import ResumeSeparationLawError
+
+    out = _snapshot(tmp_path, LIDS[sorted(LIDS)[0]])
+    interior_o = MagicMock()
+    interior_o.aragog_solver = None
+    solver = _LidSolver()
+    solver._r_basic_flat = np.linspace(3.48e6, 6.371e6, 7)  # 20 km lower CMB than the snapshot
+
+    def _setup(config, hf_row, interior_o, outdir, **kw):
+        interior_o.aragog_solver = solver
+
+    def _update(dt, hf_row, interior_o, output_dir=None, hf_all=None):
+        interior_o._last_entropy = np.linspace(3100.0, 3000.0, 6)
+
+    config = MagicMock()
+    config.params.resume = True
+    config.interior_energetics.aragog.core_bc = 'quasi_steady'
+    with (
+        patch.object(AragogRunner, 'setup_solver', side_effect=_setup),
+        patch.object(AragogRunner, 'update_solver', side_effect=_update),
+        patch.object(AragogRunner, '_pending_structure_update', return_value=None),
+        patch.object(AragogRunner, '_maybe_install_jax_cvode_factory'),
+        patch('proteus.interior_energetics.aragog._maybe_log_solver_environment'),
+        patch('proteus.interior_energetics.aragog.check_solver_buoyancy'),
+        pytest.raises(ResumeSeparationLawError, match='bottom cell 478500.0 m'),
+    ):
+        AragogRunner.setup_or_update_solver(
+            config, {'Time': T_SNAP}, interior_o, 100.0, {'output': out}, hf_all=object()
+        )
+    assert solver.calls == []
