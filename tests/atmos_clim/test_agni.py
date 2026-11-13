@@ -1451,9 +1451,13 @@ def test_init_agni_atmos_stops_before_socrates_on_a_file_name_above_132_bytes(
                 init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, io_dir=io_dir)
             assert ctx.fake_agni.last_setup_kwargs is None
             assert ctx.fake_agni.last_allocate_input_star is None
-            assert (ctx.output_dir / 'status').read_text().splitlines()[0] == '22'
+            status = ctx.output_dir / 'status'
+            assert status.is_file() and status.read_text().splitlines()[0] == '22'
         else:
-            init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, io_dir=io_dir)
+            try:
+                init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, io_dir=io_dir)
+            except ValueError as err:
+                pytest.fail(f'{nbytes} bytes, star {star}: {err}')
             assert ctx.fake_agni.last_allocate_input_star == (str(ctx.sflux) if star else '')
             assert not (ctx.output_dir / 'status').exists()
 
