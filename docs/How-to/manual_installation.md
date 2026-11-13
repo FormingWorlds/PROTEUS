@@ -278,7 +278,7 @@ To match what CI runs, which takes atmodeller from PyPI and VULCAN from its clon
 
 ```console
 python -m pip install -e ".[develop,vulcan,atmodeller,inference]"
-bash tools/get_vulcan.sh --force
+bash tools/get_vulcan.sh
 ```
 
 ## 9. Enable pre-commit hooks
