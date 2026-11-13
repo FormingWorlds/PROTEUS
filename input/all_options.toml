@@ -536,7 +536,7 @@ config_version = "3.0"
         phase_boundary_entropy_margin = 200.0    # phase-boundary max_step band [J/kg/K]
         phase_boundary_cap            = "rate"     # phase-boundary max_step policy: "rate" (default) | "fixed"
         rheology.enabled              = false    # temperature- and pressure-dependent solid viscosity; Aragog only
-        rheology.mlt_bottom_slope     = 0.82     # viscous mixing length above the CMB, l = slope (r - r_cmb); in (0, 1]
+        rheology.mlt_bottom_slope     = 1.0      # viscous mixing length above the CMB, l = slope (r - r_cmb); in (0, 1]
         lid_mush_base                 = false    # sub-grid lid with its base at the solidus; needs rheology.enabled and the skin surface of AGNI or the dummy (not fixed_flux), not with prevent_warming
         lid_delta_on                  = "none"   # lid onset thickness [m]; none = solid_cond * surface_d / surface_k (0.02 m for the default skin)
         top_cell_dt_limit             = false    # bound dt by tau_drain (down to dt.minimum * escape.step_dt_floor_frac) and keep T_magma, T_surf, and Phi_global unclipped by tmagma_atol/tmagma_rtol when tau_drain is finite and the step does not exceed tau_drain

@@ -373,7 +373,7 @@ Uses the temperature- and pressure-dependent solid viscosity and the stagnant-li
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | bool | `false` | Use the temperature- and pressure-dependent solid viscosity and the stagnant-lid closure of ``aragog.rheology.SolidRheologyParams``, with its defaults for every other parameter but ``mlt_bottom_slope``. False uses the constant ``solid_log10visc``. |
-| `mlt_bottom_slope` | float or int | `0.82` | Slope of the viscous-branch mixing length above the CMB, l = slope (r - r_cmb), in (0, 1\]. The default 0.82 is the value of Tachinami et al. (2011)[^cite-tachinami2011] (App. A) at which the mixing-length Nusselt number at the base of the mantle matches those of parameterised convection and boundary-layer theory. Read only with ``enabled``. Must be > 0 and <= 1. |
+| `mlt_bottom_slope` | float or int | `1.0` | Slope of the viscous-branch mixing length above the CMB, l = slope (r - r_cmb), in (0, 1\]. The default 1.0 is the slope with which aragog's top slope ``s_top_inf`` was calibrated. Aragog's viscous flux carries a factor 1/18 that the mixing-length flux of Tachinami et al. (2011)[^cite-tachinami2011] (Eq. 13 and 14) does not, so a slope of 1 is a mixing length of 0.49 times the distance in their terms. Read only with ``enabled``. Must be > 0 and <= 1. |
 <!-- END GENERATED: config-table [interior_energetics.aragog.rheology] -->
 
 ### Core evolution `[interior_energetics.aragog.core_module]`

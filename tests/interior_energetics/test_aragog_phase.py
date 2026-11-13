@@ -750,8 +750,11 @@ def test_numpy_setup_solver_site_delegates_to_the_shared_builder():
 
 
 def _rheology_config(enabled):
-    """A config namespace holding only the rheology switch."""
-    aragog = SimpleNamespace(rheology=SimpleNamespace(enabled=enabled, mlt_bottom_slope=0.82))
+    """A config namespace holding the rheology switch and the PROTEUS default slope."""
+    from proteus.config._interior import Rheology
+
+    slope = Rheology().mlt_bottom_slope
+    aragog = SimpleNamespace(rheology=SimpleNamespace(enabled=enabled, mlt_bottom_slope=slope))
     return SimpleNamespace(interior_energetics=SimpleNamespace(aragog=aragog))
 
 
