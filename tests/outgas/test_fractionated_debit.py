@@ -177,9 +177,22 @@ def test_a_balance_that_fails_to_close_raises(monkeypatch):
 
     new, _applied, _g = fd.plan_debit({'H2O': 1.0e18}, {'H': 1.0e16})
     assert new['O2'] > 0.0  # the same debit closes at the real tolerance
-    monkeypatch.setattr(fd, 'CLOSURE_RTOL', -1.0)
-    with pytest.raises(RuntimeError, match='element balance'):
+    # Leftover oxygen booked as one atom per O2 molecule doubles it: off balance.
+    monkeypatch.setitem(fd.OWN_GAS, 'O', ('O2', 1))
+    with pytest.raises(RuntimeError, match='debit fails for O'):
         fd.plan_debit({'H2O': 1.0e18}, {'H': 1.0e16})
+
+
+def test_the_row_key_literals_name_the_published_key():
+    """The row key is written as a literal for the output reference; each copy matches."""
+    import inspect
+    import re
+
+    import proteus.outgas.fractionated_debit as fd
+
+    found = re.findall(r"'(_esc_frozen[^']*)'", inspect.getsource(fd))
+    assert len(found) >= 3
+    assert set(found) == {FROZEN_DEBIT_KEY}
 
 
 def _frozen_row(species_kg, time=5.0e8, p_vol=10.0, p_vap=0.0):
@@ -318,3 +331,122 @@ def test_a_debit_planned_on_another_step_is_discarded_with_a_warning(caplog):
     assert 'Discarded' in caplog.text
     assert row['N2_kg_atm'] == pytest.approx(1.0e19, rel=1e-15)
     assert FROZEN_DEBIT_KEY not in row
+
+
+@pytest.mark.physics_invariant
+def test_hydrogen_held_in_rock_vapour_stays_counted_in_the_atmosphere():
+    """Each volatile element's atmospheric mass drops by its loss, so vapour atoms stay.
+
+    Physical scenario: a water atmosphere of 1e19 kg with 1e17 kg of NaOH
+    vapour over a frozen mantle; the outgassing backend counts the hydrogen
+    and oxygen of the NaOH in the atmospheric H and O columns. Escape takes a
+    fifth of the hydrogen the water holds. Afterwards the H column is the
+    hydrogen of the gases the debit handles plus that of the NaOH, which kept
+    its mass; recounting the volatile gases alone would drop the NaOH share.
+    """
+    row = _frozen_row({'H2O': 1.0e19, 'NaOH': 1.0e17})
+    naoh = {e: 1.0e17 * element_mmw[e] / eval_gas_mmw('NaOH') for e in ('H', 'O')}
+    for e, m in naoh.items():
+        row[f'{e}_kg_atm'] += m
+    h_water = row['H_kg_total']
+    target = {e: row[f'{e}_kg_total'] for e in element_list}
+    target['H'] -= 0.2 * h_water
+    out = plan_frozen_debit(row, target)
+    for e, m in out.items():
+        row[f'{e}_kg_total'] = m
+    apply_frozen_debit(row)
+    gases = _elements({g: row[f'{g}_kg_atm'] for g in gas_list if g in STOICH})
+    assert row['NaOH_kg_atm'] == pytest.approx(1.0e17, rel=1e-15)
+    assert gases['H'] == pytest.approx(0.8 * h_water, rel=1e-9)
+    for e in ('H', 'O'):
+        assert row[f'{e}_kg_atm'] == pytest.approx(gases[e] + naoh[e], rel=1e-9)
+
+
+@pytest.mark.physics_invariant
+def test_noble_gases_stripped_completely_leave_no_negative_total():
+    """A noble gas held only in the atmosphere and stripped ends at zero, not below.
+
+    Physical scenario: frozen atmospheres of N2 with each noble gas at masses
+    spread over six decades, every noble gas lost in full. The planned whole-
+    planet totals are zero or more for every noble gas and every draw.
+    """
+    rng = np.random.default_rng(7)
+    nobles = ['He', 'Ne', 'Ar', 'Kr', 'Xe']
+    for _ in range(200):
+        gases = {'N2': 1.0e19, **{g: 10.0 ** rng.uniform(12.0, 18.0) for g in nobles}}
+        row = _frozen_row(gases)
+        for g in nobles:
+            row[f'{g}_kg_total'] = gases[g]
+        target = {e: row[f'{e}_kg_total'] for e in element_list}
+        target.update({g: 0.0 for g in nobles})
+        out = plan_frozen_debit(row, target)
+        assert min(out[g] for g in nobles) >= 0.0
+        assert max(out[g] for g in nobles) <= 1e-12 * max(gases.values())
+
+
+def _frozen_pxuv_config():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        escape=SimpleNamespace(
+            module='zephyrus', uses_dispatcher=True, reservoir='pxuv', step_max_frac=0.25
+        ),
+        outgas=SimpleNamespace(mass_thresh=1e10, prevent_desaturation=False),
+    )
+
+
+@pytest.mark.physics_invariant
+def test_rock_vapour_is_out_of_the_frozen_step_cap_and_shares():
+    """On a frozen mantle the step cap and the escaping shares count only what can leave.
+
+    Physical scenario: 1e16 kg of water and 1e19 kg of SiO vapour over a
+    frozen mantle, with dispatched rates of 900 kg/s of silicon, 600 kg/s of
+    oxygen, and 1 kg/s of hydrogen. Rock vapour is not eroded, so over 1e3 yr
+    the water loses 1 and 600 kg/s worth of H and O, and the requested 601 kg/s
+    is measured against the 1e16 kg the water holds. Over 2e5 yr the request,
+    0.38 of the water, is capped at a quarter of it, shared 1:600.
+    """
+    from unittest.mock import patch
+
+    from proteus.escape.wrapper import run_escape
+    from proteus.utils.constants import secs_per_year
+
+    def fake(config, hf_row, atmos_o=None, dt=0.0):
+        hf_row.update(esc_rate_Si=900.0, esc_rate_O=600.0, esc_rate_H=1.0)
+        hf_row['esc_rate_total'] = 1501.0
+        return 1501.0
+
+    for dt, capped in ((1.0e3, False), (2.0e5, True)):
+        row = _frozen_row({'H2O': 1.0e16, 'SiO': 1.0e19})
+        row.update({f'esc_rate_{e}': 0.0 for e in element_list})
+        si = 1.0e19 * element_mmw['Si'] / eval_gas_mmw('SiO')
+        row['Si_kg_atm'] = row['Si_kg_total'] = si
+        before = {e: row[f'{e}_kg_total'] for e in ('H', 'O')}
+        with patch('proteus.escape.dispatcher.run_dispatcher', side_effect=fake):
+            run_escape(_frozen_pxuv_config(), row, dt=dt, atmosphere_only=True)
+        requested = 601.0 * secs_per_year * dt
+        assert row['esc_clamp_frac'] == pytest.approx(requested / 1.0e16, rel=1e-9)
+        lost = 0.25 * 1.0e16 if capped else requested
+        assert before['H'] - row['H_kg_total'] == pytest.approx(lost / 601.0, rel=1e-9)
+        assert before['O'] - row['O_kg_total'] == pytest.approx(lost * 600.0 / 601.0, rel=1e-9)
+        assert row['Si_kg_total'] == pytest.approx(si, rel=1e-15)
+        assert row['esc_step_kg'] == pytest.approx(lost, rel=1e-9)
+
+
+def test_a_molten_step_drops_a_frozen_plan_left_on_the_row():
+    """A plan left on the row by an earlier frozen step is cleared by the next escape step."""
+    from unittest.mock import patch
+
+    from proteus.escape.wrapper import run_escape
+
+    def fake(config, hf_row, atmos_o=None, dt=0.0):
+        hf_row['esc_rate_total'] = hf_row['esc_rate_H'] = 1.0
+        return 1.0
+
+    row = _frozen_row({'H2O': 1.0e19})
+    row.update({f'esc_rate_{e}': 0.0 for e in element_list})
+    row[FROZEN_DEBIT_KEY] = {'Time': row['Time'], 'kg': {'H2O': 0.0}, 'graphite_kg': 0.0}
+    with patch('proteus.escape.dispatcher.run_dispatcher', side_effect=fake):
+        run_escape(_frozen_pxuv_config(), row, dt=1.0, atmosphere_only=False)
+    assert FROZEN_DEBIT_KEY not in row
+    assert row['H_kg_total'] < row['H_kg_atm']

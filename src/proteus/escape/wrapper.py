@@ -7,7 +7,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.escape.common import calc_unfract_fluxes
-from proteus.utils.constants import M_sun, element_list, noble_gases, secs_per_year
+from proteus.utils.constants import (
+    M_sun,
+    element_list,
+    noble_gases,
+    secs_per_year,
+    vap_element_list,
+)
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -71,7 +77,12 @@ def reservoir_mass(hf_row: dict, element: str, key: str, config: Config | None =
     return max(0.0, mass - unreachable_mass(hf_row, element, config))
 
 
-def escapable_mass(hf_row: dict, reservoir: str, config: Config | None = None) -> float:
+def escapable_mass(
+    hf_row: dict,
+    reservoir: str,
+    config: Config | None = None,
+    elements: list[str] | None = None,
+) -> float:
     """Return the mass escape can draw on this step [kg].
 
     Parameters
@@ -84,6 +95,8 @@ def escapable_mass(hf_row: dict, reservoir: str, config: Config | None = None) -
             Run configuration; with ``outgas.prevent_desaturation`` on, condensed
             mass is excluded from what escape can reach. None excludes only
             trapped mass.
+        elements : list of str or None
+            Elements escape can remove; None means all of them.
 
     Returns
     -------
@@ -91,7 +104,8 @@ def escapable_mass(hf_row: dict, reservoir: str, config: Config | None = None) -
             Summed elemental mass held in that reservoir [kg].
     """
     key = reservoir_key(reservoir)
-    return float(sum(reservoir_mass(hf_row, e, key, config) for e in element_list))
+    elements = element_list if elements is None else elements
+    return float(sum(reservoir_mass(hf_row, e, key, config) for e in elements))
 
 
 def readable_total(hf_row: dict) -> float:
@@ -126,6 +140,7 @@ def limit_escape_step(
     max_frac: float = ESCAPE_STEP_MAX_FRAC,
     min_thresh: float = 0.0,
     config: Config | None = None,
+    elements: list[str] | None = None,
 ) -> float:
     """Cap the mass a single escape step may remove, and record what it asked for.
 
@@ -152,6 +167,9 @@ def limit_escape_step(
             Run configuration; with ``outgas.prevent_desaturation`` on, condensed
             mass is excluded from what escape can reach. None excludes only
             trapped mass.
+        elements : list of str or None
+            Elements escape can remove. None means all of them, and the request
+            is the bulk rate; otherwise it is the sum of their rates.
 
     Returns
     -------
@@ -159,12 +177,20 @@ def limit_escape_step(
             Mass to remove over this step [kg], capped at ``max_frac`` of the
             reservoir.
     """
-    requested = float(hf_row.get('esc_rate_total', 0.0)) * secs_per_year * float(dt)
+    if elements is None:
+        rate = float(hf_row.get('esc_rate_total', 0.0))
+    else:
+        rate = sum(
+            max(0.0, float(hf_row.get(f'esc_rate_{e}', 0.0)))
+            for e in element_list
+            if e in elements
+        )
+    requested = rate * secs_per_year * float(dt)
     if not np.isfinite(requested) or requested <= 0.0:
         hf_row['esc_clamp_frac'] = 0.0
         return 0.0
 
-    escapable = escapable_mass(hf_row, reservoir, config)
+    escapable = escapable_mass(hf_row, reservoir, config, elements)
     if not np.isfinite(escapable):
         # An upstream failure has left the reservoir unreadable. Sizing a loss
         # against it would spread the non-finite value through every inventory.
@@ -389,6 +415,10 @@ def run_escape(
     reservoir = config.escape.reservoir
     if atmosphere_only and reservoir != 'pxuv':
         reservoir = 'outgas'
+    # The frozen per-element debit cannot erode rock vapour, so the cap and the
+    # escaping fractions see the elements it can remove.
+    frozen_pxuv = atmosphere_only and reservoir == 'pxuv'
+    elements = [e for e in element_list if e not in vap_element_list] if frozen_pxuv else None
 
     max_frac = float(config.escape.step_max_frac)
 
@@ -400,6 +430,7 @@ def run_escape(
         max_frac=max_frac,
         min_thresh=config.outgas.mass_thresh,
         config=config,
+        elements=elements,
     )
 
     # Ask the interior for a shorter next step when the cap bound this one, so
@@ -421,11 +452,12 @@ def run_escape(
         esc_mass=esc_step_kg,
         floor=not (atmosphere_only or remelt_returned_mass(hf_row)),
         config=config,
+        elements=elements,
     )
 
     # A frozen atmosphere loses each element from its own gases.
     clear_frozen_debit(hf_row)
-    if atmosphere_only and reservoir == 'pxuv':
+    if frozen_pxuv:
         solvevol_target = plan_frozen_debit(hf_row, solvevol_target)
 
     # store new elemental inventories
@@ -620,6 +652,7 @@ def calc_new_elements(
     esc_mass: float | None = None,
     floor: bool = True,
     config: Config | None = None,
+    elements: list[str] | None = None,
 ):
     """Calculate new elemental inventory based on escape rate.
 
@@ -654,6 +687,10 @@ def calc_new_elements(
             Run configuration; with ``outgas.prevent_desaturation`` on, condensed
             mass is excluded from what escape can reach. None excludes only
             trapped mass.
+        elements : list of str or None
+            Elements escape can remove; None means all of them. The others keep
+            their inventory and are absent from the result, and the escaping
+            fractions are shared out over these alone.
 
     Returns
     -------
@@ -674,8 +711,9 @@ def calc_new_elements(
     # the planetary O budget responds to escape (CALLIOPE's next call
     # may overwrite O_kg_total, but the bulk MLR is now attributed to
     # all elements proportionally rather than concentrated on H+C+N+S).
+    elements = element_list if elements is None else elements
     res: dict[str, float] = {}
-    for e in element_list:
+    for e in elements:
         res[e] = reservoir_mass(hf_row, e, key, config)
 
     M_vols = float(sum(res.values()))
@@ -690,10 +728,10 @@ def calc_new_elements(
             'Volatile reservoir is not finite in the escape calculation, so no '
             'inventory is debited this step; the reservoir needs checking.'
         )
-        return {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list}
+        return {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in elements}
     if M_vols < min_thresh:
         log.debug('Total mass of volatiles below threshold in escape calculation')
-        return {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list}
+        return {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in elements}
 
     # compute mass ratios in escaping reservoir.
     # With `outgas.vapourise=True` the rock-forming elements can take a share of

@@ -204,6 +204,10 @@ def test_without_a_solved_column_escape_reads_an_isothermal_one():
     assert escape_profile(_config(), empty, None)[0] is None
     thin = dict(row, P_surf=1e-12)  # below the 1e-10 bar top
     assert escape_profile(_config(), thin, None)[0] is None
+    at_top = dict(row, P_surf=1e-10)  # at the top: no column either
+    assert escape_profile(_config(), at_top, None)[0] is None
+    above = escape_profile(_config(), dict(row, P_surf=1.1e-10), None)[0]
+    assert above.p[0] == pytest.approx(1.1e-5, rel=1e-12)
 
 
 def test_column_source_is_recorded():
@@ -216,6 +220,11 @@ def test_column_source_is_recorded():
     _, fresh = escape_profile(_config(), row, _atmos(row, current=True))
     _, kept = escape_profile(_config(), row, _atmos(row, current=False))
     assert (fresh, kept) == (PROFILE_SOLVE, PROFILE_KEPT)
+    # The helpfile codes are part of the output record; 0 means not set.
+    assert (PROFILE_SOLVE, PROFILE_KEPT, PROFILE_ISOTHERMAL) == (1, 2, 3)
+
+    run_dispatcher(_config(), row, atmos_o=_atmos(row, current=True), dt=1.0)
+    assert row['esc_profile_source'] == pytest.approx(1.0, rel=0.0, abs=0.0)
 
     run_dispatcher(_config(), row, atmos_o=_atmos(row, current=False), dt=1.0)
     assert row['esc_profile_source'] == PROFILE_KEPT
@@ -479,11 +488,128 @@ def test_no_atmosphere_or_a_broken_flux_means_no_escape_this_step(caplog):
     assert thin['esc_rate_total'] == 0.0 and thin['esc_rate_H'] == 0.0
     assert (thin['esc_regime'], thin['esc_profile_source']) == (0.0, 0.0)
     for key in ('F_xuv', 'F_ins', 'F_int'):
-        broken = dict(_row(), **{key: float('nan')})
-        with caplog.at_level(logging.WARNING):
-            assert run_dispatcher(config, broken, atmos_o=_atmos(_row()), dt=1.0) == 0.0
-        assert key in caplog.text
-        assert broken['esc_rate_total'] == 0.0
-        caplog.clear()
+        for bad in (float('nan'), float('inf')):
+            broken = dict(_row(), **{key: bad})
+            with caplog.at_level(logging.WARNING):
+                assert run_dispatcher(config, broken, atmos_o=_atmos(_row()), dt=1.0) == 0.0
+            assert key in caplog.text
+            assert broken['esc_rate_total'] == 0.0
+            caplog.clear()
     # A finite row escapes, so the zeros above are the guard and not the planet.
     assert run_dispatcher(config, _row(), atmos_o=_atmos(_row()), dt=1.0) > 1.0
+
+
+def test_a_skipped_step_leaves_no_diagnostic_of_the_step_before():
+    """A step without escape reads as not evaluated, not as the previous verdict.
+
+    Physical scenario: the 5 Earth-mass H2-He planet escapes on one step, and
+    on the next its surface pressure has fallen below the column top. The
+    rates are zero, every dispatcher diagnostic reads -1, the base clamp reads
+    0, the regime memory is cleared, and the wind base sits at the surface as
+    under the dummy module.
+    """
+    row = _row()
+    run_dispatcher(_config(), row, atmos_o=_atmos(row), dt=1.0)
+    assert row['esc_rate_branch'] > 0.0 and row['esc_lambda'] > 0.0
+    row['P_surf'] = 1e-12
+    run_dispatcher(_config(), row, atmos_o=None, dt=1.0)
+    for key in (
+        'esc_kn_sonic',
+        'esc_lambda',
+        'esc_T_exo',
+        'esc_T_esc_neutral',
+        'esc_T_esc_plasma',
+        'esc_f_ion_exo',
+    ):
+        assert row[key] == pytest.approx(-1.0, rel=0.0, abs=0.0), key
+    assert (row['esc_base_clamp_dex'], row['esc_rate_branch'], row['esc_regime']) == (0, 0, 0)
+    assert row['p_xuv'] == pytest.approx(1e-12, rel=1e-15)
+    assert row['R_xuv'] == row['R_int']
+
+
+def _mars_row():
+    """Mars-mass planet with a thin hot H2 envelope, unbound at its surface."""
+    row = _row(F_xuv=1.0, T_eqm=1500.0)
+    row.update(
+        M_planet=0.107 * M_EARTH,
+        R_int=0.532 * R_EARTH,
+        semimajorax=0.03 * AU,
+        P_surf=0.05,
+        H2_vmr=1.0,
+        He_vmr=0.0,
+        H_kg_atm=1.0e16,
+        He_kg_atm=0.0,
+    )
+    return row
+
+
+@pytest.mark.physics_invariant
+def test_an_envelope_unbound_at_the_surface_boils_off():
+    """An H2 envelope whose surface Jeans parameter is about 2 gets a boil-off verdict.
+
+    Physical scenario: 0.05 bar of H2 at 1500 K on a Mars-mass planet
+    (0.107 Earth masses, 0.532 Earth radii), whose surface Jeans parameter
+    G M mu / (k T R) is 2.03, below the 2.2 at which the bound isothermal
+    stand-in stops. The stand-in follows the closed-form isothermal column out
+    to twice the surface radius, and the dispatcher labels it boil-off. The
+    rate is set at the launch level, so a column stopped at 0.8 of the surface
+    Jeans parameter instead gives the same rate.
+    """
+    from types import SimpleNamespace
+
+    from zephyrus.constants import G, amu, kb
+
+    row = _mars_row()
+    profile, source = escape_profile(_config(), row, None)
+    assert source == PROFILE_ISOTHERMAL
+    assert profile.r[-1] == pytest.approx(2.0 * row['R_int'], rel=1e-9)
+    mdot = run_dispatcher(_config(), row, atmos_o=None, dt=1.0)
+    assert row['esc_regime'] == REGIME_CODES['boiloff']
+    assert mdot > 1.0e10
+
+    mu = 2.016 * amu
+    lam = G * row['M_planet'] * mu / (kb * 1500.0 * row['R_int'])
+    assert lam == pytest.approx(2.03, abs=0.01)
+    depth = np.linspace(0.0, 0.8 * lam, 12)
+    r = 1.0 / (1.0 / row['R_int'] - kb * 1500.0 / (G * row['M_planet'] * mu) * depth)
+    col = {
+        'p': 5.0e3 * np.exp(-depth),
+        'r': r,
+        'T': np.full(12, 1500.0),
+        'vmr': {'H2': np.ones(12)},
+    }
+    other = SimpleNamespace(escape_profile=col, escape_profile_current=True)
+    assert run_dispatcher(_config(), _mars_row(), atmos_o=other, dt=1.0) == pytest.approx(
+        mdot, rel=1e-9
+    )
+
+
+def test_a_stand_in_failure_other_than_unbound_is_raised(monkeypatch):
+    """Only the unbound case falls back to the short column; other errors surface."""
+    import zephyrus.profiles
+
+    def broken(*args, **kwargs):
+        raise ValueError('composition is empty')
+
+    assert escape_profile(_config(), _row(), None)[1] == PROFILE_ISOTHERMAL
+    monkeypatch.setattr(zephyrus.profiles, 'isothermal_profile', broken)
+    with pytest.raises(ValueError, match='composition is empty'):
+        escape_profile(_config(), _row(), None)
+
+
+def test_every_gas_proteus_tracks_has_a_mass_in_zephyrus():
+    """The dispatcher reads every PROTEUS gas; ZEPHYRUS must know its mass.
+
+    ZEPHYRUS gives neon and argon the 20Ne and 36Ar masses of a primordial
+    inventory, by its own convention; every other gas carries the standard
+    atomic weights PROTEUS uses.
+    """
+    from zephyrus.composition import species_mass_amu
+
+    from proteus.utils.helper import eval_gas_mmw
+
+    isotopic = {'Ne': 19.992, 'Ar': 35.968}
+    assert set(isotopic) <= set(gas_list)
+    for g in gas_list:
+        expected = isotopic.get(g, eval_gas_mmw(g) * 1e3)
+        assert species_mass_amu(g) == pytest.approx(expected, rel=2e-3), g

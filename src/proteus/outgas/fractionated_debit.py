@@ -29,11 +29,7 @@ import logging
 
 import numpy as np
 
-from proteus.outgas.common import (
-    VOLATILE_ELEMENT_STOICH,
-    element_masses_from_species,
-    set_element_ratios,
-)
+from proteus.outgas.common import VOLATILE_ELEMENT_STOICH, set_element_ratios
 from proteus.utils.constants import (
     element_list,
     element_mmw,
@@ -197,10 +193,12 @@ def plan_frozen_debit(hf_row: dict, target: dict) -> dict:
     out = dict(target)
     for e in element_list:
         if e in losses:
-            out[e] = totals[e] - applied.get(e, 0.0)
+            # Clamped against round-off when an element held only in the gas is stripped.
+            out[e] = max(0.0, totals[e] - applied.get(e, 0.0))
     hf_row['_esc_frozen_atm_kg'] = {
         'Time': float(hf_row.get('Time', 0.0)),
         'kg': new_kg,
+        'applied_kg': applied,
         'graphite_kg': graphite,
     }
     return out
@@ -211,9 +209,12 @@ def apply_frozen_debit(hf_row: dict) -> None:
 
     Mixing ratios, partial pressures and the mean molecular weight follow the
     new composition, and the volatile pressure scales with the volatile column
-    mass. Carbon left without a partner gas is added to the condensed graphite
-    and to ``esc_graphite_kg``, which escape cannot reach. Rock vapours keep
-    their masses. A debit planned on another step is discarded with a warning.
+    mass. Each volatile element's atmospheric mass drops by its applied loss
+    (carbon also by the graphite), so atoms the outgassing backend counts in
+    rock vapours stay counted. Carbon left without a partner gas is added to
+    the condensed graphite and to ``esc_graphite_kg``, which escape cannot
+    reach. Rock vapours keep their masses. A debit planned on another step is
+    discarded with a warning.
     """
     debit = hf_row.pop('_esc_frozen_atm_kg', None)
     if debit is None:
@@ -241,10 +242,11 @@ def apply_frozen_debit(hf_row: dict) -> None:
         hf_row[f'{g}_mol_atm'] = mol[g]
         hf_row[f'{g}_vmr'] = x
         hf_row[f'{g}_bar'] = x * hf_row['P_surf']
-    masses = element_masses_from_species({g: kg[g] for g in vol_gas_list})
-    for e in vol_element_list:
-        hf_row[f'{e}_kg_atm'] = masses.get(e, 0.0)
     graphite = float(debit.get('graphite_kg', 0.0))
+    applied = debit.get('applied_kg', {})
+    for e in vol_element_list:
+        drop = float(applied.get(e, 0.0)) + (graphite if e == 'C' else 0.0)
+        hf_row[f'{e}_kg_atm'] = max(0.0, float(hf_row.get(f'{e}_kg_atm', 0.0)) - drop)
     if graphite > 0.0:
         hf_row['C_kg_condensed'] = float(hf_row.get('C_kg_condensed', 0.0)) + graphite
         hf_row['C_cd_kg'] = float(hf_row.get('C_cd_kg', 0.0)) + graphite

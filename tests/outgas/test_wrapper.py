@@ -2369,14 +2369,21 @@ def test_run_crystallized_pxuv_applies_only_this_steps_debit():
         }
     )
     new_kg = {'H2O': 60.0, 'CO2': 30.0, 'O2': 5.0}
+    # Element columns of the old gases, carbon including the 2 kg the debit condenses.
+    h_w, o_w, c_c, o_c = 2 * 1.008 / 18.015, 15.999 / 18.015, 12.011 / 44.009, 31.998 / 44.009
+    base.update(
+        H_kg_atm=100.0 * h_w, O_kg_atm=100.0 * o_w + 30.0 * o_c, C_kg_atm=30.0 * c_c + 2.0
+    )
+    applied = {'H': 40.0 * h_w, 'O': 40.0 * o_w - 5.0, 'C': 0.0}
+    debit = {'kg': new_kg, 'applied_kg': applied}
 
-    stale = dict(base, **{ATM_DEBIT_KEY: {'Time': 1.0e8, 'kg': new_kg, 'graphite_kg': 0.0}})
+    stale = dict(base, **{ATM_DEBIT_KEY: {'Time': 1.0e8, 'graphite_kg': 0.0, **debit}})
     run_crystallized(_cryst_cfg('pxuv'), stale, 1.0)
     assert stale['M_atm'] == pytest.approx(130.0, rel=1e-12)
     assert stale['H2O_kg_atm'] == pytest.approx(100.0, rel=1e-12)
     assert ATM_DEBIT_KEY not in stale
 
-    row = dict(base, **{ATM_DEBIT_KEY: {'Time': 2.0e8, 'kg': new_kg, 'graphite_kg': 2.0}})
+    row = dict(base, **{ATM_DEBIT_KEY: {'Time': 2.0e8, 'graphite_kg': 2.0, **debit}})
     run_crystallized(_cryst_cfg('pxuv'), row, 1.0)
     assert row['M_atm'] == pytest.approx(95.0, rel=1e-12)
     assert row['M_vol_atm'] == pytest.approx(sum(row[f'{g}_kg_atm'] for g in gas_list))
@@ -2388,8 +2395,10 @@ def test_run_crystallized_pxuv_applies_only_this_steps_debit():
     )
     assert row['C_kg_condensed'] == pytest.approx(2.0, rel=1e-12)
     assert row['C_cd_kg'] == pytest.approx(2.0, rel=1e-12)
-    # The hydrogen mass of the atmosphere is that of 60 kg of water.
-    assert row['H_kg_atm'] == pytest.approx(60.0 * 2 * 1.008 / 18.015, rel=2e-3)
+    # The element columns are those of the new gases: the graphite left the carbon one.
+    assert row['H_kg_atm'] == pytest.approx(60.0 * h_w, rel=1e-12)
+    assert row['O_kg_atm'] == pytest.approx(60.0 * o_w + 30.0 * o_c + 5.0, rel=1e-12)
+    assert row['C_kg_atm'] == pytest.approx(30.0 * c_c, rel=1e-12)
 
 
 @pytest.mark.unit

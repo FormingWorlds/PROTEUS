@@ -330,7 +330,10 @@ column of the last converged one for escape, and the helpfile column
 `esc_profile_source` records which column each escape step read (1 the latest
 solve, 2 an earlier converged one, 3 an isothermal column at the equilibrium
 temperature, used with the dummy atmosphere, under AGNI's transparent mode, and
-before the first converged solve).
+before the first converged solve). An envelope already unbound at its surface,
+with a Jeans parameter below 2.2, gets a short isothermal column out to twice
+the surface radius instead, on which the dispatcher reads boil-off. A step on
+which escape does not run writes -1 to the regime diagnostics.
 
 When the atmosphere solve does not converge, PROTEUS therefore substitutes the
 radius, pressure, temperature and gravity of both levels ($R_\mathrm{obs}$,

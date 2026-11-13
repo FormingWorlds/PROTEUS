@@ -23,7 +23,7 @@ This page checks `src/proteus/outgas/fractionated_debit.py`, which removes escap
 
 **Why it matters.** Oxygen that builds up as hydrogen escapes is the main way escape changes the composition of a secondary atmosphere after the magma ocean has frozen.
 
-**Known limit.** The debit applies stoichiometry, without chemistry. Leftover atoms form O2, H2, N2, and S2, and leftover carbon pairs with oxygen into CO and with hydrogen into CH4, or condenses as graphite. Equilibrium chemistry could prefer other gases, such as CO2 or H2O from the O2 and H2 that the debit forms. Rock vapours keep their masses.
+**Known limit.** The debit applies stoichiometry, without chemistry. Leftover atoms form O2, H2, N2, and S2, and leftover carbon pairs with oxygen into CO and with hydrogen into CH4, or condenses as graphite. Equilibrium chemistry could prefer other gases, such as CO2 or H2O from the O2 and H2 that the debit forms. Rock vapours keep their masses, so the escaping share of the rock-forming elements is not taken, and the step cap counts only the elements the gases can lose.
 
 ![Water and O2 masses after the loss of a share of the hydrogen](../../assets/validation/outgas_fractionated_debit_water.svg#only-light){ width="80%" }
 ![Water and O2 masses after the loss of a share of the hydrogen](../../assets/validation/outgas_fractionated_debit_water_dark.svg#only-dark){ width="80%" }

@@ -1566,3 +1566,22 @@ def test_graphite_left_by_escape_is_beyond_reach_whatever_desaturation_says():
     assert escapable_inventory(row_h, 'H', off) == pytest.approx(5.0e17, rel=1e-12)
     row['esc_graphite_kg'] = float('nan')
     assert escapable_inventory(row, 'C', off) == pytest.approx(4.0e18, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_graphite_a_remelt_returned_to_the_gas_is_reachable_again():
+    """Graphite counts as unreachable only while carbon is still condensed.
+
+    Physical scenario: escape left 1e18 kg of graphite on a frozen planet
+    holding 4e18 kg of carbon, and an impact remelt then returned the
+    condensed carbon to the gas (C_kg_condensed = 0). All 4e18 kg is within
+    reach again; with 5e17 kg still condensed, only that much is held. An
+    unreadable condensed column does not let the graphite record count.
+    """
+    off = SimpleNamespace(outgas=SimpleNamespace(prevent_desaturation=False))
+    row = {'C_kg_total': 4.0e18, 'C_kg_condensed': 0.0, 'esc_graphite_kg': 1.0e18}
+    assert escapable_inventory(row, 'C', off) == pytest.approx(4.0e18, rel=1e-12)
+    row['C_kg_condensed'] = 5.0e17
+    assert escapable_inventory(row, 'C', off) == pytest.approx(3.5e18, rel=1e-12)
+    row['C_kg_condensed'] = float('nan')
+    assert escapable_inventory(row, 'C', off) == pytest.approx(4.0e18, rel=1e-12)

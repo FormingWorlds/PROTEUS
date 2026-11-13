@@ -100,13 +100,37 @@ def _mean_particle_mass(vmr: dict, n_levels: int):
     return weighted / total
 
 
+def _unbound_column(M_p, R_p, T, composition, p_surf, p_top, n_levels=20):
+    """Isothermal column of an envelope unbound at its surface, out to twice the surface radius.
+
+    Integrates the same hydrostatic balance as the bound stand-in, in closed
+    form, ``1/r = 1/R_p - (k T / G M mu) ln(p_surf / p)``, and stops where the
+    Jeans parameter has halved (or at ``p_top``). The dispatcher reads the
+    surface Jeans parameter, well below the boil-off threshold, and gives a
+    boil-off verdict whose rate does not depend on where the column stops.
+    """
+    from zephyrus.composition import species_mass_amu
+    from zephyrus.constants import G, amu, kb
+
+    tot = sum(composition.values())
+    mu = sum(x * species_mass_amu(g) for g, x in composition.items()) / tot * amu
+    lam = G * M_p * mu / (kb * T * R_p)
+    depth = np.linspace(0.0, min(0.5 * lam, math.log(p_surf / p_top)), n_levels)
+    r = 1.0 / (1.0 / R_p - kb * T / (G * M_p * mu) * depth)
+    vmr = {g: np.full(n_levels, x / tot) for g, x in composition.items()}
+    return {'p': p_surf * np.exp(-depth), 'r': r, 'T': np.full(n_levels, float(T)), 'vmr': vmr}
+
+
 def _isothermal_column(config: Config, hf_row: dict) -> dict | None:
     """Isothermal column at the equilibrium temperature, from the surface to ``p_top``.
 
     The stand-in for an atmosphere backend with no column of its own, for a
     climate solve that left none (AGNI's transparent mode), and for the first
-    escape step of a resumed run. None when the surface pressure does not
-    exceed ``p_top`` or the atmosphere holds no gas.
+    escape step of a resumed run. Its temperature is ``T_eqm``, the planet's
+    radiative equilibrium, rather than a skin temperature: the stand-in is the
+    whole column, not its top. An envelope already unbound at the surface gets
+    the short column of :func:`_unbound_column`. None when the surface pressure
+    does not exceed ``p_top`` or the atmosphere holds no gas.
     """
     from zephyrus.profiles import isothermal_profile
 
@@ -118,14 +142,21 @@ def _isothermal_column(config: Config, hf_row: dict) -> dict | None:
     p_surf, p_top = float(hf_row.get('P_surf', 0.0)), float(config.atmos_clim.p_top)
     if not composition or not np.isfinite(p_surf) or p_surf <= p_top:
         return None
-    prof = isothermal_profile(
+    args = (
         float(hf_row['M_planet']),
         float(hf_row['R_int']),
         float(hf_row['T_eqm']),
         composition,
-        float(hf_row['P_surf']) * 1e5,
-        float(config.atmos_clim.p_top) * 1e5,
+        p_surf * 1e5,
+        p_top * 1e5,
     )
+    try:
+        prof = isothermal_profile(*args)
+    except ValueError as exc:
+        if 'unbound' not in str(exc):
+            raise
+        log.warning('Isothermal stand-in unbound at the surface: short column to 2 R_int')
+        return _unbound_column(*args)
     return {'p': prof.p, 'r': prof.r, 'T': prof.T, 'vmr': prof.vmr}
 
 
@@ -253,12 +284,28 @@ def store_result(hf_row: dict, result, source: int) -> None:
 
 
 def _no_escape(hf_row: dict) -> float:
-    """Record a step without escape: zero rates and no dispatcher verdict."""
+    """Record a step without escape: zero rates and no dispatcher verdict.
+
+    The diagnostics read as not evaluated and the wind base sits at the
+    surface, as under the dummy module, so nothing of an earlier step is left
+    beside the zero rate. The regime memory is cleared with them.
+    """
     hf_row['esc_rate_total'] = 0.0
     for e in element_list:
         hf_row[f'esc_rate_{e}'] = 0.0
-    for key in ('esc_regime', 'esc_rate_branch', 'esc_profile_source'):
+    for key in ('esc_regime', 'esc_rate_branch', 'esc_profile_source', 'esc_base_clamp_dex'):
         hf_row[key] = 0.0
+    for key in (
+        'esc_kn_sonic',
+        'esc_lambda',
+        'esc_T_exo',
+        'esc_T_esc_neutral',
+        'esc_T_esc_plasma',
+        'esc_f_ion_exo',
+    ):
+        hf_row[key] = NOT_EVALUATED
+    hf_row['p_xuv'] = float(hf_row.get('P_surf', 0.0))
+    hf_row['R_xuv'] = float(hf_row.get('R_int', 0.0))
     return 0.0
 
 
@@ -318,5 +365,5 @@ def run_dispatcher(
     if source == PROFILE_KEPT:
         log.warning('Escape read the atmosphere column of an earlier converged solve')
     elif source == PROFILE_ISOTHERMAL and config.atmos_clim.module != 'dummy':
-        log.warning('Escape read an isothermal column: no converged atmosphere column yet')
+        log.warning('Escape read an isothermal stand-in: the climate solve left no column')
     return float(result.mdot)
