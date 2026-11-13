@@ -104,6 +104,7 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
         'outgas.fO2_shift_IW',
         *gen.PROTOCOL_STOP,
         *gen.RUN_SETTINGS,
+        *gen.PROTOCOL_ESCAPE,
     }
     assert set(gen.case_deltas('earth')) == nominal
     assert set(gen.case_deltas('venus')) == nominal
@@ -463,3 +464,23 @@ def test_readme_and_page_name_the_stall_and_iteration_limits_of_the_configs():
         for c in cfgs
     }
     assert loaded == {(True, 150, 1000000)}
+
+
+def test_every_chili_config_runs_energy_limited_escape():
+    """The 5 cases and the 9 grid configs use the escape of the submitted runs.
+
+    The submitted CHILI runs used energy-limited escape split by atmospheric
+    abundance, clipped at the Hill radius and without the tidal factor. The
+    PROTEUS default is the ZEPHYRUS dispatcher, which differs in all four, so
+    each config states the energy-limited scheme and resolves to that split.
+    """
+    gen = _load_generator()
+    assert gen.PROTOCOL_ESCAPE['escape.zephyrus.scheme'] == 'el'
+    files = [REPO / 'input' / 'chili' / 'intercomp' / f'{n}.toml' for n in gen.CASE_DELTAS]
+    files += sorted((REPO / 'input' / 'tutorials' / 'chili_grid').glob('earth_H*_C*.toml'))
+    assert len(files) == 14
+    for path in files:
+        esc = _read_config(str(path)).escape
+        assert esc.zephyrus.scheme == 'el', path.name
+        assert (esc.reservoir, esc.hill_clamp, esc.zephyrus.tidal) == ('outgas', True, False)
+        assert esc.uses_dispatcher is False, path.name

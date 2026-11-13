@@ -550,12 +550,10 @@ config_version = "3.0"
 # Atmospheric escape
 [escape]
     module                    = "zephyrus"   # zephyrus | dummy
-    reservoir                 = "outgas"     # reservoir setting escaping composition
 
     [escape.zephyrus]
         Pxuv                  = 5e-5         # XUV opacity pressure level [bar]
         efficiency            = 0.1          # escape efficiency
-        tidal                 = false        # tidal contribution
 
     [escape.dummy]
         rate                  = 0.0          # bulk escape rate [kg s-1]

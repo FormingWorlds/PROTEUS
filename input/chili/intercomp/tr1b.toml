@@ -141,5 +141,10 @@ config_version = "3.0"
 
 [escape]
     module = "none"
+    reservoir = "outgas"
+    hill_clamp = true
+
     [escape.zephyrus]
         efficiency = 0.3
+        scheme = "el"
+        tidal = false

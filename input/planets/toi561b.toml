@@ -143,6 +143,7 @@ reservoir = "outgas"
 hill_clamp = false
 
 [escape.zephyrus]
+scheme = "el"
 Pxuv = 0.01
 efficiency = 0.001
 tidal = false

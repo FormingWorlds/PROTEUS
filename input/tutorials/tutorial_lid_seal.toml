@@ -53,3 +53,6 @@ config_version = "3.0"
     [outgas.lid_seal]
         enabled = true
         tau_leak = 1.0e5             # [yr]; delta_close stays at its default, 10 km
+
+[escape.zephyrus]
+    scheme = "el"                    # energy-limited escape, split by atmospheric abundance

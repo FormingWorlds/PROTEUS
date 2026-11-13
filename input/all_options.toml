@@ -812,16 +812,41 @@ config_version = "3.0"
 # Atmospheric escape
 [escape]
     module                    = "zephyrus"   # zephyrus | dummy | boreas | none
-    reservoir                 = "outgas"     # reservoir setting escaping composition
-    hill_clamp                = true         # limit the XUV level to the Hill radius
+    reservoir                 = "none"       # escaping composition: pxuv | outgas | bulk; none: pxuv under the dispatcher, outgas otherwise
+    hill_clamp                = "none"       # limit the XUV level to the Hill radius: true | false; none: off under the dispatcher, on otherwise
     hill_clamp_frac           = 1.0          # fraction of the Hill radius used as that limit
     step_max_frac             = 0.25         # largest share of the reservoir one step may remove
     step_dt_floor_frac        = 1e-3         # how far below dt.minimum a capped step may shorten the next
 
     [escape.zephyrus]
-        Pxuv                  = 5e-5         # XUV opacity pressure level [bar]
+        scheme                = "dispatcher" # dispatcher (escape regime per state) | el (energy-limited)
+        Pxuv                  = 5e-5         # XUV opacity pressure level [bar], for el and base_method = fixed_pressure
         efficiency            = 0.1          # escape efficiency
-        tidal                 = false        # tidal contribution
+        tidal                 = "none"       # tidal reduction of the escape barrier: true | false; none: on under the dispatcher, off under el
+        base_method           = "lopez"      # dispatcher wind base: lopez | fixed_pressure
+        base_out_of_range     = "clamp"      # wind base above the profile top: clamp | extend
+        P_photo               = 0.02         # photospheric level [bar]
+        kappa_photo           = 1e-2         # grey photospheric opacity [m2 kg-1]
+        kn_crit               = 1.0          # sonic-point Knudsen number of the hydrodynamic/hydrostatic switch
+        kn_hysteresis         = 1.5          # widening of that threshold on the side of the previous step; 1 = none
+        gate                  = "neutral"    # exosphere stability test: neutral | plasma
+        efficiency_mode       = "fixed"      # fixed | caldiroli
+        T_exo_mode            = "prescribed" # exobase temperature: prescribed | thermostat
+        T_exo                 = 1000.0       # prescribed exobase temperature [K]
+        cool_atomic           = true         # atomic line cooling of the wind
+        cool_co2_band         = true         # CO2 15 micron band cooling of the wind
+        cool_o_finestructure  = true         # O fine-structure cooling of the wind
+        cool_recombination    = true         # recombination cooling of the wind
+        fractionate           = true         # split the rate over the elements by diffusion
+        nozzle_temperature    = "photospheric" # L1 overflow temperature: photospheric | wind
+        residual_mode         = "off"        # bolometric rate past the boil-off threshold: off | luminosity_capped
+        photon_limit          = true         # cap the wind at one ion per absorbed photon
+        recombination_limit   = true         # admit the recombination-limited wind rate
+        lambda_crit           = 20.0         # restricted Jeans parameter below which boil-off applies
+        kzz                   = 300.0        # eddy diffusion coefficient [m2 s-1]
+        hydrostatic_levels_min = 200         # first quadrature grid of the diffusion supply
+        hydrostatic_levels_max = 3200        # refinement ceiling, at least 4 x the minimum
+        hydrostatic_rtol      = 0.01         # relative change at which the refinement stops
 
     [escape.dummy]
         rate                  = 0.0          # bulk escape rate [kg s-1]

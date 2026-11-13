@@ -142,4 +142,5 @@ config_version = "3.0"
 [escape]
     module = "zephyrus"
     [escape.zephyrus]
+        scheme = "el"
         efficiency = 0.3

@@ -145,6 +145,16 @@ PROTOCOL_STOP = {
 # hold: the separation buoyancy against the solid.
 RUN_SETTINGS = {'interior_energetics.aragog.separation_buoyancy': 'solid'}
 
+# The submitted runs used energy-limited escape, split over the elements by atmospheric
+# abundance and clipped at the Hill radius, without the tidal factor. These are the
+# defaults of the "el" scheme, written out because the PROTEUS default is the dispatcher.
+PROTOCOL_ESCAPE = {
+    'escape.reservoir': 'outgas',
+    'escape.hill_clamp': True,
+    'escape.zephyrus.scheme': 'el',
+    'escape.zephyrus.tidal': False,
+}
+
 # Protocol H and C inventory axes [kg] for the grid sweeps. The
 # standalone per-case grid configs under input/tutorials/chili_grid/
 # carry exactly these values; the lockstep test compares the two.
@@ -236,8 +246,8 @@ def _format_stop_block(text: str, name: str) -> str:
 
 
 def case_deltas(name: str) -> dict:
-    """Deltas of case ``name``: ``CASE_DELTAS``, the protocol's redox state and stop rule, and
-    ``RUN_SETTINGS``.
+    """Deltas of case ``name``: ``CASE_DELTAS``, the protocol's redox state, stop rule and
+    escape scheme, and ``RUN_SETTINGS``.
 
     Raises
     ------
@@ -249,11 +259,12 @@ def case_deltas(name: str) -> dict:
         'outgas.fO2_shift_IW': PROTOCOL_FO2_SHIFT_IW,
         **PROTOCOL_STOP,
         **RUN_SETTINGS,
+        **PROTOCOL_ESCAPE,
     }
     if clash := sorted(set(deltas) & set(protocol)):
         raise ValueError(
-            f'{name}: PROTOCOL_FO2_SHIFT_IW, PROTOCOL_STOP and RUN_SETTINGS set {clash} '
-            'for all cases'
+            f'{name}: PROTOCOL_FO2_SHIFT_IW, PROTOCOL_STOP, RUN_SETTINGS and PROTOCOL_ESCAPE '
+            f'set {clash} for all cases'
         )
     return {**deltas, **protocol}
 

@@ -183,6 +183,32 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_chem.vulcan.yconv_min',
         # Inert while escape.hill_clamp is pinned off for migrated configs.
         'escape.hill_clamp_frac',
+        # ZEPHYRUS dispatcher settings: inert under the energy-limited scheme
+        # that the escape.zephyrus.scheme override pins.
+        'escape.zephyrus.P_photo',
+        'escape.zephyrus.T_exo',
+        'escape.zephyrus.T_exo_mode',
+        'escape.zephyrus.base_method',
+        'escape.zephyrus.base_out_of_range',
+        'escape.zephyrus.cool_atomic',
+        'escape.zephyrus.cool_co2_band',
+        'escape.zephyrus.cool_o_finestructure',
+        'escape.zephyrus.cool_recombination',
+        'escape.zephyrus.efficiency_mode',
+        'escape.zephyrus.fractionate',
+        'escape.zephyrus.gate',
+        'escape.zephyrus.hydrostatic_levels_max',
+        'escape.zephyrus.hydrostatic_levels_min',
+        'escape.zephyrus.hydrostatic_rtol',
+        'escape.zephyrus.kappa_photo',
+        'escape.zephyrus.kn_crit',
+        'escape.zephyrus.kn_hysteresis',
+        'escape.zephyrus.kzz',
+        'escape.zephyrus.lambda_crit',
+        'escape.zephyrus.nozzle_temperature',
+        'escape.zephyrus.photon_limit',
+        'escape.zephyrus.recombination_limit',
+        'escape.zephyrus.residual_mode',
         # The per-step escape cap and its step floor apply at their measured
         # defaults, so a migrated config needs no explicit value for either.
         'escape.step_dt_floor_frac',
@@ -613,11 +639,27 @@ def test_hill_clamp_override_reproduces_unclipped_2_0_escape():
     config keeps its 2.0 escape rates rather than silently gaining the bound.
     """
     assert mig.OVERRIDES['escape.hill_clamp'] is False
-    # The live 3.0 default is the opposite; that difference is what the pin
-    # exists to bridge, so it is asserted here too.
-    from proteus.config._escape import Escape
+    # The live 3.0 default under the pinned energy-limited scheme is the
+    # opposite; that difference is what the pin exists to bridge.
+    from proteus.config._escape import Escape, Zephyrus
 
-    assert Escape(module='zephyrus').hill_clamp is True
+    assert Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el')).hill_clamp is True
+
+
+def test_scheme_override_reproduces_energy_limited_2_0_escape():
+    """2.0 computed energy-limited escape only; the 3.0 default is the dispatcher.
+
+    The override pins the energy-limited scheme, under which the reservoir and
+    the tidal factor resolve to the 2.0 defaults, so a migrated config keeps
+    its 2.0 escape rates.
+    """
+    from proteus.config._escape import Escape, Zephyrus
+
+    assert mig.OVERRIDES['escape.zephyrus.scheme'] == 'el'
+    assert Escape(module='zephyrus').uses_dispatcher is True
+    pinned = Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el'))
+    assert pinned.uses_dispatcher is False
+    assert (pinned.reservoir, pinned.zephyrus.tidal) == ('outgas', False)
 
 
 def test_bol_scale_window_override_reproduces_unwindowed_2_0_scaling():

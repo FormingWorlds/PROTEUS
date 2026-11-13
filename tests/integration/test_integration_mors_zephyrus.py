@@ -175,7 +175,6 @@ def test_mors_zephyrus_two_timesteps(proteus_multi_timestep_run, scenario):
         escape__module='zephyrus',
         escape__zephyrus__Pxuv=1e-2,
         escape__zephyrus__efficiency=scenario.efficiency,
-        escape__reservoir='bulk',
     )
 
     hf = runner.hf_all
@@ -219,6 +218,17 @@ def test_mors_zephyrus_two_timesteps(proteus_multi_timestep_run, scenario):
         # losing the whole atmosphere in seconds. A per-area-vs-per-volume
         # ratio bug would land >1e15.
         assert np.all(rate < 1e10), f'esc_rate_total above physical bound: max={rate.max():.3e}'
+
+    # The dispatcher labels every step it ran on, and its per-element rates sum to
+    # the bulk rate, which the pxuv reservoir debits element by element.
+    from proteus.utils.constants import element_list
+
+    ran = hf['esc_regime'].to_numpy() > 0
+    assert ran.any(), 'the escape dispatcher never ran'
+    per_element = sum(hf[f'esc_rate_{e}'].to_numpy() for e in element_list)
+    np.testing.assert_allclose(
+        per_element[ran], hf['esc_rate_total'].to_numpy()[ran], rtol=1e-9
+    )
 
     # Per-element mass closure: the conservation invariant, satisfies the
     # exponent-error guard from tests/AGENTS.md, "Discriminating values" by construction.
