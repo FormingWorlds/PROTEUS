@@ -1,4 +1,4 @@
-# Tutorial input/tutorials/tutorial_lid_seal.toml (docs/Tutorials/lid_seal.md), PROTEUS commit dfa3a9f9, CALLIOPE 26.11.8.
+# Tutorial input/tutorials/tutorial_lid_seal.toml (docs/Tutorials/lid_seal.md), PROTEUS commit dfa3a9f9, aragog commit f1d44e2f, CALLIOPE 26.11.8.
 # H2O [kg]: atmosphere of the seal, open and hold (tau_leak inf) runs, held mass and its floor;
 # melt fraction, mantle mass [kg] and escape of the step [kg, kg s-1] of the seal run.
 # Every 5th row before the closing row 924, every row from it.

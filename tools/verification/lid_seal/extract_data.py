@@ -8,7 +8,7 @@ and under the crust; every 5th row before closure, every row from it).
 Usage::
 
     python tools/verification/lid_seal/extract_data.py SEAL OPEN HOLD OUTDIR --commit SHA
-        --calliope VERSION
+        --aragog SHA --calliope VERSION
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ def main(argv=None) -> int:
     ap.add_argument('hold', type=Path)
     ap.add_argument('out', type=Path)
     ap.add_argument('--commit', required=True, help='PROTEUS commit of the runs')
+    ap.add_argument('--aragog', required=True, help='aragog commit of the runs')
     ap.add_argument('--calliope', required=True, help='CALLIOPE version of the runs')
     a = ap.parse_args(argv)
     a.out.mkdir(parents=True, exist_ok=True)
@@ -35,7 +36,7 @@ def main(argv=None) -> int:
     k = closing_row(seal)
     head = (
         '# Tutorial input/tutorials/tutorial_lid_seal.toml (docs/Tutorials/lid_seal.md), '
-        f'PROTEUS commit {a.commit}, CALLIOPE {a.calliope}.\n'
+        f'PROTEUS commit {a.commit}, aragog commit {a.aragog}, CALLIOPE {a.calliope}.\n'
     )
     c = seal.iloc[k]
     keep = ['Time', 'Phi_global', 'M_mantle', 'R_int', 'gravity', 'T_magma']

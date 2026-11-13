@@ -73,6 +73,8 @@ def test_the_data_extractor_keeps_the_closing_rows_and_thins_the_span_before(tmp
             str(tmp_path / 'out'),
             '--commit',
             'abc',
+            '--aragog',
+            'def',
             '--calliope',
             '1',
         ]
@@ -83,7 +85,7 @@ def test_the_data_extractor_keeps_the_closing_rows_and_thins_the_span_before(tmp
     water = pd.read_csv(tmp_path / 'out' / 'tutorial_water.csv', comment='#')
     assert list(water['Time'] / 100) == [0, 5, 10, *range(12, 30)]
     head = (tmp_path / 'out' / 'tutorial_water.csv').read_text().splitlines()[0]
-    assert 'PROTEUS commit abc, CALLIOPE 1.' in head
+    assert 'PROTEUS commit abc, aragog commit def, CALLIOPE 1.' in head
 
 
 def test_the_ensemble_writes_the_superheat_offset_and_refuses_unpaired_starts(tmp_path):
@@ -91,13 +93,26 @@ def test_the_ensemble_writes_the_superheat_offset_and_refuses_unpaired_starts(tm
     v = 500.0 + 5e-10
     s, o = _run(tmp_path / 's', superheat=v, h2o=2.0), _run(tmp_path / 'o', superheat=v)
     out = tmp_path / 'e.csv'
-    tool.main([str(out), '--commit', 'abc', '--calliope', '1', f'k1={s},{o}'])
+    tool.main(
+        [str(out), '--commit', 'abc', '--aragog', 'def', '--calliope', '1', f'k1={s},{o}']
+    )
     d = pd.read_csv(out, comment='#', float_precision='round_trip')
     assert d['dT'].item() == v - 500.0 and d['t_close'].item() == 1200.0
     assert d['seal_atm'].item() == 2.0 * d['open_atm'].item()
     other = _run(tmp_path / 'p', superheat=500.0)
     with pytest.raises(AssertionError, match='other superheats'):
-        tool.main([str(out), '--commit', 'abc', '--calliope', '1', f'k1={s},{other}'])
+        tool.main(
+            [
+                str(out),
+                '--commit',
+                'abc',
+                '--aragog',
+                'def',
+                '--calliope',
+                '1',
+                f'k1={s},{other}',
+            ]
+        )
 
 
 def test_the_number_check_formats_its_values_and_runs_the_page_blocks(tmp_path):

@@ -6,7 +6,7 @@ end of both runs.
 
 Usage::
 
-    python tools/verification/lid_seal/ensemble.py OUT.csv --commit SHA --calliope VERSION
+    python tools/verification/lid_seal/ensemble.py OUT.csv --commit SHA --aragog SHA --calliope VERSION
         printed=SEAL,OPEN k1=SEAL,OPEN ...
 """
 
@@ -30,6 +30,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('out', type=Path)
     ap.add_argument('--commit', required=True)
+    ap.add_argument('--aragog', required=True, help='aragog commit of the runs')
     ap.add_argument('--calliope', required=True)
     ap.add_argument('starts', nargs='+', help='NAME=SEAL_RUN,OPEN_RUN')
     a = ap.parse_args(argv)
@@ -48,7 +49,7 @@ def main(argv=None) -> int:
         )
     head = (
         '# Tutorial input/tutorials/tutorial_lid_seal.toml (docs/Tutorials/lid_seal.md), '
-        f'PROTEUS commit {a.commit}, CALLIOPE {a.calliope}.\n'
+        f'PROTEUS commit {a.commit}, aragog commit {a.aragog}, CALLIOPE {a.calliope}.\n'
         '# The printed run and 5 starts whose planet.delta_T_super differs by dT [K]; '
         'each with the seal on and off.\n'
         '# Closing time [yr] of the seal run, H2O in the atmosphere at 140 kyr [kg] '
