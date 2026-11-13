@@ -2485,26 +2485,31 @@ def test_the_accretion_thermal_state_gets_the_core_fraction_of_the_solve(tmp_pat
 
 
 @pytest.mark.physics_invariant
-def test_a_thin_mantle_keeps_the_core_mass_of_the_solve(tmp_path, monkeypatch):
+def test_a_thin_mantle_keeps_the_mass_inside_r_core_and_the_core_of_the_solve(
+    tmp_path, monkeypatch
+):
     """With the core mass 1e-6 of a shell above node 55 of 60, the first node at or above it
-    holds a mantle shell of about 20 % of the mantle. M_core is the core mass of the solve, so
-    M_int - M_core is the mantle of the solve and the schema check of the output passes."""
+    holds a mantle shell of about 20 % of the mantle. M_core is the mass inside R_core (node
+    55), M_core_solve the core mass of the solve, core_density M_core over the volume inside
+    R_core; the schema check of the output compares the accumulator mantle above R_core with
+    M_int - M_core, so it passes, where a check against the core of the solve refuses it."""
     model = _plausible_model_results()
     mass = model['mass_enclosed']
     cmb_mass = float(mass[54] + 1e-6 * (mass[55] - mass[54]))
     model['cmb_mass'] = model['core_mantle_mass'] = cmb_mass
-    mantle = float(mass[-1]) - cmb_mass
-    assert (float(mass[55]) - cmb_mass) / mantle > 0.15  # the node snap the check refuses
+    assert (float(mass[55]) - cmb_mass) / (float(mass[-1]) - cmb_mass) > 0.15
 
     _, _, _, hf_row, _, cmb_radius, _ = _run_gate_solver(
         tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
     )
-    assert hf_row['M_core'] == pytest.approx(cmb_mass, rel=1e-15)
-    assert hf_row['M_int'] - hf_row['M_core'] == pytest.approx(mantle, rel=1e-12)
+    assert hf_row['M_core'] == pytest.approx(float(mass[55]), rel=1e-15)
+    assert hf_row['M_core_solve'] == pytest.approx(cmb_mass, rel=1e-15)
+    assert hf_row['M_int'] - hf_row['M_core'] == pytest.approx(
+        float(mass[-1]) - float(mass[55]), rel=1e-12
+    )
     assert cmb_radius == pytest.approx(float(model['radii'][55]), rel=1e-15)
-    assert hf_row['M_core'] < float(mass[55])  # the node mass is the wrong value
     core_volume = 4.0 / 3.0 * np.pi * cmb_radius**3
-    assert hf_row['core_density'] * core_volume == pytest.approx(cmb_mass, rel=1e-12)
+    assert hf_row['core_density'] * core_volume == pytest.approx(float(mass[55]), rel=1e-12)
 
 
 def test_zalmoxis_solver_passes_callable_when_jax_path_not_viable(tmp_path, monkeypatch):
