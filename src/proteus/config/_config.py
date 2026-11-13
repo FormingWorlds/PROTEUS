@@ -408,6 +408,14 @@ def check_core_module_requirements(instance, attribute, value):
         )
 
 
+def chemistry_climate_needs_agni(instance, attribute, value):
+    """Refuse coupling the chemistry to AGNI when the climate module is not AGNI."""
+    if value.vulcan.couple_agni and instance.atmos_clim.module != 'agni':
+        raise ValueError(
+            "atmos_chem.vulcan.couple_agni = true needs atmos_clim.module = 'agni'"
+        )
+
+
 def boreas_requires_atmosphere(instance, attribute, value):
     """BOREAS escape requires a radiative atmosphere (not dummy)."""
     if (instance.escape.module == 'boreas') and (instance.atmos_clim.module == 'dummy'):
@@ -942,7 +950,7 @@ class Config:
         factory=AtmosClim,
         validator=(saturation_skin_warns_without_condensates, lid_requires_the_skin_atmosphere),
     )
-    atmos_chem: AtmosChem = field(factory=AtmosChem)
+    atmos_chem: AtmosChem = field(factory=AtmosChem, validator=chemistry_climate_needs_agni)
     escape: Escape = field(
         factory=Escape,
         validator=(spada_zephyrus, janus_escape_atmosphere, boreas_requires_atmosphere),

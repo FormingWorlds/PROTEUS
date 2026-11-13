@@ -952,6 +952,12 @@ config_version = "3.0"
         clip_fl               = 1e-20        # stellar flux floor [erg/s/cm2/nm]
         clip_vmr              = 1e-10        # neglect species below this VMR
 
+        # Climate coupled to the chemistry (needs atmos_clim.module = "agni")
+        couple_agni           = false        # solve the AGNI climate again with VULCAN's composition
+        agni_call_frq         = 0            # steps between climate updates; 0: at steady states only
+        agni_T_rtol           = 0.01         # settled when an update changes T by at most this fraction
+        agni_max_calls        = 10           # climate updates at steady states before giving up
+
         # Output
         save_frames           = false        # save plot frames during iterations
 

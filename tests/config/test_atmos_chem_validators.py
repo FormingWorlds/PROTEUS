@@ -29,6 +29,8 @@ _POSITIVE = (
     'rtol',
     'post_conden_rtol',
     'r_p',
+    'agni_T_rtol',
+    'agni_max_calls',
 )
 
 
@@ -128,6 +130,18 @@ def test_atmos_chem_times_refuses_invalid_values(times, match):
         AtmosChem(times=times)
     # The default stays valid, so the refusal comes from the value given
     assert AtmosChem().times == 'end'
+
+
+@pytest.mark.unit
+def test_vulcan_agni_coupling_defaults_off_and_call_frequency_is_not_negative():
+    """Coupling to AGNI is off by default; agni_call_frq accepts 0 (updates at steady states
+    only) and a positive step count, and refuses a negative one."""
+    vulcan = Vulcan()
+    assert vulcan.couple_agni is False
+    assert vulcan.agni_call_frq == 0
+    assert Vulcan(agni_call_frq=50).agni_call_frq == 50
+    with pytest.raises(ValueError, match='agni_call_frq'):
+        Vulcan(agni_call_frq=-1)
 
 
 @pytest.mark.unit

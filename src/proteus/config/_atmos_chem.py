@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 
 from attrs import define, field
-from attrs.validators import gt, in_, lt
+from attrs.validators import ge, gt, in_, lt
 
 from ._converters import none_if_none
 
@@ -159,6 +159,14 @@ class Vulcan:
         Relative tolerance for adjusting the solver step size.
     post_conden_rtol : float
         Relative tolerance used once condensation stops.
+    couple_agni : bool
+        Solve the climate again with AGNI while the chemistry runs, from the composition VULCAN computes, until the temperature and the chemistry agree. The eddy diffusion then also comes from AGNI, unless `atmos_chem.Kzz_const` is set. Needs `atmos_clim.module = 'agni'`.
+    agni_call_frq : int
+        With `couple_agni`, VULCAN solver steps between climate updates; 0 updates the climate only when the chemistry reaches a steady state.
+    agni_T_rtol : float
+        With `couple_agni`, the run ends when the climate update made at a steady state changes the temperature by at most this fraction in every layer.
+    agni_max_calls : int
+        With `couple_agni`, climate updates made at steady states before VULCAN stops with the temperature still changing.
     """
 
     clip_fl: float = field(default=1e-20)
@@ -190,6 +198,10 @@ class Vulcan:
     flux_atol: float = field(default=1.0, validator=gt(0))
     rtol: float = field(default=0.9, validator=gt(0))
     post_conden_rtol: float = field(default=0.1, validator=gt(0))
+    couple_agni: bool = field(default=False)
+    agni_call_frq: int = field(default=0, validator=ge(0))
+    agni_T_rtol: float = field(default=1e-2, validator=gt(0))
+    agni_max_calls: int = field(default=10, validator=gt(0))
 
 
 @define

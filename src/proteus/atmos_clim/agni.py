@@ -581,7 +581,14 @@ def _resolve_surface_material(name: str, fwl_dir: str) -> str:
     return os.path.join(fwl_dir, name)
 
 
-def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = True):
+def init_agni_atmos(
+    dirs: dict,
+    config: Config,
+    hf_row: dict,
+    use_cache: bool = True,
+    star_file: str | None = None,
+    io_dir: str | None = None,
+):
     """Initialise atmosphere struct for use by AGNI.
 
     Does not set the temperature profile.
@@ -596,6 +603,13 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
             Dictionary containing simulation variables for current iteration
         use_cache : bool
             Whether to read from and store into `atmos_clim.spectral_cache`.
+        star_file : str or None
+            Stellar spectrum (``.sflux``) to prepare the spectral file with, instead of
+            the newest in ``data/``; the prepared ``runtime.sf`` of the run is then not
+            reused. Postprocessing a snapshot passes the spectrum that snapshot used.
+        io_dir : str or None
+            Folder for AGNI's working files, instead of the output folder or a new
+            temporary folder.
 
     Returns
     ----------
@@ -616,7 +630,9 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
 
     # Fast I/O folder. Decided before the spectral file, because AGNI writes the
     # prepared runtime.sf pair here and so this is where the cache reads from.
-    if (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == 'DEBUG'):
+    if io_dir is not None:
+        os.makedirs(io_dir, exist_ok=True)
+    elif (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == 'DEBUG'):
         io_dir = dirs['output']
     else:
         io_dir = create_tmp_folder()
@@ -641,8 +657,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
                 )
     else:
         # No spectral file provided: use existing runtime.sf in output, or
-        # let AGNI copy from FWL_DATA + modify as required.
-        try_spfile = os.path.join(dirs['output'], 'runtime.sf')
+        # let AGNI copy from FWL_DATA + modify as required (always, for a given star file).
+        try_spfile = '' if star_file else os.path.join(dirs['output'], 'runtime.sf')
 
     # Obtain spectral file
     if try_spfile == 'greygas':
@@ -657,16 +673,19 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
         # doesn't exist in output folder => AGNI will copy from FWL_DATA + modify.
         # Resolve the stellar spectrum path here, where it is actually needed.
         sflux_files = glob.glob(os.path.join(dirs['output'], 'data', '*.sflux'))
-        if not sflux_files:
+        if star_file:
+            sflux_path = star_file
+        elif not sflux_files:
             UpdateStatusfile(dirs, 20)
             raise FileNotFoundError(
                 f'No stellar spectrum (*.sflux) found in {dirs["output"]}/data; '
                 'AGNI cannot construct a fresh spectral file without it'
             )
-        sflux_times = [int(s.split('/')[-1].split('.')[0]) for s in sflux_files]
-        sflux_path = os.path.join(
-            dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1])
-        )
+        else:
+            sflux_times = [int(s.split('/')[-1].split('.')[0]) for s in sflux_files]
+            sflux_path = os.path.join(
+                dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1])
+            )
         input_sf = require_spfile_path(dirs, config)
         input_star = sflux_path
 
@@ -1500,8 +1519,11 @@ def _solve_transparent(atmos, config: Config, sol_type: int | None = None):
     return atmos
 
 
-def write_atmos_ncdf(atmos, dirs: dict, time: float) -> None:
-    """Write the AGNI atmosphere struct to a timestamped NetCDF file."""
+def write_atmos_ncdf(atmos, dirs: dict, time: float, suffix: str = '_atm.nc') -> None:
+    """Write the AGNI atmosphere struct to the NetCDF file ``data/<time><suffix>``.
+
+    The default suffix names an atmosphere snapshot; another keeps that snapshot intact.
+    """
 
     # Only a successfully allocated struct can be used.
     if not bool(atmos.is_alloc):
@@ -1509,7 +1531,7 @@ def write_atmos_ncdf(atmos, dirs: dict, time: float) -> None:
         return
 
     # Write the file
-    ncdf_path = os.path.join(dirs['output'], 'data', format_subyear_time(time) + '_atm.nc')
+    ncdf_path = os.path.join(dirs['output'], 'data', format_subyear_time(time) + suffix)
     log.debug(f'Write AGNI atmosphere to {ncdf_path}')
     jl.AGNI.save.write_ncdf(atmos, ncdf_path)
 

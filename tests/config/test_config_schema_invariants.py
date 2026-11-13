@@ -43,6 +43,7 @@ from proteus.config._config import (
     boreas_requires_atmosphere,
     boundary_requires_fixed_surface_state,
     check_module_dependencies,
+    chemistry_climate_needs_agni,
     front_trapping_requires_aragog,
     instmethod_evolve,
     lid_requires_the_skin_atmosphere,
@@ -2045,3 +2046,24 @@ def test_live_lid_on_a_saturation_skin_is_refused():
         assert 'lid_mush_base' in str(excinfo.value)
     assert lid_requires_the_skin_atmosphere(cfg(0.01, None), None, None) is None
     assert lid_requires_the_skin_atmosphere(cfg(0.01, 0.02), None, None) is None
+
+
+@pytest.mark.unit
+def test_chemistry_coupled_to_agni_needs_the_agni_climate():
+    """Coupling the chemistry to the climate re-solves the AGNI climate, so it is refused with
+    JANUS or the dummy climate and accepted with AGNI; without coupling any climate passes."""
+
+    def cfg(climate, couple):
+        return SimpleNamespace(
+            atmos_clim=SimpleNamespace(module=climate),
+            atmos_chem=SimpleNamespace(vulcan=SimpleNamespace(couple_agni=couple)),
+        )
+
+    for climate in ('janus', 'dummy'):
+        instance = cfg(climate, True)
+        with pytest.raises(ValueError, match="needs atmos_clim.module = 'agni'"):
+            chemistry_climate_needs_agni(instance, None, instance.atmos_chem)
+    instance = cfg('agni', True)
+    assert chemistry_climate_needs_agni(instance, None, instance.atmos_chem) is None
+    instance = cfg('janus', False)
+    assert chemistry_climate_needs_agni(instance, None, instance.atmos_chem) is None

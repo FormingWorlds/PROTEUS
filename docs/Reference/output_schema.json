@@ -1472,6 +1472,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "interior_energetics",
         "main loop",

@@ -58,6 +58,24 @@ VULCAN integrates from an initial composition to a steady state, and the initial
 
 `"previous"` is meant for `times = "all"` or a list, where consecutive snapshots are close in time and in composition, to help convergence.
 
+### Chemistry and climate together: `atmos_chem.vulcan.couple_agni`
+
+By default VULCAN keeps the temperature and eddy diffusion ($K_{zz}$) profiles of the snapshot, which AGNI solved with the outgassed composition, the same at every height. The gases that VULCAN makes and destroys change the radiation, and so the temperature. With `couple_agni = true` the climate is solved again from the composition VULCAN computes, until the two agree:
+
+```toml
+[atmos_chem]
+    module = "vulcan"
+    mode   = "offline"
+
+    [atmos_chem.vulcan]
+        couple_agni    = true
+        agni_call_frq  = 0      # climate updates only at the steady states of the chemistry
+        agni_T_rtol    = 0.01   # settled when an update changes T by at most 1 % in every layer
+        agni_max_calls = 10
+```
+
+PROTEUS sets AGNI up as it did for the snapshot, with the same configuration, surface condition and stellar spectrum, and loads the snapshot into it. Each time the chemistry reaches a steady state, AGNI solves the climate with VULCAN's composition, and VULCAN continues with the new temperature and $K_{zz}$ until an update leaves the temperature unchanged within `agni_T_rtol`. A positive `agni_call_frq` also updates the climate every that many VULCAN steps. AGNI's own equilibrium chemistry is off in these solves, and `atmos_chem.Kzz_const`, when set, keeps $K_{zz}$ fixed. The coupled climate is written to `data/<time>_chematm.nc`, beside the snapshot, and the log gives its net flux at the top of the atmosphere against that of the evolution. The interior does not see this climate: the coupled state is a diagnostic of the snapshot, not a step of the evolution. This needs `atmos_clim.module = "agni"`. The method is checked on the [validation page](../Validation/atmos_chem/vulcan_agni.md).
+
 ### Output files
 
 Snapshot times in file names use the sub-year form of the other snapshots: `12p320` for t = 12.32 yr.
@@ -67,6 +85,7 @@ Snapshot times in file names use the sub-year form of the other snapshots: `12p3
 | `data/<time>_chem.nc` | VULCAN NetCDF output of one snapshot, in CGS units |
 | `offchem/<module>_<time>.csv` | Table of one snapshot, from the top of the atmosphere down. |
 | `offchem/<module>.csv` | Copy of the table at the latest snapshot processed |
+| `data/<time>_chematm.nc` | With `couple_agni`, the AGNI climate solved with the chemistry of that snapshot |
 | `offchem/mix.*`, `offchem/evo.*` | VULCAN's plots of the mixing ratios and their evolution |
 
 Each chemistry call first clears `offchem/` (and its VULCAN input files), while the `data/*_chem.nc` files are kept. The chemistry plot (`plots/plot_chem_atmosphere.*`) shows the latest chemistry snapshot.
