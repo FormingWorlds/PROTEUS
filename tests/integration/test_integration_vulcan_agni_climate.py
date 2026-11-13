@@ -18,6 +18,7 @@ pytest.importorskip('vulcan')
 from proteus import Proteus  # noqa: E402
 from proteus.atmos_chem.vulcan_agni import VULCAN_TMP_FLOOR, SnapshotClimate  # noqa: E402
 from proteus.atmos_clim.agni import (  # noqa: E402
+    SOCRATES_MAX_PATH,
     activate_julia,
     deallocate_atmos,
     init_agni_atmos,
@@ -30,7 +31,6 @@ from proteus.utils.coupler import ZeroHelpfileRow  # noqa: E402
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
 RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
-SOCRATES_MAX_PATH = 132
 
 # AGNI ends a solve once the flux residual is within solution_atol + solution_rtol |F|, so
 # solving a converged state again moves T only within that band: 0.15 K was measured for

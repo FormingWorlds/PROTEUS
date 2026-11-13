@@ -903,6 +903,8 @@ def _setup_cached_spectral_run(monkeypatch, tmp_path, cache_dir, verbosity=1, lo
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
     monkeypatch.setattr(agni_mod, 'require_spfile_path', lambda *_a, **_k: str(base_sf))
     monkeypatch.setattr(agni_mod, 'create_tmp_folder', _fake_tmp_folder)
+    # The fake AGNI runs no SOCRATES tool, and tmp_path can be longer than they read
+    monkeypatch.setattr(agni_mod, 'SOCRATES_MAX_PATH', 10**4)
 
     return SimpleNamespace(
         fake_agni=fake_agni,
