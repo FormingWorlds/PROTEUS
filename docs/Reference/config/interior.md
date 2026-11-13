@@ -250,10 +250,10 @@ controlled parity tests.
 | `radio_Fe` | float | `62600.0` | Total iron concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
 | `radio_Fe60_abund` | float | `0.0` | Mass ratio 60Fe/Fe at radio_tref \[kg/kg\]. An early Solar System 60Fe/56Fe = 1e-8 (atoms) is 9.8472e-9 kg/kg. Must be >= 0 and <= 1. |
 | `radio_K` | float | `310.0` | Total potassium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
-| `radio_K40_abund` | float | `0.00011926` | Mass ratio 40K/K at radio_tref \[kg/kg\]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017) as a mass ratio. Must be >= 0 and <= 1. |
+| `radio_K40_abund` | float | `0.00011926` | Mass ratio 40K/K at radio_tref \[kg/kg\]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio. Must be >= 0 and <= 1. |
 | `radio_U` | float | `0.031` | Total uranium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
-| `radio_U235_abund` | float | `0.0071141` | Mass ratio 235U/U at radio_tref \[kg/kg\]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017) as a mass ratio. Must be >= 0 and <= 1. |
-| `radio_U238_abund` | float | `0.9928859` | Mass ratio 238U/U at radio_tref \[kg/kg\]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017) as a mass ratio. Must be >= 0 and <= 1. |
+| `radio_U235_abund` | float | `0.0071141` | Mass ratio 235U/U at radio_tref \[kg/kg\]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio. Must be >= 0 and <= 1. |
+| `radio_U238_abund` | float | `0.9928859` | Mass ratio 238U/U at radio_tref \[kg/kg\]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio. Must be >= 0 and <= 1. |
 | `radio_Th` | float | `0.124` | Total thorium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
 | `radio_Th232_abund` | float | `1.0` | Mass ratio 232Th/Th at radio_tref \[kg/kg\]. Must be >= 0 and <= 1. |
 
@@ -373,7 +373,7 @@ Uses the temperature- and pressure-dependent solid viscosity and the stagnant-li
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | bool | `false` | Use the temperature- and pressure-dependent solid viscosity and the stagnant-lid closure of ``aragog.rheology.SolidRheologyParams``, with its defaults for every other parameter but ``mlt_bottom_slope``. False uses the constant ``solid_log10visc``. |
-| `mlt_bottom_slope` | float or int | `0.82` | Slope of the viscous-branch mixing length above the CMB, l = slope (r - r_cmb), in (0, 1\]. The default 0.82 is the value of Tachinami et al. (2011, ApJ 726:70, App. A) at which the mixing-length Nusselt number at the base of the mantle matches those of parameterised convection and boundary-layer theory. Read only with ``enabled``. Must be > 0 and <= 1. |
+| `mlt_bottom_slope` | float or int | `0.82` | Slope of the viscous-branch mixing length above the CMB, l = slope (r - r_cmb), in (0, 1\]. The default 0.82 is the value of Tachinami et al. (2011)[^cite-tachinami2011] (App. A) at which the mixing-length Nusselt number at the base of the mantle matches those of parameterised convection and boundary-layer theory. Read only with ``enabled``. Must be > 0 and <= 1. |
 <!-- END GENERATED: config-table [interior_energetics.aragog.rheology] -->
 
 ### Core evolution `[interior_energetics.aragog.core_module]`
@@ -534,5 +534,9 @@ Cross-field constraints enforced when the config file loads:
 [^cite-mckenzie1984]: Dan McKenzie, *[The generation and compaction of partially molten rock](https://doi.org/10.1093/petrology/25.3.713)*, Journal of Petrology, 25, 713–765, 1984.
 
 [^cite-nimmo2015b]: Nimmo, F., *[Thermal and Compositional Evolution of the Core](https://doi.org/10.1016/b978-0-444-53802-4.00160-3)*, in Schubert, G. (ed.), Treatise on Geophysics, 2nd edition, Elsevier, 9, ch. 9.08, 201-219, 2015.
+
+[^cite-ruedas2017]: Ruedas, T., *[Radioactive heat production of six geologically important nuclides](https://doi.org/10.1002/2017GC006997)*, Geochemistry, Geophysics, Geosystems, 18, 3530-3541, 2017.
+
+[^cite-tachinami2011]: Tachinami, C., Senshu, H. & Ida, S., *[Thermal evolution and lifetime of intrinsic magnetic fields of super-Earths in habitable zones](https://doi.org/10.1088/0004-637X/726/2/70)*, The Astrophysical Journal, 726, 70, 2011.
 
 [^cite-thiriet2019]: Thiriet, M., Breuer, D., Michaut, C. & Plesa, A.-C., *[Scaling laws of convection for cooling planets in a stagnant lid regime](https://doi.org/10.1016/j.pepi.2018.11.003)*, Physics of the Earth and Planetary Interiors, 286, 138-153, 2019.

@@ -410,9 +410,9 @@ class Rheology:
         other parameter but ``mlt_bottom_slope``. False uses the constant ``solid_log10visc``.
     mlt_bottom_slope : float
         Slope of the viscous-branch mixing length above the CMB, l = slope (r - r_cmb), in
-        (0, 1]. The default 0.82 is the value of Tachinami et al. (2011, ApJ 726:70, App. A)
-        at which the mixing-length Nusselt number at the base of the mantle matches those of
-        parameterised convection and boundary-layer theory. Read only with ``enabled``.
+        (0, 1]. The default 0.82 is the value of Tachinami et al. (2011)[^cite-tachinami2011]
+        (App. A) at which the mixing-length Nusselt number at the base of the mantle matches
+        those of parameterised convection and boundary-layer theory. Read only with ``enabled``.
     """
 
     enabled: bool = field(default=False, validator=_valid_bool)
@@ -914,16 +914,16 @@ class Interior:
         Total potassium concentration in the mantle at radio_tref [ppmw].
     radio_K40_abund: float
         Mass ratio 40K/K at radio_tref [kg/kg]. The default is the present-day
-        atom ratio 1.1668e-4 of Ruedas (2017) as a mass ratio.
+        atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio.
     radio_U: float
         Total uranium concentration in the mantle at radio_tref [ppmw].
     radio_U235_abund: float
         Mass ratio 235U/U at radio_tref [kg/kg]. The default is the present-day
-        atom ratio 0.0072045 of Ruedas (2017) as a mass ratio.
+        atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio.
     radio_U238_abund: float
         Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund +
         radio_U238_abund must not exceed 1. The default is the present-day
-        atom ratio 0.9927955 of Ruedas (2017) as a mass ratio.
+        atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio.
     radio_Th: float
         Total thorium concentration in the mantle at radio_tref [ppmw].
     radio_Th232_abund: float
