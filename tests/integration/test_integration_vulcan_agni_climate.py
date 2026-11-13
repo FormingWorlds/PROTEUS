@@ -1,26 +1,6 @@
-# The climate of coupled chemistry reproduces the climate of the snapshot it starts from.
-#
-# Module under test: src/proteus/atmos_chem/vulcan_agni.py (SnapshotClimate)
-#
-# Contract clauses exercised:
-# - SnapshotClimate sets AGNI up as the evolution does and loads the atmosphere snapshot.
-# - A climate update solves the AGNI climate with the composition VULCAN hands it, with
-#   AGNI's equilibrium chemistry off, and returns it in VULCAN's units, no colder than the
-#   VULCAN temperature floor.
-#
-# Invariants asserted: given the snapshot's own composition, the climate update returns the
-# snapshot climate (a fixed point of the update); the update responds to the composition,
-# by far more than that tolerance; the returned temperature is AGNI's, floored at 180 K;
-# the returned pressures are AGNI's in dyn cm-2.
-#
-# Integration tier: the Julia runtime, the AGNI package load and the SOCRATES spectral-file
-# build dominate the wall time.
-#
-# Documentation: For testing standards, see:
-# - docs/How-to/testing.md
-# - docs/Explanations/test_framework.md
+# Validation of chemistry coupled to the climate: atmos_chem/vulcan_agni.py (SnapshotClimate)
+# and the coupled run_vulcan, with the real AGNI on one banded snapshot of the evolution.
 # Validation record: docs/Validation/atmos_chem/vulcan_agni.md
-#
 from __future__ import annotations
 
 import copy
@@ -168,7 +148,6 @@ def _plot_fixed_point(validation_plot, snap, t_same, t_swapped):
     validation_plot(figure, 'atmos_chem_vulcan_agni_fixed_point')
 
 
-@pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
@@ -183,9 +162,9 @@ def test_climate_update_with_the_snapshot_composition_returns_the_snapshot(
     with banded radiation as the evolution solves it. Chemistry that leaves the composition
     as it was must leave the climate as it was: the snapshot is a fixed point of the update.
 
-    Cross-implementation reference: the AGNI solve of the evolution that wrote the snapshot.
-    The update must also respond to the composition, so the same update with the H2O and CO2
-    abundances swapped must move the temperature by far more than the tolerance.
+    Invariant: the snapshot is a fixed point of the climate update, within the convergence
+    band of AGNI. The update must also respond to the composition, so the same update with
+    the H2O and CO2 abundances swapped must move the temperature by far more than that.
     """
     dirs, cfg, hf_row, snap = snapshot
     climate = SnapshotClimate(dirs, cfg, hf_row)
@@ -250,7 +229,6 @@ def _plot_coupled(validation_plot, chem, coupled, co_vulcan_on_agni):
     validation_plot(figure, 'atmos_chem_vulcan_agni_coupled_run')
 
 
-@pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
@@ -264,9 +242,10 @@ def test_coupled_run_ends_where_chemistry_and_climate_agree(snapshot, validation
     the CO2 and H2 into CO, which the snapshot does not hold, so the climate of the end
     state is solved with a composition the evolution never gave AGNI.
 
-    Cross-implementation reference: the AGNI solve of the climate for VULCAN's final
-    composition, and AGNI's radiative-convective equilibrium (net flux the same at every
-    height) for that climate.
+    Invariants: VULCAN saves the state it is steady for, whose temperature differs from the
+    climate of its final composition by the recorded last change, at most agni_T_rtol; and
+    that climate is in radiative-convective equilibrium, with the same net flux at every
+    height.
     """
     from vulcan.climate import interp_logp
 
@@ -309,11 +288,12 @@ def test_coupled_run_ends_where_chemistry_and_climate_agree(snapshot, validation
     # renormalised over AGNI's gases, which leaves out VULCAN's radicals (below 1e-4 here)
     np.testing.assert_allclose(coupled['co'], co_on_agni, rtol=1e-3)
 
-    # VULCAN's final temperature is the coupled climate, floored on AGNI's layers as the
-    # update returns it, then interpolated onto VULCAN's layers
+    # VULCAN saved the temperature it is steady for, from before the last update; the
+    # coupled climate (floored, on VULCAN's layers) differs from it by that update's change
     t_floored = np.maximum(coupled['tmp'], VULCAN_TMP_FLOOR)
     t_on_vulcan = interp_logp(coupled['p'] * 10.0, t_floored, chem['p'])  # dyn cm-2
-    np.testing.assert_allclose(chem['tmp'], t_on_vulcan, rtol=1e-9)
+    rel_change = np.max(np.abs(t_on_vulcan - chem['tmp']) / chem['tmp'])
+    assert rel_change == pytest.approx(rel_dt[-1], rel=1e-6)
 
     # Radiative-convective equilibrium: the net upward flux is the same at every height. The
     # converged AGNI states of this case hold it to 3e-3 (snapshot) and 5e-4 (coupled) of

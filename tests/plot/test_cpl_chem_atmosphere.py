@@ -576,12 +576,19 @@ def test_plot_chem_atmosphere_defaults_to_final_chemistry_snapshot(tmp_path):
 @pytest.mark.unit
 @pytest.mark.parametrize(
     ('time', 'token'),
-    [(14.0, '10p000'), (16.0, '20p000'), (1.0e6, '20p000')],
-    ids=['nearer_earlier_snapshot', 'nearer_later_snapshot', 'beyond_last_snapshot'],
+    [(14.0, '10p000'), (19.0, '10p000'), (20.0, '20p000'), (1.0e6, '20p000'), (1.0, '10p000')],
+    ids=[
+        'between_snapshots',
+        'just_before_later_snapshot',
+        'at_a_snapshot',
+        'beyond_last_snapshot',
+        'before_first_snapshot',
+    ],
 )
-def test_plot_chem_atmosphere_time_picks_nearest_chemistry_snapshot(tmp_path, time, token):
-    """A requested time between two chemistry snapshots draws the nearer one,
-    and the atmosphere snapshot read is the one at that chemistry time."""
+def test_plot_chem_atmosphere_time_picks_latest_chemistry_snapshot(tmp_path, time, token):
+    """A requested time draws the latest chemistry snapshot at or before it (at 19 yr the
+    one at 10 yr, not the nearer one at 20 yr), or the first when all are later, and the
+    atmosphere snapshot read is the one at that chemistry time."""
     nc_path, rr_name, _ = _run_plot(_snapshot_dir(tmp_path), time=time)
     assert rr_name == f'vulcan_{token}.csv'
     assert nc_path.endswith(f'{token}_atm.nc')
@@ -591,16 +598,16 @@ def test_plot_chem_atmosphere_time_picks_nearest_chemistry_snapshot(tmp_path, ti
 
 @pytest.mark.unit
 def test_plot_chem_atmosphere_without_chemistry_uses_latest_atmosphere(tmp_path):
-    """With chemistry off, the latest atmosphere snapshot is drawn, or the one
-    nearest `time` when given, and no chemistry file is read."""
+    """With chemistry off, the latest atmosphere snapshot is drawn, or the latest at or
+    before `time` when given, and no chemistry file is read."""
     outdir = _snapshot_dir(tmp_path)
     nc_path, rr_name, annotation = _run_plot(outdir, plot_offchem=False)
     assert nc_path.endswith('30p500_atm.nc')
     assert rr_name == 'not called'
     assert '3.05e+01' in annotation
 
-    # 12 yr lies nearest the 10 yr atmosphere snapshot
-    nc_path, _, _ = _run_plot(outdir, plot_offchem=False, time=12.0)
+    # at 19 yr the latest atmosphere snapshot is the one at 10 yr, not the nearer 20 yr
+    nc_path, _, _ = _run_plot(outdir, plot_offchem=False, time=19.0)
     assert nc_path.endswith('10p000_atm.nc')
 
 

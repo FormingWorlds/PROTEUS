@@ -10979,7 +10979,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Solve the climate again with AGNI while the chemistry runs, from the composition VULCAN computes, until the temperature and the chemistry agree. The eddy diffusion then also comes from AGNI, unless `atmos_chem.Kzz_const` is set. Needs `atmos_clim.module = 'agni'`.",
+      "description": "Solve the climate again with AGNI while the chemistry runs, from the composition VULCAN computes, until the temperature and the chemistry agree. The eddy diffusion then also comes from AGNI, unless `atmos_chem.Kzz_const` is set. Needs `atmos_clim.module = 'agni'` with `atmos_clim.agni.solve_energy = true`.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11078,7 +11078,7 @@
       "default": "\"end\"",
       "choices": null,
       "bounds": null,
-      "description": "Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), a list of times [yr], each mapped to the nearest atmosphere snapshot, or a table of helpfile keys, each with a list of values in the unit of that column, such as `{Time = [1e2, 1e3], Phi_global = [0.01], T_surf = [1500]}`; each value selects every helpfile row at which its column reaches or crosses it, and `end = true` in the table adds the final state. With a list or a table, the run also writes an atmosphere snapshot at each target.",
+      "description": "Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), a list of times [yr], each selecting the first helpfile row at or after it, or a table of helpfile keys, each with a list of values in the unit of that column, such as `{Time = [1e2, 1e3], Phi_global = [0.01], T_surf = [1500]}`; each value selects every helpfile row at which its column reaches or crosses it, and `end = true` in the table adds the final state. With a list or a table, the run also writes an atmosphere snapshot at each target row; the chemistry of a target uses the latest atmosphere snapshot at or before its row.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12938,9 +12938,10 @@
         "atmos_chem"
       ],
       "touches": [
+        "atmos_clim.agni.solve_energy",
         "atmos_clim.module"
       ],
-      "doc": "Refuse coupling the chemistry to AGNI when the climate module is not AGNI."
+      "doc": "Refuse coupling the chemistry to AGNI unless AGNI solves the climate."
     },
     {
       "validator": "dummy_struct_mantle_eos",

@@ -2051,11 +2051,14 @@ def test_live_lid_on_a_saturation_skin_is_refused():
 @pytest.mark.unit
 def test_chemistry_coupled_to_agni_needs_the_agni_climate():
     """Coupling the chemistry to the climate re-solves the AGNI climate, so it is refused with
-    JANUS or the dummy climate and accepted with AGNI; without coupling any climate passes."""
+    JANUS or the dummy climate, and with AGNI on a prescribed profile (solve_energy off),
+    and accepted with AGNI solving the energy balance; without coupling any climate passes."""
 
-    def cfg(climate, couple):
+    def cfg(climate, couple, solve_energy=True):
         return SimpleNamespace(
-            atmos_clim=SimpleNamespace(module=climate),
+            atmos_clim=SimpleNamespace(
+                module=climate, agni=SimpleNamespace(solve_energy=solve_energy)
+            ),
             atmos_chem=SimpleNamespace(vulcan=SimpleNamespace(couple_agni=couple)),
         )
 
@@ -2065,5 +2068,9 @@ def test_chemistry_coupled_to_agni_needs_the_agni_climate():
             chemistry_climate_needs_agni(instance, None, instance.atmos_chem)
     instance = cfg('agni', True)
     assert chemistry_climate_needs_agni(instance, None, instance.atmos_chem) is None
+    # a prescribed AGNI profile does not respond to the composition
+    instance = cfg('agni', True, solve_energy=False)
+    with pytest.raises(ValueError, match='solve_energy = true'):
+        chemistry_climate_needs_agni(instance, None, instance.atmos_chem)
     instance = cfg('janus', False)
     assert chemistry_climate_needs_agni(instance, None, instance.atmos_chem) is None

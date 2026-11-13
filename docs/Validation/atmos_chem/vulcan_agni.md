@@ -9,12 +9,12 @@ If this coupling is wrong, the chemistry is computed on a temperature profile th
 ## Source under test
 `src/proteus/atmos_chem/vulcan_agni.py` (`SnapshotClimate`) and the coupled branch of `run_vulcan` in `src/proteus/atmos_chem/vulcan.py`
 
-## Reference-pinned tests
+## Tests
 
 | Test ID | Reference | What is pinned | Last compared |
 |---|---|---|---|
 | `test_integration_vulcan_agni_climate::test_climate_update_with_the_snapshot_composition_returns_the_snapshot` | The AGNI solve of the evolution that wrote the snapshot | With the snapshot's own composition, the climate update returns the snapshot temperature within 1 K; with H2O and CO2 swapped it moves by more than 10 K | 2026-11-13 |
-| `test_integration_vulcan_agni_climate::test_coupled_run_ends_where_chemistry_and_climate_agree` | AGNI's climate for VULCAN's final composition, and radiative-convective equilibrium | VULCAN ends at a steady state with the temperature settled; its temperature and CO match the coupled climate; the net flux of that climate is uniform with height to 1 % | 2026-11-13 |
+| `test_integration_vulcan_agni_climate::test_coupled_run_ends_where_chemistry_and_climate_agree` | AGNI's climate for VULCAN's final composition, and radiative-convective equilibrium | VULCAN ends at a steady state with the temperature settled; its CO is the coupled climate's, and its temperature differs from that climate by the recorded last change, at most 1 %; the net flux of that climate is uniform with height to 1 % | 2026-11-13 |
 
 ## The snapshot is a fixed point of the climate update
 
@@ -35,7 +35,7 @@ If this coupling is wrong, the chemistry is computed on a temperature profile th
     - Reference: the AGNI solve of the evolution that wrote the snapshot.
     - Tolerance: 1 K in every layer; the swapped composition must move the temperature by more than 10 K.
     - Test id: `tests/integration/test_integration_vulcan_agni_climate.py::test_climate_update_with_the_snapshot_composition_returns_the_snapshot`
-    - Command: `PROTEUS_CI_NIGHTLY=1 pytest -m reference_pinned tests/integration/test_integration_vulcan_agni_climate.py --validation-plots`
+    - Command: `PROTEUS_CI_NIGHTLY=1 pytest tests/integration/test_integration_vulcan_agni_climate.py --validation-plots`
 
 ## A coupled run ends where chemistry and climate agree
 
@@ -45,7 +45,7 @@ If this coupling is wrong, the chemistry is computed on a temperature profile th
 
 - VULCAN ends at a steady state, after a climate update that changed the temperature by less than `agni_T_rtol`;
 - the CO given to AGNI is VULCAN's;
-- VULCAN's final temperature is the coupled climate;
+- VULCAN saves the temperature it is steady for, from before the last climate update, so it differs from the coupled climate by exactly the change of that update, which is at most `agni_T_rtol`;
 - the net upward flux of the coupled climate is the same at every height.
 
 **How we know the right answer.** In radiative-convective equilibrium no energy builds up in any layer, so the net flux is the same at every height. The converged AGNI states of this case hold it uniform to 0.3 % (snapshot) and 0.05 % (coupled); the test allows 1 %.
@@ -55,10 +55,10 @@ If this coupling is wrong, the chemistry is computed on a temperature profile th
 ![Temperature and CO mixing ratio of the coupled run](../../assets/validation/atmos_chem_vulcan_agni_coupled_run.svg#only-light){ width="80%" }
 ![Temperature and CO mixing ratio of the coupled run](../../assets/validation/atmos_chem_vulcan_agni_coupled_run_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** Both panels have pressure on the y-axis, with the surface at the bottom. On the left, the thick line is the coupled climate and the circles VULCAN's final temperature, which lie on it except above about 0.01 bar, where VULCAN is held at the 180 K floor (dotted line). On the right, the thick line is VULCAN's CO mixing ratio on the AGNI layers and the circles the CO that AGNI solved the climate with.
+**How to read the plot.** Both panels have pressure on the y-axis, with the surface at the bottom. On the left, the thick line is the coupled climate and the circles VULCAN's final temperature, which lie on it within the last change (at most 1 %), except above about 0.01 bar, where VULCAN is held at the 180 K floor (dotted line). On the right, the thick line is VULCAN's CO mixing ratio on the AGNI layers and the circles the CO that AGNI solved the climate with.
 
 ??? info "Test details"
     - Reference: AGNI's climate for VULCAN's final composition; radiative-convective equilibrium.
-    - Tolerance: last climate update at most `agni_T_rtol` = 1 %; CO relative 1e-3; VULCAN temperature relative 1e-9; spread of the net flux at most 1 % of its mean.
+    - Tolerance: last climate update at most `agni_T_rtol` = 1 %; CO relative 1e-3; VULCAN temperature against the coupled climate equal to that last change (relative 1e-6); spread of the net flux at most 1 % of its mean.
     - Test id: `tests/integration/test_integration_vulcan_agni_climate.py::test_coupled_run_ends_where_chemistry_and_climate_agree`
-    - Command: `PROTEUS_CI_NIGHTLY=1 pytest -m reference_pinned tests/integration/test_integration_vulcan_agni_climate.py --validation-plots`
+    - Command: `PROTEUS_CI_NIGHTLY=1 pytest tests/integration/test_integration_vulcan_agni_climate.py --validation-plots`

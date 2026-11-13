@@ -11,8 +11,8 @@ import pandas as pd
 from proteus.atmos_clim.common import list_atmosphere_times
 from proteus.utils.helper import (
     SUBYEAR_TIME_RESOLUTION,
-    find_nearest,
     format_subyear_time,
+    latest_at_or_before,
     snapshot_path_for_time,
 )
 
@@ -53,10 +53,10 @@ def crossing_rows(values, target: float) -> np.ndarray:
 def resolve_chemistry_targets(hf_all: pd.DataFrame, times) -> list[float]:
     """Helpfile times [yr] that `atmos_chem.times` asks chemistry for.
 
-    A list gives its times, with a warning for each outside the run. A table gives the
-    time of every row at which each of its columns reaches or crosses each of its values
-    (`crossing_rows`), with a warning for a value never reached, and the final time with
-    `end = true`. 'end' gives the final time.
+    A table gives the time of every row at which each of its columns reaches or crosses
+    each of its values (`crossing_rows`), with a warning for a value never reached, and the
+    final time with `end = true`. A list of times is the table `{Time = [...]}`: each time
+    gives the first row at or after it. 'end' gives the final time.
 
     Parameters
     ----------
@@ -74,13 +74,7 @@ def resolve_chemistry_targets(hf_all: pd.DataFrame, times) -> list[float]:
     if times == 'end':
         return [float(hf_times[-1])]
     if isinstance(times, list):
-        outside = [t for t in times if not hf_times[0] <= t <= hf_times[-1]]
-        if outside:
-            log.warning(
-                'Chemistry times outside the run (%.3e to %.3e yr) use the nearest snapshot: %s'
-                % (hf_times[0], hf_times[-1], outside)
-            )
-        return sorted(set(times))
+        times = {'Time': times}
 
     targets = set()
     for key, values in times.items():
@@ -139,7 +133,8 @@ def resolve_chemistry_times(output_dir: str, hf_all: pd.DataFrame, times) -> lis
     times : str | list[float] | dict
         'end' (the final helpfile time), 'all' (every snapshot), a list of
         times [yr], or a table of helpfile keys and values
-        (`resolve_chemistry_targets`). Each target maps to the nearest snapshot.
+        (`resolve_chemistry_targets`). Each target uses the latest snapshot at or before
+        its row, which is the row's own snapshot when the run wrote one there.
 
     Returns
     -------
@@ -156,15 +151,19 @@ def resolve_chemistry_times(output_dir: str, hf_all: pd.DataFrame, times) -> lis
 
     resolved = set()
     for t in resolve_chemistry_targets(hf_all, times):
-        nearest = float(find_nearest(available, t)[0])
-        if abs(nearest - t) > SUBYEAR_TIME_RESOLUTION:
+        snap = latest_at_or_before(available, t)
+        if snap is None:
+            log.warning(
+                'Chemistry target t=%.3e yr has no snapshot at or before it; skipped' % t
+            )
+            continue
+        if t - snap > SUBYEAR_TIME_RESOLUTION:
             # a run writes a snapshot at each target row; an older run may not have
-            msg = 'Chemistry target t=%.3e yr has no snapshot of its own; using t=%.3e yr'
-            if isinstance(times, dict):
-                log.warning(msg % (t, nearest))
-            else:
-                log.debug(msg % (t, nearest))
-        resolved.add(nearest)
+            log.warning(
+                'Chemistry target t=%.3e yr has no snapshot of its own; '
+                'using the latest before it, t=%.3e yr' % (t, snap)
+            )
+        resolved.add(snap)
     return sorted(resolved)
 
 
@@ -174,8 +173,9 @@ def snapshot_star_file(output_dir: str, time: float) -> str:
     The AGNI snapshot records its spectrum as `starfile`; the file of that name in the
     run's ``data/`` folder is used, so a moved run folder still works. Without one (another
     atmosphere module, a spectrum taken from the spectral-file cache, or a missing file) it
-    is the newest spectrum written at or before `time` [yr], as the atmosphere step reads
-    it, or the earliest spectrum when every one is later.
+    is the latest spectrum of the evolution written at or before `time` [yr], as the
+    atmosphere step reads it, or the earliest when every one is later. ``-1.sflux``, the
+    copy of the modern spectrum, is not a spectrum of the evolution and is never used.
 
     Raises
     ------
@@ -193,24 +193,31 @@ def snapshot_star_file(output_dir: str, time: float) -> str:
         if recorded.endswith('.sflux') and os.path.isfile(candidate):
             return candidate
 
-    written = sorted(
-        int(os.path.basename(f).split('.')[0]) for f in glob.glob(data_dir + '/*.sflux')
-    )
+    stamps = (int(os.path.basename(f).split('.')[0]) for f in glob.glob(data_dir + '/*.sflux'))
+    written = sorted(t for t in stamps if t >= 0)
     if not written:
-        raise FileNotFoundError(f'No stellar spectrum (.sflux) in {data_dir}')
-    earlier = [t for t in written if t <= time]
-    return os.path.join(data_dir, '%d.sflux' % (earlier[-1] if earlier else written[0]))
+        raise FileNotFoundError(f'No stellar spectrum of the evolution (.sflux) in {data_dir}')
+    latest = latest_at_or_before(written, time)
+    return os.path.join(data_dir, '%d.sflux' % (written[0] if latest is None else latest))
 
 
 def helpfile_row_at(hf_all: pd.DataFrame, time: float) -> dict:
-    """Return the helpfile row whose `Time` [yr] is nearest `time`, as a dict.
+    """Return the latest helpfile row at or before `time` [yr], as a dict.
 
-    The last such row wins, since the init stage keeps several rows at t = 0.
+    A snapshot carries the time of the row it was written at, rounded in its file name, so
+    half of SUBYEAR_TIME_RESOLUTION is allowed after `time`. Of the init rows, which all
+    hold t = 0, the last wins.
+
+    Raises
+    ------
+    ValueError
+        If every row is later than `time`.
     """
     hf_times = hf_all['Time'].to_numpy(dtype=float)
-    dist = np.abs(hf_times - time)
-    idx = np.flatnonzero(dist == dist.min())[-1]
-    return hf_all.iloc[idx].to_dict()
+    idx = np.flatnonzero(hf_times <= time + 0.5 * SUBYEAR_TIME_RESOLUTION)
+    if idx.size == 0:
+        raise ValueError(f'The helpfile has no row at or before t={time:.3e} yr')
+    return hf_all.iloc[idx[-1]].to_dict()
 
 
 def read_result(outdir: str, module: str, filename: str | None = None) -> pd.DataFrame:

@@ -90,7 +90,8 @@ def read_vulcan_netcdf(fpath: str) -> dict:
         'p' and 'tmp' at layer centres [nz], 'pl', 'zl' and 'Kzz' at the
         interfaces [nz+1] (Kzz is defined only on the nz-1 interior ones, and
         NaN at the bottom and top), 'species' (list of str) and 'x_gas',
-        the volume mixing ratios [nz, number of species].
+        the volume mixing ratios [nz, number of species]. 'end_case' and
+        'termination' say how the run ended (None where the file does not say).
     """
     import netCDF4 as nc
 
@@ -99,6 +100,8 @@ def read_vulcan_netcdf(fpath: str) -> dict:
         for key in ('p', 'pl', 'tmp', 'zl', 'Kzz', 'x_gas'):
             out[key] = np.ma.filled(ds.variables[key][:].astype(float), np.nan)
         out['species'] = [str(sp) for sp in ds.variables['species'][:]]
+        out['end_case'] = int(ds.end_case) if 'end_case' in ds.ncattrs() else None
+        out['termination'] = str(getattr(ds, 'termination', ''))
     return out
 
 
@@ -623,7 +626,14 @@ def run_vulcan(
     # Write the result as CSV, in a human-readable format
     csv_file = os.path.join(vulcan_out, vulcan_csv)
     log.debug(f'Writing to {csv_file}')
-    _write_result_csv(csv_file, read_vulcan_netcdf(vulcan_cdf_dst))
+    result = read_vulcan_netcdf(vulcan_cdf_dst)
+    if result['end_case'] in (2, 3, 4):
+        # 2: runtime limit, 3: count_max limit, 4: climate still changing at agni_max_calls
+        log.warning(
+            'VULCAN at t=%.3e yr did not reach a settled steady state: %s (end_case %d)'
+            % (year, result['termination'], result['end_case'])
+        )
+    _write_result_csv(csv_file, result)
 
     log.info('    done')
     return success

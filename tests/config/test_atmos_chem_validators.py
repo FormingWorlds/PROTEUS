@@ -165,6 +165,9 @@ def test_atmos_chem_times_accepts_a_table_of_helpfile_columns():
         ({'end': 1}, 'end must be true or false'),
         ({'end': False}, 'selects no targets'),
         ({}, 'selects no targets'),
+        ({'Time': [100.0, -5.0]}, 'Time values must be >= 0'),
+        ({'T_surf': [True]}, 'must be numbers'),
+        ([1.0, True], 'must be numbers'),
     ],
     ids=[
         'unknown_column',
@@ -174,14 +177,20 @@ def test_atmos_chem_times_accepts_a_table_of_helpfile_columns():
         'end_not_bool',
         'end_false_alone',
         'empty_table',
+        'negative_time',
+        'bool_in_table',
+        'bool_in_list',
     ],
 )
 def test_atmos_chem_times_refuses_invalid_tables(times, match):
     """A table naming a column the helpfile lacks, a key with no or non-finite values,
-    a non-bool `end`, or a table that selects nothing is refused, naming the problem."""
+    a negative time, a true or false among the values (of a table or a list), a non-bool
+    `end`, or a table that selects nothing is refused, naming the problem. Other columns
+    may take negative values (none of the default keys is checked here)."""
     with pytest.raises(ValueError, match=match):
         AtmosChem(times=times)
     assert AtmosChem(times={'T_surf': [1500.0]}).times == {'T_surf': [1500.0]}
+    assert AtmosChem(times={'F_atm': [-10.0]}).times == {'F_atm': [-10.0]}
 
 
 @pytest.mark.unit

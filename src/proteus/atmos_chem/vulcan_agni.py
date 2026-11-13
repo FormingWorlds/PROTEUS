@@ -74,6 +74,7 @@ class SnapshotClimate:
         # The solve uses VULCAN's composition; the setup keeps the gases of the snapshot
         self.config_solve = copy.deepcopy(config)
         self.config_solve.atmos_clim.agni.chemistry = None
+        self.config_solve.params.out.plot_mod = None  # keep the plots of the run
 
         snapshot = snapshot_path_for_time(
             os.path.join(dirs['output'], 'data'), self.time, '_atm.nc'

@@ -409,10 +409,19 @@ def check_core_module_requirements(instance, attribute, value):
 
 
 def chemistry_climate_needs_agni(instance, attribute, value):
-    """Refuse coupling the chemistry to AGNI when the climate module is not AGNI."""
-    if value.vulcan.couple_agni and instance.atmos_clim.module != 'agni':
+    """Refuse coupling the chemistry to AGNI unless AGNI solves the climate.
+
+    A prescribed AGNI profile does not respond to the composition, so it cannot be coupled.
+    """
+    if not value.vulcan.couple_agni:
+        return
+    if instance.atmos_clim.module != 'agni':
         raise ValueError(
             "atmos_chem.vulcan.couple_agni = true needs atmos_clim.module = 'agni'"
+        )
+    if not instance.atmos_clim.agni.solve_energy:
+        raise ValueError(
+            'atmos_chem.vulcan.couple_agni = true needs atmos_clim.agni.solve_energy = true'
         )
 
 

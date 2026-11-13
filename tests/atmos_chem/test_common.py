@@ -205,21 +205,22 @@ def test_resolve_all_returns_every_snapshot_ascending(tmp_path):
     assert times == sorted(times)
 
 
-def test_resolve_list_maps_to_nearest_and_drops_duplicates(tmp_path):
-    """A list of requested times maps each to the nearest snapshot; two that
-    map to the same snapshot give it once, and the result is ascending
-    whatever order the list was given in.
+def test_resolve_list_takes_the_first_row_at_or_after_each_time(tmp_path, caplog):
+    """Each listed time selects the first helpfile row at or after it, as the run marks
+    it, and its snapshot; times that select the same row give it once, ascending, and a
+    time after the end of the run is skipped with a warning.
 
-    Requests 900 and 1100 yr both map to 1000 yr; 3 yr maps to 0 yr and not
-    to 10 yr, which a floor or ceiling instead of nearest would pick.
+    3 yr selects the row at 10 yr, not the nearer one at 0 yr; 900 and 950 yr both select
+    the row at 1000 yr; 1100 yr is after the last row.
     """
     _write_atm_snapshots(tmp_path, [0.0, 10.0, 1000.0])
     hf_all = _helpfile([0.0, 10.0, 1000.0])
 
-    times = resolve_chemistry_times(str(tmp_path), hf_all, [1100.0, 3.0, 900.0])
+    with caplog.at_level('WARNING'):
+        times = resolve_chemistry_times(str(tmp_path), hf_all, [1100.0, 3.0, 950.0, 900.0])
 
-    np.testing.assert_allclose(times, [0.0, 1000.0], rtol=0, atol=1e-12)
-    assert len(times) == len(set(times))
+    np.testing.assert_allclose(times, [10.0, 1000.0], rtol=0, atol=1e-12)
+    assert 'Time = 1100 is never reached' in caplog.text
 
 
 def test_resolve_falls_back_to_helpfile_times_without_snapshots(tmp_path):
@@ -229,9 +230,10 @@ def test_resolve_falls_back_to_helpfile_times_without_snapshots(tmp_path):
     hf_all = _helpfile([0.0, 0.0, 0.0, 5.0, 25.0])  # init stage repeats t = 0
 
     all_times = resolve_chemistry_times(str(tmp_path), hf_all, 'all')
-    listed = resolve_chemistry_times(str(tmp_path), hf_all, [6.0, 24.0])
+    listed = resolve_chemistry_times(str(tmp_path), hf_all, [4.0, 6.0, 24.0])
 
     np.testing.assert_allclose(all_times, [0.0, 5.0, 25.0], rtol=0, atol=1e-12)
+    # 4 yr selects the row at 5 yr; 6 and 24 yr both select the row at 25 yr
     np.testing.assert_allclose(listed, [5.0, 25.0], rtol=0, atol=1e-12)
     assert not (tmp_path / 'data').exists()  # nothing was created on disk
 
@@ -241,19 +243,20 @@ def test_resolve_falls_back_to_helpfile_times_without_snapshots(tmp_path):
 # -----------------------------------------------------------------------
 
 
-def test_helpfile_row_at_picks_the_nearest_row():
-    """The row nearest the snapshot time is returned as a dict, so the
-    chemistry of a snapshot uses the planet state at that time.
-
-    7 yr is nearer 10 yr (T_surf 1500 K) than 0 yr (3000 K).
-    """
+def test_helpfile_row_at_picks_the_latest_row_at_or_before():
+    """The latest row at or before the snapshot time is returned as a dict, the state the
+    run had reached by then: at 7 yr the row at 0 yr (3000 K), not the nearer row at 10 yr.
+    A snapshot named with the time rounded to 1e-3 yr still finds its own row, and a time
+    before every row is an error."""
     hf_all = pd.DataFrame({'Time': [0.0, 10.0, 100.0], 'T_surf': [3000.0, 1500.0, 900.0]})
 
     row = helpfile_row_at(hf_all, 7.0)
-
-    assert row['Time'] == pytest.approx(10.0, abs=1e-12)
-    assert row['T_surf'] == pytest.approx(1500.0, abs=1e-12)
+    assert row['T_surf'] == pytest.approx(3000.0, abs=1e-12)
     assert isinstance(row, dict)
+    # 9.9996 yr is 10 yr rounded down by less than half the file-name resolution
+    assert helpfile_row_at(hf_all, 9.9996)['T_surf'] == pytest.approx(1500.0, abs=1e-12)
+    with pytest.raises(ValueError, match='no row at or before'):
+        helpfile_row_at(hf_all, -1.0)
 
 
 def test_helpfile_row_at_takes_the_last_of_repeated_init_rows():
@@ -336,15 +339,16 @@ def test_resolve_targets_skips_values_never_reached_with_a_warning(caplog):
     assert "'R_star' skipped" in caplog.text
 
 
-def test_resolve_list_keeps_its_times_and_warns_for_those_outside_the_run(caplog):
-    """A list keeps its own times: a time after the end of the run still maps to the
-    final snapshot, as before, and is now reported."""
+def test_resolve_list_is_the_time_column_of_a_table(caplog):
+    """A list of times resolves as the table {Time = [...]}: 25 yr selects the row at 30 yr,
+    twice listed it gives it once, and 1e4 yr, after the run, is skipped with a warning."""
     hf_all = _remelting_helpfile()
     with caplog.at_level('WARNING'):
         targets = resolve_chemistry_targets(hf_all, [1e4, 25.0, 25.0])
 
-    assert targets == [25.0, 1e4]
-    assert 'outside the run' in caplog.text
+    assert targets == resolve_chemistry_targets(hf_all, {'Time': [1e4, 25.0]})
+    assert targets == [30.0]
+    assert 'Time = 10000 is never reached' in caplog.text
 
 
 def test_chem_targets_crossed_marks_exactly_the_rows_the_targets_resolve_to():
@@ -380,9 +384,10 @@ def test_chem_targets_crossed_for_a_list_and_for_end_and_all():
     assert not chem_targets_crossed(hf_all.iloc[:1], [0.0])
 
 
-def test_resolve_table_uses_own_snapshots_and_warns_when_one_is_missing(tmp_path, caplog):
-    """A target with a snapshot of its own (20 yr) uses it; one without (30 yr, from a
-    run made before such snapshots were written) uses the nearest and is reported."""
+def test_resolve_table_uses_own_snapshots_else_the_latest_before(tmp_path, caplog):
+    """A target with a snapshot of its own (20 yr) uses it; one without (30 and 40 yr, in a
+    run made before such snapshots were written) uses the latest snapshot before it, here
+    20 yr, not the nearer later one at 50 yr, and is reported."""
     _write_atm_snapshots(tmp_path, [0.0, 20.0, 50.0])
     hf_all = _remelting_helpfile()
 
@@ -391,9 +396,9 @@ def test_resolve_table_uses_own_snapshots_and_warns_when_one_is_missing(tmp_path
             str(tmp_path), hf_all, {'Phi_global': [0.5], 'end': False}
         )
 
-    # targets 20, 30, 40 yr map to the snapshots at 20, 20 and 50 yr
-    np.testing.assert_allclose(times, [20.0, 50.0], rtol=0, atol=1e-12)
-    assert 't=3.000e+01 yr has no snapshot of its own' in caplog.text
+    # targets 20, 30, 40 yr all use the snapshot at 20 yr
+    np.testing.assert_allclose(times, [20.0], rtol=0, atol=1e-12)
+    assert 't=4.000e+01 yr has no snapshot of its own' in caplog.text
     assert 't=2.000e+01 yr has no snapshot' not in caplog.text
 
 
@@ -432,13 +437,18 @@ def test_snapshot_star_file_uses_the_spectrum_the_snapshot_recorded(tmp_path):
 
 
 def test_snapshot_star_file_falls_back_to_the_newest_earlier_spectrum(tmp_path):
-    """Without a recorded spectrum, the newest written at or before the snapshot is used,
+    """Without a recorded spectrum, the latest written at or before the snapshot is used,
     as the atmosphere step read it: at 900 yr that is 100 yr, not the nearer 1000 yr. A
-    snapshot before every spectrum takes the earliest, and a run without any raises."""
-    _write_sflux(tmp_path, [100, 1000])
+    snapshot before every spectrum of the evolution takes the earliest, never -1.sflux,
+    the copy of the modern spectrum, and a run without any raises."""
+    _write_sflux(tmp_path, [-1, 100, 1000])
     _write_starfile_snapshot(tmp_path, 900.0, '_ALREADY_IN_SPECTRAL_FILE')
 
     assert snapshot_star_file(str(tmp_path), 900.0).endswith(os.sep + '100.sflux')
     assert snapshot_star_file(str(tmp_path), 50.0).endswith(os.sep + '100.sflux')
     with pytest.raises(FileNotFoundError, match='No stellar spectrum'):
         snapshot_star_file(str(tmp_path / 'elsewhere'), 900.0)
+    (tmp_path / 'modern_only').mkdir()
+    _write_sflux(tmp_path / 'modern_only', [-1])
+    with pytest.raises(FileNotFoundError, match='No stellar spectrum'):
+        snapshot_star_file(str(tmp_path / 'modern_only'), 900.0)

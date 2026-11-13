@@ -5138,11 +5138,18 @@ def test_chemistry_target_snapshot_written_only_at_a_crossed_target(
     no chemistry module, or during the init stage, whose rows all hold t = 0."""
     p = _chemistry_target_proteus(tmp_path, times, module=module, init_stage=init_stage)
 
-    with patch('proteus.atmos_clim.wrapper.write_atmosphere_snapshot') as mock_write:
+    with (
+        patch('proteus.atmos_clim.wrapper.write_atmosphere_snapshot') as mock_write,
+        patch('proteus.utils.coupler.WriteHelpfileToCSV') as mock_csv,
+    ):
         result = p._write_chemistry_target_snapshot()
 
     assert result is written
     assert mock_write.call_count == int(written)
+    # the helpfile goes to disk with the snapshot, so a resume sees the snapshot's row
+    assert mock_csv.call_count == int(written)
+    if written:
+        mock_csv.assert_called_once_with(p.directories['output'], p.hf_all)
     if written:
         _, _, _, hf_row = mock_write.call_args.args
         assert hf_row['Time'] == pytest.approx(20.0, abs=1e-12)

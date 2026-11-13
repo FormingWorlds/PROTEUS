@@ -25,7 +25,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from proteus.atmos_chem.vulcan_agni import VULCAN_TMP_FLOOR, SnapshotClimate
+from proteus.atmos_chem.vulcan_agni import LOOPS_SETTLED, VULCAN_TMP_FLOOR, SnapshotClimate
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -61,8 +61,11 @@ def _fake_atmos():
 
 
 def _config():
-    """Config shaped for the hook: equilibrium chemistry on during the evolution."""
-    return SimpleNamespace(atmos_clim=SimpleNamespace(agni=SimpleNamespace(chemistry='eq')))
+    """Config shaped for the hook: equilibrium chemistry on, and plots every loop."""
+    return SimpleNamespace(
+        atmos_clim=SimpleNamespace(agni=SimpleNamespace(chemistry='eq')),
+        params=SimpleNamespace(out=SimpleNamespace(plot_mod=1)),
+    )
 
 
 def _setup(tmp_path, *, loaded=True):
@@ -99,7 +102,8 @@ def _setup(tmp_path, *, loaded=True):
 def test_setup_uses_the_snapshot_gases_spectrum_and_file(tmp_path):
     """The setup keeps the run's config, so the gases match the snapshot file, and uses the
     snapshot's stellar spectrum and a working folder in offchem/; the solves switch AGNI's
-    equilibrium chemistry off on a copy, leaving the run's config as it was."""
+    equilibrium chemistry and its plots off on a copy, leaving the run's config as it was,
+    so a climate update cannot overwrite the plots of the run."""
     climate, m = _setup(tmp_path)
 
     args, kwargs = m['init'].call_args
@@ -113,6 +117,8 @@ def test_setup_uses_the_snapshot_gases_spectrum_and_file(tmp_path):
     m['jl'].AGNI.load.load_ncdf_b.assert_called_once_with(m['atmos'], snapshot)
     assert climate.config_solve.atmos_clim.agni.chemistry is None
     assert m['config'].atmos_clim.agni.chemistry == 'eq'
+    assert climate.config_solve.params.out.plot_mod is None
+    assert m['config'].params.out.plot_mod == 1
 
 
 def test_an_unreadable_snapshot_is_an_error_and_frees_the_atmosphere(tmp_path):
@@ -128,8 +134,11 @@ def test_climate_update_solves_with_vulcan_gases_and_returns_a_floored_profile(
     tmp_path, fake_vulcan_agni
 ):
     """One climate update gives AGNI VULCAN's composition, then solves through run_agni with
-    the chemistry-free config and the snapshot left unwritten, and hands back AGNI's
-    temperature with the 150 K top layer raised to VULCAN_TMP_FLOOR and the rest unchanged."""
+    the chemistry-free config, the settled-loop settings and the snapshot left unwritten,
+    and hands back the temperature of the atmosphere the solve returned, with its 150 K top
+    layer raised to VULCAN_TMP_FLOOR and the rest unchanged. The solve returns a new
+    atmosphere with another profile, so a profile read before the solve, or from the
+    atmosphere passed in, fails."""
     climate, m = _setup(tmp_path)
     pco = np.array([1e5, 1e4, 1e3])  # dyn cm-2, bottom up: AGNI's 1e4, 1e3, 1e2 Pa
     ymix = np.array([[0.8, 0.2], [0.5, 0.5], [0.2, 0.8]])
@@ -137,9 +146,12 @@ def test_climate_update_solves_with_vulcan_gases_and_returns_a_floored_profile(
     order = []
     fake_vulcan_agni.set_composition.side_effect = lambda *a: order.append('composition')
 
+    solved = _fake_atmos()
+    solved.tmp = np.array([150.0, 650.0, 1450.0])
+
     def _solve(*args):
         order.append('solve')
-        return m['atmos'], {'agni_converged': True}
+        return solved, {'agni_converged': True}
 
     with patch('proteus.atmos_clim.agni.run_agni', side_effect=_solve) as mock_run:
         update = climate(pco, np.full(3, 900.0), ['H2O', 'H2'], ymix)
@@ -150,9 +162,11 @@ def test_climate_update_solves_with_vulcan_gases_and_returns_a_floored_profile(
     np.testing.assert_array_equal(p_given, pco)
     np.testing.assert_array_equal(ymix_given, ymix)
     args = mock_run.call_args.args
+    assert args[0] is m['atmos'] and args[1] == LOOPS_SETTLED
     assert args[3] is climate.config_solve
     assert args[5] is False  # the snapshot file is left as it is
-    np.testing.assert_allclose(update.tmp, [VULCAN_TMP_FLOOR, 600.0, 1500.0], rtol=1e-12)
+    assert climate.atmos is solved
+    np.testing.assert_allclose(update.tmp, [VULCAN_TMP_FLOOR, 650.0, 1450.0], rtol=1e-12)
     assert update.tmp.min() >= VULCAN_TMP_FLOOR
     assert climate.calls == 1
 
