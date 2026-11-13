@@ -231,8 +231,8 @@ class _RecordingConfig:
         object.__setattr__(self, name, value)
 
 
-def _installed_vulcan_config_fields() -> set[str]:
-    """Names of the fields `Config.__init__` sets in the installed VULCAN.
+def _installed_vulcan_config_defaults() -> dict[str, object]:
+    """Fields `Config.__init__` sets in the installed VULCAN, with literal defaults.
 
     Parsed from config.py, because this module replaces `vulcan` in
     sys.modules with a mock. Skips when VULCAN is not installed.
@@ -253,7 +253,7 @@ def _installed_vulcan_config_fields() -> set[str]:
     init = next(
         n for n in config_cls.body if isinstance(n, ast.FunctionDef) and n.name == '__init__'
     )
-    fields = set()
+    defaults = {}
     for node in ast.walk(init):
         targets = node.targets if isinstance(node, ast.Assign) else []
         if isinstance(node, (ast.AnnAssign, ast.AugAssign)):
@@ -264,8 +264,19 @@ def _installed_vulcan_config_fields() -> set[str]:
                 and isinstance(target.value, ast.Name)
                 and target.value.id == 'self'
             ):
-                fields.add(target.attr)
-    return fields
+                try:  # None marks a default that is not a literal
+                    value = (
+                        ast.literal_eval(node.value) if isinstance(node, ast.Assign) else None
+                    )
+                except ValueError:
+                    value = None
+                defaults.setdefault(target.attr, value)
+    return defaults
+
+
+def _installed_vulcan_config_fields() -> set[str]:
+    """Names of the fields `Config.__init__` sets in the installed VULCAN."""
+    return set(_installed_vulcan_config_defaults())
 
 
 def _write_sflux(tmp_path, year, flux=(1e-5, 1e-4, 1e-3)):
@@ -758,6 +769,23 @@ def test_run_vulcan_sets_every_field_of_the_installed_vulcan_config(tmp_path):
     )
     # PROTEUS reads the NetCDF output only.
     assert vcfg.save_type == ['netcdf']
+
+
+@pytest.mark.unit
+def test_run_vulcan_keeps_climate_coupling_settings_at_vulcan_defaults(tmp_path):
+    """With the climate coupling off, PROTEUS passes VULCAN's own defaults for
+    the coupling settings, with the same type, so a run matches standalone VULCAN.
+    """
+    names = ('agni_T_rtol', 'agni_max_calls', 'agni_dir', 'agni_sol_type', 'agni_flux_int')
+    defaults = _installed_vulcan_config_defaults()
+    if not set(names) <= defaults.keys():
+        pytest.skip('installed VULCAN has no climate coupling settings')
+
+    _, vcfg, _ = _run(tmp_path, _make_mock_config(), _make_mock_hf_row(year=800.0))
+
+    assert vcfg.agni_call_frq == 0
+    got = {n: (type(getattr(vcfg, n)), getattr(vcfg, n)) for n in names}
+    assert got == {n: (type(defaults[n]), defaults[n]) for n in names}
 
 
 @pytest.mark.unit
