@@ -59,7 +59,6 @@ from tests.helpers._vulcan_netcdf import vulcan_layers, write_vulcan_netcdf
 mock_vulcan_package = MagicMock()
 mock_vulcan_package.__file__ = '/mock/vulcan/__init__.py'
 mock_vulcan_package.__version__ = '0.0.0-test'
-mock_vulcan_package.paths.THERMO_DIR = '/mock/vulcan/thermo'
 sys.modules['vulcan'] = mock_vulcan_package
 
 # Ensure we import the REAL proteus.atmos_chem.vulcan module, not a mock
@@ -82,21 +81,15 @@ from proteus.utils.constants import CHEM_CONDENSATE_DENSITY  # noqa: E402
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
-@pytest.fixture(scope='module')
-def _thermo_with_networks(tmp_path_factory):
-    """Stand-in VULCAN thermo folder with an empty file for each network PROTEUS selects."""
-    thermo = tmp_path_factory.mktemp('thermo')
-    for elements in ('CHO', 'NCHO', 'SNCHO'):
-        for kind in ('photo', 'thermo'):
-            (thermo / f'{elements}_{kind}_network.txt').touch()
-    return str(thermo)
-
-
 @pytest.fixture(autouse=True)
-def _vulcan_mock_in_sys_modules(_thermo_with_networks, monkeypatch):
+def _vulcan_mock_in_sys_modules(tmp_path_factory, monkeypatch):
     """run_vulcan imports `vulcan` when called, so this file's mock is put in
-    sys.modules for each test, whatever another test file left there."""
-    monkeypatch.setattr(mock_vulcan_package.paths, 'THERMO_DIR', _thermo_with_networks)
+    sys.modules for each test, whatever another test file left there. THERMO_DIR is a
+    stand-in folder with an empty file for each network PROTEUS selects."""
+    thermo = tmp_path_factory.mktemp('thermo')
+    for name in ('CHO_photo', 'CHO_thermo', 'NCHO_photo', 'NCHO_thermo', 'SNCHO_photo'):
+        (thermo / f'{name}_network.txt').touch()
+    monkeypatch.setattr(mock_vulcan_package.paths, 'THERMO_DIR', str(thermo))
     with patch.dict(sys.modules, {'vulcan': mock_vulcan_package}):
         yield
 
@@ -353,8 +346,9 @@ def test_run_vulcan_unrecognised_network_returns_false_before_solver(tmp_path):
 
 @pytest.mark.unit
 def test_run_vulcan_without_the_network_file_names_the_clone_install(tmp_path, monkeypatch):
-    """A VULCAN without its data folder (the PyPI wheel) stops before the solver with an
-    error that names the network path and the clone install."""
+    """A VULCAN thermo folder without the network file (the PyPI wheel has no folder at all)
+    stops run_vulcan before the solver with an error that names the path and the clone install."""
+    (tmp_path / 'thermo').mkdir()
     monkeypatch.setattr(mock_vulcan_package.paths, 'THERMO_DIR', str(tmp_path / 'thermo'))
     missing = str(tmp_path / 'thermo' / 'CHO_photo_network.txt')
 
