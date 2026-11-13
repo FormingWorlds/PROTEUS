@@ -1,7 +1,8 @@
 """Tests for the [atmos_chem] and [atmos_chem.vulcan] config validators.
 
 Covers `proteus.config._atmos_chem`: each VULCAN solver option, the
-scheduling keys `mode` and `times`, and the initial composition `ini_mix`
+scheduling keys `mode` and `times` (including its table of helpfile keys), and the
+initial composition `ini_mix`
 accept a valid value and refuse an invalid one at construction.
 """
 
@@ -127,6 +128,46 @@ def test_atmos_chem_times_refuses_invalid_values(times, match):
         AtmosChem(times=times)
     # The default stays valid, so the refusal comes from the value given
     assert AtmosChem().times == 'end'
+
+
+@pytest.mark.unit
+def test_atmos_chem_times_accepts_a_table_of_helpfile_columns():
+    """A table of helpfile keys is kept as float lists, a single number becoming a list
+    of one; `end` keeps its bool, and `end = true` alone is a valid table."""
+    times = AtmosChem(times={'Time': [100, 1e3], 'Phi_global': 0.01, 'end': True}).times
+    assert times == {'Time': [100.0, 1000.0], 'Phi_global': [0.01], 'end': True}
+    assert all(type(v) is float for v in times['Time'])
+    assert AtmosChem(times={'end': True}).times == {'end': True}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('times', 'match'),
+    [
+        ({'Foo': [1.0]}, "'Foo' is not a helpfile column"),
+        ({'T_surf': []}, 'T_surf has no values'),
+        ({'T_surf': [float('inf')]}, 'values must be finite'),
+        ({'T_surf': ['a']}, 'could not convert string to float'),
+        ({'end': 1}, 'end must be true or false'),
+        ({'end': False}, 'selects no targets'),
+        ({}, 'selects no targets'),
+    ],
+    ids=[
+        'unknown_column',
+        'empty_values',
+        'infinite_value',
+        'text_value',
+        'end_not_bool',
+        'end_false_alone',
+        'empty_table',
+    ],
+)
+def test_atmos_chem_times_refuses_invalid_tables(times, match):
+    """A table naming a column the helpfile lacks, a key with no or non-finite values,
+    a non-bool `end`, or a table that selects nothing is refused, naming the problem."""
+    with pytest.raises(ValueError, match=match):
+        AtmosChem(times=times)
+    assert AtmosChem(times={'T_surf': [1500.0]}).times == {'T_surf': [1500.0]}
 
 
 @pytest.mark.unit

@@ -1,6 +1,7 @@
 # Shared functions for atmospheric chemistry
 from __future__ import annotations
 
+import glob
 import logging
 import os
 
@@ -8,7 +9,12 @@ import numpy as np
 import pandas as pd
 
 from proteus.atmos_clim.common import list_atmosphere_times
-from proteus.utils.helper import find_nearest, format_subyear_time
+from proteus.utils.helper import (
+    SUBYEAR_TIME_RESOLUTION,
+    find_nearest,
+    format_subyear_time,
+    snapshot_path_for_time,
+)
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -16,6 +22,106 @@ log = logging.getLogger('fwl.' + __name__)
 def chem_csv_name(module: str, time: float) -> str:
     """Name of the chemistry CSV for one snapshot, e.g. 'vulcan_12p320.csv' at 12.32 yr."""
     return f'{module}_{format_subyear_time(time)}.csv'
+
+
+def crossing_rows(values, target: float) -> np.ndarray:
+    """Indices of the rows at which a helpfile column reaches or crosses a value.
+
+    Row i counts when row i - 1 lies strictly on the other side of `target`, or when row i
+    equals `target` and row i - 1 does not (row 0 counts when it equals `target`). A column
+    that touches the value and turns back counts once; NaN rows never count.
+
+    Parameters
+    ----------
+    values : array-like
+        The column, in helpfile row order.
+    target : float
+        The value, in the unit of the column.
+
+    Returns
+    -------
+    np.ndarray
+        Row indices, ascending.
+    """
+    side = np.sign(np.asarray(values, dtype=float) - target)
+    prev = np.concatenate(([np.nan], side[:-1]))
+    reach = (side == 0) & (prev != 0)
+    cross = (side != 0) & (prev == -side)
+    return np.flatnonzero(reach | cross)
+
+
+def resolve_chemistry_targets(hf_all: pd.DataFrame, times) -> list[float]:
+    """Helpfile times [yr] that `atmos_chem.times` asks chemistry for.
+
+    A list gives its times, with a warning for each outside the run. A table gives the
+    time of every row at which each of its columns reaches or crosses each of its values
+    (`crossing_rows`), with a warning for a value never reached, and the final time with
+    `end = true`. 'end' gives the final time.
+
+    Parameters
+    ----------
+    hf_all : pd.DataFrame
+        Helpfile of the run, with its `Time` column [yr].
+    times : str | list[float] | dict
+        'end', a list of times [yr], or a table of helpfile keys and values.
+
+    Returns
+    -------
+    list of float
+        Target times [yr], ascending and without duplicates.
+    """
+    hf_times = hf_all['Time'].to_numpy(dtype=float)
+    if times == 'end':
+        return [float(hf_times[-1])]
+    if isinstance(times, list):
+        outside = [t for t in times if not hf_times[0] <= t <= hf_times[-1]]
+        if outside:
+            log.warning(
+                'Chemistry times outside the run (%.3e to %.3e yr) use the nearest snapshot: %s'
+                % (hf_times[0], hf_times[-1], outside)
+            )
+        return sorted(set(times))
+
+    targets = set()
+    for key, values in times.items():
+        if key == 'end':
+            if values:
+                targets.add(float(hf_times[-1]))
+            continue
+        if key not in hf_all.columns:
+            log.warning(
+                "Chemistry targets on '%s' skipped: the helpfile has no such column" % key
+            )
+            continue
+        for value in values:
+            rows = crossing_rows(hf_all[key].to_numpy(dtype=float), value)
+            if len(rows) == 0:
+                log.warning('Chemistry target %s = %g is never reached; skipped' % (key, value))
+            targets.update(float(t) for t in hf_times[rows])
+    return sorted(targets)
+
+
+def chem_targets_crossed(hf_all: pd.DataFrame, times) -> bool:
+    """Whether the latest helpfile row reaches a target of `atmos_chem.times`.
+
+    For a list, a time in (t_prev, t_now] of the last two rows; for a table, a value that
+    a column reaches or crosses at the last row, by the rule of `crossing_rows`, so the
+    run writes a snapshot at the rows that `resolve_chemistry_targets` later selects.
+    'end' and 'all' have no targets inside the run.
+    """
+    if not isinstance(times, (list, dict)) or len(hf_all) < 2:
+        return False
+    last = hf_all.iloc[-2:]
+    if isinstance(times, list):
+        t_prev, t_now = last['Time'].to_numpy(dtype=float)
+        return any(t_prev < t <= t_now for t in times)
+    for key, values in times.items():
+        if key == 'end' or key not in last.columns:
+            continue
+        column = last[key].to_numpy(dtype=float)
+        if any(1 in crossing_rows(column, value) for value in values):
+            return True
+    return False
 
 
 def resolve_chemistry_times(output_dir: str, hf_all: pd.DataFrame, times) -> list[float]:
@@ -30,9 +136,10 @@ def resolve_chemistry_times(output_dir: str, hf_all: pd.DataFrame, times) -> lis
         Path to the output directory of the PROTEUS run.
     hf_all : pd.DataFrame
         Helpfile of the run, with its `Time` column [yr].
-    times : str | list[float]
-        'end' (the final helpfile time), 'all' (every snapshot), or a list of
-        times [yr]. Each requested time maps to the nearest snapshot.
+    times : str | list[float] | dict
+        'end' (the final helpfile time), 'all' (every snapshot), a list of
+        times [yr], or a table of helpfile keys and values
+        (`resolve_chemistry_targets`). Each target maps to the nearest snapshot.
 
     Returns
     -------
@@ -46,16 +153,53 @@ def resolve_chemistry_times(output_dir: str, hf_all: pd.DataFrame, times) -> lis
 
     if times == 'all':
         return list(available)
-    if times == 'end':
-        times = [float(hf_all['Time'].iloc[-1])]
 
     resolved = set()
-    for t in times:
+    for t in resolve_chemistry_targets(hf_all, times):
         nearest = float(find_nearest(available, t)[0])
-        if nearest != t:
-            log.debug('Chemistry at t=%.3e yr uses the snapshot at t=%.3e yr' % (t, nearest))
+        if abs(nearest - t) > SUBYEAR_TIME_RESOLUTION:
+            # a run writes a snapshot at each target row; an older run may not have
+            msg = 'Chemistry target t=%.3e yr has no snapshot of its own; using t=%.3e yr'
+            if isinstance(times, dict):
+                log.warning(msg % (t, nearest))
+            else:
+                log.debug(msg % (t, nearest))
         resolved.add(nearest)
     return sorted(resolved)
+
+
+def snapshot_star_file(output_dir: str, time: float) -> str:
+    """Stellar spectrum file (``data/<int>.sflux``) that the atmosphere snapshot at `time` used.
+
+    The AGNI snapshot records its spectrum as `starfile`; the file of that name in the
+    run's ``data/`` folder is used, so a moved run folder still works. Without one (another
+    atmosphere module, a spectrum taken from the spectral-file cache, or a missing file) it
+    is the newest spectrum written at or before `time` [yr], as the atmosphere step reads
+    it, or the earliest spectrum when every one is later.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the run has no ``.sflux`` file.
+    """
+    data_dir = os.path.join(output_dir, 'data')
+    nc_path = snapshot_path_for_time(data_dir, time, '_atm.nc')
+    if os.path.isfile(nc_path):
+        import netCDF4 as nc
+
+        with nc.Dataset(nc_path) as ds:
+            recorded = str(ds.variables['starfile'][...]) if 'starfile' in ds.variables else ''
+        candidate = os.path.join(data_dir, os.path.basename(recorded))
+        if recorded.endswith('.sflux') and os.path.isfile(candidate):
+            return candidate
+
+    written = sorted(
+        int(os.path.basename(f).split('.')[0]) for f in glob.glob(data_dir + '/*.sflux')
+    )
+    if not written:
+        raise FileNotFoundError(f'No stellar spectrum (.sflux) in {data_dir}')
+    earlier = [t for t in written if t <= time]
+    return os.path.join(data_dir, '%d.sflux' % (earlier[-1] if earlier else written[0]))
 
 
 def helpfile_row_at(hf_all: pd.DataFrame, time: float) -> dict:

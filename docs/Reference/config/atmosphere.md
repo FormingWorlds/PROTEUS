@@ -206,7 +206,7 @@ for when it runs, which snapshots it processes and the files it writes.
 |---|---|---|---|
 | `module` | str or none | `none` | Chemistry module. Choices: `none`, `"vulcan"`, `"dummy"`. |
 | `mode` | str or none | `none` | When to run the chemistry module automatically. Options: none (only with `proteus offchem`), offline (after the simulation ends), online (not yet implemented). Choices: `none`, `"offline"`, `"online"`. |
-| `times` | str or list | `"end"` | Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), or a list of times \[yr\], each mapped to the nearest atmosphere snapshot. |
+| `times` | str or list or dict | `"end"` | Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), a list of times \[yr\], each mapped to the nearest atmosphere snapshot, or a table of helpfile keys, each with a list of values in the unit of that column, such as `{Time = [1e2, 1e3], Phi_global = [0.01], T_surf = [1500]}`; each value selects every helpfile row at which its column reaches or crosses it, and `end = true` in the table adds the final state. With a list or a table, the run also writes an atmosphere snapshot at each target. |
 | `photo_on` | bool | `true` | Use photochemistry. |
 | `Kzz_on` | bool | `true` | Use Kzz. |
 | `Kzz_const` | float or none | `none` | Constant Kzz value \[cm2/s\]. If 'none', Kzz is read from NetCDF file. |

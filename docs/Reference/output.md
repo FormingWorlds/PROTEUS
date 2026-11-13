@@ -1218,6 +1218,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 
 A computed key is a helpfile column name constructed dynamically at runtime through variable lookups or formatted strings. Because static analysis cannot determine the accessed column names in advance, these read sites are not attributed to specific columns in the table above.
 
+- `src/proteus/atmos_chem/common.py::resolve_chemistry_targets`: `dynamic key key`
 - `src/proteus/atmos_clim/agni.py::_validate_surface_state`: `dynamic key name` (touches T_surf, T_magma, P_surf)
 - `src/proteus/escape/common.py::calc_unfract_fluxes`: `dynamic key e + key` (touches <element>_kg_total, <element>_kg_atm)
 - `src/proteus/escape/wrapper.py::reservoir_mass`: `dynamic key f'{element}{key}'`

@@ -909,7 +909,7 @@ config_version = "3.0"
     # or alone with `bash tools/get_vulcan.sh`.
     module                    = "none"       # none | vulcan | dummy
     mode                      = "none"       # none | offline (online is not yet implemented)
-    times                     = "end"        # end | all | list of times [yr]
+    times                     = "end"        # end | all | list of times [yr] | table, e.g. {Phi_global = [0.01], T_surf = [1500.0]}
 
     # Transport processes
     photo_on                  = true         # photochemistry

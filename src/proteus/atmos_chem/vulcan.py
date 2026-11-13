@@ -1,7 +1,6 @@
 # Run VULCAN chemical kinetics module
 from __future__ import annotations
 
-import glob
 import logging
 import os
 import shutil
@@ -10,7 +9,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 # Import PROTEUS
-from proteus.atmos_chem.common import chem_csv_name
+from proteus.atmos_chem.common import chem_csv_name, snapshot_star_file
 from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.star.wrapper import flux_weighted_distance, scale_spectrum_to_stellar_surface
 from proteus.utils.constants import (
@@ -20,7 +19,6 @@ from proteus.utils.constants import (
     vol_list,
 )
 from proteus.utils.helper import (
-    find_nearest,
     format_subyear_time,
     list_snapshot_times,
     mol_to_ele,
@@ -299,10 +297,9 @@ def run_vulcan(
     vulcan_plt = os.path.join(dirs['output/offchem'], '')  # VULCAN appends file names
     log.debug('Writing VULCAN input data')
 
-    # Find a reasonable file for the stellar flux
-    ls = glob.glob(dirs['output'] + '/data/*.sflux')
-    years = [int(f.split('/')[-1].split('.')[0]) for f in ls]
-    sflux_fpath = dirs['output'] + '/data/%d.sflux' % find_nearest(years, year)[0]
+    # The stellar spectrum the climate of this snapshot used
+    sflux_fpath = snapshot_star_file(dirs['output'], year)
+    log.debug('Stellar spectrum: %s' % sflux_fpath)
 
     # Read spectrum and scale to surface of the star
     sflux_data = np.loadtxt(sflux_fpath, skiprows=1).T
