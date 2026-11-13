@@ -263,8 +263,15 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
     assert core_target == pytest.approx(
         cfg.interior_struct.core_frac * (planet - kept), rel=1e-9
     )
-    # M_core is the core of the solve, the target to round-off, not the mass inside R_core.
-    assert float(final['M_core']) == pytest.approx(core_target, rel=1e-12)
+    # M_core is the mass inside the first node at or above the boundary: below the target by
+    # the mass tolerance at most, above it by one mantle shell at most (about 1.6 % of the
+    # core at 150 levels; 2 % leaves a margin). M_core_solve is the core of the solve.
+    tol = cfg.interior_struct.zalmoxis.solver_tol_outer
+    snap = float(final['M_core']) / core_target
+    assert 1.0 - tol <= snap <= 1.0 + tol + 0.02, (
+        f'M_core / M_core_target = {snap:.5f} outside the mass tolerance plus one mantle shell'
+    )
+    assert float(final['M_core_solve']) == pytest.approx(core_target, rel=1e-12)
 
     # P_center, P_cmb positive and bounded. Earth: P_center ~ 3.6e11
     # Pa, P_cmb ~ 1.36e11 Pa. The discrimination guards are wide

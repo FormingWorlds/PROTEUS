@@ -278,17 +278,16 @@ def validate_zalmoxis_output_schema(
     encoding drift, and Aragog/Zalmoxis schema desync at the file
     handover boundary.
 
-    The mantle mass is taken from ``mantle_mass_ref`` when the caller supplies
-    it: the structure's accumulator total ``mass_enclosed[-1]`` minus the exact
-    core-mass target ``cmb_mass``. Re-integrating the coarse output nodes with a
-    grid trapezoid instead diverges from the sub-grid-substepped RK45 integral
-    across the steep interior density profile, reaching ~10% at high planet mass,
-    which would false-reject a structure that actually conserves mass. With the
-    reference supplied and ``hf_row['M_core']`` equal to ``cmb_mass``, as
-    ``zalmoxis_solver`` writes it, part (b) checks that the row carries the
-    accumulator total and the core-mass target. File-density-column corruption is
-    caught downstream by Aragog's EOS-vs-mesh consistency at ``solver.reset()``;
-    the radius check (part (a)) catches truncation and column swaps directly.
+    The mantle mass is taken from ``mantle_mass_ref`` when the caller supplies it: the
+    structure's accumulator total ``mass_enclosed[-1]`` minus the mass inside ``R_core``.
+    Re-integrating the coarse output nodes with a grid trapezoid instead diverges from the
+    sub-grid-substepped RK45 integral across the steep interior density profile, reaching
+    ~10% at high planet mass, which would false-reject a structure that actually conserves
+    mass. With that reference and ``hf_row['M_core']`` the mass inside ``R_core``, as
+    ``zalmoxis_solver`` writes both, part (b) checks that the row carries the accumulator
+    total and the mass inside ``R_core``. File-density-column corruption is caught
+    downstream by Aragog's EOS-vs-mesh consistency at ``solver.reset()``; the radius check
+    (part (a)) catches truncation and column swaps directly.
     When no reference is supplied the check falls back to the grid-trapezoidal
     shell-sum.
 
@@ -4040,7 +4039,8 @@ def zalmoxis_solver(
     hf_row['R_int'] = planet_radius
     hf_row['R_core'] = cmb_radius
     hf_row['M_int'] = mass_enclosed[-1]
-    hf_row['M_core'] = float(cmb_mass)  # the core of the solve, not the mass inside R_core
+    hf_row['M_core'] = float(mass_enclosed[cmb_index])  # the mass inside R_core
+    hf_row['M_core_solve'] = float(cmb_mass)  # the core mass of the solve
     hf_row['gravity'] = gravity[-1]
 
     if config.interior_energetics.module == 'boundary':
@@ -4137,11 +4137,9 @@ def zalmoxis_solver(
     # violation: restore the .prev backup (so Aragog reads consistent
     # state on the next iteration via the wrapper's fall-back) and raise
     # RuntimeError.
-    # Pass the structure's accurate mantle mass (accumulator total minus the
-    # exact core-mass target) so the schema check does not re-integrate the
-    # coarse output nodes with a grid trapezoid, which diverges from the RK45
-    # accumulator by ~10% at high planet mass and false-rejects valid runs.
-    mantle_mass_accumulator = float(mass_enclosed[-1]) - float(cmb_mass)
+    # The accumulator mantle above R_core; a grid trapezoid of the coarse output nodes is up to
+    # ~10% off the RK45 accumulator at high planet mass and would refuse valid runs
+    mantle_mass_accumulator = float(mass_enclosed[-1]) - float(mass_enclosed[cmb_index])
     try:
         validate_zalmoxis_output_schema(
             output_zalmoxis, hf_row, mantle_mass_ref=mantle_mass_accumulator
