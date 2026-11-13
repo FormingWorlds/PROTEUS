@@ -163,6 +163,12 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_clim.agni.wl_obs',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
+        # Chemistry coupled to the climate is off by default, so a migrated config runs the
+        # chemistry as before; the other three act only with couple_agni.
+        'atmos_chem.vulcan.agni_T_rtol',
+        'atmos_chem.vulcan.agni_call_frq',
+        'atmos_chem.vulcan.agni_max_calls',
+        'atmos_chem.vulcan.couple_agni',
         # VULCAN options keep the values it ran with, except dttry and dt_min (100x smaller,
         # the adaptive step's start and floor); r_p acts only with use_condense.
         'atmos_chem.vulcan.atol',

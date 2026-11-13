@@ -10971,6 +10971,85 @@
       "group_qualifier": null
     },
     {
+      "path": "atmos_chem.vulcan.couple_agni",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Solve the climate again with AGNI while the chemistry runs, from the composition VULCAN computes, until the temperature and the chemistry agree. The eddy diffusion then also comes from AGNI, unless `atmos_chem.Kzz_const` is set. Needs `atmos_clim.module = 'agni'` with `atmos_clim.agni.solve_energy = true`.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.agni_call_frq",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "int",
+      "accepts_none": false,
+      "default": "0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "With `couple_agni`, VULCAN solver steps between climate updates; 0 updates the climate only when the chemistry reaches a steady state.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.agni_T_rtol",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "With `couple_agni`, the run ends when the climate update made at a steady state changes the temperature by at most this fraction in every layer.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.agni_max_calls",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "int",
+      "accepts_none": false,
+      "default": "10",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "With `couple_agni`, climate updates made at steady states before VULCAN stops with the temperature still changing.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "atmos_chem.mode",
       "toml_section": "atmos_chem",
       "class": "AtmosChem",
@@ -10994,12 +11073,12 @@
       "path": "atmos_chem.times",
       "toml_section": "atmos_chem",
       "class": "AtmosChem",
-      "type": "str or list",
+      "type": "str or list or dict",
       "accepts_none": false,
       "default": "\"end\"",
       "choices": null,
       "bounds": null,
-      "description": "Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), or a list of times [yr], each mapped to the nearest atmosphere snapshot.",
+      "description": "Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), a list of times [yr], each selecting the first helpfile row at or after it, or a table of helpfile keys, each with a list of values in the unit of that column, such as `{Time = [1e2, 1e3], Phi_global = [0.01], T_surf = [1500]}`; each value selects every helpfile row at which its column reaches or crosses it, and `end = true` in the table adds the final state. With a list or a table, the run also writes an atmosphere snapshot at each target row; the chemistry of a target uses the latest atmosphere snapshot at or before its row.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -13325,6 +13404,18 @@
         "outgas.module"
       ],
       "doc": "Check that required external packages are importable for the selected modules."
+    },
+    {
+      "validator": "chemistry_climate_needs_agni",
+      "module": "_config.py",
+      "attached_to": [
+        "atmos_chem"
+      ],
+      "touches": [
+        "atmos_clim.agni.solve_energy",
+        "atmos_clim.module"
+      ],
+      "doc": "Refuse coupling the chemistry to AGNI unless AGNI solves the climate."
     },
     {
       "validator": "dummy_struct_mantle_eos",

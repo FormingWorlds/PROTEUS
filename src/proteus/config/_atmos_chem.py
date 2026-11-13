@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 
 from attrs import define, field
-from attrs.validators import gt, in_, lt
+from attrs.validators import ge, gt, in_, lt
 
 from ._converters import none_if_none
 
@@ -33,24 +33,76 @@ def valid_mode(instance, attribute, value):
         raise ValueError("atmos_chem.mode = 'offline' requires atmos_chem.module != 'none'")
 
 
+def _number(value) -> float:
+    """A chemistry time or target value as a float; true and false are refused."""
+    if isinstance(value, bool):
+        raise ValueError(f'atmos_chem.times values must be numbers, got {value}')
+    return float(value)
+
+
 def times_to_floats(value):
-    """Convert a list of chemistry times to floats [yr]; leave strings as they are."""
+    """Convert chemistry times [yr] or targets to floats; leave strings as they are.
+
+    A list of times becomes a list of floats. A table of helpfile keys becomes a dict of
+    float lists, a single number becoming a one-element list; its `end` entry is kept.
+    """
     if isinstance(value, (list, tuple)):
-        return [float(t) for t in value]
+        return [_number(t) for t in value]
+    if isinstance(value, dict):
+        out = {}
+        for key, vals in value.items():
+            if key == 'end':
+                out[key] = vals
+            elif isinstance(vals, (list, tuple)):
+                out[key] = [_number(v) for v in vals]
+            else:
+                out[key] = [_number(vals)]
+        return out
     return value
 
 
+def _valid_target_table(table: dict) -> None:
+    """Accept a table of helpfile keys, each with a non-empty list of finite values.
+
+    `Time` values are at least 0 yr. The key `end` takes a bool and adds the final state.
+    The table must select something.
+    """
+    from proteus.utils.coupler import GetHelpfileKeys
+
+    if 'end' in table and not isinstance(table['end'], bool):
+        raise ValueError(
+            f'atmos_chem.times table: end must be true or false, got {table["end"]}'
+        )
+    keys = [k for k in table if k != 'end']
+    if not keys and not table.get('end', False):
+        raise ValueError('atmos_chem.times table selects no targets')
+    known = set(GetHelpfileKeys())
+    for key in keys:
+        if key not in known:
+            raise ValueError(f"atmos_chem.times table: '{key}' is not a helpfile column")
+        vals = table[key]
+        if len(vals) == 0:
+            raise ValueError(f'atmos_chem.times table: {key} has no values')
+        if not all(math.isfinite(v) for v in vals):
+            raise ValueError(f'atmos_chem.times table: {key} values must be finite, got {vals}')
+        if key == 'Time' and min(vals) < 0:
+            raise ValueError(f'atmos_chem.times table: Time values must be >= 0 yr, got {vals}')
+
+
 def valid_times(instance, attribute, value):
-    """Accept 'end', 'all', or a non-empty list of finite times >= 0 [yr]."""
+    """Accept 'end', 'all', a non-empty list of finite times >= 0 [yr], or a target table."""
+    if isinstance(value, dict):
+        _valid_target_table(value)
+        return
     if isinstance(value, str):
         if value not in ('end', 'all'):
             raise ValueError(
-                f"atmos_chem.times must be 'end', 'all' or a list of times, got '{value}'"
+                f"atmos_chem.times must be 'end', 'all' or a list of times, or a table of helpfile keys, got '{value}'"
             )
         return
     if not isinstance(value, list):
         raise ValueError(
-            f"atmos_chem.times must be 'end', 'all' or a list of times, got {value}"
+            f"atmos_chem.times must be 'end', 'all' or a list of times, or a table of helpfile keys, got {value}"
         )
     if len(value) == 0:
         raise ValueError('atmos_chem.times must not be an empty list')
@@ -117,6 +169,14 @@ class Vulcan:
         Relative tolerance for adjusting the solver step size.
     post_conden_rtol : float
         Relative tolerance used once condensation stops.
+    couple_agni : bool
+        Solve the climate again with AGNI while the chemistry runs, from the composition VULCAN computes, until the temperature and the chemistry agree. The eddy diffusion then also comes from AGNI, unless `atmos_chem.Kzz_const` is set. Needs `atmos_clim.module = 'agni'` with `atmos_clim.agni.solve_energy = true`.
+    agni_call_frq : int
+        With `couple_agni`, VULCAN solver steps between climate updates; 0 updates the climate only when the chemistry reaches a steady state.
+    agni_T_rtol : float
+        With `couple_agni`, the run ends when the climate update made at a steady state changes the temperature by at most this fraction in every layer.
+    agni_max_calls : int
+        With `couple_agni`, climate updates made at steady states before VULCAN stops with the temperature still changing.
     """
 
     clip_fl: float = field(default=1e-20)
@@ -148,6 +208,10 @@ class Vulcan:
     flux_atol: float = field(default=1.0, validator=gt(0))
     rtol: float = field(default=0.9, validator=gt(0))
     post_conden_rtol: float = field(default=0.1, validator=gt(0))
+    couple_agni: bool = field(default=False)
+    agni_call_frq: int = field(default=0, validator=ge(0))
+    agni_T_rtol: float = field(default=1e-2, validator=gt(0))
+    agni_max_calls: int = field(default=10, validator=gt(0))
 
 
 @define
@@ -162,8 +226,8 @@ class AtmosChem:
         VULCAN  module options
     mode : str
         When to run the chemistry module automatically. Options: none (only with `proteus offchem`), offline (after the simulation ends), online (not yet implemented).
-    times : str | list[float]
-        Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), or a list of times [yr], each mapped to the nearest atmosphere snapshot.
+    times : str | list[float] | dict[str, list[float] | bool]
+        Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), a list of times [yr], each selecting the first helpfile row at or after it, or a table of helpfile keys, each with a list of values in the unit of that column, such as `{Time = [1e2, 1e3], Phi_global = [0.01], T_surf = [1500]}`; each value selects every helpfile row at which its column reaches or crosses it, and `end = true` in the table adds the final state. With a list or a table, the run also writes an atmosphere snapshot at each target row; the chemistry of a target uses the latest atmosphere snapshot at or before its row.
     photo_on : bool
         Use photochemistry.
     Kzz_on : bool
@@ -188,7 +252,7 @@ class AtmosChem:
         validator=(in_((None, 'offline', 'online')), valid_mode),
         converter=none_if_none,
     )
-    times: str | list[float] = field(
+    times: str | list[float] | dict[str, list[float] | bool] = field(
         default='end', validator=valid_times, converter=times_to_floats
     )
     photo_on: bool = field(default=True)

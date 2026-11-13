@@ -177,7 +177,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
 | `F_int` | `W m-2` | flux from top of interior | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py`<br>`interior_energetics/wrapper.py`<br>`proteus.py` | always; interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider" | atmos_clim, escape, interior_energetics, plot, utils |
-| `F_atm` | `W m-2` | flux from top of atmosphere | `atmos_clim/agni.py`<br>`atmos_clim/dummy.py`<br>`atmos_clim/janus.py`<br>`proteus.py` | always; atmos_clim.module = "agni"; atmos_clim.module = "dummy"; atmos_clim.module = "janus" | atmos_clim, interior_energetics, main loop, plot, utils |
+| `F_atm` | `W m-2` | flux from top of atmosphere | `atmos_clim/agni.py`<br>`atmos_clim/dummy.py`<br>`atmos_clim/janus.py`<br>`proteus.py` | always; atmos_clim.module = "agni"; atmos_clim.module = "dummy"; atmos_clim.module = "janus" | atmos_chem, atmos_clim, interior_energetics, main loop, plot, utils |
 | `F_net` | `W m-2` | flux difference F_int-F_atm | `atmos_clim/wrapper.py` | always |   |
 | `F_olr` | `W m-2` | outgoing longwave radiation | `atmos_clim/agni.py`<br>`atmos_clim/dummy.py`<br>`atmos_clim/janus.py` | atmos_clim.module = "agni"; atmos_clim.module = "dummy"; atmos_clim.module = "janus" | atmos_clim, plot |
 | `F_sct` | `W m-2` | outgoing shortwave radiation | `atmos_clim/agni.py`<br>`atmos_clim/dummy.py`<br>`atmos_clim/janus.py` | atmos_clim.module = "agni"; atmos_clim.module = "dummy"; atmos_clim.module = "janus" | atmos_clim, plot |
@@ -1228,6 +1228,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 
 A computed key is a helpfile column name constructed dynamically at runtime through variable lookups or formatted strings. Because static analysis cannot determine the accessed column names in advance, these read sites are not attributed to specific columns in the table above.
 
+- `src/proteus/atmos_chem/common.py::resolve_chemistry_targets`: `dynamic key key`
 - `src/proteus/atmos_clim/agni.py::_validate_surface_state`: `dynamic key name` (touches T_surf, T_magma, P_surf)
 - `src/proteus/escape/common.py::calc_unfract_fluxes`: `dynamic key e + key` (touches <element>_kg_total, <element>_kg_atm)
 - `src/proteus/escape/wrapper.py::reservoir_mass`: `dynamic key f'{element}{key}'`

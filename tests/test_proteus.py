@@ -5094,3 +5094,99 @@ def test_a_resume_restores_the_lid_seal_state_from_the_last_row(tmp_path, caplog
     assert p.lid_sealed is sealed
     logged = 'Resuming with the lid seal closed since t = 2.500e+02 yr' in caplog.text
     assert logged is sealed
+
+
+# ---------------------------------------------------------------------------
+# Atmosphere snapshots at chemistry targets
+# ---------------------------------------------------------------------------
+
+
+def _chemistry_target_proteus(tmp_path, times, *, module='vulcan', init_stage=False):
+    """A Proteus instance whose helpfile cools past 2000 K between its last two rows."""
+    p = _make_proteus_instance(tmp_path)
+    p.config.atmos_chem.module = module
+    p.config.atmos_chem.times = times
+    p.init_stage = init_stage
+    p.hf_all = pd.DataFrame({'Time': [10.0, 20.0], 'T_surf': [2100.0, 1900.0]})
+    p.hf_row = p.hf_all.iloc[-1].to_dict()
+    p.atmos_o = MagicMock()
+    return p
+
+
+@pytest.mark.parametrize(
+    ('times', 'module', 'init_stage', 'written'),
+    [
+        ({'T_surf': [2000.0]}, 'vulcan', False, True),
+        ([15.0], 'vulcan', False, True),
+        ({'T_surf': [1500.0]}, 'vulcan', False, False),
+        ([25.0], 'vulcan', False, False),
+        ('end', 'vulcan', False, False),
+        ({'T_surf': [2000.0]}, None, False, False),
+        ({'T_surf': [2000.0]}, 'vulcan', True, False),
+    ],
+    ids=[
+        'table_value_crossed',
+        'listed_time_reached',
+        'table_value_not_reached',
+        'listed_time_later',
+        'end_has_no_target_inside_the_run',
+        'no_chemistry_module',
+        'init_stage',
+    ],
+)
+def test_chemistry_target_snapshot_written_only_at_a_crossed_target(
+    tmp_path, times, module, init_stage, written
+):
+    """The step that cools T_surf from 2100 to 1900 K writes an atmosphere snapshot for a
+    target of 2000 K or a listed time of 15 yr; not for an unreached target, for 'end', with
+    no chemistry module, or during the init stage, whose rows all hold t = 0."""
+    p = _chemistry_target_proteus(tmp_path, times, module=module, init_stage=init_stage)
+
+    with (
+        patch('proteus.atmos_clim.wrapper.write_atmosphere_snapshot') as mock_write,
+        patch('proteus.utils.coupler.WriteHelpfileToCSV') as mock_csv,
+    ):
+        result = p._write_chemistry_target_snapshot()
+
+    assert result is written
+    assert mock_write.call_count == int(written)
+    # the helpfile goes to disk with the snapshot, so a resume sees the snapshot's row
+    assert mock_csv.call_count == int(written)
+    if written:
+        mock_csv.assert_called_once_with(p.directories['output'], p.hf_all)
+    if written:
+        _, _, _, hf_row = mock_write.call_args.args
+        assert hf_row['Time'] == pytest.approx(20.0, abs=1e-12)
+
+
+def test_main_loop_checks_chemistry_targets_only_on_steps_without_a_snapshot(tmp_path):
+    """With write_mod = 2 the loop writes every other step; the chemistry-target check runs
+    on the other steps only, since a snapshot step already wrote its atmosphere."""
+    from proteus.proteus import Proteus
+
+    def _calls(write_mod, folder):
+        folder.mkdir()
+        p = _make_main_loop_proteus(
+            folder, plot_mod=None, write_mod=write_mod, dt_write_rel=0.0
+        )
+        calls = []
+
+        def _record(handler):
+            calls.append(handler.loops['total'])
+            return False
+
+        _run_main_loop_capturing_plots(
+            p,
+            patch.object(
+                Proteus, '_write_chemistry_target_snapshot', autospec=True, side_effect=_record
+            ),
+            stop_at_loop=6,
+        )
+        return calls
+
+    calls = _calls(2, tmp_path / 'every_other')
+    assert _calls(1, tmp_path / 'every_step') == []  # every step writes its atmosphere
+
+    # is_snapshot reads the count before its increment, so steps 0, 2 and 4 write; the
+    # check runs on steps 1, 3 and 5, by which time the count reads 2, 4 and 6
+    assert calls == [2, 4, 6]

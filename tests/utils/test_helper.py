@@ -25,6 +25,7 @@ from proteus.utils.helper import (
     create_tmp_folder,
     find_nearest,
     is_write_snapshot,
+    latest_at_or_before,
     list_snapshot_times,
     mol_to_ele,
     multiple,
@@ -1084,3 +1085,18 @@ def test_list_snapshot_times_empty_or_missing_directory(tmp_path):
     """An empty directory and a missing one both give an empty list, not an error."""
     assert list_snapshot_times(str(tmp_path), '_atm.nc') == []
     assert list_snapshot_times(str(tmp_path / 'absent'), '_atm.nc') == []
+
+
+def test_latest_at_or_before_takes_the_latest_earlier_time_not_the_nearest():
+    """The latest time at or before the target is chosen, even when a later one is nearer:
+    at 19 yr the snapshot at 10 yr, not the one at 20 yr. Half of the 1e-3 yr file-name
+    resolution is allowed after the target, so a time rounded up in a file name still
+    counts, and None means every time is later."""
+    times = [0.0, 10.0, 20.0, 30.5]  # a selection, so it returns one of these exactly
+    assert latest_at_or_before(times, 19.0) == times[1]
+    assert latest_at_or_before(times, 20.0) == times[2]
+    assert latest_at_or_before(times, 19.9996) == times[2]  # within 5e-4 yr of 20 yr
+    assert latest_at_or_before(times, 19.999) == times[1]  # 1e-3 yr before is earlier
+    assert latest_at_or_before(times, 1e9) == times[3]
+    assert latest_at_or_before(times, -1.0) is None
+    assert latest_at_or_before([], 5.0) is None

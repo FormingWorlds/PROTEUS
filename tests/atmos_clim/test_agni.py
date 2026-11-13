@@ -4181,3 +4181,22 @@ def test_update_agni_atmos_gives_the_lid_boundary_to_the_struct(monkeypatch):
     assert atmos.skin_d == pytest.approx(0.02, rel=1e-14)
     assert atmos.skin_k == pytest.approx(2.0, rel=1e-15)
     assert atmos.tmp_magma == pytest.approx(1440.0, rel=1e-14)
+
+
+def test_write_atmos_ncdf_names_the_file_by_time_and_suffix(tmp_path):
+    """The default suffix writes the atmosphere snapshot data/<time>_atm.nc; another suffix,
+    as for the climate of coupled chemistry, writes beside it and leaves the snapshot alone."""
+    from proteus.atmos_clim import agni
+
+    atmos = SimpleNamespace(is_alloc=True)
+    dirs = {'output': str(tmp_path)}
+    with patch.object(agni, 'jl') as mock_jl:
+        agni.write_atmos_ncdf(atmos, dirs, 700.0)
+        agni.write_atmos_ncdf(atmos, dirs, 700.0, suffix='_chematm.nc')
+
+    paths = [c.args[1] for c in mock_jl.AGNI.save.write_ncdf.call_args_list]
+    assert paths == [
+        str(tmp_path / 'data' / '700p000_atm.nc'),
+        str(tmp_path / 'data' / '700p000_chematm.nc'),
+    ]
+    assert all(c.args[0] is atmos for c in mock_jl.AGNI.save.write_ncdf.call_args_list)
