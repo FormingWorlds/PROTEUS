@@ -2532,6 +2532,20 @@ def test_a_thin_mantle_keeps_the_mass_inside_r_core_and_the_core_of_the_solve(
     assert hf_row['core_density'] * core_volume == pytest.approx(float(mass[55]), rel=1e-12)
 
 
+@pytest.mark.unit
+def test_a_core_mass_above_every_node_stops_the_structure_solve(tmp_path, monkeypatch):
+    """A core mass of the solve above the mass at the last node (an accepted mass error larger
+    than the mantle fraction) leaves no node for the CMB and raises with both masses."""
+    model = _plausible_model_results()
+    top = float(model['mass_enclosed'][-1])
+    model['cmb_mass'] = model['core_mantle_mass'] = top * (1.0 + 1e-3)
+    with pytest.raises(RuntimeError, match='no node reaches the core mass') as err:
+        _run_gate_solver(
+            tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
+        )
+    assert f'{top:.4e}' in str(err.value)
+
+
 def test_zalmoxis_solver_passes_callable_when_jax_path_not_viable(tmp_path, monkeypatch):
     """Non-viable-mantle re-solves hand the evolved T(r) callable to the solve.
 
