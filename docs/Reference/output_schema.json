@@ -1935,7 +1935,7 @@
     {
       "name": "M_core",
       "unit": "kg",
-      "description": "dry mass of core",
+      "description": "dry mass of core; with Zalmoxis the mass inside R_core",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
@@ -2039,7 +2039,9 @@
           "condition": "interior_struct.module = \"zalmoxis\""
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "interior_energetics"
+      ],
       "consumers_possible": []
     },
     {

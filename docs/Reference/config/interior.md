@@ -126,14 +126,19 @@ A giant impact adds `core_frac` of the impactor rock to the core mass: the impac
 With an ice layer the mantle is `zalmoxis.mantle_mass_fraction` of the target and the ice layer is the rest; the run stops with an error when the core and mantle fractions leave no ice layer.
 
 The helpfile column `M_core_target` holds this mass.
-Zalmoxis puts the core-mantle boundary of its output at the first grid node at or above the core fraction of the mass it converged to, and `M_core` is the mass inside that node.
-`M_core` is therefore between the target less the mass tolerance of the solve (`zalmoxis.solver_tol_outer`) and the target plus that tolerance and one mantle shell at the boundary.
-For a planet of 1 Earth mass with `core_frac = 0.325` and the default `zalmoxis.num_levels = 150` that shell holds about 1.6 % of the core mass, and the measured range of `M_core` in runs of that planet is 0.1 to 1.5 % above the target.
-The helpfile column `M_core_solve` holds the core mass of the solve, the target to round-off, and `core_density` is `M_core` divided by the volume inside `R_core`.
+Zalmoxis writes 2 core masses:
+
+- `M_core_solve`: the core mass of the solve, the target to round-off.
+- `M_core`: the mass inside `R_core`. Zalmoxis puts the core-mantle boundary of its output (`R_core`, `P_cmb`) at the first grid node at or above the core mass of the solve, so `M_core` is larger than `M_core_solve` by at most the shell below that node. For a planet of 1 Earth mass with `core_frac = 0.325` and the default `zalmoxis.num_levels = 150` that shell holds about 1.6 % of the core mass, and the measured range of `M_core` in runs of that planet is 0.1 to 1.5 % above the target.
+
+`core_density` is `M_core` divided by the volume inside `R_core`.
+The silicate between the core mass of the solve and `R_core` counts in `M_core` and not in the mantle.
+At a high core fraction it is a large part of the mantle: in the PROTEUS grid case with `core_frac = 0.95`, 0.7 Earth masses and 150 levels it is 0.36 % of the core mass but 6.9 % of the mantle in the first solve, and 0.31 % and 6.0 % in the re-solve.
 The structure takes a changed core mass at its next solve, so a run with no structure update after the init stage keeps the core of its last solve.
 When the target leaves no mantle (a core mass at or above the target mass, which a large buffered oxygen inventory over a hot magma ocean can cause), the run stops with an error that names the masses.
-A run that resumes from a helpfile without the column takes `core_frac` of the structure target of the row of its first structure solve, logs a warning, and keeps that core mass from there.
+A run that resumes from a helpfile without `M_core_target` takes `core_frac` of the structure target of the row of its first structure solve, logs a warning, and keeps that core mass from there.
 This core mass depends on the oxygen inventory of that row, so it differs with the row at which the run resumes, and it is not the core mass of a run that starts with the column.
+A helpfile without `M_core_solve` resumes with that column at 0.
 
 **How the PALEOS mantle EOS is applied**
 
