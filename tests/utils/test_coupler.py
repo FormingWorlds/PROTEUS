@@ -3731,7 +3731,7 @@ def test_validate_module_versions_requires_agni_with_load_all_opacities(
         ('26.10.15', None),
     ],
 )
-@pytest.mark.usefixtures('fwl_io_current')
+@pytest.mark.usefixtures('fwl_io_current', 'vulcan_with_networks')
 def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installed, fix):
     """With atmos_chem.module = 'vulcan', a VULCAN missing or below the floor stops the start.
 
@@ -6072,6 +6072,16 @@ def fwl_io_current(monkeypatch):
     monkeypatch.setattr('proteus.utils.coupler.fwl_io_problem', lambda: None)
 
 
+@pytest.fixture
+def vulcan_with_networks(tmp_path_factory, monkeypatch):
+    """A VULCAN whose thermo folder holds the network file, for a start check not about it."""
+    thermo = tmp_path_factory.mktemp('thermo')
+    (thermo / 'CHO_photo_network.txt').touch()
+    paths = types.SimpleNamespace(THERMO_DIR=str(thermo))
+    monkeypatch.setitem(sys.modules, 'vulcan', types.SimpleNamespace(paths=paths))
+    monkeypatch.setitem(sys.modules, 'vulcan.paths', paths)
+
+
 _MISSING = object()
 
 
@@ -6348,7 +6358,7 @@ def test_online_chemistry_is_still_refused():
 
 
 @pytest.mark.unit
-@pytest.mark.usefixtures('fwl_io_current')
+@pytest.mark.usefixtures('fwl_io_current', 'vulcan_with_networks')
 @pytest.mark.parametrize(
     ('module', 'mode', 'checked'),
     [('vulcan', None, 0), ('vulcan', 'offline', 1), (None, None, 0)],
