@@ -1475,7 +1475,6 @@ def test_a_cache_hit_runs_no_socrates_tool_and_has_no_file_name_limit(monkeypatc
     key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None)
     (cache / f'{key}.sf').write_text('cached', encoding='utf-8')
     (cache / f'{key}.sf_k').write_text('cached k', encoding='utf-8')
-    ctx.config.atmos_clim.rayleigh = False
     with tempfile.TemporaryDirectory(prefix='a') as short:
         io_dir = os.path.join(short, 'x' * (133 - len(short) - len('/x/socstar.dat') + 1))
         assert len(os.fsencode(os.path.join(io_dir, 'socstar.dat'))) == 133
