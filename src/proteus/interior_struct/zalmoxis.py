@@ -4133,12 +4133,9 @@ def zalmoxis_solver(
                 f'{mantle_radii[i]:.17e} {mantle_pressure[i]:.17e} {mantle_density[i]:.17e} {mantle_gravity_out[i]:.17e} {mantle_temperature[i]:.17e}\n'
             )
 
-    # Schema check at the Zalmoxis -> Aragog file-handover boundary. On
-    # violation: restore the .prev backup (so Aragog reads consistent
-    # state on the next iteration via the wrapper's fall-back) and raise
-    # RuntimeError.
-    # The accumulator mantle above R_core; a grid trapezoid of the coarse output nodes is up to
-    # ~10% off the RK45 accumulator at high planet mass and would refuse valid runs
+    # Schema check at the Zalmoxis -> Aragog file handover (a violation restores .prev and raises),
+    # against the accumulator mantle above R_core: a grid trapezoid of the coarse output nodes is
+    # up to ~10% off the RK45 accumulator at high planet mass and would refuse valid runs
     mantle_mass_accumulator = float(mass_enclosed[-1]) - float(mass_enclosed[cmb_index])
     try:
         validate_zalmoxis_output_schema(
