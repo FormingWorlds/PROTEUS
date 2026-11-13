@@ -145,16 +145,14 @@ PROTOCOL_STOP = {
 # hold: the separation buoyancy against the solid.
 RUN_SETTINGS = {'interior_energetics.aragog.separation_buoyancy': 'solid'}
 
-# The submitted runs used energy-limited escape, split over the elements by atmospheric
-# abundance and clipped at the Hill radius, without the tidal factor. These are the
-# defaults of the "el" scheme, written out because the PROTEUS default is the dispatcher.
-# The submitted runs resolved the atmosphere on 45 levels up to 1e-4 bar; the tutorials
-# now reach 1e-10 bar so that the escape wind base stays inside the column.
+# The atmosphere grid of the submitted runs; the tutorials now reach 1e-10 bar.
 PROTOCOL_ATMOSPHERE = {
     'atmos_clim.num_levels': 45,
     'atmos_clim.p_top': tomlkit.value('1e-4'),
 }
 
+# The escape of the submitted runs: the "el" scheme with its defaults written out,
+# since the PROTEUS default is the dispatcher.
 PROTOCOL_ESCAPE = {
     'escape.reservoir': 'outgas',
     'escape.hill_clamp': True,

@@ -473,7 +473,6 @@ config_version = "3.0"
     spectral_group            = "Dayspring"  # opacity k-table set; see docs/assets/spectral_files.pdf
     spectral_bands            = "48"         # wavenumber bands in k-table
     num_levels                = 40           # vertical atmosphere levels (min 15)
-    p_top                     = 1.0e-5       # top-of-atmosphere pressure [bar]
     p_obs                     = 'none'       # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 

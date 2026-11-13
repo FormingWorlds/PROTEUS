@@ -95,9 +95,9 @@ DISPATCH_SITES = [
         'wrapper': 'escape/wrapper.py',
         'entries': {
             'zephyrus': (
-                'escape/wrapper.py',
-                'run_zephyrus',
-                'Energy-limited escape (ZEPHYRUS)',
+                'escape/dispatcher.py',
+                'run_dispatcher',
+                'Escape regime dispatcher (ZEPHYRUS); energy-limited with scheme = "el"',
             ),
             'boreas': ('escape/boreas.py', 'run_boreas', 'Hydrodynamic escape (BOREAS)'),
             'dummy': ('escape/wrapper.py', 'run_dummy', 'Fixed bulk escape rate'),

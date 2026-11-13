@@ -994,6 +994,7 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         # the escape dispatcher: zero is a row it did not set
         'esc_base_clamp_dex',
         'esc_f_ion_exo',
+        'esc_graphite_kg',
         'esc_kg_cumulative',
         'esc_kn_sonic',
         'esc_lambda',
@@ -1372,7 +1373,7 @@ def GetHelpfileKeys():
     for e in element_list:
         keys.append('esc_rate_' + e)    # escape rate of each element [kg s-1]
     keys.append('esc_regime')           # dispatcher regime code, see escape.dispatcher.REGIME_CODES [1]
-    keys.append('esc_rate_branch')      # code of the branch that set the rate, before the Roche relabel [1]
+    keys.append('esc_rate_branch')      # code of the branch that set the rate; roche_overflow for an L1 transfer [1]
     keys.append('esc_kn_sonic')         # Knudsen number at the sonic point, -1 if not evaluated [1]
     keys.append('esc_lambda')           # restricted Jeans parameter at the launch level [1]
     keys.append('esc_T_exo')            # exobase temperature of the hydrostatic branch [K]
@@ -1380,7 +1381,8 @@ def GetHelpfileKeys():
     keys.append('esc_T_esc_plasma')     # plasma escape temperature at the exobase [K]
     keys.append('esc_f_ion_exo')        # ionization fraction at the exobase [1]
     keys.append('esc_base_clamp_dex')   # decades between the wind base and the level used [1]
-    keys.append('esc_profile_source')   # column read: 0 latest solve, 1 earlier solve, 2 isothermal [1]
+    keys.append('esc_profile_source')   # column read: 1 latest solve, 2 earlier solve, 3 isothermal, 0 not set [1]
+    keys.append('esc_graphite_kg')      # carbon escape left as graphite over a frozen mantle [kg]
 
     # Climate quantities
     keys.append('P_surf_clim')          # total surface pressure, after rainout [bar]

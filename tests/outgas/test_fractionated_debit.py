@@ -12,8 +12,14 @@ import numpy as np
 import pytest
 
 from proteus.outgas.common import element_masses_from_species
-from proteus.outgas.fractionated_debit import STOICH, plan_debit
-from proteus.utils.constants import element_mmw
+from proteus.outgas.fractionated_debit import (
+    FROZEN_DEBIT_KEY,
+    STOICH,
+    apply_frozen_debit,
+    plan_debit,
+    plan_frozen_debit,
+)
+from proteus.utils.constants import element_list, element_mmw, gas_list
 from proteus.utils.helper import eval_gas_mmw
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -49,8 +55,9 @@ def test_water_losing_hydrogen_leaves_its_oxygen_as_o2(validation_plot):
         assert applied['H'] == pytest.approx(f * m_h, rel=1e-12)
         assert applied['O'] == pytest.approx(0.0, abs=1e-6 * m_h)
         assert graphite == pytest.approx(0.0, abs=1e-30)
-        # The uniform debit of the same mass keeps no O2 and removes oxygen.
-        assert new['O2'] > 0.01 * 1.0e20 * f
+        # A uniform debit of the same mass would also take oxygen; here the
+        # atmosphere keeps all of it.
+        assert _elements(new)['O'] == pytest.approx(_elements({'H2O': 1.0e20})['O'], rel=1e-12)
         water.append(new['H2O'])
         o2.append(new['O2'])
         ref_water.append(ref_w)
@@ -135,7 +142,179 @@ def test_a_loss_beyond_the_holding_empties_the_element_only():
     assert applied['N'] == pytest.approx(5.0e17, rel=1e-12)
     assert 'Xx' not in applied
 
-    unchanged, none, _ = plan_debit({'Ar': 1.0e16, 'H2O': 1.0e18}, {'H': -5.0})
+    m_h = 1.0e18 * 2 * element_mmw['H'] / eval_gas_mmw('H2O')
+    unchanged, none, _ = plan_debit({'Ar': 1.0e16, 'H2O': 1.0e18}, {'H': -0.3 * m_h})
     assert unchanged['H2O'] == pytest.approx(1.0e18, rel=1e-12)
     assert unchanged['Ar'] == pytest.approx(1.0e16, rel=1e-12)
     assert none['H'] == pytest.approx(0.0, abs=1e-6)
+
+
+@pytest.mark.physics_invariant
+def test_leftover_carbon_takes_oxygen_before_hydrogen():
+    """Unpaired carbon forms CO with the oxygen freed this step before CH4 with free H2.
+
+    Physical scenario: 1e20 mol each of CH4, H2O and H2 lose a quarter of
+    their hydrogen. Every gas keeps three quarters of its moles, which frees
+    2.5e19 mol each of carbon and oxygen. They pair into 2.5e19 mol of CO, so
+    no graphite forms and the H2 keeps its three quarters. Taking hydrogen
+    first would have built CH4 out of the free H2 and left the oxygen as O2.
+    """
+    n = 1.0e20
+    species = {g: n * eval_gas_mmw(g) for g in ('CH4', 'H2O', 'H2')}
+    m_h = 8.0 * n * element_mmw['H']
+    new, applied, graphite = plan_debit(species, {'H': 0.25 * m_h})
+    assert new['CO'] == pytest.approx(0.25 * n * eval_gas_mmw('CO'), rel=1e-12)
+    assert new['CH4'] == pytest.approx(0.75 * n * eval_gas_mmw('CH4'), rel=1e-12)
+    assert new['H2'] == pytest.approx(0.75 * n * eval_gas_mmw('H2'), rel=1e-12)
+    assert new['O2'] == pytest.approx(0.0, abs=1e-6 * n)
+    assert graphite == pytest.approx(0.0, abs=1e-6)
+    assert applied['H'] == pytest.approx(0.25 * m_h, rel=1e-12)
+
+
+def test_a_balance_that_fails_to_close_raises(monkeypatch):
+    """The element balance is checked, and a failure stops the step."""
+    import proteus.outgas.fractionated_debit as fd
+
+    new, _applied, _g = fd.plan_debit({'H2O': 1.0e18}, {'H': 1.0e16})
+    assert new['O2'] > 0.0  # the same debit closes at the real tolerance
+    monkeypatch.setattr(fd, 'CLOSURE_RTOL', -1.0)
+    with pytest.raises(RuntimeError, match='element balance'):
+        fd.plan_debit({'H2O': 1.0e18}, {'H': 1.0e16})
+
+
+def _frozen_row(species_kg, time=5.0e8, p_vol=10.0, p_vap=0.0):
+    """Helpfile row of a frozen atmosphere whose totals equal what the gases hold."""
+    row = {f'{g}_kg_atm': 0.0 for g in gas_list}
+    row.update({f'{e}_kg_total': 0.0 for e in element_list})
+    row.update({f'{g}_kg_atm': m for g, m in species_kg.items()})
+    vol = {g: m for g, m in species_kg.items() if g in STOICH}
+    for e, m in _elements(vol).items():
+        row[f'{e}_kg_atm'] = m
+        row[f'{e}_kg_total'] = m
+    m_vol = sum(vol.values())
+    row.update(
+        Time=time,
+        M_vol_atm=m_vol,
+        M_atm=sum(species_kg.values()),
+        M_planet=6.0e24,
+        P_vol=p_vol,
+        P_vap=p_vap,
+        P_surf=p_vol + p_vap,
+    )
+    return row
+
+
+@pytest.mark.physics_invariant
+def test_an_element_escape_strips_completely_leaves_no_trace_in_the_atmosphere():
+    """A frozen atmosphere that loses all its sulfur records zero sulfur, and closes.
+
+    Physical scenario: an N2 atmosphere with a little S2 over a frozen mantle
+    loses all of its sulfur. The S2 is gone, the atmospheric sulfur column
+    reads zero, and the element closure that PROTEUS checks with trapping on
+    holds for every element.
+    """
+    from proteus.utils.coupler import assert_mass_conservation
+
+    row = _frozen_row({'N2': 1.0e19, 'S2': 1.0e16})
+    target = {e: row[f'{e}_kg_total'] for e in element_list}
+    target['S'] = 0.0
+    out = plan_frozen_debit(row, target)
+    for e, m in out.items():
+        row[f'{e}_kg_total'] = m
+    apply_frozen_debit(row)
+    assert row['S2_kg_atm'] == pytest.approx(0.0, abs=1e-6)
+    assert row['S_kg_atm'] == pytest.approx(0.0, abs=1e-6)
+    assert row['S_kg_total'] == pytest.approx(0.0, abs=1e-6)
+    assert row['N_kg_atm'] == pytest.approx(1.0e19, rel=1e-12)
+    assert_mass_conservation(row, check_element_closure=True, closure_rtol=1e-9)
+
+
+@pytest.mark.physics_invariant
+def test_vapour_pressure_and_rock_elements_are_left_alone():
+    """Rock vapour keeps its mass and pressure, and rock elements keep their totals.
+
+    Physical scenario: a water and SiO atmosphere over a frozen mantle, with a
+    volatile pressure of 10 bar and a vapour pressure of 2 bar, loses a fifth
+    of its hydrogen; the escaping share of silicon is not taken. The volatile
+    pressure scales with the volatile column mass, the surface pressure adds
+    the unchanged vapour pressure, and each partial pressure is its mole
+    fraction of that surface pressure.
+    """
+    row = _frozen_row({'H2O': 1.0e19, 'SiO': 1.0e17}, p_vol=10.0, p_vap=2.0)
+    row['Si_kg_total'] = si_total = 3.0e21
+    target = {e: row[f'{e}_kg_total'] for e in element_list}
+    target['H'] *= 0.8
+    target['Si'] = 0.5 * si_total
+    out = plan_frozen_debit(row, target)
+    assert out['Si'] == pytest.approx(si_total, rel=1e-15)
+    for e, m in out.items():
+        row[f'{e}_kg_total'] = m
+    m_vol_old = row['M_vol_atm']
+    apply_frozen_debit(row)
+    m_vol = sum(row[f'{g}_kg_atm'] for g in gas_list if g in STOICH)
+    assert row['P_vol'] == pytest.approx(10.0 * m_vol / m_vol_old, rel=1e-12)
+    assert row['P_surf'] == pytest.approx(row['P_vol'] + 2.0, rel=1e-12)
+    assert row['SiO_kg_atm'] == pytest.approx(1.0e17, rel=1e-15)
+    n = {g: row[f'{g}_kg_atm'] / eval_gas_mmw(g) for g in gas_list}
+    n_tot = sum(n.values())
+    assert row['H2O_mol_atm'] == pytest.approx(n['H2O'], rel=1e-12)
+    assert row['H2O_bar'] == pytest.approx(n['H2O'] / n_tot * row['P_surf'], rel=1e-12)
+    assert row['atm_kg_per_mol'] == pytest.approx(row['M_atm'] / n_tot, rel=1e-12)
+    assert row['M_vol_atm'] == pytest.approx(m_vol, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_graphite_reaches_the_row_through_the_escape_step():
+    """Hydrogen escaping from a frozen methane atmosphere leaves graphite on the row.
+
+    Physical scenario: 1e18 kg of CH4 over a frozen mantle, with escape
+    carrying hydrogen only at 1e3 kg/s for 1e3 yr. The carbon of the methane
+    that lost its hydrogen condenses: the atmosphere's carbon falls by the
+    graphite mass, the planet's carbon total does not, and the graphite is
+    recorded in C_kg_condensed and esc_graphite_kg alike.
+    """
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from proteus.escape.wrapper import run_escape
+    from proteus.utils.constants import secs_per_year
+
+    row = _frozen_row({'CH4': 1.0e18})
+    row.update({f'esc_rate_{e}': 0.0 for e in element_list})
+    c_total, c_atm = row['C_kg_total'], row['C_kg_atm']
+
+    def fake(config, hf_row, atmos_o=None, dt=0.0):
+        hf_row['esc_rate_total'] = hf_row['esc_rate_H'] = 1.0e3
+        return 1.0e3
+
+    config = SimpleNamespace(
+        escape=SimpleNamespace(
+            module='zephyrus', uses_dispatcher=True, reservoir='pxuv', step_max_frac=0.25
+        ),
+        outgas=SimpleNamespace(mass_thresh=1e10, prevent_desaturation=False),
+    )
+    with patch('proteus.escape.dispatcher.run_dispatcher', side_effect=fake):
+        run_escape(config, row, dt=1.0e3, atmosphere_only=True)
+    assert FROZEN_DEBIT_KEY in row
+    apply_frozen_debit(row)
+    lost_h = 1.0e3 * secs_per_year * 1.0e3
+    graphite = row['esc_graphite_kg']
+    assert graphite == pytest.approx(
+        lost_h / (4 * element_mmw['H']) * element_mmw['C'], rel=1e-9
+    )
+    assert row['C_kg_condensed'] == pytest.approx(graphite, rel=1e-12)
+    assert row['C_kg_total'] == pytest.approx(c_total, rel=1e-12)
+    assert row['C_kg_atm'] == pytest.approx(c_atm - graphite, rel=1e-9)
+
+
+def test_a_debit_planned_on_another_step_is_discarded_with_a_warning(caplog):
+    """A plan left from an earlier step is not applied to this one."""
+    import logging
+
+    row = _frozen_row({'N2': 1.0e19}, time=2.0)
+    row[FROZEN_DEBIT_KEY] = {'Time': 1.0, 'kg': {'N2': 5.0e18}, 'graphite_kg': 0.0}
+    with caplog.at_level(logging.WARNING):
+        apply_frozen_debit(row)
+    assert 'Discarded' in caplog.text
+    assert row['N2_kg_atm'] == pytest.approx(1.0e19, rel=1e-15)
+    assert FROZEN_DEBIT_KEY not in row

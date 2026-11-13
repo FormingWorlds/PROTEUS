@@ -38,7 +38,7 @@ efficiency.
 | `efficiency` | float | `0.1` | Escape efficiency factor. Must be >= 0 and <= 1. |
 | `tidal` | bool or none | `none` | Tidal reduction of the escape barrier. Unset resolves to on under the dispatcher and off under "el". |
 | `base_method` | str | `"lopez"` | Dispatcher wind base: "lopez" (where the base is optically thick to XUV, Lopez 2017) or "fixed_pressure" (at ``Pxuv``). Choices: `"lopez"`, `"fixed_pressure"`. |
-| `base_out_of_range` | str | `"clamp"` | Dispatcher wind base above the top of the atmosphere profile: "clamp" to the top level, or "extend" the profile isothermally above it. Choices: `"clamp"`, `"extend"`. |
+| `base_out_of_range` | str | `"clamp"` | Dispatcher wind base above the top of the atmosphere profile: "clamp" to the top level, or "extend" the profile above it with the Bates upper structure of the hydrostatic branch. Choices: `"clamp"`, `"extend"`. |
 | `P_photo` | float | `0.02` | Photospheric level of the dispatcher \[bar\]: the radius of the energy-limited rate and the boil-off launch level. Must be > 0. |
 | `kappa_photo` | float | `0.01` | Grey photospheric opacity \[m2 kg-1\]; the boil-off rate scales as its inverse. Must be > 0. |
 | `kn_crit` | float | `1.0` | Sonic-point Knudsen number above which the wind is rarefied and the hydrostatic branch applies. Must be > 0. |

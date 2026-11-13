@@ -327,9 +327,10 @@ energy-limited rate goes as $R_\mathrm{xuv}^3$, so an unusable structure would
 otherwise become a large mass-loss rate that looks like a physical result. The
 ZEPHYRUS dispatcher reads the whole column, so a rejected solve also keeps the
 column of the last converged one for escape, and the helpfile column
-`esc_profile_source` records which column each escape step read (0 the latest
-solve, 1 an earlier converged one, 2 an isothermal column at the equilibrium
-temperature, used with the dummy atmosphere and before the first converged solve).
+`esc_profile_source` records which column each escape step read (1 the latest
+solve, 2 an earlier converged one, 3 an isothermal column at the equilibrium
+temperature, used with the dummy atmosphere, under AGNI's transparent mode, and
+before the first converged solve).
 
 When the atmosphere solve does not converge, PROTEUS therefore substitutes the
 radius, pressure, temperature and gravity of both levels ($R_\mathrm{obs}$,

@@ -1545,3 +1545,24 @@ def test_sealed_mass_is_unreachable_for_escape():
     assert escapable_inventory(row, 'H') == pytest.approx(1.0e19, rel=1e-12)
     row['H_kg_sealed'] = float('nan')
     assert escapable_inventory(row, 'H') == pytest.approx(4.0e19, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_graphite_left_by_escape_is_beyond_reach_whatever_desaturation_says():
+    """Graphite a frozen atmosphere condensed counts as unreachable for carbon.
+
+    Physical scenario: a frozen planet holds 4e18 kg of carbon, 1e18 kg of it
+    as graphite that escape left behind and 1e18 kg more as other condensate.
+    Without prevent_desaturation only the graphite is beyond reach (3e18 kg
+    reachable); with it the whole condensed column is (2e18 kg reachable),
+    the graphite counted once. Other elements are unaffected.
+    """
+    row = {'C_kg_total': 4.0e18, 'C_kg_condensed': 2.0e18, 'esc_graphite_kg': 1.0e18}
+    off = SimpleNamespace(outgas=SimpleNamespace(prevent_desaturation=False))
+    on = SimpleNamespace(outgas=SimpleNamespace(prevent_desaturation=True))
+    assert escapable_inventory(row, 'C', off) == pytest.approx(3.0e18, rel=1e-12)
+    assert escapable_inventory(row, 'C', on) == pytest.approx(2.0e18, rel=1e-12)
+    row_h = dict(row, H_kg_total=5.0e17)
+    assert escapable_inventory(row_h, 'H', off) == pytest.approx(5.0e17, rel=1e-12)
+    row['esc_graphite_kg'] = float('nan')
+    assert escapable_inventory(row, 'C', off) == pytest.approx(4.0e18, rel=1e-12)

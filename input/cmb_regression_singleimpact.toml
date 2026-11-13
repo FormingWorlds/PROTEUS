@@ -466,11 +466,15 @@ slope_cri = 0.0001
 
 [escape]
 module = "zephyrus"
+reservoir = "outgas"
+hill_clamp = true
 hill_clamp_frac = 1.0
 
 [escape.zephyrus]
+scheme = "el"
 Pxuv = 5e-05
 efficiency = 0.3
+tidal = false
 
 [escape.dummy]
 rate = 0.0

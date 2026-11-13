@@ -11298,7 +11298,7 @@
         "extend"
       ],
       "bounds": null,
-      "description": "Dispatcher wind base above the top of the atmosphere profile: \"clamp\" to the top level, or \"extend\" the profile isothermally above it.",
+      "description": "Dispatcher wind base above the top of the atmosphere profile: \"clamp\" to the top level, or \"extend\" the profile above it with the Bates upper structure of the hydrostatic branch.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

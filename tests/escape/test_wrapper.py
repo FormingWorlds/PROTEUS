@@ -2480,7 +2480,8 @@ def test_frozen_atmosphere_under_pxuv_loses_each_element_from_its_own_gases():
     the water that lost its hydrogen leaves its oxygen in the atmosphere, held
     for the outgassing step as O2. The trapped hydrogen is not touched.
     """
-    from proteus.escape.wrapper import ATM_DEBIT_KEY, run_escape
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.fractionated_debit import FROZEN_DEBIT_KEY as ATM_DEBIT_KEY
     from proteus.utils.constants import element_list, gas_list, secs_per_year
 
     dt = 1000.0

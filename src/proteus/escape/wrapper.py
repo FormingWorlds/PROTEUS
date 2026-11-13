@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.escape.common import calc_unfract_fluxes
-from proteus.utils.constants import M_sun, element_list, gas_list, noble_gases, secs_per_year
+from proteus.utils.constants import M_sun, element_list, noble_gases, secs_per_year
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -21,10 +21,6 @@ log = logging.getLogger('fwl.' + __name__)
 # eighty times the reservoir, while cases from IW-1 to IW+5 never reach a
 # thousandth of it and the cap never acts on them.
 ESCAPE_STEP_MAX_FRAC = 0.25
-
-# Transient row key holding the gas masses of a frozen atmosphere after this
-# step's escape, for the outgassing step to apply.
-ATM_DEBIT_KEY = '_esc_frozen_atm_kg'
 
 
 def reservoir_key(reservoir: str) -> str:
@@ -253,6 +249,44 @@ def escape_dt_limit(
     return dt * max_frac / clamp_frac
 
 
+def run_escape_module(
+    config: Config,
+    hf_row: dict,
+    dirs: dict,
+    dt: float,
+    stellar_track=None,
+    atmosphere_only: bool = False,
+    atmos_o=None,
+) -> None:
+    """Compute this step's bulk and per-element escape rates with the configured module.
+
+    Raises
+    ------
+        ValueError
+            If ``escape.module`` names no known module.
+    """
+    if config.escape.module == 'dummy':
+        run_dummy(config, hf_row, atmosphere_only=atmosphere_only)
+
+    elif config.escape.module == 'zephyrus':
+        if config.escape.uses_dispatcher:
+            from proteus.escape.dispatcher import run_dispatcher
+
+            run_dispatcher(config, hf_row, atmos_o=atmos_o, dt=dt)
+        else:
+            run_zephyrus(config, hf_row, stellar_track, atmosphere_only=atmosphere_only)
+
+    elif config.escape.module == 'boreas':
+        from proteus.escape.boreas import run_boreas
+
+        run_boreas(config, hf_row, dirs)
+
+    else:
+        if dirs.get('output'):
+            UpdateStatusfile(dirs, 20)
+        raise ValueError(f'Invalid escape model: {config.escape.module}')
+
+
 def run_escape(
     config: Config,
     hf_row: dict,
@@ -265,7 +299,8 @@ def run_escape(
 ) -> None:
     """Run Escape submodule.
 
-    Generic function to run escape calculation using ZEPHYRUS or dummy.
+    Computes the escape rates with the configured module (ZEPHYRUS, dummy or
+    BOREAS), caps the step's loss, and debits the element inventories.
 
     Parameters
     ----------
@@ -293,6 +328,7 @@ def run_escape(
             ZEPHYRUS dispatcher reads.
     """
     # Imported here: proteus.outgas imports this module at load.
+    from proteus.outgas.fractionated_debit import clear_frozen_debit, plan_frozen_debit
     from proteus.outgas.trapping import remelt_returned_mass
 
     dirs = dirs or {}
@@ -335,26 +371,7 @@ def run_escape(
         hf_row['esc_kg_cumulative'] = 0.0
         hf_row['M_desiccated'] = 0.0
 
-    if config.escape.module == 'dummy':
-        run_dummy(config, hf_row, atmosphere_only=atmosphere_only)
-
-    elif config.escape.module == 'zephyrus':
-        if config.escape.uses_dispatcher:
-            from proteus.escape.dispatcher import run_dispatcher
-
-            run_dispatcher(config, hf_row, atmos_o=atmos_o, dt=dt)
-        else:
-            run_zephyrus(config, hf_row, stellar_track, atmosphere_only=atmosphere_only)
-
-    elif config.escape.module == 'boreas':
-        from proteus.escape.boreas import run_boreas
-
-        run_boreas(config, hf_row, dirs)
-
-    else:
-        if dirs.get('output'):
-            UpdateStatusfile(dirs, 20)
-        raise ValueError(f'Invalid escape model: {config.escape.module}')
+    run_escape_module(config, hf_row, dirs, dt, stellar_track, atmosphere_only, atmos_o)
 
     log.info(f'Bulk escape rate = {hf_row["esc_rate_total"]:.2e} kg s-1')
 
@@ -407,9 +424,9 @@ def run_escape(
     )
 
     # A frozen atmosphere loses each element from its own gases.
-    hf_row.pop('_esc_frozen_atm_kg', None)
+    clear_frozen_debit(hf_row)
     if atmosphere_only and reservoir == 'pxuv':
-        solvevol_target = plan_frozen_atmosphere_debit(hf_row, solvevol_target)
+        solvevol_target = plan_frozen_debit(hf_row, solvevol_target)
 
     # store new elemental inventories
     for e, mass in solvevol_target.items():
@@ -559,49 +576,6 @@ def run_zephyrus(
 
     log.debug(f'escape rate = {mlr}')
     return float(mlr)
-
-
-def plan_frozen_atmosphere_debit(hf_row: dict, target: dict) -> dict:
-    """Debit a frozen atmosphere element by element and return the new totals.
-
-    The per-element losses the targets imply are taken out of the atmospheric
-    gases by :func:`proteus.outgas.fractionated_debit.plan_debit`. The new gas
-    masses are kept on the row under ``ATM_DEBIT_KEY``, with the time of this
-    step, for :func:`proteus.outgas.wrapper.run_crystallized` to apply.
-
-    Parameters
-    ----------
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
-        target : dict
-            Element whole-planet inventories after the requested loss [kg].
-
-    Returns
-    -------
-        target : dict
-            Inventories after the loss the atmosphere can give up [kg].
-    """
-    # Imported here: proteus.outgas imports this module at load.
-    from proteus.outgas.fractionated_debit import STOICH, plan_debit
-
-    totals = {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list}
-    losses = {
-        e: max(0.0, totals[e] - target[e])
-        for e in element_list
-        if e in target and np.isfinite(totals[e]) and np.isfinite(target[e])
-    }
-    species = {g: float(hf_row.get(f'{g}_kg_atm', 0.0)) for g in gas_list if g in STOICH}
-    new_kg, applied, graphite = plan_debit(species, losses)
-    out = dict(target)
-    for e in element_list:
-        if e in applied and e in losses:
-            out[e] = totals[e] - applied[e]
-    hf_row['_esc_frozen_atm_kg'] = {
-        'Time': float(hf_row.get('Time', 0.0)),
-        'kg': new_kg,
-        'graphite_kg': graphite,
-    }
-    return out
 
 
 def escaping_fractions(hf_row: dict, reservoir: str, res: dict, M_vols: float) -> dict:

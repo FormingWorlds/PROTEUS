@@ -97,8 +97,8 @@
         },
         {
           "option": "zephyrus",
-          "entry": "src/proteus/escape/wrapper.py:run_zephyrus",
-          "role": "Energy-limited escape (ZEPHYRUS)"
+          "entry": "src/proteus/escape/dispatcher.py:run_dispatcher",
+          "role": "Escape regime dispatcher (ZEPHYRUS); energy-limited with scheme = \"el\""
         },
         {
           "option": null,

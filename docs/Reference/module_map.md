@@ -44,7 +44,7 @@ listed below its table.
 |---|---|---|
 | `"boreas"` | `escape/boreas.py:run_boreas` | Hydrodynamic escape (BOREAS) |
 | `"dummy"` | `escape/wrapper.py:run_dummy` | Fixed bulk escape rate |
-| `"zephyrus"` | `escape/wrapper.py:run_zephyrus` | Energy-limited escape (ZEPHYRUS) |
+| `"zephyrus"` | `escape/dispatcher.py:run_dispatcher` | Escape regime dispatcher (ZEPHYRUS); energy-limited with scheme = "el" |
 | `none` | not applicable | Escape disabled; rates zeroed |
 
 ## Interior energetics (`interior_energetics.module`)

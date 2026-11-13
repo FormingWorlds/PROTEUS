@@ -105,8 +105,11 @@ def store_escape_profile(atmos_o: Atmos_t, config: Config, hf_row: dict) -> None
     """Keep the column of a converged solve for the next escape step.
 
     A rejected solve leaves the previous column in place and marks it as not
-    current, so escape never reads a structure the solver rejected. The dummy
-    atmosphere has no column, and escape builds its own stand-in for it.
+    current, so escape never reads a structure the solver rejected. Nothing is
+    stored when escape does not use the ZEPHYRUS dispatcher, for the dummy
+    atmosphere, or for an AGNI column in transparent mode (surface pressure
+    below ``atmos_clim.agni.psurf_thresh``), which AGNI collapses onto its top
+    level; escape then builds its own isothermal stand-in.
 
     Parameters
     ----------
@@ -118,7 +121,11 @@ def store_escape_profile(atmos_o: Atmos_t, config: Config, hf_row: dict) -> None
         Helpfile row of this iteration, for the interior radius under JANUS.
     """
     module = config.atmos_clim.module
-    if module not in ('agni', 'janus'):
+    dispatcher = bool(getattr(getattr(config, 'escape', None), 'uses_dispatcher', False))
+    transparent = module == 'agni' and bool(getattr(atmos_o._atm, 'transparent', False))
+    if module not in ('agni', 'janus') or not dispatcher or transparent:
+        # A transparent AGNI column is collapsed onto its top level, so escape
+        # builds its stand-in from the surface pressure instead.
         atmos_o.escape_profile = None
         atmos_o.escape_profile_current = False
         return

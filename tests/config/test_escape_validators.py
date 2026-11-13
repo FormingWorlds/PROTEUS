@@ -171,3 +171,12 @@ def test_step_dt_floor_frac_rejects_values_outside_unit_interval():
         module='zephyrus', step_dt_floor_frac=1e-6
     ).step_dt_floor_frac == pytest.approx(1e-6, rel=1e-12)
     assert Escape(module='zephyrus').step_dt_floor_frac == pytest.approx(1e-3, rel=1e-12)
+
+
+def test_an_unknown_scheme_is_refused():
+    """A misspelt scheme fails at load instead of falling back to a default."""
+    from proteus.config._escape import Zephyrus
+
+    with pytest.raises(ValueError, match='scheme'):
+        Zephyrus(scheme='dispatch')
+    assert Zephyrus(scheme='el').scheme == 'el'

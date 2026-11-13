@@ -201,8 +201,9 @@ def test_without_a_solved_column_escape_reads_an_isothermal_one():
     assert profile.mmw[0] == pytest.approx(2.36 * 1.6605e-27, rel=5e-3)
 
     empty = {k: (0.0 if k.endswith('_vmr') else v) for k, v in row.items()}
-    with pytest.raises(ValueError, match='no gas'):
-        escape_profile(_config(), empty, None)
+    assert escape_profile(_config(), empty, None)[0] is None
+    thin = dict(row, P_surf=1e-12)  # below the 1e-10 bar top
+    assert escape_profile(_config(), thin, None)[0] is None
 
 
 def test_column_source_is_recorded():
@@ -287,3 +288,202 @@ def test_diagnostics_the_dispatcher_did_not_evaluate_read_as_minus_one():
     assert row['p_xuv'] == pytest.approx(1e-9, rel=1e-12)
     assert row['R_xuv'] == pytest.approx(2.0e7, rel=1e-12)
     assert row['esc_regime'] == REGIME_CODES['boiloff']
+
+
+def test_every_setting_reaches_zephyrus_with_its_own_value():
+    """Each dispatcher setting is passed under its own name, with pressures in Pa.
+
+    Every field takes a value distinct from its default and from the other
+    fields of its type, so a swapped or hard-coded field fails.
+    """
+    z = Zephyrus(
+        base_method='fixed_pressure',
+        base_out_of_range='extend',
+        P_photo=0.05,
+        Pxuv=2e-4,
+        kn_crit=0.7,
+        kn_hysteresis=2.5,
+        gate='plasma',
+        efficiency=0.23,
+        efficiency_mode='caldiroli',
+        T_exo_mode='thermostat',
+        T_exo=1234.0,
+        cool_atomic=False,
+        cool_co2_band=True,
+        cool_o_finestructure=False,
+        cool_recombination=True,
+        fractionate=False,
+        tidal=False,
+        photon_limit=False,
+        recombination_limit=True,
+        nozzle_temperature='wind',
+        residual_mode='luminosity_capped',
+        lambda_crit=17.0,
+        kzz=55.0,
+        hydrostatic_levels_min=50,
+        hydrostatic_levels_max=900,
+        hydrostatic_rtol=0.03,
+        T_anchor_decades=1.5,
+    )
+    st = dispatch_settings(z)
+    expected = dict(
+        base_method='fixed_pressure',
+        base_out_of_range='extend',
+        gate='plasma',
+        efficiency_mode='caldiroli',
+        T_exo_mode='thermostat',
+        cool_atomic=False,
+        cool_co2_band=True,
+        cool_o_finestructure=False,
+        cool_recombination=True,
+        fractionate=False,
+        tidal=False,
+        photon_limit=False,
+        recombination_limit=True,
+        nozzle_temperature='wind',
+        residual_mode='luminosity_capped',
+        hydrostatic_levels_min=50,
+        hydrostatic_levels_max=900,
+    )
+    for name, value in expected.items():
+        assert getattr(st, name) == value, name
+    floats = dict(
+        P_photo=5000.0,
+        P_base_fixed=20.0,
+        kn_crit=0.7,
+        kn_hysteresis=2.5,
+        efficiency=0.23,
+        T_exo_value=1234.0,
+        lambda_crit=17.0,
+        kzz=55.0,
+        hydrostatic_rtol=0.03,
+        T_anchor_decades=1.5,
+    )
+    for name, value in floats.items():
+        assert getattr(st, name) == pytest.approx(value, rel=1e-12), name
+
+
+def test_inputs_carry_the_planet_in_si():
+    """The dispatcher inputs are the row's state in SI, with the fluxes floored.
+
+    The stellar mass arrives in kg, the age and step in seconds, the
+    bolometric flux from F_ins, the negative interior flux and a zero
+    instellation at the floor, the eccentricity and opacity as given, and the
+    reservoirs without the elements the atmosphere does not hold.
+    """
+    from proteus.escape.dispatcher import F_FLOOR
+
+    config = _config(kappa_photo=3e-3)
+    row = dict(_row(), eccentricity=0.2, F_int=-4.0, F_ins=0.0, age_star=2.0e8)
+    profile, _source = escape_profile(config, row, _atmos(row))
+    inp = escape_inputs(config, row, profile, 10.0)
+    assert inp.M_star == pytest.approx(M_sun, rel=1e-12)
+    assert inp.age == pytest.approx(2.0e8 * 365.25 * 86400.0, rel=1e-12)
+    assert inp.dt == pytest.approx(10.0 * 365.25 * 86400.0, rel=1e-12)
+    assert inp.F_bol == pytest.approx(F_FLOOR, rel=1e-12)
+    assert inp.F_int == pytest.approx(F_FLOOR, rel=1e-12)
+    assert inp.F_xuv == pytest.approx(10.0, rel=1e-12)
+    assert inp.e == pytest.approx(0.2, rel=1e-12)
+    assert inp.kappa_photo == pytest.approx(3e-3, rel=1e-12)
+    assert set(inp.reservoirs) == {'H', 'He'}
+    assert inp.reservoirs['H'] == pytest.approx(1.0e21, rel=1e-12)
+    assert inp.M_p == pytest.approx(5.0 * M_EARTH, rel=1e-12)
+    assert inp.R_p == pytest.approx(1.5 * R_EARTH, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_tidal_eccentric_state_matches_the_tidal_energy_limited_formula():
+    """With the tidal factor on an eccentric orbit, the rate is the tidal energy-limited one.
+
+    Physical scenario: the energy-limited state of the reference test at
+    e = 0.3, where the Hill radius at periapsis is about 27 planetary radii and
+    the Erkaev tidal factor lowers the barrier by about 6%. The reference is
+    ``EL_escape`` with the tidal factor. The stellar mass enters through the
+    Hill radius, so a mass passed in solar masses instead of kg would put the
+    factor at 1 and miss by about 6%.
+    """
+    from zephyrus.escape import EL_escape
+
+    config = _config(photon_limit=False, recombination_limit=False, tidal=True)
+    row = dict(_row(F_xuv=10.0), eccentricity=0.3)
+    atmos = _atmos(row)
+    mdot = run_dispatcher(config, row, atmos_o=atmos, dt=1.0e3)
+    col = atmos.escape_profile
+    r_xuv = np.interp(np.log(2000.0), np.log(col['p'][::-1]), col['r'][::-1])
+    tidal = EL_escape(True, row['semimajorax'], 0.3, row['M_planet'], M_sun, 0.1,
+                      row['R_int'], r_xuv, 10.0, scaling=2)  # fmt: skip
+    plain = EL_escape(False, row['semimajorax'], 0.3, row['M_planet'], M_sun, 0.1,
+                      row['R_int'], r_xuv, 10.0, scaling=2)  # fmt: skip
+    assert row['esc_regime'] == REGIME_CODES['hydrodynamic:EL']
+    assert mdot == pytest.approx(tidal, rel=1e-9)
+    assert tidal / plain > 1.03
+
+
+def test_a_renamed_state_records_its_rate_branch_and_every_diagnostic():
+    """The row keeps the branch that set the rate apart from the label, with each diagnostic.
+
+    A wind relabeled as Roche-lobe overflow keeps hydrodynamic:EL as its rate
+    branch, which is the hysteresis memory of the next step. Each diagnostic
+    takes a distinct value, so a crossed key fails.
+    """
+    result = SimpleNamespace(
+        regime='roche_overflow',
+        rate_branch='hydrodynamic:EL',
+        mdot=7.0,
+        per_species={'H': 4.0, 'O': 3.0},
+        flags={},
+        diagnostics={
+            'knudsen': {'kn_sc': 0.11},
+            'lambda_gate': 23.0,
+            'hydrostatic': {
+                'T_exo': 1100.0,
+                'T_esc_neutral': 5300.0,
+                'T_esc_plasma': 2650.0,
+                'f_plus_exo': 0.004,
+            },
+            'base_level': {'p_Pa': 2.0e-4, 'r_m': 9.0e6, 'clamp_decades': 0.7},
+        },
+    )
+    row = {}
+    store_result(row, result, PROFILE_KEPT)
+    assert row['esc_regime'] == REGIME_CODES['roche_overflow']
+    assert row['esc_rate_branch'] == REGIME_CODES['hydrodynamic:EL']
+    got = {k: row[k] for k in ('esc_kn_sonic', 'esc_lambda', 'esc_T_exo', 'esc_T_esc_neutral',
+                               'esc_T_esc_plasma', 'esc_f_ion_exo', 'esc_base_clamp_dex')}  # fmt: skip
+    want = dict(esc_kn_sonic=0.11, esc_lambda=23.0, esc_T_exo=1100.0, esc_T_esc_neutral=5300.0,
+                esc_T_esc_plasma=2650.0, esc_f_ion_exo=0.004, esc_base_clamp_dex=0.7)  # fmt: skip
+    assert got == pytest.approx(want, rel=1e-12)
+    assert row['esc_profile_source'] == PROFILE_KEPT
+    assert row['p_xuv'] == pytest.approx(2.0e-9, rel=1e-12)
+    assert row['esc_rate_H'] + row['esc_rate_O'] == pytest.approx(7.0, rel=1e-12)
+
+    no_base = SimpleNamespace(**{**vars(result), 'diagnostics': {}})
+    kept = {'p_xuv': 5e-5, 'R_xuv': 7.0e6}
+    store_result(kept, no_base, PROFILE_SOLVE)
+    assert kept['p_xuv'] == pytest.approx(5e-5, rel=1e-15)
+    assert kept['R_xuv'] == pytest.approx(7.0e6, rel=1e-15)
+
+
+def test_no_atmosphere_or_a_broken_flux_means_no_escape_this_step(caplog):
+    """A step with no column to escape from, or a non-finite flux, records no escape.
+
+    Below the column top there is no atmosphere for the dispatcher to read,
+    and a NaN flux means an upstream failure; either way the bulk and element
+    rates are zero and the verdict codes read "not set". The NaN case warns.
+    """
+    import logging
+
+    config = _config()
+    thin = dict(_row(), P_surf=1e-12)
+    assert run_dispatcher(config, thin, atmos_o=None, dt=1.0) == 0.0
+    assert thin['esc_rate_total'] == 0.0 and thin['esc_rate_H'] == 0.0
+    assert (thin['esc_regime'], thin['esc_profile_source']) == (0.0, 0.0)
+    for key in ('F_xuv', 'F_ins', 'F_int'):
+        broken = dict(_row(), **{key: float('nan')})
+        with caplog.at_level(logging.WARNING):
+            assert run_dispatcher(config, broken, atmos_o=_atmos(_row()), dt=1.0) == 0.0
+        assert key in caplog.text
+        assert broken['esc_rate_total'] == 0.0
+        caplog.clear()
+    # A finite row escapes, so the zeros above are the guard and not the planet.
+    assert run_dispatcher(config, _row(), atmos_o=_atmos(_row()), dt=1.0) > 1.0

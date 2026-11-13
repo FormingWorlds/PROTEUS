@@ -456,7 +456,6 @@ config_version = "3.0"
     spectral_group            = "Cliffshade"  # opacity k-table set
     spectral_bands            = "64"         # wavenumber bands in k-table
     num_levels                = 40           # vertical atmosphere levels (min 15)
-    p_top                     = 2.0e-4       # top-of-atmosphere pressure [bar]
     p_obs                     = 'none'       # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 

@@ -15,15 +15,33 @@ Carbon that still has no partner, as when a methane atmosphere loses its
 hydrogen, condenses as graphite.
 
 Every element then holds exactly its mass less the requested loss, between the
-gases and the graphite. Rock vapours are not handled here.
+gases and the graphite. Rock vapours keep their masses, and rock-forming
+elements are not debited: the escaping share the dispatcher gives them is not
+removed.
+
+The escape step plans the debit and the outgassing step applies it; the plan
+travels on the helpfile row under ``FROZEN_DEBIT_KEY`` with the time of its step.
 """
 
 from __future__ import annotations
 
 import logging
 
-from proteus.outgas.common import VOLATILE_ELEMENT_STOICH
-from proteus.utils.constants import element_mmw, noble_gases
+import numpy as np
+
+from proteus.outgas.common import (
+    VOLATILE_ELEMENT_STOICH,
+    element_masses_from_species,
+    set_element_ratios,
+)
+from proteus.utils.constants import (
+    element_list,
+    element_mmw,
+    gas_list,
+    noble_gases,
+    vol_element_list,
+    vol_gas_list,
+)
 from proteus.utils.helper import eval_gas_mmw
 
 log = logging.getLogger('fwl.' + __name__)
@@ -45,6 +63,9 @@ OWN_GAS: dict[str, tuple[str, int]] = {
 
 # Relative tolerance of the element balance check.
 CLOSURE_RTOL = 1e-9
+
+# Transient row key of a planned debit, written by escape and read by outgassing.
+FROZEN_DEBIT_KEY = '_esc_frozen_atm_kg'
 
 
 def _element_moles(mol: dict) -> dict:
@@ -138,3 +159,98 @@ def plan_debit(species_kg: dict, losses_kg: dict) -> tuple[dict, dict, float]:
     new_kg = {g: n * eval_gas_mmw(g) for g, n in new.items()}
     applied_kg = {e: (n - target[e]) * element_mmw[e] for e, n in held.items()}
     return new_kg, applied_kg, graphite_kg
+
+
+def clear_frozen_debit(hf_row: dict) -> None:
+    """Drop a debit planned on an earlier step, so it cannot be applied late."""
+    hf_row.pop('_esc_frozen_atm_kg', None)
+
+
+def plan_frozen_debit(hf_row: dict, target: dict) -> dict:
+    """Plan the debit of a frozen atmosphere and return the element totals after it.
+
+    The per-element losses the targets imply are taken out of the atmospheric
+    gases by :func:`plan_debit`. The new gas masses travel on the row, with the
+    time of this step, for :func:`apply_frozen_debit` to apply.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row of this iteration.
+    target : dict
+        Element whole-planet inventories after the requested loss [kg].
+
+    Returns
+    -------
+    totals : dict
+        Inventories after the loss the gases can give up [kg]. Elements the
+        debit does not place (the rock-forming ones) keep their inventory.
+    """
+    totals = {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list}
+    losses = {
+        e: max(0.0, totals[e] - target[e])
+        for e in element_list
+        if e in target and np.isfinite(totals[e]) and np.isfinite(target[e])
+    }
+    species = {g: float(hf_row.get(f'{g}_kg_atm', 0.0)) for g in gas_list if g in STOICH}
+    new_kg, applied, graphite = plan_debit(species, losses)
+    out = dict(target)
+    for e in element_list:
+        if e in losses:
+            out[e] = totals[e] - applied.get(e, 0.0)
+    hf_row['_esc_frozen_atm_kg'] = {
+        'Time': float(hf_row.get('Time', 0.0)),
+        'kg': new_kg,
+        'graphite_kg': graphite,
+    }
+    return out
+
+
+def apply_frozen_debit(hf_row: dict) -> None:
+    """Set the atmosphere of a frozen mantle to the gas masses this step's escape left.
+
+    Mixing ratios, partial pressures and the mean molecular weight follow the
+    new composition, and the volatile pressure scales with the volatile column
+    mass. Carbon left without a partner gas is added to the condensed graphite
+    and to ``esc_graphite_kg``, which escape cannot reach. Rock vapours keep
+    their masses. A debit planned on another step is discarded with a warning.
+    """
+    debit = hf_row.pop('_esc_frozen_atm_kg', None)
+    if debit is None:
+        log.info('Crystallized mantle: volatile exchange frozen, reservoirs preserved')
+        return
+    if debit['Time'] != float(hf_row.get('Time', 0.0)):
+        log.warning('Discarded an escape debit planned at t = %.6e yr', debit['Time'])
+        return
+    m_old = float(hf_row.get('M_atm', 0.0))
+    kg = {g: float(debit['kg'].get(g, hf_row.get(f'{g}_kg_atm', 0.0))) for g in gas_list}
+    mol = {g: kg[g] / eval_gas_mmw(g) for g in gas_list}
+    m_atm, n_atm = sum(kg.values()), sum(mol.values())
+    m_vol_old = float(hf_row.get('M_vol_atm', 0.0))
+    m_vol = sum(kg[s] for s in vol_gas_list)
+    hf_row['P_vol'] = float(hf_row.get('P_vol', 0.0)) * (
+        m_vol / m_vol_old if m_vol_old > 0.0 else 0.0
+    )
+    hf_row['P_surf'] = hf_row['P_vol'] + float(hf_row.get('P_vap', 0.0))
+    hf_row['M_atm'] = m_atm
+    hf_row['M_vol_atm'] = m_vol
+    hf_row['atm_kg_per_mol'] = m_atm / n_atm if n_atm > 0.0 else 0.0
+    for g in gas_list:
+        x = mol[g] / n_atm if n_atm > 0.0 else 0.0
+        hf_row[f'{g}_kg_atm'] = kg[g]
+        hf_row[f'{g}_mol_atm'] = mol[g]
+        hf_row[f'{g}_vmr'] = x
+        hf_row[f'{g}_bar'] = x * hf_row['P_surf']
+    masses = element_masses_from_species({g: kg[g] for g in vol_gas_list})
+    for e in vol_element_list:
+        hf_row[f'{e}_kg_atm'] = masses.get(e, 0.0)
+    graphite = float(debit.get('graphite_kg', 0.0))
+    if graphite > 0.0:
+        hf_row['C_kg_condensed'] = float(hf_row.get('C_kg_condensed', 0.0)) + graphite
+        hf_row['C_cd_kg'] = float(hf_row.get('C_cd_kg', 0.0)) + graphite
+        hf_row['esc_graphite_kg'] = float(hf_row.get('esc_graphite_kg', 0.0)) + graphite
+    set_element_ratios(hf_row)
+    log.info(
+        'Crystallized mantle: escape removed %.3e kg from the atmosphere element by element',
+        m_old - m_atm,
+    )

@@ -134,8 +134,9 @@ The config at `input/tutorials/tutorial_earth_moon.toml` sets:
   from the surface, which is held at the magma temperature
   (`atmos_clim.surf_state = "fixed"`), with condensation above it. It uses
   Dayspring 48-band correlated-k opacities and real-gas corrections.
-- **Escape**: ZEPHYRUS computes energy-limited mass loss at 20% efficiency,
-  distributing the bulk escape rate across elements proportionally.
+- **Escape**: the ZEPHYRUS dispatcher selects the escape regime at each step
+  from the atmosphere column and returns a mass loss rate for each element,
+  at 20% heating efficiency where the rate is energy-limited.
 
 ## Results
 

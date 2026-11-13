@@ -2349,7 +2349,7 @@ def test_run_crystallized_pxuv_applies_only_this_steps_debit():
     an earlier time is ignored, so a step on which escape did not run leaves
     the atmosphere as it was.
     """
-    from proteus.escape.wrapper import ATM_DEBIT_KEY
+    from proteus.outgas.fractionated_debit import FROZEN_DEBIT_KEY as ATM_DEBIT_KEY
     from proteus.outgas.wrapper import run_crystallized
     from proteus.utils.constants import gas_list
 

@@ -3787,3 +3787,25 @@ def test_an_interrupted_write_leaves_the_previous_file_whole(tmp_path):
         cfg.write(str(out))
     assert out.read_bytes() == before
     assert [f.name for f in tmp_path.iterdir()] == ['init_coupler.toml']
+
+
+@pytest.mark.unit
+def test_default_config_with_a_dummy_star_loads_and_warns(caplog):
+    """The default dispatcher runs with a non-MORS star; the config loads with a warning.
+
+    A full Config with the default escape and a dummy star constructs, while
+    the same Config under the energy-limited scheme is refused.
+    """
+    import logging
+
+    from proteus.config import Config
+    from proteus.config._escape import Escape, Zephyrus
+    from proteus.config._star import Star, StarDummy
+
+    star = Star(module='dummy', dummy=StarDummy(calculate_radius=True))
+    with caplog.at_level(logging.WARNING):
+        cfg = Config(star=star)
+    assert cfg.escape.uses_dispatcher is True
+    assert 'Spada' in caplog.text
+    with pytest.raises(ValueError, match='Spada'):
+        Config(star=star, escape=Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el')))

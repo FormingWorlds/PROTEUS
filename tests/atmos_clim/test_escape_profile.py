@@ -18,7 +18,7 @@ from proteus.atmos_clim.escape_profile import column_from_arrays, store_escape_p
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
-def _agni_atm(p_top_down, r_top_down, t_top_down, vmr_top_down):
+def _agni_atm(p_top_down, r_top_down, t_top_down, vmr_top_down, transparent=False):
     """Stand-in for an AGNI atmosphere: cell-centre arrays ordered top to bottom."""
     return SimpleNamespace(
         p=p_top_down,
@@ -26,12 +26,16 @@ def _agni_atm(p_top_down, r_top_down, t_top_down, vmr_top_down):
         tmp=t_top_down,
         gas_names=list(vmr_top_down),
         gas_vmr=vmr_top_down,
+        transparent=transparent,
     )
 
 
-def _config(module):
-    """Config stub selecting the climate backend."""
-    return SimpleNamespace(atmos_clim=SimpleNamespace(module=module))
+def _config(module, dispatcher=True):
+    """Config stub selecting the climate backend and whether escape uses the dispatcher."""
+    return SimpleNamespace(
+        atmos_clim=SimpleNamespace(module=module),
+        escape=SimpleNamespace(uses_dispatcher=dispatcher),
+    )
 
 
 @pytest.mark.physics_invariant
@@ -144,3 +148,57 @@ def test_the_dummy_atmosphere_stores_no_column():
     store_escape_profile(atmos_o, _config('dummy'), {})
     assert atmos_o.escape_profile is None
     assert atmos_o.escape_profile_current is False
+
+
+@pytest.mark.physics_invariant
+def test_levels_with_no_pressure_or_temperature_are_dropped():
+    """Levels at zero pressure or temperature, and NaN mixing ratios, never reach escape.
+
+    Physical scenario: a five-level column whose second level from the top
+    has T = 0 K and whose top level has p = 0 Pa, with a NaN water mixing
+    ratio at the base. The two bad levels are dropped and the NaN reads as
+    no water, so the stored column is three levels with positive p and T.
+    """
+    p = np.array([0.0, 1e-2, 1e0, 1e2, 1e4])
+    r = np.array([7.0e6, 6.9e6, 6.8e6, 6.7e6, 6.6e6])
+    T = np.array([300.0, 0.0, 320.0, 330.0, 340.0])
+    vmr = {'H2O': np.array([0.1, 0.2, 0.3, 0.4, np.nan]), 'N2': np.full(5, 0.5)}
+    col = column_from_arrays(p, r, T, vmr)
+    np.testing.assert_allclose(col['p'], [1e4, 1e2, 1e0], rtol=1e-15)
+    np.testing.assert_allclose(col['T'], [340.0, 330.0, 320.0], rtol=1e-15)
+    np.testing.assert_allclose(col['vmr']['H2O'], [0.0, 0.4, 0.3], rtol=1e-15)
+    assert np.all(col['p'] > 0.0) and np.all(col['T'] > 0.0)
+
+
+def test_no_column_is_kept_without_the_dispatcher_or_for_a_transparent_agni():
+    """Escape keeps no column when it does not use the dispatcher, or when AGNI is transparent.
+
+    Below its surface-pressure threshold AGNI collapses the column onto the
+    top level at its floor temperature, which escape must not read as an
+    atmosphere: the stored column is cleared so escape builds its stand-in
+    from the surface pressure. Without the dispatcher nothing is stored.
+    """
+    p = np.array([1e-4, 1e0, 1e4])
+    r = np.array([6.6e6, 6.5e6, 6.4e6])
+    T = np.array([200.0, 250.0, 300.0])
+    stale = {'p': np.ones(3)}
+    for atm, dispatcher in (
+        (_agni_atm(p, r, T, {'N2': np.ones(3)}, transparent=True), True),
+        (_agni_atm(p, r, T, {'N2': np.ones(3)}), False),
+    ):
+        atmos_o = SimpleNamespace(
+            _atm=atm, converged=True, escape_profile=stale, escape_profile_current=True
+        )
+        store_escape_profile(atmos_o, _config('agni', dispatcher=dispatcher), {})
+        assert atmos_o.escape_profile is None
+        assert atmos_o.escape_profile_current is False
+    # The same opaque column under the dispatcher is stored.
+    atmos_o = SimpleNamespace(
+        _atm=_agni_atm(p, r, T, {'N2': np.ones(3)}),
+        converged=True,
+        escape_profile=None,
+        escape_profile_current=False,
+    )
+    store_escape_profile(atmos_o, _config('agni'), {})
+    assert atmos_o.escape_profile_current is True
+    np.testing.assert_allclose(atmos_o.escape_profile['p'], p[::-1], rtol=1e-15)

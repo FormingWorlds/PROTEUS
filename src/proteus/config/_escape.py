@@ -87,7 +87,8 @@ class Zephyrus:
         XUV, Lopez 2017) or "fixed_pressure" (at ``Pxuv``).
     base_out_of_range: str
         Dispatcher wind base above the top of the atmosphere profile: "clamp"
-        to the top level, or "extend" the profile isothermally above it.
+        to the top level, or "extend" the profile above it with the Bates upper
+        structure of the hydrostatic branch.
     P_photo: float
         Photospheric level of the dispatcher [bar]: the radius of the
         energy-limited rate and the boil-off launch level.

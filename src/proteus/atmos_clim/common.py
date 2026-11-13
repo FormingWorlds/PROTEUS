@@ -81,14 +81,11 @@ class Atmos_t:
         # record means this run's own rows carry rejected levels too.
         self.solves_seen: int = 0
 
-        # The column of the most recent converged solve, base to top, in SI
-        # (keys p [Pa], r [m], T [K], vmr {gas: array}), for the escape step of
-        # the next iteration. None until a solve with a profile converges, and
-        # always None for the dummy atmosphere. Transient, not persisted.
+        # Last converged column for the escape dispatcher (p [Pa], r [m], T [K], vmr),
+        # base to top; see atmos_clim.escape_profile. Transient.
         self.escape_profile: dict | None = None
 
-        # Whether `escape_profile` comes from the most recent solve, rather
-        # than being kept from an earlier one because that solve was rejected.
+        # Whether escape_profile comes from the most recent solve.
         self.escape_profile_current: bool = False
 
 

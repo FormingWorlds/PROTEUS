@@ -13,6 +13,8 @@ import logging
 import math
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from proteus.utils.constants import M_sun, element_list, gas_list, secs_per_year
 
 if TYPE_CHECKING:
@@ -33,14 +35,14 @@ REGIME_CODES = {
 }
 REGIME_LABELS = {code: label for label, code in REGIME_CODES.items()}
 
-# Helpfile code of where the atmosphere column came from.
-PROFILE_SOLVE = 0  # the most recent converged climate solve
-PROFILE_KEPT = 1  # an earlier converged solve, the most recent one being rejected
-PROFILE_ISOTHERMAL = 2  # an isothermal column built from the helpfile row
+# Helpfile code of where the atmosphere column came from; 0 is a row the dispatcher did not set.
+PROFILE_SOLVE = 1  # the most recent converged climate solve
+PROFILE_KEPT = 2  # an earlier converged solve, the most recent one being rejected
+PROFILE_ISOTHERMAL = 3  # an isothermal column built from the helpfile row
 
-# Smallest interior flux passed on [W m-2]. The flux only caps the bolometric
-# rate past the boil-off threshold, which is off by default.
-F_INT_FLOOR = 1.0e-10
+# Smallest interior and bolometric flux passed on [W m-2]. They only cap the
+# bolometric rate past the boil-off threshold and feed the overflow diagnostic.
+F_FLOOR = 1.0e-10
 
 # Value written for a diagnostic the dispatcher did not evaluate.
 NOT_EVALUATED = -1.0
@@ -87,7 +89,6 @@ def dispatch_settings(zcfg: Zephyrus):
 
 def _mean_particle_mass(vmr: dict, n_levels: int):
     """Mean particle mass per level [kg] from the gas mixing ratios."""
-    import numpy as np
     from zephyrus.composition import species_mass_amu
     from zephyrus.constants import amu
 
@@ -99,11 +100,13 @@ def _mean_particle_mass(vmr: dict, n_levels: int):
     return weighted / total
 
 
-def _isothermal_column(config: Config, hf_row: dict) -> dict:
+def _isothermal_column(config: Config, hf_row: dict) -> dict | None:
     """Isothermal column at the equilibrium temperature, from the surface to ``p_top``.
 
-    The stand-in for an atmosphere backend with no column of its own, and for
-    the first escape step of a resumed run.
+    The stand-in for an atmosphere backend with no column of its own, for a
+    climate solve that left none (AGNI's transparent mode), and for the first
+    escape step of a resumed run. None when the surface pressure does not
+    exceed ``p_top`` or the atmosphere holds no gas.
     """
     from zephyrus.profiles import isothermal_profile
 
@@ -112,8 +115,9 @@ def _isothermal_column(config: Config, hf_row: dict) -> dict:
         for g in gas_list
         if float(hf_row.get(f'{g}_vmr', 0.0)) > 0.0
     }
-    if not composition:
-        raise ValueError('no gas in the atmosphere to build an escape column from')
+    p_surf, p_top = float(hf_row.get('P_surf', 0.0)), float(config.atmos_clim.p_top)
+    if not composition or not np.isfinite(p_surf) or p_surf <= p_top:
+        return None
     prof = isothermal_profile(
         float(hf_row['M_planet']),
         float(hf_row['R_int']),
@@ -139,8 +143,9 @@ def escape_profile(config: Config, hf_row: dict, atmos_o: Atmos_t | None):
 
     Returns
     -------
-    profile : zephyrus.profiles.Profile
-        The column, base to top, in SI.
+    profile : zephyrus.profiles.Profile or None
+        The column, base to top, in SI, or None when there is no atmosphere
+        to build one from.
     source : int
         ``PROFILE_SOLVE``, ``PROFILE_KEPT`` or ``PROFILE_ISOTHERMAL``.
     """
@@ -149,6 +154,8 @@ def escape_profile(config: Config, hf_row: dict, atmos_o: Atmos_t | None):
     column = getattr(atmos_o, 'escape_profile', None) if atmos_o is not None else None
     if column is None:
         column, source = _isothermal_column(config, hf_row), PROFILE_ISOTHERMAL
+        if column is None:
+            return None, source
     elif atmos_o.escape_profile_current:
         source = PROFILE_SOLVE
     else:
@@ -198,8 +205,8 @@ def escape_inputs(config: Config, hf_row: dict, profile, dt: float):
         e=float(hf_row['eccentricity']),
         T_eq=float(hf_row['T_eqm']),
         F_xuv=max(0.0, float(hf_row['F_xuv'])),
-        F_bol=float(hf_row['F_ins']),
-        F_int=max(F_INT_FLOOR, float(hf_row['F_int'])),
+        F_bol=max(F_FLOOR, float(hf_row['F_ins'])),
+        F_int=max(F_FLOOR, float(hf_row['F_int'])),
         kappa_photo=float(config.escape.zephyrus.kappa_photo),
         profile=profile,
         settings=dispatch_settings(config.escape.zephyrus),
@@ -245,6 +252,16 @@ def store_result(hf_row: dict, result, source: int) -> None:
         hf_row['R_xuv'] = _finite_or(base.get('r_m'), hf_row.get('R_xuv', 0.0))
 
 
+def _no_escape(hf_row: dict) -> float:
+    """Record a step without escape: zero rates and no dispatcher verdict."""
+    hf_row['esc_rate_total'] = 0.0
+    for e in element_list:
+        hf_row[f'esc_rate_{e}'] = 0.0
+    for key in ('esc_regime', 'esc_rate_branch', 'esc_profile_source'):
+        hf_row[key] = 0.0
+    return 0.0
+
+
 def run_dispatcher(
     config: Config, hf_row: dict, atmos_o: Atmos_t | None = None, dt: float = 0.0
 ) -> float:
@@ -270,7 +287,15 @@ def run_dispatcher(
     """
     from zephyrus import dispatch
 
+    fluxes = {k: float(hf_row.get(k, np.nan)) for k in ('F_xuv', 'F_ins', 'F_int')}
+    bad = sorted(k for k, v in fluxes.items() if not np.isfinite(v))
+    if bad:
+        log.warning('Escape skipped this step: non-finite %s', ', '.join(bad))
+        return _no_escape(hf_row)
     profile, source = escape_profile(config, hf_row, atmos_o)
+    if profile is None:
+        log.info('Escape skipped this step: no atmosphere above p_top to escape from')
+        return _no_escape(hf_row)
     inputs = escape_inputs(config, hf_row, profile, dt)
     if source != PROFILE_ISOTHERMAL:
         inputs.atm_converged = source == PROFILE_SOLVE

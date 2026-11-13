@@ -17,7 +17,6 @@
         "accretion",
         "atmos_chem",
         "atmos_clim",
-        "escape",
         "interior_energetics",
         "interior_struct",
         "main loop",
@@ -3133,6 +3132,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -3175,6 +3178,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -3252,6 +3259,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -3294,6 +3305,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -3327,6 +3342,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -3871,6 +3890,10 @@
           "condition": "outgas.module = \"atmodeller\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -4382,6 +4405,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -4528,6 +4555,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -4541,7 +4572,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas",
         "utils"
       ],
@@ -4681,6 +4711,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -4719,6 +4753,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -4788,6 +4826,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -4936,6 +4978,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -4949,7 +4995,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas",
         "utils"
       ],
@@ -5086,6 +5131,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -5124,6 +5173,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -5193,6 +5246,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -5341,6 +5398,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -5354,7 +5415,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas",
         "utils"
       ],
@@ -5491,6 +5551,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -5529,6 +5593,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -5602,6 +5670,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -5766,6 +5838,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -5779,7 +5855,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "interior_struct",
         "outgas",
         "utils"
@@ -5929,6 +6004,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -5971,6 +6050,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -6040,6 +6123,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -6188,6 +6275,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -6201,7 +6292,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas",
         "utils"
       ],
@@ -6338,6 +6428,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -6376,6 +6470,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -6445,6 +6543,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -6593,6 +6695,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -6606,7 +6712,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas",
         "utils"
       ],
@@ -6743,6 +6848,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -6781,6 +6890,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -6850,6 +6963,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -6998,6 +7115,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -7011,7 +7132,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas",
         "utils"
       ],
@@ -7148,6 +7268,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -7186,6 +7310,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -7255,6 +7383,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -7403,6 +7535,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -7416,7 +7552,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas",
         "utils"
       ],
@@ -7553,6 +7688,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -7591,6 +7730,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -7660,6 +7803,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -7808,6 +7955,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -7821,7 +7972,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas",
         "utils"
       ],
@@ -7958,6 +8108,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -7996,6 +8150,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -8065,6 +8223,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -8213,6 +8375,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -8226,7 +8392,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas",
         "utils"
       ],
@@ -8363,6 +8528,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -8401,6 +8570,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -8470,6 +8643,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -8618,6 +8795,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -8631,7 +8812,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas",
         "utils"
       ],
@@ -8768,6 +8948,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -8806,6 +8990,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -8875,6 +9063,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -9025,6 +9217,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -9192,6 +9388,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -9229,6 +9429,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -9298,6 +9502,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -9448,6 +9656,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -9615,6 +9827,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -9652,6 +9868,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -9721,6 +9941,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -9871,6 +10095,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -10038,6 +10266,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -10075,6 +10307,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -10144,6 +10380,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -10294,6 +10534,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -10461,6 +10705,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -10498,6 +10746,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -10567,6 +10819,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -10717,6 +10973,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -10884,6 +11144,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -10921,6 +11185,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -10990,6 +11258,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -11118,6 +11390,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -11127,7 +11403,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -11247,6 +11522,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -11284,6 +11563,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -11353,6 +11636,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -11481,6 +11768,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -11490,7 +11781,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -11610,6 +11900,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -11647,6 +11941,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -11716,6 +12014,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -11846,6 +12148,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -11996,6 +12302,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -12033,6 +12343,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -12102,6 +12416,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -12232,6 +12550,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -12382,6 +12704,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -12419,6 +12745,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -12488,6 +12818,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -12618,6 +12952,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -12768,6 +13106,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -12805,6 +13147,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -12874,6 +13220,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -13004,6 +13354,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -13154,6 +13508,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -13191,6 +13549,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -13260,6 +13622,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -13388,6 +13754,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -13397,7 +13767,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -13517,6 +13886,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -13554,6 +13927,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -13623,6 +14000,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -13751,6 +14132,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -13760,7 +14145,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -13880,6 +14264,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -13917,6 +14305,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -13986,6 +14378,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -14116,6 +14512,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -14266,6 +14666,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -14303,6 +14707,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -14372,6 +14780,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -14500,6 +14912,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -14509,7 +14925,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -14629,6 +15044,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -14666,6 +15085,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -14735,6 +15158,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -14865,6 +15292,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -15015,6 +15446,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -15052,6 +15487,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -15121,6 +15560,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -15249,6 +15692,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -15258,7 +15705,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -15378,6 +15824,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -15415,6 +15865,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -15484,6 +15938,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -15612,6 +16070,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -15621,7 +16083,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -15741,6 +16202,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -15778,6 +16243,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -15847,6 +16316,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -15975,6 +16448,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -15984,7 +16461,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -16104,6 +16580,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -16141,6 +16621,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -16210,6 +16694,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -16340,6 +16828,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -16490,6 +16982,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -16527,6 +17023,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -16596,6 +17096,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -16724,6 +17228,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -16733,7 +17241,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -16853,6 +17360,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -16890,6 +17401,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -16959,6 +17474,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -17087,6 +17606,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -17096,7 +17619,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -17216,6 +17738,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -17253,6 +17779,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -17322,6 +17852,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -17450,6 +17984,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -17459,7 +17997,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -17579,6 +18116,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -17616,6 +18157,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -17685,6 +18230,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -17813,6 +18362,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -17822,7 +18375,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -17942,6 +18494,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -17979,6 +18535,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -18048,6 +18608,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -18178,6 +18742,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -18328,6 +18896,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -18365,6 +18937,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -18434,6 +19010,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -18562,6 +19142,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -18571,7 +19155,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -18691,6 +19274,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -18728,6 +19315,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -18797,6 +19388,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -18927,6 +19522,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -19077,6 +19676,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -19114,6 +19717,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -19183,6 +19790,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -19311,6 +19922,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -19320,7 +19935,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -19440,6 +20054,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -19477,6 +20095,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -19546,6 +20168,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -19674,6 +20300,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -19683,7 +20313,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -19803,6 +20432,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -19840,6 +20473,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -19909,6 +20546,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -20037,6 +20678,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -20046,7 +20691,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -20166,6 +20810,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -20203,6 +20851,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -20272,6 +20924,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -20400,6 +21056,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -20409,7 +21069,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -20529,6 +21188,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -20566,6 +21229,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -20635,6 +21302,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -20763,6 +21434,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -20772,7 +21447,6 @@
         }
       ],
       "consumers": [
-        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -20892,6 +21566,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -20929,6 +21607,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -21006,6 +21688,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -21169,6 +21855,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -21330,6 +22020,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -21487,6 +22181,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
         },
@@ -21642,6 +22340,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/lavatmos.py",
@@ -21831,6 +22533,10 @@
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
+        },
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -27847,7 +28553,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -27892,7 +28598,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -27997,7 +28703,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28036,7 +28742,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28074,7 +28780,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28112,7 +28818,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28150,7 +28856,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28188,7 +28894,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28226,7 +28932,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28264,7 +28970,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28302,7 +29008,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28340,7 +29046,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28378,7 +29084,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28416,7 +29122,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28454,7 +29160,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28492,7 +29198,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28530,7 +29236,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28568,7 +29274,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28606,7 +29312,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28644,7 +29350,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28682,7 +29388,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28720,7 +29426,7 @@
         },
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28750,7 +29456,7 @@
       "producers": [
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         }
       ],
       "consumers": [],
@@ -28759,13 +29465,13 @@
     {
       "name": "esc_rate_branch",
       "unit": "1",
-      "description": "code of the branch that set the rate, before the Roche relabel",
+      "description": "code of the branch that set the rate; roche_overflow for an L1 transfer",
       "group": "Atmospheric escape",
       "origin": "literal",
       "producers": [
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         }
       ],
       "consumers": [
@@ -28782,7 +29488,7 @@
       "producers": [
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         }
       ],
       "consumers": [
@@ -28799,7 +29505,7 @@
       "producers": [
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         }
       ],
       "consumers": [],
@@ -28814,7 +29520,7 @@
       "producers": [
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         }
       ],
       "consumers": [],
@@ -28829,7 +29535,7 @@
       "producers": [
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         }
       ],
       "consumers": [],
@@ -28844,7 +29550,7 @@
       "producers": [
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         }
       ],
       "consumers": [],
@@ -28859,7 +29565,7 @@
       "producers": [
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         }
       ],
       "consumers": [],
@@ -28874,7 +29580,7 @@
       "producers": [
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         }
       ],
       "consumers": [],
@@ -28883,16 +29589,33 @@
     {
       "name": "esc_profile_source",
       "unit": "1",
-      "description": "column read: 0 latest solve, 1 earlier solve, 2 isothermal",
+      "description": "column read: 1 latest solve, 2 earlier solve, 3 isothermal, 0 not set",
       "group": "Atmospheric escape",
       "origin": "literal",
       "producers": [
         {
           "file": "src/proteus/escape/dispatcher.py",
-          "condition": "always"
+          "condition": "escape.module = \"zephyrus\""
         }
       ],
       "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "esc_graphite_kg",
+      "unit": "kg",
+      "description": "carbon escape left as graphite over a frozen mantle",
+      "group": "Atmospheric escape",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/fractionated_debit.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
       "consumers_possible": []
     },
     {
