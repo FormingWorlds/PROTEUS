@@ -152,6 +152,7 @@ The first term is a known limit of the frozen chemistry: at 140 kyr the sealed a
 
 Over the run printed here and 5 starts whose initial superheat differs by up to $2.5 \times 10^{-9}$ K, the closing time varies by 0.8 yr and the water in the atmosphere at 140 kyr by $9 \times 10^{-4}$ % with the seal and by $8 \times 10^{-4}$ % without it.
 The seal run and the open run of one start agree to the last digit before closure, so the seal effect is their difference at the same start: 1.748 % in each of the 6 starts.
+These starts run on the default mesh, with a 3000 m CMB cell; the spread on other meshes was not measured.
 `tests/data/lid_seal/tutorial_ensemble.csv` holds these end values.
 
 The block plots the water in the atmosphere, and the held water against its floor:
