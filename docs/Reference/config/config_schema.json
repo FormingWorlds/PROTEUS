@@ -11660,6 +11660,27 @@
       "group_qualifier": null
     },
     {
+      "path": "escape.zephyrus.T_anchor_decades",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "float",
+      "accepts_none": false,
+      "default": "3.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Pressure decades at the top of the atmosphere column over which the temperature the hydrostatic thermosphere starts from is averaged. The optically thin top layers have a poorly constrained temperature. 0 takes the topmost level.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "escape.zephyrus.hydrostatic_levels_min",
       "toml_section": "escape.zephyrus",
       "class": "Zephyrus",

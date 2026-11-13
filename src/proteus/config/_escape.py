@@ -135,6 +135,11 @@ class Zephyrus:
         Restricted Jeans parameter below which boil-off applies.
     kzz: float
         Eddy diffusion coefficient [m2 s-1] of the hydrostatic branch.
+    T_anchor_decades: float
+        Pressure decades at the top of the atmosphere column over which the
+        temperature the hydrostatic thermosphere starts from is averaged. The
+        optically thin top layers have a poorly constrained temperature. 0
+        takes the topmost level.
     hydrostatic_levels_min: int
         First quadrature grid of the diffusion-limited supply integrals.
     hydrostatic_levels_max: int
@@ -171,6 +176,7 @@ class Zephyrus:
     recombination_limit: bool = field(default=True)
     lambda_crit: float = field(default=20.0, validator=gt(0))
     kzz: float = field(default=3.0e2, validator=gt(0))
+    T_anchor_decades: float = field(default=3.0, validator=ge(0))
     hydrostatic_levels_min: int = field(default=200, validator=ge(2))
     hydrostatic_levels_max: int = field(default=3200, validator=ge(8))
     hydrostatic_rtol: float = field(default=1.0e-2, validator=gt(0))

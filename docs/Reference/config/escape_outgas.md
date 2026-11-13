@@ -58,6 +58,7 @@ efficiency.
 | `recombination_limit` | bool | `true` | Admit the recombination-limited wind rate. |
 | `lambda_crit` | float | `20.0` | Restricted Jeans parameter below which boil-off applies. Must be > 0. |
 | `kzz` | float | `300.0` | Eddy diffusion coefficient \[m2 s-1\] of the hydrostatic branch. Must be > 0. |
+| `T_anchor_decades` | float | `3.0` | Pressure decades at the top of the atmosphere column over which the temperature the hydrostatic thermosphere starts from is averaged. The optically thin top layers have a poorly constrained temperature. 0 takes the topmost level. Must be >= 0. |
 | `hydrostatic_levels_min` | int | `200` | First quadrature grid of the diffusion-limited supply integrals. Must be >= 2. |
 | `hydrostatic_levels_max` | int | `3200` | Refinement ceiling of those integrals, at least four times the minimum. Must be >= 8. |
 | `hydrostatic_rtol` | float | `0.01` | Relative change in the rate at which the refinement stops. Must be > 0. |

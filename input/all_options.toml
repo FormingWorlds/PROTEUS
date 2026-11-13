@@ -844,6 +844,7 @@ config_version = "3.0"
         recombination_limit   = true         # admit the recombination-limited wind rate
         lambda_crit           = 20.0         # restricted Jeans parameter below which boil-off applies
         kzz                   = 300.0        # eddy diffusion coefficient [m2 s-1]
+        T_anchor_decades      = 3.0          # top decades of the column the thermosphere temperature averages over
         hydrostatic_levels_min = 200         # first quadrature grid of the diffusion supply
         hydrostatic_levels_max = 3200        # refinement ceiling, at least 4 x the minimum
         hydrostatic_rtol      = 0.01         # relative change at which the refinement stops

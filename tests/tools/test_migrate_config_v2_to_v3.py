@@ -193,6 +193,7 @@ _REVIEWED_NEUTRAL = frozenset(
         # that the escape.zephyrus.scheme override pins.
         'escape.zephyrus.P_photo',
         'escape.zephyrus.T_exo',
+        'escape.zephyrus.T_anchor_decades',
         'escape.zephyrus.T_exo_mode',
         'escape.zephyrus.base_method',
         'escape.zephyrus.base_out_of_range',

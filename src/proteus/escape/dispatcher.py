@@ -78,6 +78,7 @@ def dispatch_settings(zcfg: Zephyrus):
         residual_mode=zcfg.residual_mode,
         lambda_crit=float(zcfg.lambda_crit),
         kzz=float(zcfg.kzz),
+        T_anchor_decades=float(zcfg.T_anchor_decades),
         hydrostatic_levels_min=int(zcfg.hydrostatic_levels_min),
         hydrostatic_levels_max=int(zcfg.hydrostatic_levels_max),
         hydrostatic_rtol=float(zcfg.hydrostatic_rtol),

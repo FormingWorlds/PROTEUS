@@ -103,6 +103,7 @@ def test_settings_reach_zephyrus_in_pa_with_the_tidal_default_resolved():
     assert st.P_base_fixed == pytest.approx(5.0, rel=1e-12)
     assert st.tidal is True
     assert abs(st.P_photo - 0.02) > 1e3
+    assert st.T_anchor_decades == pytest.approx(3.0, rel=1e-15)
     st_el = dispatch_settings(Zephyrus(scheme='el', P_photo=0.1, tidal=False, T_exo=1500.0))
     assert st_el.P_photo == pytest.approx(1.0e4, rel=1e-12)
     assert st_el.tidal is False
