@@ -567,16 +567,18 @@ def test_unchanged_end_cells_resume_quietly(tmp_path, caplog):
     assert [r for r in caplog.records if r.name == LOGGER] == []
 
 
-def test_a_record_without_the_end_cells_ran_on_the_uniform_mesh(tmp_path):
-    """A record that names the Aragog module and lacks both cell fields ran on the uniform
-    mesh: a resume under the new defaults is refused, one with both cells at 0 goes on."""
+def test_a_record_without_the_end_cells_leaves_the_mesh_to_the_snapshot(tmp_path, caplog):
+    """A record that names the Aragog module and lacks both cell fields does not tell the
+    mesh of the run: no refusal from the record under any cells, and one warning per field
+    that the snapshot radii decide."""
     out = _stored_run(tmp_path, drop=('cmb_cell_thickness', 'surface_cell_thickness'))
-    config, path = _user_config(tmp_path)
-    with pytest.raises(ResumeSeparationLawError, match='cmb_cell_thickness') as err:
-        check_resume_separation_laws(config, path, out)
-    assert 'surface_cell_thickness' in str(err.value)
-    config, path = _user_config(tmp_path, cmb_cell_thickness=0.0, surface_cell_thickness=0.0)
-    assert check_resume_separation_laws(config, path, out) == []
+    for cells in ({}, {'cmb_cell_thickness': 0.0, 'surface_cell_thickness': 0.0}):
+        config, path = _user_config(tmp_path, **cells)
+        with caplog.at_level(logging.WARNING, logger=LOGGER):
+            caplog.clear()
+            assert check_resume_separation_laws(config, path, out) == []
+        noted = [r.getMessage() for r in caplog.records if r.name == LOGGER]
+        assert len(noted) == 2 and all('snapshot' in m and 'not recorded' in m for m in noted)
 
 
 def test_uniform_and_0_at_the_surface_with_no_cmb_cell_are_the_same_mesh(tmp_path):
