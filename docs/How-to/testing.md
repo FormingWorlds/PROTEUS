@@ -21,7 +21,7 @@ open htmlcov/index.html                 # View coverage in browser
 Tests covering package extras skip when that extra is absent, so
 `[develop]` alone runs fewer tests than CI does. To match the CI selection
 locally, install the extras as well, and VULCAN from its clone (the fwl-vulcan
-wheel has no network files):
+wheel has no network files; `--force` replaces an existing `VULCAN/` folder):
 
 ```bash
 pip install -e ".[develop,vulcan,atmodeller,inference]"
