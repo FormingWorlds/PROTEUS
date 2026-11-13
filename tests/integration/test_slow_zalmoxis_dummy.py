@@ -55,7 +55,6 @@ See also:
 
 from __future__ import annotations
 
-import os
 import sys
 
 import numpy as np
@@ -271,17 +270,10 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
     r_core = float(final['R_core'])
     assert m_solve == pytest.approx(core_target, rel=1e-12)
     assert m_core >= m_solve * (1.0 - 1e-12)
-    r_file = np.loadtxt(os.path.join(runner.directories['output/data'], 'zalmoxis_output.dat'))[
-        :, 0
-    ]
-    assert r_file[0] == pytest.approx(r_core, abs=1.0)
-    shell = (
-        float(final['core_density'])
-        * 4.0
-        / 3.0
-        * np.pi
-        * (r_core**3 - (r_core - (r_file[1] - r_file[0])) ** 3)
-    )
+    # Zalmoxis radii are linspace(0, R_int, num_levels), so R_core is a whole number of steps.
+    dr = float(final['R_int']) / (cfg.interior_struct.zalmoxis.num_levels - 1)
+    assert r_core / dr == pytest.approx(round(r_core / dr), abs=1e-9)
+    shell = float(final['core_density']) * 4.0 / 3.0 * np.pi * (r_core**3 - (r_core - dr) ** 3)
     assert m_core - m_solve <= shell, (
         f'M_core - M_core_solve = {m_core - m_solve:.3e} kg > shell {shell:.3e} kg'
     )
