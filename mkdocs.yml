@@ -71,8 +71,6 @@ nav:
       - Accretion:
           - Analytical accretion (dummy.py): Validation/accretion/dummy.md
           - Impact atmosphere-loss dispatch (wrapper.py): Validation/accretion/wrapper.md
-      - Atmosphere chemistry:
-          - Chemistry coupled to the climate (vulcan_agni.py): Validation/atmos_chem/vulcan_agni.md
       - Atmosphere climate:
           - Transparent black-body limit (agni.py): Validation/atmos_clim/agni.md
           - Lid and open surface in the call (common.py): Validation/atmos_clim/common.md

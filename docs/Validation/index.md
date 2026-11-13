@@ -24,7 +24,6 @@ Without `--validation-plots` the tests write nothing, but each plot test compare
 |---|---|---|---|
 | Accretion | `accretion/dummy.py` | [Analytical accretion](accretion/dummy.md) | [collision speed](accretion/dummy.md#collision-speed-and-the-mutual-escape-speed) |
 | Accretion | `accretion/wrapper.py` | [Impact atmosphere-loss dispatch](accretion/wrapper.md) | [Kegerreis loss law](accretion/wrapper.md#kegerreis-et-al-2020-loss-law) |
-| Atmosphere chemistry | `atmos_chem/vulcan_agni.py` | [Chemistry coupled to the climate](atmos_chem/vulcan_agni.md) | [fixed point](atmos_chem/vulcan_agni.md#the-snapshot-is-a-fixed-point-of-the-climate-update) |
 | Atmosphere climate | `atmos_clim/agni.py` | [Transparent black-body limit](atmos_clim/agni.md) | [grey-gas column](atmos_clim/agni.md#black-body-emission-of-a-grey-gas-transparent-column) |
 | Atmosphere climate | `atmos_clim/common.py` | [Lid and open surface in the call](atmos_clim/common.md) | [parallel sum](atmos_clim/common.md#the-atmosphere-call-sees-the-lid-and-the-open-surface-in-parallel) |
 | Interior energetics | `interior_energetics/remelt.py` | [Partial giant-impact re-melt](interior_energetics/remelt.md) | [melt front](interior_energetics/remelt.md#melt-front-against-the-closed-form) |

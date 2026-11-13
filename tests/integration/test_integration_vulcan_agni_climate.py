@@ -1,6 +1,5 @@
-# Validation of chemistry coupled to the climate: atmos_chem/vulcan_agni.py (SnapshotClimate)
-# and the coupled run_vulcan, with the real AGNI on one banded snapshot of the evolution.
-# Validation record: docs/Validation/atmos_chem/vulcan_agni.md
+# Chemistry coupled to the climate: atmos_chem/vulcan_agni.py (SnapshotClimate) and the
+# coupled run_vulcan, with the real AGNI on one banded snapshot of the evolution.
 from __future__ import annotations
 
 import copy
@@ -127,36 +126,12 @@ def snapshot(tmp_path_factory):
     return _make_snapshot(str(tmp_path_factory.mktemp('vulcan_agni')))
 
 
-def _plot_fixed_point(validation_plot, snap, t_same, t_swapped):
-    """Temperature change from the snapshot: update with the same and with swapped gases."""
-
-    def figure():
-        import matplotlib.pyplot as plt
-
-        p_bar = snap['p'] / 1.0e5
-        fig, ax = plt.subplots(figsize=(5, 4))
-        ax.axvspan(-ATOL_FIXED_POINT_K, ATOL_FIXED_POINT_K, color='0.85', label='Tolerance')
-        ax.plot(t_same - snap['tmp'], p_bar, 'o-', ms=3, label='Update, same gases')
-        ax.plot(t_swapped - snap['tmp'], p_bar, '--', label='Update, H$_2$O and CO$_2$ swapped')
-        ax.set_yscale('log')
-        ax.invert_yaxis()
-        ax.set_xlabel('Temperature minus snapshot [K]')
-        ax.set_ylabel('Pressure [bar]')
-        ax.legend(fontsize=8)
-        fig.tight_layout()
-        return fig
-
-    validation_plot(figure, 'atmos_chem_vulcan_agni_fixed_point')
-
-
 @pytest.mark.physics_invariant
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
     reason='AGNI coupling test requires Julia/AGNI binaries (nightly only)',
 )
-def test_climate_update_with_the_snapshot_composition_returns_the_snapshot(
-    snapshot, validation_plot
-):
+def test_climate_update_with_the_snapshot_composition_returns_the_snapshot(snapshot):
     """Given the snapshot's own composition, the climate update returns the snapshot climate.
 
     Physical scenario: a 10 bar H2O-CO2-H2 atmosphere over a 1500 K surface, solved by AGNI
@@ -192,8 +167,6 @@ def test_climate_update_with_the_snapshot_composition_returns_the_snapshot(
     assert update.tmp.min() >= VULCAN_TMP_FLOOR
     assert np.all(update.kzz > 0)
 
-    _plot_fixed_point(validation_plot, snap, t_same, t_swapped)
-
 
 def _read_nc(path, *names):
     import netCDF4 as nc
@@ -204,38 +177,12 @@ def _read_nc(path, *names):
     return out
 
 
-def _plot_coupled(validation_plot, chem, coupled, co_vulcan_on_agni):
-    """Temperature of the coupled climate and of VULCAN; CO handed to AGNI."""
-
-    def figure():
-        import matplotlib.pyplot as plt
-
-        fig, (ax_t, ax_co) = plt.subplots(1, 2, figsize=(7, 4), sharey=True)
-        p_agni = coupled['p'] / 1.0e5
-        ax_t.plot(coupled['tmp'], p_agni, lw=3, alpha=0.5, label='Coupled climate')
-        ax_t.plot(chem['tmp'], chem['p'] / 1.0e6, 'o', ms=3, label='VULCAN, final')
-        ax_t.axvline(VULCAN_TMP_FLOOR, color='0.5', ls=':', label='VULCAN floor')
-        ax_t.set_xlabel('Temperature [K]')
-        ax_t.set_ylabel('Pressure [bar]')
-        ax_t.set_yscale('log')
-        ax_t.invert_yaxis()
-        ax_t.legend(fontsize=8)
-        ax_co.plot(co_vulcan_on_agni, p_agni, lw=3, alpha=0.5, label='VULCAN, on AGNI layers')
-        ax_co.plot(coupled['co'], p_agni, 'o', ms=3, label='Given to AGNI')
-        ax_co.set_xlabel('CO mixing ratio')
-        ax_co.legend(fontsize=8)
-        fig.tight_layout()
-        return fig
-
-    validation_plot(figure, 'atmos_chem_vulcan_agni_coupled_run')
-
-
 @pytest.mark.physics_invariant
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
     reason='AGNI coupling test requires Julia/AGNI binaries (nightly only)',
 )
-def test_coupled_run_ends_where_chemistry_and_climate_agree(snapshot, validation_plot):
+def test_coupled_run_ends_where_chemistry_and_climate_agree(snapshot):
     """A coupled VULCAN run ends at a state that both the chemistry and the climate accept.
 
     Physical scenario: the CHO kinetics of the same snapshot, with photochemistry, coupled to
@@ -303,5 +250,3 @@ def test_coupled_run_ends_where_chemistry_and_climate_agree(snapshot, validation
     f_net = coupled['fl_tot']
     assert (f_net.max() - f_net.min()) <= 1e-2 * abs(f_net.mean())
     assert f_net.mean() > 0  # the interior loses heat through this atmosphere
-
-    _plot_coupled(validation_plot, chem, coupled, co_on_agni)
