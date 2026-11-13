@@ -7,10 +7,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from proteus.utils.coupler import read_helpfile_table
+
 
 def read_run(run: str | Path) -> pd.DataFrame:
-    """The helpfile of a PROTEUS output folder."""
-    return pd.read_csv(Path(run) / 'runtime_helpfile.csv', sep=r'\s+')
+    """The helpfile of a PROTEUS output folder, every float as written."""
+    return read_helpfile_table(Path(run) / 'runtime_helpfile.csv')
 
 
 def closing_row(seal: pd.DataFrame) -> int:

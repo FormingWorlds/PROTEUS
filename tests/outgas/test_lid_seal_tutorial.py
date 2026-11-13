@@ -29,9 +29,14 @@ DATA = Path(__file__).parents[1] / 'data' / 'lid_seal'
 CFG = _config(solubility=True, tau_leak=1.0e5)  # the tutorial settings, crust_rate 0
 
 
+def _read(path):
+    """A stored table with every float exactly as written."""
+    return pd.read_csv(path, comment='#', float_precision='round_trip')
+
+
 def _closing_row():
     """The stored closing row as a sealed helpfile row, with the frozen solve temperature."""
-    rows = pd.read_csv(DATA / 'tutorial_closing_rows.csv', comment='#')
+    rows = _read(DATA / 'tutorial_closing_rows.csv')
     row = {**_eq_row({}, {}), **rows.iloc[0].to_dict()}
     row['seal_Tmagma_close'] = max(row['T_magma'], CFG.outgas.T_floor)
     return row, rows
@@ -75,7 +80,7 @@ def test_the_tutorial_atmosphere_lies_above_the_held_run_and_crosses_the_open_ru
     (tau_leak inf) and 1.5 times it at the end. Against the open run it is lower
     on the first held steps, while the leak lags its falling floor, crosses it
     once, and ends more than 1 % above it."""
-    w = pd.read_csv(DATA / 'tutorial_water.csv', comment='#')
+    w = _read(DATA / 'tutorial_water.csv')
     held = w[w['seal_active'] > 0.5]
     row, _ = _closing_row()
     assert row['Time'] == held['Time'].iloc[0]
@@ -129,7 +134,7 @@ def test_the_seal_effect_of_the_tutorial_lies_in_one_band_over_round_off_starts(
     run holds 1.748 % more water in the atmosphere at 140 kyr than the open run of
     its start in each start; over the 6 starts the water spreads by 9e-4 % with
     the seal and 8e-4 % without it, and the closing time by 0.8 yr."""
-    d = pd.read_csv(DATA / 'tutorial_ensemble.csv', comment='#')
+    d = _read(DATA / 'tutorial_ensemble.csv')
     more = 100.0 * (d['seal_atm'] / d['open_atm'] - 1.0)
     printed, starts = d['run'] == 'printed', d[d['run'] != 'printed']
     assert len(starts) == 5 and starts['dT'].max() < 2.5e-9 * (1 + 1e-6)
