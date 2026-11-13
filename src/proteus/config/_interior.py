@@ -77,17 +77,18 @@ def _valid_number(instance, attribute, value):
 
 def _valid_cell_thickness(instance, attribute, value):
     """Accept 0 or a finite number of at least 2 m, and "uniform" for the surface cell."""
-    if attribute.name == 'surface_cell_thickness' and value == 'uniform':
+    surface = attribute.name == 'surface_cell_thickness'
+    if surface and value == 'uniform':
         return
-    _valid_number(instance, attribute, value)
+    rule = ('"uniform", 0, or ' if surface else '0 or ') + 'finite and at least 2 m'
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f'`{attribute.name}` must be {rule}, got {value!r}')
     try:
         ok = value == 0 or (math.isfinite(value) and value >= 2.0)
     except OverflowError:  # an int that no float holds
         ok = False
     if not ok:
-        raise ValueError(
-            f'`{attribute.name}` must be 0 or finite and at least 2 m, got {value}'
-        )
+        raise ValueError(f'`{attribute.name}` must be {rule}, got {value}')
 
 
 def _valid_lid_delta_on(instance, attribute, value):
