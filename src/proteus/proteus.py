@@ -807,8 +807,8 @@ class Proteus:
         from proteus.accretion.wrapper import IMPACT_CONFIG_FIELDS
 
         # The record keeps the loaded values of the fields a giant impact changes; a resume
-        # writes it once every resume check has passed (before the main loop), so an attempt
-        # that stops earlier keeps the record of the laws the run used.
+        # writes it after its first interior step, once the solver has passed the mesh check of
+        # the snapshot, so an attempt that stops earlier keeps the record of the run.
         loaded = {key: attrgetter(key)(self.config) for key in IMPACT_CONFIG_FIELDS}
         record = functools.partial(
             self.config.write,
@@ -1227,8 +1227,7 @@ class Proteus:
         # advance Time indefinitely.
         self.agni_deadlock_count = 0
 
-        if self.config.params.resume:
-            record()
+        pending_record = record if self.config.params.resume else None
 
         # Main loop
         UpdateStatusfile(self.directories, 1)
@@ -1302,6 +1301,9 @@ class Proteus:
                 atmos_o=self.atmos_o,
                 write_data=is_snapshot,
             )
+            if pending_record is not None:
+                pending_record()
+                pending_record = None
             if _IT_TIMING_ENABLED:
                 _t_mod['interior'] = time.perf_counter() - _t0
 
