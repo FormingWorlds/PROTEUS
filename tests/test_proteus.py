@@ -384,6 +384,24 @@ def _resume_to_main_loop(p, *extra, restore=None):
     )
 
 
+def _resume_through_first_interior_step(p, interior, restore=None):
+    """Resume ``p`` into the main loop; ``interior`` stands in for run_interior, and the run
+    stops at the step after it; ``restore`` stands in for restore_accretion_state. Return
+    what start() raised, None at that stop."""
+    stop = patch.object(type(p), '_advance_to_step_end', side_effect=_StopAfterMeshRestore)
+    return _resume_to_init_star(
+        p,
+        patch('proteus.star.wrapper.init_star'),
+        patch('proteus.orbit.wrapper.init_orbit'),
+        patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
+        patch('proteus.accretion.wrapper.restore_accretion_state', side_effect=restore),
+        patch('proteus.interior_struct.common.volatile_mass_change', return_value=0.0),
+        patch('proteus.proteus.is_write_snapshot', return_value=False),
+        patch('proteus.interior_energetics.wrapper.run_interior', side_effect=interior),
+        stop,
+    )
+
+
 @pytest.mark.unit
 def test_a_resume_that_changes_the_separation_law_stops_before_init_coupler_is_written(
     tmp_path,
@@ -401,18 +419,37 @@ def test_a_resume_that_changes_the_separation_law_stops_before_init_coupler_is_w
 
 
 @pytest.mark.unit
-def test_an_allowed_switch_is_recorded_only_once_the_resume_reaches_the_main_loop(tmp_path):
-    """Under the allow switch, a resume that stops before the main loop leaves the record of
-    the old law, so the next attempt meets the check again; one that reaches the main loop
-    records the new law with the switch off."""
+def test_an_allowed_switch_is_recorded_only_once_the_first_interior_step_passes(tmp_path):
+    """Under the allow switch, a resume that stops before its first interior step leaves the
+    record of the old law, so the next attempt meets the check again; one whose first
+    interior step passes records the new law with the switch off."""
     p, stored_text = _resumable_run_with_buoyancy(tmp_path, 'solid')
     p.config.interior_energetics.aragog.allow_resume_law_change = True
     assert _resume_to_init_star(p) is None  # stopped at init_star, after the law check
-    assert (tmp_path / 'init_coupler.toml').read_text() == stored_text
     assert _resume_to_main_loop(p) is None
+    assert (tmp_path / 'init_coupler.toml').read_text() == stored_text
+    assert _resume_through_first_interior_step(p, lambda *a, **k: None) is None
     overrides = p.config.write.call_args.kwargs['overrides']
     assert overrides['interior_energetics.aragog.allow_resume_law_change'] is False
     assert (tmp_path / 'init_coupler.toml').read_text() == repr(overrides)
+
+
+@pytest.mark.unit
+def test_a_resume_refused_by_its_first_interior_step_keeps_the_record(tmp_path):
+    """The mesh check of the snapshot runs when the interior sets up its solver; a resume it
+    refuses leaves the record of the run, so the next attempt meets the same check."""
+    from proteus.interior_energetics.resume_laws import ResumeSeparationLawError
+
+    p, stored_text = _resumable_run_with_buoyancy(tmp_path, 'solid')
+    p.config.interior_energetics.aragog.allow_resume_law_change = True
+
+    def refuse(*args, **kwargs):
+        raise ResumeSeparationLawError('Resume refused: another mesh')
+
+    err = _resume_through_first_interior_step(p, refuse)
+    assert isinstance(err, ResumeSeparationLawError), repr(err)
+    assert (tmp_path / 'init_coupler.toml').read_text() == stored_text
+    p.config.write.assert_not_called()
 
 
 @pytest.mark.unit
@@ -454,7 +491,7 @@ def test_a_resume_records_the_config_as_loaded_not_as_the_accretion_restore_left
         proteus.config.planet.mass_tot = 1.25
         proteus.config.orbit.semimajoraxis, proteus.config.orbit.eccentricity = 2.0, 0.1
 
-    assert _resume_to_main_loop(p, restore=grow) is None
+    assert _resume_through_first_interior_step(p, lambda *a, **k: None, restore=grow) is None
     assert p.config.planet.mass_tot == pytest.approx(1.25, rel=1e-15)  # the restore ran
     assert (tmp_path / 'init_coupler.toml').read_text() == (
         'planet.mass_tot = 1.0 orbit.semimajoraxis = 1.0 orbit.eccentricity = 0.0'
