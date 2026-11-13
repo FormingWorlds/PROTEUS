@@ -112,7 +112,7 @@ H2O first leaks at 97087 yr, Phi = 0.19160
 held / floor of water on the rows where it leaks: at least 1.000278
 ```
 
-On the first held step $\Phi$ falls from 0.19250 to 0.19231, and water and CO$_2$ leak from that step on.
+On the first held step $\Phi$ falls from 0.19179 to 0.19160, and water and CO$_2$ leak from that step on.
 From then on the held water follows its floor down and stays above it.
 
 ## Step 6: compare the 2 atmospheres

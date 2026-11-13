@@ -103,7 +103,7 @@ The floor is $M_{\mathrm{eq},i} = X_{\mathrm{eq},i}\, R_i$, with $X_{\mathrm{eq}
 
 The floor is one way: a species below its floor does not move, because gas does not dissolve back through the crust.
 
-**Example.** Without front trapping (the default), in the [tutorial](../Tutorials/lid_seal.md) the seal closes at $\Phi_c = 0.19250$. The held water is the dissolved water of the melt and equals its floor. When $\Phi$ falls, the floor falls with it, so water, CO$_2$, CO and CH$_4$ leak from the first held step.
+**Example.** Without front trapping (the default), in the [tutorial](../Tutorials/lid_seal.md) the seal closes at $\Phi_c = 0.19179$. The held water is the dissolved water of the melt and equals its floor. When $\Phi$ falls, the floor falls with it, so water, CO$_2$, CO and CH$_4$ leak from the first held step.
 
 ### The reservoir with front trapping
 

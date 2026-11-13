@@ -127,7 +127,7 @@ This case has no plot: it checks one step against an identity.
 
 **How we know the right answer.** A stiff ODE solver (Radau, relative tolerance $10^{-11}$) integrates the same law in continuous time. The test writes the solubility laws out itself, without the CALLIOPE classes.
 
-**Why it matters.** The adaptive step of a PROTEUS run changes from step to step; in the held part of the tutorial run it is 82 to 157 yr (the last step, cut to end at 140 kyr, is 69 yr), shorter than the 358 yr steps of this test. The error of the step must stay small against the gas each species holds.
+**Why it matters.** The adaptive step of a PROTEUS run changes from step to step; in the held part of the tutorial run it is 82 to 159 yr (the last step, cut to end at 140 kyr, is 79 yr), shorter than the 358 yr steps of this test. The error of the step must stay small against the gas each species holds.
 
 This case has no plot; the table gives its result. Each error is the largest over the 6 masses, as a fraction of the inventory of its species, except the last column. The error cut is the error of 120 steps over that of 480 steps; 4 is the first-order value.
 
