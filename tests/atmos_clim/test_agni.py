@@ -1426,42 +1426,36 @@ def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('length', [132, 133])
-def test_init_agni_atmos_stops_before_socrates_on_a_file_name_above_132(
-    monkeypatch, tmp_path, length
+@pytest.mark.parametrize(
+    'length, filler, star',
+    [(132, 'x', True), (133, 'x', True), (133, 'x', False), (132, 'é', True)],
+)
+def test_init_agni_atmos_stops_before_socrates_on_a_file_name_above_132_bytes(
+    monkeypatch, tmp_path, length, filler, star
 ):
-    """The SOCRATES tools read file names of at most 132 characters; with a longer
-    socstar.dat path in the io folder, AGNI is not called and the error names the limit."""
-    fake_agni = _FakeAGNI()
-    fake_jl = SimpleNamespace(
-        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
-    )
-    (tmp_path / 'out' / 'data').mkdir(parents=True)
-    (tmp_path / 'out' / 'data' / '100.sflux').write_text('sflux', encoding='utf-8')
-    dirs = {'output': str(tmp_path / 'out'), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
-    config = _build_greygas_config()
-    config.atmos_clim.agni.spectral_file = None
-    config.atmos_clim.spectral_cache = False
-    hf_row = {'P_surf': 1.0, 'T_surf': 900.0, 'gravity': 9.8, 'R_int': 6.4e6, 'F_ins': 1000.0}
-    hf_row.update(albedo_pl=0.2, axial_period=86400.0, longitude=0.0, latitude=0.0)
-    hf_row.update(hill_radius=6.4e8, boundary_layer_thickness=0.01)
-    hf_row.update(boundary_layer_conductivity=2.0)
-    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
-    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
-    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
-    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
-    monkeypatch.setattr(agni_mod, 'require_spfile_path', lambda *_a, **_k: '/fake/spfile')
+    """The SOCRATES tools read file names of at most 132 bytes. With a star to insert and a
+    longer io_dir/socstar.dat, AGNI setup does not run and the error names the limit; a run
+    with no star (grey gas here) runs no SOCRATES tool and has no such limit."""
+    limit = agni_mod.SOCRATES_MAX_PATH
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, tmp_path / 'cache')
+    monkeypatch.setattr(agni_mod, 'SOCRATES_MAX_PATH', limit)
+    if not star:
+        ctx.config.atmos_clim.agni.spectral_file = 'greygas'
     with tempfile.TemporaryDirectory(prefix='a') as short:
-        io_dir = os.path.join(short, 'x' * (length - len(short) - len('/x/socstar.dat') + 1))
-        assert len(os.path.join(io_dir, 'socstar.dat')) == length
-        if length > 132:
-            with pytest.raises(ValueError, match=f'{length} characters.*132'):
-                init_agni_atmos(dirs, config, hf_row, use_cache=False, io_dir=io_dir)
-            assert fake_agni.last_allocate_input_star is None
-            assert (tmp_path / 'out' / 'status').read_text().splitlines()[0] == '22'
+        io_dir = os.path.join(short, filler * (length - len(short) - len('/x/socstar.dat') + 1))
+        socstar = os.path.join(io_dir, 'socstar.dat')
+        assert len(socstar) == length
+        nbytes = len(os.fsencode(socstar))
+        if star and nbytes > 132:
+            with pytest.raises(ValueError, match=f'{nbytes} bytes.*132 bytes.*TMPDIR'):
+                init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, io_dir=io_dir)
+            assert ctx.fake_agni.last_setup_kwargs is None
+            assert ctx.fake_agni.last_allocate_input_star is None
+            assert (ctx.output_dir / 'status').read_text().splitlines()[0] == '22'
         else:
-            init_agni_atmos(dirs, config, hf_row, use_cache=False, io_dir=io_dir)
-            assert fake_agni.last_allocate_input_star.endswith('100.sflux')
+            init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, io_dir=io_dir)
+            assert ctx.fake_agni.last_allocate_input_star == (str(ctx.sflux) if star else '')
+            assert not (ctx.output_dir / 'status').exists()
 
 
 @pytest.mark.unit
