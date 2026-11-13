@@ -247,6 +247,11 @@ def run_vulcan(
     ----------
     success : bool
         Did VULCAN run successfully?
+
+    Raises
+    ------
+    FileNotFoundError
+        The network file is not in VULCAN's thermo folder (a VULCAN without its clone).
     """
 
     # Imported here, so that reading VULCAN output does not need the package
