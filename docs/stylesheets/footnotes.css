@@ -18,4 +18,6 @@
   font-size: 1em !important;
 }
 
-
+/* The hidden back-link icon takes no line space, so it never wraps onto an empty line. */
+.md-typeset .footnote > ol > li { position: relative; }
+.md-typeset .footnote-backref { position: absolute; }
