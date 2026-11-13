@@ -28,7 +28,8 @@ def run_chemistry(dirs: dict, config: Config, hf_all: pd.DataFrame) -> pd.DataFr
 
     Runs at the snapshot times set by `atmos_chem.times`, in ascending order,
     after the simulation. A snapshot without an atmosphere (surface pressure
-    zero, as after desiccation) is left out. Each run writes
+    zero, as after desiccation) is left out, and so is one that AGNI treats as
+    transparent (surface pressure below `atmos_clim.agni.psurf_thresh`). Each run writes
     ``offchem/<module>_<time>.csv``, and the latest is also copied to
     ``offchem/<module>.csv``. The ``offchem`` folder is cleared once at the
     start. A failed run stops the sequence; the results before it are kept.
@@ -40,7 +41,7 @@ def run_chemistry(dirs: dict, config: Config, hf_all: pd.DataFrame) -> pd.DataFr
     config : Config
         Configuration object.
     hf_all : pd.DataFrame
-        Helpfile of the run. Each run uses the row nearest its snapshot time.
+        Helpfile of the run. Each run uses the latest row at or before its snapshot time.
 
     Returns
     ----------
@@ -79,6 +80,16 @@ def run_chemistry(dirs: dict, config: Config, hf_all: pd.DataFrame) -> pd.DataFr
             % (len(no_atm), no_atm[0])
         )
         times = [t for t in times if t not in no_atm]
+    if config.atmos_clim.module == 'agni':
+        # AGNI treats these columns as transparent, so there is no atmosphere to process
+        p_thin = float(config.atmos_clim.agni.psurf_thresh)  # bar
+        thin = [t for t in times if float(helpfile_row_at(hf_all, t)['P_surf']) < p_thin]
+        if thin:
+            log.warning(
+                'Skipping %d snapshot(s) in the transparent regime (P_surf below %g bar), '
+                'from t=%.3e yr' % (len(thin), p_thin, thin[0])
+            )
+            times = [t for t in times if t not in thin]
     if not times:
         log.warning('No snapshots to run atmospheric chemistry on')
         return None

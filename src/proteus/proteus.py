@@ -1660,6 +1660,8 @@ class Proteus:
                 if _IT_TIMING_ENABLED:
                     _t_mod['write'] = time.perf_counter() - _t0
                 self.last_write_time = self.hf_row.get('Time', 0.0)
+            else:
+                self._write_chemistry_target_snapshot()
 
             # Print info to terminal and log file
             PrintCurrentState(self.hf_row)
@@ -1835,6 +1837,30 @@ class Proteus:
         from proteus.observe.wrapper import run_observe
 
         run_observe(hf_row, self.config, self.directories)
+
+    def _write_chemistry_target_snapshot(self) -> bool:
+        """Write the atmosphere snapshot of a step that reaches a target of `atmos_chem.times`.
+
+        With a list or a table of targets, offline chemistry then finds a snapshot at each
+        target row, not only the snapshots written every `params.out.write_mod` steps. The
+        init stage, whose rows all hold t = 0, writes none. The helpfile is written with it,
+        so a resume sees the row of the snapshot and treats it like any other row without
+        an interior snapshot. Returns whether one was written.
+        """
+        from proteus.atmos_chem.common import chem_targets_crossed
+        from proteus.atmos_clim.wrapper import write_atmosphere_snapshot
+        from proteus.utils.coupler import WriteHelpfileToCSV
+
+        if self.init_stage or not self.config.atmos_chem.module:
+            return False
+        if not chem_targets_crossed(self.hf_all, self.config.atmos_chem.times):
+            return False
+        logging.getLogger('fwl.' + __name__).info(
+            'Writing the atmosphere snapshot for a chemistry target'
+        )
+        write_atmosphere_snapshot(self.atmos_o, self.config, self.directories, self.hf_row)
+        WriteHelpfileToCSV(self.directories['output'], self.hf_all)
+        return True
 
     def _postprocess_chemistry(self, hf_all):
         """Run atmospheric chemistry at the snapshots set by `atmos_chem.times`.

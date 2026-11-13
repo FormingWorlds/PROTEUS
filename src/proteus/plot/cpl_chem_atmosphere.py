@@ -11,7 +11,11 @@ from matplotlib.ticker import LogLocator
 from proteus.atmos_chem.common import chem_csv_name, read_result
 from proteus.atmos_clim.common import list_atmosphere_times, read_ncdf_profile
 from proteus.utils.constants import gas_list, vap_list
-from proteus.utils.helper import find_nearest, list_snapshot_times, snapshot_path_for_time
+from proteus.utils.helper import (
+    latest_at_or_before,
+    list_snapshot_times,
+    snapshot_path_for_time,
+)
 from proteus.utils.plot import get_colour, latexify
 
 if TYPE_CHECKING:
@@ -124,9 +128,10 @@ def plot_chem_atmosphere(
     xmin : float, optional
         Minimum VMR for x-axis of the plot.
     time : float, optional
-        Time [yr] to plot. The chemistry snapshot nearest it is drawn, with the
-        atmosphere snapshot nearest that. None draws the final chemistry
-        snapshot, or the final atmosphere snapshot when there is no chemistry.
+        Time [yr] to plot. The latest chemistry snapshot at or before it is drawn
+        (the first when all are later), with the latest atmosphere snapshot at or
+        before that. None draws the final chemistry snapshot, or the final
+        atmosphere snapshot when there is no chemistry.
     """
     log.info('Plot atmosphere chemical composition')
 
@@ -139,7 +144,7 @@ def plot_chem_atmosphere(
     # Remove duplicates, preserving order
     plot_gases = list(dict.fromkeys(plot_gases))
 
-    # Chemistry snapshot: the final one, or the one nearest the requested time
+    # Chemistry snapshot: the final one, or the latest at or before the requested time
     atm_offchem = None
     target = time
     use_offchem = plot_offchem and (chem_module is not None) and (chem_module != 'none')
@@ -147,7 +152,11 @@ def plot_chem_atmosphere(
         offchem_dir = os.path.join(output_dir, 'offchem')
         chem_times = list_snapshot_times(offchem_dir, '.csv', prefix=f'{chem_module}_')
         if chem_times:
-            target = chem_times[-1] if time is None else find_nearest(chem_times, time)[0]
+            latest = None if time is None else latest_at_or_before(chem_times, time)
+            if time is None:
+                target = chem_times[-1]
+            else:
+                target = chem_times[0] if latest is None else latest
             atm_offchem = read_result(
                 output_dir, chem_module, filename=chem_csv_name(chem_module, target)
             )
@@ -160,12 +169,14 @@ def plot_chem_atmosphere(
         p_offchem = atm_offchem['p'].to_numpy() * 1e-5  # Pa to bar
         atm_offchem.drop(columns=['tmp', 'p', 'z', 'Kzz'], inplace=True)
 
-    # Atmosphere snapshot nearest the chemistry snapshot, else the final one
+    # Atmosphere snapshot at or before the chemistry snapshot, else the final one
     atm_times = list_atmosphere_times(output_dir)
     if len(atm_times) == 0:
         log.warning('No atmosphere NetCDF files found in output folder')
         return
-    year = atm_times[-1] if target is None else float(find_nearest(atm_times, target)[0])
+    year = atm_times[-1] if target is None else latest_at_or_before(atm_times, target)
+    if year is None:
+        year = atm_times[0]
     nc_fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), year, '_atm.nc')
     atm_profile = read_ncdf_profile(
         nc_fpath, extra_keys=['pl', 'tmpl', 'x_gas', 'cloud_mmr', 'aer_mmr', 'aerosols']

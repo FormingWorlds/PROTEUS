@@ -1,7 +1,6 @@
 # Run VULCAN chemical kinetics module
 from __future__ import annotations
 
-import glob
 import logging
 import os
 import shutil
@@ -10,7 +9,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 # Import PROTEUS
-from proteus.atmos_chem.common import chem_csv_name
+from proteus.atmos_chem.common import chem_csv_name, snapshot_star_file
+from proteus.atmos_chem.vulcan_agni import VULCAN_TMP_FLOOR
 from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.star.wrapper import flux_weighted_distance, scale_spectrum_to_stellar_surface
 from proteus.utils.constants import (
@@ -20,7 +20,6 @@ from proteus.utils.constants import (
     vol_list,
 )
 from proteus.utils.helper import (
-    find_nearest,
     format_subyear_time,
     list_snapshot_times,
     mol_to_ele,
@@ -91,7 +90,8 @@ def read_vulcan_netcdf(fpath: str) -> dict:
         'p' and 'tmp' at layer centres [nz], 'pl', 'zl' and 'Kzz' at the
         interfaces [nz+1] (Kzz is defined only on the nz-1 interior ones, and
         NaN at the bottom and top), 'species' (list of str) and 'x_gas',
-        the volume mixing ratios [nz, number of species].
+        the volume mixing ratios [nz, number of species]. 'end_case' and
+        'termination' say how the run ended (None where the file does not say).
     """
     import netCDF4 as nc
 
@@ -100,6 +100,8 @@ def read_vulcan_netcdf(fpath: str) -> dict:
         for key in ('p', 'pl', 'tmp', 'zl', 'Kzz', 'x_gas'):
             out[key] = np.ma.filled(ds.variables[key][:].astype(float), np.nan)
         out['species'] = [str(sp) for sp in ds.variables['species'][:]]
+        out['end_case'] = int(ds.end_case) if 'end_case' in ds.ncattrs() else None
+        out['termination'] = str(getattr(ds, 'termination', ''))
     return out
 
 
@@ -299,10 +301,9 @@ def run_vulcan(
     vulcan_plt = os.path.join(dirs['output/offchem'], '')  # VULCAN appends file names
     log.debug('Writing VULCAN input data')
 
-    # Find a reasonable file for the stellar flux
-    ls = glob.glob(dirs['output'] + '/data/*.sflux')
-    years = [int(f.split('/')[-1].split('.')[0]) for f in ls]
-    sflux_fpath = dirs['output'] + '/data/%d.sflux' % find_nearest(years, year)[0]
+    # The stellar spectrum the climate of this snapshot used
+    sflux_fpath = snapshot_star_file(dirs['output'], year)
+    log.debug('Stellar spectrum: %s' % sflux_fpath)
 
     # Read spectrum and scale to surface of the star
     sflux_data = np.loadtxt(sflux_fpath, skiprows=1).T
@@ -326,7 +327,7 @@ def run_vulcan(
 
     # Get TP profile
     p_arr = np.array(atmos['pl']) * 10.0  # dyne/cm^2
-    t_arr = np.clip(atmos['tmpl'], a_min=180.0, a_max=None)
+    t_arr = np.clip(atmos['tmpl'], a_min=VULCAN_TMP_FLOOR, a_max=None)
 
     # Get Kzz profile
     k_arr = np.array(atmos['Kzz']) * 1e4  # cm^2/s
@@ -479,9 +480,13 @@ def run_vulcan(
     vcfg.vz_prof = 'const'  # Options: 'const' or 'file'
     vcfg.const_vz = config.atmos_chem.updraft_const  # (cm/s)
     vcfg.use_Kzz = config.atmos_chem.Kzz_on
+    coupled = config.atmos_chem.vulcan.couple_agni
     if config.atmos_chem.Kzz_const is not None:
         vcfg.Kzz_prof = 'const'
         vcfg.const_Kzz = config.atmos_chem.Kzz_const
+    elif coupled:
+        vcfg.Kzz_prof = 'climate'  # from AGNI at each climate update
+        vcfg.const_Kzz = 1e5  # unused
     else:
         # if None, will get Kzz from profile
         vcfg.Kzz_prof = 'file'
@@ -551,9 +556,14 @@ def run_vulcan(
     vcfg.loss_eps = 1e-1
     vcfg.flux_cri = 0.1
 
-    # Self-consistent RCE solver; the AGNI settings below are unused while it is off.
-    # They follow the PROTEUS AGNI config, so a coupled call matches the climate step.
-    vcfg.agni_call_frq = 0
+    # Climate coupling, through the PROTEUS AGNI setup (SnapshotClimate) when couple_agni.
+    # The settings for VULCAN's own AGNI hook follow the PROTEUS config, and are unused.
+    vcfg.agni_call_frq = config.atmos_chem.vulcan.agni_call_frq if coupled else 0
+    vcfg.agni_T_rtol = config.atmos_chem.vulcan.agni_T_rtol
+    vcfg.agni_max_calls = config.atmos_chem.vulcan.agni_max_calls
+    vcfg.agni_dir = dirs.get('agni', '')
+    vcfg.agni_sol_type = int(config.atmos_clim.surf_state_int)
+    vcfg.agni_flux_int = 0.0
     vcfg.spectral_file = 'greygas'
     vcfg.use_rayleigh = config.atmos_clim.rayleigh
     vcfg.surf_albedo = config.atmos_clim.surf_greyalbedo
@@ -588,7 +598,18 @@ def run_vulcan(
     # RUN VULCAN
     # ------------------------------------------------------------
 
-    vulcan.run_vulcan(vcfg, config.atmos_chem.vulcan.make_funs and not network_compiled)
+    make_funs = config.atmos_chem.vulcan.make_funs and not network_compiled
+    if not coupled:
+        vulcan.run_vulcan(vcfg, make_funs)
+    else:
+        from proteus.atmos_chem.vulcan_agni import SnapshotClimate
+
+        climate = SnapshotClimate(dirs, config, hf_row)
+        try:
+            vulcan.run_vulcan(vcfg, make_funs, climate=climate)
+            climate.write()
+        finally:
+            climate.close()
 
     # ------------------------------------------------------------
     # READ AND PARSE OUTPUT FILES
@@ -605,7 +626,14 @@ def run_vulcan(
     # Write the result as CSV, in a human-readable format
     csv_file = os.path.join(vulcan_out, vulcan_csv)
     log.debug(f'Writing to {csv_file}')
-    _write_result_csv(csv_file, read_vulcan_netcdf(vulcan_cdf_dst))
+    result = read_vulcan_netcdf(vulcan_cdf_dst)
+    if result['end_case'] in (2, 3, 4):
+        # 2: runtime limit, 3: count_max limit, 4: climate still changing at agni_max_calls
+        log.warning(
+            'VULCAN at t=%.3e yr did not reach a settled steady state: %s (end_case %d)'
+            % (year, result['termination'], result['end_case'])
+        )
+    _write_result_csv(csv_file, result)
 
     log.info('    done')
     return success

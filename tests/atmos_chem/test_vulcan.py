@@ -130,6 +130,11 @@ def _make_mock_config(*, network='CHO', photo_on=True, atmos_module='agni'):
     config.atmos_chem.vulcan.flux_atol = 1.0
     config.atmos_chem.vulcan.rtol = 0.9
     config.atmos_chem.vulcan.post_conden_rtol = 0.1
+    config.atmos_chem.vulcan.couple_agni = False
+    config.atmos_chem.vulcan.agni_call_frq = 0
+    config.atmos_chem.vulcan.agni_T_rtol = 1e-2
+    config.atmos_chem.vulcan.agni_max_calls = 10
+    config.atmos_clim.surf_state_int = 2
     config.atmos_clim.rayleigh = True
     config.atmos_clim.surf_greyalbedo = 0.1
     config.atmos_clim.num_levels = 50
@@ -203,14 +208,18 @@ def _result_x_gas(nz: int) -> np.ndarray:
     return np.column_stack([1.0 - h2o - co2 - cond, h2o, co2, cond])
 
 
-def _netcdf_solver(layers=None):
+def _netcdf_solver(layers=None, end_case=None):
     """Stand-in for `vulcan.run_vulcan` that writes a result NetCDF where VULCAN would."""
     layers = layers or vulcan_layers(nz=6)
 
-    def _solve(vcfg, make_network):
+    def _solve(vcfg, make_network, climate=None):
         fpath = Path(vcfg.output_dir) / (vcfg.out_name + '.nc')
         write_vulcan_netcdf(
-            str(fpath), layers, _RESULT_SPECIES, _result_x_gas(len(layers['p']))
+            str(fpath),
+            layers,
+            _RESULT_SPECIES,
+            _result_x_gas(len(layers['p'])),
+            end_case=end_case,
         )
 
     return _solve
@@ -1072,3 +1081,98 @@ def test_read_vulcan_netcdf_missing_file_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         read_vulcan_netcdf(str(fpath))
     assert not fpath.exists()
+
+
+# ---------------------------------------------------------------------------
+# Climate coupling
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('kzz_const', 'kzz_prof'),
+    [(None, 'climate'), (1e6, 'const')],
+    ids=['kzz-from-agni', 'kzz-fixed'],
+)
+def test_run_vulcan_hands_the_snapshot_climate_to_vulcan_when_coupled(
+    tmp_path, kzz_const, kzz_prof
+):
+    """With couple_agni, VULCAN gets the snapshot's climate hook, the update cadence of the
+    config, and Kzz from AGNI unless Kzz_const fixes it; the coupled climate is written and
+    the AGNI atmosphere freed after VULCAN has run."""
+    config = _make_mock_config()
+    config.atmos_chem.vulcan.make_funs = False
+    config.atmos_chem.vulcan.couple_agni = True
+    config.atmos_chem.vulcan.agni_call_frq = 40
+    config.atmos_chem.vulcan.agni_T_rtol = 5e-3
+    config.atmos_chem.vulcan.agni_max_calls = 7  # VULCAN's own default is 10
+    config.atmos_clim.surf_state_int = 1  # VULCAN's own default is 3
+    config.atmos_chem.Kzz_const = kzz_const
+    hf_row = _make_mock_hf_row(year=700.0)
+
+    with patch('proteus.atmos_chem.vulcan_agni.SnapshotClimate') as mock_climate:
+        result, vcfg, dirs = _run(tmp_path, config, hf_row)
+
+    assert result is True
+    mock_climate.assert_called_once_with(dirs, config, hf_row)
+    hook = mock_climate.return_value
+    assert mock_vulcan_package.run_vulcan.call_args.kwargs == {'climate': hook}
+    assert (vcfg.agni_call_frq, vcfg.agni_T_rtol, vcfg.Kzz_prof) == (40, 5e-3, kzz_prof)
+    assert (vcfg.agni_max_calls, vcfg.agni_sol_type) == (7, 1)
+    assert (vcfg.agni_dir, vcfg.agni_flux_int) == ('', 0.0)  # unused with the PROTEUS hook
+    hook.write.assert_called_once_with()
+    hook.close.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_run_vulcan_frees_the_climate_when_vulcan_fails_and_runs_uncoupled_by_default(tmp_path):
+    """A VULCAN failure still frees the AGNI atmosphere and writes no coupled climate; an
+    uncoupled run passes no hook and keeps VULCAN's own AGNI hook off (agni_call_frq = 0)."""
+    config = _make_mock_config()
+    config.atmos_chem.vulcan.make_funs = False
+    config.atmos_chem.vulcan.couple_agni = True
+
+    def _fail(*args, **kwargs):
+        raise RuntimeError('solver failed')
+
+    (tmp_path / 'coupled').mkdir()
+    (tmp_path / 'uncoupled').mkdir()
+    with patch('proteus.atmos_chem.vulcan_agni.SnapshotClimate') as mock_climate:
+        with pytest.raises(RuntimeError, match='solver failed'):
+            _run(tmp_path / 'coupled', config, _make_mock_hf_row(year=700.0), solver=_fail)
+    mock_climate.return_value.close.assert_called_once_with()
+    mock_climate.return_value.write.assert_not_called()
+
+    config.atmos_chem.vulcan.couple_agni = False
+    config.atmos_chem.vulcan.agni_call_frq = 40
+    result, vcfg, _ = _run(tmp_path / 'uncoupled', config, _make_mock_hf_row(year=700.0))
+    assert result is True
+    assert mock_vulcan_package.run_vulcan.call_args.kwargs == {}
+    assert (vcfg.agni_call_frq, vcfg.Kzz_prof) == (0, 'file')
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('end_case', 'warned'),
+    [(1, False), (2, True), (3, True), (4, True), (None, False)],
+    ids=['steady', 'runtime-limit', 'step-limit', 'climate-unsettled', 'not-recorded'],
+)
+def test_run_vulcan_warns_when_vulcan_did_not_settle(tmp_path, caplog, end_case, warned):
+    """A VULCAN run that stopped at its runtime or step limit (end_case 2, 3) or with the
+    climate still changing (4) is reported with a warning; a steady state (1), or a file
+    that does not record how the run ended, is not. The result is kept either way."""
+    config = _make_mock_config()
+    config.atmos_chem.vulcan.make_funs = False
+
+    with caplog.at_level('WARNING'):
+        result, _, _ = _run(
+            tmp_path,
+            config,
+            _make_mock_hf_row(year=700.0),
+            solver=_netcdf_solver(end_case=end_case),
+        )
+
+    assert result is True
+    assert ('did not reach a settled steady state' in caplog.text) is warned
+    if warned:
+        assert f'end_case {end_case}' in caplog.text
