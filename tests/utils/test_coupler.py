@@ -6319,33 +6319,28 @@ def test_vulcan_problem_reads_a_real_config_in_every_mode(mode):
 
 @pytest.mark.unit
 @pytest.mark.parametrize('has_network', [False, True])
-def test_vulcan_problem_names_the_clone_install_without_network_files(tmp_path, has_network):
+@pytest.mark.usefixtures('vulcan_with_networks')
+def test_vulcan_problem_names_the_clone_install_without_network_files(has_network):
     """A VULCAN at its floor but without its thermo data (the PyPI wheel) fails the start
     check with the network path and tools/get_vulcan.sh; with the data it passes."""
     from proteus.doctor import PASS
     from proteus.utils.coupler import vulcan_problem
 
-    network = tmp_path / 'CHO_photo_network.txt'
-    if has_network:
-        network.touch()
-    paths = types.SimpleNamespace(THERMO_DIR=str(tmp_path))
+    network = os.path.join(sys.modules['vulcan.paths'].THERMO_DIR, 'CHO_photo_network.txt')
+    if not has_network:
+        os.remove(network)
     config = MagicMock()
     config.atmos_chem = _real_atmos_chem('vulcan', 'offline')
-    with (
-        patch(
-            'proteus.doctor.check_python_package',
-            return_value=types.SimpleNamespace(status=PASS),
-        ),
-        patch.dict(
-            sys.modules, {'vulcan': types.SimpleNamespace(paths=paths), 'vulcan.paths': paths}
-        ),
+    with patch(
+        'proteus.doctor.check_python_package',
+        return_value=types.SimpleNamespace(status=PASS),
     ):
         problem = vulcan_problem(config)
     if has_network:
         assert problem is None
     else:
         assert problem is not None, 'a VULCAN without network files passed the start check'
-        assert str(network) in problem and 'bash tools/get_vulcan.sh' in problem
+        assert network in problem and 'bash tools/get_vulcan.sh' in problem
 
 
 @pytest.mark.unit
