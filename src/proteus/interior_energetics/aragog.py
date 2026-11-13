@@ -899,6 +899,14 @@ class AragogRunner:
                 solver = interior_o.aragog_solver
                 S_snap = interior_o._last_entropy
                 n_stag = getattr(solver, '_n_stag', len(S_snap))
+                aragog_resume.refuse_another_mesh(
+                    dirs['output'],
+                    float(hf_row['Time']),
+                    solver._r_basic_flat,
+                    config.interior_energetics.aragog,
+                    int(config.interior_energetics.num_levels),
+                    'the config of the resume',
+                )
 
                 if len(S_snap) != n_stag:
                     log.error(

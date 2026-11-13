@@ -186,8 +186,8 @@ def test_a_change_from_a_record_that_names_no_module_is_refused(tmp_path):
 
 
 def test_the_recorded_laws_of_a_record_that_names_no_module_resume_quietly(tmp_path, caplog):
-    """The same record and the laws it holds resume with no switch and no note; its Aragog
-    table holds no cell fields, so the run was on the uniform mesh, which the resume keeps."""
+    """The same record and the laws it holds resume with no switch; its Aragog table holds no
+    cell fields, so the only notes are one per cell field that the snapshot radii decide."""
     out = _record_without_module(tmp_path)
     config, path = _user_config(
         tmp_path,
@@ -198,7 +198,8 @@ def test_the_recorded_laws_of_a_record_that_names_no_module_resume_quietly(tmp_p
     )
     with caplog.at_level(logging.DEBUG, logger=LOGGER):
         assert check_resume_separation_laws(config, path, out) == []
-    assert [r for r in caplog.records if r.name == LOGGER] == []
+    noted = [r.getMessage() for r in caplog.records if r.name == LOGGER]
+    assert len(noted) == 2 and all('radii of the interior snapshot' in m for m in noted)
 
 
 def test_a_refused_resume_logs_no_note_for_a_law_the_config_file_sets(tmp_path, caplog):

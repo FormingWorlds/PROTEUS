@@ -108,3 +108,62 @@ def pending_structure_update(
         r_outer,
     )
     return None
+
+
+def refuse_another_mesh(
+    output_dir: str, time: float, r_basic, aragog, num_levels: int, config_path: str
+) -> None:
+    """Refuse a resume whose solver mesh is not the mesh of the interior snapshot it restores.
+
+    The snapshot entropy is put back node by node, so the basic radii the resume builds must
+    equal the ``radius_b`` of the snapshot at ``time`` to the radius tolerance of the
+    structure, ``max(1 m, 1e-9 (R_int - R_core))``, plus 2 mm for the mass-coordinate node
+    solve. A snapshot that is absent or holds no ``radius_b`` is not checked.
+
+    Parameters
+    ----------
+    output_dir : str
+        Run directory holding ``data/``.
+    time : float
+        Time [yr] of the row the run resumes from.
+    r_basic : array_like
+        Basic node radii [m] of the solver the resume builds.
+    aragog : object
+        The ``interior_energetics.aragog`` config of the resume.
+    num_levels : int
+        ``interior_energetics.num_levels`` of the resume.
+    config_path : str
+        Config file of the resume, named in the refusal.
+
+    Raises
+    ------
+    ResumeSeparationLawError
+        If the node count or a radius differs beyond the tolerance.
+    """
+    from proteus.interior_energetics.resume_laws import ResumeSeparationLawError
+    from proteus.interior_struct.zalmoxis import mesh_radius_tolerance
+
+    snapshot = snapshot_path_for_time(os.path.join(output_dir, 'data'), time, '_int.nc')
+    if not os.path.isfile(snapshot):
+        return
+    with nc.Dataset(snapshot) as ds:
+        if 'radius_b' not in ds.variables:
+            return
+        stored = np.asarray(ds['radius_b'][:], dtype=float).ravel() * 1.0e3  # km -> m
+    built = np.asarray(r_basic, dtype=float).ravel()
+    tol = float(mesh_radius_tolerance(stored[0], stored[-1])) + 2.0e-3
+    if stored.size == built.size and np.max(np.abs(stored - built)) <= tol:
+        return
+
+    def mesh(r):
+        return (
+            f'{r.size} nodes, bottom cell {r[1] - r[0]:.1f} m, top cell {r[-1] - r[-2]:.1f} m'
+        )
+
+    raise ResumeSeparationLawError(
+        f'Resume refused: the interior snapshot {snapshot} holds a mesh of {mesh(stored)}, but '
+        f'{config_path} builds {mesh(built)} (num_levels = {num_levels}, cmb_cell_thickness = '
+        f'{aragog.cmb_cell_thickness!r}, surface_cell_thickness = '
+        f'{aragog.surface_cell_thickness!r}); the snapshot entropy is put back node by node, so '
+        'the resume must build the mesh of the run: set these fields to the values the run used'
+    )
