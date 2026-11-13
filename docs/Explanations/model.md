@@ -107,7 +107,13 @@ Config section: `[star]`. Reference: [Star and orbit configuration](../Reference
 
 The escape module computes atmospheric mass loss rates driven by the stellar XUV flux.
 
-**[ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS)** (Python) implements energy-limited escape, computing a bulk mass loss rate from the XUV flux, planet mass, and XUV absorption radius. The bulk rate is then distributed across elements proportionally to their atmospheric abundance (unfractionated escape). ZEPHYRUS also provides a tidal correction factor for planets in close-in orbits.
+**[ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS)** (Python) offers two schemes, chosen with `escape.zephyrus.scheme`.
+
+The default, `dispatcher`, decides the escape regime of each state and returns a rate for each element. It reads the atmosphere column of the last converged climate solve and chooses between boil-off of a weakly bound envelope, a hydrodynamic wind (energy-limited, recombination-limited, or photon-limited), hydrostatic Jeans escape from the exobase, and Roche-lobe overflow through the inner Lagrange point. A diffusion closure then splits the bulk rate over the elements, so light elements escape faster than heavy ones. The ZEPHYRUS documentation describes each regime and its criteria. PROTEUS records the regime, the Knudsen number at the sonic point, the exobase temperature and both escape temperatures, the ionisation fraction at the exobase, and the source of the atmosphere column in the helpfile (columns `esc_regime` to `esc_profile_source`). The atmospheric reservoir is then debited element by element (`escape.reservoir = "pxuv"`). Once the mantle has solidified, no outgassing step re-forms the gases, so each gas loses its share of the escaping elements directly. Oxygen, hydrogen, nitrogen, and sulfur left behind form O2, H2, N2, and S2. Carbon left without a partner gas condenses as graphite (`C_kg_condensed`).
+
+The `el` scheme is energy-limited escape alone: a bulk rate from the XUV flux, planet mass, and XUV absorption radius at `escape.zephyrus.Pxuv`, distributed across the elements in proportion to their abundance in the reservoir (unfractionated escape). Configs that must reproduce earlier results, such as the CHILI intercomparison cases, set it explicitly. The lid seal (`outgas.lid_seal`) requires it, because a held step scales the atmosphere uniformly.
+
+Both schemes can apply the tidal reduction of the escape barrier for close-in planets (`escape.zephyrus.tidal`, on by default under the dispatcher).
 
 Config section: `[escape]`. Reference: [Escape and outgassing configuration](../Reference/config/escape_outgas.md).
 
@@ -197,7 +203,7 @@ Some notable consequences of step 3:
 ### Whole-planet mass is not conserved when vapourisation is enabled
 
 - **Rock vapour is added to the atmosphere without being removed from the interior.** The vapourised rock mass is accumulated into `M_vaps` and enters `M_atm`, but no matching mass is subtracted from the interior: `M_int`, `M_mantle`.
-- **Rock-vapour elements dilute the escape outflow but are not depleted by it.**  Rock-forming elements take part in the unfractionated escape partitioning and reduce the escape rate available to H/C/N/O/S. This applies when `escape.reservoir = "outgas"`, where the partitioning weights are atmospheric masses. With `escape.reservoir = "bulk"` the rock-forming whole-planet totals are reset to zero on every outgassing step, so they carry no weight and do not dilute the outflow.
+- **Rock-vapour elements dilute the escape outflow but are not depleted by it.**  Rock-forming elements take part in the unfractionated escape partitioning and reduce the escape rate available to H/C/N/O/S. This applies when `escape.reservoir = "outgas"`, where the partitioning weights are atmospheric masses. Under `escape.reservoir = "pxuv"` the dispatcher sets each element's rate, and a solidified mantle keeps the rock-vapour gases at their masses. With `escape.reservoir = "bulk"` the rock-forming whole-planet totals are reset to zero on every outgassing step, so they carry no weight and do not dilute the outflow.
 
 `utils.coupler.assert_mass_conservation` therefore checks two things separately. `M_atm <= M_planet` is enforced under `outgas.vapourise = false`. `M_vol_atm` equals the sum of the per-species atmospheric masses; rock vapour is excluded from `M_vol_atm` by definition.
 

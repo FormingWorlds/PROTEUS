@@ -61,8 +61,8 @@ is the value of the protocol for models with a constant luminosity. Radiogenic h
 The planet starts fully molten and cools through a magma ocean stage.
 Volatiles partition between the atmosphere and silicate melt as the mantle
 solidifies. The atmosphere is solved at each timestep
-using correlated-k radiative transfer (AGNI). Atmospheric escape is
-energy-limited (ZEPHYRUS, 30% efficiency).
+using correlated-k radiative transfer (AGNI). Atmospheric escape comes from
+the ZEPHYRUS escape regime dispatcher, at 30% heating efficiency.
 
 ## Running the simulation
 
@@ -104,8 +104,9 @@ The config at `input/tutorials/tutorial_earth.toml` sets:
 - **Atmosphere**: AGNI solves the radiative-convective equilibrium with
   Dayspring 48-band correlated-k opacities, a conductive skin layer at the
   surface, and real-gas corrections.
-- **Escape**: ZEPHYRUS computes energy-limited mass loss at 30% efficiency,
-  distributing the bulk escape rate across elements proportionally.
+- **Escape**: the ZEPHYRUS dispatcher selects the escape regime at each step
+  from the atmosphere column and returns a mass loss rate for each element,
+  at 30% heating efficiency where the rate is energy-limited.
 
 ## Results
 
