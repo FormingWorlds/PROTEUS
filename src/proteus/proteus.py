@@ -227,6 +227,7 @@ class Proteus:
         self.crystallized = (
             False  # Mantle solidified, outgassing stopped but evolution continues
         )
+        self.lid_sealed = False  # A crust holds the melt inventory (outgas.lid_seal)
         self.lockfile = '/tmp/none'  # Path to keepalive file
 
         # Default values for mors.spada cases
@@ -491,9 +492,13 @@ class Proteus:
             return False
         PrintHalfSeparator()
         stop = self.config.params.stop.solid
-        frozen = self.crystallized or (
-            stop.freeze_volatiles
-            and float(self.hf_row.get('Phi_global', 1.0)) <= float(stop.phi_crit)
+        frozen = (
+            self.crystallized
+            or self.lid_sealed
+            or (
+                stop.freeze_volatiles
+                and float(self.hf_row.get('Phi_global', 1.0)) <= float(stop.phi_crit)
+            )
         )
         kg_before = readable_total(self.hf_row)
         run_escape(
@@ -646,7 +651,8 @@ class Proteus:
         from proteus.orbit.common import Tides_t
         from proteus.orbit.wrapper import init_orbit, run_orbit
 
-        #   solid-phase volatile trapping
+        #   solid-phase volatile trapping, and the melt held under a closed crust
+        from proteus.outgas.lid_seal import restore_seal_state, run_lid_seal_step, seal_enabled
         from proteus.outgas.trapping import run_trapping
 
         #    outgassing
@@ -1062,6 +1068,14 @@ class Proteus:
                         self.config.params.stop.solid.phi_crit,
                     )
 
+            # The seal state is in the row; a held remelt reads the rows since closure.
+            self.lid_sealed = restore_seal_state(self.config, self.hf_row)
+            if self.lid_sealed:
+                log.info(
+                    'Resuming with the lid seal closed since t = %.3e yr',
+                    self.hf_row['seal_t_close'],
+                )
+
             # Restore the count of consecutive unresolved atmosphere solves, so
             # a run that stalls is not handed a fresh allowance by every
             # resume. Absent in helpfiles written before the column existed,
@@ -1463,10 +1477,24 @@ class Proteus:
             if self.desiccated:
                 # no volatiles
                 run_desiccated(self.directories, self.config, self.hf_row, first_iter)
+                self.lid_sealed = False
 
             elif self.crystallized:
                 # post solidification
                 run_crystallized(self.config, self.hf_row, self.interior_o.dt)
+
+            elif seal_enabled(self.config):
+                self.lid_sealed = run_lid_seal_step(
+                    self.directories,
+                    self.config,
+                    self.hf_row,
+                    self.interior_o,
+                    self.lid_sealed,
+                    hf_all=self.hf_all,
+                    first_iter=first_iter,
+                    init_stage=self.init_stage,
+                    dt=self.interior_o.dt,
+                )
 
             else:
                 run_outgassing_and_vapourisation(
@@ -1498,7 +1526,8 @@ class Proteus:
             assert_mass_conservation(
                 self.hf_row,
                 require_atm_le_planet=not self.config.outgas.vapourise,
-                check_element_closure=trapping_active(self.config),
+                check_element_closure=trapping_active(self.config)
+                or (seal_enabled(self.config) and not self.desiccated),
                 derived_elements=derived_total_elements(self.config),
                 closure_rtol=self.config.outgas.solver_rtol,
             )

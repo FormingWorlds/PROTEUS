@@ -695,6 +695,17 @@ config_version = "3.0"
         xatol                 = 1e-5         # absolute tolerance on LavAtmos' fO2 solve
         fO2_buffer_model      = "oneill"     # IW buffer used for LavAtmos' fO2 solve
 
+    [outgas.lid_seal]                        # volatiles held under a closed crust (requires aragog)
+        enabled               = false        # seal the melt inventory when a crust closes
+        delta_close           = 1e4          # crust thickness at which the seal closes [m]
+        phi_close             = 0.3          # top-cell melt fraction below which it closes [1]
+        delta_open            = "none"       # thickness below which it opens [m]; none = 0.5 delta_close
+        phi_open              = "none"       # top-cell melt fraction at which it opens [1]; none = phi_close + 0.05
+        tau_leak              = inf          # relaxation time of the sealed inventory [yr]; inf holds it
+        chi_d                 = 0.02         # degassing efficiency of melt reaching the crust [1]
+        crust_rate            = 0.0          # melt mass reaching the crust [kg yr-1]
+        phi_solid             = 1e-3         # melt fraction below which a cell counts as crust [1]
+
 # Atmosphere climate (radiative-convective structure)
 [atmos_clim]
     module                    = "agni"       # agni | janus | dummy

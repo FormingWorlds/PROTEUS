@@ -9,8 +9,9 @@ import numpy as np
 
 from proteus.escape.wrapper import readable_total
 from proteus.interior_struct.common import record_volatile_change
-from proteus.outgas.common import EMPTY_ATMOSPHERE_KEPT_KEYS, expected_keys
+from proteus.outgas.common import EMPTY_ATMOSPHERE_KEPT_KEYS, expected_keys, set_element_ratios
 from proteus.outgas.lavatmos import run_vapourisation
+from proteus.outgas.lid_seal import clear_seal, seal_enabled, sealed_mass
 from proteus.outgas.trapping import (
     escapable_inventory,
     locked_condensed_mass,
@@ -300,7 +301,7 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
         # Mass trapped in the solid, or held in condensates kept from re-vapourising,
         # can neither escape nor outgas, so only the escapable inventory counts;
         # otherwise it would block desiccation forever.
-        reachable = escapable_inventory(hf_row, e, config)
+        reachable = escapable_inventory(hf_row, e, config) + sealed_mass(hf_row, e)
         if reachable > config.outgas.mass_thresh:
             log.info('Not desiccated, %s = %.2e kg reachable' % (e, reachable))
             return False  # return, and allow run_outgassing to proceed
@@ -556,16 +557,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
     # iteration rather than only after the mantle crystallises.
     hf_row['M_vol_atm'] = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_gas_list)
 
-    # Derive element mass ratios in atmosphere
-    for e1 in element_list:
-        for e2 in element_list:
-            key = f'{e2}/{e1}_atm'  # key to be set in helpfile
-            if key not in hf_row:
-                continue
-            if min(hf_row[f'{e1}_kg_atm'], hf_row[f'{e2}_kg_atm']) < 1e-30:
-                hf_row[key] = 0.0
-            else:
-                hf_row[key] = hf_row[f'{e2}_kg_atm'] / hf_row[f'{e1}_kg_atm']
+    set_element_ratios(hf_row)
 
     # print outgassed partial pressures (in order of descending abundance)
     species = [s for s in gas_list if s not in vap_list]
@@ -683,9 +675,19 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     # atmospheric mass shrinks with the reactive volatiles; otherwise a later
     # escape step that debits the noble total would leave the noble
     # atmospheric mass stale and larger than the total.
+    held = seal_enabled(config)  # the seal refuses freeze_volatiles: only a held step
     for s in gas_list:
-        hf_row[f'{s}_kg_atm'] = hf_row.get(f'{s}_kg_atm', 0.0) * retained
+        kg, mol = hf_row.get(f'{s}_kg_atm', 0.0), hf_row.get(f'{s}_mol_atm', 0.0)
+        hf_row[f'{s}_kg_atm'] = kg * retained
         hf_row[f'{s}_bar'] = hf_row.get(f'{s}_bar', 0.0) * retained
+        if not held:
+            continue
+        # A held step leaks moles into this atmosphere, so they and the species totals follow.
+        hf_row[f'{s}_mol_atm'] = mol * retained
+        if f'{s}_mol_total' in hf_row:
+            hf_row[f'{s}_mol_total'] -= mol * (1.0 - retained)
+        if s not in element_list and f'{s}_kg_total' in hf_row:
+            hf_row[f'{s}_kg_total'] -= kg * (1.0 - retained)
     # Element reservoirs whose symbol is not also a species name. The loop above
     # already scales the rock formers and noble gases through the species they
     # share a symbol with; H, O, C, N and S have no such twin, and escape sizes
@@ -774,6 +776,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     for k in expected_keys():
         if k not in EMPTY_ATMOSPHERE_KEPT_KEYS and not k.endswith(held):
             hf_row[k] = 0.0
+    clear_seal(hf_row)  # a sealed rest below mass_thresh leaves with the atmosphere
     for n, total in totals.items():
         if not np.isfinite(total):
             hf_row[f'{n}_kg_total'] = total

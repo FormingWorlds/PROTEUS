@@ -8913,6 +8913,150 @@
       "group_qualifier": null
     },
     {
+      "path": "outgas.lid_seal.enabled",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Whether a crust can seal the melt inventory from the atmosphere.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.delta_close",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float",
+      "accepts_none": false,
+      "default": "10000.0",
+      "choices": null,
+      "bounds": null,
+      "description": "Crust thickness [m] at or above which the seal can close.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.phi_close",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.3",
+      "choices": null,
+      "bounds": null,
+      "description": "Melt fraction [1] of the top mesh cell below which the seal can close.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.delta_open",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Crust thickness [m] below which a closed seal opens; `none` means `0.5 delta_close`.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.phi_open",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Top-cell melt fraction [1] at or above which a closed seal opens; `none` means `phi_close + 0.05`.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.tau_leak",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float",
+      "accepts_none": false,
+      "default": "inf",
+      "choices": null,
+      "bounds": null,
+      "description": "Relaxation time [yr] of the sealed inventory toward its dissolved equilibrium with the atmosphere, > 0 with a finite rate 1/tau_leak; inf holds it.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.chi_d",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.02",
+      "choices": null,
+      "bounds": null,
+      "description": "Degassing efficiency [1] of the melt that reaches the crust (Schaefer & Sasselov (2015)[^cite-schaefer2015], Table 3).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.crust_rate",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": null,
+      "description": "Mass of melt that reaches the crust per year [kg yr-1].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.phi_solid",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.001",
+      "choices": null,
+      "bounds": null,
+      "description": "Melt fraction [1] below which a mesh cell counts as crust, and below which the mantle makes no crust.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "outgas.vapourise",
       "toml_section": "outgas",
       "class": "Outgas",
@@ -12849,6 +12993,23 @@
       "doc": "A live Aragog lid acts on the atmosphere only through the skin of AGNI or the dummy."
     },
     {
+      "validator": "lid_seal_requirements",
+      "module": "_config.py",
+      "attached_to": [
+        "outgas"
+      ],
+      "touches": [
+        "escape.reservoir",
+        "interior_energetics.module",
+        "interior_struct.module",
+        "interior_struct.zalmoxis",
+        "outgas.module",
+        "outgas.vapourise",
+        "params.stop.solid.freeze_volatiles"
+      ],
+      "doc": "The lid seal reads the Aragog mesh, freezes the CALLIOPE chemistry while it holds, and applies unfractionated escape."
+    },
+    {
       "validator": "lowt_extension_requires_aragog",
       "module": "_config.py",
       "attached_to": [
@@ -13247,6 +13408,39 @@
         "radio_U235_abund"
       ],
       "doc": "Reject 235U/U + 238U/U above 1 (both mass ratios, kg/kg)."
+    },
+    {
+      "validator": "_delta_open",
+      "module": "_outgas.py",
+      "attached_to": [
+        "outgas.lid_seal.delta_open"
+      ],
+      "touches": [
+        "delta_close"
+      ],
+      "doc": "outgas.lid_seal.delta_open [m]: None, or a thickness in (0, delta_close]."
+    },
+    {
+      "validator": "_phi_open",
+      "module": "_outgas.py",
+      "attached_to": [
+        "outgas.lid_seal.phi_open"
+      ],
+      "touches": [
+        "phi_close"
+      ],
+      "doc": "outgas.lid_seal.phi_open [1]: None (then phi_close + 0.05 must be below 1), or a number in [phi_close, 1)."
+    },
+    {
+      "validator": "_phi_solid",
+      "module": "_outgas.py",
+      "attached_to": [
+        "outgas.lid_seal.phi_solid"
+      ],
+      "touches": [
+        "phi_close"
+      ],
+      "doc": "outgas.lid_seal.phi_solid [1]: a real number in (0, phi_close)."
     },
     {
       "validator": "max_bigger_than_min",

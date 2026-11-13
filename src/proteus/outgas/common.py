@@ -70,6 +70,23 @@ def element_masses_from_species(species_kg: dict[str, float]) -> dict[str, float
     return out
 
 
+def set_element_ratios(hf_row: dict) -> None:
+    """Write each ``{e2}/{e1}_atm`` column of the row from the atmospheric element masses.
+
+    A ratio whose numerator or denominator is below 1e-30 kg is set to 0; a ratio
+    column absent from the row is left absent.
+    """
+    for e1 in element_list:
+        for e2 in element_list:
+            key = f'{e2}/{e1}_atm'
+            if key not in hf_row:
+                continue
+            if min(hf_row[f'{e1}_kg_atm'], hf_row[f'{e2}_kg_atm']) < 1e-30:
+                hf_row[key] = 0.0
+            else:
+                hf_row[key] = hf_row[f'{e2}_kg_atm'] / hf_row[f'{e1}_kg_atm']
+
+
 def expected_keys():
     """Helpfile keys that an outgassing module writes on every call.
 
