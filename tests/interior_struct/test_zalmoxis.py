@@ -508,6 +508,25 @@ def test_validate_zalmoxis_output_schema_radius_mismatch(tmp_path):
 
 
 @pytest.mark.unit
+def test_validate_zalmoxis_output_schema_first_radius_is_r_core(tmp_path):
+    """The file's first radius must equal hf_row['R_core'] within the mesh tolerance of
+    Aragog, max(1 m, 1e-9 (R_int - R_core)): 1 m here."""
+    from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema
+
+    output_path = str(tmp_path / 'zalmoxis_output.dat')
+    R_int, M_mantle = _write_synthetic_zalmoxis_output(output_path, r_cmb=3.48e6)
+    row = {'R_int': R_int, 'M_int': M_mantle + 1.94e24, 'M_core': 1.94e24}
+    for gap in (0.0, 0.9, -0.9):
+        assert (
+            validate_zalmoxis_output_schema(output_path, {**row, 'R_core': 3.48e6 + gap})
+            is None
+        )
+    for gap in (1.1, -1.1, 3.48e4):
+        with pytest.raises(RuntimeError, match='first radius'):
+            validate_zalmoxis_output_schema(output_path, {**row, 'R_core': 3.48e6 + gap})
+
+
+@pytest.mark.unit
 def test_validate_zalmoxis_output_schema_mass_mismatch(tmp_path):
     """File mantle mass off by >rtol_mass (5e-2 default) raises.
 
