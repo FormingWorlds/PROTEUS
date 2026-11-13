@@ -11108,6 +11108,25 @@
       "group_qualifier": null
     },
     {
+      "path": "escape.zephyrus.scheme",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"dispatcher\"",
+      "choices": [
+        "dispatcher",
+        "el"
+      ],
+      "bounds": null,
+      "description": "Escape prescription. \"dispatcher\" selects the escape regime per state (boil-off, hydrodynamic wind, hydrostatic Jeans escape, Roche-lobe overflow) and returns a rate per element; \"el\" is energy-limited escape alone, split over the elements by mass fraction.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "escape.zephyrus.Pxuv",
       "toml_section": "escape.zephyrus",
       "class": "Zephyrus",
@@ -11121,7 +11140,7 @@
           "value": 0
         }
       ],
-      "description": "Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]",
+      "description": "Pressure at which XUV radiation becomes opaque [bar]. Used by \"el\", and by the dispatcher when ``base_method = \"fixed_pressure\"``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11146,7 +11165,7 @@
           "value": 1
         }
       ],
-      "description": "Escape efficiency factor",
+      "description": "Escape efficiency factor.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11157,12 +11176,467 @@
       "path": "escape.zephyrus.tidal",
       "toml_section": "escape.zephyrus",
       "class": "Zephyrus",
-      "type": "bool",
-      "accepts_none": false,
-      "default": "false",
+      "type": "bool or none",
+      "accepts_none": true,
+      "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Tidal contribution enabled",
+      "description": "Tidal reduction of the escape barrier. Unset resolves to on under the dispatcher and off under \"el\".",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.base_method",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"lopez\"",
+      "choices": [
+        "lopez",
+        "fixed_pressure"
+      ],
+      "bounds": null,
+      "description": "Dispatcher wind base: \"lopez\" (where the base is optically thick to XUV, Lopez 2017) or \"fixed_pressure\" (at ``Pxuv``).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.base_out_of_range",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"clamp\"",
+      "choices": [
+        "clamp",
+        "extend"
+      ],
+      "bounds": null,
+      "description": "Dispatcher wind base above the top of the atmosphere profile: \"clamp\" to the top level, or \"extend\" the profile isothermally above it.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.P_photo",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.02",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Photospheric level of the dispatcher [bar]: the radius of the energy-limited rate and the boil-off launch level.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.kappa_photo",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Grey photospheric opacity [m2 kg-1]; the boil-off rate scales as its inverse.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.kn_crit",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Sonic-point Knudsen number above which the wind is rarefied and the hydrostatic branch applies.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.kn_hysteresis",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 1
+        }
+      ],
+      "description": "Factor by which the previous step's side of the Knudsen switch widens the threshold, so an evolving track does not alternate between branches. 1 disables it.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.gate",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"neutral\"",
+      "choices": [
+        "neutral",
+        "plasma"
+      ],
+      "bounds": null,
+      "description": "Escape temperature that tests exosphere stability: \"neutral\" or \"plasma\".",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.efficiency_mode",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"fixed\"",
+      "choices": [
+        "fixed",
+        "caldiroli"
+      ],
+      "bounds": null,
+      "description": "\"fixed\" uses ``efficiency``; \"caldiroli\" uses the fit of Caldiroli et al. (2022).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.T_exo_mode",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"prescribed\"",
+      "choices": [
+        "prescribed",
+        "thermostat"
+      ],
+      "bounds": null,
+      "description": "Exobase temperature of the hydrostatic branch: \"prescribed\" uses ``T_exo``, \"thermostat\" estimates it from heating against cooling.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.T_exo",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Prescribed exobase temperature [K].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.cool_atomic",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Atomic line cooling in the wind thermostat.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.cool_co2_band",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "CO2 15 micron band cooling in the wind thermostat.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.cool_o_finestructure",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Atomic oxygen fine-structure cooling in the wind thermostat.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.cool_recombination",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Recombination cooling in the wind thermostat.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.fractionate",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Split the bulk rate over the elements with the multi-species diffusion closure; off splits by the abundance at the wind base.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.nozzle_temperature",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"photospheric\"",
+      "choices": [
+        "photospheric",
+        "wind"
+      ],
+      "bounds": null,
+      "description": "Temperature of the L1 overflow rate: \"photospheric\" or \"wind\".",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.residual_mode",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"off\"",
+      "choices": [
+        "off",
+        "luminosity_capped"
+      ],
+      "bounds": null,
+      "description": "\"off\" keeps the interior-luminosity-capped bolometric rate out of the comparison past the boil-off threshold; \"luminosity_capped\" admits it.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.photon_limit",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Cap the XUV wind at one escaping ion per absorbed photon.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.recombination_limit",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Admit the recombination-limited wind rate.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.lambda_crit",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "float",
+      "accepts_none": false,
+      "default": "20.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Restricted Jeans parameter below which boil-off applies.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.kzz",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "float",
+      "accepts_none": false,
+      "default": "300.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Eddy diffusion coefficient [m2 s-1] of the hydrostatic branch.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.hydrostatic_levels_min",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "int",
+      "accepts_none": false,
+      "default": "200",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 2
+        }
+      ],
+      "description": "First quadrature grid of the diffusion-limited supply integrals.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.hydrostatic_levels_max",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "int",
+      "accepts_none": false,
+      "default": "3200",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 8
+        }
+      ],
+      "description": "Refinement ceiling of those integrals, at least four times the minimum.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "escape.zephyrus.hydrostatic_rtol",
+      "toml_section": "escape.zephyrus",
+      "class": "Zephyrus",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Relative change in the rate at which the refinement stops.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11571,12 +12045,12 @@
       "path": "escape.reservoir",
       "toml_section": "escape",
       "class": "Escape",
-      "type": "str",
-      "accepts_none": false,
-      "default": "\"outgas\"",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Escaping composition when not doing fractionation. Choices: bulk, outgas, pxuv.",
+      "description": "Composition of the escaping gas: \"bulk\" (whole-planet element mass fractions), \"outgas\" (atmospheric element mass fractions), or \"pxuv\" (the per-element rates of the ZEPHYRUS dispatcher, set at the wind base). Unset resolves to \"pxuv\" under the dispatcher and \"outgas\" otherwise.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11587,12 +12061,12 @@
       "path": "escape.hill_clamp",
       "toml_section": "escape",
       "class": "Escape",
-      "type": "bool",
-      "accepts_none": false,
-      "default": "true",
+      "type": "bool or none",
+      "accepts_none": true,
+      "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Limit the XUV level to the Hill radius. Gas beyond the Hill radius is not bound to the planet, so an XUV radius outside it sizes the escape cross-section with material the planet does not hold.",
+      "description": "Limit the XUV level to the Hill radius. Gas beyond the Hill radius is not bound to the planet, so an XUV radius outside it sizes the escape cross-section with material the planet does not hold. Unset resolves to off under the ZEPHYRUS dispatcher, whose Roche-lobe screen and L1 overflow rate treat that geometry, and on otherwise.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -13145,7 +13619,7 @@
         "star.module",
         "star.mors.tracks"
       ],
-      "doc": "ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks."
+      "doc": "ZEPHYRUS escape wants the MORS star module with the Spada evolution tracks."
     },
     {
       "validator": "spider_struct_needs_mass_from_interior",
@@ -13202,9 +13676,10 @@
         "escape.reservoir"
       ],
       "touches": [
-        "reservoir"
+        "module",
+        "zephyrus"
       ],
-      "doc": "Escape reservoir must be one of 'bulk', 'outgas', or 'pxuv'."
+      "doc": "Check the escape reservoir against the escape model."
     },
     {
       "validator": "valid_zephyrus",
@@ -13217,7 +13692,7 @@
         "zephyrus.Pxuv",
         "zephyrus.efficiency"
       ],
-      "doc": "Validate ZEPHYRUS settings: Pxuv within (0, 10] bar and efficiency within [0, 1]."
+      "doc": "Validate ZEPHYRUS settings."
     },
     {
       "validator": "_check_aragog_lid",

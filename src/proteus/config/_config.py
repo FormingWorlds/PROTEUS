@@ -24,10 +24,21 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def spada_zephyrus(instance, attribute, value):
-    """ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks."""
+    """ZEPHYRUS escape wants the MORS star module with the Spada evolution tracks.
+
+    Energy-limited escape needs the XUV flux those tracks provide, so the "el"
+    scheme requires them. The dispatcher stays meaningful without XUV (boil-off
+    and Jeans escape do not need it), so it only warns.
+    """
     if (instance.escape.module == 'zephyrus') and not (
         (instance.star.module == 'mors') and (instance.star.mors.tracks == 'spada')
     ):
+        if getattr(instance.escape, 'uses_dispatcher', False):
+            log.warning(
+                'ZEPHYRUS without MORS and the Spada tracks: the XUV-driven escape '
+                'branches see the XUV flux of the configured star model.'
+            )
+            return
         raise ValueError('ZEPHYRUS must be used with MORS and the Spada evolution tracks')
 
 
@@ -459,8 +470,9 @@ def lid_seal_requirements(instance, attribute, value):
         )
     if instance.escape.reservoir not in ('outgas', 'bulk'):
         raise ValueError(
-            'outgas.lid_seal.enabled = true requires escape.reservoir = "outgas" or "bulk", '
-            f'not "{instance.escape.reservoir}": a held step applies unfractionated escape.'
+            'outgas.lid_seal.enabled = true requires unfractionated escape, '
+            f'not escape.reservoir = "{instance.escape.reservoir}": a held step scales the '
+            'atmosphere uniformly. With ZEPHYRUS, set escape.zephyrus.scheme = "el".'
         )
     zalmoxis = instance.interior_struct.module == 'zalmoxis'
     if zalmoxis and not getattr(instance.interior_struct.zalmoxis, 'dry_mantle', True):

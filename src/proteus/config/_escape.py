@@ -7,7 +7,12 @@ from ._converters import none_if_none, zero_if_none
 
 
 def valid_zephyrus(instance, attribute, value):
-    """Validate ZEPHYRUS settings: Pxuv within (0, 10] bar and efficiency within [0, 1]."""
+    """Validate ZEPHYRUS settings.
+
+    Pxuv must lie in (0, 10] bar and the efficiency in [0, 1]. Under the
+    dispatcher scheme the full settings block is checked by ZEPHYRUS itself,
+    so a bad value fails at load with the name of the field.
+    """
     if instance.module != 'zephyrus':
         return
 
@@ -19,6 +24,44 @@ def valid_zephyrus(instance, attribute, value):
     if efficiency is None or efficiency < 0 or efficiency > 1:
         raise ValueError('`zephyrus.efficiency` must be >=0 and <=1')
 
+    if getattr(instance.zephyrus, 'scheme', 'el') == 'dispatcher':
+        from proteus.escape.dispatcher import dispatch_settings
+
+        try:
+            dispatch_settings(instance.zephyrus).validate()
+        except ValueError as exc:
+            raise ValueError(f'escape.zephyrus: {exc}') from exc
+
+
+def valid_reservoir(instance, attribute, value):
+    """Check the escape reservoir against the escape model.
+
+    ``pxuv`` takes the escaping composition from the wind base, which only the
+    ZEPHYRUS dispatcher computes. The dispatcher sets that composition itself,
+    so a mass-fraction reservoir (``bulk`` or ``outgas``) cannot be combined
+    with it. Unset resolves to ``pxuv`` under the dispatcher and ``outgas``
+    otherwise.
+    """
+    ress = ('bulk', 'outgas', 'pxuv')
+    if value is not None and value not in ress:
+        raise ValueError(f'Escape reservoir must be one of: {ress}')
+    dispatcher = (
+        instance.module == 'zephyrus'
+        and getattr(instance.zephyrus, 'scheme', 'el') == 'dispatcher'
+    )
+    if value == 'pxuv' and not dispatcher:
+        raise ValueError(
+            'escape.reservoir = "pxuv" requires escape.module = "zephyrus" with '
+            'escape.zephyrus.scheme = "dispatcher", which sets the escaping composition '
+            'at the wind base.'
+        )
+    if dispatcher and value in ('bulk', 'outgas'):
+        raise ValueError(
+            f'escape.reservoir = "{value}" cannot be combined with the ZEPHYRUS '
+            'dispatcher, which sets the escaping composition itself. Leave '
+            'escape.reservoir unset (or "pxuv"), or set escape.zephyrus.scheme = "el".'
+        )
+
 
 @define
 class Zephyrus:
@@ -26,17 +69,111 @@ class Zephyrus:
 
     Attributes
     ----------
+    scheme: str
+        Escape prescription. "dispatcher" selects the escape regime per state
+        (boil-off, hydrodynamic wind, hydrostatic Jeans escape, Roche-lobe
+        overflow) and returns a rate per element; "el" is energy-limited
+        escape alone, split over the elements by mass fraction.
     Pxuv: float
-        Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
+        Pressure at which XUV radiation becomes opaque [bar]. Used by "el",
+        and by the dispatcher when ``base_method = "fixed_pressure"``.
     efficiency: float
-        Escape efficiency factor
-    tidal: bool
-        Tidal contribution enabled
+        Escape efficiency factor.
+    tidal: bool | None
+        Tidal reduction of the escape barrier. Unset resolves to on under the
+        dispatcher and off under "el".
+    base_method: str
+        Dispatcher wind base: "lopez" (where the base is optically thick to
+        XUV, Lopez 2017) or "fixed_pressure" (at ``Pxuv``).
+    base_out_of_range: str
+        Dispatcher wind base above the top of the atmosphere profile: "clamp"
+        to the top level, or "extend" the profile isothermally above it.
+    P_photo: float
+        Photospheric level of the dispatcher [bar]: the radius of the
+        energy-limited rate and the boil-off launch level.
+    kappa_photo: float
+        Grey photospheric opacity [m2 kg-1]; the boil-off rate scales as its
+        inverse.
+    kn_crit: float
+        Sonic-point Knudsen number above which the wind is rarefied and the
+        hydrostatic branch applies.
+    kn_hysteresis: float
+        Factor by which the previous step's side of the Knudsen switch widens
+        the threshold, so an evolving track does not alternate between
+        branches. 1 disables it.
+    gate: str
+        Escape temperature that tests exosphere stability: "neutral" or "plasma".
+    efficiency_mode: str
+        "fixed" uses ``efficiency``; "caldiroli" uses the fit of Caldiroli et
+        al. (2022).
+    T_exo_mode: str
+        Exobase temperature of the hydrostatic branch: "prescribed" uses
+        ``T_exo``, "thermostat" estimates it from heating against cooling.
+    T_exo: float
+        Prescribed exobase temperature [K].
+    cool_atomic: bool
+        Atomic line cooling in the wind thermostat.
+    cool_co2_band: bool
+        CO2 15 micron band cooling in the wind thermostat.
+    cool_o_finestructure: bool
+        Atomic oxygen fine-structure cooling in the wind thermostat.
+    cool_recombination: bool
+        Recombination cooling in the wind thermostat.
+    fractionate: bool
+        Split the bulk rate over the elements with the multi-species
+        diffusion closure; off splits by the abundance at the wind base.
+    nozzle_temperature: str
+        Temperature of the L1 overflow rate: "photospheric" or "wind".
+    residual_mode: str
+        "off" keeps the interior-luminosity-capped bolometric rate out of the
+        comparison past the boil-off threshold; "luminosity_capped" admits it.
+    photon_limit: bool
+        Cap the XUV wind at one escaping ion per absorbed photon.
+    recombination_limit: bool
+        Admit the recombination-limited wind rate.
+    lambda_crit: float
+        Restricted Jeans parameter below which boil-off applies.
+    kzz: float
+        Eddy diffusion coefficient [m2 s-1] of the hydrostatic branch.
+    hydrostatic_levels_min: int
+        First quadrature grid of the diffusion-limited supply integrals.
+    hydrostatic_levels_max: int
+        Refinement ceiling of those integrals, at least four times the minimum.
+    hydrostatic_rtol: float
+        Relative change in the rate at which the refinement stops.
     """
 
+    scheme: str = field(default='dispatcher', validator=in_(('dispatcher', 'el')))
     Pxuv: float = field(default=5e-5, validator=ge(0))
     efficiency: float = field(default=0.1, validator=(ge(0), le(1)))
-    tidal: bool = field(default=False)
+    tidal: bool | None = field(default=None, converter=none_if_none)
+
+    base_method: str = field(default='lopez', validator=in_(('lopez', 'fixed_pressure')))
+    base_out_of_range: str = field(default='clamp', validator=in_(('clamp', 'extend')))
+    P_photo: float = field(default=0.02, validator=gt(0))
+    kappa_photo: float = field(default=1e-2, validator=gt(0))
+    kn_crit: float = field(default=1.0, validator=gt(0))
+    kn_hysteresis: float = field(default=1.5, validator=ge(1))
+    gate: str = field(default='neutral', validator=in_(('neutral', 'plasma')))
+    efficiency_mode: str = field(default='fixed', validator=in_(('fixed', 'caldiroli')))
+    T_exo_mode: str = field(default='prescribed', validator=in_(('prescribed', 'thermostat')))
+    T_exo: float = field(default=1000.0, validator=gt(0))
+    cool_atomic: bool = field(default=True)
+    cool_co2_band: bool = field(default=True)
+    cool_o_finestructure: bool = field(default=True)
+    cool_recombination: bool = field(default=True)
+    fractionate: bool = field(default=True)
+    nozzle_temperature: str = field(
+        default='photospheric', validator=in_(('photospheric', 'wind'))
+    )
+    residual_mode: str = field(default='off', validator=in_(('off', 'luminosity_capped')))
+    photon_limit: bool = field(default=True)
+    recombination_limit: bool = field(default=True)
+    lambda_crit: float = field(default=20.0, validator=gt(0))
+    kzz: float = field(default=3.0e2, validator=gt(0))
+    hydrostatic_levels_min: int = field(default=200, validator=ge(2))
+    hydrostatic_levels_max: int = field(default=3200, validator=ge(8))
+    hydrostatic_rtol: float = field(default=1.0e-2, validator=gt(0))
 
 
 def valid_escapedummy(instance, attribute, value):
@@ -134,21 +271,18 @@ class EscapeBoreas:
     kappa_S2: float = field(default=1e-0, validator=ge(0))
 
 
-def valid_reservoir(instance, attribute, value):
-    """Escape reservoir must be one of 'bulk', 'outgas', or 'pxuv'."""
-    ress = ('bulk', 'outgas', 'pxuv')
-    if instance.reservoir not in ress:
-        raise ValueError(f'Escape reservoir must be one of: {ress}')
-
-
 @define
 class Escape:
     """Escape parameters and module selection.
 
     Attributes
     ----------
-    reservoir: str
-        Escaping composition when not doing fractionation. Choices: bulk, outgas, pxuv.
+    reservoir: str | None
+        Composition of the escaping gas: "bulk" (whole-planet element mass
+        fractions), "outgas" (atmospheric element mass fractions), or "pxuv"
+        (the per-element rates of the ZEPHYRUS dispatcher, set at the wind
+        base). Unset resolves to "pxuv" under the dispatcher and "outgas"
+        otherwise.
     module: str | None
         Escape module to use. Choices: None, "dummy", "zephyrus", "boreas".
     zephyrus: Zephyrus
@@ -157,10 +291,12 @@ class Escape:
         Parameters for dummy escape module.
     boreas: EscapeBoreas
         Parameters for BOREAS escape module.
-    hill_clamp: bool
+    hill_clamp: bool | None
         Limit the XUV level to the Hill radius. Gas beyond the Hill radius is
         not bound to the planet, so an XUV radius outside it sizes the escape
-        cross-section with material the planet does not hold.
+        cross-section with material the planet does not hold. Unset resolves
+        to off under the ZEPHYRUS dispatcher, whose Roche-lobe screen and L1
+        overflow rate treat that geometry, and on otherwise.
     hill_clamp_frac: float
         Fraction of the Hill radius used as that limit, when hill_clamp is
         enabled.
@@ -194,13 +330,30 @@ class Escape:
     dummy: EscapeDummy = field(factory=EscapeDummy, validator=valid_escapedummy)
     boreas: EscapeBoreas = field(factory=EscapeBoreas, validator=valid_escapeboreas)
 
-    reservoir: str = field(default='outgas', validator=valid_reservoir)
+    reservoir: str | None = field(
+        default=None, validator=valid_reservoir, converter=none_if_none
+    )
 
-    hill_clamp: bool = field(default=True)
+    hill_clamp: bool | None = field(default=None, converter=none_if_none)
     hill_clamp_frac: float = field(default=1.0, validator=(gt(0.0), le(1.0)))
 
     step_max_frac: float = field(default=0.25, validator=(gt(0.0), le(1.0)))
     step_dt_floor_frac: float = field(default=1.0e-3, validator=(gt(0.0), le(1.0)))
+
+    def __attrs_post_init__(self):
+        """Resolve the settings whose default depends on the escape scheme."""
+        dispatcher = self.uses_dispatcher
+        if self.reservoir is None:
+            self.reservoir = 'pxuv' if dispatcher else 'outgas'
+        if self.hill_clamp is None:
+            self.hill_clamp = not dispatcher
+        if self.zephyrus.tidal is None:
+            self.zephyrus.tidal = dispatcher
+
+    @property
+    def uses_dispatcher(self) -> bool:
+        """Is escape computed by the ZEPHYRUS regime dispatcher?"""
+        return self.module == 'zephyrus' and self.zephyrus.scheme == 'dispatcher'
 
     @property
     def xuv_defined_by_radius(self) -> bool:

@@ -17,6 +17,7 @@
         "accretion",
         "atmos_chem",
         "atmos_clim",
+        "escape",
         "interior_energetics",
         "interior_struct",
         "main loop",
@@ -1273,6 +1274,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "interior_energetics",
         "interior_struct",
         "star"
@@ -1441,6 +1443,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "interior_energetics",
         "plot",
         "utils"
@@ -1561,6 +1564,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "plot",
         "star"
       ],
@@ -2865,6 +2869,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "main loop",
         "star"
       ],
@@ -3336,6 +3341,7 @@
         }
       ],
       "consumers": [
+        "outgas",
         "utils"
       ],
       "consumers_possible": []
@@ -4534,6 +4540,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas",
         "utils"
       ],
@@ -4688,6 +4695,7 @@
       "consumers": [
         "atmos_chem",
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -4940,6 +4948,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas",
         "utils"
       ],
@@ -5091,6 +5100,7 @@
       "consumers": [
         "atmos_chem",
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -5343,6 +5353,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas",
         "utils"
       ],
@@ -5494,6 +5505,7 @@
       "consumers": [
         "atmos_chem",
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -5766,6 +5778,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "interior_struct",
         "outgas",
         "utils"
@@ -5930,6 +5943,7 @@
       "consumers": [
         "atmos_chem",
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -6186,6 +6200,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas",
         "utils"
       ],
@@ -6337,6 +6352,7 @@
       "consumers": [
         "atmos_chem",
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -6589,6 +6605,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas",
         "utils"
       ],
@@ -6740,6 +6757,7 @@
       "consumers": [
         "atmos_chem",
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -6992,6 +7010,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas",
         "utils"
       ],
@@ -7143,6 +7162,7 @@
       "consumers": [
         "atmos_chem",
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -7395,6 +7415,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas",
         "utils"
       ],
@@ -7546,6 +7567,7 @@
       "consumers": [
         "atmos_chem",
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -7798,6 +7820,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas",
         "utils"
       ],
@@ -7949,6 +7972,7 @@
       "consumers": [
         "atmos_chem",
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -8201,6 +8225,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas",
         "utils"
       ],
@@ -8352,6 +8377,7 @@
       "consumers": [
         "atmos_chem",
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -8604,6 +8630,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas",
         "utils"
       ],
@@ -8755,6 +8782,7 @@
       "consumers": [
         "atmos_chem",
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -9012,6 +9040,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -9176,6 +9205,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -9433,6 +9463,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -9597,6 +9628,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -9854,6 +9886,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -10018,6 +10051,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -10275,6 +10309,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -10439,6 +10474,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -10696,6 +10732,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -10860,6 +10897,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -11088,6 +11126,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -11221,6 +11260,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -11449,6 +11489,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -11582,6 +11623,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -11815,6 +11857,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -11966,6 +12009,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -12199,6 +12243,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -12350,6 +12395,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -12583,6 +12629,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -12734,6 +12781,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -12967,6 +13015,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -13118,6 +13167,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -13346,6 +13396,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -13479,6 +13530,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -13707,6 +13759,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -13840,6 +13893,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -14073,6 +14127,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -14224,6 +14279,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -14452,6 +14508,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -14585,6 +14642,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -14818,6 +14876,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -14969,6 +15028,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -15197,6 +15257,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -15330,6 +15391,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -15558,6 +15620,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -15691,6 +15754,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -15919,6 +15983,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -16052,6 +16117,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -16285,6 +16351,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -16436,6 +16503,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -16664,6 +16732,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -16797,6 +16866,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -17025,6 +17095,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -17158,6 +17229,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -17386,6 +17458,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -17519,6 +17592,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -17747,6 +17821,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -17880,6 +17955,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -18113,6 +18189,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -18264,6 +18341,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -18492,6 +18570,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -18625,6 +18704,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -18858,6 +18938,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -19009,6 +19090,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -19237,6 +19319,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -19370,6 +19453,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -19598,6 +19682,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -19731,6 +19816,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -19959,6 +20045,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -20092,6 +20179,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -20320,6 +20408,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -20453,6 +20542,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -20681,6 +20771,7 @@
         }
       ],
       "consumers": [
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -20814,6 +20905,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "escape",
         "outgas"
       ],
       "consumers_possible": []
@@ -20929,6 +21021,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -21089,6 +21182,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -21249,6 +21343,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -21405,6 +21500,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -21561,6 +21657,7 @@
       ],
       "consumers": [
         "accretion",
+        "escape",
         "interior_struct",
         "outgas",
         "plot",
@@ -27748,6 +27845,10 @@
           "condition": "escape.module = \"boreas\""
         },
         {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "escape.module = \"dummy\""
         },
@@ -27787,6 +27888,10 @@
         {
           "file": "src/proteus/escape/boreas.py",
           "condition": "escape.module = \"boreas\""
+        },
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -27890,6 +27995,10 @@
           "condition": "escape.module = \"boreas\""
         },
         {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -27923,6 +28032,10 @@
         {
           "file": "src/proteus/escape/common.py",
           "condition": "escape enabled"
+        },
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -27959,6 +28072,10 @@
           "condition": "escape enabled"
         },
         {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -27991,6 +28108,10 @@
         {
           "file": "src/proteus/escape/common.py",
           "condition": "escape enabled"
+        },
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28027,6 +28148,10 @@
           "condition": "escape enabled"
         },
         {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -28059,6 +28184,10 @@
         {
           "file": "src/proteus/escape/common.py",
           "condition": "escape enabled"
+        },
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28095,6 +28224,10 @@
           "condition": "escape enabled"
         },
         {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -28127,6 +28260,10 @@
         {
           "file": "src/proteus/escape/common.py",
           "condition": "escape enabled"
+        },
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28163,6 +28300,10 @@
           "condition": "escape enabled"
         },
         {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -28195,6 +28336,10 @@
         {
           "file": "src/proteus/escape/common.py",
           "condition": "escape enabled"
+        },
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28231,6 +28376,10 @@
           "condition": "escape enabled"
         },
         {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -28263,6 +28412,10 @@
         {
           "file": "src/proteus/escape/common.py",
           "condition": "escape enabled"
+        },
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28299,6 +28452,10 @@
           "condition": "escape enabled"
         },
         {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -28331,6 +28488,10 @@
         {
           "file": "src/proteus/escape/common.py",
           "condition": "escape enabled"
+        },
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28367,6 +28528,10 @@
           "condition": "escape enabled"
         },
         {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -28399,6 +28564,10 @@
         {
           "file": "src/proteus/escape/common.py",
           "condition": "escape enabled"
+        },
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28435,6 +28604,10 @@
           "condition": "escape enabled"
         },
         {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -28467,6 +28640,10 @@
         {
           "file": "src/proteus/escape/common.py",
           "condition": "escape enabled"
+        },
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/escape/wrapper.py",
@@ -28503,6 +28680,10 @@
           "condition": "escape enabled"
         },
         {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -28537,6 +28718,10 @@
           "condition": "escape enabled"
         },
         {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -28553,6 +28738,160 @@
         "escape",
         "plot"
       ],
+      "consumers_possible": []
+    },
+    {
+      "name": "esc_regime",
+      "unit": "1",
+      "description": "dispatcher regime code, see escape.dispatcher.REGIME_CODES",
+      "group": "Atmospheric escape",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "esc_rate_branch",
+      "unit": "1",
+      "description": "code of the branch that set the rate, before the Roche relabel",
+      "group": "Atmospheric escape",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "esc_kn_sonic",
+      "unit": "1",
+      "description": "Knudsen number at the sonic point, -1 if not evaluated",
+      "group": "Atmospheric escape",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "esc_lambda",
+      "unit": "1",
+      "description": "restricted Jeans parameter at the launch level",
+      "group": "Atmospheric escape",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "esc_T_exo",
+      "unit": "K",
+      "description": "exobase temperature of the hydrostatic branch",
+      "group": "Atmospheric escape",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "esc_T_esc_neutral",
+      "unit": "K",
+      "description": "neutral escape temperature at the exobase",
+      "group": "Atmospheric escape",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "esc_T_esc_plasma",
+      "unit": "K",
+      "description": "plasma escape temperature at the exobase",
+      "group": "Atmospheric escape",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "esc_f_ion_exo",
+      "unit": "1",
+      "description": "ionization fraction at the exobase",
+      "group": "Atmospheric escape",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "esc_base_clamp_dex",
+      "unit": "1",
+      "description": "decades between the wind base and the level used",
+      "group": "Atmospheric escape",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "esc_profile_source",
+      "unit": "1",
+      "description": "column read: 0 latest solve, 1 earlier solve, 2 isothermal",
+      "group": "Atmospheric escape",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
       "consumers_possible": []
     },
     {

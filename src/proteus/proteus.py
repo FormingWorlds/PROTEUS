@@ -508,6 +508,7 @@ class Proteus:
             self.interior_o.dt,
             atmosphere_only=frozen,
             interior_o=self.interior_o,
+            atmos_o=self.atmos_o,
         )
         debit_escaped_mass(self.config, self.hf_row, kg_before - readable_total(self.hf_row))
         return True

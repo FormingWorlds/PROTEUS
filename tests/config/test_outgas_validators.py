@@ -280,8 +280,9 @@ def test_lid_seal_hypothesis_over_the_thickness_and_fraction_domains():
 
 
 def test_lid_seal_cross_field_rules(tmp_path):
-    """With the seal on, a non-Aragog interior, freeze_volatiles and vapourise
-    are refused at load; front trapping is allowed."""
+    """With the seal on, a non-Aragog interior, freeze_volatiles, vapourise and
+    fractionating escape are refused at load; front trapping is allowed. The
+    seal runs with energy-limited ZEPHYRUS escape, whose split is unfractionated."""
     import tomllib
 
     from helpers import PROTEUS_ROOT
@@ -299,6 +300,7 @@ def test_lid_seal_cross_field_rules(tmp_path):
 
         cfg = copy.deepcopy(base)
         cfg['outgas']['lid_seal']['enabled'] = True
+        cfg['escape']['zephyrus']['scheme'] = 'el'
         edit(cfg)
         path = tmp_path / 'c.toml'
         path.write_text(tomlkit.dumps(cfg))
@@ -311,9 +313,11 @@ def test_lid_seal_cross_field_rules(tmp_path):
         load(lambda c: c['outgas'].update(vapourise=True))
     with pytest.raises(ValueError, match='lid_seal.enabled = true requires'):
         load(lambda c: c['interior_energetics'].update(module='spider'))
-    with pytest.raises(ValueError, match='lid_seal.*escape.reservoir'):
+    with pytest.raises(ValueError, match='lid_seal.*escape.reservoir.*scheme = "el"'):
+        load(lambda c: c['escape']['zephyrus'].update(scheme='dispatcher'))
+    with pytest.raises(ValueError, match='"pxuv" requires escape.module = "zephyrus"'):
         load(lambda c: c['escape'].update(reservoir='pxuv'))
-    with pytest.raises(ValueError, match='lid_seal.*escape.reservoir'):
+    with pytest.raises(ValueError, match='"pxuv" requires escape.module = "zephyrus"'):
         load(lambda c: c['escape'].update(module='none', reservoir='pxuv'))
     assert load(lambda c: c['escape'].update(reservoir='bulk')).escape.reservoir == 'bulk'
     with pytest.raises(ValueError, match='lid_seal.*outgas.module'):

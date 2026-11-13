@@ -9,7 +9,12 @@ import numpy as np
 
 from proteus.escape.wrapper import readable_total
 from proteus.interior_struct.common import record_volatile_change
-from proteus.outgas.common import EMPTY_ATMOSPHERE_KEPT_KEYS, expected_keys, set_element_ratios
+from proteus.outgas.common import (
+    EMPTY_ATMOSPHERE_KEPT_KEYS,
+    element_masses_from_species,
+    expected_keys,
+    set_element_ratios,
+)
 from proteus.outgas.lavatmos import run_vapourisation
 from proteus.outgas.lid_seal import clear_seal, seal_enabled, sealed_mass
 from proteus.outgas.trapping import (
@@ -29,6 +34,7 @@ from proteus.utils.constants import (
     vol_element_list,
     vol_gas_list,
 )
+from proteus.utils.helper import eval_gas_mmw
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -579,6 +585,56 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
     log.info('    mmw        = %-9.5f g mol-1' % (hf_row['atm_kg_per_mol'] * 1e3))
 
 
+def apply_frozen_debit(hf_row: dict) -> None:
+    """Set the atmosphere of a frozen mantle to the gas masses escape left.
+
+    The masses come from :func:`proteus.escape.wrapper.plan_frozen_atmosphere_debit`
+    on this step, which debited the element totals by the same loss. Mixing
+    ratios, partial pressures and the mean molecular weight follow the new
+    composition; the surface pressure scales with the column mass. Carbon
+    left without a partner gas is added to the condensed graphite. Rock
+    vapours keep their masses.
+    """
+    debit = hf_row.pop('_esc_frozen_atm_kg', None)
+    if debit is None or debit['Time'] != float(hf_row.get('Time', 0.0)):
+        log.info('Crystallized mantle: volatile exchange frozen, reservoirs preserved')
+        return
+    m_old = float(hf_row.get('M_atm', 0.0))
+    kg = {g: float(debit['kg'].get(g, hf_row.get(f'{g}_kg_atm', 0.0))) for g in gas_list}
+    mol = {g: kg[g] / eval_gas_mmw(g) for g in gas_list}
+    m_atm, n_atm = sum(kg.values()), sum(mol.values())
+    m_vol_old = float(hf_row.get('M_vol_atm', 0.0))
+    m_vol = sum(kg[s] for s in vol_gas_list)
+    hf_row['P_vol'] = float(hf_row.get('P_vol', 0.0)) * (
+        m_vol / m_vol_old if m_vol_old > 0.0 else 0.0
+    )
+    hf_row['P_surf'] = hf_row['P_vol'] + float(hf_row.get('P_vap', 0.0))
+    hf_row['M_atm'] = m_atm
+    hf_row['M_vol_atm'] = m_vol
+    hf_row['atm_kg_per_mol'] = m_atm / n_atm if n_atm > 0.0 else 0.0
+    for g in gas_list:
+        x = mol[g] / n_atm if n_atm > 0.0 else 0.0
+        hf_row[f'{g}_kg_atm'] = kg[g]
+        hf_row[f'{g}_mol_atm'] = mol[g]
+        hf_row[f'{g}_vmr'] = x
+        hf_row[f'{g}_bar'] = x * hf_row['P_surf']
+    masses = element_masses_from_species({g: kg[g] for g in vol_gas_list})
+    for e in element_list:
+        if e in masses and e not in gas_list:
+            hf_row[f'{e}_kg_atm'] = masses[e]
+    graphite = float(debit.get('graphite_kg', 0.0))
+    if graphite > 0.0:
+        hf_row['C_kg_condensed'] = float(hf_row.get('C_kg_condensed', 0.0)) + graphite
+        hf_row['C_cd_kg'] = float(hf_row.get('C_cd_kg', 0.0)) + graphite
+    set_element_ratios(hf_row)
+    log.info(
+        'Crystallized mantle: escape removed %.3e kg from the atmosphere element by '
+        'element (column mass ratio %.4f)',
+        m_old - m_atm,
+        m_atm / m_old if m_old > 0.0 else 0.0,
+    )
+
+
 def run_crystallized(config: Config, hf_row: dict, dt: float):
     """Handle a crystallized mantle: volatile exchange frozen, but escape
     still erodes the atmosphere.
@@ -609,12 +665,12 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     dt : float
         Length of the current step [yr], used to size the escaped mass.
     """
-    # Uniform scaling is valid only while escape removes atmospheric species in
-    # proportion to their abundance. A fractionating model would change the
-    # composition and require per-species debiting, so refuse it explicitly at
-    # the point that relies on the assumption.
-
+    # Uniform scaling holds only while escape takes the gases in proportion to
+    # their abundance; fractionating escape debits each element from its gases.
     reservoir = getattr(config.escape, 'reservoir', 'outgas')
+    if reservoir == 'pxuv':
+        apply_frozen_debit(hf_row)
+        return
     if reservoir not in ('outgas', 'bulk'):
         raise NotImplementedError(
             f'run_crystallized assumes unfractionated escape; escape.reservoir='

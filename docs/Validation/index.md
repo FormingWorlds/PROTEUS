@@ -26,6 +26,7 @@ Without `--validation-plots` the tests write nothing, but each plot test compare
 | Accretion | `accretion/wrapper.py` | [Impact atmosphere-loss dispatch](accretion/wrapper.md) | [Kegerreis loss law](accretion/wrapper.md#kegerreis-et-al-2020-loss-law) |
 | Atmosphere climate | `atmos_clim/agni.py` | [Transparent black-body limit](atmos_clim/agni.md) | [grey-gas column](atmos_clim/agni.md#black-body-emission-of-a-grey-gas-transparent-column) |
 | Atmosphere climate | `atmos_clim/common.py` | [Lid and open surface in the call](atmos_clim/common.md) | [parallel sum](atmos_clim/common.md#the-atmosphere-call-sees-the-lid-and-the-open-surface-in-parallel) |
+| Escape | `escape/dispatcher.py` | [Coupling to the ZEPHYRUS dispatcher](escape/dispatcher.md) | [energy-limited rate](escape/dispatcher.md#an-energy-limited-state-escapes-at-the-energy-limited-rate) |
 | Interior energetics | `interior_energetics/remelt.py` | [Partial giant-impact re-melt](interior_energetics/remelt.md) | [melt front](interior_energetics/remelt.md#melt-front-against-the-closed-form) |
 | Interior structure | `interior_struct/zalmoxis.py` | [Liquidus-super IC anchor](interior_struct/zalmoxis.md) | [MgSiO3 liquidus](interior_struct/zalmoxis.md#mgsio3-liquidus-at-135-gpa) |
 | Orbit | `orbit/orbit.py` | [Orbital evolution](orbit/orbit.md) | [eccentricity rate](orbit/orbit.md#eccentricity-rate-of-sp0d) |
@@ -37,6 +38,7 @@ Without `--validation-plots` the tests write nothing, but each plot test compare
 | Outgassing | `outgas/binodal.py` | [H2-MgSiO3 binodal](outgas/binodal.md) | [moles of H2](outgas/binodal.md#moles-of-h2-from-the-molecular-mass) |
 | Outgassing | `outgas/burial_ledger.py` | [Burial ledger for remelting](outgas/burial_ledger.md) | [ledger against a fine grid](outgas/burial_ledger.md#the-ledger-against-a-fine-grid) |
 | Outgassing | `outgas/compaction.py` | [Melt drainage across the freezing front](outgas/compaction.md) | [drainage velocity](outgas/compaction.md#drainage-velocity-in-each-regime) |
+| Outgassing | `outgas/fractionated_debit.py` | [Escape from a frozen atmosphere](outgas/fractionated_debit.md) | [water losing hydrogen](outgas/fractionated_debit.md#water-that-loses-hydrogen-leaves-its-oxygen-as-o2) |
 | Outgassing | `outgas/lavatmos.py` | [Rock-vapour molar masses](outgas/lavatmos.md) | [molar masses](outgas/lavatmos.md#molar-masses-from-fastchem-formulas) |
 | Outgassing | `outgas/lid_seal.py` | [Volatiles under a closed crust](outgas/lid_seal.md) | [held mass against the exponential at a constant floor](outgas/lid_seal.md#at-a-constant-floor-the-held-mass-relaxes-as-the-exponential-for-any-step-length) |
 | Outgassing | `outgas/trapping.py` | [Solid-phase volatile trapping](outgas/trapping.md) | [interstitial-melt trapping](outgas/trapping.md#trapping-through-the-interstitial-melt) |

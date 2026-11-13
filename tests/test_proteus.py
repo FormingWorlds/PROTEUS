@@ -528,7 +528,11 @@ def test_the_escape_step_records_the_removed_mass_for_the_zalmoxis_target(
     config, hf_row, dirs, dt, kwargs = calls[0]
     assert (config, hf_row, dirs) == (p.config, p.hf_row, p.directories)
     assert dt == pytest.approx(100.0, rel=1e-15)
-    assert kwargs == {'atmosphere_only': frozen, 'interior_o': p.interior_o}
+    assert kwargs == {
+        'atmosphere_only': frozen,
+        'interior_o': p.interior_o,
+        'atmos_o': p.atmos_o,
+    }
     assert p.hf_row['H_kg_total'] == pytest.approx(2.0e21, rel=1e-15)
     assert p.hf_row.get('M_volatile_change', 0.0) == pytest.approx(expected, rel=1e-12, abs=0.0)
 

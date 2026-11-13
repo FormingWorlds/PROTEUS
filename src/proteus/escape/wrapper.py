@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.escape.common import calc_unfract_fluxes
-from proteus.utils.constants import M_sun, element_list, noble_gases, secs_per_year
+from proteus.utils.constants import M_sun, element_list, gas_list, noble_gases, secs_per_year
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -22,6 +22,10 @@ log = logging.getLogger('fwl.' + __name__)
 # thousandth of it and the cap never acts on them.
 ESCAPE_STEP_MAX_FRAC = 0.25
 
+# Transient row key holding the gas masses of a frozen atmosphere after this
+# step's escape, for the outgassing step to apply.
+ATM_DEBIT_KEY = '_esc_frozen_atm_kg'
+
 
 def reservoir_key(reservoir: str) -> str:
     """Return the helpfile suffix naming the reservoir escape draws from.
@@ -34,20 +38,20 @@ def reservoir_key(reservoir: str) -> str:
     Returns
     -------
         key : str
-            Helpfile column suffix, appended to an element symbol.
+            Helpfile column suffix, appended to an element symbol. ``pxuv``
+            draws on the atmosphere, as ``outgas`` does, with the composition
+            set by the per-element rates.
 
     Raises
     ------
         ValueError
-            If the reservoir is unsupported or unrecognised.
+            If the reservoir is unrecognised.
     """
     match reservoir:
         case 'bulk':
             return '_kg_total'
-        case 'outgas':
+        case 'outgas' | 'pxuv':
             return '_kg_atm'
-        case 'pxuv':
-            raise ValueError('Fractionation at p_xuv is not yet supported')
         case _:
             raise ValueError(f"Invalid escape reservoir '{reservoir}'")
 
@@ -257,6 +261,7 @@ def run_escape(
     stellar_track=None,
     atmosphere_only: bool = False,
     interior_o=None,
+    atmos_o=None,
 ) -> None:
     """Run Escape submodule.
 
@@ -283,6 +288,9 @@ def run_escape(
         interior_o : Interior_t | None
             Interior state. When given, its ``escape_dt_limit`` is set so a
             capped step shortens the next one; see :func:`escape_dt_limit`.
+        atmos_o : Atmos_t | None
+            Atmosphere state holding the last converged column, which the
+            ZEPHYRUS dispatcher reads.
     """
     # Imported here: proteus.outgas imports this module at load.
     from proteus.outgas.trapping import remelt_returned_mass
@@ -331,7 +339,12 @@ def run_escape(
         run_dummy(config, hf_row, atmosphere_only=atmosphere_only)
 
     elif config.escape.module == 'zephyrus':
-        run_zephyrus(config, hf_row, stellar_track, atmosphere_only=atmosphere_only)
+        if config.escape.uses_dispatcher:
+            from proteus.escape.dispatcher import run_dispatcher
+
+            run_dispatcher(config, hf_row, atmos_o=atmos_o, dt=dt)
+        else:
+            run_zephyrus(config, hf_row, stellar_track, atmosphere_only=atmosphere_only)
 
     elif config.escape.module == 'boreas':
         from proteus.escape.boreas import run_boreas
@@ -356,7 +369,9 @@ def run_escape(
     # `*_kg_atm` (atmospheric abundance). This keeps the per-element `*_kg_total`
     # debit proportional to the atmosphere, matching the uniform atmospheric
     # scaling that `outgas.wrapper.run_crystallized` applies in the same step.
-    reservoir = 'outgas' if atmosphere_only else config.escape.reservoir
+    reservoir = config.escape.reservoir
+    if atmosphere_only and reservoir != 'pxuv':
+        reservoir = 'outgas'
 
     max_frac = float(config.escape.step_max_frac)
 
@@ -390,6 +405,11 @@ def run_escape(
         floor=not (atmosphere_only or remelt_returned_mass(hf_row)),
         config=config,
     )
+
+    # A frozen atmosphere loses each element from its own gases.
+    hf_row.pop('_esc_frozen_atm_kg', None)
+    if atmosphere_only and reservoir == 'pxuv':
+        solvevol_target = plan_frozen_atmosphere_debit(hf_row, solvevol_target)
 
     # store new elemental inventories
     for e, mass in solvevol_target.items():
@@ -541,6 +561,83 @@ def run_zephyrus(
     return float(mlr)
 
 
+def plan_frozen_atmosphere_debit(hf_row: dict, target: dict) -> dict:
+    """Debit a frozen atmosphere element by element and return the new totals.
+
+    The per-element losses the targets imply are taken out of the atmospheric
+    gases by :func:`proteus.outgas.fractionated_debit.plan_debit`. The new gas
+    masses are kept on the row under ``ATM_DEBIT_KEY``, with the time of this
+    step, for :func:`proteus.outgas.wrapper.run_crystallized` to apply.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
+        target : dict
+            Element whole-planet inventories after the requested loss [kg].
+
+    Returns
+    -------
+        target : dict
+            Inventories after the loss the atmosphere can give up [kg].
+    """
+    # Imported here: proteus.outgas imports this module at load.
+    from proteus.outgas.fractionated_debit import STOICH, plan_debit
+
+    totals = {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list}
+    losses = {
+        e: max(0.0, totals[e] - target[e])
+        for e in element_list
+        if e in target and np.isfinite(totals[e]) and np.isfinite(target[e])
+    }
+    species = {g: float(hf_row.get(f'{g}_kg_atm', 0.0)) for g in gas_list if g in STOICH}
+    new_kg, applied, graphite = plan_debit(species, losses)
+    out = dict(target)
+    for e in element_list:
+        if e in applied and e in losses:
+            out[e] = totals[e] - applied[e]
+    hf_row['_esc_frozen_atm_kg'] = {
+        'Time': float(hf_row.get('Time', 0.0)),
+        'kg': new_kg,
+        'graphite_kg': graphite,
+    }
+    return out
+
+
+def escaping_fractions(hf_row: dict, reservoir: str, res: dict, M_vols: float) -> dict:
+    """Mass fraction of each element in the escaping gas.
+
+    Under ``pxuv`` these are the per-element rates over the bulk rate, as the
+    dispatcher sets them at the wind base; otherwise the element mass
+    fractions of the reservoir.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
+        reservoir : str
+            Reservoir name from ``config.escape.reservoir``.
+        res : dict
+            Element masses in the reservoir [kg].
+        M_vols : float
+            Their sum [kg].
+
+    Returns
+    -------
+        emr : dict
+            Element to mass fraction, summing to one or all zero.
+    """
+    if reservoir == 'pxuv':
+        rates = {
+            e: max(0.0, float(hf_row.get(f'esc_rate_{e}', 0.0)))
+            for e in element_list
+            if e in res
+        }
+        total = sum(rates.values())
+        return {e: (r / total if total > 0 else 0.0) for e, r in rates.items()}
+    return {e: (res[e] / M_vols if M_vols > 0 else 0.0) for e in res}
+
+
 def calc_new_elements(
     hf_row: dict,
     dt: float,
@@ -628,7 +725,7 @@ def calc_new_elements(
     # With `outgas.vapourise=True` the rock-forming elements can take a share of
     # the outflow, diluting what is available to H/C/N/O/S. This depends on the
     # selected reservoir (outgas vs bulk).
-    emr = {e: (res[e] / M_vols if M_vols > 0 else 0.0) for e in res}
+    emr = escaping_fractions(hf_row, reservoir, res, M_vols)
 
     # total escaped mass over dt [kg]
     if esc_mass is None:
@@ -638,7 +735,8 @@ def calc_new_elements(
     # compute new TOTAL inventories
     tgt: dict[str, float] = {}
     for e in res:
-        lost = esc_mass * emr[e]
+        # An element cannot lose more than the reservoir holds of it.
+        lost = min(esc_mass * emr[e], res[e]) if reservoir == 'pxuv' else esc_mass * emr[e]
         old_total = float(hf_row.get(f'{e}_kg_total', 0.0))
         if not np.isfinite(old_total):
             # Leave it as it stands. Clamping below would turn it into a zero

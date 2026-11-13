@@ -1306,6 +1306,28 @@ def test_spada_zephyrus_requires_mors_spada():
 
 
 @pytest.mark.unit
+def test_spada_zephyrus_only_warns_under_the_dispatcher(caplog):
+    """The dispatcher runs without the Spada tracks, with a warning.
+
+    Boil-off and Jeans escape need no XUV flux, so the dispatcher stays
+    meaningful under a star model without one; energy-limited escape does
+    not, and keeps the hard requirement.
+    """
+    import logging
+
+    inst = SimpleNamespace(
+        escape=SimpleNamespace(module='zephyrus', uses_dispatcher=True),
+        star=SimpleNamespace(module='dummy'),
+    )
+    with caplog.at_level(logging.WARNING):
+        assert spada_zephyrus(inst, None, None) is None
+    assert 'Spada' in caplog.text
+    inst.escape.uses_dispatcher = False
+    with pytest.raises(ValueError, match='Spada'):
+        spada_zephyrus(inst, None, None)
+
+
+@pytest.mark.unit
 def test_janus_escape_requires_escape_stop_flag():
     """Janus escape needs stop.escape.enabled=True to prevent runaway mass loss."""
     inst = SimpleNamespace(

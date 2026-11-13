@@ -2337,11 +2337,69 @@ def test_run_crystallized_guard_branches_preserve_reservoirs(hf_over, dt, label)
 
 
 @pytest.mark.unit
-def test_run_crystallized_rejects_fractionated_escape():
-    """A fractionating escape reservoir would change the atmospheric composition
-    and break the composition-preserving uniform scaling, so run_crystallized
-    refuses it. The unfractionated 'bulk' and 'outgas' reservoirs are accepted
-    and actually debit the atmosphere."""
+@pytest.mark.physics_invariant
+def test_run_crystallized_pxuv_applies_only_this_steps_debit():
+    """Under fractionating escape the frozen atmosphere takes the gas masses escape left.
+
+    Physical scenario: escape on this step removed hydrogen from a water and
+    CO2 atmosphere, leaving 60 kg of H2O, 30 kg of CO2 and 5 kg of O2 behind
+    out of 100 kg of H2O and 30 kg of CO2. The atmosphere takes those masses;
+    mixing ratios follow the moles, the surface pressure follows the column
+    mass, and the column holds exactly the species sum. A debit stamped with
+    an earlier time is ignored, so a step on which escape did not run leaves
+    the atmosphere as it was.
+    """
+    from proteus.escape.wrapper import ATM_DEBIT_KEY
+    from proteus.outgas.wrapper import run_crystallized
+    from proteus.utils.constants import gas_list
+
+    base = {f'{g}_kg_atm': 0.0 for g in gas_list}
+    base.update({f'{g}_mol_atm': 0.0 for g in gas_list})
+    base.update(
+        {
+            'Time': 2.0e8,
+            'H2O_kg_atm': 100.0,
+            'CO2_kg_atm': 30.0,
+            'M_atm': 130.0,
+            'M_vol_atm': 130.0,
+            'P_vol': 13.0,
+            'P_vap': 0.0,
+            'P_surf': 13.0,
+            'esc_rate_total': 1.0,
+        }
+    )
+    new_kg = {'H2O': 60.0, 'CO2': 30.0, 'O2': 5.0}
+
+    stale = dict(base, **{ATM_DEBIT_KEY: {'Time': 1.0e8, 'kg': new_kg, 'graphite_kg': 0.0}})
+    run_crystallized(_cryst_cfg('pxuv'), stale, 1.0)
+    assert stale['M_atm'] == pytest.approx(130.0, rel=1e-12)
+    assert stale['H2O_kg_atm'] == pytest.approx(100.0, rel=1e-12)
+    assert ATM_DEBIT_KEY not in stale
+
+    row = dict(base, **{ATM_DEBIT_KEY: {'Time': 2.0e8, 'kg': new_kg, 'graphite_kg': 2.0}})
+    run_crystallized(_cryst_cfg('pxuv'), row, 1.0)
+    assert row['M_atm'] == pytest.approx(95.0, rel=1e-12)
+    assert row['M_vol_atm'] == pytest.approx(sum(row[f'{g}_kg_atm'] for g in gas_list))
+    assert row['P_surf'] == pytest.approx(13.0 * 95.0 / 130.0, rel=1e-12)
+    assert sum(row[f'{g}_vmr'] for g in gas_list) == pytest.approx(1.0, rel=1e-12)
+    # Moles: 60/0.018015 H2O against 5/0.031998 O2; equal masses would give 12:1.
+    assert row['H2O_vmr'] / row['O2_vmr'] == pytest.approx(
+        (60.0 / 0.018015) / (5.0 / 0.031998), rel=2e-3
+    )
+    assert row['C_kg_condensed'] == pytest.approx(2.0, rel=1e-12)
+    assert row['C_cd_kg'] == pytest.approx(2.0, rel=1e-12)
+    # The hydrogen mass of the atmosphere is that of 60 kg of water.
+    assert row['H_kg_atm'] == pytest.approx(60.0 * 2 * 1.008 / 18.015, rel=2e-3)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_crystallized_unfractionated_reservoirs_scale_uniformly():
+    """The unfractionated reservoirs keep the uniform scaling.
+
+    Physical scenario: 10 kg escapes from a 100 kg water atmosphere under
+    ``bulk``; the column keeps 90 kg, with the same composition.
+    """
     from proteus.outgas.wrapper import run_crystallized
     from proteus.utils.constants import secs_per_year
 
@@ -2353,16 +2411,12 @@ def test_run_crystallized_rejects_fractionated_escape():
         'H2O_bar': 10.0,
         'P_surf': 10.0,
     }
-    # A fractionating reservoir is an explicit, documented refusal.
-    with pytest.raises(NotImplementedError, match='unfractionated'):
-        run_crystallized(_cryst_cfg('pxuv'), dict(base), dt)
-
-    # 'bulk' is unfractionated and accepted: the atmosphere is actually debited
-    # (90 kg retained), not passed through unchanged.
     hf_bulk = dict(base)
     run_crystallized(_cryst_cfg('bulk'), hf_bulk, dt)
     assert hf_bulk['M_atm'] == pytest.approx(90.0, rel=1e-9)
-    assert hf_bulk['M_atm'] < base['M_atm'] - 1.0
+    assert hf_bulk['H2O_bar'] == pytest.approx(9.0, rel=1e-9)
+    with pytest.raises(NotImplementedError, match='unfractionated'):
+        run_crystallized(_cryst_cfg('wind'), dict(base), dt)
 
 
 # ---------------------------------------------------------------------------

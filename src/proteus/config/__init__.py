@@ -41,10 +41,18 @@ def structure_bool(val, _cls):
     return val
 
 
+def structure_optional_bool(val, _cls):
+    """Return a TOML boolean, or None for the string "none"; refuse any other value."""
+    if val == 'none':
+        return None
+    return structure_bool(val, _cls)
+
+
 # PROTEUS's own converter, so importing PROTEUS leaves the global cattrs converter as it is
 converter = cattrs.Converter()
 converter.register_structure_hook(Union[int, Literal['none']], structure_k_val)
 converter.register_structure_hook(bool, structure_bool)
+converter.register_structure_hook(bool | None, structure_optional_bool)
 
 
 def _is_explicit_zero(value: object) -> bool:

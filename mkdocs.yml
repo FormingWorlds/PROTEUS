@@ -74,6 +74,8 @@ nav:
       - Atmosphere climate:
           - Transparent black-body limit (agni.py): Validation/atmos_clim/agni.md
           - Lid and open surface in the call (common.py): Validation/atmos_clim/common.md
+      - Escape:
+          - Coupling to the ZEPHYRUS dispatcher (dispatcher.py): Validation/escape/dispatcher.md
       - Interior energetics:
           - Partial giant-impact re-melt (remelt.py): Validation/interior_energetics/remelt.md
       - Interior structure:
@@ -89,6 +91,7 @@ nav:
           - H2-MgSiO3 binodal (binodal.py): Validation/outgas/binodal.md
           - Rock-vapour molar masses (lavatmos.py): Validation/outgas/lavatmos.md
           - Melt drainage across the freezing front (compaction.py): Validation/outgas/compaction.md
+          - Escape from a frozen atmosphere (fractionated_debit.py): Validation/outgas/fractionated_debit.md
           - Burial ledger for remelting (burial_ledger.py): Validation/outgas/burial_ledger.md
           - Solid-phase volatile trapping (trapping.py): Validation/outgas/trapping.md
           - Volatiles under a closed crust (lid_seal.py): Validation/outgas/lid_seal.md

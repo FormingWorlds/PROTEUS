@@ -81,6 +81,16 @@ class Atmos_t:
         # record means this run's own rows carry rejected levels too.
         self.solves_seen: int = 0
 
+        # The column of the most recent converged solve, base to top, in SI
+        # (keys p [Pa], r [m], T [K], vmr {gas: array}), for the escape step of
+        # the next iteration. None until a solve with a profile converges, and
+        # always None for the dummy atmosphere. Transient, not persisted.
+        self.escape_profile: dict | None = None
+
+        # Whether `escape_profile` comes from the most recent solve, rather
+        # than being kept from an earlier one because that solve was rejected.
+        self.escape_profile_current: bool = False
+
 
 def ncdf_flag_to_bool(var) -> bool | None:
     """Convert NetCDF flag (y/n) to Python bool (true/false)"""

@@ -108,6 +108,8 @@ def test_every_bool_field_keeps_true_and_false():
         ('interior_energetics.aragog.lid_mush_base', True),
         ('interior_struct.zalmoxis.global_miscibility', True),
         ('outgas.h2_binodal', True),
+        # the seal needs unfractionated escape, and the default dispatcher fractionates
+        ('outgas.lid_seal.enabled', True),
     }
 
 
