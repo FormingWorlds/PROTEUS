@@ -560,7 +560,7 @@ def run_vulcan(
     vcfg.agni_sol_type = 3
     vcfg.agni_flux_int = 0.0
 
-    # AGNI settings for a coupled call, unused while it is off; most follow the PROTEUS AGNI config.
+    # AGNI settings for a coupled call; most follow the PROTEUS AGNI config.
     vcfg.spectral_file = 'greygas'
     vcfg.use_rayleigh = config.atmos_clim.rayleigh
     vcfg.surf_albedo = config.atmos_clim.surf_greyalbedo

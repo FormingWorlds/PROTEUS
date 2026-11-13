@@ -768,9 +768,7 @@ def test_run_vulcan_sets_every_field_of_the_installed_vulcan_config(tmp_path):
 
 @pytest.mark.unit
 def test_run_vulcan_keeps_climate_coupling_settings_at_vulcan_defaults(tmp_path):
-    """With the climate coupling off, PROTEUS passes VULCAN's own defaults for
-    the coupling settings, with the same type.
-    """
+    """With the coupling off, PROTEUS passes VULCAN's own defaults, with the same type."""
     names = ('agni_T_rtol', 'agni_max_calls', 'agni_dir', 'agni_sol_type', 'agni_flux_int')
     defaults = _installed_vulcan_config_defaults()
 
