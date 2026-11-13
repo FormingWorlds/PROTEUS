@@ -3739,6 +3739,10 @@ def zalmoxis_solver(
         raise RuntimeError(diag)
 
     # Extract the index of the core-mantle boundary mass in the mass array
+    if not np.any(mass_enclosed >= cmb_mass):
+        raise RuntimeError(
+            f'Zalmoxis: no node reaches the core mass {cmb_mass:.4e} kg (last node {mass_enclosed[-1]:.4e} kg)'
+        )
     cmb_index = np.argmax(mass_enclosed >= cmb_mass)
 
     # Extract the planet radius and core-mantle boundary radius

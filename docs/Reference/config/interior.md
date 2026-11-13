@@ -134,6 +134,7 @@ Zalmoxis writes 2 core masses:
 `core_density` is `M_core` divided by the volume inside `R_core`.
 The silicate between the core mass of the solve and `R_core` counts in `M_core` and not in the mantle.
 At a high core fraction it is a large part of the mantle: in the PROTEUS grid case with `core_frac = 0.95`, 0.7 Earth masses and 150 levels it is 0.36 % of the core mass but 6.9 % of the mantle in the first solve, and 0.31 % and 6.0 % in the re-solve.
+With `interior_energetics.aragog.core_bc = "core_module"` the core module keeps the `M_core` of its first setup and fits its core profile to that mass after each structure update, so after a re-solve that moves the boundary node the two differ: by 4.5e-4 of the core mass in that grid case. The default `core_bc = "energy_balance"` does not use this mass.
 The structure takes a changed core mass at its next solve, so a run with no structure update after the init stage keeps the core of its last solve.
 When the target leaves no mantle (a core mass at or above the target mass, which a large buffered oxygen inventory over a hot magma ocean can cause), the run stops with an error that names the masses.
 A run that resumes from a helpfile without `M_core_target` takes `core_frac` of the structure target of the row of its first structure solve, logs a warning, and keeps that core mass from there.
