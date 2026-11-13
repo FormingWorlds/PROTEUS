@@ -657,6 +657,14 @@ runs:
         # develop extras so that their tests run in CI rather than skip.
         pip install -e ".[develop,vulcan,atmodeller,inference]"
 
+    # The fwl-vulcan wheel holds the package only: VULCAN reads its networks and FastChem
+    # from its git clone, so the clone at the floor tag is installed over the wheel.
+    - name: Install VULCAN from its clone
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        bash tools/get_vulcan.sh --force
+
     - name: Verify VULCAN runs from its clone
       shell: bash -el {0}
       run: |
