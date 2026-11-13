@@ -59,6 +59,8 @@ from tests.helpers._vulcan_netcdf import vulcan_layers, write_vulcan_netcdf
 mock_vulcan_package = MagicMock()
 mock_vulcan_package.__file__ = '/mock/vulcan/__init__.py'
 mock_vulcan_package.__version__ = '0.0.0-test'
+# A plain value: pytest monkeypatch restores it, where it would delete an auto-made child mock
+mock_vulcan_package.paths.THERMO_DIR = '/mock/vulcan/thermo'
 sys.modules['vulcan'] = mock_vulcan_package
 
 # Ensure we import the REAL proteus.atmos_chem.vulcan module, not a mock
