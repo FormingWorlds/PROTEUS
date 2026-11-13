@@ -12,7 +12,8 @@ import pytest
 from helpers import PROTEUS_ROOT
 
 pytest.importorskip('vulcan')
-pytest.importorskip('vulcan.climate')
+# the fwl-vulcan floor has the climate hook, so an older VULCAN fails here instead of skipping
+import vulcan.climate  # noqa: E402, F401
 
 from proteus import Proteus  # noqa: E402
 from proteus.atmos_chem.vulcan_agni import VULCAN_TMP_FLOOR, SnapshotClimate  # noqa: E402
