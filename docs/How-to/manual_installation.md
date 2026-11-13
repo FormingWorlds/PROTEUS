@@ -274,11 +274,11 @@ bash tools/get_atmodeller.sh
 bash tools/get_obliqua.sh
 ```
 
-To match what CI runs, which takes atmodeller from PyPI and VULCAN from its clone (the fwl-vulcan wheel has no network files):
+To match what CI runs, which takes atmodeller from PyPI and VULCAN from a fresh clone at its release tag (the fwl-vulcan wheel has no network files; `--force` replaces an existing `VULCAN/` folder):
 
 ```console
 python -m pip install -e ".[develop,vulcan,atmodeller,inference]"
-bash tools/get_vulcan.sh
+bash tools/get_vulcan.sh --force
 ```
 
 ## 9. Enable pre-commit hooks

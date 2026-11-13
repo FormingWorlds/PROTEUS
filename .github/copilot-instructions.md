@@ -5,7 +5,7 @@ The full instructions are in `AGENTS.md` (repository rules and review points) an
 ## Commands
 
 ```bash
-pip install -e ".[develop,vulcan,atmodeller,inference]"
+pip install -e ".[develop,vulcan,atmodeller,inference]" && bash tools/get_vulcan.sh --force
 pytest -m "unit and not skip and not slow and not integration" --ignore=tests/examples
 ruff check src/ tests/ tools/ && ruff format --check src/ tests/ tools/
 bash tools/validate_test_structure.sh
