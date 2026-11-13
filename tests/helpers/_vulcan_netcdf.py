@@ -30,8 +30,13 @@ def vulcan_layers(P_b: float = 1.0e8, P_t: float = 1.0e2, nz: int = 6) -> dict:
     }
 
 
-def write_vulcan_netcdf(fpath: str, layers: dict, species: list, x_gas: np.ndarray) -> None:
-    """Write `layers` (from `vulcan_layers`) and mixing ratios as a VULCAN NetCDF file."""
+def write_vulcan_netcdf(
+    fpath: str, layers: dict, species: list, x_gas: np.ndarray, end_case: int | None = None
+) -> None:
+    """Write `layers` (from `vulcan_layers`) and mixing ratios as a VULCAN NetCDF file.
+
+    `end_case`, when given, is written with a `termination` text, as VULCAN writes them.
+    """
     import netCDF4 as nc
 
     nz = len(layers['p'])
@@ -54,3 +59,6 @@ def write_vulcan_netcdf(fpath: str, layers: dict, species: list, x_gas: np.ndarr
         put('x_gas', ('layer', 'species'), x_gas)
         var = ds.createVariable('species', str, ('species',))
         var[:] = np.array(species, dtype=object)
+        if end_case is not None:
+            ds.end_case = int(end_case)
+            ds.termination = f'end case {end_case}'

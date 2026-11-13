@@ -1472,6 +1472,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "interior_energetics",
         "main loop",
@@ -29410,6 +29411,12 @@
     }
   ],
   "unresolved_events": [
+    {
+      "file": "src/proteus/atmos_chem/common.py",
+      "kind": "read",
+      "reason": "dynamic key key",
+      "function": "resolve_chemistry_targets"
+    },
     {
       "file": "src/proteus/atmos_clim/agni.py",
       "kind": "read",

@@ -909,7 +909,7 @@ config_version = "3.0"
     # or alone with `bash tools/get_vulcan.sh`.
     module                    = "none"       # none | vulcan | dummy
     mode                      = "none"       # none | offline (online is not yet implemented)
-    times                     = "end"        # end | all | list of times [yr]
+    times                     = "end"        # end | all | list of times [yr] | table, e.g. {Phi_global = [0.01], T_surf = [1500.0]}
 
     # Transport processes
     photo_on                  = true         # photochemistry
@@ -951,6 +951,12 @@ config_version = "3.0"
         post_conden_rtol      = 0.1          # relative tolerance once condensation stops
         clip_fl               = 1e-20        # stellar flux floor [erg/s/cm2/nm]
         clip_vmr              = 1e-10        # neglect species below this VMR
+
+        # Climate coupled to the chemistry (needs atmos_clim.module = "agni")
+        couple_agni           = false        # solve the AGNI climate again with VULCAN's composition
+        agni_call_frq         = 0            # steps between climate updates; 0: at steady states only
+        agni_T_rtol           = 0.01         # settled when an update changes T by at most this fraction
+        agni_max_calls        = 10           # climate updates at steady states before giving up
 
         # Output
         save_frames           = false        # save plot frames during iterations
