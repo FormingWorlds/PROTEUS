@@ -346,11 +346,10 @@ def test_run_vulcan_unrecognised_network_returns_false_before_solver(tmp_path):
 
 @pytest.mark.unit
 def test_run_vulcan_without_the_network_file_names_the_clone_install(tmp_path, monkeypatch):
-    """A VULCAN thermo folder without the network file (the PyPI wheel has no folder at all)
-    stops run_vulcan before the solver with an error that names the path and the clone install."""
-    (tmp_path / 'thermo').mkdir()
-    monkeypatch.setattr(mock_vulcan_package.paths, 'THERMO_DIR', str(tmp_path / 'thermo'))
-    missing = str(tmp_path / 'thermo' / 'CHO_photo_network.txt')
+    """A VULCAN thermo folder without the network file stops run_vulcan before the solver
+    with an error that names the path and the clone install."""
+    monkeypatch.setattr(mock_vulcan_package.paths, 'THERMO_DIR', str(tmp_path))
+    missing = str(tmp_path / 'CHO_photo_network.txt')
 
     with pytest.raises(FileNotFoundError, match='tools/get_vulcan.sh') as err:
         _run(tmp_path, _make_mock_config(), _make_mock_hf_row())
