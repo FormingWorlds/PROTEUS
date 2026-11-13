@@ -272,31 +272,29 @@ def validate_zalmoxis_output_schema(
 
     The file is the contract Aragog reads inside ``solver.reset()``
     (eos_method=2). This check confirms the file's last r matches
-    ``hf_row['R_int']``, and that the mantle mass matches
-    ``hf_row['M_int'] - hf_row['M_core']``.
+    ``hf_row['R_int']``, its first r matches ``hf_row['R_core']``, and that the mantle
+    mass matches ``hf_row['M_int'] - hf_row['M_core']``.
     Catches file I/O corruption, column-order mistakes, truncation,
     encoding drift, and Aragog/Zalmoxis schema desync at the file
     handover boundary.
 
-    The mantle mass is taken from ``mantle_mass_ref`` when the caller supplies it: the
-    structure's accumulator total ``mass_enclosed[-1]`` minus the mass inside ``R_core``.
-    Re-integrating the coarse output nodes with a grid trapezoid instead diverges from the
-    sub-grid-substepped RK45 integral across the steep interior density profile, reaching
-    ~10% at high planet mass, which would false-reject a structure that actually conserves
-    mass. With that reference and ``hf_row['M_core']`` the mass inside ``R_core``, as
-    ``zalmoxis_solver`` writes both, part (b) checks that the row carries the accumulator
-    total and the mass inside ``R_core``. File-density-column corruption is caught
-    downstream by Aragog's EOS-vs-mesh consistency at ``solver.reset()``; the radius check
-    (part (a)) catches truncation and column swaps directly.
-    When no reference is supplied the check falls back to the grid-trapezoidal
-    shell-sum.
+    The mantle mass is taken from ``mantle_mass_ref`` when the caller supplies it.
+    ``zalmoxis_solver`` passes ``mass_enclosed[-1] - mass_enclosed[cmb_index]``, from the
+    arrays it writes ``M_int`` and ``M_core`` from, so part (b) then checks the row write of
+    these two masses; it does not check the arrays or the choice of the CMB node. Without a
+    reference, part (b) integrates the file nodes with a grid trapezoid, which is up to
+    ~10% off the sub-grid-substepped RK45 integral at high planet mass. Part (c) checks
+    that the file starts at ``hf_row['R_core']`` within the mesh tolerance of Aragog,
+    ``max(1 m, 1e-9 (R_int - R_core))``. File-density-column corruption is caught
+    downstream by Aragog's EOS-vs-mesh consistency at ``solver.reset()``; the radius
+    checks catch truncation and column swaps directly.
 
     Parameters
     ----------
     output_path : str
         Path to the just-written ``zalmoxis_output.dat``.
     hf_row : dict
-        PROTEUS hf_row holding the scalar truth (R_int, M_int, M_core).
+        PROTEUS hf_row holding the scalar truth (R_int, R_core, M_int, M_core).
     rtol_radius : float
         Relative tolerance for the top-of-mantle vs. R_int check.
         Default 1e-6: the file's last r and ``hf_row['R_int']`` come
@@ -402,6 +400,17 @@ def validate_zalmoxis_output_schema(
                 'differs from hf_row[M_int - M_core]='
                 f'{expected_mantle:.6e} kg '
                 f'(rel={m_rel:.3e} > {rtol_mass:.1e})'
+            )
+
+    # (c) first radius == hf_row['R_core'] within the mesh tolerance of Aragog
+    r_core_hf = float(hf_row.get('R_core', 0.0))
+    if r_core_hf > 0:
+        atol = float(mesh_radius_tolerance(r_core_hf, r_top))
+        if abs(float(r_file[0]) - r_core_hf) > atol:
+            raise RuntimeError(
+                'zalmoxis_output.dat schema violation: first radius '
+                f'r={r_file[0]:.6e} from file differs from hf_row[R_core]={r_core_hf:.6e} '
+                f'by more than {atol:.1e} m'
             )
 
 
@@ -4133,9 +4142,9 @@ def zalmoxis_solver(
                 f'{mantle_radii[i]:.17e} {mantle_pressure[i]:.17e} {mantle_density[i]:.17e} {mantle_gravity_out[i]:.17e} {mantle_temperature[i]:.17e}\n'
             )
 
-    # Schema check at the Zalmoxis -> Aragog file handover (a violation restores .prev and raises),
-    # against the accumulator mantle above R_core: a grid trapezoid of the coarse output nodes is
-    # up to ~10% off the RK45 accumulator at high planet mass and would refuse valid runs
+    # Schema check at the Zalmoxis -> Aragog file handover (a violation restores .prev and raises);
+    # the mantle reference comes from the arrays of the M_int and M_core writes, so part (b)
+    # guards those writes, and the RK45 accumulator avoids the ~10% error of a coarse trapezoid
     mantle_mass_accumulator = float(mass_enclosed[-1]) - float(mass_enclosed[cmb_index])
     try:
         validate_zalmoxis_output_schema(

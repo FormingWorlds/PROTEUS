@@ -2510,8 +2510,9 @@ def test_a_thin_mantle_keeps_the_mass_inside_r_core_and_the_core_of_the_solve(
     """With the core mass 1e-6 of a shell above node 55 of 60, the first node at or above it
     holds a mantle shell of about 20 % of the mantle. M_core is the mass inside R_core (node
     55), M_core_solve the core mass of the solve, core_density M_core over the volume inside
-    R_core; the schema check of the output compares the accumulator mantle above R_core with
-    M_int - M_core, so it passes, where a check against the core of the solve refuses it."""
+    R_core. The schema check compares M_int - M_core with the mantle of the same arrays above
+    R_core, so it guards these writes and passes; a mantle above the core of the solve would
+    differ by the 20 % shell and refuse it."""
     model = _plausible_model_results()
     mass = model['mass_enclosed']
     cmb_mass = float(mass[54] + 1e-6 * (mass[55] - mass[54]))
