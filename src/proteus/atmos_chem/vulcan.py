@@ -551,14 +551,16 @@ def run_vulcan(
     vcfg.loss_eps = 1e-1
     vcfg.flux_cri = 0.1
 
-    # Self-consistent RCE solver; the AGNI settings below are unused while it is off.
-    # They follow the PROTEUS AGNI config, so a coupled call matches the climate step.
+    # Climate coupling off, at VULCAN's defaults; VULCAN checks agni_T_rtol and
+    # agni_max_calls on every run.
     vcfg.agni_call_frq = 0
     vcfg.agni_T_rtol = 1e-2
     vcfg.agni_max_calls = 10
     vcfg.agni_dir = ''
     vcfg.agni_sol_type = 3
     vcfg.agni_flux_int = 0.0
+
+    # AGNI settings for a coupled call, unused while it is off; most follow the PROTEUS AGNI config.
     vcfg.spectral_file = 'greygas'
     vcfg.use_rayleigh = config.atmos_clim.rayleigh
     vcfg.surf_albedo = config.atmos_clim.surf_greyalbedo

@@ -274,11 +274,6 @@ def _installed_vulcan_config_defaults() -> dict[str, object]:
     return defaults
 
 
-def _installed_vulcan_config_fields() -> set[str]:
-    """Names of the fields `Config.__init__` sets in the installed VULCAN."""
-    return set(_installed_vulcan_config_defaults())
-
-
 def _write_sflux(tmp_path, year, flux=(1e-5, 1e-4, 1e-3)):
     """Write a stellar spectrum file data/<year>.sflux [nm, erg cm-2 s-1 nm-1]."""
     data = tmp_path / 'data'
@@ -754,7 +749,7 @@ def test_run_vulcan_sets_every_field_of_the_installed_vulcan_config(tmp_path):
     ignored. Both show only in a coupled run. Fails when VULCAN adds or
     renames a Config field until the wrapper is updated to match.
     """
-    fields = _installed_vulcan_config_fields()
+    fields = set(_installed_vulcan_config_defaults())
     # Guard against a parser that finds nothing, which would pass vacuously.
     assert {'network', 'out_name', 'atom_list'} <= fields
 
@@ -774,12 +769,10 @@ def test_run_vulcan_sets_every_field_of_the_installed_vulcan_config(tmp_path):
 @pytest.mark.unit
 def test_run_vulcan_keeps_climate_coupling_settings_at_vulcan_defaults(tmp_path):
     """With the climate coupling off, PROTEUS passes VULCAN's own defaults for
-    the coupling settings, with the same type, so a run matches standalone VULCAN.
+    the coupling settings, with the same type.
     """
     names = ('agni_T_rtol', 'agni_max_calls', 'agni_dir', 'agni_sol_type', 'agni_flux_int')
     defaults = _installed_vulcan_config_defaults()
-    if not set(names) <= defaults.keys():
-        pytest.skip('installed VULCAN has no climate coupling settings')
 
     _, vcfg, _ = _run(tmp_path, _make_mock_config(), _make_mock_hf_row(year=800.0))
 
