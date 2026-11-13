@@ -28,7 +28,7 @@ from proteus.atmos_clim.common import read_ncdf_profile  # noqa: E402
 from proteus.star.wrapper import write_spectrum  # noqa: E402
 from proteus.utils.coupler import ZeroHelpfileRow  # noqa: E402
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(600)]
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
 RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
 
@@ -184,6 +184,7 @@ def _read_nc(path, *names):
 
 
 @pytest.mark.physics_invariant
+@pytest.mark.timeout(600)
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
     reason='AGNI coupling test requires Julia/AGNI binaries (nightly only)',
@@ -213,8 +214,8 @@ def test_coupled_run_ends_where_chemistry_and_climate_agree(snapshot, record_pro
     cfg.atmos_chem.vulcan.make_funs = True
     cfg.atmos_chem.vulcan.couple_agni = True
     cfg.atmos_chem.vulcan.agni_call_frq = 0
-    # Update 2 changed T by 8.9e-3 locally and 1.176e-2 on CI ubuntu: at 1e-2 the run length
-    # flips on round-off (a third steady state on ubuntu); 2e-2 ends both at update 2
+    # Update 2 changes T by about 1e-2 with round-off scatter, so at 1e-2 the run length differs
+    # between runners; at 2e-2 update 1 (1.5e-2) also keeps the step size it had
     cfg.atmos_chem.vulcan.agni_T_rtol = 2e-2
 
     assert run_vulcan(dirs, cfg, hf_row)
