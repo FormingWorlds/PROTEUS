@@ -99,9 +99,9 @@ def _make_snapshot(tmpdir: str):
     cfg.params.out.write_mod = 0
     runner.init_directories()
     dirs = runner.directories
-    # The SOCRATES tools read file names of at most 132 characters and loop on a longer one
+    # The SOCRATES tools read file names of at most 132 bytes and loop on a longer one
     longest = os.path.join(dirs['output/offchem'], 'agni', 'socstar.dat')
-    assert len(longest) <= SOCRATES_MAX_PATH, f'{len(longest)} characters: {longest}'
+    assert len(os.fsencode(longest)) <= SOCRATES_MAX_PATH, longest
     os.makedirs(os.path.join(dirs['output'], 'data'), exist_ok=True)
     os.makedirs(dirs['output/offchem'], exist_ok=True)
 
