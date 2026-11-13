@@ -11,9 +11,9 @@ import numpy as np
 import pytest
 from helpers import PROTEUS_ROOT
 
+# vulcan.climate is imported in the tests, not here: a unit run collects this file after
+# tests/atmos_chem/test_vulcan.py has put a mock in place of vulcan
 pytest.importorskip('vulcan')
-# the fwl-vulcan floor has the climate hook, so an older VULCAN fails here instead of skipping
-import vulcan.climate  # noqa: E402, F401
 
 from proteus import Proteus  # noqa: E402
 from proteus.atmos_chem.vulcan_agni import VULCAN_TMP_FLOOR, SnapshotClimate  # noqa: E402
