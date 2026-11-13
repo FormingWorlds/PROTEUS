@@ -104,6 +104,7 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
         'outgas.fO2_shift_IW',
         *gen.PROTOCOL_STOP,
         *gen.RUN_SETTINGS,
+        *gen.PROTOCOL_ATMOSPHERE,
         *gen.PROTOCOL_ESCAPE,
     }
     assert set(gen.case_deltas('earth')) == nominal
@@ -484,3 +485,20 @@ def test_every_chili_config_runs_energy_limited_escape():
         assert esc.zephyrus.scheme == 'el', path.name
         assert (esc.reservoir, esc.hill_clamp, esc.zephyrus.tidal) == ('outgas', True, False)
         assert esc.uses_dispatcher is False, path.name
+
+
+def test_every_chili_config_resolves_the_atmosphere_as_the_submitted_runs():
+    """The 5 cases and the 9 grid configs keep the atmosphere grid of the submitted runs.
+
+    The submitted runs resolved the atmosphere on 45 levels up to 1e-4 bar. The tutorials
+    the cases derive from now reach 1e-10 bar, so the cases state the protocol grid.
+    """
+    gen = _load_generator()
+    assert gen.PROTOCOL_ATMOSPHERE['atmos_clim.num_levels'] == 45
+    files = [REPO / 'input' / 'chili' / 'intercomp' / f'{n}.toml' for n in gen.CASE_DELTAS]
+    files += sorted((REPO / 'input' / 'tutorials' / 'chili_grid').glob('earth_H*_C*.toml'))
+    assert len(files) == 14
+    for path in files:
+        atm = _read_config(str(path)).atmos_clim
+        assert atm.num_levels == 45, path.name
+        assert atm.p_top == pytest.approx(1e-4, rel=1e-12), path.name

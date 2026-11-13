@@ -148,6 +148,13 @@ RUN_SETTINGS = {'interior_energetics.aragog.separation_buoyancy': 'solid'}
 # The submitted runs used energy-limited escape, split over the elements by atmospheric
 # abundance and clipped at the Hill radius, without the tidal factor. These are the
 # defaults of the "el" scheme, written out because the PROTEUS default is the dispatcher.
+# The submitted runs resolved the atmosphere on 45 levels up to 1e-4 bar; the tutorials
+# now reach 1e-10 bar so that the escape wind base stays inside the column.
+PROTOCOL_ATMOSPHERE = {
+    'atmos_clim.num_levels': 45,
+    'atmos_clim.p_top': tomlkit.value('1e-4'),
+}
+
 PROTOCOL_ESCAPE = {
     'escape.reservoir': 'outgas',
     'escape.hill_clamp': True,
@@ -246,8 +253,8 @@ def _format_stop_block(text: str, name: str) -> str:
 
 
 def case_deltas(name: str) -> dict:
-    """Deltas of case ``name``: ``CASE_DELTAS``, the protocol's redox state, stop rule and
-    escape scheme, and ``RUN_SETTINGS``.
+    """Deltas of case ``name``: ``CASE_DELTAS``, the protocol's redox state, stop rule,
+    atmosphere grid and escape scheme, and ``RUN_SETTINGS``.
 
     Raises
     ------
@@ -259,12 +266,13 @@ def case_deltas(name: str) -> dict:
         'outgas.fO2_shift_IW': PROTOCOL_FO2_SHIFT_IW,
         **PROTOCOL_STOP,
         **RUN_SETTINGS,
+        **PROTOCOL_ATMOSPHERE,
         **PROTOCOL_ESCAPE,
     }
     if clash := sorted(set(deltas) & set(protocol)):
         raise ValueError(
-            f'{name}: PROTOCOL_FO2_SHIFT_IW, PROTOCOL_STOP, RUN_SETTINGS and PROTOCOL_ESCAPE '
-            f'set {clash} for all cases'
+            f'{name}: PROTOCOL_FO2_SHIFT_IW, PROTOCOL_STOP, RUN_SETTINGS, PROTOCOL_ATMOSPHERE and '
+            f'PROTOCOL_ESCAPE set {clash} for all cases'
         )
     return {**deltas, **protocol}
 

@@ -10214,7 +10214,7 @@
       "class": "AtmosClim",
       "type": "float",
       "accepts_none": false,
-      "default": "1e-06",
+      "default": "1e-10",
       "choices": null,
       "bounds": [
         {
@@ -10222,7 +10222,7 @@
           "value": 0
         }
       ],
-      "description": "Top-of-atmosphere pressure [bar].",
+      "description": "Top-of-atmosphere pressure [bar]. The default, 1e-10 bar, keeps the XUV wind base of the ZEPHYRUS dispatcher, near a nanobar for hydrogen, inside the column.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 5,

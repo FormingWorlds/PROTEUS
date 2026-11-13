@@ -712,7 +712,7 @@ config_version = "3.0"
     spectral_bands            = "48"         # wavenumber bands in k-table
     spectral_cache            = "none"       # reuse prepared spectral files across runs with the same star; none = off
     num_levels                = 50           # vertical atmosphere levels (min 15)
-    p_top                     = 1.0e-6       # top-of-atmosphere pressure [bar]
+    p_top                     = 1.0e-10      # top-of-atmosphere pressure [bar]
     p_obs                     = "none"       # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
