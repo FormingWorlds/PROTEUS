@@ -82,10 +82,21 @@ from proteus.utils.constants import CHEM_CONDENSATE_DENSITY  # noqa: E402
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
+@pytest.fixture(scope='module')
+def _thermo_with_networks(tmp_path_factory):
+    """Stand-in VULCAN thermo folder with an empty file for each network PROTEUS selects."""
+    thermo = tmp_path_factory.mktemp('thermo')
+    for elements in ('CHO', 'NCHO', 'SNCHO'):
+        for kind in ('photo', 'thermo'):
+            (thermo / f'{elements}_{kind}_network.txt').touch()
+    return str(thermo)
+
+
 @pytest.fixture(autouse=True)
-def _vulcan_mock_in_sys_modules():
+def _vulcan_mock_in_sys_modules(_thermo_with_networks, monkeypatch):
     """run_vulcan imports `vulcan` when called, so this file's mock is put in
     sys.modules for each test, whatever another test file left there."""
+    monkeypatch.setattr(mock_vulcan_package.paths, 'THERMO_DIR', _thermo_with_networks)
     with patch.dict(sys.modules, {'vulcan': mock_vulcan_package}):
         yield
 
@@ -338,6 +349,20 @@ def test_run_vulcan_unrecognised_network_returns_false_before_solver(tmp_path):
     assert result is False
     mock_vulcan_package.run_vulcan.assert_not_called()
     assert not list(tmp_path.rglob('*_chem.nc'))
+
+
+@pytest.mark.unit
+def test_run_vulcan_without_the_network_file_names_the_clone_install(tmp_path, monkeypatch):
+    """A VULCAN without its data folder (the PyPI wheel) stops before the solver with an
+    error that names the network path and the clone install."""
+    monkeypatch.setattr(mock_vulcan_package.paths, 'THERMO_DIR', str(tmp_path / 'thermo'))
+    missing = str(tmp_path / 'thermo' / 'CHO_photo_network.txt')
+
+    with pytest.raises(FileNotFoundError, match='tools/get_vulcan.sh') as err:
+        _run(tmp_path, _make_mock_config(), _make_mock_hf_row())
+
+    assert missing in str(err.value)
+    mock_vulcan_package.run_vulcan.assert_not_called()
 
 
 @pytest.mark.unit
