@@ -83,6 +83,21 @@ def test_uniform_is_kept_at_the_surface_and_refused_at_the_cmb():
     assert _kept('cmb_cell_thickness', 'uniform') is False
 
 
+@pytest.mark.parametrize('value', [1.0, -5.0, 'auto', None])
+def test_the_refusal_states_the_rule_of_its_cell(value):
+    """The surface cell names "uniform" in its refusal, for a number and for another value; the
+    CMB cell, which has no such rule, does not."""
+    for name, rule in (
+        ('surface_cell_thickness', '"uniform", 0, or finite and at least 2 m'),
+        ('cmb_cell_thickness', 'must be 0 or finite and at least 2 m'),
+    ):
+        with pytest.raises((TypeError, ValueError)) as err:
+            Aragog(**{name: value})
+        assert rule in str(err.value) and (
+            ('uniform' in str(err.value)) is name.startswith('s')
+        )
+
+
 @given(value=st.floats(allow_nan=True, allow_infinity=True))
 def test_the_slope_lies_in_0_to_1(value):
     """mlt_bottom_slope is kept exactly in (0, 1]; NaN, 0 and above 1 are refused."""
