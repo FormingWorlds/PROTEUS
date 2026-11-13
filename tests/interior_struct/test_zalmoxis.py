@@ -2899,9 +2899,9 @@ def test_zalmoxis_solver_caches_the_structure_for_the_next_seed(tmp_path, monkey
 def test_a_main_without_the_seed_parameter_is_logged_once(
     tmp_path, monkeypatch, caplog, opaque
 ):
-    """A main whose signature has no adiabat_seed (here a wrapper without functools.wraps)
-    gets one INFO line per process that names its signature, also over 2 solves; the real
-    main of this Zalmoxis gets none."""
+    """A main whose signature has no adiabat_seed (a wrapper without functools.wraps, or the
+    real main of a Zalmoxis without the seed) gets one INFO line per process that names its
+    signature, also over 2 solves; a main with adiabat_seed gets none."""
     import zalmoxis.solver
 
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
@@ -2927,9 +2927,11 @@ def test_a_main_without_the_seed_parameter_is_logged_once(
                 use_jax=False,
             )
     lines = [r for r in caplog.records if 'takes no adiabat_seed' in r.getMessage()]
-    assert len(lines) == (1 if opaque else 0)
-    if opaque:
-        assert lines[0].levelno == logging.INFO and '(*args, **kwargs)' in lines[0].getMessage()
+    takes_seed = 'adiabat_seed' in inspect.signature(fn).parameters
+    assert len(lines) == (0 if takes_seed else 1) and not (opaque and takes_seed)
+    if lines:
+        assert lines[0].levelno == logging.INFO
+        assert str(inspect.signature(fn)) in lines[0].getMessage()
 
 
 def test_the_seed_detection_reads_the_signature_of_main():
