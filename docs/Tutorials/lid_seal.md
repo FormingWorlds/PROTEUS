@@ -78,8 +78,8 @@ print(f"held: H2O {close['H2O_kg_sealed']:.3e} kg, CO2 {close['CO2_kg_sealed']:.
 The run printed:
 
 ```text
-closed at 97808 yr, crust 65.8 km, top-cell melt fraction 3.1e-04, mantle melt fraction 0.193
-held: H2O 6.924e+18 kg, CO2 2.858e+17 kg
+closed at 97005 yr, crust 65.8 km, top-cell melt fraction 2.5e-04, mantle melt fraction 0.192
+held: H2O 6.924e+18 kg, CO2 2.849e+17 kg
 ```
 
 The seal closes when the top mesh cell freezes.
@@ -106,10 +106,10 @@ print(f"held / floor of water on the rows where it leaks: at least {(held['H2O_k
 The run printed:
 
 ```text
-floor / held water on the first held step: 0.999727
-CO2 first leaks at 97890 yr, Phi = 0.19231
-H2O first leaks at 97890 yr, Phi = 0.19231
-held / floor of water on the rows where it leaks: at least 1.000273
+floor / held water on the first held step: 0.999722
+CO2 first leaks at 97087 yr, Phi = 0.19160
+H2O first leaks at 97087 yr, Phi = 0.19160
+held / floor of water on the rows where it leaks: at least 1.000278
 ```
 
 On the first held step $\Phi$ falls from 0.19250 to 0.19231, and water and CO$_2$ leak from that step on.
@@ -129,30 +129,31 @@ print(f"mantle melt fraction without the seal: {end_off['Phi_global']:.3f}")
 The run printed:
 
 ```text
-H2O in the atmosphere at 140 kyr: seal 2.158e+15 kg, no seal 2.122e+15 kg
+H2O in the atmosphere at 140 kyr: seal 2.203e+15 kg, no seal 2.165e+15 kg
 surface pressure: seal 1.037 bar, no seal 1.064 bar
 held H2O: 6.923e+18 kg, floor 6.920e+18 kg
 H2O in the melt without the seal: 6.923e+18 kg
-mantle melt fraction without the seal: 0.136
+mantle melt fraction without the seal: 0.135
 ```
 
 Before the closing step the 2 runs agree to the last digit.
 After it they part, but not by much.
-The melt is still 13.6 % of the mantle at 140 kyr, and in both runs almost all the water stays in the mantle.
-With the seal, the atmosphere holds 1.71 % more water than without the seal.
-Replays of the held span of this run, with one term switched off at a time, split the 1.71 % into 3 terms, in percentage points of the water in the atmosphere of the open run:
+The melt is still 13.5 % of the mantle at 140 kyr, and in both runs almost all the water stays in the mantle.
+With the seal, the atmosphere holds 1.75 % more water than without the seal.
+Replays of the held span of this run, with one term switched off at a time, split the 1.75 % into 3 terms, in percentage points of the water in the atmosphere of the open run:
 
-- $+1.86$: the held gas keeps the species it had at closure, while the open run turns CO into CO$_2$ as the magma cools; the sealed atmosphere then holds less oxygen, the kept species lower its surface pressure by 1.76 %, and the water needs more mass in the atmosphere to reach the same partial pressure;
+- $+1.89$: the held gas keeps the species it had at closure, while the open run turns CO into CO$_2$ as the magma cools; the sealed atmosphere then holds less oxygen, the kept species lower its surface pressure by 1.80 %, and the water needs more mass in the atmosphere to reach the same partial pressure;
 - $-0.08$: the finite leak time keeps this water held;
 - $-0.07$: the rest.
 
-The output above shows a surface pressure 2.5 % lower in total; the kept species alone lower it by 1.76 %. The closing temperature that the seal keeps for the CO$_2$ law changes nothing here: near 1 bar that law does not depend on temperature.
+The output above shows a surface pressure 2.6 % lower in total; the kept species alone lower it by 1.80 %. The closing temperature that the seal keeps for the CO$_2$ law changes nothing here: near 1 bar that law does not depend on temperature.
 
-The first term is a known limit of the frozen chemistry: at 140 kyr the sealed atmosphere holds 24.6 % more CO and 6.3 % less CO$_2$ than the open run ([Limits of the leak](../Explanations/lid_seal.md#limits-of-the-leak)).
+The first term is a known limit of the frozen chemistry: at 140 kyr the sealed atmosphere holds 25.2 % more CO and 6.4 % less CO$_2$ than the open run ([Limits of the leak](../Explanations/lid_seal.md#limits-of-the-leak)).
 
 The path before closure is sensitive to round-off, so your run can close at another time and end with a different amount of water.
-In 5 pairs of runs whose initial superheat differs by up to $2.5 \times 10^{-9}$ K, the water in the atmosphere at 140 kyr spreads by 0.65 % between the starts, and the run printed here ends 2.0 % below their mean.
-Over these 5 pairs and the run printed here, the seal run holds between 1.714 % and 1.751 % more water than the open run of the same start; the printed run is at 1.714 %.
+Over the run printed here and 5 starts whose initial superheat differs by up to $2.5 \times 10^{-9}$ K, the closing time varies by 843 yr and the water in the atmosphere at 140 kyr by 2.09 % with the seal and by 2.05 % without it.
+The seal run and the open run of one start agree to the last digit before closure, so the seal effect is their difference at the same start: between 1.715 % and 1.753 % over the 6 starts; the printed run is at 1.748 %.
+A seal run and an open run of different starts can differ by less than this, or in the other direction.
 `tests/data/lid_seal/tutorial_ensemble.csv` holds these end values.
 
 The block plots the water in the atmosphere, and the held water against its floor:
@@ -176,6 +177,6 @@ fig.savefig('output/tutorial_lid_seal/water.png', dpi=150)
 
 ## Step 7: try it yourself
 
-- Set `tau_leak` to `1e2` and run again: the leak follows the floor more closely, and the water in the atmosphere at 140 kyr changes by less than 0.1 %, less than the spread of 0.65 % between starts that differ only by round-off.
+- Set `tau_leak` to `1e2` and run again: the leak follows the floor more closely, and the water in the atmosphere at 140 kyr changes by less than 0.1 %.
 - Set `crust_rate` above 0 to add the volcanic leak; the columns `{e}_kg_leak_volc` and `{e}_kg_leak_tau` show the 2 parts in each step, and `seal_volc_capped` shows the steps where the crust production was cut to the melt mass. Both parts stop at the same floor.
 - Set `delta_close` to 0.3 m: on this mesh the seal closes at the same step, because a crust on the mesh is 0 or a whole cell. A thin crust closes the seal earlier only through the Aragog sub-grid lid.
