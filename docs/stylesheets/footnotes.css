@@ -18,6 +18,7 @@
   font-size: 1em !important;
 }
 
-/* The hidden back-link icon takes no line space, so it never wraps onto an empty line. */
+/* The hidden back-link icon takes no line space, so it never wraps onto an empty line; only the first back-link of each footnote shows. */
 .md-typeset .footnote > ol > li { position: relative; }
 .md-typeset .footnote-backref { position: absolute; }
+.md-typeset .footnote-backref ~ .footnote-backref { display: none; }
