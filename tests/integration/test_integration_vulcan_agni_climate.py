@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import os
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -125,9 +126,10 @@ def _make_snapshot(tmpdir: str):
 
 
 @pytest.fixture(scope='module')
-def snapshot(tmp_path_factory):
-    """One banded AGNI snapshot shared by the cases of this module."""
-    return _make_snapshot(str(tmp_path_factory.mktemp('vulcan_agni')))
+def snapshot():
+    """One banded AGNI snapshot shared by the cases of this module, in a short temporary folder."""
+    with tempfile.TemporaryDirectory(prefix='va') as tmpdir:
+        yield _make_snapshot(tmpdir)
 
 
 @pytest.mark.physics_invariant
