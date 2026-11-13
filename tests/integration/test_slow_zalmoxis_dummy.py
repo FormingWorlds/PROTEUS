@@ -55,6 +55,7 @@ See also:
 
 from __future__ import annotations
 
+import os
 import sys
 
 import numpy as np
@@ -263,15 +264,30 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
     assert core_target == pytest.approx(
         cfg.interior_struct.core_frac * (planet - kept), rel=1e-9
     )
-    # M_core is the mass inside the first node at or above the boundary: below the target by
-    # the mass tolerance at most, above it by one mantle shell at most (about 1.6 % of the
-    # core at 150 levels; 2 % leaves a margin). M_core_solve is the core of the solve.
-    tol = cfg.interior_struct.zalmoxis.solver_tol_outer
-    snap = float(final['M_core']) / core_target
-    assert 1.0 - tol <= snap <= 1.0 + tol + 0.02, (
-        f'M_core / M_core_target = {snap:.5f} outside the mass tolerance plus one mantle shell'
+    # M_core is the mass inside the first node at or above the core of the solve, so it lies
+    # between M_core_solve and M_core_solve plus the shell below that node; the grid is uniform
+    # and the shell is less dense than the core mean, so the core mean bounds its mass.
+    m_core, m_solve = float(final['M_core']), float(final['M_core_solve'])
+    r_core = float(final['R_core'])
+    assert m_solve == pytest.approx(core_target, rel=1e-12)
+    assert m_core >= m_solve * (1.0 - 1e-12)
+    r_file = np.loadtxt(os.path.join(runner.directories['output/data'], 'zalmoxis_output.dat'))[
+        :, 0
+    ]
+    assert r_file[0] == pytest.approx(r_core, abs=1.0)
+    shell = (
+        float(final['core_density'])
+        * 4.0
+        / 3.0
+        * np.pi
+        * (r_core**3 - (r_core - (r_file[1] - r_file[0])) ** 3)
     )
-    assert float(final['M_core_solve']) == pytest.approx(core_target, rel=1e-12)
+    assert m_core - m_solve <= shell, (
+        f'M_core - M_core_solve = {m_core - m_solve:.3e} kg > shell {shell:.3e} kg'
+    )
+    assert float(final['core_density']) * 4.0 / 3.0 * np.pi * r_core**3 == pytest.approx(
+        m_core, rel=1e-12
+    )
 
     # P_center, P_cmb positive and bounded. Earth: P_center ~ 3.6e11
     # Pa, P_cmb ~ 1.36e11 Pa. The discrimination guards are wide
