@@ -78,8 +78,8 @@ print(f"held: H2O {close['H2O_kg_sealed']:.3e} kg, CO2 {close['CO2_kg_sealed']:.
 The run printed:
 
 ```text
-closed at 97005 yr, crust 65.8 km, top-cell melt fraction 2.5e-04, mantle melt fraction 0.192
-held: H2O 6.924e+18 kg, CO2 2.849e+17 kg
+closed at 96946 yr, crust 65.8 km, top-cell melt fraction 2.6e-04, mantle melt fraction 0.192
+held: H2O 6.924e+18 kg, CO2 2.852e+17 kg
 ```
 
 The seal closes when the top mesh cell freezes.
@@ -106,13 +106,13 @@ print(f"held / floor of water on the rows where it leaks: at least {(held['H2O_k
 The run printed:
 
 ```text
-floor / held water on the first held step: 0.999722
-CO2 first leaks at 97087 yr, Phi = 0.19160
-H2O first leaks at 97087 yr, Phi = 0.19160
+floor / held water on the first held step: 0.999723
+CO2 first leaks at 97028 yr, Phi = 0.19183
+H2O first leaks at 97028 yr, Phi = 0.19183
 held / floor of water on the rows where it leaks: at least 1.000278
 ```
 
-On the first held step $\Phi$ falls from 0.19179 to 0.19160, and water and CO$_2$ leak from that step on.
+On the first held step $\Phi$ falls from 0.19202 to 0.19183, and water and CO$_2$ leak from that step on.
 From then on the held water follows its floor down and stays above it.
 
 ## Step 6: compare the 2 atmospheres
@@ -129,7 +129,7 @@ print(f"mantle melt fraction without the seal: {end_off['Phi_global']:.3f}")
 The run printed:
 
 ```text
-H2O in the atmosphere at 140 kyr: seal 2.203e+15 kg, no seal 2.165e+15 kg
+H2O in the atmosphere at 140 kyr: seal 2.197e+15 kg, no seal 2.159e+15 kg
 surface pressure: seal 1.037 bar, no seal 1.064 bar
 held H2O: 6.923e+18 kg, floor 6.920e+18 kg
 H2O in the melt without the seal: 6.923e+18 kg
@@ -142,18 +142,16 @@ The melt is still 13.5 % of the mantle at 140 kyr, and in both runs almost all t
 With the seal, the atmosphere holds 1.75 % more water than without the seal.
 Replays of the held span of this run, with one term switched off at a time, split the 1.75 % into 3 terms, in percentage points of the water in the atmosphere of the open run:
 
-- $+1.89$: the held gas keeps the species it had at closure, while the open run turns CO into CO$_2$ as the magma cools; the sealed atmosphere then holds less oxygen, the kept species lower its surface pressure by 1.80 %, and the water needs more mass in the atmosphere to reach the same partial pressure;
+- $+1.90$: the held gas keeps the species it had at closure, while the open run turns CO into CO$_2$ as the magma cools; the sealed atmosphere then holds less oxygen, the kept species lower its surface pressure by 1.80 %, and the water needs more mass in the atmosphere to reach the same partial pressure;
 - $-0.08$: the finite leak time keeps this water held;
-- $-0.07$: the rest.
+- $-0.08$: the rest.
 
 The output above shows a surface pressure 2.6 % lower in total; the kept species alone lower it by 1.80 %. The closing temperature that the seal keeps for the CO$_2$ law changes nothing here: near 1 bar that law does not depend on temperature.
 
 The first term is a known limit of the frozen chemistry: at 140 kyr the sealed atmosphere holds 25.2 % more CO and 6.4 % less CO$_2$ than the open run ([Limits of the leak](../Explanations/lid_seal.md#limits-of-the-leak)).
 
-The path before closure is sensitive to round-off, so your run can close at another time and end with a different amount of water.
-Over the run printed here and 5 starts whose initial superheat differs by up to $2.5 \times 10^{-9}$ K, the closing time varies by 843 yr and the water in the atmosphere at 140 kyr by 2.09 % with the seal and by 2.05 % without it.
-The seal run and the open run of one start agree to the last digit before closure, so the seal effect is their difference at the same start: between 1.715 % and 1.753 % over the 6 starts; the printed run is at 1.748 %.
-A seal run and an open run of different starts can differ by less than this, or in the other direction.
+Over the run printed here and 5 starts whose initial superheat differs by up to $2.5 \times 10^{-9}$ K, the closing time varies by 0.8 yr and the water in the atmosphere at 140 kyr by $9 \times 10^{-4}$ % with the seal and by $8 \times 10^{-4}$ % without it.
+The seal run and the open run of one start agree to the last digit before closure, so the seal effect is their difference at the same start: 1.748 % in each of the 6 starts.
 `tests/data/lid_seal/tutorial_ensemble.csv` holds these end values.
 
 The block plots the water in the atmosphere, and the held water against its floor:
