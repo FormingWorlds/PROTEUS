@@ -1535,3 +1535,13 @@ def test_buried_and_released_mass_keeps_the_mole_columns_in_step_with_the_mass_c
         assert row[f'{name}_mol_solid'] * mmw == pytest.approx(solid, rel=1e-12)
         assert row[f'{name}_mol_liquid'] * mmw == pytest.approx(melt, rel=1e-12)
     assert not [key for key in row if key.startswith(('H_mol', 'O_mol', 'C_mol'))]
+
+
+@pytest.mark.physics_invariant
+def test_sealed_mass_is_unreachable_for_escape():
+    """The mass the lid seal holds is beyond escape, as trapped mass is, and an
+    unreadable sealed column counts as nothing."""
+    row = {'H_kg_total': 5.0e19, 'H_kg_sealed': 3.0e19, 'H_kg_trapped': 1.0e19}
+    assert escapable_inventory(row, 'H') == pytest.approx(1.0e19, rel=1e-12)
+    row['H_kg_sealed'] = float('nan')
+    assert escapable_inventory(row, 'H') == pytest.approx(4.0e19, rel=1e-12)

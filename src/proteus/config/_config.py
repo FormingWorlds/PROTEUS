@@ -429,6 +429,48 @@ def front_trapping_requires_aragog(instance, attribute, value):
         )
 
 
+def lid_seal_requirements(instance, attribute, value):
+    """The lid seal reads the Aragog mesh, freezes the CALLIOPE chemistry while it holds,
+    and applies unfractionated escape."""
+    if not getattr(getattr(instance.outgas, 'lid_seal', None), 'enabled', False):
+        return
+    interior = instance.interior_energetics.module
+    if interior != 'aragog':
+        raise ValueError(
+            'outgas.lid_seal.enabled = true requires interior_energetics.module = "aragog", '
+            f'not "{interior}". The seal reads the melt fraction and radius of the mesh '
+            'cells that only the Aragog interior exports.'
+        )
+    if instance.params.stop.solid.freeze_volatiles:
+        raise ValueError(
+            'outgas.lid_seal.enabled = true cannot be combined with '
+            'params.stop.solid.freeze_volatiles = true: both freeze the melt inventory. '
+            'Set one of them to false.'
+        )
+    if instance.outgas.vapourise:
+        raise ValueError(
+            'outgas.lid_seal.enabled = true cannot be combined with outgas.vapourise = true: '
+            'the leak sets the surface pressure from the volatile species alone.'
+        )
+    if instance.outgas.module != 'calliope':
+        raise ValueError(
+            'outgas.lid_seal.enabled = true requires outgas.module = "calliope", not '
+            f'"{instance.outgas.module}": the leak rebuilds the pressures as CALLIOPE does.'
+        )
+    if instance.escape.reservoir not in ('outgas', 'bulk'):
+        raise ValueError(
+            'outgas.lid_seal.enabled = true requires escape.reservoir = "outgas" or "bulk", '
+            f'not "{instance.escape.reservoir}": a held step applies unfractionated escape.'
+        )
+    zalmoxis = instance.interior_struct.module == 'zalmoxis'
+    if zalmoxis and not getattr(instance.interior_struct.zalmoxis, 'dry_mantle', True):
+        raise ValueError(
+            'outgas.lid_seal.enabled = true cannot be combined with '
+            'interior_struct.zalmoxis.dry_mantle = false: the structure reads the melt '
+            'volatiles, which the seal holds apart.'
+        )
+
+
 def prevent_desaturation_warns_without_condensates(instance, attribute, value):
     """prevent_desaturation holds nothing unless atmodeller forms condensates."""
     outgas = instance.outgas
@@ -892,6 +934,7 @@ class Config:
         factory=Outgas,
         validator=(
             front_trapping_requires_aragog,
+            lid_seal_requirements,
             prevent_desaturation_warns_without_condensates,
         ),
     )

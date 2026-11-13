@@ -2,14 +2,23 @@
 
 This page answers one question: **where do the volatiles of a planet go during each step of a PROTEUS run, and which part of the code moves them?**
 
-The short answer: in each step, a chemistry solver splits the volatiles of the planet between the atmosphere and the magma ocean. Before that solve, a trapping step can bury part of the volatiles dissolved in the melt in the mantle that froze since the last step. After the solve, an optional step adds rock vapour from the hot melt surface to the atmosphere.
+The short answer: in each step, a chemistry solver splits the volatiles of the planet between the atmosphere and the magma ocean. Before that solve, a trapping step can bury part of the volatiles dissolved in the melt in the mantle that froze since the last step. After the solve, an optional step adds rock vapour from the hot melt surface to the atmosphere. With the optional lid seal, the solver does not run while a closed crust holds the volatiles of the melt; they then reach the atmosphere only by a slow leak.
 
-The first section gives the order of the steps. The later sections explain the species-to-element split, the H$_2$ binodal, rock vapour, trapping, melt drainage, the burial ledger and the limits of the trapping inputs. A section whose part of the code has a Validation case ends with a link to it. For the config keys, see [Escape and outgassing configuration](../Reference/config/escape_outgas.md#outgassing-outgas). For the output columns, see [Output format](../Reference/output.md).
+The first section gives the order of the steps. The later sections explain these parts of the code:
+
+- the species-to-element split;
+- the H$_2$ binodal;
+- rock vapour;
+- trapping, melt drainage and the burial ledger;
+- the seal of the melt under a closed crust, in short; [Volatiles held under a closed crust](lid_seal.md) has the full account;
+- the limits of the trapping inputs.
+
+A section whose part of the code has a Validation case ends with a link to it. For the config keys, see [Escape and outgassing configuration](../Reference/config/escape_outgas.md#outgassing-outgas). For the output columns, see [Output format](../Reference/output.md).
 
 ## Terms used on this page
 
 - **Volatile**: an element or molecule that can be a gas at the surface. PROTEUS tracks 5 volatile elements: H, C, N, O and S. It also tracks 11 species made from them: H$_2$O, CO$_2$, H$_2$, CO, CH$_4$, N$_2$, NH$_3$, S$_2$, SO$_2$, H$_2$S and O$_2$. The noble gases He, Ne, Ar, Kr and Xe are tracked too.
-- **Reservoir**: a place where a volatile can be. Each species and each element has 3: the atmosphere (`_kg_atm`), the melt (`_kg_liquid`) and the solid mantle (`_kg_solid`). The 5 volatile elements have a fourth, `_kg_condensed`, for condensates.
+- **Reservoir**: a place where a volatile can be. Each species and each element has 3: the atmosphere (`_kg_atm`), the melt (`_kg_liquid`) and the solid mantle (`_kg_solid`). The 5 volatile elements have a fourth, `_kg_condensed`, for condensates. With the lid seal, the volatile species and elements and the noble gases also have `_kg_sealed`.
 - **Condensate**: a solid or liquid that forms from the gas at the surface, for example graphite. Only atmodeller makes condensates, and only with `outgas.atmodeller.include_condensates = true`. With `outgas.prevent_desaturation = true`, condensed mass stays condensed: later solves cannot turn it back into gas. With `atmos_clim.surface_d = surface_k = 'saturation'`, the condensed layers form the conductive skin at the surface ([model overview](model.md#atmosphere-climate-agni-janus)).
 - **Element total**: `{e}_kg_total`, the mass of element `{e}` in the whole planet \[kg\]. Here `{e}` stands for an element symbol, and `{sp}` below stands for a species name.
 - **Budget**: the mass of an element that the planet starts with, from the config.
@@ -21,8 +30,9 @@ The first section gives the order of the steps. The later sections explain the s
 - **Oxygen fugacity** (fO$_2$): a measure of how oxidising the melt is, in the form of an effective O$_2$ pressure. PROTEUS gives it relative to the iron-wustite (IW) buffer, the fO$_2$ at which iron metal and FeO are in equilibrium. `outgas.fO2_shift_IW` ([config](../Reference/config/escape_outgas.md#outgassing-outgas)) is that shift in log10 units, so a value of 2 is 100 times the IW fO$_2$.
 - **Mass threshold**: `outgas.mass_thresh` \[kg\]. The chemistry solve treats H, C, N or S with less mass than this as absent. Escape and the desiccation check (see **Desiccated** below) also use it (see [the config reference](../Reference/config/escape_outgas.md#outgassing-outgas)).
 - **Trapping**: the step that moves volatiles from the melt into the mantle that froze in the step, set by `outgas.trap_mode`.
+- **Seal**: the state in which a closed crust holds the volatiles of the melt below it, with `outgas.lid_seal.enabled = true`; the held mass is in `_kg_sealed`. See [Volatiles held under a closed crust](#volatiles-held-under-a-closed-crust).
 - **Trapped (buried) mass**: volatile mass that moved from the melt to the solid mantle when the mantle froze, recorded in `_kg_trapped`. This page uses "trapped" and "buried" for it. See [Volatile trapping](#volatile-trapping-in-the-freezing-mantle).
-- **Desiccated**: the state of a planet that has lost its volatiles. For each volatile and noble gas, the mass that can still escape or outgas is below the mass threshold. Trapped mass, and condensed mass kept with `outgas.prevent_desaturation = true`, do not count.
+- **Desiccated**: the state of a planet that has lost its volatiles. For each volatile and noble gas, the mass that can still escape or outgas is below the mass threshold. Trapped mass, and condensed mass kept with `outgas.prevent_desaturation = true`, do not count. Mass held under a closed lid seal (`_kg_sealed`) does count.
 - **Rock vapour**: gas of rock-forming elements and their compounds, such as SiO, Na, Mg and Fe, above a hot melt surface.
 - **Giant impact**: a collision of the planet with another large body, which adds mass and can melt the mantle again. See [Accretion](model.md#accretion-morrigan).
 - **Initialisation stage**: the first 4 iterations of a run. They set up the starting state, and the mantle does not evolve in them. The time is set back to 0 after each of them except the last, which ends the stage and keeps its time.
@@ -43,18 +53,22 @@ Each iteration of the [coupling loop](coupling_loop.md#execution-order-per-itera
 5. **Outgassing** (`run_outgassing_and_vapourisation`). The chemistry solver splits the inventory between the atmosphere and the melt. If `outgas.vapourise = true`, rock vapour follows.
 6. **Atmosphere climate.** The climate solver reads the updated composition.
 
-The outgassing step takes the first of these 3 paths that applies:
+The outgassing step takes the first of these 4 paths that applies:
 
 - **Desiccated** (`run_desiccated`). This path runs when the planet is desiccated and the escape step has already removed the lost mass.
     - The atmosphere is emptied.
     - The melt is emptied, except with `outgas.trap_mode = "front"`. Then the melt keeps its mass, so that buried mass can return to the melt if the mantle melts again.
     - The solid mantle and the condensates keep their mass.
+    - The held mass of the lid seal is emptied with the atmosphere.
     - Rock vapour can still enter the atmosphere (see [Rock vapour](#rock-vapour-from-the-melt-surface)).
 - **Crystallised** (`run_crystallized`). This path needs `params.stop.solid.freeze_volatiles = true`.
     - It starts when $\Phi$ falls to the solid limit `params.stop.solid.phi_crit` or below. It stays on after that; only a giant impact turns it off.
     - The melt and the atmosphere exchange no volatiles.
     - Escape still removes gas, so the code scales every atmospheric reservoir down by the same fraction. The composition does not change.
     - This path accepts only `escape.reservoir` ([config](../Reference/config/escape_outgas.md#atmospheric-escape-escape)) = `"outgas"` or `"bulk"`; any other value stops the run with an error.
+- **Lid seal** (`run_lid_seal_step`). This path needs `outgas.lid_seal.enabled = true`.
+    - While the seal is open, the chemistry solver runs as on the normal path; then the seal closes if the crust allows it.
+    - While the seal holds, escape is applied to the atmosphere as on the crystallised path, and the held volatiles leak. See [Volatiles held under a closed crust](#volatiles-held-under-a-closed-crust).
 - **Normal** (`run_outgassing`). The chemistry solver runs. This is the usual path while a magma ocean exists.
 
 On the normal path, the step does 3 things:
@@ -324,6 +338,14 @@ At each remelt, the code builds the ledger from the output columns `Phi_global` 
 If the history does not account for all of the trapped mass, the rest returns in proportion to the share of the solid that remelted. With the step index $n$, that share is $(\Phi_n - \Phi_{n-1})/(1 - \Phi_{n-1})$.
 
 **Where this is checked.** [Burial ledger for remelting](../Validation/outgas/burial_ledger.md).
+
+## Volatiles held under a closed crust
+
+**Question.** When a crust closes over the magma ocean, can the volatiles dissolved in the melt still reach the atmosphere?
+
+**Short answer.** With `outgas.lid_seal.enabled = true`, a crust that is thick enough holds the dissolved volatiles in the melt below it: this is the **seal**. While the seal holds, the chemistry is frozen. The held volatiles reach the atmosphere only by a slow leak, which stops at the floor: the mass the melt can hold at the pressure of the atmosphere. [Volatiles held under a closed crust](lid_seal.md) explains when the seal closes and opens, the leak and its floor, and their limits.
+
+**Where this is checked.** [Volatiles under a closed crust](../Validation/outgas/lid_seal.md).
 
 ## Limits of the trapping inputs
 
