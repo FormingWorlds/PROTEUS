@@ -15,6 +15,9 @@ Functions tested:
 - get_C_planet(): Planet's principal moment of inertia from the interior
   density/radius profile, pinned against the uniform-density-sphere analytic
   value and the SPIDER surface-first array-reversal contract.
+- melt_fraction_linear(): Linear-in-temperature melt fraction, clipped to [0, 1]
+- solidification_radius(): Position of the crystallisation front
+- d_solidification_radius_dT(): Front migration rate with temperature
 """
 
 from __future__ import annotations
@@ -25,7 +28,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from proteus.interior_energetics.common import Interior_t
+from proteus.interior_energetics.common import (
+    Interior_t,
+    d_solidification_radius_dT,
+    melt_fraction_linear,
+    solidification_radius,
+)
 
 # Each test patches FWL_DATA and the import-time constant proteus.utils.data.FWL_DATA_DIR,
 # so no table read falls through to the real multi-gigabyte EOS data.
@@ -1495,3 +1503,88 @@ def test_interior_t_starts_with_tau_drain_cap_invalid():
     assert first._tau_drain_cap_valid is False
     first._tau_drain_cap_valid = True
     assert Interior_t(50)._tau_drain_cap_valid is False
+
+
+# ============================================================================
+# Shared interior physics helpers
+# ============================================================================
+# Earth-scale mantle shell and melting curve reused by the melting-curve tests.
+_R_INT = 6.371e6  # m
+_R_CORE = 3.4e6  # m
+_TMP_SOL = 1500.0  # K
+_TMP_LIQ = 2500.0  # K
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_solidification_radius_retreats_monotonically_as_the_mantle_warms():
+    """The crystallisation front sweeps from the surface to the core with heat.
+
+    Boundedness: the front never leaves the mantle shell. Monotonicity: it
+    moves inward with rising temperature, with no reversal anywhere across the
+    mushy zone.
+    """
+    temps = np.linspace(_TMP_SOL - 100.0, _TMP_LIQ + 100.0, 25)
+    radii = [solidification_radius(t, _TMP_SOL, _TMP_LIQ, _R_INT, _R_CORE) for t in temps]
+
+    assert radii[0] == pytest.approx(_R_INT, rel=1e-12)
+    assert radii[-1] == pytest.approx(_R_CORE, rel=1e-12)
+    assert all(_R_CORE - 1e-6 <= r <= _R_INT + 1e-6 for r in radii)
+    assert all(later <= earlier for earlier, later in zip(radii, radii[1:]))
+
+    # Discrimination against a front interpolated linearly in radius instead
+    # of in volume. At the midpoint of the melting curve the volume-weighted
+    # front sits at 5.13e6 m, the linear one at 4.89e6 m.
+    midpoint = solidification_radius(2000.0, _TMP_SOL, _TMP_LIQ, _R_INT, _R_CORE)
+    linear_guess = _R_INT - 0.5 * (_R_INT - _R_CORE)
+    assert midpoint == pytest.approx(
+        (_R_INT**3 - 0.5 * (_R_INT**3 - _R_CORE**3)) ** (1.0 / 3.0), rel=1e-12
+    )
+    assert abs(midpoint - linear_guess) > 1.0e5
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_d_solidification_radius_dT_matches_a_finite_difference():
+    """The analytic front derivative agrees with a central difference.
+
+    Cross-checks the chain rule against a numerical derivative of
+    solidification_radius itself, at three points inside the mushy zone. The
+    derivative is negative everywhere: heating retreats the front inward.
+    """
+    for tmp in (1700.0, 2000.0, 2300.0):
+        analytic = d_solidification_radius_dT(tmp, _TMP_SOL, _TMP_LIQ, _R_INT, _R_CORE)
+        step = 1e-3
+        numeric = (
+            solidification_radius(tmp + step, _TMP_SOL, _TMP_LIQ, _R_INT, _R_CORE)
+            - solidification_radius(tmp - step, _TMP_SOL, _TMP_LIQ, _R_INT, _R_CORE)
+        ) / (2.0 * step)
+
+        assert analytic == pytest.approx(numeric, rel=1e-6)
+        # Sign guard: a flipped sign would advance the front outward on
+        # heating, which the finite difference alone could not catch if both
+        # implementations flipped together.
+        assert analytic < 0.0
+
+    # Degenerate melting curve has no gradient to report.
+    assert d_solidification_radius_dT(2000.0, 2500.0, 2500.0, _R_INT, _R_CORE) == pytest.approx(
+        0.0, abs=1e-30
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_melt_fraction_linear_is_bounded_and_handles_a_degenerate_curve():
+    """Melt fraction stays within [0, 1] and never divides by a zero range.
+
+    A solidus equal to the liquidus is a legal post-construction state (the
+    config validator guards the constructor, not later mutation), so the
+    helper must fall back to a step function rather than raising.
+    """
+    assert melt_fraction_linear(1000.0, _TMP_SOL, _TMP_LIQ) == pytest.approx(0.0, abs=1e-12)
+    assert melt_fraction_linear(3000.0, _TMP_SOL, _TMP_LIQ) == pytest.approx(1.0, rel=1e-12)
+    assert melt_fraction_linear(2000.0, _TMP_SOL, _TMP_LIQ) == pytest.approx(0.5, rel=1e-12)
+
+    # Degenerate curve: a step at the shared temperature, still bounded.
+    assert melt_fraction_linear(2600.0, 2500.0, 2500.0) == pytest.approx(1.0, rel=1e-12)
+    assert melt_fraction_linear(2400.0, 2500.0, 2500.0) == pytest.approx(0.0, abs=1e-12)

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from proteus.config._interior import Aragog, Interior, InteriorDummy, Spider
+from proteus.config._interior import Aragog, Interior, InteriorBoundary, InteriorDummy, Spider
 from proteus.config._params import (
     OutputParams,
     Params,
@@ -306,6 +306,28 @@ def test_aragog_defaults():
     # field. ``TypeError`` from attrs' ``__init__``.
     with _pt.raises(TypeError):
         Aragog(dilatation=True)
+
+
+@pytest.mark.unit
+def test_boundary_melt_model_defaults_to_linear_and_rejects_unknown_models():
+    """The boundary backend keeps its constant melting temperatures unless told otherwise.
+
+    ``melt_model`` defaults to ``"linear"``, so an existing boundary run keeps
+    its single-layer cooling trajectory, and accepts ``"adiabat"`` for the
+    pressure-dependent melting curves. Any other name is rejected at load
+    rather than falling through to one of the two. The constant melting
+    temperatures keep their Schaefer et al. (2016) defaults.
+    """
+    b = InteriorBoundary()
+    assert b.melt_model == 'linear'
+    assert b.T_solidus == pytest.approx(1420.0, rel=0.0)
+    assert b.T_liquidus == pytest.approx(2020.0, rel=0.0)
+    assert InteriorBoundary(melt_model='adiabat').melt_model == 'adiabat'
+    # The interior block carries the boundary defaults through.
+    assert Interior(module='boundary').boundary.melt_model == 'linear'
+    for bad in ('Adiabat', 'isothermal', ''):
+        with pytest.raises(ValueError):
+            InteriorBoundary(melt_model=bad)
 
 
 def test_aragog_core_module_defaults_and_mode_validator():

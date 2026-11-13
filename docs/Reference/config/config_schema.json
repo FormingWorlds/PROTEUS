@@ -6321,6 +6321,25 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.boundary.melt_model",
+      "toml_section": "interior_energetics.boundary",
+      "class": "InteriorBoundary",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"linear\"",
+      "choices": [
+        "adiabat",
+        "linear"
+      ],
+      "bounds": null,
+      "description": "How the mantle melt fraction follows from the potential temperature. With ``\"linear\"`` (default) the mantle is a single isothermal, uniform-density layer whose melt fraction is linear between the constant `T_solidus` and `T_liquidus`. With ``\"adiabat\"`` the potential temperature is integrated down the mantle along an adiabat, on the radial profile written by the interior structure module and with the adiabatic gradient taken from the Zalmoxis equation of state; the melt fraction is the mass integral of the local melt fraction between the pressure-dependent solidus and liquidus: the PALEOS MgSiO3 curves when the structure module is Zalmoxis (solidus set by `interior_struct.zalmoxis.mushy_zone_factor`), otherwise the folder named by `interior_struct.melting_dir`. The latent heat follows from how that melt fraction responds to the potential temperature, and the mantle is handed to the tides modules as ``num_levels - 1`` shells, each with its own melt fraction, temperature and viscosity.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.boundary.T_solidus",
       "toml_section": "interior_energetics.boundary",
       "class": "InteriorBoundary",
@@ -6334,7 +6353,7 @@
           "value": 0
         }
       ],
-      "description": "Mantle solidus temperature [K].",
+      "description": "Mantle solidus temperature [K]. Read only when ``melt_model = \"linear\"``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6355,7 +6374,7 @@
           "value": 0
         }
       ],
-      "description": "Mantle liquidus temperature [K].",
+      "description": "Mantle liquidus temperature [K]. Read only when ``melt_model = \"linear\"``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6476,7 +6495,7 @@
       "default": "true",
       "choices": null,
       "bounds": null,
-      "description": "Always use fallback atmosphere heat capacity?",
+      "description": "Give the atmosphere reservoir that the surface temperature carries the constant `atm_heat_capacity`. With false it takes the layer-mass-weighted mean heat capacity of the last atmosphere solve, so it follows the composition.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6497,7 +6516,7 @@
           "value": 0
         }
       ],
-      "description": "Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].",
+      "description": "Atmosphere heat capacity when `atm_heat_capacity_const` is true, and the fallback before the first atmosphere solve otherwise [J/kg/K].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6686,6 +6705,79 @@
         }
       ],
       "description": "Activation temperature [K] for Vogel-Fulcher-Tammann magma ocean model.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.boundary.include_core_heat_capacity",
+      "toml_section": "interior_energetics.boundary",
+      "class": "InteriorBoundary",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Whether the core's heat capacity (`interior_struct.core_heatcap` times the core mass) is added to the mantle's, so the core cools in step with the mantle as in the dummy backend. With false only the mantle stores and releases heat.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.boundary.sensible_heat",
+      "toml_section": "interior_energetics.boundary",
+      "class": "InteriorBoundary",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"molten\"",
+      "choices": [
+        "molten",
+        "whole"
+      ],
+      "bounds": null,
+      "description": "Which part of a partly molten mantle the sensible heat counts. With ``\"molten\"`` only the molten part cools with the potential temperature (c_p phi M with ``melt_model = \"adiabat\"``, the shell above the solidification front with ``\"linear\"``), the solidification-front picture this backend was built on. With ``\"whole\"`` the whole mantle does (c_p M), as in the dummy backend, which is what the adiabat implies: it moves the temperature of every level, solid or molten. The latent heat of the front is added in both cases.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.boundary.tidal_viscosity",
+      "toml_section": "interior_energetics.boundary",
+      "class": "InteriorBoundary",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"boundary\"",
+      "choices": [
+        "boundary",
+        "kervazo"
+      ],
+      "bounds": null,
+      "description": "Viscosity of each mantle shell handed to the tides modules. With ``\"boundary\"`` it is this backend's own `viscosity_model`, the same viscosity that sets its convective heat flux. With ``\"kervazo\"`` it is the melt-fraction rheology of Kervazo et al. (2021) that the dummy backend hands them, which matches the shear and bulk moduli the interior wrapper sets for every 0-D backend. The convective heat flux always uses `viscosity_model`.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.boundary.viscosity_phi",
+      "toml_section": "interior_energetics.boundary",
+      "class": "InteriorBoundary",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"global\"",
+      "choices": [
+        "global",
+        "top"
+      ],
+      "bounds": null,
+      "description": "Which melt fraction sets the viscosity of the convective heat flux (Rayleigh number, flux and boundary-layer thickness). With ``\"global\"`` it is the mantle's mass-averaged melt fraction. With ``\"top\"`` it is the melt fraction at the top of the mantle on the adiabat, at the structure's top level: the material just beneath the thermal boundary layer, which is what the lid rests on. A lid then forms only once that material passes the rheological transition, not once the mantle average does. Needs ``melt_model = \"adiabat\"``. Heat capacity, latent heat, the reported melt fraction and outgassing always use the mass-averaged melt fraction.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12766,6 +12858,19 @@
       "doc": "BOREAS escape requires a radiative atmosphere (not dummy)."
     },
     {
+      "validator": "boundary_melting_dir_advisory",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_energetics.boundary.melt_model",
+        "interior_energetics.module",
+        "interior_struct"
+      ],
+      "doc": "Advise when a configured melting curve folder is bypassed by the boundary backend."
+    },
+    {
       "validator": "boundary_requires_fixed_surface_state",
       "module": "_config.py",
       "attached_to": [
@@ -13309,6 +13414,8 @@
       "touches": [
         "boundary.T_liquidus",
         "boundary.T_solidus",
+        "boundary.melt_model",
+        "boundary.viscosity_phi",
         "module"
       ],
       "doc": "Validate Boundary backend's solidus/liquidus ordering."

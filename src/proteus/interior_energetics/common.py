@@ -69,6 +69,106 @@ def eval_rheoparam(phi: float, which: str):
     return par.dotl * numer / denom
 
 
+def melt_fraction_linear(tmp: float, tmp_sol: float, tmp_liq: float) -> float:
+    """
+    Mantle melt fraction under a linear-in-temperature melting parameterisation.
+
+    Parameters
+    ----------
+        tmp : float
+            Mantle temperature [K].
+        tmp_sol : float
+            Solidus temperature [K].
+        tmp_liq : float
+            Liquidus temperature [K].
+
+    Returns
+    ----------
+        phi : float
+            Melt fraction, clipped to [0, 1].
+    """
+    if tmp_liq <= tmp_sol:
+        # Degenerate melting curve: the mantle is either wholly solid or wholly
+        # molten, with no mushy zone to interpolate across.
+        return 1.0 if tmp >= tmp_liq else 0.0
+    return float(np.clip((tmp - tmp_sol) / (tmp_liq - tmp_sol), 0.0, 1.0))
+
+
+def solidification_radius(
+    tmp: float, tmp_sol: float, tmp_liq: float, r_int: float, r_core: float
+) -> float:
+    """
+    Radius of the crystallisation front within the mantle.
+
+    The melt fraction is read as a volume fraction of the mantle shell, so the
+    front sits at the core-mantle boundary for a wholly molten mantle and at the
+    surface for a wholly solid one.
+
+    Parameters
+    ----------
+        tmp : float
+            Mantle temperature [K].
+        tmp_sol : float
+            Solidus temperature [K].
+        tmp_liq : float
+            Liquidus temperature [K].
+        r_int : float
+            Radius of the top of the mantle [m].
+        r_core : float
+            Radius of the core-mantle boundary [m].
+
+    Returns
+    ----------
+        r_sol : float
+            Solidification radius [m].
+    """
+    phi = melt_fraction_linear(tmp, tmp_sol, tmp_liq)
+
+    if phi >= 1.0:
+        return r_core
+    if phi <= 0.0:
+        return r_int
+    return float((r_int**3 - phi * (r_int**3 - r_core**3)) ** (1.0 / 3.0))
+
+
+def d_solidification_radius_dT(
+    tmp: float, tmp_sol: float, tmp_liq: float, r_int: float, r_core: float
+) -> float:
+    """
+    Derivative of the solidification radius with respect to mantle temperature.
+
+    Obtained by the chain rule from `solidification_radius`, using
+    dphi/dT = 1 / (tmp_liq - tmp_sol) within the mushy zone.
+
+    Parameters
+    ----------
+        tmp : float
+            Mantle temperature [K].
+        tmp_sol : float
+            Solidus temperature [K].
+        tmp_liq : float
+            Liquidus temperature [K].
+        r_int : float
+            Radius of the top of the mantle [m].
+        r_core : float
+            Radius of the core-mantle boundary [m].
+
+    Returns
+    ----------
+        drdt : float
+            Derivative dr_sol/dT [m K-1]. Negative: the front retreats inward
+            as the mantle warms.
+    """
+    if tmp_liq <= tmp_sol:
+        return 0.0
+
+    r_sol = solidification_radius(tmp, tmp_sol, tmp_liq, r_int, r_core)
+    volume_diff = r_int**3 - r_core**3
+    tmp_range = tmp_liq - tmp_sol
+
+    return float(-volume_diff / (3.0 * tmp_range * r_sol**2))
+
+
 def _verify_initial_entropy(
     eos: EntropyEOS,
     P: float,

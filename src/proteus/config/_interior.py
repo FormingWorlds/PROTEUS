@@ -127,6 +127,12 @@ def valid_interiorboundary(instance, attribute, value):
     if tliq <= tsol:
         raise ValueError(f'Boundary liquidus ({tliq}K) must be greater than solidus ({tsol}K)')
 
+    if instance.boundary.viscosity_phi == 'top' and instance.boundary.melt_model != 'adiabat':
+        raise ValueError(
+            'interior_energetics.boundary.viscosity_phi = "top" needs '
+            'melt_model = "adiabat" (the linear model has no depth profile)'
+        )
+
 
 @define
 class Spider:
@@ -710,10 +716,29 @@ class InteriorBoundary:
 
     Attributes
     ----------
+    melt_model: str
+        How the mantle melt fraction follows from the potential temperature.
+        With ``"linear"`` (default) the mantle is a single isothermal,
+        uniform-density layer whose melt fraction is linear between the
+        constant `T_solidus` and `T_liquidus`. With ``"adiabat"`` the potential
+        temperature is integrated down the mantle along an adiabat, on the
+        radial profile written by the interior structure module and with the
+        adiabatic gradient taken from the Zalmoxis equation of state; the melt
+        fraction is the mass integral of the local melt fraction between the
+        pressure-dependent solidus and liquidus: the PALEOS MgSiO3 curves when
+        the structure module is Zalmoxis (solidus set by
+        `interior_struct.zalmoxis.mushy_zone_factor`), otherwise the folder
+        named by `interior_struct.melting_dir`. The
+        latent heat follows from how that melt fraction responds to the
+        potential temperature, and the mantle is handed to the tides modules as
+        ``num_levels - 1`` shells, each with its own melt fraction, temperature
+        and viscosity.
     T_solidus: float
-        Mantle solidus temperature [K].
+        Mantle solidus temperature [K]. Read only when
+        ``melt_model = "linear"``.
     T_liquidus: float
-        Mantle liquidus temperature [K].
+        Mantle liquidus temperature [K]. Read only when
+        ``melt_model = "linear"``.
     critical_rayleigh_number: float
         Critical Rayleigh number for onset of convection [-].
     nusselt_exponent: float
@@ -721,9 +746,12 @@ class InteriorBoundary:
     silicate_heat_capacity: float
         Silicate heat capacity [J/kg/K].
     atm_heat_capacity_const: bool
-        Always use fallback atmosphere heat capacity?
+        Give the atmosphere reservoir that the surface temperature carries the constant
+        `atm_heat_capacity`. With false it takes the layer-mass-weighted mean heat capacity
+        of the last atmosphere solve, so it follows the composition.
     atm_heat_capacity: float
-        Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].
+        Atmosphere heat capacity when `atm_heat_capacity_const` is true, and the fallback
+        before the first atmosphere solve otherwise [J/kg/K].
     silicate_density: float or None
         Deprecated and ignored: the boundary interior takes its mantle mass and radius from the structure.
     core_density: float or None
@@ -750,10 +778,44 @@ class InteriorBoundary:
         Viscosity prefactor [Pa s] for Vogel-Fulcher-Tammann magma ocean model.
     viscosity_activation_temp: float
         Activation temperature [K] for Vogel-Fulcher-Tammann magma ocean model.
+    include_core_heat_capacity: bool
+        Whether the core's heat capacity (`interior_struct.core_heatcap` times
+        the core mass) is added to the mantle's, so the core cools in step with
+        the mantle as in the dummy backend. With false only the mantle stores
+        and releases heat.
+    sensible_heat: str
+        Which part of a partly molten mantle the sensible heat counts. With
+        ``"molten"`` only the molten part cools with the potential temperature
+        (c_p phi M with ``melt_model = "adiabat"``, the shell above the
+        solidification front with ``"linear"``), the solidification-front
+        picture this backend was built on. With ``"whole"`` the whole mantle
+        does (c_p M), as in the dummy backend, which is what the adiabat
+        implies: it moves the temperature of every level, solid or molten. The
+        latent heat of the front is added in both cases.
+    tidal_viscosity: str
+        Viscosity of each mantle shell handed to the tides modules. With
+        ``"boundary"`` it is this backend's own `viscosity_model`, the same
+        viscosity that sets its convective heat flux. With ``"kervazo"`` it is
+        the melt-fraction rheology of Kervazo et al. (2021) that the dummy
+        backend hands them, which matches the shear and bulk moduli the
+        interior wrapper sets for every 0-D backend. The convective heat flux
+        always uses `viscosity_model`.
+    viscosity_phi: str
+        Which melt fraction sets the viscosity of the convective heat flux
+        (Rayleigh number, flux and boundary-layer thickness). With
+        ``"global"`` it is the mantle's mass-averaged melt fraction. With
+        ``"top"`` it is the melt fraction at the top of the mantle on the
+        adiabat, at the structure's top level: the material just beneath the
+        thermal boundary layer, which is what the lid rests on. A lid then forms
+        only once that material passes the rheological transition, not once the
+        mantle average does. Needs ``melt_model = "adiabat"``. Heat capacity,
+        latent heat, the reported melt fraction and outgassing always use the
+        mass-averaged melt fraction.
     logging: bool
         Whether to create diagnostic CSV data files from boundary interior module.
     """
 
+    melt_model: str = field(default='linear', validator=in_(('adiabat', 'linear')))
     T_solidus: float = field(default=1420.0, validator=ge(0))
     T_liquidus: float = field(default=2020.0, validator=gt(0))
 
@@ -781,6 +843,12 @@ class InteriorBoundary:
     # Arrhenius magma ocean parameters (Vogel-Fulcher-Tammann)
     viscosity_prefactor: float = field(default=2.4e-4, validator=gt(0))  # Pa s
     viscosity_activation_temp: float = field(default=4600, validator=gt(0))  # K
+
+    # Choices the dummy backend makes differently; the defaults keep this backend's own.
+    include_core_heat_capacity: bool = field(default=False)
+    sensible_heat: str = field(default='molten', validator=in_(('molten', 'whole')))
+    tidal_viscosity: str = field(default='boundary', validator=in_(('boundary', 'kervazo')))
+    viscosity_phi: str = field(default='global', validator=in_(('global', 'top')))
 
     logging: bool = field(default=False)
 

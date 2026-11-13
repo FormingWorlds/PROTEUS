@@ -2806,6 +2806,10 @@
           "condition": "interior_energetics.module = \"aragog\""
         },
         {
+          "file": "src/proteus/interior_energetics/boundary.py",
+          "condition": "interior_energetics.module = \"boundary\""
+        },
+        {
           "file": "src/proteus/interior_energetics/spider.py",
           "condition": "interior_energetics.module = \"spider\""
         }

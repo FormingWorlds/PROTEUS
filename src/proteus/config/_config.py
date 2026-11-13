@@ -830,6 +830,43 @@ def planet_fO2_source_compat(instance, attribute, value):
             )
 
 
+def boundary_melting_dir_advisory(instance, attribute, value):
+    """Advise when a configured melting curve folder is bypassed by the boundary backend.
+
+    With the Zalmoxis structure module, the adiabat melt model of the boundary
+    backend always uses the PALEOS solidus and liquidus, so a
+    `interior_struct.melting_dir` set alongside is not read by the energetics.
+    Nothing is changed; the advisory makes the substitution visible, and names
+    the case where the structure solve still reads the folder.
+    """
+    if instance.interior_energetics.module != 'boundary':
+        return
+    if instance.interior_energetics.boundary.melt_model != 'adiabat':
+        return
+
+    struct = instance.interior_struct
+    if struct.module != 'zalmoxis' or struct.melting_dir is None:
+        return
+
+    message = (
+        "interior_struct.melting_dir = '%s' is not read by the 'boundary' interior "
+        'backend: with the Zalmoxis structure module its adiabat melt model uses '
+        'the PALEOS MgSiO3 liquidus and a solidus of %.2f x liquidus '
+        '(interior_struct.zalmoxis.mushy_zone_factor).'
+    )
+    args = [struct.melting_dir, float(struct.zalmoxis.mushy_zone_factor)]
+
+    mantle_eos = struct.zalmoxis.mantle_eos
+    if not mantle_eos.startswith('PALEOS'):
+        message += (
+            " The structure solve with mantle_eos = '%s' still reads the folder, "
+            'so the structure and the energetics use different melting curves.'
+        )
+        args.append(mantle_eos)
+
+    log.warning(message, *args)
+
+
 def boundary_requires_fixed_surface_state(instance, attribute, value):
     """Boundary backend assumes a fixed surface state coupling."""
     if (instance.interior_energetics.module == 'boundary') and (
@@ -922,6 +959,7 @@ class Config:
         validator=(
             tides_enabled_orbit,
             boundary_requires_fixed_surface_state,
+            boundary_melting_dir_advisory,
             energetics_needs_a_thermal_mantle_eos,
             aragog_needs_melting_curves,
             dummy_struct_mantle_eos,
