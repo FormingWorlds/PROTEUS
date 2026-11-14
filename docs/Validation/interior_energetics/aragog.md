@@ -30,10 +30,10 @@ The tests read this file; they do not run PROTEUS.
 
 | Test id | Reference | Scope | Last compared |
 |---|---|---|---|
-| `tests/interior_energetics/test_mixing_length_validation.py::test_the_constant_length_keeps_the_cmb_flux_coupled_on_every_mesh` | Heat leaves a hot core under a convecting mantle; the same result on every mesh | `constant` on 4 meshes: no 2 dips in a row, no step of $T_\mathrm{cmb}$ below -10 K, $T_\mathrm{cmb}$ at 100 kyr within 25 K. | 2026-11-14 |
+| `tests/interior_energetics/test_mixing_length_validation.py::test_the_constant_length_keeps_the_cmb_flux_coupled_on_every_mesh` | Heat leaves a hot core under a convecting mantle; the same result on every mesh | `constant` on 4 meshes: no 2 dips in a row, no step of $T_\mathrm{cmb}$ below -10 K after 2 kyr, $T_\mathrm{cmb}$ at 100 kyr within 25 K. | 2026-11-14 |
 | `tests/interior_energetics/test_mixing_length_validation.py::test_the_nearest_length_decouples_on_80_nodes_and_on_the_3000_m_cell_only` | The same requirement, shown not met by `nearest` | `nearest` on 3 meshes: dips for more than 10 kyr on 2 meshes, none on the finest. | 2026-11-14 |
 | `tests/interior_energetics/test_mixing_length_validation.py::test_the_constant_length_keeps_the_flux_coupled_with_the_rheology_on` | As the first case | `constant` with the rheology on, against `nearest`. | 2026-11-14 |
-| `tests/interior_energetics/test_mixing_length_validation.py::test_a_15_earth_mass_planet_keeps_its_core_temperature_under_the_default` | A run of the same configuration that sets `constant` in its file | 1.5 Earth masses: $T_\mathrm{cmb}$ at 300 kyr within 1 K of 5199.9 K. | 2026-11-14 |
+| `tests/interior_energetics/test_mixing_length_validation.py::test_a_15_earth_mass_planet_keeps_its_core_temperature_under_the_default` | A run of the same configuration that sets `constant` in its file | 1.5 Earth masses: $T_\mathrm{cmb}$ at 300 kyr within 1 K of 5199.9 K, no 2 dips in a row. | 2026-11-14 |
 
 ## The constant length keeps the heat flux out of the core on every mesh
 
@@ -45,7 +45,7 @@ The test fails if, on any of the 4 meshes, 2 rows in a row have $F_\mathrm{cmb}$
 **What it tests.**
 4 runs with `constant`: uniform meshes of 80 and 160 nodes, and meshes of 80 nodes with a CMB cell of 1500 m and of 3000 m.
 The 3000 m cell is the default of PROTEUS.
-After 10 kyr, no 2 consecutive rows may be dips, and no step of $T_\mathrm{cmb}$ between 2 rows may fall by more than 10 K.
+After 10 kyr, no 2 consecutive rows may be dips; after 2 kyr, no step of $T_\mathrm{cmb}$ between 2 rows may fall by more than 10 K.
 $T_\mathrm{cmb}$ at 100 kyr of the 4 runs must lie within 25 K of each other.
 The test also asserts that the uniform meshes have no dip, and that both meshes with a CMB cell have at least 1.
 
@@ -131,7 +131,7 @@ The test fails if `constant` loses the flux in this setup.
 
 **What it tests.**
 The 3000 m CMB cell with the rheology on (`interior_energetics.aragog.rheology.enabled = true`), once with `constant` and once with `nearest`.
-For `constant`, no 2 consecutive rows may be dips after 10 kyr, and no step of $T_\mathrm{cmb}$ may fall by more than 10 K.
+For `constant`, no 2 consecutive rows may be dips after 10 kyr, and no step of $T_\mathrm{cmb}$ may fall by more than 10 K after 2 kyr.
 The `nearest` run is shown for comparison; the test does not bound it.
 
 **How we know the right answer.**
@@ -165,7 +165,8 @@ The test fails if the run under the default does not reach the core temperature 
 **What it tests.**
 The 1.5 Earth-mass configuration with 80 nodes and the melt-solid mixture viscosity for melt separation (`separation_viscosity = "mixture"`), run for 300 kyr without `mixing_length` in its configuration, so under the default.
 On the uniform mesh, $T_\mathrm{cmb}$ at 300 kyr must be 5199.9 K within 1 K, and no row may have $|F_\mathrm{cmb}|$ below 1 W m$^{-2}$.
-On the default mesh with the 3000 m CMB cell, no 2 consecutive rows may be dips.
+On both meshes, the uniform one and the default one with the 3000 m CMB cell, no 2 consecutive rows may be dips after 10 kyr.
+The test does not bound the steps of $T_\mathrm{cmb}$ between rows in this case.
 
 **How we know the right answer.**
 The reference is a run of the same configuration that sets `mixing_length = "constant"` in its file; it reaches 5199.9 K at 300 kyr.
@@ -184,7 +185,7 @@ The dot at 300 kyr marks 5199.9 K, the value of the reference run on the uniform
 A pass means that the uniform line ends on the dot.
 
 **Known limit.**
-The first case also asks for no step of $T_\mathrm{cmb}$ below -10 K; this run does not meet that row.
+The steps of $T_\mathrm{cmb}$ between rows are not a measure of coupling in this run, so the 10 K bound of the first case does not apply.
 The core cools smoothly, by up to 46 K per kyr early on and by 2.6 K per kyr at 100 kyr, and the rows are up to 4000 yr apart.
 So 28 steps on the uniform mesh and 29 on the default mesh fall by more than 10 K.
 The largest, -39.7 K, comes at 3.6 kyr, where the rows are 860 yr apart; the reference run has the same step.
@@ -192,7 +193,7 @@ $F_\mathrm{cmb}$ is at least 667 W m$^{-2}$ at each of these steps, and about 13
 
 ??? info "Test details"
     - Reference: a run of the same configuration that sets `constant` in its file: $T_\mathrm{cmb}$ = 5199.9 K at 300 kyr.
-    - Tolerance: 1 K at 300 kyr; 0 rows with $|F_\mathrm{cmb}|$ below 1 W m$^{-2}$; at most 1 dip in a row on the default mesh.
+    - Tolerance: 1 K at 300 kyr; 0 rows with $|F_\mathrm{cmb}|$ below 1 W m$^{-2}$ on the uniform mesh; at most 1 dip in a row after 10 kyr on both meshes.
     - Test id: `tests/interior_energetics/test_mixing_length_validation.py::test_a_15_earth_mass_planet_keeps_its_core_temperature_under_the_default`
     - Command: `pytest -m reference_pinned tests/interior_energetics/test_mixing_length_validation.py --validation-plots`
 

@@ -99,7 +99,7 @@ def _flux_figure(cases, title):
 @pytest.mark.physics_invariant
 def test_the_constant_length_keeps_the_cmb_flux_coupled_on_every_mesh(validation_plot):
     """Under 'constant' no 2 consecutive rows after 10 kyr have F_cmb < 100 W m-2 and no
-    T_cmb drop between rows exceeds 10 K, on 4 meshes of the lid-seal tutorial; T_cmb at
+    T_cmb drop between rows after 2 kyr exceeds 10 K, on 4 meshes of the lid-seal tutorial; T_cmb at
     100 kyr of the 4 meshes lies within 25 K. Single-row dips occur only with a CMB cell."""
     found = {case: TOOL.metrics(_case(case)) for case in TUTORIAL_CONSTANT}
     for case, m in found.items():
@@ -160,12 +160,14 @@ def test_the_constant_length_keeps_the_flux_coupled_with_the_rheology_on(validat
 @pytest.mark.physics_invariant
 def test_a_15_earth_mass_planet_keeps_its_core_temperature_under_the_default(validation_plot):
     """The 1.5 Earth-mass case under the default reaches T_cmb = 5199.9 K at 300 kyr on the
-    uniform mesh, as a run that sets 'constant' in its file does, with no row of |F_cmb| < 1 W m-2; on the
-    default mesh its flux stays coupled as above."""
+    uniform mesh, as a run that sets 'constant' in its file does, with no row of |F_cmb| < 1 W m-2;
+    on both meshes no 2 consecutive rows after 10 kyr have F_cmb < 100 W m-2. The T_cmb steps
+    between rows are not bounded here: the early cooling is fast and the rows are far apart."""
     uniform = TOOL.metrics(_case('sept_uniform'))
     assert uniform['t_end'] == pytest.approx(3e5, abs=1.0)
     assert uniform['T_end'] == pytest.approx(5199.9, abs=1.0)
     assert uniform['n_below_1'] == 0
+    assert uniform['longest_low'] <= 1, uniform['dips']
     default = TOOL.metrics(_case('sept_default'))
     assert default['longest_low'] <= 1, default['dips']
 
