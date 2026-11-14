@@ -3541,11 +3541,7 @@ def zalmoxis_solver(
         _seed_kw = {}
         if not _MAIN_TAKES_ADIABAT_SEED:
             _log_no_adiabat_seed(_SEED_SIGNATURE)
-        if (
-            _seed_match
-            and _MAIN_TAKES_ADIABAT_SEED
-            and _density_cache.get('pressure') is not None
-        ):
+        elif _seed_match and _density_cache.get('pressure') is not None:
             # Zalmoxis uses it only when it computes the adiabat itself (start-up solves)
             _seed_kw['adiabat_seed'] = {
                 k: _density_cache[k] for k in ('radii', 'pressure', 'mass_enclosed')
