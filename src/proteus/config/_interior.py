@@ -515,7 +515,7 @@ class Aragog:
     melt fraction instead, which is why the default here is 'mixture'
     while Aragog's own default stays 'melt' for SPIDER parity. The
     regime boundaries are the porosities where adjacent permeability
-    laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c). The melt
+    laws cross (Bower et al. (2018)[^cite-bower2018], Section 2.1, Eqs. 13a to 13c). The melt
     drainage of front trapping (outgas.trap_mode 'front') takes the melt
     viscosity whatever this setting."""
     separation_buoyancy: str = field(
@@ -962,9 +962,8 @@ class Interior:
     trans_mixing: bool
         Include the chemical mixing flux.
     mixing_length: str
-        Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle
-        depth, as in the simplified model of Bower et al. (2018)[^cite-bower2018]) or 'nearest'
-        (distance to the nearest boundary). A resume that changes the recorded value is
+        Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle depth at
+        every node) or 'nearest' (distance to the nearest boundary). A resume that changes the recorded value is
         refused unless interior_energetics.aragog.allow_resume_law_change is true.
     kappah_floor: float
         Eddy diffusivity floor [m2 s-1]; prevents mixing-length transport
@@ -1205,10 +1204,10 @@ class Interior:
     etc.). Distinct from ``[interior_energetics.spider].matprop_smooth_width``
     which is SPIDER's corresponding setting for its own solver."""
 
-    # Core thermal model (Bower+2018 Table 2).
+    # Core thermal model (Bower et al. 2018, Eq. 20 and Table 2).
     core_tfac_avg: float = field(default=1.147, validator=gt(0))
-    """Core T_avg / T_cmb ratio from adiabatic gradient (Bower+2018
-    Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg.
+    """Core T_avg / T_cmb ratio of an isentropic core (Bower et al. (2018)[^cite-bower2018],
+    Eq. 20 and Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg.
     SPIDER derives its own internally."""
 
     # Diagnostic flag for T_core investigations.

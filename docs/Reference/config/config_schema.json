@@ -5530,7 +5530,7 @@
         "mixture"
       ],
       "bounds": null,
-      "description": "Drag viscosity for the gravitational-separation velocity v_rel = |dRho| g F(phi) / eta. 'melt' (fixed single-phase liquid viscosity, SPIDER parity) keeps separation active below the rheological transition in coupled caps-off runs, which collapses the CMB temperature; 'mixture' (rheological-transition-blended bulk viscosity) ties the drag viscosity to the same solid-fraction rise that stiffens the bulk rheology, so separation locks up at the same melt fraction instead, which is why the default here is 'mixture' while Aragog's own default stays 'melt' for SPIDER parity. The regime boundaries are the porosities where adjacent permeability laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c). The melt drainage of front trapping (outgas.trap_mode 'front') takes the melt viscosity whatever this setting.",
+      "description": "Drag viscosity for the gravitational-separation velocity v_rel = |dRho| g F(phi) / eta. 'melt' (fixed single-phase liquid viscosity, SPIDER parity) keeps separation active below the rheological transition in coupled caps-off runs, which collapses the CMB temperature; 'mixture' (rheological-transition-blended bulk viscosity) ties the drag viscosity to the same solid-fraction rise that stiffens the bulk rheology, so separation locks up at the same melt fraction instead, which is why the default here is 'mixture' while Aragog's own default stays 'melt' for SPIDER parity. The regime boundaries are the porosities where adjacent permeability laws cross (Bower et al. (2018)[^cite-bower2018], Section 2.1, Eqs. 13a to 13c). The melt drainage of front trapping (outgas.trap_mode 'front') takes the melt viscosity whatever this setting.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -6809,7 +6809,7 @@
         "nearest"
       ],
       "bounds": null,
-      "description": "Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle depth, as in the simplified model of Bower et al. (2018)[^cite-bower2018]) or 'nearest' (distance to the nearest boundary). A resume that changes the recorded value is refused unless interior_energetics.aragog.allow_resume_law_change is true.",
+      "description": "Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle depth at every node) or 'nearest' (distance to the nearest boundary). A resume that changes the recorded value is refused unless interior_energetics.aragog.allow_resume_law_change is true.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 3,
@@ -7701,7 +7701,7 @@
           "value": 0
         }
       ],
-      "description": "Core T_avg / T_cmb ratio from adiabatic gradient (Bower+2018 Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg. SPIDER derives its own internally.",
+      "description": "Core T_avg / T_cmb ratio of an isentropic core (Bower et al. (2018)[^cite-bower2018], Eq. 20 and Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg. SPIDER derives its own internally.",
       "doc_source": "field_docstring",
       "group_order": 8,
       "group_position": 0,
