@@ -14,7 +14,7 @@ step-by-step guide or the advice below,
 | `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
 | `was written before N column(s) of the current output schema existed` | [Resuming an older run](#resuming-a-run-written-by-an-older-proteus) |
 | `Resume: no Zalmoxis structure file matches the helpfile row` | [Resume stops on the Zalmoxis structure](#resume-stops-no-zalmoxis-structure-file-matches-the-row) |
-| `interior_energetics.aragog.<law> is ... but the run was written with` or `... is not recorded in`, after `Resume refused:` | [Resume stops on a separation law](#resume-stops-on-a-separation-law) |
+| `interior_energetics.aragog.<law>` or `interior_energetics.mixing_length is ... but the run was written with`, or `... is not recorded in`, after `Resume refused:` | [Resume stops on a separation law](#resume-stops-on-a-separation-law) |
 | `Resume: the interior snapshot at t = ... is on an earlier structure` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
 | `Resume: a structure update was pending at the stop` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
 | `the sub-grid lid restarts as the phantom lid` / `Resume: the lid of the snapshot at t = ... yr is refused` | [A resumed run with the sub-grid lid](#a-resumed-run-with-the-sub-grid-lid) |
@@ -113,6 +113,15 @@ The run's `init_coupler.toml` records the config of its last start; a resume wri
 A record that names the Aragog module and lacks `separation_viscosity` counts as `'melt'`. Any other law the record does not hold must be set in the config file: a `separation_buoyancy` it lacks, a `separation_viscosity` it lacks when it names no interior module, and both laws when `init_coupler.toml` is missing or unreadable or names another interior module (as after a resume with `interior_energetics.module = 'dummy'`). The allow switch does not cover them. A run without a recorded `separation_buoyancy` ran under `'solid'` with an aragog below 26.10.22 and under `'mixture'` from 26.10.22; each start writes the aragog version to its `proteus_NN.log`.
 
 The same check keeps the solid rheology (`interior_energetics.aragog.rheology.enabled`) and the sub-grid lid (`interior_energetics.aragog.lid_mush_base`) of the run, with the same allow switch. A record that names the Aragog module and lacks either counts as off. A missing record, or one that names no module and holds no Aragog table, leaves both unchecked, with a note in the log.
+
+The same check keeps the mixing length (`interior_energetics.mixing_length`) of an Aragog run and of a SPIDER run. The default is `'constant'`, so a run that was written with `'nearest'` and is resumed with a config file that does not set the field stops with status 20:
+
+```console
+Resume refused:
+  interior_energetics.mixing_length is 'constant' (the default; run.toml does not set it), but the run was written with 'nearest' (output/run/init_coupler.toml); set it to 'nearest' to keep the law, or set interior_energetics.aragog.allow_resume_law_change = true to switch it at the resume
+```
+
+Set `mixing_length = 'nearest'` in the `[interior_energetics]` table of the config file to continue under the law of the run, or set `interior_energetics.aragog.allow_resume_law_change = true` to switch to `'constant'` at the resume row. The switch also covers a SPIDER run.
 
 ### A resumed run and the uninterrupted run {#a-resumed-run-and-the-uninterrupted-run}
 
