@@ -1,10 +1,16 @@
-"""Store and measure the core-mantle boundary flux of the mixing-length validation runs.
+"""Store and measure the core-mantle boundary (CMB) heat flux of the mixing-length validation runs.
 
-The runs are the lid-seal tutorial (``input/tutorials/tutorial_lid_seal.toml``) for 100 kyr on
-5 meshes with each mixing length, with the rheology on, and the 1.5 Earth-mass configuration of
-the September runs for 300 kyr under the default. ``main`` writes ``Time`` [yr], ``T_cmb``
-[K] and ``F_cmb`` [W m-2, positive out of the core] of every helpfile row of each run into one
-compressed ``.npz``; ``metrics`` measures a case from it.
+Each case is one PROTEUS run in the folder of its name under the output directory. The 10
+cases of 1 Earth mass run ``input/tutorials/tutorial_lid_seal.toml`` to 100 kyr
+(``params.stop.time.maximum = 1e5``) with the keys of their description set:
+``interior_energetics.num_levels`` (80 or 160), ``interior_energetics.aragog.cmb_cell_thickness``
+(0 for the uniform mesh, 1500 or 3000 m), ``interior_energetics.mixing_length``, and for the
+rheology pair ``interior_energetics.aragog.rheology.enabled = true``; the round-off case also
+sets ``planet.mass_tot = 1.000000000001``. The 2 cases of 1.5 Earth masses run
+``planet_1p5_earth.toml`` of this folder to 300 kyr under the default mixing length; the
+default-mesh case leaves out its ``cmb_cell_thickness = 0``. ``main`` writes ``Time`` [yr],
+``T_cmb`` [K] and ``F_cmb`` [W m-2, positive out of the core] of every helpfile row of each run
+into one compressed ``.npz``; ``metrics`` measures a case from it.
 
 Usage::
 
@@ -21,30 +27,25 @@ import pandas as pd
 
 from proteus.utils.coupler import read_helpfile_table
 
-# case: (run folder under the output directory, description)
+# case: description; the run folder has the name of the case
 CASES = {
-    'u80_nearest': ('dev3_V_u80_nearest', 'uniform mesh, 80 nodes, nearest'),
-    'u80_constant': ('dev3_V_u80_constant', 'uniform mesh, 80 nodes, constant'),
-    'u160_nearest': ('dev3_V_u160_nearest', 'uniform mesh, 160 nodes, nearest'),
-    'u160_constant': ('dev3_V_u160_constant', 'uniform mesh, 160 nodes, constant'),
-    'c3000_nearest': ('dev3_V_c3000_nearest', '3000 m CMB cell, 80 nodes, nearest'),
-    'c3000_constant': ('dev3_V_c3000_constant', '3000 m CMB cell, 80 nodes, constant'),
-    'c1500_constant': ('dev3_V_c1500_constant', '1500 m CMB cell, 80 nodes, constant'),
-    'c3000_constant_roundoff': (
-        'dev3_V_c3000_constant_pert',
-        '3000 m CMB cell, 80 nodes, constant, planet mass changed by 1e-12',
-    ),
-    'rheology_nearest': ('dev3_V_rh_nearest', 'rheology on, 3000 m CMB cell, nearest'),
-    'rheology_constant': ('dev3_V_rh_constant', 'rheology on, 3000 m CMB cell, constant'),
-    'sept_uniform': ('dev3_V_sept_uni', '1.5 Earth masses, uniform mesh, default'),
-    'sept_default': ('dev3_V_sept_default', '1.5 Earth masses, default mesh, default'),
+    'u80_nearest': 'uniform mesh, 80 nodes, nearest',
+    'u80_constant': 'uniform mesh, 80 nodes, constant',
+    'u160_nearest': 'uniform mesh, 160 nodes, nearest',
+    'u160_constant': 'uniform mesh, 160 nodes, constant',
+    'c3000_nearest': '3000 m CMB cell, 80 nodes, nearest',
+    'c3000_constant': '3000 m CMB cell, 80 nodes, constant',
+    'c1500_constant': '1500 m CMB cell, 80 nodes, constant',
+    'c3000_constant_roundoff': '3000 m CMB cell, 80 nodes, constant, planet mass changed by 1e-12',
+    'rheology_nearest': 'rheology on, 3000 m CMB cell, 80 nodes, nearest',
+    'rheology_constant': 'rheology on, 3000 m CMB cell, 80 nodes, constant',
+    'm1p5_uniform': '1.5 Earth masses, uniform mesh, default',
+    'm1p5_default': '1.5 Earth masses, default mesh, default',
 }
+COLUMNS = ('Time', 'T_cmb', 'F_cmb')
 LOW_FLUX = 100.0  # W m-2; a row below it counts as a dip of the CMB flux
 T_COUNT = 1.0e4  # yr; rows after this time are counted (the start transient is earlier)
 T_STEP = 2.0e3  # yr; steps of T_cmb after this time are measured
-
-
-COLUMNS = ('Time', 'T_cmb', 'F_cmb')
 
 
 def read_case(path, case: str) -> pd.DataFrame:
@@ -98,8 +99,8 @@ def main(argv=None) -> int:
     ap.add_argument('--aragog', required=True, help='aragog commit of the runs')
     a = ap.parse_args(argv)
     arrays = {'source': np.array(f'PROTEUS commit {a.commit}, aragog commit {a.aragog}')}
-    for case, (folder, _) in CASES.items():
-        hf = read_helpfile_table(a.output / folder / 'runtime_helpfile.csv')
+    for case in CASES:
+        hf = read_helpfile_table(a.output / case / 'runtime_helpfile.csv')
         arrays |= {f'{case}.{c}': hf[c].to_numpy(float) for c in COLUMNS}
     a.npz.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(a.npz, **arrays)

@@ -13,6 +13,7 @@ stores them: ``tools/verification/mixing_length/cmb_flux.py``. See
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -57,7 +58,7 @@ def _case(case):
     return TOOL.read_case(DATA, case)
 
 
-def _plotted_rows(frame, points=250):
+def _plotted_rows(frame, points=180):
     """Rows after 2 kyr to draw: about ``points`` rows spread evenly plus each dip row and its
     2 neighbours, so that every dip the tests count is drawn."""
     t, f = frame.Time.to_numpy(), frame.F_cmb.to_numpy()
@@ -68,21 +69,24 @@ def _plotted_rows(frame, points=250):
 
 
 def _flux_figure(cases, title):
-    """Return a factory for |F_cmb| on a log axis against time, one line per case."""
+    """Return a factory for |F_cmb| on a log axis against time, one line per case; a triangle
+    marks each drawn row with F_cmb < 0, which the log axis would otherwise show as positive."""
 
     def figure():
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(figsize=(8, 4.5))
+        negative = False
         for case in cases:
             frame = _case(case)
             late = _plotted_rows(frame)
-            ax.plot(
-                frame.Time[late] / 1e3,
-                np.abs(frame.F_cmb[late]),
-                lw=1,
-                label=_label(case),
-            )
+            t, f = frame.Time[late] / 1e3, frame.F_cmb[late]
+            (line,) = ax.plot(t, np.abs(f), lw=1, label=_label(case))
+            neg = f < 0
+            ax.plot(t[neg], np.abs(f[neg]), 'v', ms=6, color=line.get_color())
+            negative |= bool(neg.any())
+        if negative:
+            ax.plot([], [], 'v', ms=6, color='0.4', label=r'$F_\mathrm{cmb} < 0$')
         ax.axhline(TOOL.LOW_FLUX, ls='--', lw=1, color='0.5', label='100 W m$^{-2}$')
         ax.set_yscale('log')
         ax.set_xlabel('Time [kyr]')
@@ -160,24 +164,26 @@ def test_the_constant_length_keeps_the_flux_coupled_with_the_rheology_on(validat
 @pytest.mark.physics_invariant
 def test_a_15_earth_mass_planet_keeps_its_core_temperature_under_the_default(validation_plot):
     """The 1.5 Earth-mass case under the default reaches T_cmb = 5199.9 K at 300 kyr on the
-    uniform mesh, as a run that sets 'constant' in its file does, with no row of |F_cmb| < 1 W m-2;
-    on both meshes no 2 consecutive rows after 10 kyr have F_cmb < 100 W m-2. The T_cmb steps
+    uniform mesh, as a run that sets 'constant' in its file does; on both meshes no row has
+    |F_cmb| < 1 W m-2 and no 2 consecutive rows after 10 kyr have F_cmb < 100 W m-2. The T_cmb steps
     between rows are not bounded here: the early cooling is fast and the rows are far apart."""
-    uniform = TOOL.metrics(_case('sept_uniform'))
+    uniform = TOOL.metrics(_case('m1p5_uniform'))
     assert uniform['t_end'] == pytest.approx(3e5, abs=1.0)
     assert uniform['T_end'] == pytest.approx(5199.9, abs=1.0)
     assert uniform['n_below_1'] == 0
     assert uniform['longest_low'] <= 1, uniform['dips']
-    default = TOOL.metrics(_case('sept_default'))
+    default = TOOL.metrics(_case('m1p5_default'))
     assert default['longest_low'] <= 1, default['dips']
+    for case in ('m1p5_uniform', 'm1p5_default'):
+        assert np.abs(_case(case).F_cmb).min() >= 1.0, case
 
     def figure():
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(figsize=(8, 4.5))
-        for case in ('sept_uniform', 'sept_default'):
+        for case in ('m1p5_uniform', 'm1p5_default'):
             frame = _case(case)
-            ax.plot(frame.Time / 1e3, frame.T_cmb, lw=1.2, label=TOOL.CASES[case][1])
+            ax.plot(frame.Time / 1e3, frame.T_cmb, lw=1.2, label=TOOL.CASES[case])
         ax.plot(
             [300.0],
             [5199.9],
@@ -217,4 +223,6 @@ def test_the_stored_runs_hold_every_case_and_name_their_commits():
         # Each run starts with 3 rows at t = 0; time then grows in every row.
         assert len(frame) > 100 and np.all(frame.Time[:3] == 0), case
         assert np.all(np.diff(frame.Time[2:]) > 0), case
-    assert TOOL.read_source(DATA).startswith('PROTEUS commit ')
+    assert re.fullmatch(
+        r'PROTEUS commit [0-9a-f]{40}, aragog commit [0-9a-f]{40}', TOOL.read_source(DATA)
+    )

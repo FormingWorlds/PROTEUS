@@ -718,6 +718,11 @@ def test_a_changed_mixing_length_refuses_the_resume(tmp_path, module, stored, ne
     with pytest.raises(ResumeSeparationLawError, match='mixing_length') as err:
         check_resume_separation_laws(config, path, out)
     assert f'written with {stored!r}' in str(err.value)
+    # The refusal says where the new value comes from: the file, or the default.
+    where = f'(the default; {path} does not set it)' if new is None else f'in {path}'
+    assert f'mixing_length is {config.interior_energetics.mixing_length!r} {where}' in str(
+        err.value
+    )
 
 
 @pytest.mark.parametrize('module', ['aragog', 'spider'])

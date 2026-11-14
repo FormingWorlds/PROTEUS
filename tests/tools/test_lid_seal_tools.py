@@ -118,7 +118,7 @@ def test_the_ensemble_writes_the_superheat_offset_and_refuses_unpaired_starts(tm
 def test_the_number_check_formats_its_values_and_runs_the_page_blocks(tmp_path):
     tool = _load('check_numbers')
     assert tool._sci(1.3391e15) == '1.339e15' and tool._sci(6.7994e-4) == '6.799e-4'
-    assert tool._tex(8.678e-4) == '$9 \\times 10^{-4}$'
+    assert tool._tex(8.678e-4) == '$8.7 \\times 10^{-4}$'
     seal = _run(tmp_path / 'seal')
     page = (
         '```python\nimport pandas as pd\n'

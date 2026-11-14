@@ -963,7 +963,8 @@ class Interior:
     mixing_length: str
         Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle
         depth, as in the simplified model of Bower et al. (2018)[^cite-bower2018]) or 'nearest'
-        (distance to the nearest boundary). A resume keeps the recorded value.
+        (distance to the nearest boundary). A resume that changes the recorded value is
+        refused unless interior_energetics.aragog.allow_resume_law_change is true.
     kappah_floor: float
         Eddy diffusivity floor [m2 s-1]; prevents mixing-length transport
         from freezing out.

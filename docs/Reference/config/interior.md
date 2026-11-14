@@ -264,7 +264,7 @@ controlled parity tests.
 | `rfront_loc` | float | `0.4` | Centre of rheological transition in terms of melt fraction. SPIDER receives it as ``-phi_critical``. Aragog centres its viscosity blend, its reported rheological front and the melt-fraction ramp of ``kappah_floor`` on it; the boundary module uses it as the transition point of its viscosity models. SPIDER and Aragog use melt mass fraction (0.4 by volume is about 0.375 by mass at a 10 percent melt-solid density contrast); the boundary module takes its melt fraction linearly in temperature between solidus and liquidus and its rheological transition width from ``phase_transition_width``, not ``rfront_wid``. Must be > 0 and < 1. |
 | `rfront_wid` | float | `0.2` | Width of rheological transition in terms of melt fraction. Must be > 0 and < 1. |
 | `grain_size` | float | `0.001` | Crystal settling grain size \[m\]. Must be > 0. |
-| `mixing_length` | str | `"constant"` | Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle depth, as in the simplified model of Bower et al. (2018)[^cite-bower2018]) or 'nearest' (distance to the nearest boundary). A resume keeps the recorded value. Choices: `"constant"`, `"nearest"`. |
+| `mixing_length` | str | `"constant"` | Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle depth, as in the simplified model of Bower et al. (2018)[^cite-bower2018]) or 'nearest' (distance to the nearest boundary). A resume that changes the recorded value is refused unless interior_energetics.aragog.allow_resume_law_change is true. Choices: `"constant"`, `"nearest"`. |
 | `kappah_floor` | float | `10.0` | Eddy diffusivity floor \[m2 s-1\]; prevents mixing-length transport from freezing out. Must be >= 0. |
 
 **Coupling limits**

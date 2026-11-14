@@ -2704,8 +2704,7 @@ class AragogRunner:
         # A one-off spot-check: 10x rtol moves the coupler conservation metric
         # E_residual_cons_frac from 1.46e-4 to 1.53e-4 on a recovered mush step
         # (about 65x below its ~1% structural floor) and shifts Phi_global by
-        # ~3e-8 with T_core unchanged. It is not asserted per run; a
-        # docs/Validation/interior_energetics/aragog.md harness is a follow-up.
+        # ~3e-8 with T_core unchanged. It is not asserted per run.
         rtol_cap = base_rtol * stiff_ramp[-1][1]
 
         out = None

@@ -57,8 +57,7 @@ TEMPLATES = [
     ('E', '{co:.1f} % more CO, {co2:.1f} % less CO$_2$ and {h2o:.1f} % more water'),
     ('E', '{ptot:.1f} % lower surface pressure'),
     ('E', 'holds {band_printed:.3f} % more atmospheric water than the open run of its start in '
-          'each of 6 starts that differ by round-off; between them the water varies by less than '
-          '0.001 %.'),
+          'each of 6 starts that differ by round-off;'),
     ('E', 'give {seq:.2f} % more water'),
     ('V', 'by {spec:.2f} percentage points'),
     ('V', 'lowers it by {leak_abs:.2f} points'),
@@ -81,8 +80,8 @@ def _sci(x: float) -> str:
 
 
 def _tex(x: float) -> str:
-    """$9 \\times 10^{-4}$ form, 1 significant digit."""
-    m, e = f'{x:.0e}'.split('e')
+    """$8.7 \\times 10^{-4}$ form, 2 significant digits."""
+    m, e = f'{x:.1e}'.split('e')
     return f'${m} \\times 10^{{{int(e)}}}$'
 
 

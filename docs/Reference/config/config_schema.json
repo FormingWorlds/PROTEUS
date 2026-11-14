@@ -6809,7 +6809,7 @@
         "nearest"
       ],
       "bounds": null,
-      "description": "Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle depth, as in the simplified model of Bower et al. (2018)[^cite-bower2018]) or 'nearest' (distance to the nearest boundary). A resume keeps the recorded value.",
+      "description": "Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle depth, as in the simplified model of Bower et al. (2018)[^cite-bower2018]) or 'nearest' (distance to the nearest boundary). A resume that changes the recorded value is refused unless interior_energetics.aragog.allow_resume_law_change is true.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 3,
