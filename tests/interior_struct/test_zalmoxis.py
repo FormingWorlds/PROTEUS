@@ -2533,13 +2533,13 @@ def test_a_thin_mantle_keeps_the_mass_inside_r_core_and_the_core_of_the_solve(
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('share', [0.04, 0.06])
-def test_a_shell_above_5_percent_of_the_mantle_below_r_core_is_logged_once(
+@pytest.mark.parametrize('share', [0.04, 0.049, 0.051, 0.06])
+def test_a_shell_above_5_percent_of_the_mantle_above_r_core_is_logged_once(
     tmp_path, monkeypatch, caplog, share
 ):
     """The shell between the core mass of the solve and R_core holds `share` of the mantle
-    mass above R_core. Above 0.05 the solve logs one warning with the share; it accepts the
-    structure in both cases."""
+    mass above R_core (M_int - M_core). Above 0.05 the solve logs one warning with the share;
+    it accepts the structure in all cases. At 0.051 a share of M_int - M_core_solve is 0.0485."""
     model = _plausible_model_results()
     mass = model['mass_enclosed']
     cmb_mass = float(mass[55] - share * (mass[-1] - mass[55]))
@@ -2549,12 +2549,27 @@ def test_a_shell_above_5_percent_of_the_mantle_below_r_core_is_logged_once(
         _, _, _, hf_row, _, _, _ = _run_gate_solver(
             tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
         )
-    lines = [
-        r.getMessage() for r in caplog.records if 'mantle mass below R_core' in r.getMessage()
-    ]
+    lines = [r.getMessage() for r in caplog.records if 'between M_core_solve' in r.getMessage()]
     assert hf_row['M_core'] == pytest.approx(float(mass[55]), rel=1e-15)
     assert len(lines) == (share > 0.05)
-    assert all(f'{share:.3g} of the mantle mass below R_core' in m for m in lines)
+    assert all(f'{share:.3g} of the mantle mass above R_core' in m for m in lines)
+
+
+@pytest.mark.unit
+def test_a_core_mass_in_the_last_cell_logs_no_mantle_shell_warning(
+    tmp_path, monkeypatch, caplog
+):
+    """A core mass between the masses of the last 2 nodes puts the CMB on the last node, so no
+    mantle mass lies above R_core: the solve logs no shell warning (its share would be inf) and
+    then stops on the 1-node mantle at the temperature profile for Aragog."""
+    model = _plausible_model_results()
+    mass = model['mass_enclosed']
+    model['cmb_mass'] = model['core_mantle_mass'] = float(0.5 * (mass[-2] + mass[-1]))
+    with caplog.at_level(logging.WARNING), pytest.raises(ValueError, match='derivatives'):
+        _run_gate_solver(
+            tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
+        )
+    assert not [r for r in caplog.records if 'M_core_solve' in r.getMessage()]
 
 
 @pytest.mark.unit

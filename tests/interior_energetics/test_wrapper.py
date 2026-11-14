@@ -1689,6 +1689,7 @@ def test_a_rejected_structure_update_restores_the_core_keys_of_the_row(path):
         update_structure_from_interior(_mock_dirs(), config, hf_row, interior_o, lt, lT, lP)
     assert {k: hf_row[k] for k in before} == before
     assert interior_o.zalmoxis_fail_count == (0 if path == 'up_step' else 1)
+    assert interior_o.structure_stale is (path != 'up_step')
 
 
 # ============================================================================
