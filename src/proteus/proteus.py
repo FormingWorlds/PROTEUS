@@ -31,9 +31,9 @@ from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import noble_gases, vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
-    MissingReferenceData,
     PrintHalfSeparator,
     PrintSeparator,
+    ReadStatus,
     UpdateStatusfile,
     is_write_snapshot,
     multiple,
@@ -77,15 +77,20 @@ ATMOS_STALL_MAX = 150
 AGNI_DEADLOCK_MAX = 3
 
 
-def _status_on_missing_eos(start):
-    """Write status 20 when missing reference data stops ``start``, wherever it is raised."""
+def _status_on_exit(start):
+    """Record why ``start`` stopped when it raises, so the run does not read as running:
+    25 for an interrupt or a requested exit (KeyboardInterrupt, SystemExit), 20 for any
+    other error. Only a running status is replaced: a stop code the raise site wrote is kept, and
+    a check that stops the run before its first status leaves the output folder alone."""
 
     @functools.wraps(start)
     def wrapper(self, *args, **kwargs):
         try:
             return start(self, *args, **kwargs)
-        except MissingReferenceData:
-            UpdateStatusfile(self.directories, 20)
+        except BaseException as exc:
+            if ReadStatus(self.directories['output']) in (0, 1):
+                stopped = isinstance(exc, (KeyboardInterrupt, SystemExit))
+                UpdateStatusfile(self.directories, 25 if stopped else 20)
             raise
 
     return wrapper
@@ -603,7 +608,7 @@ class Proteus:
                     self.config.params.stop.solid.phi_crit,
                 )
 
-    @_status_on_missing_eos
+    @_status_on_exit
     def start(self, *, resume: bool = False, offline: bool = False):
         """Start PROTEUS simulation.
 
@@ -715,7 +720,6 @@ class Proteus:
         start_time = datetime.now()
         self.config.params.resume = resume
         self.config.params.offline = offline
-        UpdateStatusfile(self.directories, 0)
 
         # Clean output directory if starting fresh
         if not self.config.params.resume:
@@ -724,6 +728,7 @@ class Proteus:
             CleanDir(self.directories['output/observe'])
             CleanDir(self.directories['output/offchem'])
             CleanDir(self.directories['output/plots'])
+        UpdateStatusfile(self.directories, 0)
 
         # Get next logfile path
         logindex = 1 + GetCurrentLogfileIndex(self.directories['output'])
@@ -764,13 +769,9 @@ class Proteus:
         from proteus.interior_energetics import resume_laws
 
         if self.config.params.resume:
-            try:
-                resume_laws.check_resume_separation_laws(
-                    self.config, self.config_path, self.directories['output']
-                )
-            except resume_laws.ResumeSeparationLawError:
-                UpdateStatusfile(self.directories, 20)
-                raise
+            resume_laws.check_resume_separation_laws(
+                self.config, self.config_path, self.directories['output']
+            )
 
         # Write config to output directory, for future reference. Record the
         # resolved (not raw) step caps. A resolved 0.0 means the cap is off,
@@ -980,14 +981,8 @@ class Proteus:
             # Read helpfile from disk. A run written before the output schema
             # gained columns stops here, rather than continuing from a row that
             # is missing those keys. A helpfile that cannot be loaded at all
-            # stops the same way: either leaves the run dead, and a run that
-            # dies without recording it reads as still running to anything
-            # polling the output directory.
-            try:
-                self.hf_all = ReadHelpfileFromCSV(self.directories['output'])
-            except Exception:
-                UpdateStatusfile(self.directories, 20)
-                raise
+            # stops the same way.
+            self.hf_all = ReadHelpfileFromCSV(self.directories['output'])
 
             # Drop any column the stored helpfile carries that the current
             # schema no longer defines. Without this, a row from a retired
@@ -1001,7 +996,6 @@ class Proteus:
 
             # Check length
             if len(self.hf_all) <= self.loops['init_loops'] + 1:
-                UpdateStatusfile(self.directories, 20)
                 raise RuntimeError('Simulation is too short to be resumed')
 
             # Extract archived data files before choosing a resume point, so
@@ -1031,7 +1025,6 @@ class Proteus:
                     dropped_snapshots,
                 )
                 if len(self.hf_all) <= self.loops['init_loops'] + 1:
-                    UpdateStatusfile(self.directories, 20)
                     raise RuntimeError(
                         'Simulation is too short to be resumed after dropping '
                         'incomplete trailing snapshots'
@@ -1158,11 +1151,7 @@ class Proteus:
                 self.config.interior_struct.module == 'zalmoxis'
                 and self.config.interior_energetics.module == 'aragog'
             ):
-                try:
-                    self._resync_zalmoxis_mesh()
-                except Exception:
-                    UpdateStatusfile(self.directories, 20)
-                    raise
+                self._resync_zalmoxis_mesh()
 
             # Arm the resume-settling structure-re-solve guard. The resumed
             # interior relaxes thermally over the first loops and would
@@ -1196,13 +1185,8 @@ class Proteus:
         # Rebuild the mass and orbit that impacts before a resume point already
         # applied. Runs after the timeline is resolved, so a re-run dynamical
         # model still selects its body against the configured planet.
-        try:
-            restore_accretion_state(self)
-            change = volatile_mass_change(self.hf_row) if resume else 0.0
-        except Exception:
-            # A refused resume records its stop, so the run does not read as running.
-            UpdateStatusfile(self.directories, 20)
-            raise
+        restore_accretion_state(self)
+        change = volatile_mass_change(self.hf_row) if resume else 0.0
         if change != 0.0 and not tracks_volatile_mass(self.config):
             log.info(
                 'M_volatile_change = %.3e kg is carried over but only the Zalmoxis '

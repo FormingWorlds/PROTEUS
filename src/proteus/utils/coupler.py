@@ -62,44 +62,15 @@ def _get_current_time():
 
 
 def _get_git_revision(dir: str) -> str:
-    """
-    Get git hash for repository in `dir`.
-    """
-    # change dir
-    cwd = os.getcwd()
+    """Git hash of the repository in `dir`, or 'unknown'. Leaves the working directory
+    alone, so a process whose own working directory is gone still gets the hash."""
     try:
-        os.chdir(dir)
-    except Exception:
-        # If we can't change to the directory, return unknown
-        return 'unknown'
-
-    # get hash (https://stackoverflow.com/a/21901260)
-    try:
-        hash = (
-            subprocess.check_output(
-                ['git', 'rev-parse', 'HEAD'],
-                stderr=subprocess.DEVNULL,
-                timeout=5,  # Add timeout to prevent hanging
-            )
-            .decode('ascii')
-            .strip()
+        out = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'], cwd=dir, stderr=subprocess.DEVNULL, timeout=5
         )
-    except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        subprocess.TimeoutExpired,
-        Exception,
-    ):
-        # Handle: git not found, not a git repo, git command failed, or any other error
-        hash = 'unknown'
-    finally:
-        # Always change dir back, even if an exception occurred
-        try:
-            os.chdir(cwd)
-        except Exception:
-            pass  # If we can't change back, continue anyway
-
-    return hash
+    except Exception:
+        return 'unknown'
+    return out.decode('ascii').strip()
 
 
 def _get_socrates_version():
