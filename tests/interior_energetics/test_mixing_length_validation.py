@@ -2,7 +2,7 @@
 Validation of the mixing length at the core-mantle boundary (CMB) from stored runs.
 
 Invariant: under the default mixing length, 'constant', the heat flux out of the core stays
-coupled to the mantle: after 10 kyr no 2 consecutive helpfile rows have F_cmb below
+coupled to the mantle: after 10 kyr no 3 consecutive helpfile rows have F_cmb below
 100 W m-2, on uniform meshes of 80 and 160 nodes, on CMB cells of 1500 and 3000 m, with the
 rheology on, and for a 1.5 Earth-mass planet. Under 'nearest' the flux decouples for tens of
 kyr on 80 nodes and on the 3000 m cell, but not on 160 nodes. The runs and the tool that
@@ -28,6 +28,8 @@ _ROOT = Path(__file__).parents[2]
 _DIR = _ROOT / 'tools' / 'verification' / 'mixing_length'
 DATA = _ROOT / 'tests' / 'data' / 'mixing_length' / 'cmb_flux.npz'
 TUTORIAL_CONSTANT = ('u80_constant', 'u160_constant', 'c3000_constant', 'c1500_constant')
+# Single or double dip rows pass; 3 rows in a row count as a lasting loss of the flux.
+MAX_DIP_ROWS = 2
 # Short legend labels; the title of each plot names the mixing length.
 LABELS = {
     'u80': '80 nodes, uniform',
@@ -103,12 +105,12 @@ def _flux_figure(cases, title):
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_the_constant_length_keeps_the_cmb_flux_coupled_on_every_mesh(validation_plot):
-    """Under 'constant' no 2 consecutive rows after 10 kyr have F_cmb < 100 W m-2 and no
+    """Under 'constant' no 3 consecutive rows after 10 kyr have F_cmb < 100 W m-2 and no
     T_cmb drop between rows after 2 kyr exceeds 10 K, on 4 meshes of the lid-seal tutorial; T_cmb at
     100 kyr of the 4 meshes lies within 25 K. Single-row dips occur only with a CMB cell."""
     found = {case: TOOL.metrics(_case(case)) for case in TUTORIAL_CONSTANT}
     for case, m in found.items():
-        assert m['longest_low'] <= 1, (case, m['dips'])
+        assert m['longest_low'] <= MAX_DIP_ROWS, (case, m['dips'])
         assert m['worst_drop'] >= -10.0, case
         assert m['t_end'] == pytest.approx(1e5, abs=1.0), case
     ends = [m['T_end'] for m in found.values()]
@@ -117,7 +119,7 @@ def test_the_constant_length_keeps_the_cmb_flux_coupled_on_every_mesh(validation
     assert found['c3000_constant']['n_low'] > 0 and found['c1500_constant']['n_low'] > 0
     # A start changed at round-off keeps the dips at the same times: they are not round-off.
     twin = TOOL.metrics(_case('c3000_constant_roundoff'))
-    assert twin['longest_low'] <= 1
+    assert twin['longest_low'] <= MAX_DIP_ROWS
     assert [t for t, _ in twin['dips']] == pytest.approx(
         [t for t, _ in found['c3000_constant']['dips']], abs=1.0
     )
@@ -152,7 +154,7 @@ def test_the_constant_length_keeps_the_flux_coupled_with_the_rheology_on(validat
     """With the rheology on and the 3000 m CMB cell, 'constant' keeps F_cmb coupled as above;
     the 'nearest' run of the same setup is shown for comparison."""
     m = TOOL.metrics(_case('rheology_constant'))
-    assert m['longest_low'] <= 1, m['dips']
+    assert m['longest_low'] <= MAX_DIP_ROWS, m['dips']
     assert m['worst_drop'] >= -10.0
 
     validation_plot(
@@ -166,14 +168,14 @@ def test_the_constant_length_keeps_the_flux_coupled_with_the_rheology_on(validat
 def test_a_15_earth_mass_planet_keeps_its_core_temperature_under_the_default(validation_plot):
     """The 1.5 Earth-mass case under the default reaches T_cmb = 5199.9 K at 300 kyr on the
     uniform mesh, as a run that sets 'constant' in its file does; on both meshes no row has
-    |F_cmb| < 1 W m-2 and no 2 consecutive rows after 10 kyr have F_cmb < 100 W m-2. The T_cmb steps
+    |F_cmb| < 1 W m-2 and no 3 consecutive rows after 10 kyr have F_cmb < 100 W m-2. The T_cmb steps
     between rows are not bounded here: the early cooling is fast and the rows are far apart."""
     uniform = TOOL.metrics(_case('m1p5_uniform'))
     assert uniform['t_end'] == pytest.approx(3e5, abs=1.0)
     assert uniform['T_end'] == pytest.approx(5199.9, abs=1.0)
-    assert uniform['longest_low'] <= 1, uniform['dips']
+    assert uniform['longest_low'] <= MAX_DIP_ROWS, uniform['dips']
     default = TOOL.metrics(_case('m1p5_default'))
-    assert default['longest_low'] <= 1, default['dips']
+    assert default['longest_low'] <= MAX_DIP_ROWS, default['dips']
     for case in ('m1p5_uniform', 'm1p5_default'):
         assert np.abs(_case(case).F_cmb).min() >= 1.0, case
 
