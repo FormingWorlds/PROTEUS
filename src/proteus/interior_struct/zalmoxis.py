@@ -3531,8 +3531,8 @@ def zalmoxis_solver(
             model_results.get('miscibility_iterations', 0),
         )
     else:
-        # Seeds of the same planet go to the numpy path only (warm starts drive the JAX Anderson
-        # loop into oscillation); the adiabat seed can move the result within the mass tolerance
+        # Seeds of the same planet go to every path except JAX with temperature arrays
+        # (_drop_callable); the adiabat seed can move the result within the mass tolerance
         _seed_match = not _drop_callable and _density_cache.get('key') == _structure_cache_key(
             config
         )
