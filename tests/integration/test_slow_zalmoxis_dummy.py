@@ -31,6 +31,11 @@ Invariants asserted:
   physical values when the ``'self'`` sentinel resolves through
   the EOS.
 - ``gravity`` positive and bounded (5-15 m/s^2 for 1 M_Earth).
+- ``M_core_solve`` equals the core target, ``M_core`` is at least ``M_core_solve``, and
+  ``R_core`` is a whole number of radial steps. The row holds no density of the shell
+  below the CMB node, so the unit test
+  ``test_a_thin_mantle_keeps_the_mass_inside_r_core_and_the_core_of_the_solve`` checks
+  that the CMB is the first node at or above ``M_core_solve`` and not one node off.
 - Cross-step structure stability: with ``update_interval = 0`` the
   per-iteration refresh triggers are off, so the only structure
   change is the one-time baseline hand-off on the first non-init
@@ -263,9 +268,7 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
     assert core_target == pytest.approx(
         cfg.interior_struct.core_frac * (planet - kept), rel=1e-9
     )
-    # M_core is the mass inside the first node at or above the core of the solve, so it lies
-    # between M_core_solve and M_core_solve plus the shell below that node; the grid is uniform
-    # and the shell is less dense than the core mean, so the core mean bounds its mass.
+    # M_core is the mass inside the CMB node; the unit test checks the node (docstring).
     m_core, m_solve = float(final['M_core']), float(final['M_core_solve'])
     r_core = float(final['R_core'])
     assert m_solve == pytest.approx(core_target, rel=1e-12)
@@ -273,10 +276,6 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
     # Zalmoxis radii are linspace(0, R_int, num_levels), so R_core is a whole number of steps.
     dr = float(final['R_int']) / (cfg.interior_struct.zalmoxis.num_levels - 1)
     assert r_core / dr == pytest.approx(round(r_core / dr), abs=1e-9)
-    shell = float(final['core_density']) * 4.0 / 3.0 * np.pi * (r_core**3 - (r_core - dr) ** 3)
-    assert m_core - m_solve <= shell, (
-        f'M_core - M_core_solve = {m_core - m_solve:.3e} kg > shell {shell:.3e} kg'
-    )
     assert float(final['core_density']) * 4.0 / 3.0 * np.pi * r_core**3 == pytest.approx(
         m_core, rel=1e-12
     )
