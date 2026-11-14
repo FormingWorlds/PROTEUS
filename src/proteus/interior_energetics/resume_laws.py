@@ -2,8 +2,8 @@
 
 ``init_coupler.toml`` in the run directory records the config the run last started
 with as loaded, with ``RECORD_OVERRIDES`` applied. ``Proteus.start()`` writes it again on every
-start (a resume once every resume check has passed), so a resume compares the new
-config with it first. A changed ``separation_viscosity`` or ``separation_buoyancy``
+start (a resume after its first interior step, once every resume check has passed), so a
+resume compares the new config with it first. A changed ``separation_viscosity`` or ``separation_buoyancy``
 would switch the melt drainage law at the resume row; the resume stops unless
 ``interior_energetics.aragog.allow_resume_law_change`` is set.
 
@@ -118,7 +118,8 @@ def _check_mesh(aragog, stored, stored_path, config_path, refusals, notes) -> No
                 (
                     logging.WARNING,
                     f'interior_energetics.aragog.{field} is not recorded in {stored_path}; the '
-                    'resume checks its mesh against the radii of the interior snapshot',
+                    'resume checks its mesh against the radii of the interior snapshot when the '
+                    'snapshot holds them',
                 )
             )
             continue
