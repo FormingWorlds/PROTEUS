@@ -488,10 +488,11 @@ def test_every_chili_config_runs_energy_limited_escape():
 
 
 def test_every_chili_config_resolves_the_atmosphere_as_the_submitted_runs():
-    """The 5 cases and the 9 grid configs keep the atmosphere grid of the submitted runs.
+    """The 5 cases and the 9 grid configs keep the atmosphere of the submitted runs.
 
-    The submitted runs resolved the atmosphere on 45 levels up to 1e-4 bar. The tutorials
-    the cases derive from now reach 1e-10 bar, so the cases state the protocol grid.
+    The submitted runs resolved the atmosphere on 45 levels up to 1e-4 bar, without
+    conduction in AGNI. The tutorials the cases derive from now reach 1e-10 bar and AGNI
+    conducts by default, so the cases state the protocol grid and switch conduction off.
     """
     gen = _load_generator()
     assert gen.PROTOCOL_ATMOSPHERE['atmos_clim.num_levels'] == 45
@@ -502,3 +503,4 @@ def test_every_chili_config_resolves_the_atmosphere_as_the_submitted_runs():
         atm = _read_config(str(path)).atmos_clim
         assert atm.num_levels == 45, path.name
         assert atm.p_top == pytest.approx(1e-4, rel=1e-12), path.name
+        assert atm.agni.conduction is False, path.name

@@ -138,6 +138,7 @@ config_version = "3.0"
         dx_max       = 15.0
         max_steps    = 70
         perturb_all  = true
+        conduction   = false
 
 [escape]
     module = "zephyrus"

@@ -203,7 +203,9 @@ class Agni:
     convection: bool
         Account for convective heat transport, using MLT.
     conduction: bool
-        Account for conductive heat transport, using Fourier's law.
+        Account for conductive heat transport, using Fourier's law. On by default:
+        it couples the optically thin top layers, whose temperature otherwise
+        scatters between levels.
     sens_heat: bool
         Include sensible heat flux at surface
     real_gas: bool
@@ -298,7 +300,7 @@ class Agni:
     oceans: bool = field(default=True)
     latent_heat: bool = field(default=False)
     convection: bool = field(default=True)
-    conduction: bool = field(default=False)
+    conduction: bool = field(default=True)
     sens_heat: bool = field(default=True)
     real_gas: bool = field(default=False)
     thermo_functions: bool = field(default=True)

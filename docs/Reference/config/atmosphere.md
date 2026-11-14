@@ -74,7 +74,7 @@ interior heat flux. The `fastchem_*` parameters apply when
 |---|---|---|---|
 | `solve_energy` | bool | `true` | Solve for an energy-conserving atmosphere solution. |
 | `convection` | bool | `true` | Account for convective heat transport, using MLT. |
-| `conduction` | bool | `false` | Account for conductive heat transport, using Fourier's law. |
+| `conduction` | bool | `true` | Account for conductive heat transport, using Fourier's law. On by default: it couples the optically thin top layers, whose temperature otherwise scatters between levels. |
 | `sens_heat` | bool | `true` | Include sensible heat flux at surface. |
 | `rainout` | bool | `true` | Enable volatile condensation and evaporation in the atmosphere. |
 | `oceans` | bool | `true` | Enable volatile ocean formation at the surface. |

@@ -145,10 +145,12 @@ PROTOCOL_STOP = {
 # hold: the separation buoyancy against the solid.
 RUN_SETTINGS = {'interior_energetics.aragog.separation_buoyancy': 'solid'}
 
-# The atmosphere grid of the submitted runs; the tutorials now reach 1e-10 bar.
+# The atmosphere of the submitted runs: their grid, since the tutorials now reach 1e-10 bar,
+# and no conduction, which AGNI now has on by default.
 PROTOCOL_ATMOSPHERE = {
     'atmos_clim.num_levels': 45,
     'atmos_clim.p_top': tomlkit.value('1e-4'),
+    'atmos_clim.agni.conduction': False,
 }
 
 # The escape of the submitted runs: the "el" scheme with its defaults written out,
