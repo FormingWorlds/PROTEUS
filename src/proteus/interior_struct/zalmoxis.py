@@ -4054,6 +4054,14 @@ def zalmoxis_solver(
     hf_row['M_int'] = mass_enclosed[-1]
     hf_row['M_core'] = float(mass_enclosed[cmb_index])  # the mass inside R_core
     hf_row['M_core_solve'] = float(cmb_mass)  # the core mass of the solve
+    _mantle = hf_row['M_int'] - hf_row['M_core']
+    _shell = hf_row['M_core'] - hf_row['M_core_solve']
+    if _mantle > 0 and _shell > 0.05 * _mantle:
+        log.warning(
+            'M_core holds %.3g of the mantle mass below R_core (the shell between M_core_solve '
+            'and R_core); M_int - M_core is short by it. Raise zalmoxis.num_levels to shrink it.',
+            _shell / _mantle,
+        )
     hf_row['gravity'] = gravity[-1]
 
     if config.interior_energetics.module == 'boundary':
