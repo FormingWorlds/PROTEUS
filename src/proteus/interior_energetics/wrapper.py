@@ -3212,6 +3212,7 @@ def update_structure_from_interior(
             'M_int',
             'M_core',
             'M_core_solve',
+            'core_density',
             'M_mantle',
             'P_surf',
             'R_core',
