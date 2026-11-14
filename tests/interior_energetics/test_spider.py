@@ -2716,3 +2716,42 @@ def test_read_spider_records_the_skin_thickness_in_effect(tmp_path):
     fallback = _read(0.01)
     assert fallback['boundary_layer_thickness'] == pytest.approx(0.01, rel=1e-12)
     assert isinstance(passed['boundary_layer_thickness'], float)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'mixing_length, flag',
+    [(None, '2'), ('constant', '2'), ('nearest', '1')],
+    ids=['default', 'constant', 'nearest'],
+)
+def test_try_spider_passes_the_mixing_length(tmp_path, mixing_length, flag):
+    """SPIDER gets -mixing_length 2 (0.25 of the mantle depth) for 'constant', the default,
+    and 1 (the distance to the nearest boundary) for 'nearest'."""
+    from proteus.config._interior import Interior, Spider
+    from proteus.interior_energetics.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, mc_base, _ = _setup_spider_env(tmp_path)
+    config.interior_energetics.mixing_length = (
+        mixing_length or Interior(module='spider', spider=Spider()).mixing_length
+    )
+    with (
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        assert _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=1,
+            hf_all=None,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+        )
+    call_args = mock_run.call_args[0][0]
+    assert call_args[call_args.index('-mixing_length') + 1] == flag

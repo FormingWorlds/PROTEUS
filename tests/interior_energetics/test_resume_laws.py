@@ -661,3 +661,135 @@ def test_the_slope_is_not_compared_with_the_rheology_off(tmp_path):
     path = tmp_path / 'user.toml'
     path.write_text(text)
     assert check_resume_separation_laws(read_config_object(path), path, out) == []
+
+
+def _mixing_case(folder, module, stored, new, allow=False, record_module=None):
+    """A ``module`` run recording mixing length ``stored`` (None: no field) and its resume
+    config file, which sets ``new`` (None: the field is not set)."""
+    out = Path(folder) / 'run'
+    out.mkdir(parents=True)
+    config, _ = _user_config(out)
+    config.write(out / 'init_coupler.toml')
+    doc = tomlkit.parse((out / 'init_coupler.toml').read_text())
+    doc['interior_energetics']['module'] = record_module or module
+    if stored is None:
+        del doc['interior_energetics']['mixing_length']
+    else:
+        doc['interior_energetics']['mixing_length'] = stored
+    (out / 'init_coupler.toml').write_text(tomlkit.dumps(doc))
+    text = MINIMAL.read_text() + f"\n[interior_energetics]\n    module = '{module}'\n"
+    if new is not None:
+        text += f"    mixing_length = '{new}'\n"
+    text += (
+        f'[interior_energetics.aragog]\n    allow_resume_law_change = {str(allow).lower()}\n'
+    )
+    path = Path(folder) / 'user.toml'
+    path.write_text(text)
+    return read_config_object(path), path, out
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('module', ['aragog', 'spider'])
+@pytest.mark.parametrize(
+    'stored, new',
+    [('nearest', None), ('nearest', 'constant'), ('constant', 'nearest')],
+    ids=['nearest to the default', 'nearest to constant', 'constant to nearest'],
+)
+def test_a_changed_mixing_length_refuses_the_resume(tmp_path, module, stored, new):
+    """The mixing length sets the convective flux of every node; a resume that changes it is
+    refused for an Aragog and a SPIDER run, also when the config file leaves it at the default."""
+    config, path, out = _mixing_case(tmp_path, module, stored, new)
+    assert config.interior_energetics.mixing_length != stored
+    with pytest.raises(ResumeSeparationLawError, match='mixing_length') as err:
+        check_resume_separation_laws(config, path, out)
+    assert f'written with {stored!r}' in str(err.value)
+
+
+@pytest.mark.parametrize('module', ['aragog', 'spider'])
+def test_the_default_mixing_length_is_constant_and_a_constant_run_resumes_without_the_key(
+    tmp_path, caplog, module
+):
+    """A run recorded under 'constant' resumes quietly from a config file without the key."""
+    config, path, out = _mixing_case(tmp_path, module, 'constant', None)
+    assert config.interior_energetics.mixing_length == 'constant'
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        assert check_resume_separation_laws(config, path, out) == []
+    assert not [r for r in caplog.records if 'mixing_length' in r.getMessage()]
+
+
+@pytest.mark.parametrize('module', ['aragog', 'spider'])
+def test_the_allow_switch_lets_the_mixing_length_change_and_reports_it(
+    tmp_path, caplog, module
+):
+    """With allow_resume_law_change the mixing length switches with one warning naming both values."""
+    config, path, out = _mixing_case(tmp_path, module, 'nearest', 'constant', allow=True)
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert check_resume_separation_laws(config, path, out) == [
+            ('mixing_length', 'nearest', 'constant')
+        ]
+    warned = [r.getMessage() for r in caplog.records if 'mixing_length' in r.getMessage()]
+    assert len(warned) == 1 and "'nearest'" in warned[0] and "'constant'" in warned[0]
+
+
+@pytest.mark.parametrize('module', ['aragog', 'spider'])
+@pytest.mark.parametrize('record_module', [None, 'dummy'], ids=['no field', 'dummy record'])
+def test_an_unrecorded_mixing_length_must_be_set_in_the_config_file(
+    tmp_path, caplog, module, record_module
+):
+    """A record without the field, or of a module without convection, does not tell the
+    mixing length of the run: the resume stops until the config file sets it, also with the
+    allow switch, and then resumes under the value set."""
+    stored = None if record_module is None else 'nearest'
+    config, path, out = _mixing_case(
+        tmp_path, module, stored, None, allow=True, record_module=record_module
+    )
+    with pytest.raises(ResumeSeparationLawError) as err:
+        check_resume_separation_laws(config, path, out)
+    assert 'mixing_length is not recorded' in str(err.value)
+    assert 'allow_resume_law_change does not cover' in str(err.value)
+    config, path, out = _mixing_case(
+        tmp_path / 'b', module, stored, 'nearest', record_module=record_module
+    )
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        check_resume_separation_laws(config, path, out)
+    assert any(
+        'mixing_length' in r.getMessage() and "'nearest'" in r.getMessage()
+        for r in caplog.records
+        if r.name == LOGGER
+    )
+
+
+@pytest.mark.parametrize('module', ['dummy', 'boundary'])
+def test_a_resume_without_convection_does_not_check_the_mixing_length(tmp_path, module):
+    """A dummy or boundary interior has no mixing-length flux, so the field is not compared."""
+    config, path, out = _mixing_case(tmp_path, 'aragog', 'nearest', 'constant')
+    config.interior_energetics.module = module
+    assert check_resume_separation_laws(config, path, out) == []
+
+
+@settings(
+    max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(
+    module=st.sampled_from(['aragog', 'spider']),
+    stored=st.sampled_from(['nearest', 'constant']),
+    new=st.sampled_from(['nearest', 'constant', None]),
+    allow=st.booleans(),
+)
+def test_a_resume_keeps_or_reports_the_recorded_mixing_length(
+    tmp_path_factory, module, stored, new, allow
+):
+    """For any recorded and new mixing length, a resume goes on silently when they agree,
+    switches with the allow switch and is refused otherwise."""
+    folder = tmp_path_factory.mktemp('ml')
+    config, path, out = _mixing_case(folder, module, stored, new, allow=allow)
+    effective = new or 'constant'
+    if effective == stored:
+        assert check_resume_separation_laws(config, path, out) == []
+    elif allow:
+        assert check_resume_separation_laws(config, path, out) == [
+            ('mixing_length', stored, effective)
+        ]
+    else:
+        with pytest.raises(ResumeSeparationLawError, match='mixing_length'):
+            check_resume_separation_laws(config, path, out)

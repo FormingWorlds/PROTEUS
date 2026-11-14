@@ -193,6 +193,7 @@ def test_interior_defaults():
     assert i.heat_tidal is False
     assert i.grain_size == pytest.approx(1e-3, rel=1e-12)  # 1 mm crystals
     assert i.flux_guess == -1  # Auto-detect
+    assert i.mixing_length == 'constant'  # 0.25 of the mantle depth, SPIDER and Aragog
 
     # Sub-modules defaults
     assert isinstance(i.aragog, Aragog)
