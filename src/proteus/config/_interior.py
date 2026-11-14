@@ -307,8 +307,8 @@ class AragogCoreModule:
     c_p: float
         Core specific heat capacity [J kg-1 K-1].
     melting_curve: str
-        'iron' (Anzellini et al. 2013 via PALEOS, with light-element
-        depression) or 'quadratic' (Nimmo 2015 Eq. 6 parameterisation).
+        'iron' (Anzellini et al. (2013)[^cite-anzellini2013] via PALEOS, with light-element
+        depression) or 'quadratic' (Nimmo (2015)[^cite-nimmo2015] Eq. 6 parameterisation).
     light_element_fraction: float
         Mole fraction of light elements depressing the iron melting curve.
     depression: float
@@ -340,7 +340,7 @@ class AragogCoreModule:
     k_core: float
         Core thermal conductivity [W m-1 K-1] for conduction in the
         stratified shell and the entropy and dynamo diagnostics; the default is the
-        Nimmo (2015)[^cite-nimmo2015b] Table 2 value.
+        Nimmo (2015)[^cite-nimmo2015] Table 2 value.
     layer_base_fraction: float
         Base of the stratified shell as a fraction of the CMB radius, in (0, 1);
         the inner core must stay below it. Used with the experimental

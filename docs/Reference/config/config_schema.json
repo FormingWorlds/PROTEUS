@@ -5751,7 +5751,7 @@
         "quadratic"
       ],
       "bounds": null,
-      "description": "'iron' (Anzellini et al. 2013 via PALEOS, with light-element depression) or 'quadratic' (Nimmo 2015 Eq. 6 parameterisation).",
+      "description": "'iron' (Anzellini et al. (2013)[^cite-anzellini2013] via PALEOS, with light-element depression) or 'quadratic' (Nimmo (2015)[^cite-nimmo2015] Eq. 6 parameterisation).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5975,7 +5975,7 @@
           "value": 0
         }
       ],
-      "description": "Core thermal conductivity [W m-1 K-1] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015)[^cite-nimmo2015b] Table 2 value.",
+      "description": "Core thermal conductivity [W m-1 K-1] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015)[^cite-nimmo2015] Table 2 value.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

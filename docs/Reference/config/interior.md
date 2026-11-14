@@ -140,7 +140,7 @@ The MgSiO$_3$ mantle EOS resolves through two distinct paths depending on the `<
 
 With `mantle_eos = "PALEOS:MgSiO3"` (the default), the hydrostatic structure solve uses the PALEOS *unified* MgSiO$_3$ table for the density profile.
 The phase-specific property surfaces used by Aragog (density, heat capacity, thermal expansion, adiabatic gradient) and the pressure-entropy lookup tables are built from the PALEOS *two-phase* solid and liquid tables, which keeps the properties well resolved across the melting-curve discontinuity that a single unified table interpolates through.
-The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005 below 2.55 GPa, Fei et al. 2021 above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8).
+The liquidus is the analytic PALEOS curve (Belonoshko et al. (2005)[^cite-belonoshko2005] below 2.55 GPa, Fei et al. (2021)[^cite-fei2021] above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8).
 The default is the constant solidus-to-liquidus ratio ($\approx 0.809$) of the Stixrude (2014)[^cite-stixrude2014] MgSiO$_3$ melting parametrization, applied to the PALEOS liquidus instead of the Stixrude liquidus.
 The derived solidus is therefore a constant depression of the PALEOS liquidus, not the Stixrude solidus curve: its absolute value lies well above the Stixrude solidus at low to moderate pressure (about 2900 K against 1700 K at 20 GPa, and about 10% higher at 140 GPa) and below it above roughly 200 GPa.
 The melt fraction then follows from the lever rule between this solidus and liquidus.
@@ -391,7 +391,7 @@ from the running mesh.
 |---|---|---|---|
 | `alpha` | float | `1.35e-05` | Core thermal expansion coefficient \[K-1\]. Must be > 0. |
 | `c_p` | float | `840.0` | Core specific heat capacity \[J kg-1 K-1\]. Must be > 0. |
-| `melting_curve` | str | `"iron"` | 'iron' (Anzellini et al. 2013 via PALEOS, with light-element depression) or 'quadratic' (Nimmo 2015 Eq. 6 parameterisation). Choices: `"iron"`, `"quadratic"`. |
+| `melting_curve` | str | `"iron"` | 'iron' (Anzellini et al. (2013)[^cite-anzellini2013] via PALEOS, with light-element depression) or 'quadratic' (Nimmo (2015)[^cite-nimmo2015] Eq. 6 parameterisation). Choices: `"iron"`, `"quadratic"`. |
 | `light_element_fraction` | float | `0.0` | Mole fraction of light elements depressing the iron melting curve. Must be >= 0 and < 1. |
 | `depression` | float | `0.0` | Melting-point depression per unit mole fraction, as a fraction of the melting temperature \[1\]; its product with light_element_fraction must stay below 1. Must be >= 0. |
 | `t_m0` | float | `2677.0` | Quadratic-curve prefactor \[K\] (melting_curve = 'quadratic'). Must be > 0. |
@@ -402,7 +402,7 @@ from the running mesh.
 | `c_light` | float | `0.0` | Light-element mass fraction of the outer core (complete rejection). Must be >= 0 and < 1. |
 | `q_radio` | float | `0.0` | Core radiogenic power \[W\], constant over a run. Must be >= 0. |
 | `stratification` | bool | `false` | When true, the outer core above layer_base_fraction of the CMB radius is a resolved shell whose temperatures are part of the solver state: heat moves through it by conduction and, where its gradient is superadiabatic, by convective mixing, so a stable layer forms below the CMB when the CMB heat flow is subadiabatic and erodes when it is not. The CMB heat flow sees the temperature of the top of the shell. Experimental: erosion of a layer does not run on CVODE at the default tolerances. Not available with accretion. |
-| `k_core` | float | `130.0` | Core thermal conductivity \[W m-1 K-1\] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015)[^cite-nimmo2015b] Table 2 value. Must be > 0. |
+| `k_core` | float | `130.0` | Core thermal conductivity \[W m-1 K-1\] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015)[^cite-nimmo2015] Table 2 value. Must be > 0. |
 | `layer_base_fraction` | float | `0.4` | Base of the stratified shell as a fraction of the CMB radius, in (0, 1); the inner core must stay below it. Used with the experimental stratification. Must be > 0 and < 1. |
 | `layer_k_mix` | float | `10000000.0` | Eddy diffusivity \[m2 s-1\] of convective mixing in the stratified shell at the reference superadiabatic gradient. Used with the experimental stratification. Must be > 0. |
 | `layer_g_mix` | float | `0.001` | Reference superadiabatic gradient of the shell mixing, as a fraction of the adiabatic gradient at the CMB. Used with the experimental stratification. Must be > 0. |
@@ -527,13 +527,19 @@ Cross-field constraints enforced when the config file loads:
 
 [^cite-stixrude2014]: L. Stixrude, *[Melting in super-earths](https://doi.org/10.1098/rsta.2013.0076)*, Philosophical Transactions of the Royal Society A, 372, 20130076, 2014. [SciX](https://scixplorer.org/abs/2014RSPTA.37230076S/abstract).
 
+[^cite-anzellini2013]: S. Anzellini, A. Dewaele, M. Mezouar, P. Loubeyre, G. Morard, *[Melting of iron at Earth's inner core boundary based on fast X-ray diffraction](https://doi.org/10.1126/science.1233514)*, Science, 340, 464-466, 2013.
+
+[^cite-belonoshko2005]: A. B. Belonoshko, N. V. Skorodumova, A. Rosengren, R. Ahuja, B. Johansson, L. Burakovsky, D. L. Preston, *[High-pressure melting of MgSiO3](https://doi.org/10.1103/PhysRevLett.94.195701)*, Physical Review Letters, 94, 195701, 2005.
+
+[^cite-fei2021]: Y. Fei, C. T. Seagle, J. P. Townsend, C. A. McCoy, A. Boujibar, P. Driscoll, L. Shulenburger, M. D. Furnish, *[Melting and density of MgSiO3 determined by shock compression of bridgmanite to 1254 GPa](https://doi.org/10.1038/s41467-021-21170-y)*, Nature Communications, 12, 876, 2021.
+
 [^cite-abe1995]: Y. Abe, *Basic equations for evolution of partially molten mantle and core*, in T. Yukutake (ed.), The Earth's Central Part: Its Structure and Dynamics, Terra Sci. Pub. Com., Tokyo, 215-230, 1995.
 
 [^cite-christensen2009]: U. R. Christensen, V. Holzwarth, A. Reiners, *[Energy flux determines magnetic field strength of planets and stars](https://doi.org/10.1038/nature07626)*, Nature, 457, 167-169, 2009.
 
 [^cite-mckenzie1984]: D. McKenzie, *[The generation and compaction of partially molten rock](https://doi.org/10.1093/petrology/25.3.713)*, Journal of Petrology, 25, 713-765, 1984.
 
-[^cite-nimmo2015b]: F. Nimmo, *[Thermal and compositional evolution of the core](https://doi.org/10.1016/b978-0-444-53802-4.00160-3)*, in G. Schubert (ed.), Treatise on Geophysics, 2nd edition, vol. 9, Elsevier, 201-219, 2015.
+[^cite-nimmo2015]: F. Nimmo, *[Thermal and compositional evolution of the core](https://doi.org/10.1016/b978-0-444-53802-4.00160-3)*, in G. Schubert (ed.), Treatise on Geophysics, 2nd edition, vol. 9, Elsevier, 201-219, 2015.
 
 [^cite-ruedas2017]: T. Ruedas, *[Radioactive heat production of six geologically important nuclides](https://doi.org/10.1002/2017GC006997)*, Geochemistry, Geophysics, Geosystems, 18, 3530-3541, 2017. [SciX](https://scixplorer.org/abs/2017GGG....18.3530R/abstract).
 
