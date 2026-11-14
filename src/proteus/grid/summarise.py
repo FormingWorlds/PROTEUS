@@ -7,7 +7,7 @@ import os
 
 import numpy as np
 
-from proteus.utils.helper import CommentFromStatus
+from proteus.utils.helper import CommentFromStatus, ReadStatus
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -61,7 +61,8 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
     # its name. Keying by the real index means a non-contiguous set of case
     # folders (for example after a failed case has been deleted) is handled
     # correctly, rather than assuming the folders are numbered 0..N-1.
-    # Check `utils.helper.CommentFromStatus` for information on error codes.
+    # Check `utils.helper.CommentFromStatus` for information on error codes. A case
+    # without a readable status file counts as unknown (STATUS_MISSING).
     log.info('Checking statuses...')
     case_status = {}
     for case_dir in case_dirs:
@@ -71,14 +72,7 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
         except ValueError:
             log.warning("Ignoring folder with unexpected name '%s'", name)
             continue
-        status_path = os.path.join(case_dir, 'status')
-        if not os.path.exists(status_path):
-            raise FileNotFoundError("Cannot find status file at '%s'" % status_path)
-        with open(status_path, 'r') as hdl:
-            lines = hdl.readlines()
-        if not lines:
-            raise ValueError("Status file is empty: '%s'" % status_path)
-        case_status[idx] = int(lines[0].strip())
+        case_status[idx] = ReadStatus(case_dir)
 
     # Sorted indices and the matching array of status codes
     indices = sorted(case_status.keys())
@@ -91,18 +85,15 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
         count = int(np.count_nonzero(codes == i))
         if count == 0:
             continue
-        if i == -1:
-            comment = 'Uncategorised'
-        else:
-            comment = CommentFromStatus(i)
         pct = float(count) / N * 100.0
-        log.info('  %-5d (%2d%%) %s', count, pct, comment)
+        log.info('  %-5d (%2d%%) %s', count, pct, CommentFromStatus(i))
 
     # Check options
     gen_cases = {
         # Broad categories (shared ranges)
         **{name: list(codes) for name, codes in STATUS_CATEGORIES.items()},
-        'All': list(range(0, 100, 1)),
+        'All': list(range(-1, 100)),
+        'Unknown': [c for c in range(-1, 100) if status_category(c) == 'Unknown'],
         # Narrower categories
         'Solidified': [10],
         'Steady': [11, 14],
