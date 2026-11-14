@@ -2553,6 +2553,7 @@ def test_a_shell_above_5_percent_of_the_mantle_above_r_core_is_logged_once(
     lines = [r.getMessage() for r in caplog.records if 'between M_core_solve' in r.getMessage()]
     assert hf_row['M_core'] == pytest.approx(float(mass[55]), rel=1e-15)
     assert len(lines) == (share > 0.05)
+    assert all('Raise interior_struct.zalmoxis.num_levels' in m for m in lines)
     logged = [
         float(re.search(r'holds (\S+) of the mantle mass above R_core', m)[1]) for m in lines
     ]
