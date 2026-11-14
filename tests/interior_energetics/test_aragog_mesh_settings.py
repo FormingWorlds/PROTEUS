@@ -18,8 +18,11 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from hypothesis import given
-from hypothesis import strategies as st
+
+pytest.importorskip('hypothesis')
+
+from hypothesis import given  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
 
 from proteus.config import read_config_object
 from proteus.config._interior import Aragog, Rheology
@@ -66,6 +69,7 @@ def test_a_cell_thickness_is_0_or_a_finite_number_of_at_least_2_m(name, value):
     """A number is kept exactly when it is 0, or finite and at least 2 m."""
     want = value == 0 or (math.isfinite(value) and value >= 2)
     assert _kept(name, value) is want
+    assert _kept(name, 2) and not _kept(name, 2 - 1e-9)  # the 2 m bound is inclusive
 
 
 @pytest.mark.parametrize('name', ['cmb_cell_thickness', 'surface_cell_thickness'])
@@ -75,6 +79,8 @@ def test_a_cell_thickness_is_0_or_a_finite_number_of_at_least_2_m(name, value):
 def test_a_cell_thickness_that_is_not_a_number_or_the_rule_is_refused(name, value):
     """A bool, None, a numeric string, another string, bytes and a list are refused."""
     assert _kept(name, value) is False
+    with pytest.raises((TypeError, ValueError), match=name):
+        Aragog(**{name: value})
 
 
 def test_uniform_is_kept_at_the_surface_and_refused_at_the_cmb():
@@ -106,12 +112,14 @@ def test_the_slope_lies_in_0_to_1(value):
     except (TypeError, ValueError):
         kept = False
     assert kept is (0.0 < value <= 1.0)
+    assert Rheology(mlt_bottom_slope=1).mlt_bottom_slope == 1
 
 
 def test_the_slope_refuses_a_bool():
     """A TOML true is refused, not read as 1."""
     with pytest.raises((TypeError, ValueError), match='mlt_bottom_slope'):
         Rheology(mlt_bottom_slope=True)
+    assert Rheology(mlt_bottom_slope=1).mlt_bottom_slope == 1  # the int 1 is a number
 
 
 def test_a_config_file_sets_the_three_fields(tmp_path):
@@ -126,8 +134,8 @@ def test_a_config_file_sets_the_three_fields(tmp_path):
     path = tmp_path / 'user.toml'
     path.write_text(text)
     a = read_config_object(path).interior_energetics.aragog
-    assert (a.cmb_cell_thickness, a.surface_cell_thickness) == (2500.0, 7000)
-    assert a.rheology.mlt_bottom_slope == 0.5
+    assert a.cmb_cell_thickness == pytest.approx(2500.0) and a.surface_cell_thickness == 7000
+    assert a.rheology.mlt_bottom_slope == pytest.approx(0.5)
 
 
 @pytest.mark.parametrize('value', ['true', '[1.0, 2.0]', '{ a = 1 }'])
@@ -142,6 +150,8 @@ def test_a_config_file_cell_that_is_not_a_number_or_a_string_is_refused(tmp_path
         ValueError, match='surface_cell_thickness: must be a number or a string'
     ):
         read_config_object(path)
+    path.write_text(path.read_text().replace(f'= {value}', '= 7000'))
+    assert read_config_object(path).interior_energetics.aragog.surface_cell_thickness == 7000
 
 
 @pytest.mark.parametrize(
@@ -161,6 +171,10 @@ def test_a_config_file_slope_or_cmb_cell_that_is_a_bool_or_a_string_is_refused(
     path.write_text(MINIMAL.read_text() + f'\n[{section}]\n    {name} = {value}\n')
     with pytest.raises(ValueError, match=f'{name}: must be a number'):
         read_config_object(path)
+    good = 1 if name == 'mlt_bottom_slope' else 3000  # the same field as a number loads
+    path.write_text(MINIMAL.read_text() + f'\n[{section}]\n    {name} = {good}\n')
+    aragog = read_config_object(path).interior_energetics.aragog
+    assert getattr(aragog.rheology if 'rheology' in section else aragog, name) == good
 
 
 def test_an_int_cell_beyond_the_float_range_is_refused_as_not_finite():
@@ -220,7 +234,7 @@ def test_setup_solver_passes_the_mixing_length_profile(tmp_path, mixing_length, 
     length keeps aragog's fraction of 0.25 of the mantle thickness."""
     mesh = _setup_mesh(tmp_path, mixing_length)
     assert mesh.mixing_length_profile == profile
-    assert mesh.mixing_length_constant_fraction == 0.25
+    assert mesh.mixing_length_constant_fraction == pytest.approx(0.25)
 
 
 def _rheology_config(enabled, slope):

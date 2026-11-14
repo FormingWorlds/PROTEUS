@@ -19,6 +19,7 @@ import pytest
 
 from proteus.interior_energetics.aragog_resume import refuse_another_mesh
 from proteus.interior_energetics.resume_laws import ResumeSeparationLawError
+from proteus.interior_struct.zalmoxis import mesh_radius_tolerance
 from proteus.utils.helper import snapshot_path_for_time
 
 pytestmark = pytest.mark.unit
@@ -60,7 +61,16 @@ def test_a_resume_on_another_mesh_is_refused_with_the_stored_cells(tmp_path):
 
 def test_the_mesh_of_the_snapshot_resumes(tmp_path):
     """The same mesh, shifted by half the 1 m radius tolerance, goes on."""
+    assert mesh_radius_tolerance(RUN[0], RUN[-1]) == pytest.approx(1.0)
     _refuse(_run(tmp_path), RUN + 0.5)
+    assert np.max(np.abs(RUN + 0.5 - RUN)) < mesh_radius_tolerance(RUN[0], RUN[-1])
+
+
+def test_a_mesh_shifted_beyond_the_radius_tolerance_is_refused(tmp_path):
+    """A shift of 1.5 m, above the 1 m tolerance and its 2 mm margin, stops the resume."""
+    with pytest.raises(ResumeSeparationLawError, match='node by node') as err:
+        _refuse(_run(tmp_path), RUN + 1.5)
+    assert '80 nodes' in str(err.value)
 
 
 def test_another_node_count_is_refused(tmp_path):
@@ -73,6 +83,10 @@ def test_another_node_count_is_refused(tmp_path):
 
 def test_a_snapshot_without_radii_or_no_snapshot_is_not_checked(tmp_path):
     """An older snapshot without radius_b, or none at the row time, leaves the mesh unchecked."""
-    _refuse(_run(tmp_path / 'a', radii_m=None), UNIFORM)
+    out = _run(tmp_path / 'a', radii_m=None)
+    with nc.Dataset(next(Path(out, 'data').glob('*_int.nc'))) as ds:
+        assert 'radius_b' not in ds.variables
+    _refuse(out, UNIFORM)
     (tmp_path / 'b').mkdir()
+    assert not (tmp_path / 'b' / 'data').exists()
     _refuse(str(tmp_path / 'b'), UNIFORM)

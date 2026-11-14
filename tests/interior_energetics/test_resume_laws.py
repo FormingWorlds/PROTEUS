@@ -707,7 +707,9 @@ def test_the_slope_is_not_compared_with_the_rheology_off(tmp_path):
     )
     path = tmp_path / 'user.toml'
     path.write_text(text)
-    assert check_resume_separation_laws(read_config_object(path), path, out) == []
+    config = read_config_object(path)
+    assert config.interior_energetics.aragog.rheology.enabled is False
+    assert check_resume_separation_laws(config, path, out) == []
 
 
 def _mixing_case(folder, module, stored, new, allow=False, record_module=None, laws=False):
@@ -819,6 +821,10 @@ def test_a_resume_without_convection_does_not_check_the_mixing_length(tmp_path, 
     config, path, out = _mixing_case(tmp_path, 'aragog', 'nearest', 'constant')
     config.interior_energetics.module = module
     assert check_resume_separation_laws(config, path, out) == []
+    # The same record and file refuse under aragog, so the empty result comes from the module.
+    config.interior_energetics.module = 'aragog'
+    with pytest.raises(ResumeSeparationLawError, match='mixing_length'):
+        check_resume_separation_laws(config, path, out)
 
 
 @settings(

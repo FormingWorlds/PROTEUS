@@ -55,6 +55,7 @@ def _run(folder: Path, n=30, close=12, h2o=1.0, superheat=None):
 
 
 def test_the_closing_row_is_the_first_active_row_and_a_run_without_one_is_refused(tmp_path):
+    """The closing row is the first row with the seal active; a run that never closes is refused."""
     runs = _load('_runs')
     seal = runs.read_run(_run(tmp_path / 'a', close=7))
     assert runs.closing_row(seal) == 7
@@ -63,6 +64,7 @@ def test_the_closing_row_is_the_first_active_row_and_a_run_without_one_is_refuse
 
 
 def test_the_data_extractor_keeps_the_closing_rows_and_thins_the_span_before(tmp_path):
+    """The extractor keeps the rows around the closing and thins the rows before it."""
     tool = _load('extract_data')
     seal, off, hold = (_run(tmp_path / name) for name in ('seal', 'off', 'hold'))
     tool.main(
@@ -89,6 +91,7 @@ def test_the_data_extractor_keeps_the_closing_rows_and_thins_the_span_before(tmp
 
 
 def test_the_ensemble_writes_the_superheat_offset_and_refuses_unpaired_starts(tmp_path):
+    """The ensemble writes the superheat offset of each paired start and refuses an unpaired start."""
     tool = _load('ensemble')
     v = 500.0 + 5e-10
     s, o = _run(tmp_path / 's', superheat=v, h2o=2.0), _run(tmp_path / 'o', superheat=v)
@@ -97,7 +100,7 @@ def test_the_ensemble_writes_the_superheat_offset_and_refuses_unpaired_starts(tm
         [str(out), '--commit', 'abc', '--aragog', 'def', '--calliope', '1', f'k1={s},{o}']
     )
     d = pd.read_csv(out, comment='#', float_precision='round_trip')
-    assert d['dT'].item() == v - 500.0 and d['t_close'].item() == 1200.0
+    assert d['dT'].item() == v - 500.0 and d['t_close'].item() == pytest.approx(1200.0)
     assert d['seal_atm'].item() == 2.0 * d['open_atm'].item()
     other = _run(tmp_path / 'p', superheat=500.0)
     with pytest.raises(AssertionError, match='other superheats'):
@@ -116,6 +119,7 @@ def test_the_ensemble_writes_the_superheat_offset_and_refuses_unpaired_starts(tm
 
 
 def test_the_number_check_formats_its_values_and_runs_the_page_blocks(tmp_path):
+    """The number check formats its values and runs the number blocks of the page."""
     tool = _load('check_numbers')
     assert tool._sci(1.3391e15) == '1.339e15' and tool._sci(6.7994e-4) == '6.799e-4'
     assert tool._tex(8.678e-4) == '$8.7 \\times 10^{-4}$'

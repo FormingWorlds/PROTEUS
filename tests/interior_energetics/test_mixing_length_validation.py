@@ -132,14 +132,18 @@ def test_known_limit_single_cmb_flux_dips_on_the_cmb_cell_meshes_aragog_issue_11
 
     def dips(case):
         m = TOOL.metrics(_case(case))
-        return [round(t / 1e3, 1) for t, _ in m['dips']], [f for _, f in m['dips']], m
+        return [t / 1e3 for t, _ in m['dips']], [f for _, f in m['dips']], m
 
+    # Compared as the text the page quotes, at its precision.
     times, flux, m = dips('c3000_constant')
-    assert times == [22.0, 28.4, 38.1]
-    assert [round(f, 3) for f in flux[:2]] == [-0.011, -0.011] and round(flux[2], 1) == -595.5
-    assert m['n_negative'] == 3 and round(m['worst_rise'], 2) == 0.61
+    assert [f'{t:.1f}' for t in times] == ['22.0', '28.4', '38.1']
+    assert [f'{f:.3f}' for f in flux[:2]] == [
+        '-0.011',
+        '-0.011',
+    ] and f'{flux[2]:.1f}' == '-595.5'
+    assert m['n_negative'] == 3 and f'{m["worst_rise"]:.2f}' == '0.61'
     times, flux, m = dips('c1500_constant')
-    assert [round(f, 1) for f in flux] == [-110.4, -322.5] and m['n_negative'] == 2
+    assert [f'{f:.1f}' for f in flux] == ['-110.4', '-322.5'] and m['n_negative'] == 2
     twin = TOOL.metrics(_case('c3000_constant_roundoff'))
     assert (
         max(
@@ -150,9 +154,9 @@ def test_known_limit_single_cmb_flux_dips_on_the_cmb_cell_meshes_aragog_issue_11
         )
         < 1.0
     )
-    assert [round(f, 1) for _, f in twin['dips'][:2]] == [1.6, 1.0]
+    assert [f'{f:.1f}' for _, f in twin['dips'][:2]] == ['1.6', '1.0']
     _, flux, _ = dips('rheology_constant')
-    assert round(flux[0], 1) == 4.6 and round(flux[1], 3) == -0.011
+    assert f'{flux[0]:.1f}' == '4.6' and f'{flux[1]:.3f}' == '-0.011'
 
 
 @pytest.mark.reference_pinned
