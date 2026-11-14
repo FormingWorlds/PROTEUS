@@ -32,10 +32,8 @@ Invariants asserted:
   the EOS.
 - ``gravity`` positive and bounded (5-15 m/s^2 for 1 M_Earth).
 - ``M_core_solve`` equals the core target, ``M_core`` is at least ``M_core_solve``, and
-  ``R_core`` is a whole number of radial steps. The row holds no density of the shell
-  below the CMB node, so the unit test
-  ``test_a_thin_mantle_keeps_the_mass_inside_r_core_and_the_core_of_the_solve`` checks
-  that the CMB is the first node at or above ``M_core_solve`` and not one node off.
+  ``R_core`` is a whole number of radial steps; the CMB node itself is checked by
+  ``test_a_thin_mantle_keeps_the_mass_inside_r_core_and_the_core_of_the_solve``.
 - Cross-step structure stability: with ``update_interval = 0`` the
   per-iteration refresh triggers are off, so the only structure
   change is the one-time baseline hand-off on the first non-init

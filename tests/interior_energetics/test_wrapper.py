@@ -1662,9 +1662,8 @@ def test_a_rejected_structure_update_restores_the_core_keys_of_the_row(path):
     up-step leaves the 3 keys at their values before the call."""
     config, hf_row, lt, lT, lP = _dtmagma_scenario()  # cooling, so an up-step is rejected
     before = {'M_core': 1.95e24, 'M_core_solve': 1.94e24, 'core_density': 1.1e4}
-    hf_row.update(before, M_mantle=3.0e24, M_int=5.972e24)
+    hf_row.update(before)
     interior_o = _mock_interior_o()
-    r_prev = hf_row['R_int']
 
     def solver(cfg, outdir, row, *a, **k):
         row.update(M_core=2.1e24, M_core_solve=2.0e24, core_density=1.2e4)
@@ -1673,7 +1672,7 @@ def test_a_rejected_structure_update_restores_the_core_keys_of_the_row(path):
         if path == 'mass_anchor':
             row.update(M_int_target=5.972e24, M_int=5.972e24 * (1 + 5e-3))
         else:
-            row['R_int'] = r_prev * (1.0 + 1.0e-3)
+            row['R_int'] *= 1.0 + 1.0e-3
         return (3.504e6, None)
 
     s, ns, cp = _solver_patches(side_effect=solver)
