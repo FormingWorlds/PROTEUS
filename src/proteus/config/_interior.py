@@ -548,7 +548,7 @@ class Aragog:
     )
     """ODE solver: 'cvode' (SUNDIALS, SPIDER parity; needs scikits-odes-sundials and stops the run at setup without it), 'radau' (scipy), 'bdf' (scipy)."""
     scalar_gravity_override: bool = field(default=False)
-    """Scalar-gravity comparison knob. When True, the external mesh file that
+    """Scalar-gravity comparison setting. When True, the external mesh file that
     Zalmoxis writes has its gravity column overwritten with a uniform scalar
     (the surface value from ``hf_row['gravity']``) before Aragog reads it, so
     Aragog's per-node gravity path interpolates to that scalar everywhere.
@@ -1202,7 +1202,7 @@ class Interior:
     _PhaseMixedParameters. Sets the width of the phase boundary in
     Aragog's mixed-phase blending (viscosity, thermal conductivity
     etc.). Distinct from ``[interior_energetics.spider].matprop_smooth_width``
-    which is SPIDER's analogous knob for its own solver."""
+    which is SPIDER's corresponding setting for its own solver."""
 
     # Core thermal model (Bower+2018 Table 2).
     core_tfac_avg: float = field(default=1.147, validator=gt(0))

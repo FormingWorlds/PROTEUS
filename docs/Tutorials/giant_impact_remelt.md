@@ -151,7 +151,7 @@ def write_config(name, remelt, timeline, interior='aragog'):
         cfg['planet'].update(temperature_mode='isothermal', tsurf_init=4000.0)
         cfg['interior_struct']['melting_dir'] = 'Monteux-600'
         cfg['interior_struct'].setdefault('zalmoxis', {}).update(lookup_nP=150, lookup_nS=60)
-        cfg['interior_energetics']['aragog'] = {'cmb_cell_thickness': 0}  # uniform mesh
+        cfg['interior_energetics'].setdefault('aragog', {})['cmb_cell_thickness'] = 0  # uniform mesh
     path = os.path.join(out, f'{name}.toml')
     with open(path, 'w') as file:
         file.write(tomlkit.dumps(cfg))
@@ -192,8 +192,8 @@ Only `planet.temperature_mode = "liquidus_super"` starts above the liquidus, the
 Here the mantle starts fully molten (liquid fraction `Phi_global` 1, defined in Step 4) and crystallises a little before the impact (0.980 at 925 yr).
 On our run all 4 ended with the status `Completed (target time)`, as the last command shows.
 
-**Known limit.** After the re-melt the Aragog solves of this case are stiff: on the uniform mesh the slowest solve of the run with $f = 0.3$ takes 58,142 steps of the CVODE solver.
-On the default mesh, with its 3000 m cell at the core-mantle boundary, the same run can be much slower or stall: in one of our runs one solve took 86,045 steps, and in 2 other runs (one with `mixing_length = "nearest"`) one solve did not end within 50 and 9 minutes.
+**Known limit.** After the re-melt the Aragog solves of this case are stiff: on the uniform mesh the slowest solve takes 58,142 steps of CVODE, the time integrator inside Aragog, in the run with $f = 0.3$, and 107,805 steps in the run with $f = 0$.
+On the default mesh, with its 3000 m cell at the core-mantle boundary, the run with $f = 0.3$ can be much slower or stall: in one of our runs one solve took 86,045 steps, and in 2 other runs one solve did not end, after 50 minutes in the run under the default and after 9 minutes in a run with `mixing_length = "nearest"`.
 So this page runs Aragog on the uniform mesh.
 
 ## Step 4: read the impact row
@@ -259,9 +259,12 @@ The partial re-melt with $f = 0.3$ raises `T_magma` to 4000 K and adds $2.9 \tim
 `T_cmb` is the same in the $f = 0.3$ and $f = 0$ runs (6023.70 K), because the deeper mantle keeps its entropy.
 In both, `T_cmb` rises across the impact also without a re-melt: the log of the $f = 0$ run shows 5994 K at the end of the step before the impact and 6024 K after it. This tutorial does not establish the cause.
 The partial re-melt adds 0.26 of the heat of the full re-melt, not 0.30.
-A separate check of this case, outside the tutorial, recomputed the heat cell by cell and found why.
-The 16 fully re-melted cells take the same heat as in the full re-melt, and the partly melted cell at the melt front takes 6 % of it.
-In the full re-melt the re-melted top cells take 28 % of the heat: per kilogram they take 3.71 MJ against 3.79 MJ for the deeper mantle, because their entropy rises more (907 against 734 J/kg/K) but at a lower temperature (about 4090 K against 5160 K along the path).
+The cell-by-cell check below explains why.
+
+??? info "Cell-by-cell check of the heat (outside this tutorial)"
+    A separate check of this case recomputed the heat of each cell at the re-melt from the entropy before and after it; its script is not part of PROTEUS.
+    The 16 fully re-melted cells take the same heat as in the full re-melt, and the partly re-melted cell at the melt front takes 6 % of the heat it takes in the full re-melt.
+    In the full re-melt the re-melted top cells take 28 % of the heat: per kilogram they take 3.71 MJ against 3.79 MJ for the deeper mantle, because their entropy rises more (907 against 734 J/kg/K) but at a lower temperature (about 4090 K against 5160 K along the path).
 
 ```python
 import matplotlib
@@ -315,7 +318,7 @@ The re-melt heats a cell, so its density falls and it counts for less.
 In this planet the re-melted outer 30 % of the mantle mass is already fully molten before the impact, so the re-melt adds heat there but no melt.
 These hotter molten cells count for less in the average.
 Some deeper cells are not fully molten ($\phi < 1$); they now count for more, and the mean drops.
-No melt is lost: the separate cell-by-cell check of this case, outside the tutorial, found the 17 re-melted cells fully molten ($\phi = 1$) in both runs, with a mass $\rho V$ 0.3 to 5.5 % lower at $f = 0.3$.
+No melt is lost: the [cell-by-cell check](#step-4-read-the-impact-row) of Step 4 found the 17 re-melted cells fully molten ($\phi = 1$) in both runs, with a mass $\rho V$ 0.3 to 5.5 % lower at $f = 0.3$.
 We expect a rise of `Phi_global` when the outer mantle is partly solid at the impact, because the re-melt then adds melt.
 This tutorial does not run that case.
 This mantle is 98 % molten before the impact (`Phi_global` 0.980 at 925 yr), so the effect of a partial re-melt shows in the heat and in `T_magma`, not in `Phi_global`.

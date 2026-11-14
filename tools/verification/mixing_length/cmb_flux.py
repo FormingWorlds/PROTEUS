@@ -8,7 +8,8 @@ cases of 1 Earth mass run ``input/tutorials/tutorial_lid_seal.toml`` to 100 kyr
 rheology pair ``interior_energetics.aragog.rheology.enabled = true``; the round-off case also
 sets ``planet.mass_tot = 1.000000000001``. The 2 cases of 1.5 Earth masses run
 ``planet_1p5_earth.toml`` of this folder to 300 kyr under the default mixing length; the
-default-mesh case leaves out its ``cmb_cell_thickness = 0``. ``main`` writes ``Time`` [yr],
+default-mesh case leaves out its ``cmb_cell_thickness = 0`` and sets
+``params.out.path = "m1p5_default"``. ``main`` writes ``Time`` [yr],
 ``T_cmb`` [K] and ``F_cmb`` [W m-2, positive out of the core] of every helpfile row of each run
 into one compressed ``.npz``; ``metrics`` measures a case from it.
 

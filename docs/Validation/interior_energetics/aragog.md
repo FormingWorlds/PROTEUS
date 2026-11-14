@@ -13,18 +13,20 @@ If this part of the model is wrong, the core stops cooling for tens of thousands
 Each case below says why the check exists, what it tests, how we know the right answer and why it matters.
 The box "Test details" at the end of each case gives the reference, the tolerance, the test id and the command.
 
-**Terms of this page.**
+## Terms of this page
 
 - CMB: the core-mantle boundary.
 - $T_\mathrm{cmb}$: the temperature of the bottom cell of the mantle, in K. Aragog reports it as the core temperature, as SPIDER does; it follows the core only while heat flows out of the core.
 - $F_\mathrm{cmb}$: the heat flux out of the core at the CMB, in W m$^{-2}$; positive means heat flows from the core into the mantle.
 - Row: one line of the run output `runtime_helpfile.csv`; PROTEUS writes one row per coupling step.
-- Eddy diffusivity: the diffusivity, in m$^2$ s$^{-1}$, through which convection carries heat in the mixing-length model. It is 0 at a stable node, where the entropy does not fall with height.
+- Eddy diffusivity: the diffusivity, in m$^2$ s$^{-1}$, through which convection carries heat in the mixing-length model. It is 0 at a stable node, where the entropy does not fall with height; the CMB node is the exception, because it copies the diffusivity of the node above it.
 - `constant`: the mixing length is 0.25 times the thickness of the mantle everywhere in the mantle.
 - `nearest`: the mixing length is the distance to the nearer of the 2 boundaries, so it goes to 0 at the CMB and at the surface.
 - Mesh: Aragog divides the mantle into cells, thin spherical shells. A uniform mesh has cells of equal thickness. A mesh with a CMB cell has a thin bottom cell, here 1500 m or 3000 m thick.
 - Dip: a row after 10 kyr with $F_\mathrm{cmb}$ below 100 W m$^{-2}$.
 - Lose the heat flux: 2 or more dips in a row. The test names call this "decouple".
+
+## How the runs were made
 
 All runs use the lid-seal tutorial configuration (`input/tutorials/tutorial_lid_seal.toml`, 1 Earth mass) for 100 kyr, except the last case, which uses a planet of 1.5 Earth masses for 300 kyr.
 Each run sets the mesh and the mixing length in its configuration.
@@ -37,7 +39,7 @@ The table lists the 4 `reference_pinned` tests of this page.
 | `tests/interior_energetics/test_mixing_length_validation.py::test_the_constant_length_keeps_the_cmb_flux_coupled_on_every_mesh` | Heat leaves a hot core under a convecting mantle; the same result on every mesh | `constant` on 4 meshes: no 2 dips in a row, no step of $T_\mathrm{cmb}$ below -10 K after 2 kyr, $T_\mathrm{cmb}$ at 100 kyr within 25 K. | 2026-11-14 |
 | `tests/interior_energetics/test_mixing_length_validation.py::test_the_nearest_length_decouples_on_80_nodes_and_on_the_3000_m_cell_only` | The same requirement, shown not met by `nearest` | `nearest` on 3 meshes: dips for more than 10 kyr on 2 meshes, none on the finest. | 2026-11-14 |
 | `tests/interior_energetics/test_mixing_length_validation.py::test_the_constant_length_keeps_the_flux_coupled_with_the_rheology_on` | As the first case | `constant` with the rheology on, against `nearest`. | 2026-11-14 |
-| `tests/interior_energetics/test_mixing_length_validation.py::test_a_15_earth_mass_planet_keeps_its_core_temperature_under_the_default` | A run of the same configuration that sets `constant` in its file | 1.5 Earth masses: $T_\mathrm{cmb}$ at 300 kyr within 1 K of 5199.9 K, no 2 dips in a row. | 2026-11-14 |
+| `tests/interior_energetics/test_mixing_length_validation.py::test_a_15_earth_mass_planet_keeps_its_core_temperature_under_the_default` | A run of the same configuration that sets `constant` in its file | 1.5 Earth masses: $T_\mathrm{cmb}$ at 300 kyr within 1 K of 5199.9 K on the uniform mesh; on both meshes no row with $|F_\mathrm{cmb}|$ below 1 W m$^{-2}$ and no 2 dips in a row. | 2026-11-14 |
 
 ## The constant length keeps the heat flux out of the core on every mesh
 
@@ -57,6 +59,7 @@ The test also asserts that the uniform meshes have no dip, and that both meshes 
 The core is hotter than the mantle above it, and that mantle convects, so heat must flow out of the core.
 The test accepts single rows without this flux (see the known limit below), but not 2 in a row.
 A model with a correct boundary treatment gives the same $T_\mathrm{cmb}$ on a coarse and on a fine mesh, so the test asks that $T_\mathrm{cmb}$ at 100 kyr of the 4 meshes lie within 25 K of each other; they lie within 7.6 K.
+Because $T_\mathrm{cmb}$ is the temperature of the bottom cell, the thickness of that cell enters this comparison.
 The 160-node mesh is the finest of the 4: its cells are about half as thick as on the 80-node mesh.
 
 **Why it matters.**
@@ -76,18 +79,22 @@ A triangle marks a row with $F_\mathrm{cmb} < 0$: the log axis shows its absolut
 A pass means that no line stays below the dashed line for 2 rows.
 
 **Known limit.**
-With a CMB cell, `constant` gives single dips: 3 rows on the 3000 m cell and 2 rows on the 1500 m cell.
-The solver carries the entropy gradient at the CMB from one coupling step to the next.
-On the 3000 m cell the run log gives this gradient as $-4 \times 10^{-12}$ to $-5 \times 10^{-12}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$ in the rows around the dips, and about $2 \times 10^{-17}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$, zero to round-off, at the end of each dip row.
-In the dips at 22.0 and 28.4 kyr the gradient stays at this value for the whole step: $F_\mathrm{cmb}$ is -0.011 W m$^{-2}$, and $T_\mathrm{cmb}$ changes by less than $10^{-5}$ K in the row.
-In the dip at 38.1 kyr the gradient reaches this value within the step, and the mean flux of the row is -595.5 W m$^{-2}$; a negative $F_\mathrm{cmb}$ means that heat flows into the core.
-The 2 dips on the 1500 m cell, -110.4 and -322.5 W m$^{-2}$, are not traced in this way.
-Why the gradient falls to zero is not known.
+With a CMB cell, `constant` gives single dips: 3 rows on the 3000 m cell, at 22.0, 28.4 and 38.1 kyr, and 2 rows on the 1500 m cell.
 The next row has a flux above 100 W m$^{-2}$ again, and $T_\mathrm{cmb}$ never rises by more than 0.61 K between 2 rows.
-A run with the planet mass changed by 1 part in $10^{12}$ has its 3 dips within 1 yr of the same times, so the times come from the model, not from round-off; the 2 dips at zero gradient have 1.6 and 1.0 W m$^{-2}$ there.
+Each dip falls on a row in which `T_magma` falls by more than 25 K while `Phi_global` rises; the uniform 80-node mesh has no such row after 10 kyr, and no dip.
+In the dips on the 3000 m cell the entropy gradient at the CMB, which the solver carries as a state, falls to a small positive value, and the CMB node keeps the diffusivity copied from the node above, so heat flows into the core for that row: a negative $F_\mathrm{cmb}$.
+Around the dips this gradient is 2000 to 2600 times smaller than its absolute tolerance in the solver ($10^{-8}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$), so the solver does not control it; this is a candidate cause, and why the gradient falls is not known.
+The aragog mesh study that supports the 3000 m cell runs the core module and the `nearest_boundary` length; for the defaults of PROTEUS, the `energy_balance` boundary and `constant`, the runs of this page are the check, and they show the single dips only on meshes with a CMB cell.
+
+??? note "The dips in the run log"
+    - On the 3000 m cell the run log (`output/c3000_constant/aragog.log` of the run, not in the repository) gives the gradient as $-4 \times 10^{-12}$ to $-5 \times 10^{-12}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$ in the rows around the dips, and $+1.9 \times 10^{-17}$ to $+2.3 \times 10^{-17}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$ at the end of each dip row.
+    - At 22.0 and 28.4 kyr the gradient starts and ends the step at this value: $F_\mathrm{cmb}$ is -0.011 W m$^{-2}$, and $T_\mathrm{cmb}$ changes by less than $10^{-5}$ K in the row.
+    - At 38.1 kyr the gradient reaches this value within the step; the mean flux of the row, -595.5 W m$^{-2}$, needs a larger positive gradient during the step.
+    - The 2 dips on the 1500 m cell, -110.4 and -322.5 W m$^{-2}$, are not traced in this way.
+    - A run with the planet mass changed by 1 part in $10^{12}$ has its 3 dips within 1 yr of the same times, so the times come from the model, not from round-off; a tolerance effect is also the same in both runs, so this does not rule out a numerical cause. In that run $F_\mathrm{cmb}$ in the dips at 22.0 and 28.4 kyr is 1.6 and 1.0 W m$^{-2}$, not -0.011 W m$^{-2}$.
 
 ??? info "Test details"
-    - Reference: heat flows out of a hot core under a convecting mantle; the uniform 160-node mesh for the mesh comparison.
+    - Reference: heat flows out of a hot core under a convecting mantle; for the mesh comparison, the spread of $T_\mathrm{cmb}$ at 100 kyr over the 4 meshes.
     - Tolerance: at most 1 dip in a row after 10 kyr; steps of $T_\mathrm{cmb}$ of at least -10 K after 2 kyr; spread of $T_\mathrm{cmb}$ at 100 kyr at most 25 K.
     - Test id: `tests/interior_energetics/test_mixing_length_validation.py::test_the_constant_length_keeps_the_cmb_flux_coupled_on_every_mesh`
     - The measure of dips and steps is checked on a hand-made series: `tests/interior_energetics/test_mixing_length_validation.py::test_the_dip_measure_counts_consecutive_rows_after_10_kyr`; the stored file is checked for every case and its commits: `tests/interior_energetics/test_mixing_length_validation.py::test_the_stored_runs_hold_every_case_and_name_their_commits`.
@@ -108,7 +115,7 @@ On the 160-node mesh, no row after 10 kyr may be a dip.
 **How we know the right answer.**
 The requirement is the same as in the case above, and here the 2 meshes of 80 nodes do not meet it.
 Counted from the last row above 100 W m$^{-2}$, the dips last 27.0 kyr on the 80-node mesh and 30.0 kyr on the 3000 m cell, with $F_\mathrm{cmb}$ below 1 W m$^{-2}$ in each dip row.
-In these dips the run log gives the entropy gradient at the CMB as -0.137 (80 nodes) and -1.33 J kg$^{-1}$ K$^{-1}$ m$^{-1}$ (3000 m cell), large and negative: the flux is lost through an eddy diffusivity of 0, not through the gradient.
+In these dips the entropy gradient at the CMB, the state the solver carries, reaches -0.137 (80 nodes) and -1.33 J kg$^{-1}$ K$^{-1}$ m$^{-1}$ (3000 m cell) in the run logs, large and negative: the flux is lost through an eddy diffusivity of 0, copied from the stable node above, not through the gradient.
 On 160 nodes the flux stays above 359 W m$^{-2}$.
 So the loss depends on the mesh, not on the planet.
 The bottom cell of the 160-node mesh is about half as thick as on the 80-node mesh and thicker than the 3000 m cell, so the thickness of the bottom cell alone does not decide it; which property of the mesh does is not known.
@@ -172,14 +179,15 @@ A pass means that the `constant` line never stays below the dashed line for 2 ro
     - Test id: `tests/interior_energetics/test_mixing_length_validation.py::test_the_constant_length_keeps_the_flux_coupled_with_the_rheology_on`
     - Command: `pytest -m reference_pinned tests/interior_energetics/test_mixing_length_validation.py --validation-plots`
 
-## A planet of 1.5 Earth masses reaches the same CMB temperature under the default
+## A planet of 1.5 Earth masses under the default mixing length
 
 **Why this check exists.**
-The cases above use 1 Earth mass. This case checks the default on a larger planet with the 2-phase PALEOS equation of state of MgSiO$_3$.
-The test fails if the run under the default does not reach the core temperature of the run that sets `constant` in its file.
+The cases above use 1 Earth mass; this case runs the default on a planet of 1.5 Earth masses with the 2-phase PALEOS equation of state of MgSiO$_3$.
+Under the current default, `constant`, the run without the key and the reference run have the same settings, so the case is a record of these runs; `tests/config/test_defaults.py` pins the default itself.
+The test fails if the run under the default does not reach, within 1 K, the $T_\mathrm{cmb}$ at 300 kyr of the run that sets `constant` in its file.
 
 **What it tests.**
-The configuration `tools/verification/mixing_length/planet_1p5_earth.toml`: 1.5 Earth masses, 80 nodes and the melt-solid mixture viscosity for melt separation (`separation_viscosity = "mixture"`), run for 300 kyr without `mixing_length` in its configuration, so under the default.
+The configuration `tools/verification/mixing_length/planet_1p5_earth.toml`: 1.5 Earth masses, 80 nodes and the melt-solid mixture viscosity for melt separation (`separation_viscosity = "mixture"`), run for 300 kyr without `mixing_length` in its configuration, so under the default mixing length; the file holds the full configuration of the runs, so its other settings stay fixed.
 On the uniform mesh, $T_\mathrm{cmb}$ at 300 kyr must be 5199.9 K within 1 K.
 On both meshes, the uniform one and the default one with the 3000 m CMB cell, no row may have $|F_\mathrm{cmb}|$ below 1 W m$^{-2}$, and no 2 consecutive rows may be dips after 10 kyr.
 The test does not bound the steps of $T_\mathrm{cmb}$ between rows in this case.
@@ -187,7 +195,7 @@ The test does not bound the steps of $T_\mathrm{cmb}$ between rows in this case.
 **How we know the right answer.**
 The reference is a run of the same configuration that sets `mixing_length = "constant"` in its file; it reaches 5199.9 K at 300 kyr.
 This run is not stored; the test holds only its value at 300 kyr.
-The run under the default reaches 5199.88 K on the uniform mesh, and 5206.63 K on the default mesh.
+The run under the default reaches 5199.88 K on the uniform mesh, and 5206.63 K on the default mesh; the test bounds only the uniform mesh.
 
 **Why it matters.**
 A configuration without the key must give the same result as one that sets `constant`.
@@ -202,9 +210,8 @@ The dot at 300 kyr marks 5199.9 K, the value of the reference run on the uniform
 A pass means that the uniform line ends on the dot.
 
 **Known limit.**
-Under the default of these runs, which is `constant`, the run without the key and the reference have the same settings; the case pins the result against a later change of the default.
 The steps of $T_\mathrm{cmb}$ between rows are not a measure of the heat flux in this run, so the 10 K bound of the first case does not apply.
-The core cools smoothly, by up to 46 K per kyr early on and by 2.5 K per kyr (uniform mesh) and 2.1 K per kyr (default mesh) from 95 to 105 kyr, and the rows are up to 4000 yr apart.
+After 2 kyr, $T_\mathrm{cmb}$ falls by up to 46 K per kyr, and by 2.5 K per kyr (uniform mesh) and 2.6 K per kyr (default mesh) in the row nearest 100 kyr; the rows are up to 4000 yr apart.
 So after 2 kyr, 28 steps on the uniform mesh and 29 on the default mesh fall by more than 10 K.
 The largest, -39.7 K on the uniform mesh and -39.8 K on the default mesh, comes at 3.6 kyr, where the rows are 860 yr apart.
 $F_\mathrm{cmb}$ is at least 666 W m$^{-2}$ at each of these steps, and about 13,500 W m$^{-2}$ at the largest, so the heat flux is kept.

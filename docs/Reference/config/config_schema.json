@@ -5601,7 +5601,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Scalar-gravity comparison knob. When True, the external mesh file that Zalmoxis writes has its gravity column overwritten with a uniform scalar (the surface value from ``hf_row['gravity']``) before Aragog reads it, so Aragog's per-node gravity path interpolates to that scalar everywhere. False by default; set True only when running a paired scalar-gravity comparison.",
+      "description": "Scalar-gravity comparison setting. When True, the external mesh file that Zalmoxis writes has its gravity column overwritten with a uniform scalar (the surface value from ``hf_row['gravity']``) before Aragog reads it, so Aragog's per-node gravity path interpolates to that scalar everywhere. False by default; set True only when running a paired scalar-gravity comparison.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -7680,7 +7680,7 @@
           "value": 1
         }
       ],
-      "description": "Width [fraction] of the mushy-zone transition in Aragog's _PhaseMixedParameters. Sets the width of the phase boundary in Aragog's mixed-phase blending (viscosity, thermal conductivity etc.). Distinct from ``[interior_energetics.spider].matprop_smooth_width`` which is SPIDER's analogous knob for its own solver.",
+      "description": "Width [fraction] of the mushy-zone transition in Aragog's _PhaseMixedParameters. Sets the width of the phase boundary in Aragog's mixed-phase blending (viscosity, thermal conductivity etc.). Distinct from ``[interior_energetics.spider].matprop_smooth_width`` which is SPIDER's corresponding setting for its own solver.",
       "doc_source": "field_docstring",
       "group_order": 7,
       "group_position": 7,

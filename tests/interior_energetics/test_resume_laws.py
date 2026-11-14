@@ -93,6 +93,20 @@ def test_a_changed_separation_law_refuses_the_resume(tmp_path, field, stored, ne
     assert isinstance(err.value, RuntimeError)
 
 
+@pytest.mark.parametrize('set_in_file', [True, False], ids=['set in the file', 'the default'])
+def test_a_refusal_says_where_the_new_law_comes_from(tmp_path, set_in_file):
+    """The refusal names the config file when the file sets the changed law, and the default
+    when it does not; 'mixture' is the default drag law."""
+    out = _stored_run(tmp_path, separation_viscosity='melt')
+    config, path = _user_config(
+        tmp_path, **({'separation_viscosity': 'mixture'} if set_in_file else {})
+    )
+    with pytest.raises(ResumeSeparationLawError) as err:
+        check_resume_separation_laws(config, path, out)
+    where = f'in {path}' if set_in_file else f'(the default; {path} does not set it)'
+    assert f"separation_viscosity is 'mixture' {where}" in str(err.value)
+
+
 def test_unchanged_laws_resume_without_a_record(tmp_path, caplog):
     """The same laws as stored give no switch and no log record from the check."""
     out = _stored_run(tmp_path, separation_buoyancy='solid', separation_viscosity='melt')

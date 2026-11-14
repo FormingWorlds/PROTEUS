@@ -171,9 +171,8 @@ def test_an_int_cell_beyond_the_float_range_is_refused_as_not_finite():
     assert 'cmb_cell_thickness` must be 0 or finite' in str(exc.value)
 
 
-def _setup_mesh(tmp_path, **settings):
-    """Run AragogRunner.setup_solver with aragog mocked; return the mesh parameters it built.
-    ``settings`` maps 'interior_energetics' or 'aragog' to the fields to set there."""
+def _setup_mesh(tmp_path, mixing_length='constant', **aragog_fields):
+    """Run AragogRunner.setup_solver with aragog mocked; return the mesh parameters it built."""
     from proteus.interior_energetics.aragog import AragogRunner
     from tests.interior_energetics.test_aragog import (
         _EOS,
@@ -182,11 +181,9 @@ def _setup_mesh(tmp_path, **settings):
     )
 
     config = _make_aragog_config(struct_module='zalmoxis')
-    tables = {'interior_energetics': config.interior_energetics}
-    tables['aragog'] = config.interior_energetics.aragog
-    for table, fields in settings.items():
-        for key, value in fields.items():
-            setattr(tables[table], key, value)
+    config.interior_energetics.mixing_length = mixing_length
+    for key, value in aragog_fields.items():
+        setattr(config.interior_energetics.aragog, key, value)
     hf_row = {
         'R_int': 6.371e6, 'R_core': 3.48e6, 'gravity': 9.81, 'T_magma': 3000.0,
         'T_eqm': 255.0, 'F_atm': 100.0,
@@ -210,8 +207,7 @@ def _setup_mesh(tmp_path, **settings):
 @pytest.mark.parametrize(('cmb', 'surface'), [(2500.0, 7000.0), (0.0, 'uniform'), (0.0, 0.0)])
 def test_setup_solver_passes_the_end_cells_to_the_aragog_mesh(tmp_path, cmb, surface):
     """The mesh parameters aragog receives hold the configured end cells."""
-    cells = {'cmb_cell_thickness': cmb, 'surface_cell_thickness': surface}
-    mesh = _setup_mesh(tmp_path, aragog=cells)
+    mesh = _setup_mesh(tmp_path, cmb_cell_thickness=cmb, surface_cell_thickness=surface)
     assert mesh.cmb_cell_thickness == cmb
     assert mesh.surface_cell_thickness == surface
 
@@ -222,7 +218,7 @@ def test_setup_solver_passes_the_end_cells_to_the_aragog_mesh(tmp_path, cmb, sur
 def test_setup_solver_passes_the_mixing_length_profile(tmp_path, mixing_length, profile):
     """interior_energetics.mixing_length reaches aragog as its profile name, and the constant
     length keeps aragog's fraction of 0.25 of the mantle thickness."""
-    mesh = _setup_mesh(tmp_path, interior_energetics={'mixing_length': mixing_length})
+    mesh = _setup_mesh(tmp_path, mixing_length)
     assert mesh.mixing_length_profile == profile
     assert mesh.mixing_length_constant_fraction == 0.25
 

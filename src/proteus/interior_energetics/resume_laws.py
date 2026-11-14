@@ -59,6 +59,16 @@ def _interior_table(path) -> dict:
     return interior if isinstance(interior, dict) else {}
 
 
+def _sets(path, key: str) -> bool:
+    """Whether the config file at ``path`` sets the dotted ``interior_energetics`` key."""
+    table = {'interior_energetics': _interior_table(path)}
+    for part in key.split('.'):
+        if not isinstance(table, dict) or part not in table:
+            return False
+        table = table[part]
+    return True
+
+
 def _aragog_table(path) -> tuple[str | None, dict]:
     """Read ``path``; return its ``interior_energetics.module`` (None if absent, unreadable
     or not a string) and its ``interior_energetics.aragog`` table."""
@@ -164,7 +174,7 @@ def check_resume_separation_laws(
     in_file = _aragog_table(config_path)[1]
     switches, refusals, notes = [], [], []
 
-    def switch(field, key, old, new, source='', where=None):
+    def switch(field, key, old, new, source=''):
         """Record a changed law: a switch with a warning when allowed, else a refusal."""
         switches.append((field, old, new))
         if aragog.allow_resume_law_change:
@@ -175,22 +185,22 @@ def check_resume_separation_laws(
                 )
             )
         else:
+            where = f'in {config_path}'
+            if not _sets(config_path, key):
+                where = f'(the default; {config_path} does not set it)'
             refusals.append(
-                f'{key} is {new!r} {where or f"in {config_path}"}, but the run was written with '
-                f'{old!r}{source}; '
+                f'{key} is {new!r} {where}, but the run was written with {old!r}{source}; '
                 f'set it to {old!r} to keep the law, or set interior_energetics.aragog.'
                 'allow_resume_law_change = true to switch it at the resume'
             )
 
     new = config.interior_energetics.mixing_length
     recorded = _interior_table(stored_path) if module in (None, *MLT_MODULES) else {}
-    set_in_file = 'mixing_length' in _interior_table(config_path)
     if 'mixing_length' in recorded:
         old = recorded['mixing_length']
         if old != new:
-            where = None if set_in_file else f'(the default; {config_path} does not set it)'
-            switch('mixing_length', MIXING_KEY, old, new, f' ({stored_path})', where)
-    elif set_in_file:
+            switch('mixing_length', MIXING_KEY, old, new, f' ({stored_path})')
+    elif _sets(config_path, MIXING_KEY):
         msg = f'{MIXING_KEY} is not recorded for this run; it resumes under {new!r}'
         notes.append((logging.INFO, msg))
     else:

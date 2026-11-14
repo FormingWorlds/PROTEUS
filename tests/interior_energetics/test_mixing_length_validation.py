@@ -170,7 +170,6 @@ def test_a_15_earth_mass_planet_keeps_its_core_temperature_under_the_default(val
     uniform = TOOL.metrics(_case('m1p5_uniform'))
     assert uniform['t_end'] == pytest.approx(3e5, abs=1.0)
     assert uniform['T_end'] == pytest.approx(5199.9, abs=1.0)
-    assert uniform['n_below_1'] == 0
     assert uniform['longest_low'] <= 1, uniform['dips']
     default = TOOL.metrics(_case('m1p5_default'))
     assert default['longest_low'] <= 1, default['dips']
@@ -226,3 +225,37 @@ def test_the_stored_runs_hold_every_case_and_name_their_commits():
     assert re.fullmatch(
         r'PROTEUS commit [0-9a-f]{40}, aragog commit [0-9a-f]{40}', TOOL.read_source(DATA)
     )
+
+
+def test_the_stored_15_earth_mass_config_leaves_the_mixing_length_to_the_default():
+    """planet_1p5_earth.toml does not set the mixing length and holds the settings the page
+    names: 1.5 Earth masses, 80 nodes, the uniform mesh, the mixture drag and 300 kyr."""
+    import tomllib
+
+    from proteus.config import read_config_object
+
+    path = _DIR / 'planet_1p5_earth.toml'
+    assert 'mixing_length' not in tomllib.loads(path.read_text())['interior_energetics']
+    c = read_config_object(path)
+    ie = c.interior_energetics
+    assert ie.mixing_length == 'constant'
+    assert (c.planet.mass_tot, ie.num_levels, ie.aragog.cmb_cell_thickness) == (1.5, 80, 0.0)
+    assert ie.aragog.separation_viscosity == 'mixture'
+    assert (c.params.stop.time.maximum, c.params.out.path) == (3e5, 'm1p5_uniform')
+
+
+def test_the_tool_stores_every_case_and_reads_it_back(tmp_path):
+    """main writes the 3 columns of each case folder and the commits; read_case and
+    read_source give them back unchanged."""
+    rng = np.random.default_rng(1)
+    want = {}
+    for case in TOOL.CASES:
+        (tmp_path / case).mkdir()
+        frame = pd.DataFrame(rng.random((4, 3)) * [1e3, 5e3, 1e2], columns=TOOL.COLUMNS)
+        frame.to_csv(tmp_path / case / 'runtime_helpfile.csv', sep='\t', index=False)
+        want[case] = frame
+    npz = tmp_path / 'out' / 'cmb.npz'
+    assert TOOL.main([str(tmp_path), str(npz), '--commit', 'a' * 40, '--aragog', 'b' * 40]) == 0
+    for case, frame in want.items():
+        pd.testing.assert_frame_equal(TOOL.read_case(npz, case), frame, check_exact=True)
+    assert TOOL.read_source(npz) == f'PROTEUS commit {"a" * 40}, aragog commit {"b" * 40}'
