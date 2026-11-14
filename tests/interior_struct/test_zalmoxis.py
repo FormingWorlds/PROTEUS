@@ -2533,6 +2533,31 @@ def test_a_thin_mantle_keeps_the_mass_inside_r_core_and_the_core_of_the_solve(
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('share', [0.04, 0.06])
+def test_a_shell_above_5_percent_of_the_mantle_below_r_core_is_logged_once(
+    tmp_path, monkeypatch, caplog, share
+):
+    """The shell between the core mass of the solve and R_core holds `share` of the mantle
+    mass above R_core. Above 0.05 the solve logs one warning with the share; it accepts the
+    structure in both cases."""
+    model = _plausible_model_results()
+    mass = model['mass_enclosed']
+    cmb_mass = float(mass[55] - share * (mass[-1] - mass[55]))
+    assert mass[54] < cmb_mass
+    model['cmb_mass'] = model['core_mantle_mass'] = cmb_mass
+    with caplog.at_level(logging.WARNING):
+        _, _, _, hf_row, _, _, _ = _run_gate_solver(
+            tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
+        )
+    lines = [
+        r.getMessage() for r in caplog.records if 'mantle mass below R_core' in r.getMessage()
+    ]
+    assert hf_row['M_core'] == pytest.approx(float(mass[55]), rel=1e-15)
+    assert len(lines) == (share > 0.05)
+    assert all(f'{share:.3g} of the mantle mass below R_core' in m for m in lines)
+
+
+@pytest.mark.unit
 def test_a_core_mass_above_every_node_stops_the_structure_solve(tmp_path, monkeypatch):
     """A core mass of the solve above the mass at the last node (an accepted mass error larger
     than the mantle fraction) leaves no node for the CMB and raises with both masses."""
