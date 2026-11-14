@@ -166,7 +166,7 @@ solidifies:
    near 61% around 1.4 $\times$ 10$^5$ yr, where the partial pressure is
    ~61 bar and CO holds another ~30%; the partial
    pressure then rises to a broad maximum of ~63 bar
-   near 3.6 $\times$ 10$^5$ yr (b, d). H$_2$O begins at only ~4 bar, with
+   near 3.7 $\times$ 10$^5$ yr (b, d). H$_2$O begins at only ~4 bar, with
    nearly all water dissolved in the silicate melt (~99.6% interior at the
    start, f), and rises through this phase as the crystallizing mantle
    exsolves it.
