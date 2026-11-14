@@ -307,8 +307,8 @@ def validate_zalmoxis_output_schema(
         ``mantle_mass_ref`` part (b) is an identity check of the row write, so the tolerance
         acts only in the trapezoid fallback, where it stops gross corruption (column swap,
         truncation). ``blend_mesh_files`` runs after this check and does not change the
-        checked file. The tight mass-conservation contract (<0.1 %) is the mass-anchor check
-        of the wrapper on ``hf_row['M_int'] / hf_row['M_int_target']``.
+        checked file. The mass contract of the coupling is the mass-anchor check of the
+        wrapper, ``|M_int / M_int_target - 1| < _ZALMOXIS_MASS_ANCHOR_TOL`` (3e-3).
 
     Raises
     ------

@@ -871,16 +871,19 @@ class Interior:
         Total potassium concentration in the mantle at radio_tref [ppmw].
     radio_K40_abund: float
         Mass ratio 40K/K at radio_tref [kg/kg]. The default is the present-day
-        atom ratio 1.1668e-4 of Ruedas (2017) as a mass ratio.
+        atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a
+        mass ratio.
     radio_U: float
         Total uranium concentration in the mantle at radio_tref [ppmw].
     radio_U235_abund: float
         Mass ratio 235U/U at radio_tref [kg/kg]. The default is the present-day
-        atom ratio 0.0072045 of Ruedas (2017) as a mass ratio.
+        atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a
+        mass ratio.
     radio_U238_abund: float
         Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund +
         radio_U238_abund must not exceed 1. The default is the present-day
-        atom ratio 0.9927955 of Ruedas (2017) as a mass ratio.
+        atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a
+        mass ratio.
     radio_Th: float
         Total thorium concentration in the mantle at radio_tref [ppmw].
     radio_Th232_abund: float

@@ -139,8 +139,8 @@ Zalmoxis writes 2 core masses:
 - `M_core`: the mass inside `R_core`.
 
 An accepted solve gives an `M_core_solve` equal to `M_core_target` to round-off, and an impact raises `M_core_target` and solves at once.
-The end of the init stage sets `M_core_target` from the kept inventories of that row, so from there to the next accepted re-solve the 2 differ by `core_frac` times the change of those inventories since the last solve.
-A rejected re-solve keeps both columns.
+The end of the init stage sets `M_core_target` from the kept inventories of that row, so from there to the next accepted re-solve `M_core_solve` and `M_core_target` differ by `core_frac` times the change of those inventories since the last solve.
+A rejected re-solve keeps `M_core_solve` and `M_core` of the last accepted solve and leaves `M_core_target` unchanged.
 
 Zalmoxis puts the core-mantle boundary of its output (`R_core`, `P_cmb`) at the first grid node at or above `M_core_solve`.
 So `M_core` is larger than `M_core_solve` by at most the mass of the shell below that node.
@@ -163,7 +163,7 @@ The MgSiO$_3$ mantle EOS resolves through two distinct paths depending on the `<
 
 With `mantle_eos = "PALEOS:MgSiO3"` (the default), the hydrostatic structure solve uses the PALEOS *unified* MgSiO$_3$ table for the density profile.
 The phase-specific property surfaces used by Aragog (density, heat capacity, thermal expansion, adiabatic gradient) and the pressure-entropy lookup tables are built from the PALEOS *two-phase* solid and liquid tables, which keeps the properties well resolved across the melting-curve discontinuity that a single unified table interpolates through.
-The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005 below 2.55 GPa, Fei et al. 2021 above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8).
+The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005[^cite-belonoshko2005] below 2.55 GPa, Fei et al. 2021[^cite-fei2021] above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8).
 The default is the constant solidus-to-liquidus ratio ($\approx 0.809$) of the Stixrude (2014)[^cite-stixrude2014] MgSiO$_3$ melting parametrization, applied to the PALEOS liquidus instead of the Stixrude liquidus.
 The derived solidus is therefore a constant depression of the PALEOS liquidus, not the Stixrude solidus curve: its absolute value lies well above the Stixrude solidus at low to moderate pressure (about 2900 K against 1700 K at 20 GPa, and about 10% higher at 140 GPa) and below it above roughly 200 GPa.
 The melt fraction then follows from the lever rule between this solidus and liquidus.
@@ -175,7 +175,7 @@ A run with a PALEOS EOS requires the table of each PALEOS layer, with the MgSiO$
 When one is missing, the run stops before the first solve with an error that names each missing file and the command that fetches them, `proteus get interiordata --config-path <config.toml>`; it does not fall back to another table set.
 With `dry_mantle = false` it also requires the tables of the dissolved volatiles (`PALEOS:H2O` and `Chabrier:H`).
 A resumed SPIDER run that keeps its pressure-entropy tables needs only the tables of its layers. With `temperature_mode = "liquidus_super"` it also needs the two-phase pair that its anchor reads. An Aragog resume always needs the two-phase pair, which it reads when the mesh changes.
-A mixture mantle (a `+` in `mantle_eos`) takes its melting curves, in the structure and in the energetics, and its SPIDER or Aragog tables from its MgSiO$_3$ component: with `PALEOS:MgSiO3` it gets exactly the curves and tables of a `PALEOS:MgSiO3` mantle, and with `WolfBower2018:MgSiO3` the `eos_dir` P-S tables (by default Wolf and Bower 2018) and the `melting_dir` curves. The other components enter only the structure density.
+A mixture mantle (a `+` in `mantle_eos`) takes its melting curves, in the structure and in the energetics, and its SPIDER or Aragog tables from its MgSiO$_3$ component: with `PALEOS:MgSiO3` it gets exactly the curves and tables of a `PALEOS:MgSiO3` mantle, and with `WolfBower2018:MgSiO3` the `eos_dir` P-S tables (by default Wolf and Bower 2018[^cite-wolf2018]) and the `melting_dir` curves. The other components enter only the structure density.
 A PALEOS mantle with no MgSiO$_3$ component (for example `mantle_eos = "PALEOS:H2O"`, `"PALEOS:iron"`, or a mixture of the two) uses the density of its own material in the structure, while the PALEOS MgSiO$_3$ melting curves and the two-phase MgSiO$_3$ tables of its PALEOS family stand in for the energetics.
 With SPIDER or Aragog, the energetics must follow a PALEOS, `WolfBower2018` or `RTPress100TPa` EOS; a mantle whose energetics would follow a Seager2007, Chabrier or analytic EOS is rejected when the configuration loads.
 `temperature_mode = "liquidus_super"` solves the initial adiabat on the MgSiO$_3$ two-phase tables for every mantle, so those tables are required at the start of the run.
@@ -273,10 +273,10 @@ controlled parity tests.
 | `radio_Fe` | float | `62600.0` | Total iron concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
 | `radio_Fe60_abund` | float | `0.0` | Mass ratio 60Fe/Fe at radio_tref \[kg/kg\]. An early Solar System 60Fe/56Fe = 1e-8 (atoms) is 9.8472e-9 kg/kg. Must be >= 0 and <= 1. |
 | `radio_K` | float | `310.0` | Total potassium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
-| `radio_K40_abund` | float | `0.00011926` | Mass ratio 40K/K at radio_tref \[kg/kg\]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017) as a mass ratio. Must be >= 0 and <= 1. |
+| `radio_K40_abund` | float | `0.00011926` | Mass ratio 40K/K at radio_tref \[kg/kg\]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio. Must be >= 0 and <= 1. |
 | `radio_U` | float | `0.031` | Total uranium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
-| `radio_U235_abund` | float | `0.0071141` | Mass ratio 235U/U at radio_tref \[kg/kg\]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017) as a mass ratio. Must be >= 0 and <= 1. |
-| `radio_U238_abund` | float | `0.9928859` | Mass ratio 238U/U at radio_tref \[kg/kg\]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017) as a mass ratio. Must be >= 0 and <= 1. |
+| `radio_U235_abund` | float | `0.0071141` | Mass ratio 235U/U at radio_tref \[kg/kg\]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio. Must be >= 0 and <= 1. |
+| `radio_U238_abund` | float | `0.9928859` | Mass ratio 238U/U at radio_tref \[kg/kg\]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio. Must be >= 0 and <= 1. |
 | `radio_Th` | float | `0.124` | Total thorium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
 | `radio_Th232_abund` | float | `1.0` | Mass ratio 232Th/Th at radio_tref \[kg/kg\]. Must be >= 0 and <= 1. |
 
@@ -556,3 +556,11 @@ Cross-field constraints enforced when the config file loads:
 [^cite-nimmo2015b]: Nimmo, F., *[Thermal and Compositional Evolution of the Core](https://doi.org/10.1016/b978-0-444-53802-4.00160-3)*, in Schubert, G. (ed.), Treatise on Geophysics, 2nd edition, Elsevier, 9, ch. 9.08, 201-219, 2015.
 
 [^cite-thiriet2019]: Thiriet, M., Breuer, D., Michaut, C. & Plesa, A.-C., *[Scaling laws of convection for cooling planets in a stagnant lid regime](https://doi.org/10.1016/j.pepi.2018.11.003)*, Physics of the Earth and Planetary Interiors, 286, 138-153, 2019.
+
+[^cite-belonoshko2005]: A. B. Belonoshko, N. V. Skorodumova, A. Rosengren, R. Ahuja, B. Johansson, L. Burakovsky, D. L. Preston, *[High-pressure melting of MgSiO$_3$](https://doi.org/10.1103/PhysRevLett.94.195701)*, Physical Review Letters, 94(19), 195701, 2005. [SciX](https://scixplorer.org/abs/2005PhRvL..94s5701B/abstract).
+
+[^cite-fei2021]: Y. Fei, C. T. Seagle, J. P. Townsend, C. A. McCoy, A. Boujibar, P. Driscoll, L. Shulenburger, M. D. Furnish, *[Melting and density of MgSiO$_3$ determined by shock compression of bridgmanite to 1254 GPa](https://doi.org/10.1038/s41467-021-21170-y)*, Nature Communications, 12, 876, 2021. [SciX](https://scixplorer.org/abs/2021NatCo..12..876F/abstract).
+
+[^cite-ruedas2017]: T. Ruedas, *[Radioactive heat production of six geologically important nuclides](https://doi.org/10.1002/2017GC006997)*, Geochemistry, Geophysics, Geosystems, 18(9), 3530-3541, 2017. [SciX](https://scixplorer.org/abs/2017GGG....18.3530R/abstract).
+
+[^cite-wolf2018]: A. S. Wolf, D. J. Bower, *[An equation of state for high pressure-temperature liquids (RTpress) with application to MgSiO$_3$ melt](https://doi.org/10.1016/j.pepi.2018.02.004)*, Physics of the Earth and Planetary Interiors, 278, 59-74, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..278...59W/abstract).
