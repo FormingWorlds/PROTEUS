@@ -2565,7 +2565,8 @@ def test_a_core_mass_in_the_last_cell_logs_no_mantle_shell_warning(
 ):
     """A core mass between the masses of the last 2 nodes puts the CMB on the last node, so no
     mantle mass lies above R_core: the solve logs no shell warning (its share would divide by
-    zero) and then stops with a ValueError on the 1-node mantle."""
+    zero) and then stops with a ValueError in scale_temperature_profile_for_aragog, after the
+    warning block, on the 1-node mantle."""
     model = _plausible_model_results()
     mass = model['mass_enclosed']
     model['cmb_mass'] = model['core_mantle_mass'] = float(0.5 * (mass[-2] + mass[-1]))
@@ -2577,6 +2578,7 @@ def test_a_core_mass_in_the_last_cell_logs_no_mantle_shell_warning(
             tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
         )
     assert err.type is ValueError
+    assert any(e.name == 'scale_temperature_profile_for_aragog' for e in err.traceback)
     assert not [r for r in caplog.records if 'M_core_solve' in r.getMessage()]
 
 
