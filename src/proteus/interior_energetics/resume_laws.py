@@ -1,4 +1,4 @@
-"""Keep the separation laws of a resumed Aragog run.
+"""Keep the laws of a resumed run: the Aragog laws, and the mixing length of Aragog and SPIDER.
 
 ``init_coupler.toml`` in the run directory records the config the run last started
 with as loaded, with ``RECORD_OVERRIDES`` applied. ``Proteus.start()`` writes it again on every

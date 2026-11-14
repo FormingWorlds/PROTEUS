@@ -538,10 +538,11 @@ class Aragog:
     switched law in the log. False stops such a resume, because the changed law would act
     from the resume row on. A law the record does not hold must be set in the config file
     either way; a record that names the Aragog module and lacks separation_viscosity counts
-    as 'melt', one that lacks the rheology or lid_mush_base counts as off, and a record of
-    another interior module holds none of them. A missing record, or one that names no module
-    and holds no Aragog table, leaves the rheology and the lid unchecked. init_coupler.toml
-    records false."""
+    as 'melt', one that lacks the rheology or lid_mush_base counts as off. A SPIDER record
+    holds only the mixing length, a record that names no module holds the mixing length and
+    the laws of its Aragog table, and a record of another interior module holds none of these
+    laws. A missing record, or one that names no module and holds no Aragog table, leaves the
+    rheology and the lid unchecked. init_coupler.toml records false."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),
