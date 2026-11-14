@@ -282,8 +282,8 @@ def validate_zalmoxis_output_schema(
     ``zalmoxis_solver`` passes ``mass_enclosed[-1] - mass_enclosed[cmb_index]``, from the
     arrays it writes ``M_int`` and ``M_core`` from, so part (b) then checks the row write of
     these two masses; it does not check the arrays or the choice of the CMB node. Without a
-    reference, part (b) integrates the file nodes with a grid trapezoid, which is up to
-    ~10% off the sub-grid-substepped RK45 integral at high planet mass. Part (c) checks
+    reference, part (b) integrates the file nodes with a grid trapezoid; no PROTEUS call
+    path reaches this fallback. Part (c) checks
     that the file starts at ``hf_row['R_core']`` within the mesh tolerance of Aragog,
     ``max(1 m, 1e-9 (R_int - R_core))``. File-density-column corruption is caught
     downstream by Aragog's EOS-vs-mesh consistency at ``solver.reset()``; the radius
@@ -303,24 +303,12 @@ def validate_zalmoxis_output_schema(
         catches truncation, last-line corruption, and column-swap
         bugs at the bit level.
     rtol_mass : float
-        Relative tolerance for the integrated mantle mass vs.
-        ``M_int - M_core``. Default 5e-2 (5%) reflects two stacked
-        sources of legitimate mismatch:
-        (a) integrator-method difference: Zalmoxis' ``mass_enclosed``
-        is the ODE state from RK45 with sub-grid substepping, while
-        the schema check re-integrates via a grid-trapezoidal
-        shell-sum. On stiff CHILI density profiles this shows
-        about 0.8 to 2.0 %.
-        (b) ``blend_mesh_files`` post-write modifies the file in
-        place but does not update hf_row scalars. When blending fires
-        with alpha < 1 (capping large R-shifts), the file's integrated
-        mass can drift up to about 5% from the unblended
-        hf_row['M_int'], so this check has to tolerate it.
-        5e-2 keeps a >2x margin over the worst legitimate noise
-        while still catching gross corruption (column swap,
-        truncation, byte-flip) at >>5 %. **The tight mass-conservation
-        contract (<0.1 %) lives in the wrapper-level mass-anchor
-        check on hf_row['M_int'] / hf_row['M_int_target']**, not here.
+        Relative tolerance for the mantle mass vs. ``M_int - M_core``. Default 5e-2. With
+        ``mantle_mass_ref`` part (b) is an identity check of the row write, so the tolerance
+        acts only in the trapezoid fallback, where it stops gross corruption (column swap,
+        truncation). ``blend_mesh_files`` runs after this check and does not change the
+        checked file. The tight mass-conservation contract (<0.1 %) is the mass-anchor check
+        of the wrapper on ``hf_row['M_int'] / hf_row['M_int_target']``.
 
     Raises
     ------
@@ -359,16 +347,9 @@ def validate_zalmoxis_output_schema(
                 f'(rel={r_rel:.3e} > {rtol_radius:.1e})'
             )
 
-    # (b) mantle integrated mass == hf_row['M_int'] - hf_row['M_core'].
-    # Prefer the structure's own RK45 accumulator mantle mass when the
-    # caller supplies it (mantle_mass_ref). That value is the sub-grid
-    # substepped ODE integral, exact to the solver tolerance. Re-integrating
-    # the coarse output nodes with a grid trapezoid instead diverges from it
-    # across the steep core-mantle density jump (the CMB-node snap attributes
-    # a whole boundary shell to one side), reaching ~10% at high planet mass,
-    # which would false-reject a structure that actually conserves mass. Only
-    # when no reference is available do we fall back to the grid-trapezoidal
-    # shell-sum (4/3 pi (r2^3 - r1^3) * rho_avg).
+    # (b) mantle mass == hf_row['M_int'] - hf_row['M_core']: with mantle_mass_ref (the
+    # accumulator mass above R_core) an identity check of the row write; without it a
+    # trapezoid sum over the file nodes.
     if mantle_mass_ref is not None:
         mantle_mass = float(mantle_mass_ref)
         mass_source = 'accumulator'
