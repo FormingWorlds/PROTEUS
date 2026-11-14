@@ -119,7 +119,8 @@ def refuse_another_mesh(
     equal the ``radius_b`` of the snapshot at ``time`` to the radius tolerance of the
     structure, ``max(1 m, 1e-9 (R_int - R_core))``, plus 2 mm for the mass-coordinate node
     solve. A resume that does not replay a pending structure update builds the solver on the
-    moved bounds of its row; then the node count and the 2 end cells (within 10 %) must match.
+    moved bounds of its row; then the node count must match, a set end cell to the tolerance
+    (it is a length), and a uniform end cell, scaled with the mantle thickness, to 10 %.
     A snapshot that is absent or holds no ``radius_b`` is not checked.
 
     Parameters
@@ -157,9 +158,18 @@ def refuse_another_mesh(
     if stored.size == built.size:
         if max(abs(stored[0] - built[0]), abs(stored[-1] - built[-1])) > tol:
             # Built on the moved structure of the row (no replay): compare the end cells.
-            cells = np.array([built[1] - built[0], built[-1] - built[-2]])
-            if np.all(
-                np.abs(cells / [stored[1] - stored[0], stored[-1] - stored[-2]] - 1) <= 0.1
+            scale = (built[-1] - built[0]) / (stored[-1] - stored[0])
+
+            def same(b, s, setting):
+                if type(setting) in (int, float) and setting > 0 and abs(b - setting) <= tol:
+                    return (
+                        abs(b - s) <= tol
+                    )  # a set cell is a length; a moved structure keeps it
+                return abs(b / (s * scale) - 1) <= 0.1  # a uniform cell scales with the mantle
+
+            cmb, top = aragog.cmb_cell_thickness, aragog.surface_cell_thickness
+            if same(built[1] - built[0], stored[1] - stored[0], cmb) and same(
+                built[-1] - built[-2], stored[-1] - stored[-2], top
             ):
                 log.info('Resume: the mesh is on the structure of its row; end cells kept')
                 return

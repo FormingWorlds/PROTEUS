@@ -130,7 +130,7 @@ A resumed Aragog run must also build the mesh of the run, because the snapshot e
 Resume refused: the interior snapshot output/run/data/5000p000_int.nc holds a mesh of 80 nodes, bottom cell 3000.0 m, top cell 65798.8 m, but the config of the resume builds 80 nodes, bottom cell 35561.0 m, top cell 65798.8 m (num_levels = 80, cmb_cell_thickness = 0.0, surface_cell_thickness = 'uniform'); the snapshot entropy is put back node by node, so the resume must build the mesh of the run: set these fields to the values the run used
 ```
 
-Set `num_levels`, `cmb_cell_thickness` and `surface_cell_thickness` to the values the run used; `allow_resume_law_change` does not cover the mesh. When the resume builds the solver on a structure that moved since the snapshot (see the structure update below), the check compares the node count and the 2 end cells, to 10 %. An older snapshot without `radius_b` is not checked.
+Set `num_levels`, `cmb_cell_thickness` and `surface_cell_thickness` to the values the run used; `allow_resume_law_change` does not cover the mesh. When the resume builds the solver on a structure that moved since the snapshot (see the structure update below), the check compares the node count and the 2 end cells: a set cell must keep its length to 1 m, and a uniform cell, scaled with the mantle thickness, must agree to 10 %. It does not compare `mass_coordinates`. An older snapshot without `radius_b` is not checked.
 
 ### A resumed run and the uninterrupted run {#a-resumed-run-and-the-uninterrupted-run}
 
