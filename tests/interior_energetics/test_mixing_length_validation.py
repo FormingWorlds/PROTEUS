@@ -145,6 +145,7 @@ def test_known_limit_single_cmb_flux_dips_on_the_cmb_cell_meshes_aragog_issue_11
     times, flux, m = dips('c1500_constant')
     assert [f'{f:.1f}' for f in flux] == ['-110.4', '-322.5'] and m['n_negative'] == 2
     twin = TOOL.metrics(_case('c3000_constant_roundoff'))
+    assert len(twin['dips']) == 3
     assert (
         max(
             abs(a - b)
