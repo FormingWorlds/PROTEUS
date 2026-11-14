@@ -85,7 +85,8 @@ Each dip falls on a row in which `T_magma` falls by more than 25 K while `Phi_gl
 In the dips on the 3000 m cell the entropy gradient at the CMB, which the solver carries as a state, ends the step at a small positive value, and the CMB node keeps the diffusivity copied from the node above, so $F_\mathrm{cmb}$ is negative or near zero for that row.
 The same small positive value also ends single steps without a dip on all 4 meshes (3 times on the uniform 80-node mesh, 4 times on 160 nodes); only in the dips at 22.0 and 28.4 kyr does it last through a whole step.
 At the default tolerance setting the absolute tolerance of this gradient in the solver is $10^{-8}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$, 2000 to 2600 times the gradient around the dips, and on all 4 meshes the gradient is below it in about 60 % of the solves after 2 kyr.
-So the solver does not control this state; this is a candidate cause, and why the dips occur is not known.
+A run with only this tolerance set to $4 \times 10^{-16}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$, $2.5 \times 10^{7}$ times tighter, still has dips: 4 rows instead of 3, down to -3921 W m$^{-2}$, 2 of them in consecutive rows, with $T_\mathrm{cmb}$ at 100 kyr within 0.02 K of this run.
+So the tolerance does not cause the dips, and whether a run has single or double dip rows depends on solver details; why the dips occur is not known.
 The aragog mesh study that supports the 3000 m cell runs the core module and the `nearest_boundary` length; for the defaults of PROTEUS, the `energy_balance` boundary and `constant`, the runs of this page are the check, and they show the single dips only on meshes with a CMB cell.
 
 ??? note "The dips in the run log"
