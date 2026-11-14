@@ -96,6 +96,7 @@ def test_a_mesh_shifted_beyond_the_radius_tolerance_is_refused(tmp_path):
 def test_the_tolerance_holds_a_2_mm_margin_above_1_m(tmp_path):
     """The radius tolerance is 1 m plus 2 mm for the node solve: 1.0015 m goes on, 1.0025 m stops."""
     out = _run(tmp_path)
+    assert mesh_radius_tolerance(RUN[0], RUN[-1]) == pytest.approx(1.0)
     _refuse(out, _inner(1.0015))
     with pytest.raises(ResumeSeparationLawError, match='node by node'):
         _refuse(out, _inner(1.0025))
