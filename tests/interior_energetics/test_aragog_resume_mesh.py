@@ -66,11 +66,54 @@ def test_the_mesh_of_the_snapshot_resumes(tmp_path):
     assert np.max(np.abs(RUN + 0.5 - RUN)) < mesh_radius_tolerance(RUN[0], RUN[-1])
 
 
+def _inner(shift):
+    """RUN with every node but the 2 end nodes moved by ``shift`` [m]: the same bounds."""
+    built = RUN.copy()
+    built[1:-1] += shift
+    return built
+
+
+def _rescaled(radii, grow=2000.0):
+    """``radii`` stretched to a structure ``grow`` m thicker, as a resume on its row builds."""
+    return radii[0] + (radii - radii[0]) * (radii[-1] - radii[0] + grow) / (
+        radii[-1] - radii[0]
+    )
+
+
 def test_a_mesh_shifted_beyond_the_radius_tolerance_is_refused(tmp_path):
-    """A shift of 1.5 m, above the 1 m tolerance and its 2 mm margin, stops the resume."""
+    """Inner nodes moved by 1.5 m, above the 1 m tolerance and its 2 mm margin, stop the resume."""
     with pytest.raises(ResumeSeparationLawError, match='node by node') as err:
-        _refuse(_run(tmp_path), RUN + 1.5)
+        _refuse(_run(tmp_path), _inner(1.5))
     assert '80 nodes' in str(err.value)
+
+
+@pytest.mark.parametrize(('shift', 'refused'), [(1.0015, False), (1.0025, True)])
+def test_the_tolerance_holds_a_2_mm_margin_above_1_m(tmp_path, shift, refused):
+    """The radius tolerance is 1 m plus 2 mm for the node solve: 1.0015 m goes on, 1.0025 m stops."""
+    out = _run(tmp_path)
+    if refused:
+        with pytest.raises(ResumeSeparationLawError, match='node by node'):
+            _refuse(out, _inner(shift))
+    else:
+        _refuse(out, _inner(shift))
+    assert (shift > 1.002) is refused
+
+
+def test_a_resume_built_on_the_structure_of_its_row_goes_on(tmp_path, caplog):
+    """When the solver is built on a row whose structure moved (no replay), the bounds differ
+    but the end cells stay within 10 %: the resume goes on and logs the moved bounds."""
+    built = _rescaled(RUN)
+    with caplog.at_level('INFO'):
+        _refuse(_run(tmp_path), built)
+    assert built[-1] - RUN[-1] == pytest.approx(2000.0)
+    assert any('structure of its row' in r.getMessage() for r in caplog.records)
+
+
+def test_another_mesh_on_a_moved_structure_is_still_refused(tmp_path):
+    """The uniform mesh on the moved structure has other end cells than the run: refused."""
+    with pytest.raises(ResumeSeparationLawError, match='bottom cell 3000.0 m') as err:
+        _refuse(_run(tmp_path), _rescaled(UNIFORM))
+    assert 'node by node' in str(err.value)
 
 
 def test_another_node_count_is_refused(tmp_path):
