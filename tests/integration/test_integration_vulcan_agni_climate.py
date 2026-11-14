@@ -184,7 +184,9 @@ def _read_nc(path, *names):
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.timeout(600)
+# The number of climate updates varies from run to run (update 2 changes T by about 2e-3 to
+# 1.4e-2 against agni_T_rtol 1e-2), so the limit covers a third update
+@pytest.mark.timeout(1200)
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
     reason='AGNI coupling test requires Julia/AGNI binaries (nightly only)',
@@ -214,9 +216,6 @@ def test_coupled_run_ends_where_chemistry_and_climate_agree(snapshot, record_pro
     cfg.atmos_chem.vulcan.make_funs = True
     cfg.atmos_chem.vulcan.couple_agni = True
     cfg.atmos_chem.vulcan.agni_call_frq = 0
-    # Update 2 changes T by about 1e-2 with round-off scatter, so at 1e-2 the run length differs
-    # between runners; at 2e-2 update 1 (1.5e-2) also keeps the step size it had
-    cfg.atmos_chem.vulcan.agni_T_rtol = 2e-2
 
     assert run_vulcan(dirs, cfg, hf_row)
 
