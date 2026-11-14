@@ -221,8 +221,8 @@ def check_module_dependencies(instance, attribute, value):
             'vulcan',
             'atmos_chem.module = "vulcan" needs the VULCAN package (GPL-3.0 licensed), '
             'which is not installed. bash install.sh sets it up; to add it alone, run '
-            'bash tools/get_vulcan.sh in the PROTEUS folder, or pip install '
-            '"fwl-proteus[vulcan]".',
+            'bash tools/get_vulcan.sh in the PROTEUS folder (the fwl-vulcan wheel from PyPI '
+            'has no network files).',
         ),
         'boreas': (
             instance.escape.module == 'boreas',

@@ -657,6 +657,14 @@ runs:
         # develop extras so that their tests run in CI rather than skip.
         pip install -e ".[develop,vulcan,atmodeller,inference]"
 
+    # The fwl-vulcan wheel holds the package only: VULCAN reads its networks and FastChem
+    # from its git clone, so the clone at the floor tag is installed over the wheel.
+    - name: Install VULCAN from its clone
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        bash tools/get_vulcan.sh --force
+
     # ------------------------------------------------------------------
     # 8b. Paired-branch submodules (aragog, Zalmoxis). When PROTEUS is on a
     # feature branch that the submodule also carries, install that submodule
@@ -732,6 +740,26 @@ runs:
         b_url="$(python tools/_module_pins.py boreas url)"
         b_ref="$(python tools/_module_pins.py boreas ref)"
         pip install "boreas @ git+${b_url}@${b_ref}"
+
+    # After the last pip install of the action, so no later install can put the wheel back.
+    - name: Verify VULCAN runs from its clone
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        python - <<'PY'
+        import os
+
+        import vulcan.paths as paths
+
+        clone = os.path.realpath(os.path.join(os.environ['GITHUB_WORKSPACE'], 'VULCAN'))
+        src = os.path.realpath(paths.__file__)
+        assert src.startswith(clone + os.sep), f'vulcan imported from {src}, not from {clone}'
+        network = os.path.join(paths.THERMO_DIR, 'CHO_photo_network.txt')
+        assert os.path.isfile(network), f'VULCAN network file missing: {network}'
+        fastchem = os.path.join(paths.FASTCHEM_DIR, 'fastchem')
+        assert os.access(fastchem, os.X_OK), f'FastChem not built: {fastchem}'
+        print('vulcan:', src, '| network:', network, '| fastchem:', fastchem)
+        PY
 
     # ------------------------------------------------------------------
     # 9. FWL_DATA cache + smoke / full data download

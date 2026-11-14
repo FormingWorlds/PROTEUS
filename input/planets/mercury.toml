@@ -563,8 +563,8 @@ config_version = "3.0"
 
 # Atmospheric chemistry (post-processing)
 [atmos_chem]
-    # Default off: VULCAN is an optional GPL-3.0 backend, install with
-    # `pip install "fwl-proteus[vulcan]"` then set module = "vulcan".
+    # Default off: VULCAN is an optional GPL-3.0 module, install with
+    # `bash tools/get_vulcan.sh` then set module = "vulcan".
     module                    = "none"       # none | vulcan | dummy
     mode                      = "none"         # none | offline (VULCAN after the run); module is none
 
