@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import os
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +18,7 @@ pytest.importorskip('vulcan')
 from proteus import Proteus  # noqa: E402
 from proteus.atmos_chem.vulcan_agni import VULCAN_TMP_FLOOR, SnapshotClimate  # noqa: E402
 from proteus.atmos_clim.agni import (  # noqa: E402
+    SOCRATES_MAX_PATH,
     activate_julia,
     deallocate_atmos,
     init_agni_atmos,
@@ -97,6 +99,9 @@ def _make_snapshot(tmpdir: str):
     cfg.params.out.write_mod = 0
     runner.init_directories()
     dirs = runner.directories
+    # The SOCRATES tools read file names of at most 132 bytes and loop on a longer one
+    longest = os.path.join(dirs['output/offchem'], 'agni', 'socstar.dat')
+    assert len(os.fsencode(longest)) <= SOCRATES_MAX_PATH, longest
     os.makedirs(os.path.join(dirs['output'], 'data'), exist_ok=True)
     os.makedirs(dirs['output/offchem'], exist_ok=True)
 
@@ -121,9 +126,10 @@ def _make_snapshot(tmpdir: str):
 
 
 @pytest.fixture(scope='module')
-def snapshot(tmp_path_factory):
-    """One banded AGNI snapshot shared by the cases of this module."""
-    return _make_snapshot(str(tmp_path_factory.mktemp('vulcan_agni')))
+def snapshot():
+    """One banded AGNI snapshot shared by the cases of this module, in a short temporary folder."""
+    with tempfile.TemporaryDirectory(prefix='va') as tmpdir:
+        yield _make_snapshot(tmpdir)
 
 
 @pytest.mark.physics_invariant
@@ -178,11 +184,14 @@ def _read_nc(path, *names):
 
 
 @pytest.mark.physics_invariant
+# The number of climate updates varies from run to run (2 or 3 seen on CI), so the limit
+# covers a third update (a 3-update run took 433 s on CI)
+@pytest.mark.timeout(1200)
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
     reason='AGNI coupling test requires Julia/AGNI binaries (nightly only)',
 )
-def test_coupled_run_ends_where_chemistry_and_climate_agree(snapshot):
+def test_coupled_run_ends_where_chemistry_and_climate_agree(snapshot, record_property):
     """A coupled VULCAN run ends at a state that both the chemistry and the climate accept.
 
     Physical scenario: the CHO kinetics of the same snapshot, with photochemistry, coupled to
@@ -222,6 +231,8 @@ def test_coupled_run_ends_where_chemistry_and_climate_agree(snapshot):
     # VULCAN ended at a steady state, after the climate update made there changed T little
     attrs = chem['attrs']
     rel_dt = np.atleast_1d(attrs['climate_max_rel_dT'])
+    record_property('climate_updates', int(attrs['climate_updates']))
+    record_property('climate_max_rel_dT', rel_dt.tolist())
     assert attrs['termination'] == 'converged to steady state'
     assert attrs['climate_updates'] >= 2
     assert rel_dt[-1] <= cfg.atmos_chem.vulcan.agni_T_rtol

@@ -229,7 +229,8 @@ def vulcan_problem(config: Config) -> str | None:
     """Return what is wrong with VULCAN and its fix, when the config uses VULCAN.
 
     The check is the doctor's: VULCAN missing, or below the ``fwl-vulcan`` floor in
-    ``pyproject.toml``. It holds in every ``atmos_chem.mode``, since ``proteus offchem`` runs
+    ``pyproject.toml``. A VULCAN without the network files of its git clone (the PyPI
+    wheel) fails too. It holds in every ``atmos_chem.mode``, since ``proteus offchem`` runs
     VULCAN whatever the mode is; ``validate_module_versions`` calls it only when the run does.
     """
     if config.atmos_chem.module != 'vulcan':
@@ -237,9 +238,19 @@ def vulcan_problem(config: Config) -> str | None:
     from proteus.doctor import PASS, _dependency_specs, check_python_package
 
     vulcan = check_python_package('fwl-vulcan', _dependency_specs().get('fwl-vulcan'))
-    if vulcan.status == PASS:
-        return None
-    return f'VULCAN module is missing or out of date: {vulcan.message}. Fix: {vulcan.fix_cmd}'
+    if vulcan.status != PASS:
+        return (
+            f'VULCAN module is missing or out of date: {vulcan.message}. Fix: {vulcan.fix_cmd}'
+        )
+    from vulcan.paths import THERMO_DIR
+
+    network = os.path.join(THERMO_DIR, 'CHO_photo_network.txt')
+    if not os.path.isfile(network):
+        return (
+            f'VULCAN network file not found: {network}. VULCAN reads its data from its git '
+            'clone. Fix: bash tools/get_vulcan.sh'
+        )
+    return None
 
 
 def fwl_io_problem() -> str | None:
