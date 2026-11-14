@@ -147,10 +147,10 @@ The measured range of `M_core` in runs of that planet is 0.1 to 1.5 % above `M_c
 The silicate in that shell, between the mass `M_core_solve` and the radius `R_core`, counts in `M_core` and not in the mantle.
 At a high core fraction it is a large part of the mantle.
 When it is more than 5 % of the mantle mass above `R_core`, the solve logs a warning with that share.
-In the PROTEUS grid case with `core_frac = 0.95`, 0.7 Earth masses and 150 levels, solved at a mass tolerance of $10^{-6}$ (REF, stored with the Zalmoxis tests), it is 0.36 % of the core mass but 7.4 % of the mantle mass above `R_core` in the first solve, and 0.31 % and 6.4 % in the re-solve.
+In the PROTEUS grid case with `core_frac = 0.95`, 0.7 Earth masses and 150 levels, solved at a mass tolerance of $10^{-6}$ (the stored reference `tests/data/grid_start_up_reference.json` of Zalmoxis), it is 0.36 % of the core mass but 7.4 % of the mantle mass above `R_core` in the first solve, and 0.31 % and 6.4 % in the re-solve.
 
 With `interior_energetics.aragog.core_bc = "core_module"`, the core module keeps the `M_core` of its first setup and fits its core profile to that mass after each structure update.
-A re-solve that moves the boundary node then gives an `M_core` that differs from the mass of the core module: by 4.5e-4 of the core mass in that grid case.
+A re-solve that moves the boundary node then gives an `M_core` that differs from the mass of the core module: by 4.5e-4 of the core mass at the re-solve of a coupled run of that grid case.
 The default `core_bc = "energy_balance"` does not use this mass.
 
 **How the PALEOS mantle EOS is applied**

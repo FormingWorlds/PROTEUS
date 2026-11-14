@@ -2031,7 +2031,7 @@
     {
       "name": "M_core_solve",
       "unit": "kg",
-      "description": "core mass of the last Zalmoxis solve, kept to restore a rejected re-solve; 0 with another structure module",
+      "description": "core mass of the last Zalmoxis solve, M_core_target to round-off; 0 with another structure module",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
