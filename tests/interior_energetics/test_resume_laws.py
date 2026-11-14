@@ -35,9 +35,12 @@ MINIMAL = Path(__file__).parents[2] / 'input' / 'minimal.toml'
 LOGGER = 'fwl.proteus.interior_energetics.resume_laws'
 
 
-def _user_config(folder, **aragog):
-    """A config file from input/minimal.toml with the given aragog fields set; returns (Config, path)."""
+def _user_config(folder, mixing_length=None, **aragog):
+    """A config file from input/minimal.toml with the given mixing length and aragog fields
+    set; returns (Config, path)."""
     text = MINIMAL.read_text()
+    if mixing_length is not None:
+        text += f"\n[interior_energetics]\n    mixing_length = '{mixing_length}'\n"
     if aragog:
         text += '\n[interior_energetics.aragog]\n' + ''.join(
             f'    {k} = {tomlkit.item(v).as_string()}\n' for k, v in aragog.items()
@@ -158,16 +161,20 @@ def test_a_run_without_a_usable_record_needs_both_laws_in_the_config_file(tmp_pa
     assert 'separation_viscosity is not recorded' in message
     assert "'melt'" not in message and 'separation_buoyancy' not in message
     config, path = _user_config(
-        tmp_path, separation_buoyancy='mixture', separation_viscosity='mixture'
+        tmp_path,
+        mixing_length='constant',
+        separation_buoyancy='mixture',
+        separation_viscosity='mixture',
     )
     assert check_resume_separation_laws(config, path, out) == []
 
 
 def _record_without_module(tmp_path):
-    """A run directory whose init_coupler.toml holds both laws but no interior module."""
+    """A run directory whose init_coupler.toml holds the laws but no interior module."""
     out = tmp_path / 'run'
     out.mkdir()
     (out / 'init_coupler.toml').write_text(
+        "[interior_energetics]\nmixing_length = 'constant'\n"
         "[interior_energetics.aragog]\nseparation_viscosity = 'mixture'\n"
         "separation_buoyancy = 'solid'\n"
     )
@@ -311,7 +318,10 @@ def test_a_record_of_another_interior_module_holds_no_aragog_law(tmp_path, store
     assert 'separation_buoyancy is not recorded' in message
     assert f"names interior module '{stored_module}'" in message
     config, path = _user_config(
-        tmp_path, separation_viscosity='mixture', separation_buoyancy='mixture'
+        tmp_path,
+        mixing_length='constant',
+        separation_viscosity='mixture',
+        separation_buoyancy='mixture',
     )
     assert check_resume_separation_laws(config, path, out) == []
 
@@ -342,6 +352,7 @@ def test_a_record_that_names_no_module_but_holds_the_laws_needs_no_law_in_the_fi
     out = tmp_path / 'run'
     out.mkdir()
     (out / 'init_coupler.toml').write_text(
+        "[interior_energetics]\nmixing_length = 'constant'\n"
         "[interior_energetics.aragog]\nseparation_viscosity = 'mixture'\n"
         "separation_buoyancy = 'mixture'\n"
     )
@@ -520,7 +531,8 @@ def test_a_run_without_a_usable_record_does_not_check_the_rheology_or_the_lid(
     if content is not None:
         (out / 'init_coupler.toml').write_bytes(content)
     text = MINIMAL.read_text() + (
-        '\n[interior_energetics.aragog]\n'
+        "\n[interior_energetics]\n    mixing_length = 'constant'\n"
+        '[interior_energetics.aragog]\n'
         "    separation_viscosity = 'mixture'\n    separation_buoyancy = 'mixture'\n"
         '    lid_mush_base = true\n'
         '[interior_energetics.aragog.rheology]\n    enabled = true\n'
@@ -597,7 +609,8 @@ def test_a_run_without_a_usable_record_warns_about_the_end_cells(tmp_path, caplo
     out = tmp_path / 'run'
     out.mkdir()
     text = MINIMAL.read_text() + (
-        '\n[interior_energetics.aragog]\n'
+        "\n[interior_energetics]\n    mixing_length = 'constant'\n"
+        '[interior_energetics.aragog]\n'
         "    separation_viscosity = 'mixture'\n    separation_buoyancy = 'mixture'\n"
     )
     path = tmp_path / 'user.toml'
@@ -663,7 +676,7 @@ def test_the_slope_is_not_compared_with_the_rheology_off(tmp_path):
     assert check_resume_separation_laws(read_config_object(path), path, out) == []
 
 
-def _mixing_case(folder, module, stored, new, allow=False, record_module=None):
+def _mixing_case(folder, module, stored, new, allow=False, record_module=None, laws=False):
     """A ``module`` run recording mixing length ``stored`` (None: no field) and its resume
     config file, which sets ``new`` (None: the field is not set)."""
     out = Path(folder) / 'run'
@@ -683,6 +696,8 @@ def _mixing_case(folder, module, stored, new, allow=False, record_module=None):
     text += (
         f'[interior_energetics.aragog]\n    allow_resume_law_change = {str(allow).lower()}\n'
     )
+    if laws:  # a record of a module without convection holds no separation law either
+        text += "    separation_viscosity = 'mixture'\n    separation_buoyancy = 'mixture'\n"
     path = Path(folder) / 'user.toml'
     path.write_text(text)
     return read_config_object(path), path, out
@@ -748,7 +763,7 @@ def test_an_unrecorded_mixing_length_must_be_set_in_the_config_file(
     assert 'mixing_length is not recorded' in str(err.value)
     assert 'allow_resume_law_change does not cover' in str(err.value)
     config, path, out = _mixing_case(
-        tmp_path / 'b', module, stored, 'nearest', record_module=record_module
+        tmp_path / 'b', module, stored, 'nearest', record_module=record_module, laws=True
     )
     with caplog.at_level(logging.INFO, logger=LOGGER):
         check_resume_separation_laws(config, path, out)

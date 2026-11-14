@@ -13,6 +13,9 @@ allow switch does not cover them. A record without a cell field does not tell th
 the run; ``aragog_resume.refuse_another_mesh`` then compares the radii of the snapshot. ``rheology.mlt_bottom_slope`` is a law like the two above
 when the rheology is on in the run and in the resume.
 
+``interior_energetics.mixing_length`` is a law of an Aragog and of a SPIDER run alike; a record of
+either module or of no named module holds it, one of a module without convection does not.
+
 A record that names the Aragog module and lacks ``separation_viscosity`` counts as
 aragog's ``'melt'``, one with the rheology on and no slope as 1.0. A record of another interior module holds no Aragog law. Any law
 the record does not hold must be set in the config file of the resume; the allow switch
@@ -32,6 +35,11 @@ UNRECORDED_VISCOSITY = 'melt'  # aragog's default, which a record without the fi
 RHEOLOGY_KEY = 'interior_energetics.aragog.rheology.enabled'
 LID_KEY = 'interior_energetics.aragog.lid_mush_base'
 SLOPE_KEY = 'interior_energetics.aragog.rheology.mlt_bottom_slope'
+MIXING_KEY = 'interior_energetics.mixing_length'
+MLT_MODULES = (
+    'aragog',
+    'spider',
+)  # interior modules whose convective flux reads the mixing length
 MESH_FIELDS = ('cmb_cell_thickness', 'surface_cell_thickness')
 # The slope a record without the field ran under.
 UNRECORDED_SLOPE = 1.0
@@ -43,16 +51,21 @@ class ResumeSeparationLawError(RuntimeError):
     """A resume would change a separation law the run was written with."""
 
 
-def _aragog_table(path) -> tuple[str | None, dict]:
-    """Read ``path``; return its ``interior_energetics.module`` (None if absent, unreadable
-    or not a string) and its ``interior_energetics.aragog`` table."""
+def _interior_table(path) -> dict:
+    """Read ``path``; return its ``interior_energetics`` table ({} if absent or unreadable)."""
     try:
         with open(path, 'rb') as f:
             raw = tomllib.load(f)
     except (OSError, ValueError):
-        return None, {}
+        return {}
     interior = raw.get('interior_energetics')
-    interior = interior if isinstance(interior, dict) else {}
+    return interior if isinstance(interior, dict) else {}
+
+
+def _aragog_table(path) -> tuple[str | None, dict]:
+    """Read ``path``; return its ``interior_energetics.module`` (None if absent, unreadable
+    or not a string) and its ``interior_energetics.aragog`` table."""
+    interior = _interior_table(path)
     aragog = interior.get('aragog')
     module = interior.get('module')
     return module if isinstance(module, str) else None, aragog if isinstance(
@@ -60,16 +73,21 @@ def _aragog_table(path) -> tuple[str | None, dict]:
     ) else {}
 
 
+def _where(stored_path: str, module, modules=('aragog',)) -> str:
+    """The record named in a refusal, with why it holds no law when its module is not in ``modules``."""
+    if module is None:
+        return f'{stored_path}, which is missing, unreadable or names no interior module'
+    if module not in modules:
+        return f'{stored_path}, which names interior module {module!r}'
+    return stored_path
+
+
 def _unrecorded(key: str, stored_path: str, module, config_path) -> str:
     """Refusal text for a law the run did not record."""
-    if module is None:
-        where = f'{stored_path}, which is missing, unreadable or names no interior module'
-        hint = 'the law of the run is unknown'
-    elif module != 'aragog':
-        where = f'{stored_path}, which names interior module {module!r}'
+    where = _where(stored_path, module)
+    if module != 'aragog':
         hint = 'the law of the run is unknown'
     else:
-        where = stored_path
         hint = (
             "a run without the field ran under 'solid' with an aragog below 26.10.22 and "
             "under 'mixture' from 26.10.22 (the 'aragog version' line of the run's "
@@ -130,7 +148,8 @@ def check_resume_separation_laws(
     -------
     list of tuple
         ``(field, recorded value, new value)`` for each law the resume changes; empty
-        when the laws stay, and when the run or the resume does not use Aragog.
+        when the laws stay, and when the resume uses neither Aragog nor SPIDER. A SPIDER
+        resume compares only the mixing length.
 
     Raises
     ------
@@ -140,7 +159,7 @@ def check_resume_separation_laws(
     """
     stored_path = os.path.join(output_dir, 'init_coupler.toml')
     module, stored = _aragog_table(stored_path)
-    if config.interior_energetics.module != 'aragog':
+    if config.interior_energetics.module not in MLT_MODULES:
         return []
     if module not in (None, 'aragog'):  # a record of another module holds no Aragog law
         stored = {}
@@ -164,6 +183,29 @@ def check_resume_separation_laws(
                 f'set it to {old!r} to keep the law, or set interior_energetics.aragog.'
                 'allow_resume_law_change = true to switch it at the resume'
             )
+
+    new = config.interior_energetics.mixing_length
+    recorded = _interior_table(stored_path) if module in (None, *MLT_MODULES) else {}
+    if 'mixing_length' in recorded:
+        if recorded['mixing_length'] != new:
+            switch(
+                'mixing_length', MIXING_KEY, recorded['mixing_length'], new, f' ({stored_path})'
+            )
+    elif 'mixing_length' in _interior_table(config_path):
+        notes.append(
+            (
+                logging.INFO,
+                f'{MIXING_KEY} is not recorded for this run; it resumes under {new!r}',
+            )
+        )
+    else:
+        refusals.append(
+            f'{MIXING_KEY} is not recorded in {_where(stored_path, module, MLT_MODULES)}: the '
+            f'mixing length of the run is unknown; set it in {config_path} to the value the run '
+            'used (allow_resume_law_change does not cover a law the run did not record)'
+        )
+    if config.interior_energetics.module != 'aragog':
+        return _finish(switches, refusals, notes)
 
     for field in LAW_FIELDS:
         key = f'interior_energetics.aragog.{field}'
@@ -211,6 +253,11 @@ def check_resume_separation_laws(
             switch(
                 'rheology.mlt_bottom_slope', SLOPE_KEY, old, aragog.rheology.mlt_bottom_slope
             )
+    return _finish(switches, refusals, notes)
+
+
+def _finish(switches, refusals, notes) -> list[tuple[str, object, str]]:
+    """Raise the collected refusals, or log the notes and return the switches."""
     if refusals:
         raise ResumeSeparationLawError('Resume refused:\n  ' + '\n  '.join(refusals))
     for level, note in notes:

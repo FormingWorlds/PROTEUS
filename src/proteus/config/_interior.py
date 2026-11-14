@@ -532,8 +532,9 @@ class Aragog:
     Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5;
     from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2."""
     allow_resume_law_change: bool = field(default=False, validator=_valid_bool)
-    """Let a resume change separation_viscosity, separation_buoyancy, rheology.enabled or
-    lid_mush_base from the values in the run's init_coupler.toml, with one warning per
+    """Let a resume change separation_viscosity, separation_buoyancy, rheology.enabled,
+    lid_mush_base or interior_energetics.mixing_length (also of a SPIDER run) from the
+    values in the run's init_coupler.toml, with one warning per
     switched law in the log. False stops such a resume, because the changed law would act
     from the resume row on. A law the record does not hold must be set in the config file
     either way; a record that names the Aragog module and lacks separation_viscosity counts
@@ -960,8 +961,9 @@ class Interior:
     trans_mixing: bool
         Include the chemical mixing flux.
     mixing_length: str
-        Mixing-length scale: 'nearest' (distance to nearest boundary) or
-        'constant' (a quarter of the mantle depth).
+        Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle
+        depth, as in the simplified model of Bower et al. (2018)[^cite-bower2018]) or 'nearest'
+        (distance to the nearest boundary). A resume keeps the recorded value.
     kappah_floor: float
         Eddy diffusivity floor [m2 s-1]; prevents mixing-length transport
         from freezing out.
@@ -1050,7 +1052,7 @@ class Interior:
         factory=InteriorBoundary, validator=valid_interiorboundary
     )
 
-    mixing_length: str = field(default='nearest', validator=in_(('nearest', 'constant')))
+    mixing_length: str = field(default='constant', validator=in_(('constant', 'nearest')))
     grain_size: float = field(default=1e-3, validator=gt(0))
     flux_guess: float = field(default=-1)
     tmagma_atol: float = field(default=20.0, validator=ge(0))

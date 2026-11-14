@@ -5565,7 +5565,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Let a resume change separation_viscosity, separation_buoyancy, rheology.enabled or lid_mush_base from the values in the run's init_coupler.toml, with one warning per switched law in the log. False stops such a resume, because the changed law would act from the resume row on. A law the record does not hold must be set in the config file either way; a record that names the Aragog module and lacks separation_viscosity counts as 'melt', one that lacks the rheology or lid_mush_base counts as off, and a record of another interior module holds none of them. A missing record, or one that names no module and holds no Aragog table, leaves the rheology and the lid unchecked. init_coupler.toml records false.",
+      "description": "Let a resume change separation_viscosity, separation_buoyancy, rheology.enabled, lid_mush_base or interior_energetics.mixing_length (also of a SPIDER run) from the values in the run's init_coupler.toml, with one warning per switched law in the log. False stops such a resume, because the changed law would act from the resume row on. A law the record does not hold must be set in the config file either way; a record that names the Aragog module and lacks separation_viscosity counts as 'melt', one that lacks the rheology or lid_mush_base counts as off, and a record of another interior module holds none of them. A missing record, or one that names no module and holds no Aragog table, leaves the rheology and the lid unchecked. init_coupler.toml records false.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -6803,13 +6803,13 @@
       "class": "Interior",
       "type": "str",
       "accepts_none": false,
-      "default": "\"nearest\"",
+      "default": "\"constant\"",
       "choices": [
-        "nearest",
-        "constant"
+        "constant",
+        "nearest"
       ],
       "bounds": null,
-      "description": "Mixing-length scale: 'nearest' (distance to nearest boundary) or 'constant' (a quarter of the mantle depth).",
+      "description": "Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle depth, as in the simplified model of Bower et al. (2018)[^cite-bower2018]) or 'nearest' (distance to the nearest boundary). A resume keeps the recorded value.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 3,
