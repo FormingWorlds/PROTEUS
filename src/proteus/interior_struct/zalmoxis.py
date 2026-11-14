@@ -4031,12 +4031,12 @@ def zalmoxis_solver(
     hf_row['M_int'] = mass_enclosed[-1]
     hf_row['M_core'] = float(mass_enclosed[cmb_index])  # the mass inside R_core
     hf_row['M_core_solve'] = float(cmb_mass)  # the core mass of the solve
-    _mantle = hf_row['M_int'] - hf_row['M_core']
-    _shell = hf_row['M_core'] - hf_row['M_core_solve']
+    _mantle = float(mass_enclosed[-1] - mass_enclosed[cmb_index])
+    _shell = float(mass_enclosed[cmb_index]) - float(cmb_mass)
     if _mantle > 0 and _shell > 0.05 * _mantle:
         log.warning(
-            'M_core holds %.3g of the mantle mass below R_core (the shell between M_core_solve '
-            'and R_core); M_int - M_core is short by it. Raise zalmoxis.num_levels to shrink it.',
+            'The shell between M_core_solve and R_core holds %.3g of the mantle mass above R_core '
+            '(M_int - M_core), which is short by it. Raise zalmoxis.num_levels to shrink it.',
             _shell / _mantle,
         )
     hf_row['gravity'] = gravity[-1]
@@ -4133,7 +4133,7 @@ def zalmoxis_solver(
 
     # Schema check at the Zalmoxis -> Aragog file handover (a violation restores .prev and raises);
     # the mantle reference comes from the arrays of the M_int and M_core writes, so part (b)
-    # guards those writes, and the RK45 accumulator avoids the ~10% error of a coarse trapezoid
+    # is an identity check of those writes
     mantle_mass_accumulator = float(mass_enclosed[-1]) - float(mass_enclosed[cmb_index])
     try:
         validate_zalmoxis_output_schema(

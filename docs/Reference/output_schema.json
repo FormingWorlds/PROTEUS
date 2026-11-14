@@ -2031,7 +2031,7 @@
     {
       "name": "M_core_solve",
       "unit": "kg",
-      "description": "core mass of the last Zalmoxis solve, read to restore a rejected re-solve and for the mantle-shell warning; 0 with another structure module",
+      "description": "core mass of the last Zalmoxis solve, kept to restore a rejected re-solve; 0 with another structure module",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
@@ -2041,8 +2041,7 @@
         }
       ],
       "consumers": [
-        "interior_energetics",
-        "interior_struct"
+        "interior_energetics"
       ],
       "consumers_possible": []
     },
