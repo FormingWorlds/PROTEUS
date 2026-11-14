@@ -131,15 +131,15 @@ def test_the_tutorial_atmosphere_lies_above_the_held_run_and_crosses_the_open_ru
 def test_the_seal_effect_of_the_tutorial_lies_in_one_band_over_round_off_starts():
     """The stored end values of the printed run and of 5 starts whose initial
     superheat differs by up to 2.5e-9 K, each with the seal on and off: the seal
-    run holds 1.748 % more water in the atmosphere at 140 kyr than the open run of
-    its start in each start; over the 6 starts the water spreads by 9e-4 % with
-    the seal and 8e-4 % without it, and the closing time by 0.8 yr."""
+    run holds 1.730 % more water in the atmosphere at 140 kyr than the open run of
+    its start in each start; over the 6 starts the water spreads by 7.2e-4 % with
+    the seal and 9.6e-4 % without it, and the closing time by 2.5 yr."""
     d = _read(DATA / 'tutorial_ensemble.csv')
     more = 100.0 * (d['seal_atm'] / d['open_atm'] - 1.0)
     printed, starts = d['run'] == 'printed', d[d['run'] != 'printed']
     assert len(starts) == 5 and starts['dT'].max() < 2.5e-9 * (1 + 1e-6)
-    assert (more.min(), more.max()) == pytest.approx((1.748, 1.748), abs=5e-4)
-    assert more[printed].item() == pytest.approx(1.748, abs=5e-4)
+    assert (more.min(), more.max()) == pytest.approx((1.730, 1.730), abs=5e-4)
+    assert more[printed].item() == pytest.approx(1.730, abs=5e-4)
     spread = [100.0 * np.ptp(d[c]) / d[c].mean() for c in ('seal_atm', 'open_atm')]
-    assert spread == pytest.approx([9e-4, 8e-4], abs=5e-5)
-    assert np.ptp(d['t_close']) == pytest.approx(0.8, abs=0.05)
+    assert spread == pytest.approx([7.2e-4, 9.6e-4], abs=5e-5)
+    assert np.ptp(d['t_close']) == pytest.approx(2.5, abs=0.05)

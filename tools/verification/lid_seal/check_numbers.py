@@ -53,6 +53,7 @@ TEMPLATES = [
     ('T', 'the seal effect is their difference at the same start: {band_printed:.3f} % in each '
           'of the 6 starts.'),
     ('E', 'the top cell is {crust:.1f} km thick'),
+    ('E', 'the seal closes at $\\Phi_c = {phi_k:.5f}$'),
     ('E', '{co:.1f} % more CO, {co2:.1f} % less CO$_2$ and {h2o:.1f} % more water'),
     ('E', '{ptot:.1f} % lower surface pressure'),
     ('E', 'holds {band_printed:.3f} % more atmospheric water than the open run of its start in '
