@@ -193,7 +193,7 @@ Here the mantle starts fully molten (liquid fraction `Phi_global` 1, defined in 
 On our run all 4 ended with the status `Completed (target time)`, as the last command shows.
 
 **Known limit.** After the re-melt the Aragog solves of this case are stiff: on the uniform mesh the slowest solve takes 58,142 steps of CVODE, the time integrator inside Aragog, in the run with $f = 0.3$, and 107,805 steps in the run with $f = 0$.
-On the default mesh, with its 3000 m cell at the core-mantle boundary, the run with $f = 0.3$ can be much slower or stall: in one of our runs one solve took 86,045 steps, and in 2 other runs one solve did not end, after 50 minutes in the run under the default and after 9 minutes in a run with `mixing_length = "nearest"`.
+On the default mesh, with its 3000 m cell at the core-mantle boundary, the run with $f = 0.3$ can be much slower or stall: in one of our runs one solve took 86,045 steps, and in 2 other runs one solve did not end, after 50 minutes in a run with `mixing_length = "constant"`, the default, and after 9 minutes in a run with `mixing_length = "nearest"`.
 So this page runs Aragog on the uniform mesh.
 
 ## Step 4: read the impact row

@@ -15,6 +15,7 @@ from __future__ import annotations
 import importlib.util
 import re
 import sys
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -236,7 +237,9 @@ def test_the_stored_15_earth_mass_config_leaves_the_mixing_length_to_the_default
 
     path = _DIR / 'planet_1p5_earth.toml'
     assert 'mixing_length' not in tomllib.loads(path.read_text())['interior_energetics']
-    c = read_config_object(path)
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', FutureWarning)  # no deprecated key in the file
+        c = read_config_object(path)
     ie = c.interior_energetics
     assert ie.mixing_length == 'constant'
     assert (c.planet.mass_tot, ie.num_levels, ie.aragog.cmb_cell_thickness) == (1.5, 80, 0.0)

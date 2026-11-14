@@ -58,7 +58,7 @@ The test also asserts that the uniform meshes have no dip, and that both meshes 
 **How we know the right answer.**
 The core is hotter than the mantle above it, and that mantle convects, so heat must flow out of the core.
 The test accepts single rows without this flux (see the known limit below), but not 2 in a row.
-A model with a correct boundary treatment gives the same $T_\mathrm{cmb}$ on a coarse and on a fine mesh, so the test asks that $T_\mathrm{cmb}$ at 100 kyr of the 4 meshes lie within 25 K of each other; they lie within 7.6 K.
+A model with a correct boundary treatment gives the same $T_\mathrm{cmb}$ on a coarse and on a fine mesh, so the test asks that $T_\mathrm{cmb}$ at 100 kyr of the 4 meshes lie within 25 K of each other; they lie within 7.64 K.
 Because $T_\mathrm{cmb}$ is the temperature of the bottom cell, the thickness of that cell enters this comparison.
 The 160-node mesh is the finest of the 4: its cells are about half as thick as on the 80-node mesh.
 
@@ -81,17 +81,19 @@ A pass means that no line stays below the dashed line for 2 rows.
 **Known limit.**
 With a CMB cell, `constant` gives single dips: 3 rows on the 3000 m cell, at 22.0, 28.4 and 38.1 kyr, and 2 rows on the 1500 m cell.
 The next row has a flux above 100 W m$^{-2}$ again, and $T_\mathrm{cmb}$ never rises by more than 0.61 K between 2 rows.
-Each dip falls on a row in which `T_magma` falls by more than 25 K while `Phi_global` rises; the uniform 80-node mesh has no such row after 10 kyr, and no dip.
-In the dips on the 3000 m cell the entropy gradient at the CMB, which the solver carries as a state, falls to a small positive value, and the CMB node keeps the diffusivity copied from the node above, so heat flows into the core for that row: a negative $F_\mathrm{cmb}$.
-Around the dips this gradient is 2000 to 2600 times smaller than its absolute tolerance in the solver ($10^{-8}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$), so the solver does not control it; this is a candidate cause, and why the gradient falls is not known.
+Each dip falls on a row in which `T_magma` falls by more than 25 K while `Phi_global` rises (3 of 4 such rows on the 3000 m cell, 2 of 3 on the 1500 m cell); the uniform meshes have no such row after 10 kyr, and no dip.
+In the dips on the 3000 m cell the entropy gradient at the CMB, which the solver carries as a state, ends the step at a small positive value, and the CMB node keeps the diffusivity copied from the node above, so $F_\mathrm{cmb}$ is negative or near zero for that row.
+The same small positive value also ends single steps without a dip on all 4 meshes (3 times on the uniform 80-node mesh, 4 times on 160 nodes); only in the dips at 22.0 and 28.4 kyr does it last through a whole step.
+At the default tolerance setting the absolute tolerance of this gradient in the solver is $10^{-8}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$, 2000 to 2600 times the gradient around the dips, and on all 4 meshes the gradient is below it in about 60 % of the solves after 2 kyr.
+So the solver does not control this state; this is a candidate cause, and why the dips occur is not known.
 The aragog mesh study that supports the 3000 m cell runs the core module and the `nearest_boundary` length; for the defaults of PROTEUS, the `energy_balance` boundary and `constant`, the runs of this page are the check, and they show the single dips only on meshes with a CMB cell.
 
 ??? note "The dips in the run log"
-    - On the 3000 m cell the run log (`output/c3000_constant/aragog.log` of the run, not in the repository) gives the gradient as $-4 \times 10^{-12}$ to $-5 \times 10^{-12}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$ in the rows around the dips, and $+1.9 \times 10^{-17}$ to $+2.3 \times 10^{-17}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$ at the end of each dip row.
+    - On the 3000 m cell the run log (`output/c3000_constant/aragog.log` of the run, not in the repository) gives the gradient as $-3.9 \times 10^{-12}$ to $-5.0 \times 10^{-12}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$ in the rows around the dips, and $+1.9 \times 10^{-17}$ to $+2.3 \times 10^{-17}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$ at the end of each dip row.
     - At 22.0 and 28.4 kyr the gradient starts and ends the step at this value: $F_\mathrm{cmb}$ is -0.011 W m$^{-2}$, and $T_\mathrm{cmb}$ changes by less than $10^{-5}$ K in the row.
     - At 38.1 kyr the gradient reaches this value within the step; the mean flux of the row, -595.5 W m$^{-2}$, needs a larger positive gradient during the step.
     - The 2 dips on the 1500 m cell, -110.4 and -322.5 W m$^{-2}$, are not traced in this way.
-    - A run with the planet mass changed by 1 part in $10^{12}$ has its 3 dips within 1 yr of the same times, so the times come from the model, not from round-off; a tolerance effect is also the same in both runs, so this does not rule out a numerical cause. In that run $F_\mathrm{cmb}$ in the dips at 22.0 and 28.4 kyr is 1.6 and 1.0 W m$^{-2}$, not -0.011 W m$^{-2}$.
+    - A run with the planet mass changed by 1 part in $10^{12}$ has its 3 dips within 1 yr of the same times, so the times come from the model, not from round-off; a tolerance effect is also the same in both runs, so this does not rule out a numerical cause. In that run $F_\mathrm{cmb}$ in the dips at 22.0 and 28.4 kyr is 1.6 and 1.0 W m$^{-2}$, not -0.011 W m$^{-2}$; the rheology run of case 3 has dips at the same 2 times, with 4.6 and -0.011 W m$^{-2}$.
 
 ??? info "Test details"
     - Reference: heat flows out of a hot core under a convecting mantle; for the mesh comparison, the spread of $T_\mathrm{cmb}$ at 100 kyr over the 4 meshes.
@@ -211,7 +213,7 @@ A pass means that the uniform line ends on the dot.
 
 **Known limit.**
 The steps of $T_\mathrm{cmb}$ between rows are not a measure of the heat flux in this run, so the 10 K bound of the first case does not apply.
-After 2 kyr, $T_\mathrm{cmb}$ falls by up to 46 K per kyr, and by 2.5 K per kyr (uniform mesh) and 2.6 K per kyr (default mesh) in the row nearest 100 kyr; the rows are up to 4000 yr apart.
+After 2 kyr, $T_\mathrm{cmb}$ falls by up to 46 K per kyr; between the rows nearest 95 and 105 kyr it falls by 2.5 K per kyr on the uniform mesh and 2.1 K per kyr on the default mesh, while single steps there range from 1.7 to 2.6 K per kyr; the rows are up to 4000 yr apart.
 So after 2 kyr, 28 steps on the uniform mesh and 29 on the default mesh fall by more than 10 K.
 The largest, -39.7 K on the uniform mesh and -39.8 K on the default mesh, comes at 3.6 kyr, where the rows are 860 yr apart.
 $F_\mathrm{cmb}$ is at least 666 W m$^{-2}$ at each of these steps, and about 13,500 W m$^{-2}$ at the largest, so the heat flux is kept.

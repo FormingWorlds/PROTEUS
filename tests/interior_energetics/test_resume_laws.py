@@ -107,6 +107,26 @@ def test_a_refusal_says_where_the_new_law_comes_from(tmp_path, set_in_file):
     assert f"separation_viscosity is 'mixture' {where}" in str(err.value)
 
 
+def test_a_refusal_names_the_default_for_a_nested_law_its_file_leaves_out(tmp_path):
+    """A file that sets the rheology slope but not rheology.enabled resumes a run recorded with
+    the rheology on under the default (off); the refusal names the default for that key."""
+    out = tmp_path / 'run'
+    out.mkdir()
+    record, _ = _user_config(out)
+    record.interior_energetics.aragog.rheology.enabled = True
+    record.write(out / 'init_coupler.toml')
+    path = tmp_path / 'user.toml'
+    path.write_text(
+        MINIMAL.read_text()
+        + '\n[interior_energetics.aragog.rheology]\n    mlt_bottom_slope = 0.9\n'
+    )
+    config = read_config_object(path)
+    assert config.interior_energetics.aragog.rheology.enabled is False
+    with pytest.raises(ResumeSeparationLawError) as err:
+        check_resume_separation_laws(config, path, out)
+    assert f'rheology.enabled is False (the default; {path} does not set it)' in str(err.value)
+
+
 def test_unchanged_laws_resume_without_a_record(tmp_path, caplog):
     """The same laws as stored give no switch and no log record from the check."""
     out = _stored_run(tmp_path, separation_buoyancy='solid', separation_viscosity='melt')
