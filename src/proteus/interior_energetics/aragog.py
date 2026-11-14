@@ -2701,10 +2701,8 @@ class AragogRunner:
         stiff_ramp = ((2, 2.0), (4, 5.0), (8, 10.0))
         n_ramp_rungs = len(stiff_ramp)
         max_steps_cap = base_max_steps * stiff_ramp[-1][0]
-        # A one-off spot-check: 10x rtol moves the coupler conservation metric
-        # E_residual_cons_frac from 1.46e-4 to 1.53e-4 on a recovered mush step
-        # (about 65x below its ~1% structural floor) and shifts Phi_global by
-        # ~3e-8 with T_core unchanged. It is not asserted per run.
+        # 10x rtol moved E_residual_cons_frac from 1.46e-4 to 1.53e-4 and Phi_global by
+        # ~3e-8 on a recovered mush step, with T_core unchanged; not asserted per run.
         rtol_cap = base_rtol * stiff_ramp[-1][1]
 
         out = None
