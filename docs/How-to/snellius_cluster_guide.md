@@ -32,6 +32,10 @@
 
 4. You can now follow the usual installation steps [here](installation.md).
 
+## Running grids
+
+The smallest job on the `rome` partition is 1/8 of a node (16 cores and 28 GiB), and a job is charged for that share whether it uses it or not. Pack 16 cases into one job with `cores_per_job = 16` in the grid file, or 128 for a whole node, and keep `max_mem` at or below 1.75 GB per case to stay within the core share; see [Dispatching the grid with Slurm](usage_grids.md#with-slurm).
+
 Note that when logging into `snellius.surf.nl`, you will not always connect to the same computer. For example,
 sometimes your hostname might be `int5` while other times it could be `int6`. This means that `tmux` sessions
 might suddenly appear to vanish, but in reality they are running on a different node. You can access a particular

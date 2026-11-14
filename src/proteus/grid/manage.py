@@ -37,6 +37,7 @@ from proteus.grid.dimensions import (
     dimension_logspace,
     direct_values_error,
 )
+from proteus.grid.slurm import array_layout, dispatch_script, max_array_size
 from proteus.utils.coupler import get_output_root
 from proteus.utils.helper import get_proteus_dir, recursive_setattr
 from proteus.utils.logs import setup_logger
@@ -707,22 +708,20 @@ class Grid:
         max_days: float = 1.0,
         max_mem: float = 12.0,
         jax_cache: bool = False,
+        cores_per_job: int = 1,
     ):
-        """Write slurm config file.
-
-        Uses a slurm job array, see link for more info:
-        https://slurm.schedmd.com/job_array.html
+        """Write the Slurm job array script ``slurm_dispatch.sh``.
 
         Parameters
         ----------
         max_jobs : int
-            Maximum number of jobs to run
+            Maximum number of cases running at the same time
         test_run : bool
             If true, generate dummy commands to test the code.
         max_days : float
-            Maximum number of days to run
+            Maximum number of days one case runs
         max_mem : float
-            Maximum memory per CPU in GB
+            Maximum memory per case in GB
         jax_cache : bool
             If true, the generated script enables a bounded JAX persistent
             compilation cache shared across the array tasks (stored under the
@@ -730,14 +729,31 @@ class Grid:
             recompiles are cut. An LRU size bound caps the cache so it cannot
             fill the filesystem. Default false: no cache environment variables
             are written and the script behaves exactly as before.
+        cores_per_job : int
+            CPU cores per Slurm job; each core runs one case at a time.
         """
 
-        max_days = max(0.001, max_days)  # do not request negative days
-        max_jobs = min(max_jobs, self.size)  # do not request more jobs than we need
+        jobs, waves = array_layout(self.size, cores_per_job, max_array_size())
+        throttle = min(max(1, max_jobs // cores_per_job), jobs)
 
         log.info("Generating PROTEUS slurm config for parameter grid '%s'" % self.name)
-        log.info('Will run for up to %.1f days per job' % max_days)
-        log.info('Will use up to %.1f GB of memory per job' % max_mem)
+        log.info(
+            '%d cases in %d jobs of %d cores and %.1f GB, up to %d jobs at a time',
+            self.size,
+            jobs,
+            cores_per_job,
+            cores_per_job * max_mem,
+            throttle,
+        )
+        log.info('Will run for up to %.1f days per case' % max_days)
+        if waves > 1:
+            log.warning(
+                'MaxArraySize limits the array to %d jobs: each core runs %d cases in turn, '
+                'so a job may run for %.1f days',
+                jobs,
+                waves,
+                max_days * waves,
+            )
         log.info(' ')
 
         log.info("Output path: '%s'" % self.outdir)
@@ -751,17 +767,6 @@ class Grid:
             command = '/bin/echo Dummy output. Config file is at: '
         else:
             command = 'proteus start --offline --config'
-
-        log_file = os.path.join(self.logdir, 'proteus-%A_%a.log')
-
-        # Split days into days/hours/minutes for the Slurm time format
-        time_d = int(np.floor(max_days))
-        time_h = int(np.floor((max_days - time_d) * 24))
-        time_m = int(np.floor(((max_days - time_d) * 24 - time_h) * 60))
-        time_s = f'{time_d}-{time_h:02d}:{time_m:02d}:00'
-
-        # Convert GB into MB for Slurm memory format
-        max_mem_m = int(max_mem * 1024)
 
         # Optional bounded JAX persistent compilation cache. The size bound uses
         # JAX's own LRU eviction so the cache plateaus instead of growing without
@@ -779,25 +784,19 @@ class Grid:
         else:
             jax_env = ''
 
-        string = f"""#!/bin/sh
-#SBATCH -J proteus.grid.array
-#SBATCH --export=ALL
-#SBATCH --time={time_s}
-#SBATCH --mem-per-cpu={max_mem_m}M
-#SBATCH -i /dev/null
-#SBATCH -o {log_file}
-#SBATCH --array=0-{self.size - 1}%{max_jobs}
-
-{jax_env}i=$SLURM_ARRAY_TASK_ID
-
-while [ $i -lt {self.size} ]; do
-    printf -v cfg "{self.cfgdir}/{self.CONFIG_BASENAME}.toml" $((i))
-    echo executing proteus with config $cfg
-    {command} $cfg
-    i=$((i+{self.size}))
-done
-
-"""
+        string = dispatch_script(
+            cfgdir=self.cfgdir.rstrip('/'),
+            logdir=self.logdir.rstrip('/'),
+            n_cases=self.size,
+            cores_per_job=cores_per_job,
+            jobs=jobs,
+            throttle=throttle,
+            days=max_days * waves,
+            mem_per_case_mb=int(max_mem * 1024),
+            command=command,
+            casedir=None if test_run else self.outdir.rstrip('/'),
+            env=jax_env,
+        )
 
         slurm_path = os.path.join(self.outdir, 'slurm_dispatch.sh')
         with open(slurm_path, 'w') as f:
@@ -829,6 +828,7 @@ GRID_SETTINGS = frozenset(
         'max_jobs',
         'max_days',
         'max_mem',
+        'cores_per_job',
         'jax_cache',
         'config_version',
         'post_processing',
@@ -912,6 +912,17 @@ def _grid_bool(value, key: str, fpath: str) -> bool:
     return value
 
 
+def _grid_positive_int(config: dict, key: str, fpath: str) -> int:
+    """Return a grid setting that must be a TOML integer of at least 1, default 1."""
+    value = config.get(key, 1)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(
+            f'grid file {fpath}: grid setting {key} must be an integer of at least 1, '
+            f'got {value!r}'
+        )
+    return value
+
+
 def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: float = 15.0):
     """Run GridPROTEUS using the parameters in a config file (xxx.grid.toml)"""
 
@@ -954,7 +965,8 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     # Execution limits
     max_jobs = int(config['max_jobs'])  # maximum number of concurrent tasks (e.g. 300)
     max_days = float(config['max_days'])  # maximum number of days to run (e.g. 1.0)
-    max_mem = float(config['max_mem'])  # maximum memory per CPU in GB (e.g. 3)
+    max_mem = float(config['max_mem'])  # maximum memory per case in GB (e.g. 3)
+    cores_per_job = _grid_positive_int(config, 'cores_per_job', config_fpath)
 
     # Optional bounded JAX persistent compilation cache (Slurm runs only).
     # Absent or false leaves the generated script cache-free.
@@ -1011,6 +1023,7 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
             max_days=max_days,
             max_mem=max_mem,
             jax_cache=jax_cache,
+            cores_per_job=cores_per_job,
         )
     else:
         # Alternatively, let grid_proteus.py manage the jobs
