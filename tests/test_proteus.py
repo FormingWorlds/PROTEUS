@@ -55,7 +55,7 @@ def _record_matching_separation_laws(config, output, buoyancy='mixture'):
     config.interior_energetics.mixing_length = 'constant'  # the record holds it too
     text = (
         "[interior_energetics]\nmodule = 'aragog'\nmixing_length = 'constant'\n\n"
-        "[interior_energetics.aragog]\n"
+        '[interior_energetics.aragog]\n'
         f"separation_viscosity = 'mixture'\nseparation_buoyancy = '{buoyancy}'\n"
     )
     (Path(output) / 'init_coupler.toml').write_text(text)
