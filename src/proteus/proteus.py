@@ -78,13 +78,15 @@ AGNI_DEADLOCK_MAX = 3
 
 
 def _status_on_missing_eos(start):
-    """Write status 20 when missing reference data stops ``start``, wherever it is raised."""
+    """Write status 20 when missing reference data or a refused resume stops ``start``,
+    wherever it is raised (the mesh check of a resume runs in the first interior step)."""
+    from proteus.interior_energetics.resume_laws import ResumeSeparationLawError
 
     @functools.wraps(start)
     def wrapper(self, *args, **kwargs):
         try:
             return start(self, *args, **kwargs)
-        except MissingReferenceData:
+        except (MissingReferenceData, ResumeSeparationLawError):
             UpdateStatusfile(self.directories, 20)
             raise
 

@@ -118,7 +118,9 @@ def refuse_another_mesh(
     The snapshot entropy is put back node by node, so the basic radii the resume builds must
     equal the ``radius_b`` of the snapshot at ``time`` to the radius tolerance of the
     structure, ``max(1 m, 1e-9 (R_int - R_core))``, plus 2 mm for the mass-coordinate node
-    solve. A snapshot that is absent or holds no ``radius_b`` is not checked.
+    solve. A resume that does not replay a pending structure update builds the solver on the
+    moved bounds of its row; then the node count and the 2 end cells (within 10 %) must match.
+    A snapshot that is absent or holds no ``radius_b`` is not checked.
 
     Parameters
     ----------
@@ -152,8 +154,17 @@ def refuse_another_mesh(
         stored = np.asarray(ds['radius_b'][:], dtype=float).ravel() * 1.0e3  # km -> m
     built = np.asarray(r_basic, dtype=float).ravel()
     tol = float(mesh_radius_tolerance(stored[0], stored[-1])) + 2.0e-3
-    if stored.size == built.size and np.max(np.abs(stored - built)) <= tol:
-        return
+    if stored.size == built.size:
+        if max(abs(stored[0] - built[0]), abs(stored[-1] - built[-1])) > tol:
+            # Built on the moved structure of the row (no replay): compare the end cells.
+            cells = np.array([built[1] - built[0], built[-1] - built[-2]])
+            if np.all(
+                np.abs(cells / [stored[1] - stored[0], stored[-1] - stored[-2]] - 1) <= 0.1
+            ):
+                log.info('Resume: the mesh is on the structure of its row; end cells kept')
+                return
+        elif np.max(np.abs(stored - built)) <= tol:
+            return
 
     def mesh(r):
         return (

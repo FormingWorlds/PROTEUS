@@ -254,7 +254,8 @@ def test_a_resume_on_another_mesh_stops_before_the_restore(tmp_path):
     interior_o = MagicMock()
     interior_o.aragog_solver = None
     solver = _LidSolver()
-    solver._r_basic_flat = np.linspace(3.48e6, 6.371e6, 7)  # 20 km lower CMB than the snapshot
+    solver._r_basic_flat = np.linspace(3.5e6, 6.371e6, 7)
+    solver._r_basic_flat[1] = 3.5e6 + 3000.0  # the bounds of the snapshot, a 3000 m CMB cell
 
     def _setup(config, hf_row, interior_o, outdir, **kw):
         interior_o.aragog_solver = solver
