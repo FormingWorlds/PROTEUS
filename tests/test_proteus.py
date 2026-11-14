@@ -52,8 +52,10 @@ def _record_matching_separation_laws(config, output, buoyancy='mixture'):
     aragog.lid_mush_base = False  # and without the lid
     aragog.cmb_cell_thickness = 0.0  # and on the uniform mesh
     aragog.surface_cell_thickness = 'uniform'
+    config.interior_energetics.mixing_length = 'constant'  # the record holds it too
     text = (
-        "[interior_energetics]\nmodule = 'aragog'\n\n[interior_energetics.aragog]\n"
+        "[interior_energetics]\nmodule = 'aragog'\nmixing_length = 'constant'\n\n"
+        "[interior_energetics.aragog]\n"
         f"separation_viscosity = 'mixture'\nseparation_buoyancy = '{buoyancy}'\n"
     )
     (Path(output) / 'init_coupler.toml').write_text(text)
