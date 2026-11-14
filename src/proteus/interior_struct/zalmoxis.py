@@ -4029,16 +4029,15 @@ def zalmoxis_solver(
     hf_row['R_int'] = planet_radius
     hf_row['R_core'] = cmb_radius
     hf_row['M_int'] = mass_enclosed[-1]
-    _m_core = float(mass_enclosed[cmb_index])
-    hf_row['M_core'] = _m_core  # the mass inside R_core
+    hf_row['M_core'] = float(mass_enclosed[cmb_index])  # the mass inside R_core
     hf_row['M_core_solve'] = float(cmb_mass)  # the core mass of the solve
-    _mantle = float(mass_enclosed[-1]) - _m_core
-    _shell = _m_core - float(cmb_mass)
+    _mantle = float(mass_enclosed[-1]) - hf_row['M_core']
+    _shell = hf_row['M_core'] - float(cmb_mass)
     if _mantle > 0 and _shell > 0.05 * _mantle:
         log.warning(
             'The shell between M_core_solve and R_core holds %.3g of the mantle mass above R_core '
             '(M_int - M_core), so M_int - M_core is short of the mantle of the solve by the shell. '
-            'Raise zalmoxis.num_levels to shrink it.',
+            'Raise interior_struct.zalmoxis.num_levels to shrink it.',
             _shell / _mantle,
         )
     hf_row['gravity'] = gravity[-1]

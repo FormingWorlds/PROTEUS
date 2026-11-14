@@ -135,8 +135,12 @@ This core mass depends on the oxygen inventory of that row, so it differs with t
 
 Zalmoxis writes 2 core masses:
 
-- `M_core_solve`: the core mass of the solve. It equals `M_core_target` to round-off. A helpfile without it resumes with this column at 0.
+- `M_core_solve`: the core mass of the last accepted solve. A helpfile without it resumes with this column at 0.
 - `M_core`: the mass inside `R_core`.
+
+An accepted solve gives an `M_core_solve` equal to `M_core_target` to round-off, and an impact raises `M_core_target` and solves at once.
+The end of the init stage sets `M_core_target` from the kept inventories of that row, so from there to the next accepted re-solve the 2 differ by `core_frac` times the change of those inventories since the last solve.
+A rejected re-solve keeps both columns.
 
 Zalmoxis puts the core-mantle boundary of its output (`R_core`, `P_cmb`) at the first grid node at or above `M_core_solve`.
 So `M_core` is larger than `M_core_solve` by at most the mass of the shell below that node.
@@ -150,7 +154,7 @@ When it is more than 5 % of the mantle mass above `R_core`, the solve logs a war
 In the PROTEUS grid case with `core_frac = 0.95`, 0.7 Earth masses and 150 levels, solved at a mass tolerance of $10^{-6}$ (the stored reference `tests/data/grid_start_up_reference.json` of Zalmoxis), it is 0.36 % of the core mass but 7.4 % of the mantle mass above `R_core` in the first solve, and 0.31 % and 6.4 % in the re-solve.
 
 With `interior_energetics.aragog.core_bc = "core_module"`, the core module keeps the `M_core` of its first setup and fits its core profile to that mass after each structure update.
-A re-solve that moves the boundary node then gives an `M_core` that differs from the mass of the core module: by 4.5e-4 of the core mass at the re-solve of a coupled run of that grid case.
+A re-solve that moves the boundary node then gives an `M_core` that differs from the mass of the core module.
 The default `core_bc = "energy_balance"` does not use this mass.
 
 **How the PALEOS mantle EOS is applied**

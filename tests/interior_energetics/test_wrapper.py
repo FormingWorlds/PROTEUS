@@ -1655,6 +1655,7 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize('path', ['raise', 'mass_anchor', 'up_step'])
 def test_a_rejected_structure_update_restores_the_core_keys_of_the_row(path):
     """A solve that writes M_core, M_core_solve and core_density and then fails (a schema

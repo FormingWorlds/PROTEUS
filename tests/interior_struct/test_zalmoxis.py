@@ -2534,6 +2534,7 @@ def test_a_thin_mantle_keeps_the_mass_inside_r_core_and_the_core_of_the_solve(
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize('share', [0.04, 0.04995, 0.05005, 0.06])
 def test_a_shell_above_5_percent_of_the_mantle_above_r_core_is_logged_once(
     tmp_path, monkeypatch, caplog, share
@@ -2561,6 +2562,7 @@ def test_a_shell_above_5_percent_of_the_mantle_above_r_core_is_logged_once(
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_a_core_mass_in_the_last_cell_logs_no_mantle_shell_warning(
     tmp_path, monkeypatch, caplog
 ):
@@ -2571,14 +2573,10 @@ def test_a_core_mass_in_the_last_cell_logs_no_mantle_shell_warning(
     model = _plausible_model_results()
     mass = model['mass_enclosed']
     model['cmb_mass'] = model['core_mantle_mass'] = float(0.5 * (mass[-2] + mass[-1]))
-    with (
-        caplog.at_level(logging.WARNING),
-        pytest.raises((ValueError, ZeroDivisionError)) as err,
-    ):
+    with caplog.at_level(logging.WARNING), pytest.raises(ValueError) as err:
         _run_gate_solver(
             tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
         )
-    assert err.type is ValueError
     assert any(e.name == 'scale_temperature_profile_for_aragog' for e in err.traceback)
     assert not [r for r in caplog.records if 'M_core_solve' in r.getMessage()]
 
