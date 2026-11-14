@@ -107,7 +107,7 @@ def _flux_figure(cases, title):
 def test_the_constant_length_keeps_the_cmb_flux_coupled_on_every_mesh(validation_plot):
     """Under 'constant' no 3 consecutive rows after 10 kyr have F_cmb < 100 W m-2 and no
     T_cmb drop between rows after 2 kyr exceeds 10 K, on 4 meshes of the lid-seal tutorial; T_cmb at
-    100 kyr of the 4 meshes lies within 25 K. Single-row dips occur only with a CMB cell."""
+    100 kyr of the 4 meshes lies within 25 K, and the uniform meshes have no dip."""
     found = {case: TOOL.metrics(_case(case)) for case in TUTORIAL_CONSTANT}
     for case, m in found.items():
         assert m['longest_low'] <= MAX_DIP_ROWS, (case, m['dips'])
@@ -116,18 +116,43 @@ def test_the_constant_length_keeps_the_cmb_flux_coupled_on_every_mesh(validation
     ends = [m['T_end'] for m in found.values()]
     assert max(ends) - min(ends) <= 25.0
     assert found['u80_constant']['n_low'] == found['u160_constant']['n_low'] == 0
-    assert found['c3000_constant']['n_low'] > 0 and found['c1500_constant']['n_low'] > 0
-    # A start changed at round-off keeps the dips at the same times: they are not round-off.
     twin = TOOL.metrics(_case('c3000_constant_roundoff'))
     assert twin['longest_low'] <= MAX_DIP_ROWS
-    assert [t for t, _ in twin['dips']] == pytest.approx(
-        [t for t, _ in found['c3000_constant']['dips']], abs=1.0
-    )
 
     validation_plot(
         _flux_figure(TUTORIAL_CONSTANT, "Mixing length 'constant'"),
         'interior_energetics_aragog_constant_cmb_flux',
     )
+
+
+def test_known_limit_single_cmb_flux_dips_on_the_cmb_cell_meshes_aragog_issue_113():
+    """The documented known limit (aragog issue 113): under 'constant' the 3000 m and 1500 m CMB
+    cells have single dip rows with F_cmb < 0, at the times and values the Validation page
+    quotes; the round-off twin keeps the times. A fix of the CMB node changes this test only."""
+
+    def dips(case):
+        m = TOOL.metrics(_case(case))
+        return [round(t / 1e3, 1) for t, _ in m['dips']], [f for _, f in m['dips']], m
+
+    times, flux, m = dips('c3000_constant')
+    assert times == [22.0, 28.4, 38.1]
+    assert [round(f, 3) for f in flux[:2]] == [-0.011, -0.011] and round(flux[2], 1) == -595.5
+    assert m['n_negative'] == 3 and round(m['worst_rise'], 2) == 0.61
+    times, flux, m = dips('c1500_constant')
+    assert [round(f, 1) for f in flux] == [-110.4, -322.5] and m['n_negative'] == 2
+    twin = TOOL.metrics(_case('c3000_constant_roundoff'))
+    assert (
+        max(
+            abs(a - b)
+            for (a, _), (b, _) in zip(
+                twin['dips'], TOOL.metrics(_case('c3000_constant'))['dips']
+            )
+        )
+        < 1.0
+    )
+    assert [round(f, 1) for _, f in twin['dips'][:2]] == [1.6, 1.0]
+    _, flux, _ = dips('rheology_constant')
+    assert round(flux[0], 1) == 4.6 and round(flux[1], 3) == -0.011
 
 
 @pytest.mark.reference_pinned
