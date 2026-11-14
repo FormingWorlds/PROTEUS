@@ -184,8 +184,8 @@ def _read_nc(path, *names):
 
 
 @pytest.mark.physics_invariant
-# The number of climate updates varies from run to run (update 2 changes T by about 2e-3 to
-# 1.4e-2 against agni_T_rtol 1e-2), so the limit covers a third update
+# The number of climate updates varies from run to run (2 or 3 seen on CI), so the limit
+# covers a third update (a 3-update run took 433 s on CI)
 @pytest.mark.timeout(1200)
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
