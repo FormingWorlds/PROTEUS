@@ -19,6 +19,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from proteus.utils.coupler import read_helpfile_table
+
 # case: (run folder under the output directory, description)
 CASES = {
     'u80_nearest': ('dev3_V_u80_nearest', 'uniform mesh, 80 nodes, nearest'),
@@ -97,7 +99,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     arrays = {'source': np.array(f'PROTEUS commit {a.commit}, aragog commit {a.aragog}')}
     for case, (folder, _) in CASES.items():
-        hf = pd.read_csv(a.output / folder / 'runtime_helpfile.csv', sep=r'\s+')
+        hf = read_helpfile_table(a.output / folder / 'runtime_helpfile.csv')
         arrays |= {f'{case}.{c}': hf[c].to_numpy(float) for c in COLUMNS}
     a.npz.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(a.npz, **arrays)
