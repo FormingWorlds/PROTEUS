@@ -75,6 +75,7 @@ nav:
           - Transparent black-body limit (agni.py): Validation/atmos_clim/agni.md
           - Lid and open surface in the call (common.py): Validation/atmos_clim/common.md
       - Interior energetics:
+          - Mixing length at the core-mantle boundary (aragog.py): Validation/interior_energetics/aragog.md
           - Partial giant-impact re-melt (remelt.py): Validation/interior_energetics/remelt.md
       - Interior structure:
           - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
