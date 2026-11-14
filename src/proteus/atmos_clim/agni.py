@@ -49,6 +49,10 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Constant
 AGNI_LOGFILE_NAME = 'agni_recent.log'
+
+# Length in bytes of the file name variables of the SOCRATES tools (prep_spec.f90, open_file_in.f)
+SOCRATES_MAX_PATH = 132
+
 # Gases kept out of the condensate set. The noble gases are chemically inert
 # and are tracked as conserved reservoirs, so they never rain out.
 ALWAYS_DRY = ('CO', 'N2', 'H2', *noble_gases)
@@ -616,6 +620,12 @@ def init_agni_atmos(
         atmos : atmosphere.Atmos_t
             Atmosphere struct
 
+    Raises
+    ----------
+        ValueError
+            The stellar spectrum goes into the spectral file and the path of
+            ``io_dir/socstar.dat`` is longer than ``SOCRATES_MAX_PATH`` bytes.
+
     """
 
     log.debug('New AGNI atmosphere')
@@ -789,6 +799,17 @@ def init_agni_atmos(
             input_star = ''
         else:
             cache_store_key = key
+
+    # prep_spec reads io_dir/runtime.sf and io_dir/socstar.dat, the longer name, as bytes
+    socstar = os.path.join(io_dir, 'socstar.dat')
+    nbytes = len(os.fsencode(socstar))
+    if input_star and nbytes > SOCRATES_MAX_PATH:
+        UpdateStatusfile(dirs, 22)
+        raise ValueError(
+            f'AGNI writes runtime.sf and socstar.dat in {io_dir}; {socstar} is {nbytes} bytes '
+            f'long, and the SOCRATES tools read file names of at most {SOCRATES_MAX_PATH} bytes. '
+            'Use a shorter output path, or a shorter TMPDIR when AGNI works in a temporary folder.'
+        )
 
     # Build the AGNI setup! kwargs.
     setup_kwargs = dict(
