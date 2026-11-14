@@ -82,10 +82,12 @@ A pass means that no line stays below the dashed line for 2 rows.
 With a CMB cell, `constant` gives single dips: 3 rows on the 3000 m cell, at 22.0, 28.4 and 38.1 kyr, and 2 rows on the 1500 m cell.
 The next row has a flux above 100 W m$^{-2}$ again, and $T_\mathrm{cmb}$ never rises by more than 0.61 K between 2 rows.
 Each dip falls on a row in which `T_magma` falls by more than 25 K while `Phi_global` rises (3 of 4 such rows on the 3000 m cell, 2 of 3 on the 1500 m cell); the uniform meshes have no such row after 10 kyr, and no dip.
-In the dips on the 3000 m cell the entropy gradient at the CMB, which the solver carries as a state, ends the step at a small positive value, and the CMB node keeps the diffusivity copied from the node above, so $F_\mathrm{cmb}$ is negative or near zero for that row.
+In every dip on the 3000 m and the 1500 m cell the entropy gradient at the CMB, which the solver carries as a state, ends the step at a small positive value, and the CMB node copies the eddy diffusivity of the node above ($2.5 \times 10^{7}$ to $2.9 \times 10^{7}$ m$^2$ s$^{-1}$), so the convective flux at the CMB runs into the core or is near zero for that row.
+The core takes up this heat: over each dip row the core heat capacity times the rise of $T_\mathrm{cmb}$ is 94 % to 100 % of the heat that crosses the CMB.
 The same small positive value also ends single steps without a dip on all 4 meshes (3 times on the uniform 80-node mesh, 4 times on 160 nodes); only in the dips at 22.0 and 28.4 kyr does it last through a whole step.
 At the default tolerance setting the absolute tolerance of this gradient in the solver is $10^{-8}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$, 2000 to 2600 times the gradient around the dips, and on all 4 meshes the gradient is below it in about 60 % of the solves after 2 kyr.
 A run with only this tolerance set to $4 \times 10^{-16}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$, $2.5 \times 10^{7}$ times tighter, still has dips: 4 rows instead of 3, down to -3921 W m$^{-2}$, 2 of them in consecutive rows, with $T_\mathrm{cmb}$ at 100 kyr within 0.02 K of this run.
+A single-row value of $F_\mathrm{cmb}$ is therefore not converged at the tolerance of the CMB gradient, while $T_\mathrm{cmb}$ is.
 So the tolerance does not cause the dips, and whether a run has single or double dip rows depends on solver details; why the dips occur is not known.
 The test therefore accepts 2 dips in a row; the tight-tolerance run also passes it.
 The Aragog issue [#113](https://github.com/FormingWorlds/aragog/issues/113) tracks a treatment of the CMB node, the next step for these dips.
@@ -95,7 +97,9 @@ The aragog mesh study that supports the 3000 m cell runs the core module and the
     - On the 3000 m cell the run log (`output/c3000_constant/aragog.log` of the run, not in the repository) gives the gradient as $-3.9 \times 10^{-12}$ to $-5.0 \times 10^{-12}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$ in the rows around the dips, and $+1.9 \times 10^{-17}$ to $+2.3 \times 10^{-17}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$ at the end of each dip row.
     - At 22.0 and 28.4 kyr the gradient starts and ends the step at this value: $F_\mathrm{cmb}$ is -0.011 W m$^{-2}$, and $T_\mathrm{cmb}$ changes by less than $10^{-5}$ K in the row.
     - At 38.1 kyr the gradient reaches this value within the step; the mean flux of the row, -595.5 W m$^{-2}$, needs a larger positive gradient during the step.
-    - The 2 dips on the 1500 m cell, -110.4 and -322.5 W m$^{-2}$, are not traced in this way.
+    - The 2 dips on the 1500 m cell, -110.4 and -322.5 W m$^{-2}$, end the step at $+2.0 \times 10^{-17}$ and $+2.3 \times 10^{-17}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$, as at 38.1 kyr.
+    - In the interior snapshots of the runs (not in the repository) the eddy diffusivity of the CMB node equals that of the node above in every dip row, and the convective flux of the snapshot equals $-\kappa_h \rho T$ times the CMB gradient. The node above has a gradient of $-3.8 \times 10^{-5}$ to $-4.8 \times 10^{-5}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$, so the mantle above the CMB node convects.
+    - The core heat capacity in this sum is the core mass times its heat capacity times the ratio of the mean core temperature to $T_\mathrm{cmb}$ (1.147); the heat that crosses the CMB is the row flux times the CMB area times the row length. The mantle side of the balance is not resolved: the heat to the core is at most 0.3 % of the heat that leaves through the surface in the same row.
     - A run with the planet mass changed by 1 part in $10^{12}$ has its 3 dips within 1 yr of the same times, so the times come from the model, not from round-off; a tolerance effect is also the same in both runs, so this does not rule out a numerical cause. In that run $F_\mathrm{cmb}$ in the dips at 22.0 and 28.4 kyr is 1.6 and 1.0 W m$^{-2}$, not -0.011 W m$^{-2}$; the rheology run of case 3 has dips at the same 2 times, with 4.6 and -0.011 W m$^{-2}$.
 
 ??? info "Test details"
@@ -140,7 +144,7 @@ A pass means exactly this pattern: the 2 meshes of 80 nodes lose the heat flux f
 
 **Known limit.**
 The `constant` length departs from published models, because it does not go to 0 at the boundaries.
-Abe (1997)[^cite-abe1997] and Bower et al. (2018)[^cite-bower2018] use the distance to the nearest boundary as the mixing length; Bower et al. (2018) use 0.25 times the thickness of the mantle only in their simplified model.
+Abe (1997)[^cite-abe1997] and Bower et al. (2018)[^cite-bower2018] use the distance to the nearest boundary as the mixing length; only in their simplified model do Bower et al. (2018) take a constant length, 1/4 of the planetary radius, which for the Earth is about half the thickness of the mantle and so about twice the length of `constant`.
 Tachinami et al. (2011)[^cite-tachinami2011] use 0.82 times this distance, and Wagner et al. (2019)[^cite-wagner2019] calibrate a profile that also goes to 0 at both boundaries.
 The Aragog issue [#113](https://github.com/FormingWorlds/aragog/issues/113) tracks a CMB treatment for `nearest`.
 
@@ -188,11 +192,11 @@ A pass means that the `constant` line never stays below the dashed line for 2 ro
 
 **Why this check exists.**
 The cases above use 1 Earth mass; this case runs the default on a planet of 1.5 Earth masses with the 2-phase PALEOS equation of state of MgSiO$_3$.
-Under the current default, `constant`, the run without the key and the reference run have the same settings, so the case is a record of these runs; `tests/config/test_defaults.py` pins the default itself.
+Under the current default, `constant`, the run without the key and the reference run have the same settings, so the case is a regression pin of the stored run under the default; `tests/config/test_defaults.py` pins the default itself.
 The test fails if the run under the default does not reach, within 1 K, the $T_\mathrm{cmb}$ at 300 kyr of the run that sets `constant` in its file.
 
 **What it tests.**
-The configuration `tools/verification/mixing_length/planet_1p5_earth.toml`: 1.5 Earth masses, 80 nodes and the melt-solid mixture viscosity for melt separation (`separation_viscosity = "mixture"`), run for 300 kyr without `mixing_length` in its configuration, so under the default mixing length; the file holds the full configuration of the runs, so its other settings stay fixed.
+The configuration `tools/verification/mixing_length/planet_1p5_earth.toml`: 1.5 Earth masses, 80 nodes and the melt-solid mixture viscosity for melt separation (`separation_viscosity = "mixture"`), run for 300 kyr without `mixing_length` in its configuration, so under the default mixing length. The file does not set every setting: of the 45 Aragog settings it sets 14, and the others, among them those of the rheology and of the core module, take their defaults.
 On the uniform mesh, $T_\mathrm{cmb}$ at 300 kyr must be 5199.9 K within 1 K.
 On both meshes, the uniform one and the default one with the 3000 m CMB cell, no row may have $|F_\mathrm{cmb}|$ below 1 W m$^{-2}$, and no 3 consecutive rows may be dips after 10 kyr.
 The test does not bound the steps of $T_\mathrm{cmb}$ between rows in this case.
