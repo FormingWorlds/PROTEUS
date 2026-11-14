@@ -450,6 +450,7 @@ def test_a_resume_refused_by_its_first_interior_step_keeps_the_record(tmp_path):
 
     err = _resume_through_first_interior_step(p, refuse)
     assert isinstance(err, ResumeSeparationLawError), repr(err)
+    assert (tmp_path / 'status').read_text().split()[0] == '20'
     assert (tmp_path / 'init_coupler.toml').read_text() == stored_text
     p.config.write.assert_not_called()
 
