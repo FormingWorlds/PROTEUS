@@ -73,11 +73,17 @@ def _inner(shift):
     return built
 
 
-def _rescaled(radii, grow=2000.0):
-    """``radii`` stretched to a structure ``grow`` m thicker, as a resume on its row builds."""
-    return radii[0] + (radii - radii[0]) * (radii[-1] - radii[0] + grow) / (
-        radii[-1] - radii[0]
-    )
+def _aragog_mesh(mass, cmb=3000.0, top='uniform', r_in=3.48e6, r_out=6.371e6):
+    """Basic radii [m] of the 80-node mesh that aragog builds for these settings."""
+    import aragog
+    from aragog.mesh import Mesh
+    from aragog.parser import Parameters
+
+    p = Parameters.from_file(Path(aragog.__file__).parent / 'cfg' / 'abe_solid.toml')
+    p.mesh.mass_coordinates, p.mesh.number_of_nodes = mass, 80
+    p.mesh.cmb_cell_thickness, p.mesh.surface_cell_thickness = cmb, top
+    p.mesh.inner_radius, p.mesh.outer_radius = r_in, r_out
+    return np.asarray(Mesh(p).basic.radii).ravel()
 
 
 def test_a_mesh_shifted_beyond_the_radius_tolerance_is_refused(tmp_path):
@@ -87,33 +93,54 @@ def test_a_mesh_shifted_beyond_the_radius_tolerance_is_refused(tmp_path):
     assert '80 nodes' in str(err.value)
 
 
-@pytest.mark.parametrize(('shift', 'refused'), [(1.0015, False), (1.0025, True)])
-def test_the_tolerance_holds_a_2_mm_margin_above_1_m(tmp_path, shift, refused):
+def test_the_tolerance_holds_a_2_mm_margin_above_1_m(tmp_path):
     """The radius tolerance is 1 m plus 2 mm for the node solve: 1.0015 m goes on, 1.0025 m stops."""
     out = _run(tmp_path)
-    if refused:
-        with pytest.raises(ResumeSeparationLawError, match='node by node'):
-            _refuse(out, _inner(shift))
+    _refuse(out, _inner(1.0015))
+    with pytest.raises(ResumeSeparationLawError, match='node by node'):
+        _refuse(out, _inner(1.0025))
+
+
+@pytest.mark.parametrize('mass', [True, False], ids=['mass', 'radius'])
+@pytest.mark.parametrize(
+    ('bounds', 'cells', 'goes_on'),
+    [
+        ({'r_out': 6.373e6}, (3000.0, 'uniform'), True),
+        ({'r_in': 3.46e6}, (3000.0, 'uniform'), True),
+        ({'r_in': 3.48e6 * 1.2, 'r_out': 6.371e6 * 1.2}, (3000.0, 'uniform'), True),
+        ({'r_out': 6.373e6}, (3250.0, 'uniform'), False),
+        ({'r_out': 6.391e6}, (2750.0, 'uniform'), False),
+        ({'r_out': 6.373e6}, (0.0, 0.0), False),
+        ({'r_out': 6.373e6}, (3000.0, 3.0e4), False),
+    ],
+    ids=[
+        'top +2 km',
+        'cmb -20 km',
+        'planet +20 %',
+        'cmb 3250 m',
+        'cmb 2750 m',
+        'uniform',
+        'top 30 km',
+    ],
+)
+def test_a_resume_on_a_moved_structure_keeps_the_cells_of_the_run(
+    tmp_path, caplog, mass, bounds, cells, goes_on
+):
+    """On a structure that moved since the snapshot (no replay), aragog's own mesh of the run
+    settings goes on, also after a 20 % larger planet; a set CMB or top cell that differs, or
+    the uniform mesh, is refused. A set cell is a length; a uniform cell scales with the mantle."""
+    out = _run(tmp_path, radii_m=_aragog_mesh(mass))
+    built = _aragog_mesh(mass, *cells, **bounds)
+    settings = SimpleNamespace(cmb_cell_thickness=cells[0], surface_cell_thickness=cells[1])
+    if goes_on:
+        with caplog.at_level('INFO'):
+            _refuse(out, built, settings)
+        assert any('structure of its row' in r.getMessage() for r in caplog.records)
     else:
-        _refuse(out, _inner(shift))
-    assert (shift > 1.002) is refused
-
-
-def test_a_resume_built_on_the_structure_of_its_row_goes_on(tmp_path, caplog):
-    """When the solver is built on a row whose structure moved (no replay), the bounds differ
-    but the end cells stay within 10 %: the resume goes on and logs the moved bounds."""
-    built = _rescaled(RUN)
-    with caplog.at_level('INFO'):
-        _refuse(_run(tmp_path), built)
-    assert built[-1] - RUN[-1] == pytest.approx(2000.0)
-    assert any('structure of its row' in r.getMessage() for r in caplog.records)
-
-
-def test_another_mesh_on_a_moved_structure_is_still_refused(tmp_path):
-    """The uniform mesh on the moved structure has other end cells than the run: refused."""
-    with pytest.raises(ResumeSeparationLawError, match='bottom cell 3000.0 m') as err:
-        _refuse(_run(tmp_path), _rescaled(UNIFORM))
-    assert 'node by node' in str(err.value)
+        with pytest.raises(ResumeSeparationLawError, match='node by node'):
+            _refuse(out, built, settings)
+    run = _aragog_mesh(mass)
+    assert max(abs(built[0] - run[0]), abs(built[-1] - run[-1])) > 1.0  # the structure moved
 
 
 def test_another_node_count_is_refused(tmp_path):
