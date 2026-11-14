@@ -11,7 +11,7 @@ This page checks `src/proteus/outgas/fractionated_debit.py`, which removes escap
 
 | Test ID | Reference | What is pinned |
 |---|---|---|
-| `test_fractionated_debit::test_water_losing_hydrogen_leaves_its_oxygen_as_o2` | Analytical stoichiometry of water that loses hydrogen and no oxygen | The water and O2 masses after the loss of 5, 25, 50, and 90 % of the hydrogen, to `rel=1e-12`, with a check that the oxygen stays in the atmosphere. |
+| `test_fractionated_debit::test_water_losing_hydrogen_leaves_its_oxygen_as_o2` | Analytical stoichiometry of water that loses hydrogen and no oxygen | The water and O2 masses after the loss of 5%, 25%, 50%, and 90% of the hydrogen, to `rel=1e-12`, with a check that the oxygen stays in the atmosphere. |
 
 ## Water that loses hydrogen leaves its oxygen as O2
 
@@ -21,7 +21,7 @@ This page checks `src/proteus/outgas/fractionated_debit.py`, which removes escap
 
 **How we know the right answer.** Each water molecule that loses its 2 hydrogen atoms leaves 1 oxygen atom, and 2 oxygen atoms form 1 O2 molecule. With $n$ the moles of water, the water keeps $(1 - f)\,n$ moles and the O2 is $f n / 2$ moles.
 
-**Why it matters.** Oxygen that builds up as hydrogen escapes is the main way escape changes the composition of a secondary atmosphere after the magma ocean has frozen.
+**Why it matters.** Over a frozen magma ocean, hydrogen escape from a water-rich atmosphere leaves its oxygen behind as O2, which is how escape shifts such an atmosphere towards oxidised gases.
 
 **Known limit.** The debit applies stoichiometry, without chemistry. Leftover atoms form O2, H2, N2, and S2, and leftover carbon pairs with oxygen into CO and with hydrogen into CH4, or condenses as graphite. Equilibrium chemistry could prefer other gases, such as CO2 or H2O from the O2 and H2 that the debit forms. Rock vapours keep their masses, so the escaping share of the rock-forming elements is not taken, and the step cap counts only the elements the gases can lose.
 

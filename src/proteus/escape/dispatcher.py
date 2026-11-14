@@ -128,8 +128,8 @@ def _isothermal_column(config: Config, hf_row: dict) -> dict | None:
     climate solve that left none (AGNI's transparent mode), and for the first
     escape step of a resumed run. Its temperature is ``T_eqm``, the planet's
     radiative equilibrium, rather than a skin temperature: the stand-in is the
-    whole column, not its top. An envelope already unbound at the surface gets
-    the short column of :func:`_unbound_column`. None when the surface pressure
+    whole column, not its top. An envelope too weakly bound for three bound
+    levels gets the short column of :func:`_unbound_column`. None when the surface pressure
     does not exceed ``p_top`` or the atmosphere holds no gas.
     """
     from zephyrus.profiles import isothermal_profile

@@ -511,6 +511,7 @@ def test_a_skipped_step_leaves_no_diagnostic_of_the_step_before():
     row = _row()
     run_dispatcher(_config(), row, atmos_o=_atmos(row), dt=1.0)
     assert row['esc_rate_branch'] > 0.0 and row['esc_lambda'] > 0.0
+    row['esc_base_clamp_dex'] = 0.7  # as left by a step whose wind base was clamped
     row['P_surf'] = 1e-12
     run_dispatcher(_config(), row, atmos_o=None, dt=1.0)
     for key in (
@@ -527,8 +528,8 @@ def test_a_skipped_step_leaves_no_diagnostic_of_the_step_before():
     assert row['R_xuv'] == row['R_int']
 
 
-def _mars_row():
-    """Mars-mass planet with a thin hot H2 envelope, unbound at its surface."""
+def _mars_row(**gases):
+    """Mars-mass planet with a thin hot envelope, unbound at its surface; H2 by default."""
     row = _row(F_xuv=1.0, T_eqm=1500.0)
     row.update(
         M_planet=0.107 * M_EARTH,
@@ -540,7 +541,16 @@ def _mars_row():
         H_kg_atm=1.0e16,
         He_kg_atm=0.0,
     )
+    row.update({f'{g}_vmr': x for g, x in gases.items()})
     return row
+
+
+def _isothermal_inverse_radius(row, mu, p):
+    """Closed-form 1/r of an isothermal column at T_eqm, from the surface up [m-1]."""
+    from zephyrus.constants import G, kb
+
+    scale = kb * row['T_eqm'] / (G * row['M_planet'] * mu)
+    return 1.0 / row['R_int'] - scale * np.log(row['P_surf'] * 1e5 / p)
 
 
 @pytest.mark.physics_invariant
@@ -549,27 +559,38 @@ def test_an_envelope_unbound_at_the_surface_boils_off():
 
     Physical scenario: 0.05 bar of H2 at 1500 K on a Mars-mass planet
     (0.107 Earth masses, 0.532 Earth radii), whose surface Jeans parameter
-    G M mu / (k T R) is 2.03, below the 2.2 at which the bound isothermal
-    stand-in stops. The stand-in follows the closed-form isothermal column out
-    to twice the surface radius, and the dispatcher labels it boil-off. The
-    rate is set at the launch level, so a column stopped at 0.8 of the surface
-    Jeans parameter instead gives the same rate.
+    G M mu / (k T R) is 2.03, too small for the bound isothermal stand-in.
+    The stand-in follows the closed-form isothermal column from the surface
+    out to twice the surface radius, where ln(p_surf / p) has reached half the
+    surface Jeans parameter, at T_eqm throughout. The dispatcher labels it
+    boil-off, and its activation Jeans parameter, read at the 0.02 bar launch
+    level, is the surface value less ln(0.05 / 0.02) = 0.92, so 1.12. The rate
+    is set at the launch level, so a column that runs on to ln(p_surf / p) =
+    0.8 of the surface Jeans parameter gives the same rate.
     """
     from types import SimpleNamespace
 
     from zephyrus.constants import G, amu, kb
 
     row = _mars_row()
-    profile, source = escape_profile(_config(), row, None)
-    assert source == PROFILE_ISOTHERMAL
-    assert profile.r[-1] == pytest.approx(2.0 * row['R_int'], rel=1e-9)
-    mdot = run_dispatcher(_config(), row, atmos_o=None, dt=1.0)
-    assert row['esc_regime'] == REGIME_CODES['boiloff']
-    assert mdot > 1.0e10
-
     mu = 2.016 * amu
     lam = G * row['M_planet'] * mu / (kb * 1500.0 * row['R_int'])
     assert lam == pytest.approx(2.03, abs=0.01)
+
+    profile, source = escape_profile(_config(), row, None)
+    assert source == PROFILE_ISOTHERMAL
+    assert profile.p[0] == pytest.approx(5.0e3, rel=1e-12)
+    assert profile.p[-1] == pytest.approx(5.0e3 * np.exp(-0.5 * lam), rel=1e-9)
+    assert profile.r[-1] == pytest.approx(2.0 * row['R_int'], rel=1e-9)
+    np.testing.assert_allclose(
+        1.0 / profile.r, _isothermal_inverse_radius(row, mu, profile.p), rtol=1e-9
+    )
+    np.testing.assert_allclose(profile.T, 1500.0, rtol=1e-15)
+    mdot = run_dispatcher(_config(), row, atmos_o=None, dt=1.0)
+    assert row['esc_regime'] == REGIME_CODES['boiloff']
+    assert row['esc_lambda'] == pytest.approx(lam - np.log(2.5), rel=1e-3)
+    assert mdot > 1.0e10
+
     depth = np.linspace(0.0, 0.8 * lam, 12)
     r = 1.0 / (1.0 / row['R_int'] - kb * 1500.0 / (G * row['M_planet'] * mu) * depth)
     col = {
@@ -582,6 +603,41 @@ def test_an_envelope_unbound_at_the_surface_boils_off():
     assert run_dispatcher(_config(), _mars_row(), atmos_o=other, dt=1.0) == pytest.approx(
         mdot, rel=1e-9
     )
+
+
+@pytest.mark.physics_invariant
+def test_the_unbound_column_stops_at_p_top_and_weights_a_mixture():
+    """The unbound column stops at the column top, and carries the mixture's mean mass.
+
+    Physical scenario: the same Mars-mass planet at 2000 K with H2 and He mixing
+    ratios of 0.45 and 0.05 on the row, which the stand-in renormalizes to 90%
+    and 10%, mean mass 0.9 x 2.016 + 0.1 x 4.003 = 2.215 amu and surface Jeans
+    parameter 1.67. With 0.05 bar at the surface the column reaches twice the
+    surface radius; with 1.1e-10 bar, just above the 1e-10 bar top, it stops at
+    the top, about 4% out in radius. Either way 1/r follows the closed form at
+    the mixture's mean mass, and the mixing ratios sum to one.
+    """
+    from zephyrus.constants import G, amu, kb
+
+    mu = (0.9 * 2.016 + 0.1 * 4.0026) * amu
+    for p_surf in (0.05, 1.1e-10):
+        row = _mars_row(H2=0.45, He=0.05)
+        row.update(T_eqm=2000.0, P_surf=p_surf)
+        lam = G * row['M_planet'] * mu / (kb * 2000.0 * row['R_int'])
+        assert lam == pytest.approx(1.67, abs=0.01)
+        profile, _ = escape_profile(_config(), row, None)
+        np.testing.assert_allclose(
+            1.0 / profile.r, _isothermal_inverse_radius(row, mu, profile.p), rtol=1e-9
+        )
+        np.testing.assert_allclose(profile.vmr['H2'] + profile.vmr['He'], 1.0, rtol=1e-12)
+        np.testing.assert_allclose(profile.mmw, mu, rtol=1e-3)
+        if p_surf > 1e-3:
+            assert profile.r[-1] == pytest.approx(2.0 * row['R_int'], rel=1e-9)
+        else:
+            assert profile.p[-1] == pytest.approx(1e-5, rel=1e-12)
+            assert profile.r[-1] == pytest.approx(
+                row['R_int'] / (1.0 - np.log(1.1) / lam), rel=1e-9
+            )
 
 
 def test_a_stand_in_failure_other_than_unbound_is_raised(monkeypatch):

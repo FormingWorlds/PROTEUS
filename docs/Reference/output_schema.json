@@ -29450,7 +29450,7 @@
     {
       "name": "esc_regime",
       "unit": "1",
-      "description": "dispatcher regime code, see escape.dispatcher.REGIME_CODES",
+      "description": "dispatcher regime code, see escape.dispatcher.REGIME_CODES, 0 if not set",
       "group": "Atmospheric escape",
       "origin": "literal",
       "producers": [
@@ -29465,7 +29465,7 @@
     {
       "name": "esc_rate_branch",
       "unit": "1",
-      "description": "code of the branch that set the rate; roche_overflow for an L1 transfer",
+      "description": "code of the branch that set the rate, 0 if not set",
       "group": "Atmospheric escape",
       "origin": "literal",
       "producers": [
@@ -29499,7 +29499,7 @@
     {
       "name": "esc_lambda",
       "unit": "1",
-      "description": "restricted Jeans parameter at the launch level",
+      "description": "restricted Jeans parameter at the launch level, -1 if not evaluated",
       "group": "Atmospheric escape",
       "origin": "literal",
       "producers": [
@@ -29514,7 +29514,7 @@
     {
       "name": "esc_T_exo",
       "unit": "K",
-      "description": "exobase temperature of the hydrostatic branch",
+      "description": "exobase temperature of the hydrostatic branch, -1 if not evaluated",
       "group": "Atmospheric escape",
       "origin": "literal",
       "producers": [
@@ -29529,7 +29529,7 @@
     {
       "name": "esc_T_esc_neutral",
       "unit": "K",
-      "description": "neutral escape temperature at the exobase",
+      "description": "neutral escape temperature at the exobase, -1 if not evaluated",
       "group": "Atmospheric escape",
       "origin": "literal",
       "producers": [
@@ -29544,7 +29544,7 @@
     {
       "name": "esc_T_esc_plasma",
       "unit": "K",
-      "description": "plasma escape temperature at the exobase",
+      "description": "plasma escape temperature at the exobase, -1 if not evaluated",
       "group": "Atmospheric escape",
       "origin": "literal",
       "producers": [
@@ -29559,7 +29559,7 @@
     {
       "name": "esc_f_ion_exo",
       "unit": "1",
-      "description": "ionization fraction at the exobase",
+      "description": "ionization fraction at the exobase, -1 if not evaluated",
       "group": "Atmospheric escape",
       "origin": "literal",
       "producers": [

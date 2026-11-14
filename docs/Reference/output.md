@@ -1145,14 +1145,14 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `esc_rate_Ar` | `kg s-1` | escape rate of each element | `escape/boreas.py`<br>`escape/common.py`<br>`escape/dispatcher.py`<br>`escape/wrapper.py` | always; escape.module = "boreas"; escape enabled; escape.module = "zephyrus"; escape.module = "dummy" | escape, plot |
 | `esc_rate_Kr` | `kg s-1` | escape rate of each element | `escape/boreas.py`<br>`escape/common.py`<br>`escape/dispatcher.py`<br>`escape/wrapper.py` | always; escape.module = "boreas"; escape enabled; escape.module = "zephyrus"; escape.module = "dummy" | escape, plot |
 | `esc_rate_Xe` | `kg s-1` | escape rate of each element | `escape/boreas.py`<br>`escape/common.py`<br>`escape/dispatcher.py`<br>`escape/wrapper.py` | always; escape.module = "boreas"; escape enabled; escape.module = "zephyrus"; escape.module = "dummy" | escape, plot |
-| `esc_regime` | `1` | dispatcher regime code, see escape.dispatcher.REGIME_CODES | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
-| `esc_rate_branch` | `1` | code of the branch that set the rate; roche_overflow for an L1 transfer | `escape/dispatcher.py` | escape.module = "zephyrus" | escape |
+| `esc_regime` | `1` | dispatcher regime code, see escape.dispatcher.REGIME_CODES, 0 if not set | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
+| `esc_rate_branch` | `1` | code of the branch that set the rate, 0 if not set | `escape/dispatcher.py` | escape.module = "zephyrus" | escape |
 | `esc_kn_sonic` | `1` | Knudsen number at the sonic point, -1 if not evaluated | `escape/dispatcher.py` | escape.module = "zephyrus" | escape |
-| `esc_lambda` | `1` | restricted Jeans parameter at the launch level | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
-| `esc_T_exo` | `K` | exobase temperature of the hydrostatic branch | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
-| `esc_T_esc_neutral` | `K` | neutral escape temperature at the exobase | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
-| `esc_T_esc_plasma` | `K` | plasma escape temperature at the exobase | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
-| `esc_f_ion_exo` | `1` | ionization fraction at the exobase | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
+| `esc_lambda` | `1` | restricted Jeans parameter at the launch level, -1 if not evaluated | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
+| `esc_T_exo` | `K` | exobase temperature of the hydrostatic branch, -1 if not evaluated | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
+| `esc_T_esc_neutral` | `K` | neutral escape temperature at the exobase, -1 if not evaluated | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
+| `esc_T_esc_plasma` | `K` | plasma escape temperature at the exobase, -1 if not evaluated | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
+| `esc_f_ion_exo` | `1` | ionization fraction at the exobase, -1 if not evaluated | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
 | `esc_base_clamp_dex` | `1` | decades between the wind base and the level used | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
 | `esc_profile_source` | `1` | column read: 1 latest solve, 2 earlier solve, 3 isothermal, 0 not set | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
 | `esc_graphite_kg` | `kg` | carbon escape left as graphite over a frozen mantle | `outgas/fractionated_debit.py` | always | outgas |

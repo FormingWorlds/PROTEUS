@@ -177,46 +177,13 @@ longer to run.
 <figure markdown="span">
   ![Global flux budget](../assets/orbit/orbit_tides_fluxes_global.avif#only-light){ width="100%" }
   ![Global flux budget](../assets/orbit/orbit_tides_fluxes_global_dark.avif#only-dark){ width="100%" }
-  <figcaption><b>Global flux budget.</b>
-  Tidal heating (gold) starts at ~5.0 &times; 10<sup>5</sup> W m<sup>-2</sup>,
-  comparable to the net interior/atmosphere flux (orange/grey) at that time,
-  then decreases as the satellite moves away from the planet, first dropping
-  below the runaway-greenhouse (S&ndash;N) limit at t &approx;
-  8.9 &times; 10<sup>4</sup> yr. It falls to a minimum of ~1.0 W m<sup>-2</sup>
-  near 1.7 &times; 10<sup>5</sup> yr and rises by a factor of ~60 at the next
-  output time, then to ~130 W m<sup>-2</sup> at 1.75 &times; 10<sup>5</sup> yr:
-  that jump comes in the snapshot where the layer list of the tidal model turns
-  from a solid base under a fluid mantle into a single solid layer (see the
-  Love-number figure below). After a last rise to ~98 W m<sup>-2</sup> near
-  2.1 &times; 10<sup>5</sup> yr it drops to ~6 W m<sup>-2</sup> and then decays
-  smoothly, with one step from ~2.1 to ~2.8 W m<sup>-2</sup> near
-  3.9 &times; 10<sup>5</sup> yr, to ~2 W m<sup>-2</sup> when the run ends at
-  t = 8 &times; 10<sup>5</sup> yr. The mantle is then still ~7% molten, and the
-  tidal heating sits well below the net interior/atmosphere flux, which ranges
-  over ~40 to ~80 W m<sup>-2</sup> in the last 2 &times; 10<sup>4</sup> yr.</figcaption>
+  <figcaption><b>Global flux budget.</b> Tidal heating (gold) starts at ~5.0 &times; 10<sup>5</sup> W m<sup>-2</sup>, comparable to the net interior/atmosphere flux (orange/grey) at that time, then decreases as the satellite moves away from the planet, first dropping below the runaway-greenhouse (S&ndash;N) limit at t &approx; 8.9 &times; 10<sup>4</sup> yr. It falls to a minimum of ~1.0 W m<sup>-2</sup> near 1.7 &times; 10<sup>5</sup> yr and rises by a factor of ~60 at the next output time, then to ~130 W m<sup>-2</sup> at 1.75 &times; 10<sup>5</sup> yr: that jump comes in the snapshot where the layer list of the tidal model turns from a solid base under a fluid mantle into a single solid layer (see the Love-number figure below). After a last rise to ~98 W m<sup>-2</sup> near 2.1 &times; 10<sup>5</sup> yr it drops to ~6 W m<sup>-2</sup> and then decays smoothly, with one step from ~2.1 to ~2.8 W m<sup>-2</sup> near 3.9 &times; 10<sup>5</sup> yr, to ~2 W m<sup>-2</sup> when the run ends at t = 8 &times; 10<sup>5</sup> yr. The mantle is then still ~7% molten, and the tidal heating sits well below the net interior/atmosphere flux, which ranges over ~40 to ~80 W m<sup>-2</sup> in the last 2 &times; 10<sup>4</sup> yr.</figcaption>
 </figure>
 
 <figure markdown="span">
   ![Love number spectrum evolution](../assets/orbit/orbit_tides_lovenumber.avif#only-light){ width="100%" }
   ![Love number spectrum evolution](../assets/orbit/orbit_tides_lovenumber_dark.avif#only-dark){ width="100%" }
-  <figcaption><b>Degree-2 Love number spectrum evolution (Obliqua).</b>
-  The dominant, almost always populated mode is the semidiurnal (n=2, m=2, k=2) tide;
-  its forcing frequency |&sigma;| rises from
-  ~4.9 &times; 10<sup>-4</sup> to ~6.5 &times; 10<sup>-4</sup> rad
-  s<sup>-1</sup> in the first ~10<sup>3</sup> yr and then decreases to
-  ~4.8 &times; 10<sup>-4</sup> rad s<sup>-1</sup> as the planet despins.
-  Both panels show magnitudes.
-  Re(k<sub>22</sub>) is near 0.02 at 10<sup>3</sup> yr and stays below 0.04 while
-  the layer list of the tidal model holds only a fluid layer. It jumps to ~1.3
-  at t &approx; 1.0 &times; 10<sup>5</sup> yr, in the snapshot where the first
-  solid layer appears (&Phi; &approx; 0.68); the forcing frequency changes by
-  less than 0.5% between these two snapshots. It stays between ~1.0 and ~1.3
-  while the solid base lies under the fluid, and once the layer list holds a
-  single solid layer, from t &approx; 1.7 &times; 10<sup>5</sup> yr, it falls
-  from ~0.93 to ~0.39 at the end of the run. It never reaches the threshold of
-  the red rings and is never negative. The magnitude of Im(k<sub>22</sub>)
-  stays below ~0.09 and is smallest, 10<sup>-3.4</sup>, near
-  1.6 &times; 10<sup>5</sup> yr, next to the minimum of the tidal heating.</figcaption>
+  <figcaption><b>Degree-2 Love number spectrum evolution (Obliqua).</b> The dominant, almost always populated mode is the semidiurnal (n=2, m=2, k=2) tide; its forcing frequency |&sigma;| rises from ~4.9 &times; 10<sup>-4</sup> to ~6.5 &times; 10<sup>-4</sup> rad s<sup>-1</sup> in the first ~10<sup>3</sup> yr and then decreases to ~4.8 &times; 10<sup>-4</sup> rad s<sup>-1</sup> as the planet despins. Both panels show magnitudes. Re(k<sub>22</sub>) is near 0.02 at 10<sup>3</sup> yr and stays below 0.04 while the layer list of the tidal model holds only a fluid layer. It jumps to ~1.3 at t &approx; 1.0 &times; 10<sup>5</sup> yr, in the snapshot where the first solid layer appears (&Phi; &approx; 0.68), and the forcing frequency changes by less than 0.5% between these two snapshots. It stays between ~1.0 and ~1.3 while the solid base lies under the fluid, and once the layer list holds a single solid layer, from t &approx; 1.7 &times; 10<sup>5</sup> yr, it falls from ~0.93 to ~0.39 at the end of the run. It never reaches the threshold of the red rings and is never negative. The magnitude of Im(k<sub>22</sub>) stays below ~0.09 and is smallest, 10<sup>-3.4</sup>, near 1.6 &times; 10<sup>5</sup> yr, next to the minimum of the tidal heating.</figcaption>
 </figure>
 
 ---

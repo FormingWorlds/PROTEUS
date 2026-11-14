@@ -338,16 +338,16 @@ def test_hydrogen_held_in_rock_vapour_stays_counted_in_the_atmosphere():
     """Each volatile element's atmospheric mass drops by its loss, so vapour atoms stay.
 
     Physical scenario: a water atmosphere of 1e19 kg with 1e17 kg of NaOH
-    vapour over a frozen mantle; the outgassing backend counts the hydrogen
-    and oxygen of the NaOH in the atmospheric H and O columns. Escape takes a
-    fifth of the hydrogen the water holds. Afterwards the H column is the
-    hydrogen of the gases the debit handles plus that of the NaOH, which kept
-    its mass; recounting the volatile gases alone would drop the NaOH share.
+    vapour over a frozen mantle. LavAtmos counts the hydrogen of the NaOH in
+    the atmospheric H column and keeps the O column to the volatiles. Escape
+    takes a fifth of the hydrogen the water holds. Afterwards the H column is
+    the hydrogen of the gases the debit handles plus that of the NaOH, which
+    kept its mass, and the O column is that of the volatile gases; recounting
+    the volatile gases alone would drop the NaOH hydrogen.
     """
     row = _frozen_row({'H2O': 1.0e19, 'NaOH': 1.0e17})
-    naoh = {e: 1.0e17 * element_mmw[e] / eval_gas_mmw('NaOH') for e in ('H', 'O')}
-    for e, m in naoh.items():
-        row[f'{e}_kg_atm'] += m
+    naoh = {'H': 1.0e17 * element_mmw['H'] / eval_gas_mmw('NaOH'), 'O': 0.0}
+    row['H_kg_atm'] += naoh['H']
     h_water = row['H_kg_total']
     target = {e: row[f'{e}_kg_total'] for e in element_list}
     target['H'] -= 0.2 * h_water
@@ -399,12 +399,14 @@ def _frozen_pxuv_config():
 def test_rock_vapour_is_out_of_the_frozen_step_cap_and_shares():
     """On a frozen mantle the step cap and the escaping shares count only what can leave.
 
-    Physical scenario: 1e16 kg of water and 1e19 kg of SiO vapour over a
-    frozen mantle, with dispatched rates of 900 kg/s of silicon, 600 kg/s of
-    oxygen, and 1 kg/s of hydrogen. Rock vapour is not eroded, so over 1e3 yr
-    the water loses 1 and 600 kg/s worth of H and O, and the requested 601 kg/s
-    is measured against the 1e16 kg the water holds. Over 2e5 yr the request,
-    0.38 of the water, is capped at a quarter of it, shared 1:600.
+    Physical scenario: 1e16 kg of water over a frozen mantle beside 1e19 kg of
+    SiO and 1e18 kg each of Mg and Fe vapour, with dispatched rates of 900 kg/s
+    of silicon, 300 of magnesium, 100 of iron, 600 of oxygen, and 1 of
+    hydrogen, plus a negative nitrogen rate that must count as none. Rock
+    vapour is not eroded, so over 1e3 yr the water loses 1 and 600 kg/s worth
+    of H and O, and the requested 601 kg/s is measured against the 1e16 kg the
+    water holds. Over 2e5 yr the request, 0.38 of the water, is capped at a
+    quarter of it, shared 1:600.
     """
     from unittest.mock import patch
 
@@ -412,15 +414,18 @@ def test_rock_vapour_is_out_of_the_frozen_step_cap_and_shares():
     from proteus.utils.constants import secs_per_year
 
     def fake(config, hf_row, atmos_o=None, dt=0.0):
-        hf_row.update(esc_rate_Si=900.0, esc_rate_O=600.0, esc_rate_H=1.0)
-        hf_row['esc_rate_total'] = 1501.0
-        return 1501.0
+        hf_row.update(esc_rate_Si=900.0, esc_rate_Mg=300.0, esc_rate_Fe=100.0)
+        hf_row.update(esc_rate_O=600.0, esc_rate_H=1.0, esc_rate_N=-50.0)
+        hf_row['esc_rate_total'] = 1901.0
+        return 1901.0
 
     for dt, capped in ((1.0e3, False), (2.0e5, True)):
         row = _frozen_row({'H2O': 1.0e16, 'SiO': 1.0e19})
         row.update({f'esc_rate_{e}': 0.0 for e in element_list})
         si = 1.0e19 * element_mmw['Si'] / eval_gas_mmw('SiO')
         row['Si_kg_atm'] = row['Si_kg_total'] = si
+        for e in ('Mg', 'Fe'):
+            row[f'{e}_kg_atm'] = row[f'{e}_kg_total'] = 1.0e18
         before = {e: row[f'{e}_kg_total'] for e in ('H', 'O')}
         with patch('proteus.escape.dispatcher.run_dispatcher', side_effect=fake):
             run_escape(_frozen_pxuv_config(), row, dt=dt, atmosphere_only=True)
@@ -430,23 +435,77 @@ def test_rock_vapour_is_out_of_the_frozen_step_cap_and_shares():
         assert before['H'] - row['H_kg_total'] == pytest.approx(lost / 601.0, rel=1e-9)
         assert before['O'] - row['O_kg_total'] == pytest.approx(lost * 600.0 / 601.0, rel=1e-9)
         assert row['Si_kg_total'] == pytest.approx(si, rel=1e-15)
+        assert (row['Mg_kg_total'], row['Fe_kg_total']) == pytest.approx(
+            (1.0e18, 1.0e18), rel=1e-15
+        )
         assert row['esc_step_kg'] == pytest.approx(lost, rel=1e-9)
 
 
-def test_a_molten_step_drops_a_frozen_plan_left_on_the_row():
-    """A plan left on the row by an earlier frozen step is cleared by the next escape step."""
+def test_a_molten_step_drops_a_frozen_plan_and_debits_rock_vapour():
+    """A molten pxuv step clears a stale frozen plan and takes rock vapour's share.
+
+    Physical scenario: 1e14 kg of water with 1e14 kg of silicon vapour over a
+    molten mantle, escaping 1 kg/s of hydrogen and 2 kg/s of silicon for one
+    year, with a plan left on the row by an earlier frozen step. The plan is
+    dropped, and with the mantle molten the silicon is debited too: the totals
+    fall by one and two years' worth of the rates.
+    """
     from unittest.mock import patch
 
     from proteus.escape.wrapper import run_escape
+    from proteus.utils.constants import secs_per_year
 
     def fake(config, hf_row, atmos_o=None, dt=0.0):
-        hf_row['esc_rate_total'] = hf_row['esc_rate_H'] = 1.0
-        return 1.0
+        hf_row.update(esc_rate_H=1.0, esc_rate_Si=2.0, esc_rate_total=3.0)
+        return 3.0
 
-    row = _frozen_row({'H2O': 1.0e19})
+    row = _frozen_row({'H2O': 1.0e14})
     row.update({f'esc_rate_{e}': 0.0 for e in element_list})
+    row['Si_kg_atm'] = row['Si_kg_total'] = 1.0e14
+    h_before = row['H_kg_total']
     row[FROZEN_DEBIT_KEY] = {'Time': row['Time'], 'kg': {'H2O': 0.0}, 'graphite_kg': 0.0}
     with patch('proteus.escape.dispatcher.run_dispatcher', side_effect=fake):
         run_escape(_frozen_pxuv_config(), row, dt=1.0, atmosphere_only=False)
     assert FROZEN_DEBIT_KEY not in row
-    assert row['H_kg_total'] < row['H_kg_atm']
+    assert h_before - row['H_kg_total'] == pytest.approx(secs_per_year, rel=1e-9)
+    assert 1.0e14 - row['Si_kg_total'] == pytest.approx(2.0 * secs_per_year, rel=1e-9)
+
+
+def test_a_declined_debit_returns_the_elements_it_was_asked_about():
+    """With an element subset, a declined debit returns the totals of that subset alone.
+
+    Physical scenario: a frozen atmosphere of 1e9 kg of water, under the 1e10 kg
+    threshold, and the same atmosphere with an unreadable hydrogen column. No
+    loss is taken either way, and rock elements outside the subset do not
+    appear, so their totals are not rewritten.
+    """
+    from proteus.escape.wrapper import calc_new_elements
+
+    subset = ['H', 'O', 'C', 'N', 'S']
+    small = _frozen_row({'H2O': 1.0e9})
+    out = calc_new_elements(small, 1.0, 'pxuv', min_thresh=1e10, esc_mass=1.0, elements=subset)
+    assert sorted(out) == sorted(subset)
+    assert out['H'] == pytest.approx(small['H_kg_total'], rel=1e-15)
+    broken = dict(_frozen_row({'H2O': 1.0e19}), H_kg_atm=float('nan'))
+    out = calc_new_elements(broken, 1.0, 'pxuv', min_thresh=1e10, esc_mass=1.0, elements=subset)
+    assert sorted(out) == sorted(subset)
+
+
+def test_an_element_column_never_goes_below_zero():
+    """An applied loss larger than an element's atmospheric column leaves it at zero.
+
+    Physical scenario: a debit that removes 1e18 kg of hydrogen from a column
+    holding 1.1e18 kg, after an upstream step left that column at half its
+    value. The column reads zero, not -4.5e17 kg.
+    """
+    row = _frozen_row({'H2O': 1.0e19})
+    row['H_kg_atm'] *= 0.5
+    row[FROZEN_DEBIT_KEY] = {
+        'Time': row['Time'],
+        'kg': {'H2O': 0.0, 'O2': 1.0e19 * 15.999 / 18.015},
+        'applied_kg': {'H': 1.0e18},
+        'graphite_kg': 0.0,
+    }
+    apply_frozen_debit(row)
+    assert row['H_kg_atm'] == pytest.approx(0.0, abs=0.0)
+    assert row['H2O_kg_atm'] == pytest.approx(0.0, abs=0.0)

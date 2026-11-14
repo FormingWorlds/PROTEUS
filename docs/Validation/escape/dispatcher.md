@@ -21,7 +21,7 @@ This page checks `src/proteus/escape/dispatcher.py`, the coupling of PROTEUS to 
 
 **How we know the right answer.** The energy-limited rate is a closed form. The test evaluates it with the released ZEPHYRUS function `EL_escape` (`scaling = 2`), which ZEPHYRUS validates against Erkaev et al. (2007), at the photospheric radius read from the column.
 
-**Why it matters.** The energy-limited branch is the one most PROTEUS runs reach while the XUV flux is high, and its rate sets how fast a primary envelope is lost.
+**Why it matters.** The energy-limited form is the escape rate PROTEUS used before the dispatcher, so this case also ties the dispatcher's rates to the earlier ones on the same state.
 
 **Known limit.** The case checks the coupling on one branch. The other branches (boil-off, recombination- and photon-limited winds, Jeans escape, and Roche-lobe overflow) take the same inputs, but their rates are pinned only in ZEPHYRUS.
 
@@ -32,7 +32,7 @@ This page checks `src/proteus/escape/dispatcher.py`, the coupling of PROTEUS to 
 
 ??? info "Test details"
     - Reference: Erkaev et al. (2007) energy-limited escape, through `zephyrus.escape.EL_escape` with `scaling = 2`.
-    - Tolerance: relative 1e-12 on the rate; the $R_\mathrm{xuv}^3$ form must miss by more than 5 %.
+    - Tolerance: relative 1e-12 on the rate. The $R_\mathrm{xuv}^3$ form must miss by more than 5%.
     - Test id: `tests/escape/test_dispatcher.py::test_energy_limited_state_matches_the_energy_limited_formula`
     - Command: `pytest -m reference_pinned tests/escape/test_dispatcher.py --validation-plots`
     - Last compared: 13 November 2026.
