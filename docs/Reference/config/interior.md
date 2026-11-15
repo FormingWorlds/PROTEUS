@@ -126,13 +126,36 @@ A giant impact adds `core_frac` of the impactor rock to the core mass: the impac
 With an ice layer the mantle is `zalmoxis.mantle_mass_fraction` of the target and the ice layer is the rest; the run stops with an error when the core and mantle fractions leave no ice layer.
 
 The helpfile column `M_core_target` holds this mass.
-Zalmoxis puts the core-mantle boundary of its output at the first grid node at or above the core fraction of the mass it converged to, and `M_core` is the mass inside that node.
-`M_core` is therefore between the target less the mass tolerance of the solve (`zalmoxis.solver_tol_outer`) and the target plus that tolerance and one mantle shell at the boundary.
-For a planet of 1 Earth mass with `core_frac = 0.325` and the default `zalmoxis.num_levels = 150` that shell holds about 1.6 % of the core mass, and the measured range of `M_core` in runs of that planet is 0.1 to 1.5 % above the target.
 The structure takes a changed core mass at its next solve, so a run with no structure update after the init stage keeps the core of its last solve.
 When the target leaves no mantle (a core mass at or above the target mass, which a large buffered oxygen inventory over a hot magma ocean can cause), the run stops with an error that names the masses.
-A run that resumes from a helpfile without the column takes `core_frac` of the structure target of the row of its first structure solve, logs a warning, and keeps that core mass from there.
+A run that resumes from a helpfile without `M_core_target` takes `core_frac` of the structure target of the row of its first structure solve, logs a warning, and keeps that core mass from there.
 This core mass depends on the oxygen inventory of that row, so it differs with the row at which the run resumes, and it is not the core mass of a run that starts with the column.
+
+**The core mass that Zalmoxis returns**
+
+Zalmoxis writes 2 core masses:
+
+- `M_core_solve`: the core mass of the last accepted solve. A helpfile without it resumes with this column at 0.
+- `M_core`: the mass inside `R_core`.
+
+An accepted solve gives an `M_core_solve` equal to `M_core_target` to round-off, and an impact raises `M_core_target` and solves at once.
+The end of the init stage sets `M_core_target` from the kept inventories of that row, so from there to the next accepted re-solve `M_core_solve` and `M_core_target` differ by `core_frac` times the change of those inventories since the last solve.
+A rejected re-solve keeps `M_core_solve` and `M_core` of the last accepted solve and leaves `M_core_target` unchanged.
+
+Zalmoxis puts the core-mantle boundary of its output (`R_core`, `P_cmb`) at the first grid node at or above `M_core_solve`.
+So `M_core` is larger than `M_core_solve` by at most the mass of the shell below that node.
+For a planet of 1 Earth mass with `core_frac = 0.325` and the default `zalmoxis.num_levels = 150`, that shell holds about 1.6 % of the core mass.
+The measured range of `M_core` in runs of that planet is 0.1 to 1.5 % above `M_core_target`.
+
+`core_density` is `M_core` divided by the volume inside `R_core`.
+The silicate in that shell, between the mass `M_core_solve` and the radius `R_core`, counts in `M_core` and not in the mantle.
+At a high core fraction it is a large part of the mantle.
+When it is more than 5 % of the mantle mass above `R_core`, the solve logs a warning with that share.
+In the PROTEUS grid case with `core_frac = 0.95`, 0.7 Earth masses and 150 levels, solved at a mass tolerance of $10^{-6}$ (the stored reference `tests/data/grid_start_up_reference.json` of Zalmoxis), it is 0.36 % of the core mass but 7.4 % of the mantle mass above `R_core` in the first solve, and 0.31 % and 6.4 % in the re-solve.
+
+With `interior_energetics.aragog.core_bc = "core_module"`, the core module keeps the `M_core` of its first setup and fits its core profile to that mass after each structure update.
+A re-solve that moves the boundary node then gives an `M_core` that differs from the mass of the core module.
+The default `core_bc = "energy_balance"` does not use this mass.
 
 **How the PALEOS mantle EOS is applied**
 
@@ -140,7 +163,7 @@ The MgSiO$_3$ mantle EOS resolves through two distinct paths depending on the `<
 
 With `mantle_eos = "PALEOS:MgSiO3"` (the default), the hydrostatic structure solve uses the PALEOS *unified* MgSiO$_3$ table for the density profile.
 The phase-specific property surfaces used by Aragog (density, heat capacity, thermal expansion, adiabatic gradient) and the pressure-entropy lookup tables are built from the PALEOS *two-phase* solid and liquid tables, which keeps the properties well resolved across the melting-curve discontinuity that a single unified table interpolates through.
-The liquidus is the analytic PALEOS curve (Belonoshko et al. (2005)[^cite-belonoshko2005] below 2.55 GPa, Fei et al. (2021)[^cite-fei2021] above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8).
+The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005[^cite-belonoshko2005] below 2.55 GPa, Fei et al. 2021[^cite-fei2021] above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8).
 The default is the constant solidus-to-liquidus ratio ($\approx 0.809$) of the Stixrude (2014)[^cite-stixrude2014] MgSiO$_3$ melting parametrization, applied to the PALEOS liquidus instead of the Stixrude liquidus.
 The derived solidus is therefore a constant depression of the PALEOS liquidus, not the Stixrude solidus curve: its absolute value lies well above the Stixrude solidus at low to moderate pressure (about 2900 K against 1700 K at 20 GPa, and about 10% higher at 140 GPa) and below it above roughly 200 GPa.
 The melt fraction then follows from the lever rule between this solidus and liquidus.
@@ -152,7 +175,7 @@ A run with a PALEOS EOS requires the table of each PALEOS layer, with the MgSiO$
 When one is missing, the run stops before the first solve with an error that names each missing file and the command that fetches them, `proteus get interiordata --config-path <config.toml>`; it does not fall back to another table set.
 With `dry_mantle = false` it also requires the tables of the dissolved volatiles (`PALEOS:H2O` and `Chabrier:H`).
 A resumed SPIDER run that keeps its pressure-entropy tables needs only the tables of its layers. With `temperature_mode = "liquidus_super"` it also needs the two-phase pair that its anchor reads. An Aragog resume always needs the two-phase pair, which it reads when the mesh changes.
-A mixture mantle (a `+` in `mantle_eos`) takes its melting curves, in the structure and in the energetics, and its SPIDER or Aragog tables from its MgSiO$_3$ component: with `PALEOS:MgSiO3` it gets exactly the curves and tables of a `PALEOS:MgSiO3` mantle, and with `WolfBower2018:MgSiO3` the `eos_dir` P-S tables (by default Wolf and Bower 2018) and the `melting_dir` curves. The other components enter only the structure density.
+A mixture mantle (a `+` in `mantle_eos`) takes its melting curves, in the structure and in the energetics, and its SPIDER or Aragog tables from its MgSiO$_3$ component: with `PALEOS:MgSiO3` it gets exactly the curves and tables of a `PALEOS:MgSiO3` mantle, and with `WolfBower2018:MgSiO3` the `eos_dir` P-S tables (by default Wolf and Bower 2018[^cite-wolf2018]) and the `melting_dir` curves. The other components enter only the structure density.
 A PALEOS mantle with no MgSiO$_3$ component (for example `mantle_eos = "PALEOS:H2O"`, `"PALEOS:iron"`, or a mixture of the two) uses the density of its own material in the structure, while the PALEOS MgSiO$_3$ melting curves and the two-phase MgSiO$_3$ tables of its PALEOS family stand in for the energetics.
 With SPIDER or Aragog, the energetics must follow a PALEOS, `WolfBower2018` or `RTPress100TPa` EOS; a mantle whose energetics would follow a Seager2007, Chabrier or analytic EOS is rejected when the configuration loads.
 `temperature_mode = "liquidus_super"` solves the initial adiabat on the MgSiO$_3$ two-phase tables for every mantle, so those tables are required at the start of the run.
@@ -250,10 +273,10 @@ controlled parity tests.
 | `radio_Fe` | float | `62600.0` | Total iron concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
 | `radio_Fe60_abund` | float | `0.0` | Mass ratio 60Fe/Fe at radio_tref \[kg/kg\]. An early Solar System 60Fe/56Fe = 1e-8 (atoms) is 9.8472e-9 kg/kg. Must be >= 0 and <= 1. |
 | `radio_K` | float | `310.0` | Total potassium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
-| `radio_K40_abund` | float | `0.00011926` | Mass ratio 40K/K at radio_tref \[kg/kg\]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio. Must be >= 0 and <= 1. |
+| `radio_K40_abund` | float | `0.00011926` | Mass ratio 40K/K at radio_tref \[kg/kg\]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio. Must be >= 0 and <= 1. |
 | `radio_U` | float | `0.031` | Total uranium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
-| `radio_U235_abund` | float | `0.0071141` | Mass ratio 235U/U at radio_tref \[kg/kg\]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio. Must be >= 0 and <= 1. |
-| `radio_U238_abund` | float | `0.9928859` | Mass ratio 238U/U at radio_tref \[kg/kg\]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio. Must be >= 0 and <= 1. |
+| `radio_U235_abund` | float | `0.0071141` | Mass ratio 235U/U at radio_tref \[kg/kg\]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio. Must be >= 0 and <= 1. |
+| `radio_U238_abund` | float | `0.9928859` | Mass ratio 238U/U at radio_tref \[kg/kg\]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio. Must be >= 0 and <= 1. |
 | `radio_Th` | float | `0.124` | Total thorium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
 | `radio_Th232_abund` | float | `1.0` | Mass ratio 232Th/Th at radio_tref \[kg/kg\]. Must be >= 0 and <= 1. |
 
@@ -521,28 +544,26 @@ Cross-field constraints enforced when the config file loads:
 
 **See also:** [Interior modules](../../Explanations/model.md#interior-energetics-aragog-spider-boundary) | [Structure module](../../Explanations/model.md#interior-structure-zalmoxis) | [Melting curves](../melting_curves.md)
 
-[^cite-bower2018]: D. J. Bower, P. Sanan, A. S. Wolf, *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49-62, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..274...49B/abstract).
+ [^cite-bower2018]: Bower, D.J., Sanan, P. & Wolf, A.S., *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49-62, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..274...49B/abstract).
 
-[^cite-schaefer2016]: L. Schaefer, R. D. Wordsworth, Z. Berta-Thompson, D. Sasselov, *[Predictions of the atmospheric composition of GJ 1132b](https://doi.org/10.3847/0004-637X/829/2/63)*, The Astrophysical Journal, 829, 63, 2016. [SciX](https://scixplorer.org/abs/2016ApJ...829...63S/abstract).
+ [^cite-schaefer2016]: Schaefer, L., Wordsworth, R.D., Berta-Thompson, Z. & Sasselov, D., *[Predictions of the atmospheric composition of GJ 1132b](https://doi.org/10.3847/0004-637X/829/2/63)*, The Astrophysical Journal, 829, 63, 2016. [SciX](https://scixplorer.org/abs/2016ApJ...829...63S/abstract).
 
-[^cite-stixrude2014]: L. Stixrude, *[Melting in super-earths](https://doi.org/10.1098/rsta.2013.0076)*, Philosophical Transactions of the Royal Society A, 372, 20130076, 2014. [SciX](https://scixplorer.org/abs/2014RSPTA.37230076S/abstract).
+ [^cite-stixrude2014]: Stixrude, L., *[Melting in super-earths](https://doi.org/10.1098/rsta.2013.0076)*, Philosophical Transactions of the Royal Society A, 372, 20130076, 2014. [SciX](https://scixplorer.org/abs/2014RSPTA.37230076S/abstract).
 
-[^cite-anzellini2013]: S. Anzellini, A. Dewaele, M. Mezouar, P. Loubeyre, G. Morard, *[Melting of iron at Earth's inner core boundary based on fast X-ray diffraction](https://doi.org/10.1126/science.1233514)*, Science, 340, 464-466, 2013.
+[^cite-abe1995]: Yutaka Abe, *Basic equations for evolution of partially molten mantle and core*, in Yukutake, T. (ed.), The Earth's Central Part: Its Structure and Dynamics, Terra Sci. Pub. Com., 215–230, 1995.
 
-[^cite-belonoshko2005]: A. B. Belonoshko, N. V. Skorodumova, A. Rosengren, R. Ahuja, B. Johansson, L. Burakovsky, D. L. Preston, *[High-pressure melting of MgSiO3](https://doi.org/10.1103/PhysRevLett.94.195701)*, Physical Review Letters, 94, 195701, 2005.
+[^cite-christensen2009]: Christensen, U.R., Holzwarth, V. & Reiners, A., *[Energy flux determines magnetic field strength of planets and stars](https://doi.org/10.1038/nature07626)*, Nature, 457, 167-169, 2009.
 
-[^cite-fei2021]: Y. Fei, C. T. Seagle, J. P. Townsend, C. A. McCoy, A. Boujibar, P. Driscoll, L. Shulenburger, M. D. Furnish, *[Melting and density of MgSiO3 determined by shock compression of bridgmanite to 1254 GPa](https://doi.org/10.1038/s41467-021-21170-y)*, Nature Communications, 12, 876, 2021.
+[^cite-mckenzie1984]: Dan McKenzie, *[The generation and compaction of partially molten rock](https://doi.org/10.1093/petrology/25.3.713)*, Journal of Petrology, 25, 713–765, 1984.
 
-[^cite-abe1995]: Y. Abe, *Basic equations for evolution of partially molten mantle and core*, in T. Yukutake (ed.), The Earth's Central Part: Its Structure and Dynamics, Terra Sci. Pub. Com., Tokyo, 215-230, 1995.
+[^cite-nimmo2015b]: Nimmo, F., *[Thermal and Compositional Evolution of the Core](https://doi.org/10.1016/b978-0-444-53802-4.00160-3)*, in Schubert, G. (ed.), Treatise on Geophysics, 2nd edition, Elsevier, 9, ch. 9.08, 201-219, 2015.
 
-[^cite-christensen2009]: U. R. Christensen, V. Holzwarth, A. Reiners, *[Energy flux determines magnetic field strength of planets and stars](https://doi.org/10.1038/nature07626)*, Nature, 457, 167-169, 2009.
+[^cite-thiriet2019]: Thiriet, M., Breuer, D., Michaut, C. & Plesa, A.-C., *[Scaling laws of convection for cooling planets in a stagnant lid regime](https://doi.org/10.1016/j.pepi.2018.11.003)*, Physics of the Earth and Planetary Interiors, 286, 138-153, 2019.
 
-[^cite-mckenzie1984]: D. McKenzie, *[The generation and compaction of partially molten rock](https://doi.org/10.1093/petrology/25.3.713)*, Journal of Petrology, 25, 713-765, 1984.
+[^cite-belonoshko2005]: A. B. Belonoshko, N. V. Skorodumova, A. Rosengren, R. Ahuja, B. Johansson, L. Burakovsky, D. L. Preston, *[High-pressure melting of MgSiO$_3$](https://doi.org/10.1103/PhysRevLett.94.195701)*, Physical Review Letters, 94(19), 195701, 2005. [SciX](https://scixplorer.org/abs/2005PhRvL..94s5701B/abstract).
 
-[^cite-nimmo2015]: F. Nimmo, *[Thermal and compositional evolution of the core](https://doi.org/10.1016/b978-0-444-53802-4.00160-3)*, in G. Schubert (ed.), Treatise on Geophysics, 2nd edition, vol. 9, Elsevier, 201-219, 2015.
+[^cite-fei2021]: Y. Fei, C. T. Seagle, J. P. Townsend, C. A. McCoy, A. Boujibar, P. Driscoll, L. Shulenburger, M. D. Furnish, *[Melting and density of MgSiO$_3$ determined by shock compression of bridgmanite to 1254 GPa](https://doi.org/10.1038/s41467-021-21170-y)*, Nature Communications, 12, 876, 2021. [SciX](https://scixplorer.org/abs/2021NatCo..12..876F/abstract).
 
-[^cite-ruedas2017]: T. Ruedas, *[Radioactive heat production of six geologically important nuclides](https://doi.org/10.1002/2017GC006997)*, Geochemistry, Geophysics, Geosystems, 18, 3530-3541, 2017. [SciX](https://scixplorer.org/abs/2017GGG....18.3530R/abstract).
+[^cite-ruedas2017]: T. Ruedas, *[Radioactive heat production of six geologically important nuclides](https://doi.org/10.1002/2017GC006997)*, Geochemistry, Geophysics, Geosystems, 18(9), 3530-3541, 2017. [SciX](https://scixplorer.org/abs/2017GGG....18.3530R/abstract).
 
-[^cite-tachinami2011]: C. Tachinami, H. Senshu, S. Ida, *[Thermal evolution and lifetime of intrinsic magnetic fields of super-Earths in habitable zones](https://doi.org/10.1088/0004-637X/726/2/70)*, The Astrophysical Journal, 726, 70, 2011. [SciX](https://scixplorer.org/abs/2011ApJ...726...70T/abstract).
-
-[^cite-thiriet2019]: M. Thiriet, D. Breuer, C. Michaut, A.-C. Plesa, *[Scaling laws of convection for cooling planets in a stagnant lid regime](https://doi.org/10.1016/j.pepi.2018.11.003)*, Physics of the Earth and Planetary Interiors, 286, 138-153, 2019.
+[^cite-wolf2018]: A. S. Wolf, D. J. Bower, *[An equation of state for high pressure-temperature liquids (RTpress) with application to MgSiO$_3$ melt](https://doi.org/10.1016/j.pepi.2018.02.004)*, Physics of the Earth and Planetary Interiors, 278, 59-74, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..278...59W/abstract).

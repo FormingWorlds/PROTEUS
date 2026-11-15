@@ -1654,6 +1654,44 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
     interior_o.zalmoxis_fail_count = 0
 
 
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('path', ['raise', 'mass_anchor', 'up_step'])
+def test_a_rejected_structure_update_restores_the_core_keys_of_the_row(path):
+    """A solve that writes M_core, M_core_solve and core_density and then fails (a schema
+    violation raises after the writes), misses the mass anchor, or makes a rejected radius
+    up-step leaves the 3 keys at their values before the call."""
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()  # cooling, so an up-step is rejected
+    before = {'M_core': 1.95e24, 'M_core_solve': 1.94e24, 'core_density': 1.1e4}
+    hf_row.update(before)
+    interior_o = _mock_interior_o()
+
+    def solver(cfg, outdir, row, *a, **k):
+        row.update(M_core=2.1e24, M_core_solve=2.0e24, core_density=1.2e4)
+        if path == 'raise':
+            raise RuntimeError('zalmoxis_output.dat schema violation')
+        if path == 'mass_anchor':
+            row.update(M_int_target=5.972e24, M_int=5.972e24 * (1 + 5e-3))
+        else:
+            row['R_int'] *= 1.0 + 1.0e-3
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=solver)
+    with (
+        s,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(_mock_dirs(), config, hf_row, interior_o, lt, lT, lP)
+    assert {k: hf_row[k] for k in before} == before
+    assert interior_o.zalmoxis_fail_count == (0 if path == 'up_step' else 1)
+    assert interior_o.structure_stale is (path != 'up_step')
+
+
 # ============================================================================
 # Post-acceptance mass-anchor guard
 # ============================================================================
