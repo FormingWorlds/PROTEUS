@@ -59,6 +59,21 @@ def test_a_resume_on_another_mesh_is_refused_with_the_stored_cells(tmp_path):
     assert 'set it to 0.0' not in text and 'node by node' in text
 
 
+def test_a_uniform_mesh_run_resumed_under_the_default_cells_is_refused(tmp_path):
+    """A run on the uniform mesh, resumed with a config that sets no cell field, builds the
+    3000 m CMB cell and is refused; with cmb_cell_thickness = 0 the uniform mesh resumes."""
+    out = _run(tmp_path, UNIFORM)
+    with pytest.raises(ResumeSeparationLawError) as err:
+        _refuse(out, RUN)
+    text = str(err.value)
+    assert 'holds a mesh of 80 nodes, bottom cell 35561.0 m' in text
+    assert 'builds 80 nodes, bottom cell 3000.0 m' in text
+    assert 'cmb_cell_thickness = 3000.0' in text
+    _refuse(
+        out, UNIFORM, SimpleNamespace(cmb_cell_thickness=0, surface_cell_thickness='uniform')
+    )
+
+
 def test_the_mesh_of_the_snapshot_resumes(tmp_path):
     """The same mesh, shifted by half the 1 m radius tolerance, goes on."""
     assert mesh_radius_tolerance(RUN[0], RUN[-1]) == pytest.approx(1.0)
