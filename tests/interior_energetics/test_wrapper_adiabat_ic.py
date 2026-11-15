@@ -364,7 +364,7 @@ def test_adiabat_resolve_rolls_back_on_mass_anchor_violation(tmp_path):
     # The off-anchor radius (14000 km) must NOT survive: pin against it
     # explicitly so a regression that skipped the rollback fails here.
     assert abs(hf_row['R_int'] - 1.40e7) > 1.0e6
-    assert hf_row['M_core_solve'] == 1.89e25
+    assert hf_row['M_core_solve'] == _linear_hf_row()['M_core_solve']  # restored exactly
     # On-disk contract: the file holds the LINEAR content again, not the adiabat
     # geometry the failed solver wrote. This is the discriminating check that the
     # hf_row-only rollback (the bug) would fail.
