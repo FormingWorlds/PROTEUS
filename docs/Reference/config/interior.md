@@ -544,26 +544,30 @@ Cross-field constraints enforced when the config file loads:
 
 **See also:** [Interior modules](../../Explanations/model.md#interior-energetics-aragog-spider-boundary) | [Structure module](../../Explanations/model.md#interior-structure-zalmoxis) | [Melting curves](../melting_curves.md)
 
- [^cite-bower2018]: Bower, D.J., Sanan, P. & Wolf, A.S., *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49-62, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..274...49B/abstract).
+[^cite-bower2018]: D. J. Bower, P. Sanan, A. S. Wolf, *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49-62, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..274...49B/abstract).
 
- [^cite-schaefer2016]: Schaefer, L., Wordsworth, R.D., Berta-Thompson, Z. & Sasselov, D., *[Predictions of the atmospheric composition of GJ 1132b](https://doi.org/10.3847/0004-637X/829/2/63)*, The Astrophysical Journal, 829, 63, 2016. [SciX](https://scixplorer.org/abs/2016ApJ...829...63S/abstract).
+[^cite-schaefer2016]: L. Schaefer, R. D. Wordsworth, Z. Berta-Thompson, D. Sasselov, *[Predictions of the atmospheric composition of GJ 1132b](https://doi.org/10.3847/0004-637X/829/2/63)*, The Astrophysical Journal, 829, 63, 2016. [SciX](https://scixplorer.org/abs/2016ApJ...829...63S/abstract).
 
- [^cite-stixrude2014]: Stixrude, L., *[Melting in super-earths](https://doi.org/10.1098/rsta.2013.0076)*, Philosophical Transactions of the Royal Society A, 372, 20130076, 2014. [SciX](https://scixplorer.org/abs/2014RSPTA.37230076S/abstract).
+[^cite-stixrude2014]: L. Stixrude, *[Melting in super-earths](https://doi.org/10.1098/rsta.2013.0076)*, Philosophical Transactions of the Royal Society A, 372, 20130076, 2014. [SciX](https://scixplorer.org/abs/2014RSPTA.37230076S/abstract).
 
-[^cite-abe1995]: Yutaka Abe, *Basic equations for evolution of partially molten mantle and core*, in Yukutake, T. (ed.), The Earth's Central Part: Its Structure and Dynamics, Terra Sci. Pub. Com., 215–230, 1995.
+[^cite-anzellini2013]: S. Anzellini, A. Dewaele, M. Mezouar, P. Loubeyre, G. Morard, *[Melting of iron at Earth's inner core boundary based on fast X-ray diffraction](https://doi.org/10.1126/science.1233514)*, Science, 340, 464-466, 2013.
 
-[^cite-christensen2009]: Christensen, U.R., Holzwarth, V. & Reiners, A., *[Energy flux determines magnetic field strength of planets and stars](https://doi.org/10.1038/nature07626)*, Nature, 457, 167-169, 2009.
+[^cite-belonoshko2005]: A. B. Belonoshko, N. V. Skorodumova, A. Rosengren, R. Ahuja, B. Johansson, L. Burakovsky, D. L. Preston, *[High-pressure melting of MgSiO3](https://doi.org/10.1103/PhysRevLett.94.195701)*, Physical Review Letters, 94, 195701, 2005.
 
-[^cite-mckenzie1984]: Dan McKenzie, *[The generation and compaction of partially molten rock](https://doi.org/10.1093/petrology/25.3.713)*, Journal of Petrology, 25, 713–765, 1984.
+[^cite-fei2021]: Y. Fei, C. T. Seagle, J. P. Townsend, C. A. McCoy, A. Boujibar, P. Driscoll, L. Shulenburger, M. D. Furnish, *[Melting and density of MgSiO3 determined by shock compression of bridgmanite to 1254 GPa](https://doi.org/10.1038/s41467-021-21170-y)*, Nature Communications, 12, 876, 2021.
 
-[^cite-nimmo2015b]: Nimmo, F., *[Thermal and Compositional Evolution of the Core](https://doi.org/10.1016/b978-0-444-53802-4.00160-3)*, in Schubert, G. (ed.), Treatise on Geophysics, 2nd edition, Elsevier, 9, ch. 9.08, 201-219, 2015.
+[^cite-abe1995]: Y. Abe, *Basic equations for evolution of partially molten mantle and core*, in T. Yukutake (ed.), The Earth's Central Part: Its Structure and Dynamics, Terra Sci. Pub. Com., Tokyo, 215-230, 1995.
 
-[^cite-thiriet2019]: Thiriet, M., Breuer, D., Michaut, C. & Plesa, A.-C., *[Scaling laws of convection for cooling planets in a stagnant lid regime](https://doi.org/10.1016/j.pepi.2018.11.003)*, Physics of the Earth and Planetary Interiors, 286, 138-153, 2019.
+[^cite-christensen2009]: U. R. Christensen, V. Holzwarth, A. Reiners, *[Energy flux determines magnetic field strength of planets and stars](https://doi.org/10.1038/nature07626)*, Nature, 457, 167-169, 2009.
 
-[^cite-belonoshko2005]: A. B. Belonoshko, N. V. Skorodumova, A. Rosengren, R. Ahuja, B. Johansson, L. Burakovsky, D. L. Preston, *[High-pressure melting of MgSiO$_3$](https://doi.org/10.1103/PhysRevLett.94.195701)*, Physical Review Letters, 94(19), 195701, 2005. [SciX](https://scixplorer.org/abs/2005PhRvL..94s5701B/abstract).
+[^cite-mckenzie1984]: D. McKenzie, *[The generation and compaction of partially molten rock](https://doi.org/10.1093/petrology/25.3.713)*, Journal of Petrology, 25, 713-765, 1984.
 
-[^cite-fei2021]: Y. Fei, C. T. Seagle, J. P. Townsend, C. A. McCoy, A. Boujibar, P. Driscoll, L. Shulenburger, M. D. Furnish, *[Melting and density of MgSiO$_3$ determined by shock compression of bridgmanite to 1254 GPa](https://doi.org/10.1038/s41467-021-21170-y)*, Nature Communications, 12, 876, 2021. [SciX](https://scixplorer.org/abs/2021NatCo..12..876F/abstract).
+[^cite-nimmo2015]: F. Nimmo, *[Thermal and compositional evolution of the core](https://doi.org/10.1016/b978-0-444-53802-4.00160-3)*, in G. Schubert (ed.), Treatise on Geophysics, 2nd edition, vol. 9, Elsevier, 201-219, 2015.
 
-[^cite-ruedas2017]: T. Ruedas, *[Radioactive heat production of six geologically important nuclides](https://doi.org/10.1002/2017GC006997)*, Geochemistry, Geophysics, Geosystems, 18(9), 3530-3541, 2017. [SciX](https://scixplorer.org/abs/2017GGG....18.3530R/abstract).
+[^cite-ruedas2017]: T. Ruedas, *[Radioactive heat production of six geologically important nuclides](https://doi.org/10.1002/2017GC006997)*, Geochemistry, Geophysics, Geosystems, 18, 3530-3541, 2017. [SciX](https://scixplorer.org/abs/2017GGG....18.3530R/abstract).
+
+[^cite-tachinami2011]: C. Tachinami, H. Senshu, S. Ida, *[Thermal evolution and lifetime of intrinsic magnetic fields of super-Earths in habitable zones](https://doi.org/10.1088/0004-637X/726/2/70)*, The Astrophysical Journal, 726, 70, 2011. [SciX](https://scixplorer.org/abs/2011ApJ...726...70T/abstract).
+
+[^cite-thiriet2019]: M. Thiriet, D. Breuer, C. Michaut, A.-C. Plesa, *[Scaling laws of convection for cooling planets in a stagnant lid regime](https://doi.org/10.1016/j.pepi.2018.11.003)*, Physics of the Earth and Planetary Interiors, 286, 138-153, 2019.
 
 [^cite-wolf2018]: A. S. Wolf, D. J. Bower, *[An equation of state for high pressure-temperature liquids (RTpress) with application to MgSiO$_3$ melt](https://doi.org/10.1016/j.pepi.2018.02.004)*, Physics of the Earth and Planetary Interiors, 278, 59-74, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..278...59W/abstract).
