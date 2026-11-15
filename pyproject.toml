@@ -50,10 +50,9 @@ dependencies = [
     "fwl-zephyrus>=26.10.10",
     "fwl-aragog>=26.11.8",
 
-    # 26.11.14: zalmoxis.solver.main takes adiabat_seed, which every structure call passes, and
-    # accepts only a full-adiabat start-up structure (Zalmoxis #133). It includes the liquid EOS
-    # table of the super-liquidus initial condition (#79) and the JAX path for unified PALEOS
-    # and wet mantles (#78).
+    # 26.11.14: zalmoxis.solver.main takes adiabat_seed, which the primary structure call passes,
+    # and in an adiabatic mode accepts only a full-adiabat start-up structure (#133). It includes
+    # the liquid EOS table (#79) and the JAX path for unified PALEOS and wet mantles (#78).
     "fwl-zalmoxis>=26.11.14",
     # Aragog (the default interior solver) and atmodeller run on JAX and equinox. The three are
     # held to the combination the Aragog numerics are validated against (equinox 0.13.8 on jax

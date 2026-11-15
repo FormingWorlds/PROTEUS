@@ -2957,23 +2957,36 @@ def test_zalmoxis_solver_passes_the_adiabat_seed_of_the_same_planet(
         assert all(kwargs['adiabat_seed'][k] is cached[k] for k in cached)
 
 
-def test_the_installed_zalmoxis_main_takes_every_keyword_proteus_passes(tmp_path, monkeypatch):
-    """Contract with the installed zalmoxis.solver.main: every keyword of the structure call,
-    adiabat_seed included, is one of its parameters, so a renamed or dropped parameter fails
-    here and not first in a coupled run."""
-    params = set(inspect.signature(pytest.importorskip('zalmoxis.solver').main).parameters)
-    r_arr, t_arr = _cooled_mantle_arrays(_plausible_model_results())
+@pytest.mark.parametrize('retry', [False, True], ids=['primary', 'relaxed_retry'])
+def test_the_installed_zalmoxis_main_takes_every_keyword_proteus_passes(
+    tmp_path, monkeypatch, retry
+):
+    """Contract with the installed zalmoxis.solver.main: each structure call, the primary and the
+    relaxed retry after a non-converged primary, binds to its signature (no unknown, missing or
+    doubled argument), so a renamed or dropped parameter fails here and not first in a coupled
+    run. The primary call passes adiabat_seed; the retry starts without it."""
+    from zalmoxis.solver import main as real_main
+
+    sig = inspect.signature(real_main)
+    results = _plausible_model_results()
+    primary = _plausible_model_results()
+    primary.update(converged=False, converged_mass=False, best_mass_error=0.049)
+    r_arr, t_arr = _cooled_mantle_arrays(results)
     main_mock, *_ = _run_gate_solver(
         tmp_path,
         monkeypatch,
         'PALEOS:MgSiO3',
         (r_arr, t_arr),
         lambda r, P: float(np.interp(r, r_arr, t_arr)),
+        main_results=[primary, results] if retry else None,
         use_jax=False,
     )
-    passed = set(main_mock.call_args.kwargs)
-    assert 'adiabat_seed' in passed and passed <= params, passed - params
-    assert len(main_mock.call_args.args) <= len(params)
+    calls = main_mock.call_args_list
+    assert len(calls) == (2 if retry else 1)
+    for call in calls:
+        sig.bind(*call.args, **call.kwargs)  # TypeError on a call main does not take
+    assert 'adiabat_seed' in calls[0].kwargs
+    assert not retry or 'adiabat_seed' not in calls[1].kwargs
 
 
 def test_zalmoxis_solver_caches_the_structure_for_the_next_seed(tmp_path, monkeypatch):
