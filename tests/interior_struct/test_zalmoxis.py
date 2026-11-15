@@ -2919,7 +2919,6 @@ def _structure_seed(key):
     [
         ('same_planet', True),
         ('other_planet', False),
-        ('main_without_seed', False),
         ('cache_without_pressure', False),
         ('jax_arrays', False),
     ],
@@ -2928,9 +2927,8 @@ def test_zalmoxis_solver_passes_the_adiabat_seed_of_the_same_planet(
     tmp_path, monkeypatch, case, passed
 ):
     """The cached radii, pressure and mass_enclosed reach Zalmoxis as ``adiabat_seed`` only for
-    the same planet, on the numpy path, from a cache that holds them, and when the installed
-    ``zalmoxis.solver.main`` takes the argument; otherwise the call has no such keyword, as
-    for a Zalmoxis release before the seeded re-solve."""
+    the same planet, on the numpy path, from a cache that holds them; otherwise the call passes
+    ``adiabat_seed=None``."""
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
 
     owner = _gate_config('PALEOS:MgSiO3')
@@ -2939,9 +2937,6 @@ def test_zalmoxis_solver_passes_the_adiabat_seed_of_the_same_planet(
     seed = _structure_seed(zalmoxis_wrapper._structure_cache_key(owner))
     if case == 'cache_without_pressure':
         seed['pressure'] = None
-    monkeypatch.setattr(
-        zalmoxis_wrapper, '_MAIN_TAKES_ADIABAT_SEED', case != 'main_without_seed'
-    )
     r_arr, t_arr = _cooled_mantle_arrays(_plausible_model_results())
     cached = {k: seed[k] for k in ('radii', 'pressure', 'mass_enclosed')}
 
@@ -2956,7 +2951,7 @@ def test_zalmoxis_solver_passes_the_adiabat_seed_of_the_same_planet(
     )
 
     kwargs = main_mock.call_args.kwargs
-    assert ('adiabat_seed' in kwargs) is passed
+    assert (kwargs['adiabat_seed'] is not None) is passed
     if passed:
         assert kwargs['adiabat_seed'].keys() == cached.keys()
         assert all(kwargs['adiabat_seed'][k] is cached[k] for k in cached)
@@ -2981,67 +2976,6 @@ def test_zalmoxis_solver_caches_the_structure_for_the_next_seed(tmp_path, monkey
     for k in ('radii', 'pressure', 'mass_enclosed', 'density'):
         np.testing.assert_array_equal(cache[k], model_results[k])
         assert cache[k] is not model_results[k]
-
-
-@pytest.mark.parametrize('opaque', [True, False], ids=['wrapper_without_wraps', 'real_main'])
-def test_a_main_without_the_seed_parameter_is_logged_once(
-    tmp_path, monkeypatch, caplog, opaque
-):
-    """A main whose signature has no adiabat_seed (a wrapper without functools.wraps, or the
-    real main of a Zalmoxis without the seed) gets one INFO line per process that names its
-    signature, also over 2 solves; a main with adiabat_seed gets none."""
-    import zalmoxis.solver
-
-    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
-
-    def wrapper(*args, **kwargs):
-        return zalmoxis.solver.main(*args, **kwargs)
-
-    fn = wrapper if opaque else zalmoxis.solver.main
-    monkeypatch.setattr(
-        zalmoxis_wrapper, '_MAIN_TAKES_ADIABAT_SEED', zalmoxis_wrapper._takes_adiabat_seed(fn)
-    )
-    monkeypatch.setattr(zalmoxis_wrapper, '_SEED_SIGNATURE', str(inspect.signature(fn)))
-    zalmoxis_wrapper._log_no_adiabat_seed.cache_clear()
-    r_arr, t_arr = _cooled_mantle_arrays(_plausible_model_results())
-    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_struct.zalmoxis'):
-        for _ in range(2):
-            _run_gate_solver(
-                tmp_path,
-                monkeypatch,
-                'PALEOS:MgSiO3',
-                (r_arr, t_arr),
-                lambda r, P: float(np.interp(r, r_arr, t_arr)),
-                use_jax=False,
-            )
-    lines = [r for r in caplog.records if 'takes no adiabat_seed' in r.getMessage()]
-    takes_seed = 'adiabat_seed' in inspect.signature(fn).parameters
-    assert len(lines) == (0 if takes_seed else 1) and not (opaque and takes_seed)
-    if lines:
-        assert lines[0].levelno == logging.INFO
-        assert str(inspect.signature(fn)) in lines[0].getMessage()
-
-
-def test_the_seed_detection_reads_the_signature_of_main():
-    """A main with an ``adiabat_seed`` parameter takes the seed, also behind a wrapper that
-    keeps its signature; a main without it, or one that takes only ``**kwargs``, does not."""
-    import functools
-
-    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
-
-    def new(cfg, md, melt, inp, adiabat_seed=None):
-        return cfg
-
-    def old(cfg, md, melt, inp, initial_radii=None):
-        return cfg
-
-    def opaque(*args, **kwargs):
-        return args
-
-    wrapped = functools.wraps(new)(lambda *a, **k: new(*a, **k))
-    takes = zalmoxis_wrapper._takes_adiabat_seed
-    assert (takes(new), takes(wrapped), takes(old), takes(opaque)) == (True, True, False, False)
-    assert zalmoxis_wrapper._MAIN_TAKES_ADIABAT_SEED is takes(zalmoxis_wrapper.main)
 
 
 def test_zalmoxis_solver_withholds_callable_on_wet_in_envelope_profile(tmp_path, monkeypatch):

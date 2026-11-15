@@ -207,26 +207,6 @@ def _log_jax_nonviable_once(core_eos: str, mantle_eos: str) -> bool:
 _density_cache = dict.fromkeys(('density', 'radii', 'pressure', 'mass_enclosed', 'key'))
 
 
-def _takes_adiabat_seed(fn):
-    """True when ``fn`` (``zalmoxis.solver.main``) has an ``adiabat_seed`` parameter; Zalmoxis
-    releases before the seeded re-solve have none."""
-    return 'adiabat_seed' in inspect.signature(fn).parameters
-
-
-_MAIN_TAKES_ADIABAT_SEED = _takes_adiabat_seed(main)
-_SEED_SIGNATURE = str(inspect.signature(main))
-
-
-@functools.cache
-def _log_no_adiabat_seed(signature):
-    """Log once per process and signature that main takes no adiabat_seed."""
-    log.info(
-        'zalmoxis.solver.main%s takes no adiabat_seed: the start-up structure re-solves of '
-        'this run start without the seed (Newton root and adiabat ramp each time).',
-        signature,
-    )
-
-
 def _structure_cache_key(config):
     """Signature identifying the planet that owns a cached density seed.
 
@@ -3538,14 +3518,12 @@ def zalmoxis_solver(
         )
         _seed_density = _density_cache['density'] if _seed_match else None
         _seed_radii = _density_cache['radii'] if _seed_match else None
-        _seed_kw = {}
-        if not _MAIN_TAKES_ADIABAT_SEED:
-            _log_no_adiabat_seed(_SEED_SIGNATURE)
-        elif _seed_match and _density_cache.get('pressure') is not None:
-            # Zalmoxis uses it only when it computes the adiabat itself (start-up solves)
-            _seed_kw['adiabat_seed'] = {
-                k: _density_cache[k] for k in ('radii', 'pressure', 'mass_enclosed')
-            }
+        # Zalmoxis uses the adiabat seed only when it computes the adiabat itself (start-up solves)
+        _adiabat_seed = (
+            {k: _density_cache[k] for k in ('radii', 'pressure', 'mass_enclosed')}
+            if _seed_match and _density_cache.get('pressure') is not None
+            else None
+        )
         model_results = main(
             config_params,
             material_dictionaries=mat_dicts,
@@ -3557,7 +3535,7 @@ def zalmoxis_solver(
             p_center_hint=None if _drop_callable else hf_row.get('P_center'),
             initial_density=_seed_density,
             initial_radii=_seed_radii,
-            **_seed_kw,
+            adiabat_seed=_adiabat_seed,
         )
 
     # Extract results from the model
