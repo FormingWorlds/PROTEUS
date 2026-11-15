@@ -203,9 +203,8 @@ class Agni:
     convection: bool
         Account for convective heat transport, using MLT.
     conduction: bool
-        Account for conductive heat transport, using Fourier's law. On by default:
-        it couples the optically thin top layers, whose temperature otherwise
-        scatters between levels.
+        Account for conductive heat transport, using Fourier's law. On by default,
+        for a more stable temperature in the optically thin upper atmosphere.
     sens_heat: bool
         Include sensible heat flux at surface
     real_gas: bool
