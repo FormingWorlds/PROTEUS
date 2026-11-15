@@ -81,8 +81,8 @@ A pass means that no line stays below the dashed line for 2 rows.
 **Known limit.**
 With a CMB cell, `constant` gives single dips: 3 rows on the 3000 m cell, at 22.0, 28.4 and 38.1 kyr, and 2 rows on the 1500 m cell.
 The next row has a flux above 100 W m$^{-2}$ again, and $T_\mathrm{cmb}$ never rises by more than 0.61 K between 2 rows.
-In every dip on these 2 meshes $F_\mathrm{cmb}$ is negative: heat flows from the mantle base into the core.
-In these 2 runs and the tight-tolerance run below, 6 dip rows carry -110 to -3921 W m$^{-2}$ and 3 dip rows -0.01 to -0.1 W m$^{-2}$; the largest rise of $T_\mathrm{cmb}$ between 2 rows is 0.78 K, in the tight-tolerance run.
+In each of these 5 dip rows $F_\mathrm{cmb}$ is negative: heat flows from the mantle base into the core.
+In the 3000 m run, the 1500 m run and the tight-tolerance run further below (9 dip rows in all), 6 rows have $F_\mathrm{cmb}$ between -110 and -3921 W m$^{-2}$ and 3 rows between -0.01 and -0.1 W m$^{-2}$; the largest rise of $T_\mathrm{cmb}$ between 2 rows is 0.78 K, in the tight-tolerance run.
 Each dip falls on a row in which `T_magma` falls by more than 25 K while `Phi_global` rises (3 of 4 such rows on the 3000 m cell, 2 of 3 on the 1500 m cell); the uniform meshes have no such row after 10 kyr, and no dip.
 At the end of every dip row on the 3000 m and the 1500 m cell the whole mantle is in one state: the net heat flux is below 1.02 W m$^{-2}$ from the CMB up to the top 2 to 4 cells, because in the mush the convective and the mixing flux cancel; each reaches $1.2 \times 10^{12}$ to $2.2 \times 10^{12}$ W m$^{-2}$.
 In that state the entropy gradient at the CMB, which the solver carries as a state, ends the step at a small positive value, and the CMB node copies the eddy diffusivity of the node above ($2.5 \times 10^{7}$ to $2.9 \times 10^{7}$ m$^2$ s$^{-1}$), so the end flux at the CMB is about -0.01 W m$^{-2}$; the more negative row values, which are means over the step, need a positive gradient during the step, which the stored end states do not show.
@@ -93,8 +93,8 @@ A run with only this tolerance set to $4 \times 10^{-16}$ J kg$^{-1}$ K$^{-1}$ m
 A single-row value of $F_\mathrm{cmb}$ therefore depends on the tolerance of the CMB gradient, while $T_\mathrm{cmb}$ at 100 kyr changes by less than 0.02 K.
 So tightening the tolerance of the CMB gradient does not remove the dips, and whether a run has single or double dip rows depends on solver details; why the dips occur is not known.
 The test therefore accepts 2 dips in a row and sets no limit on a negative $F_\mathrm{cmb}$ or on a rise of $T_\mathrm{cmb}$ in a dip row; the tight-tolerance run also passes it.
-The fix of these dips is a treatment of the CMB node, tracked in the Aragog issue [#113](https://github.com/FormingWorlds/aragog/issues/113); until then, the dips are a known limit of `constant` on a mesh with a CMB cell, which includes the default mesh (3000 m cell).
-The aragog mesh study that supports the 3000 m cell runs the core module and the `nearest_boundary` length; for the defaults of PROTEUS, the `energy_balance` boundary and `constant`, the runs of this page are the check, and they show the single dips only on meshes with a CMB cell.
+A fix of these dips belongs to the Aragog issue [#113](https://github.com/FormingWorlds/aragog/issues/113), which tracks a treatment of the CMB node; until then, the dips are a known limit of `constant` on a mesh with a CMB cell, which includes the default mesh (3000 m cell).
+The aragog mesh study that supports the 3000 m cell runs the core module and the `nearest_boundary` length; for the defaults of PROTEUS, the `energy_balance` boundary and `constant`, the runs of this page are the check, and they show the dips only on meshes with a CMB cell.
 
 ??? note "The dips in the run log"
     - On the 3000 m cell the run log (`output/c3000_constant/aragog.log` of the run, not in the repository) gives the gradient as $-3.9 \times 10^{-12}$ to $-5.0 \times 10^{-12}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$ in the rows around the dips, and $+1.9 \times 10^{-17}$ to $+2.3 \times 10^{-17}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$ at the end of each dip row.
