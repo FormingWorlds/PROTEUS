@@ -161,11 +161,10 @@ def refuse_another_mesh(
             scale = (built[-1] - built[0]) / (stored[-1] - stored[0])
 
             def same(b, s, setting):
+                # A set cell is a length that a moved structure keeps; a uniform cell scales.
                 if type(setting) in (int, float) and setting > 0 and abs(b - setting) <= tol:
-                    return (
-                        abs(b - s) <= tol
-                    )  # a set cell is a length; a moved structure keeps it
-                return abs(b / (s * scale) - 1) <= 0.1  # a uniform cell scales with the mantle
+                    return abs(b - s) <= tol
+                return abs(b / (s * scale) - 1) <= 0.1
 
             cmb, top = aragog.cmb_cell_thickness, aragog.surface_cell_thickness
             if same(built[1] - built[0], stored[1] - stored[0], cmb) and same(
