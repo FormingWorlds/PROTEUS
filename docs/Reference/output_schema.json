@@ -1936,7 +1936,7 @@
     {
       "name": "M_core",
       "unit": "kg",
-      "description": "dry mass of core",
+      "description": "dry mass of core; with Zalmoxis the mass inside R_core, with the mantle silicate between M_core_solve and R_core",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
@@ -2025,6 +2025,23 @@
       "consumers": [
         "accretion",
         "interior_struct"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "M_core_solve",
+      "unit": "kg",
+      "description": "core mass of the last accepted Zalmoxis solve; 0 with another structure module",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_struct/zalmoxis.py",
+          "condition": "interior_struct.module = \"zalmoxis\""
+        }
+      ],
+      "consumers": [
+        "interior_energetics"
       ],
       "consumers_possible": []
     },

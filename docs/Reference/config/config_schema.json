@@ -6990,7 +6990,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 40K/K at radio_tref [kg/kg]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017) as a mass ratio.",
+      "description": "Mass ratio 40K/K at radio_tref [kg/kg]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 8,
@@ -7036,7 +7036,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 235U/U at radio_tref [kg/kg]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017) as a mass ratio.",
+      "description": "Mass ratio 235U/U at radio_tref [kg/kg]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 10,
@@ -7061,7 +7061,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017) as a mass ratio.",
+      "description": "Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 11,
