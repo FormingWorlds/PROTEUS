@@ -348,7 +348,7 @@ def test_check_module_dependencies_raises_when_vulcan_missing():
         return real_import(name)
 
     with patch('importlib.import_module', side_effect=_fake_import):
-        with pytest.raises(ImportError, match=r'fwl-proteus\[vulcan\]') as excinfo:
+        with pytest.raises(ImportError, match='bash tools/get_vulcan.sh') as excinfo:
             check_module_dependencies(instance, None, None)
     # The message must name atmos_chem.module (not, e.g., outgas) so the vulcan
     # branch is the one that fired, and must carry the GPL-3.0 license notice.
@@ -356,9 +356,9 @@ def test_check_module_dependencies_raises_when_vulcan_missing():
     assert 'atmos_chem.module = "vulcan"' in msg
     assert 'needs the VULCAN package (GPL-3.0 licensed), which is not installed.' in msg
     assert 'bash install.sh sets it up;' in msg
-    assert msg.index('bash tools/get_vulcan.sh in the PROTEUS folder') < msg.index(
-        'pip install "fwl-proteus[vulcan]"'
-    )
+    assert 'run bash tools/get_vulcan.sh in the PROTEUS folder' in msg
+    # The PyPI wheel has no network files, so the message must not offer it as an install.
+    assert 'fwl-proteus[vulcan]' not in msg
     assert 'optional' not in msg
     assert 'backend' not in msg
     # The chained cause preserves the underlying import failure detail.

@@ -176,11 +176,9 @@ VULCAN is an atmospheric photochemistry module, selected with
 bash tools/get_vulcan.sh
 ```
 
-For an installation without the installer, install the package via its extra:
-
-```console
-pip install "fwl-proteus[vulcan]"
-```
+An installation without the installer also needs this step. The `vulcan` extra
+(`pip install "fwl-proteus[vulcan]"`) installs the VULCAN package only, without
+the network files and FastChem that VULCAN reads from its clone.
 
 !!! warning "License"
     VULCAN is distributed under the GPL-3.0 license; review its terms
