@@ -2957,6 +2957,25 @@ def test_zalmoxis_solver_passes_the_adiabat_seed_of_the_same_planet(
         assert all(kwargs['adiabat_seed'][k] is cached[k] for k in cached)
 
 
+def test_the_installed_zalmoxis_main_takes_every_keyword_proteus_passes(tmp_path, monkeypatch):
+    """Contract with the installed zalmoxis.solver.main: every keyword of the structure call,
+    adiabat_seed included, is one of its parameters, so a renamed or dropped parameter fails
+    here and not first in a coupled run."""
+    params = set(inspect.signature(pytest.importorskip('zalmoxis.solver').main).parameters)
+    r_arr, t_arr = _cooled_mantle_arrays(_plausible_model_results())
+    main_mock, *_ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        lambda r, P: float(np.interp(r, r_arr, t_arr)),
+        use_jax=False,
+    )
+    passed = set(main_mock.call_args.kwargs)
+    assert 'adiabat_seed' in passed and passed <= params, passed - params
+    assert len(main_mock.call_args.args) <= len(params)
+
+
 def test_zalmoxis_solver_caches_the_structure_for_the_next_seed(tmp_path, monkeypatch):
     """After a solve the cache holds copies of the returned radii, pressure, mass_enclosed and
     density under this planet's key."""
