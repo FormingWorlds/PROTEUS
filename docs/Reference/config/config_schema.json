@@ -5406,6 +5406,38 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.cmb_cell_thickness",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float or int",
+      "accepts_none": false,
+      "default": "3000.0",
+      "choices": null,
+      "bounds": null,
+      "description": "Radial thickness [m] of the mesh cell at the CMB: 0 (the uniform mesh at that end) or a finite value of at least 2 m. The cells grow away from the CMB with a tanh stretching. A value at or above the bottom cell of the uniform mesh of the same coordinate mode gives no CMB refinement, and aragog logs it: with the 'uniform' or 0 surface cell the mesh keeps that uniform bottom cell. A resume keeps the value its run was written with.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.surface_cell_thickness",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float or str",
+      "accepts_none": false,
+      "default": "\"uniform\"",
+      "choices": null,
+      "bounds": null,
+      "description": "Radial thickness [m] of the mesh cell at the surface: 0 (the uniform mesh at that end), 'uniform' (the top cell of the uniform mesh of the same coordinate mode; with mass_coordinates the top cell of the uniform mass-coordinate mesh), or a finite value of at least 2 m and below the uniform radial cell (R_int - R_core)/(num_levels - 1). It has no fallback: aragog refuses a larger value when it builds the mesh. With cmb_cell_thickness = 0 and 'uniform' the mesh is the uniform mesh. A resume keeps the value its run was written with.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.backend",
       "toml_section": "interior_energetics.aragog",
       "class": "Aragog",
@@ -5498,7 +5530,7 @@
         "mixture"
       ],
       "bounds": null,
-      "description": "Drag viscosity for the gravitational-separation velocity v_rel = |dRho| g F(phi) / eta. 'melt' (fixed single-phase liquid viscosity, SPIDER parity) keeps separation active below the rheological transition in coupled caps-off runs, which collapses the CMB temperature; 'mixture' (rheological-transition-blended bulk viscosity) ties the drag viscosity to the same solid-fraction rise that stiffens the bulk rheology, so separation locks up at the same melt fraction instead, which is why the default here is 'mixture' while Aragog's own default stays 'melt' for SPIDER parity. The regime boundaries are the porosities where adjacent permeability laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c). The melt drainage of front trapping (outgas.trap_mode 'front') takes the melt viscosity whatever this setting.",
+      "description": "Drag viscosity for the gravitational-separation velocity v_rel = |dRho| g F(phi) / eta. 'melt' (fixed single-phase liquid viscosity, SPIDER parity) keeps separation active below the rheological transition in coupled caps-off runs, which collapses the CMB temperature; 'mixture' (rheological-transition-blended bulk viscosity) ties the drag viscosity to the same solid-fraction rise that stiffens the bulk rheology, so separation locks up at the same melt fraction instead, which is why the default here is 'mixture' while Aragog's own default stays 'melt' for SPIDER parity. The regime boundaries are the porosities where adjacent permeability laws cross (Bower et al. (2018)[^cite-bower2018], Section 2.1, Eqs. 13a to 13c). The melt drainage of front trapping (outgas.trap_mode 'front') takes the melt viscosity whatever this setting.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -5533,7 +5565,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Let a resume change separation_viscosity, separation_buoyancy, rheology.enabled or lid_mush_base from the values in the run's init_coupler.toml, with one warning per switched law in the log. False stops such a resume, because the changed law would act from the resume row on. A law the record does not hold must be set in the config file either way; a record that names the Aragog module and lacks separation_viscosity counts as 'melt', one that lacks the rheology or lid_mush_base counts as off, and a record of another interior module holds none of them. A missing record, or one that names no module and holds no Aragog table, leaves the rheology and the lid unchecked. init_coupler.toml records false.",
+      "description": "Let a resume change separation_viscosity, separation_buoyancy, rheology.enabled, lid_mush_base or interior_energetics.mixing_length (also of a SPIDER run) from the values in the run's init_coupler.toml, with one warning per switched law in the log. False stops such a resume, because the changed law would act from the resume row on. A law the record does not hold must be set in the config file either way; a record that names the Aragog module and lacks separation_viscosity counts as 'melt', one that lacks the rheology or lid_mush_base counts as off. A SPIDER record holds only the mixing length, a record that names no module holds the mixing length and the laws of its Aragog table, and a record of another interior module holds none of these laws. A missing record, or one that names no module and holds no Aragog table, leaves the rheology and the lid unchecked. init_coupler.toml records false.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -5569,7 +5601,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Scalar-gravity comparison knob. When True, the external mesh file that Zalmoxis writes has its gravity column overwritten with a uniform scalar (the surface value from ``hf_row['gravity']``) before Aragog reads it, so Aragog's per-node gravity path interpolates to that scalar everywhere. False by default; set True only when running a paired scalar-gravity comparison.",
+      "description": "Scalar-gravity comparison setting. When True, the external mesh file that Zalmoxis writes has its gravity column overwritten with a uniform scalar (the surface value from ``hf_row['gravity']``) before Aragog reads it, so Aragog's per-node gravity path interpolates to that scalar everywhere. False by default; set True only when running a paired scalar-gravity comparison.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -5601,7 +5633,32 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Use the temperature- and pressure-dependent solid viscosity and the stagnant-lid closure of ``aragog.rheology.SolidRheologyParams``, with its defaults for every other parameter. False uses the constant ``solid_log10visc``.",
+      "description": "Use the temperature- and pressure-dependent solid viscosity and the stagnant-lid closure of ``aragog.rheology.SolidRheologyParams``, with its defaults for every other parameter but ``mlt_bottom_slope``. False uses the constant ``solid_log10visc``.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.rheology.mlt_bottom_slope",
+      "toml_section": "interior_energetics.aragog.rheology",
+      "class": "Rheology",
+      "type": "float or int",
+      "accepts_none": false,
+      "default": "1.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 1
+        }
+      ],
+      "description": "Slope of the viscous-branch mixing length above the CMB, l = slope (r - r_cmb), in (0, 1]. The default 1.0 is the slope with which aragog's top slope ``s_top_inf`` was calibrated. Aragog's viscous flux carries a factor 1/18 that the mixing-length flux of Tachinami et al. (2011)[^cite-tachinami2011] (Eq. 13 and 14) does not, so a slope of 1 is a mixing length of 0.49 times the distance in their terms. Read only with ``enabled``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5694,7 +5751,7 @@
         "quadratic"
       ],
       "bounds": null,
-      "description": "'iron' (Anzellini et al. 2013 via PALEOS, with light-element depression) or 'quadratic' (Nimmo 2015 Eq. 6 parameterisation).",
+      "description": "'iron' (Anzellini et al. (2013)[^cite-anzellini2013] via PALEOS, with light-element depression) or 'quadratic' (Nimmo (2015)[^cite-nimmo2015] Eq. 6 parameterisation).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5918,7 +5975,7 @@
           "value": 0
         }
       ],
-      "description": "Core thermal conductivity [W m-1 K-1] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015)[^cite-nimmo2015b] Table 2 value.",
+      "description": "Core thermal conductivity [W m-1 K-1] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015)[^cite-nimmo2015] Table 2 value.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6746,13 +6803,13 @@
       "class": "Interior",
       "type": "str",
       "accepts_none": false,
-      "default": "\"nearest\"",
+      "default": "\"constant\"",
       "choices": [
-        "nearest",
-        "constant"
+        "constant",
+        "nearest"
       ],
       "bounds": null,
-      "description": "Mixing-length scale: 'nearest' (distance to nearest boundary) or 'constant' (a quarter of the mantle depth).",
+      "description": "Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle depth at every node) or 'nearest' (distance to the nearest boundary). A resume that changes the recorded value is refused unless interior_energetics.aragog.allow_resume_law_change is true.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 3,
@@ -6990,7 +7047,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 40K/K at radio_tref [kg/kg]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017) as a mass ratio.",
+      "description": "Mass ratio 40K/K at radio_tref [kg/kg]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 8,
@@ -7036,7 +7093,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 235U/U at radio_tref [kg/kg]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017) as a mass ratio.",
+      "description": "Mass ratio 235U/U at radio_tref [kg/kg]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 10,
@@ -7061,7 +7118,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017) as a mass ratio.",
+      "description": "Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 11,
@@ -7623,7 +7680,7 @@
           "value": 1
         }
       ],
-      "description": "Width [fraction] of the mushy-zone transition in Aragog's _PhaseMixedParameters. Sets the width of the phase boundary in Aragog's mixed-phase blending (viscosity, thermal conductivity etc.). Distinct from ``[interior_energetics.spider].matprop_smooth_width`` which is SPIDER's analogous knob for its own solver.",
+      "description": "Width [fraction] of the mushy-zone transition in Aragog's _PhaseMixedParameters. Sets the width of the phase boundary in Aragog's mixed-phase blending (viscosity, thermal conductivity etc.). Distinct from ``[interior_energetics.spider].matprop_smooth_width`` which is SPIDER's corresponding setting for its own solver.",
       "doc_source": "field_docstring",
       "group_order": 7,
       "group_position": 7,
@@ -7644,7 +7701,7 @@
           "value": 0
         }
       ],
-      "description": "Core T_avg / T_cmb ratio from adiabatic gradient (Bower+2018 Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg. SPIDER derives its own internally.",
+      "description": "Core T_avg / T_cmb ratio of an isentropic core (Bower et al. (2018)[^cite-bower2018], Eq. 20 and Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg. SPIDER derives its own internally.",
       "doc_source": "field_docstring",
       "group_order": 8,
       "group_position": 0,

@@ -64,6 +64,10 @@ def _cooled_runner(output_dir, core_bc):
     cfg.interior_energetics.module = 'aragog'
     cfg.interior_energetics.rtol = default_rtol('aragog')
     cfg.interior_energetics.aragog.core_bc = core_bc
+    # Uniform mesh: on the refined default mesh the core_module output differs between
+    # Linux and macOS by more than the stored-plot tolerance.
+    cfg.interior_energetics.aragog.cmb_cell_thickness = 0.0
+    cfg.interior_energetics.aragog.surface_cell_thickness = 0.0
     cfg.planet.temperature_mode = 'isothermal'
     cfg.planet.tsurf_init = TSURF_INIT
     cfg.interior_struct.melting_dir = MELTING_DIR

@@ -48,13 +48,12 @@ dependencies = [
     "fwl-mors>=26.10.6",
     "fwl-calliope>=26.10.05",
     "fwl-zephyrus>=26.11.14",
-    "fwl-aragog>=26.11.8",
+    "fwl-aragog>=26.11.15",
 
-    # 26.07.17 reads the liquid EOS table for fully molten entropy
-    # lookups, which the super-liquidus interior initial condition
-    # requires (Zalmoxis #79), on top of the JAX structure path for
-    # unified PALEOS and wet mantles (Zalmoxis #78).
-    "fwl-zalmoxis>=26.10.21",
+    # 26.11.14: zalmoxis.solver.main takes adiabat_seed, which the primary structure call passes,
+    # and in an adiabatic mode accepts only a full-adiabat start-up structure (#133). It includes
+    # the liquid EOS table (#79) and the JAX path for unified PALEOS and wet mantles (#78).
+    "fwl-zalmoxis>=26.11.14",
     # Aragog (the default interior solver) and atmodeller run on JAX and equinox. The three are
     # held to the combination the Aragog numerics are validated against (equinox 0.13.8 on jax
     # and jaxlib below 0.10); lift a bound only after the Aragog entropy solve is validated again.

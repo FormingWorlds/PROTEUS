@@ -1027,6 +1027,7 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'lid_T_surface',
         'lid_weight',
         'M_accreted_rock',
+        'M_core_solve',
         'M_core_target',
         'M_desiccated',
         'M_volatile_change',
@@ -1153,9 +1154,10 @@ def GetHelpfileKeys():
         'Phi_global',       # mantle melt mass-fraction [1]
         'Phi_global_vol',   # mantle melt volume-fraction [1]
         'RF_depth',         # depth of rheological front [1]
-        'M_core',           # dry mass of core [kg]
+        'M_core',           # dry mass of core; with Zalmoxis the mass inside R_core, with the mantle silicate between M_core_solve and R_core [kg]
         'M_mantle',         # dry mass of mantle [kg]
         'M_core_target',    # core mass target of the Zalmoxis structure; 0 with another structure module [kg]
+        'M_core_solve',     # core mass of the last accepted Zalmoxis solve; 0 with another structure module [kg]
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
