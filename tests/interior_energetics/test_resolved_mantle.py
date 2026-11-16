@@ -15,7 +15,11 @@ Invariants and contract clauses exercised:
 - The melt fraction is bounded in [0, 1] and non-decreasing in the magma
   temperature, and its response is non-negative.
 - Each node of the curve integrates the adiabat at most once, and a mantle
-  above its liquidus everywhere needs no integration at all.
+  above its liquidus everywhere needs no integration for its melt fraction.
+- The thermal responses, the mass mean of dT/dT_p and dT_cmb/dT_p, are 1 for
+  an isothermal mantle (analytical limit), equal T / T_p on a temperature-
+  scaled adiabat, and close on the change in mean mantle temperature and in
+  T_cmb along any path (conservation).
 - The cached melt model and curve survive steps and are rebuilt when the
   structure module rewrites the mesh.
 - Shells conserve the mantle mass and the mass integral of any field, and the
@@ -33,6 +37,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 from _adiabat_mesh import (
+    ADIABAT_DLNTDP,
     ADIABAT_DTDP,
     ADIABAT_TLIQ,
     ADIABAT_TSOL,
@@ -234,6 +239,134 @@ def test_melt_curve_rejects_an_undefined_temperature_or_spacing(tmp_path, monkey
     assert curve._nodes == {}
 
 
+# =============================================================================
+# Thermal response of the melt curve
+# =============================================================================
+
+
+def _scaled_model(tmp_path, monkeypatch):
+    """Melt model on a temperature-scaled adiabat, dT/dP = 3e-12 T, with sloped curves."""
+    write_mantle_mesh(tmp_path, _R_CORE, _R_INT, _M_MANTLE)
+    patch_adiabat_inputs(monkeypatch, curve_dtdp=CURVE_DTDP, dlntdp=ADIABAT_DLNTDP)
+    return adiabat.AdiabatMeltModel(_config(), str(tmp_path), _hf_row(), {})
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_melt_curve_thermal_response_is_one_for_an_isothermal_mantle(tmp_path, monkeypatch):
+    """With no gradient every level, and the base, warm one kelvin per kelvin of T_p.
+
+    Analytical limit: an isothermal mantle sits at T_p throughout, so the mass
+    mean of dT/dT_p and dT_cmb/dT_p are both exactly 1, inside the mushy zone
+    and above the hottest liquidus alike. 1837.4 K sits between nodes.
+    """
+    curve = MeltCurve(_model(tmp_path, monkeypatch))
+
+    for tmp in (1837.4, ADIABAT_TLIQ + 63.7):
+        assert curve.dmean_dtmp(tmp) == pytest.approx(1.0, rel=1e-10)
+        assert curve.dcmb_dtmp(tmp) == pytest.approx(1.0, rel=1e-10)
+    # Factor guard: a slope over two node spacings would read 2, not 1.
+    assert abs(curve.dmean_dtmp(1837.4) - 2.0) > 0.5
+    # Edge case: the response has no melt term, so it stays 1 where dphi/dT_p is 0.
+    assert curve.dphi_dtmp(ADIABAT_TLIQ + 63.7) == pytest.approx(0.0, abs=1e-15)
+
+
+@pytest.mark.physics_invariant
+def test_melt_curve_thermal_response_matches_the_adiabat_derivative(tmp_path, monkeypatch):
+    """On a temperature-scaled adiabat dT/dT_p = T / T_p, so deep levels respond more.
+
+    With dT/dP = 3e-12 T the stepping is linear in the anchor, so the mean
+    response is the mass-mean temperature over T_p (1.179 on this mesh) and
+    the base responds with T_cmb / T_p (1.486). The magma temperatures are off
+    the nodes, inside the mushy zone and above every liquidus.
+    """
+    model = _scaled_model(tmp_path, monkeypatch)
+    curve = MeltCurve(model)
+
+    for tmp in (1800.3, 6100.7):
+        state = model.state(tmp)
+        mean = adiabat.mass_weighted_mean(model.profile, state.temperature)
+        assert curve.dmean_dtmp(tmp) == pytest.approx(mean / tmp, rel=1e-9)
+        assert curve.dcmb_dtmp(tmp) == pytest.approx(state.temperature[0] / tmp, rel=1e-9)
+
+    # Discrimination guard: the isothermal response of 1 lies 18 % below.
+    assert abs(curve.dmean_dtmp(1800.3) - 1.0) > 0.1
+    # The base, the hottest level, responds most.
+    assert curve.dcmb_dtmp(1800.3) > curve.dmean_dtmp(1800.3) > 1.0
+    # Scale guard: within the 0.9 to 2.1 range a PALEOS adiabat spans.
+    assert 0.9 < curve.dmean_dtmp(1800.3) < curve.dcmb_dtmp(1800.3) < 2.1
+
+
+@pytest.mark.physics_invariant
+def test_melt_curve_sensible_heat_closes_on_the_change_in_mean_temperature(
+    tmp_path, monkeypatch
+):
+    """The thermal responses integrated over any path equal the change in each temperature.
+
+    Conservation: the sensible heat a solver draws while the mantle cools from
+    T_a to T_b is c_p M times the mean response integrated over the path, and
+    the core's is its heat capacity times the base response. Both must close
+    on the change in the mean mantle temperature and in T_cmb between the two
+    states. The 37 K path crosses node boundaries on a temperature-scaled
+    adiabat; its ends are nodes, so the exact states are the interpolant's ends.
+    """
+    model = _scaled_model(tmp_path, monkeypatch)
+    curve = MeltCurve(model)
+    tmp_a, tmp_b = 1823.0, 1786.0
+
+    # Pieces of uneven width, each within one segment.
+    cuts = np.sort(
+        np.concatenate((np.arange(tmp_b, tmp_a + 0.5), np.arange(tmp_b, tmp_a) + 0.3))
+    )
+    mids, widths = 0.5 * (cuts[:-1] + cuts[1:]), np.diff(cuts)
+    drawn_mean = sum(curve.dmean_dtmp(m) * w for m, w in zip(mids, widths))
+    drawn_cmb = sum(curve.dcmb_dtmp(m) * w for m, w in zip(mids, widths))
+
+    state_a, state_b = model.state(tmp_a), model.state(tmp_b)
+    d_mean = adiabat.mass_weighted_mean(
+        model.profile, state_a.temperature
+    ) - adiabat.mass_weighted_mean(model.profile, state_b.temperature)
+    d_cmb = state_a.temperature[0] - state_b.temperature[0]
+
+    assert drawn_mean == pytest.approx(d_mean, rel=1e-10)
+    assert drawn_cmb == pytest.approx(d_cmb, rel=1e-10)
+    # Discrimination guard: charging dT/dT_p = 1 would close on the 37 K of T_p instead.
+    assert abs(drawn_mean - (tmp_a - tmp_b)) > 0.1 * (tmp_a - tmp_b)
+    # Sign guard: a cooler top leaves a cooler mantle and a cooler base.
+    assert d_cmb > d_mean > 0.0
+
+
+@pytest.mark.physics_invariant
+def test_melt_curve_thermal_nodes_integrate_once_and_reject_nan(tmp_path, monkeypatch):
+    """Each thermal node integrates the adiabat once, and fills the melt node with it.
+
+    A molten mantle still needs the adiabat for its thermal response, unlike
+    its melt fraction. A NaN magma temperature has no response and raises
+    without leaving a node behind.
+    """
+    curve = MeltCurve(_model(tmp_path, monkeypatch, dtdp=ADIABAT_DTDP, curve_dtdp=CURVE_DTDP))
+    calls = count_adiabat_solves(monkeypatch)
+
+    with pytest.raises(ValueError, match='NaN'):
+        curve.dmean_dtmp(float('nan'))
+    with pytest.raises(ValueError, match='NaN'):
+        curve.dcmb_dtmp(float('nan'))
+    assert calls[0] == 0
+    assert curve._thermal_nodes == {}
+
+    # Edge case: above every liquidus the response needs its two nodes integrated.
+    hottest = float(np.max(curve.model.tmp_liq))
+    assert curve.dmean_dtmp(hottest + 0.5) == pytest.approx(1.0, rel=1e-9)
+    assert calls[0] == 2
+    # 50 lookups of all four quantities between 1900.2 and 1900.9 K touch nodes 1900 and 1901.
+    for tmp in np.linspace(1900.2, 1900.9, 50):
+        curve.dmean_dtmp(tmp)
+        curve.dcmb_dtmp(tmp)
+        curve.phi(tmp)
+        curve.dphi_dtmp(tmp)
+    assert calls[0] == 4
+
+
 def test_get_melt_curve_keeps_its_nodes_until_the_structure_is_resolved(tmp_path, monkeypatch):
     """The cached curve, and the nodes it has computed, last as long as the structure.
 
@@ -323,10 +456,8 @@ def test_shell_average_is_exact_for_a_uniform_field_and_grid_independent(tmp_pat
         totals.append(float(np.sum(shell_average(profile, edges, field) * m)))
     assert totals[1] == pytest.approx(totals[0], rel=1e-12)
     assert totals[2] == pytest.approx(totals[0], rel=1e-12)
-    # A single shell reduces to the mass-weighted mean of the field. The
-    # shell volume growing as r**2 pulls it above the midpoint value of one
-    # half; the denser base pulls it back below the 0.598 a uniform-density
-    # mantle of this geometry gives, so dropping either weight is caught.
+    # One shell gives the mass mean: r**2 lifts it above 0.5 and the denser base keeps it
+    # below the 0.598 of a uniform mantle, so dropping either weight is caught.
     single = shell_average(profile, shell_edges(profile, 1), field)[0]
     assert 0.55 < single < 0.59
 

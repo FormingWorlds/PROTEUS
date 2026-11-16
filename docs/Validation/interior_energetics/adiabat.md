@@ -17,7 +17,7 @@ explicit stepping approximates.
 |---|---|---|---|
 | `tests/interior_energetics/test_adiabat.py::test_integrate_adiabat_recovers_the_constant_gradient_isentrope` | Analytical limit of the isentrope `dT/dP = nabla_ad T / P` | Pins the power-law solution `T = T_top (P/P_top)^nabla_ad` over a pressure ratio of 140. Guards against an exponent that has picked up a factor of two, an adiabat that cools with depth, and a pressure-unit slip. | 2026-11-10 |
 | `tests/interior_energetics/test_adiabat.py::test_zalmoxis_gradient_is_in_the_silicate_range` | Cross-implementation: the adiabatic gradient Zalmoxis reads for its own structure adiabat, from the equation of state named by `interior_struct.zalmoxis.mantle_eos` | Confirms the gradient reaching the boundary backend is the one Zalmoxis uses, in the range silicate melt occupies (a few to a few tens of kelvin per gigapascal), falling with depth as the bulk modulus stiffens. Also confirms the solidus lies below the liquidus at every level of the tabulated curves and that both rise with depth. | 2026-11-10 |
-| `tests/interior_energetics/test_adiabat.py::test_paleos_melting_curves_follow_the_published_liquidus` | Published benchmark: Fei et al. (2021, Nat. Commun. 12, 876) MgSiO3 liquidus of 6000 K at 140 GPa, and the Belonoshko et al. (2005) zero-pressure intercept of 1831 K | With the Zalmoxis structure module the melt model takes the PALEOS curves rather than a tabulated folder. Pins the liquidus at both anchors and the solidus at `mushy_zone_factor` times the liquidus. Guards against the tabulated Wolf and Bower (2018) curves leaking back in (4760 K at 140 GPa), a Pa-versus-GPa slip, and a solidus scaled by the wrong factor. | 2026-11-10 |
+| `tests/interior_energetics/test_adiabat.py::test_paleos_melting_curves_follow_the_published_liquidus` | Published benchmark: Fei et al. (2021, Nat. Commun. 12, 876)[^cite-fei2021] MgSiO3 liquidus of 6000 K at 140 GPa, and the Belonoshko et al. (2005)[^cite-belonoshko2005] zero-pressure intercept of 1831 K | With the Zalmoxis structure module the melt model takes the PALEOS curves rather than a tabulated folder. Pins the liquidus at both anchors and the solidus at `mushy_zone_factor` times the liquidus. Guards against the tabulated Wolf and Bower (2018) curves leaking back in (4760 K at 140 GPa), a Pa-versus-GPa slip, and a solidus scaled by the wrong factor. | 2026-11-10 |
 
 ## Adiabatic gradient
 
@@ -27,7 +27,7 @@ $$\frac{\mathrm{d}T}{\mathrm{d}P} = \nabla_\mathrm{ad}(P,T)\,\frac{T}{P}$$
 
 down the pressure profile, with the dimensionless gradient
 $\nabla_\mathrm{ad}$ looked up from the equation-of-state tables: column 8 of
-the PALEOS tables, or the tabulated `dT/dP` of the Wolf and Bower (2018) and
+the PALEOS tables, or the tabulated `dT/dP` of the Wolf and Bower (2018)[^cite-wolf2018] and
 RTPress sets converted as $\nabla_\mathrm{ad} = (\mathrm{d}T/\mathrm{d}P)\,P/T$.
 The boundary interior module takes the same gradient through
 `zalmoxis.mixing.get_mixed_nabla_ad`, rather than re-reading the tables, so the
@@ -44,7 +44,7 @@ With the Zalmoxis structure module the solidus and liquidus are always the
 PALEOS MgSiO3 curves: the Zalmoxis `PALEOS-liquidus`, Belonoshko et al. (2005)
 below 2.55 GPa and Fei et al. (2021) above, and a solidus of
 `interior_struct.zalmoxis.mushy_zone_factor` times that liquidus (0.8 by
-default, the Stixrude (2014) cryoscopic ratio). These are the curves Zalmoxis
+default, the Stixrude (2014)[^cite-stixrude2014] cryoscopic ratio). These are the curves Zalmoxis
 uses for a PALEOS mantle, the curves Aragog is given for a PALEOS mantle, and
 the curves the `liquidus_super` initial condition is solved against, so the
 melt state, the structure and the initial condition share one melting model.
@@ -52,12 +52,16 @@ A `melting_dir` set alongside is not read by the melt model, and the
 configuration logs a warning saying so.
 
 With any other structure module the curves are the two-column
-pressure-temperature files under
-`FWL_DATA/interior_lookup_tables/Melting_curves/`, selected by
-`interior_struct.melting_dir` and defaulting to `Wolf_Bower+2018`, the folder
-the basic interior lookup-table download provides. These are the same curves
-the Aragog backend is configured with for a non-PALEOS mantle, read through the
-same `proteus.utils.data.load_melting_curve` reader.
+pressure-temperature files selected by `interior_struct.melting_dir`,
+defaulting to `Wolf_Bower+2018`. They are located by
+`proteus.utils.data.resolve_melting_curve_files`, as for the Aragog backend and
+the Zalmoxis structure: a curve set served through the data manifest
+(`Wolf_Bower+2018`, `Monteux+600`, `Monteux-600`) is read from its
+checksum-verified dataset directory, and any other name from
+`FWL_DATA/interior_lookup_tables/Melting_curves/<melting_dir>`. They are read
+through the same `proteus.utils.data.load_melting_curve` reader.
+`tests/interior_energetics/test_adiabat.py::test_load_melting_curves_reads_the_default_curves_from_their_dataset`
+checks that the default curves load from the dataset directory alone.
 
 `tests/interior_energetics/test_adiabat.py::test_paleos_melting_curves_follow_the_published_liquidus`
 pins the PALEOS liquidus against the Fei et al. (2021) value of 6000 K at
@@ -83,3 +87,11 @@ pins against the closed-form shell integral.
 `RF_depth` is the depth of the adiabat-liquidus crossing as a fraction of the
 planet radius, $1 - r_\mathrm{liq}/R_\mathrm{int}$, matching the convention the
 Aragog and SPIDER backends report.
+
+[^cite-belonoshko2005]: Belonoshko, A.B., Skorodumova, N.V., Rosengren, A., Ahuja, R., Johansson, B., Burakovsky, L. & Preston, D.L., *[High-pressure melting of MgSiO3](https://doi.org/10.1103/PhysRevLett.94.195701)*, Physical Review Letters, 94, 195701, 2005.
+
+[^cite-fei2021]: Fei, Y., Seagle, C.T., Townsend, J.P., et al., *[Melting and density of MgSiO3 determined by shock compression of bridgmanite to 1254 GPa](https://doi.org/10.1038/s41467-021-21170-y)*, Nature Communications, 12, 876, 2021.
+
+[^cite-stixrude2014]: Stixrude, L., *[Melting in super-earths](https://doi.org/10.1098/rsta.2013.0076)*, Philosophical Transactions of the Royal Society A, 372, 20130076, 2014.
+
+[^cite-wolf2018]: Wolf, A.S. & Bower, D.J., *[An equation of state for high pressure-temperature liquids (RTpress) with application to MgSiO3 melt](https://doi.org/10.1016/j.pepi.2018.02.004)*, Physics of the Earth and Planetary Interiors, 278, 59-74, 2018.

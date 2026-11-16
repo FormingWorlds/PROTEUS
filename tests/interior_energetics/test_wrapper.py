@@ -818,6 +818,94 @@ def test_handoff_callable_anchors_cmb_for_aragog_ascending_profile():
     assert T_arr[-1] == pytest.approx(2500.0, rel=1e-12)
 
 
+def _boundary_adiabat_interior(t_p=2600.0, dtdp=2.0e-8, n_levels=60, n_shells=8):
+    """Interior state as the boundary adiabat model publishes it.
+
+    The adiabat is linear in pressure, T = T_p + dtdp (P - P_top), on a mantle
+    whose pressure falls linearly from 140 GPa at the CMB to 1 bar at the top,
+    so the exact value at any pressure is known. The shell temperatures are the
+    shell means, hotter than T_p in the top shell.
+    """
+    radius = np.linspace(3.4e6, 6.371e6, n_levels)
+    pressure = np.linspace(1.4e11, 1.0e5, n_levels)
+    temp = t_p + dtdp * (pressure - pressure[-1])
+    edges = np.linspace(radius[0], radius[-1], n_shells + 1)
+    mid = 0.5 * (edges[:-1] + edges[1:])
+    interior_o = _mock_interior_o(n_stag=n_shells)
+    interior_o.radius = edges
+    interior_o.temp = np.interp(mid, radius, temp)
+    interior_o.temp_profile = (radius, pressure, temp)
+    return interior_o, radius, pressure, temp
+
+
+def _capture_solver_kwargs(config, interior_o):
+    """Run a forced structure update and return the keyword arguments Zalmoxis received."""
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 2600.0,
+        'Phi_global': 0.3,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.4e6, None)
+        ) as mock_solver,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        update_structure_from_interior(
+            _mock_dirs(), config, hf_row, interior_o, 0.0, 2600.0, 0.3, force=True
+        )
+    mock_solver.assert_called_once()
+    return mock_solver.call_args.kwargs
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_handoff_follows_the_boundary_adiabat_on_pressure():
+    """The boundary adiabat reaches the re-solve on pressure, with the top at T_p.
+
+    With T = 2600 K + 2e-8 K/Pa (P - 1 bar) every pressure has a known value:
+    the top of the mantle 2600 K wherever the re-solve puts it, 1.4e11 Pa
+    5000 K, and the core, deeper than the mantle, the CMB value. The re-solve
+    must also leave the boundary's T_magma and T_surf to the backend. The
+    shell-mean hand-off the other backends use would start the top at the mean
+    of the top shell, 175 K above T_p.
+    """
+    config = _mock_config(update_interval=0)
+    config.interior_energetics.module = 'boundary'
+    interior_o, radius, pressure, temp = _boundary_adiabat_interior()
+    kwargs = _capture_solver_kwargs(config, interior_o)
+    tf = kwargs['temperature_function']
+    r_arr, t_arr = kwargs['temperature_arrays']
+
+    assert kwargs['seed_boundary_temperatures'] is False
+    # The top of the mantle sits at T_p, at its own radius or one the re-solve moved.
+    for r_top in (radius[-1], radius[-1] - 2.0e4, radius[-1] + 2.0e4):
+        assert tf(r_top, 1.0e5) == pytest.approx(2600.0, rel=1e-12)
+    # Edge case: above the mantle (P below 1 bar) the top value holds.
+    assert tf(radius[-1], 0.0) == pytest.approx(2600.0, rel=1e-12)
+    # Off the levels, on pressure and not on radius.
+    p_probe = 0.5 * (pressure[20] + pressure[21])
+    assert tf(radius[0], p_probe) == pytest.approx(
+        2600.0 + 2.0e-8 * (p_probe - 1.0e5), rel=1e-12
+    )
+    assert tf(radius[-1], p_probe) == pytest.approx(tf(radius[0], p_probe), rel=1e-15)
+    # The core, deeper than the mantle, holds T_cmb.
+    assert tf(0.0, 3.0e11) == pytest.approx(temp[0], rel=1e-12)
+    assert temp[0] == pytest.approx(2600.0 + 2.0e-8 * (1.4e11 - 1.0e5), rel=1e-12)
+    # The r-indexed arrays for the JAX path are the adiabat itself, ascending in radius.
+    np.testing.assert_allclose(r_arr, radius, rtol=1e-15)
+    np.testing.assert_allclose(t_arr, temp, rtol=1e-15)
+
+    # Discrimination guard: the shell-mean hand-off starts the top of the mantle hotter.
+    config.interior_energetics.module = 'aragog'
+    shell_tf = _capture_solver_kwargs(config, interior_o)['temperature_function']
+    assert shell_tf(radius[-1], 1.0e5) - 2600.0 > 100.0
+    assert shell_tf(radius[-1], 1.0e5) == pytest.approx(interior_o.temp[-1], rel=1e-12)
+
+
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_handoff_profile_invariant_to_node_ordering():
@@ -2886,17 +2974,20 @@ def test_update_planet_mass_handles_missing_element_columns():
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'module,expected',
+    'module,melt_model,expected',
     [
-        ('spider', 50),
-        ('aragog', 75),
-        ('boundary', 2),
-        ('dummy', 2),
+        ('spider', 'linear', 50),
+        ('aragog', 'linear', 75),
+        ('boundary', 'linear', 2),
+        ('boundary', 'adiabat', 63),
+        ('dummy', 'linear', 2),
     ],
+    ids=['spider', 'aragog', 'boundary-linear', 'boundary-adiabat', 'dummy'],
 )
-def test_get_nlevb_returns_per_module_levels(module, expected):
-    """get_nlevb returns config.num_levels for spider/aragog and the
-    fixed integer 2 for boundary/dummy.
+def test_get_nlevb_returns_per_module_levels(module, melt_model, expected):
+    """get_nlevb returns config.num_levels for spider, aragog and the boundary
+    adiabat model, whose shells the tides modules read, and the fixed integer 2
+    for dummy and the boundary linear model.
     """
     from types import SimpleNamespace
 
@@ -2904,14 +2995,42 @@ def test_get_nlevb_returns_per_module_levels(module, expected):
 
     # Use distinct num_levels to discriminate spider vs aragog dispatch.
     config = SimpleNamespace(
-        interior_energetics=SimpleNamespace(module=module, num_levels=expected),
+        interior_energetics=SimpleNamespace(
+            module=module,
+            num_levels=expected,
+            boundary=SimpleNamespace(melt_model=melt_model),
+        ),
     )
-    if module in ('boundary', 'dummy'):
+    if expected == 2:
         # num_levels is ignored; set to a different value to discriminate.
         config.interior_energetics.num_levels = 999
     assert get_nlevb(config) == expected
     # Type discrimination: must be a Python int.
     assert isinstance(get_nlevb(config), int)
+
+
+@pytest.mark.unit
+def test_boundary_adiabat_interior_has_num_levels_minus_one_shells():
+    """An Interior_t sized by get_nlevb gives the boundary adiabat num_levels - 1 shells.
+
+    The tides arrays and the shells the backend publishes have this length, so
+    the tides modules see the resolved mantle rather than a single layer.
+    """
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.wrapper import get_nlevb
+
+    config = SimpleNamespace(
+        interior_energetics=SimpleNamespace(
+            module='boundary', num_levels=80, boundary=SimpleNamespace(melt_model='adiabat')
+        ),
+    )
+    interior_o = Interior_t(get_nlevb(config))
+    assert interior_o.nlev_s == 79
+    assert interior_o.tides.shape == (79,)
+    assert interior_o.radius.shape == (80,)
+    # Edge case: the profile slot exists and is empty until the backend publishes one.
+    assert interior_o.temp_profile is None
 
 
 @pytest.mark.unit

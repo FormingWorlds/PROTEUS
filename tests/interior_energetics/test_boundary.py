@@ -34,6 +34,7 @@ magma ocean states to solid interiors.
 
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -41,6 +42,7 @@ import attrs
 import numpy as np
 import pytest
 from _adiabat_mesh import (
+    ADIABAT_DLNTDP,
     ADIABAT_DTDP,
     CURVE_DTDP,
     count_adiabat_solves,
@@ -49,6 +51,7 @@ from _adiabat_mesh import (
 )
 
 from proteus.config import read_config_object
+from proteus.interior_energetics import adiabat
 from proteus.interior_energetics.boundary import BoundaryRunner
 from proteus.utils.constants import (
     M_earth,
@@ -95,9 +98,8 @@ def mock_config():
     **Physical Basis**: Terrestrial magma ocean cooling parameters (Turcotte & Schubert 2014)
     """
     boundary = SimpleNamespace(
-        # The linear melt model, so these tests exercise the solidification
-        # front with constant melting temperatures; the adiabat model has its
-        # own fixtures further down.
+        # Linear model: a solidification front between constant melting temperatures
+        # (the adiabat model has its own fixtures further down).
         melt_model='linear',
         T_solidus=1420.0,  # K
         T_liquidus=2020.0,  # K
@@ -1983,9 +1985,8 @@ def test_dT_pdt_excludes_latent_heat_from_a_wholly_molten_mantle(boundary_runner
     assert dTp_dt == pytest.approx(expected, rel=1e-12)
     assert dTp_dt < 0.0
 
-    # Discrimination: the ungated form would divide by an extra
-    # L * M / (T_liquidus - T_solidus), slowing the rate by a factor of 1.56
-    # at these parameters.
+    # Discrimination: the ungated form adds L M / (T_liquidus - T_solidus)
+    # to the denominator, slowing the rate by 1.56 times here.
     latent = (
         boundary_runner.heat_fusion_silicate
         * boundary_runner.mantle_mass
@@ -2021,13 +2022,8 @@ def test_dT_pdt_excludes_latent_heat_from_a_wholly_molten_mantle(boundary_runner
 # =============================================================================
 # Tests: adiabat melt model
 # =============================================================================
-#
-# The adiabat model reads the structure's mantle mesh, so these tests write one
-# under tmp_path and stand in for the Zalmoxis gradient and the tabulated
-# melting curves (tests/helpers/_adiabat_mesh.py). The masses come from the
-# structure, so the linear model's bulk density and the mesh describe the same
-# mantle, and the constant melting curves match the fixture's T_solidus and
-# T_liquidus so the two models can be compared in the isothermal limit.
+# Mesh, gradient and curves from tests/helpers/_adiabat_mesh.py; the constant curves match
+# the fixture's T_solidus and T_liquidus, so both models compare in the isothermal limit.
 
 _ADB_R_INT = 6.371e6  # m
 _ADB_R_CORE = 3.4e6  # m
@@ -2099,13 +2095,19 @@ def _adiabat_runner(
     tides=None,
     ic=0,
     T_magma=2000.0,
+    dlntdp=0.0,
 ):
     """BoundaryRunner with the adiabat melt model on a freshly written mesh."""
     write_mantle_mesh(
         tmp_path, _ADB_R_CORE, _ADB_R_INT, _ADB_M_MANTLE, rho_cmb=rho_cmb, rho_top=rho_top
     )
     patch_adiabat_inputs(
-        monkeypatch, dtdp=dtdp, curve_dtdp=curve_dtdp, tsol=_ADB_TSOL, tliq=_ADB_TLIQ
+        monkeypatch,
+        dtdp=dtdp,
+        curve_dtdp=curve_dtdp,
+        tsol=_ADB_TSOL,
+        tliq=_ADB_TLIQ,
+        dlntdp=dlntdp,
     )
     interior_o = _adiabat_interior(nlev_s, tides=tides, ic=ic)
     runner = _make_runner(config, tmp_path, interior_o, 'adiabat', T_magma=T_magma)
@@ -2132,13 +2134,15 @@ def test_adiabat_isothermal_limit_reproduces_the_linear_cooling_rate(
     """With no gradient and constant curves the adiabat model cools like the linear one.
 
     Cross-implementation check against the Schaefer et al. (2016) solidification
-    front: an isothermal, uniform-density mantle between a pressure-independent
-    solidus and liquidus has a molten mass fraction linear in T_p, so the
-    sensible capacity of its molten part, c_p phi M, and the latent capacity
-    of its front, L M / (T_liq - T_sol), must match the front-radius form of
-    the linear model. 1713.6 K sits between the curve's nodes and inside the
-    mushy zone.
+    front with the whole mantle's sensible heat (``sensible_heat = "whole"``):
+    an isothermal, uniform-density mantle warms one kelvin per kelvin of T_p at
+    every level, so its sensible capacity is c_p M, and between a
+    pressure-independent solidus and liquidus its molten mass fraction is
+    linear in T_p, so the latent capacity of its front is L M / (T_liq - T_sol).
+    Both must match the front-radius form of the linear model. 1713.6 K sits
+    between the curve's nodes and inside the mushy zone.
     """
+    mock_config.interior_energetics.boundary.sensible_heat = 'whole'
     linear = _make_runner(mock_config, tmp_path, _adiabat_interior(1), 'linear')
     adiabatic, _ = _adiabat_runner(
         mock_config, tmp_path, monkeypatch, rho_cmb=4800.0, rho_top=4800.0
@@ -2148,19 +2152,19 @@ def test_adiabat_isothermal_limit_reproduces_the_linear_cooling_rate(
     L = mock_config.interior_energetics.latent_heat_of_fusion
     phi = (T_p - _ADB_TSOL) / (_ADB_TLIQ - _ADB_TSOL)
 
-    expected = _ADB_M_MANTLE * (cp * phi + L / (_ADB_TLIQ - _ADB_TSOL))
-    assert adiabatic.heat_capacity(T_p) == pytest.approx(expected, rel=1e-12)
+    expected = _ADB_M_MANTLE * (cp + L / (_ADB_TLIQ - _ADB_TSOL))
+    assert adiabatic.heat_capacity(T_p) == pytest.approx(expected, rel=1e-10)
     assert linear.heat_capacity(T_p) == pytest.approx(expected, rel=1e-10)
     assert adiabatic.dT_pdt(T_p, T_surf, 0.0) == pytest.approx(
         linear.dT_pdt(T_p, T_surf, 0.0), rel=1e-10
     )
-    # Factor guards: charging the whole mantle's sensible heat (1867 J/kg/K)
-    # or dropping the latent term (587 J/kg/K) lands far from 1254 J/kg/K.
-    whole_mantle = _ADB_M_MANTLE * (cp + L / (_ADB_TLIQ - _ADB_TSOL))
-    assert abs(adiabatic.heat_capacity(T_p) / whole_mantle - 1.0) > 0.3
-    assert abs(adiabatic.heat_capacity(T_p) / (_ADB_M_MANTLE * cp * phi) - 1.0) > 0.3
+    # Factor guards: charging only the molten part's sensible heat (1254 J/kg/K)
+    # or dropping the latent term (1200 J/kg/K) lands far from 1867 J/kg/K.
+    molten_only = _ADB_M_MANTLE * (cp * phi + L / (_ADB_TLIQ - _ADB_TSOL))
+    assert abs(adiabatic.heat_capacity(T_p) / molten_only - 1.0) > 0.3
+    assert abs(adiabatic.heat_capacity(T_p) / (_ADB_M_MANTLE * cp) - 1.0) > 0.3
     # Scale guard: per unit mantle mass, of order a silicate heat capacity.
-    assert 1000.0 < adiabatic.heat_capacity(T_p) / _ADB_M_MANTLE < 1500.0
+    assert 1500.0 < adiabatic.heat_capacity(T_p) / _ADB_M_MANTLE < 2200.0
     # Sign guard: a mantle hotter than its surface cools.
     assert adiabatic.dT_pdt(T_p, T_surf, 0.0) < 0.0
 
@@ -2194,16 +2198,17 @@ def test_adiabat_step_reports_mass_and_volume_melt_fractions(
     assert out['M_mantle_liquid'] == pytest.approx(out['Phi_global'] * _ADB_M_MANTLE, rel=1e-12)
     # The front lies between the surface and the core-mantle boundary.
     assert 0.0 < out['RF_depth'] < 1.0 - _ADB_R_CORE / _ADB_R_INT
-    # The latent heat of the advancing front adds to the heat capacity.
+    # The latent heat of the advancing front adds to the whole mantle's sensible heat.
     cp = mock_config.interior_energetics.boundary.silicate_heat_capacity
-    assert out['Cp_eff'] > cp * out['Phi_global']
+    assert out['Cp_eff'] > cp
     assert out['Cp_eff'] == pytest.approx(
         runner.heat_capacity(T_p_final) / _ADB_M_MANTLE, rel=1e-12
     )
 
-    # The adiabat itself is handed to the structure re-solve on pressure,
+    # The adiabat itself is handed to the structure re-solve on every profile level,
     # anchored at T_p at the top and warming with depth.
-    pres, temp = interior_o.temp_profile
+    radius, pres, temp = interior_o.temp_profile
+    np.testing.assert_allclose(radius, runner.melt_curve.model.profile.radius, rtol=1e-12)
     np.testing.assert_allclose(pres, runner.melt_curve.model.profile.pressure, rtol=1e-12)
     assert temp[-1] == pytest.approx(T_p_final, rel=1e-12)
     assert np.all(np.diff(temp) <= 0.0)
@@ -2291,44 +2296,74 @@ def test_adiabat_tidal_heating_is_summed_over_the_shells(mock_config, tmp_path, 
     assert off.tidal_term == pytest.approx(0.0, abs=1e-30)
 
 
-@pytest.mark.physics_invariant
-def test_adiabat_mantle_outside_its_mushy_zone_cools_as_a_whole(
-    mock_config, tmp_path, monkeypatch
-):
-    """Wholly molten or wholly solid, the whole mantle cools with no latent heat.
+def _mean_response(runner, T_p):
+    """Mass mean of dT/dT_p on the adiabat, T / T_p under the temperature-scaled stand-in."""
+    model = runner.melt_curve.model
+    return adiabat.mass_weighted_mean(model.profile, model.state(T_p).temperature) / T_p
 
-    Above the hottest liquidus in the mantle every level is molten, and below
-    the coldest solidus every level is solid, so there is no front to advance
-    and the heat capacity is c_p M_mantle. A wholly molten mantle is
-    recognised without integrating the adiabat. Inside the mushy zone the
-    front releases latent heat on top of the molten part's sensible heat.
+
+@pytest.mark.physics_invariant
+def test_adiabat_heat_capacity_follows_the_adiabat(mock_config, tmp_path, monkeypatch):
+    """The whole mantle's sensible heat is weighted by dT/dT_p, the core's by dT_cmb/dT_p.
+
+    On a temperature-scaled adiabat (dT/dP = 3e-12 T) every level warms by
+    T / T_p per kelvin of T_p, 1.18 in the mass mean and 1.49 at the base.
+    Wholly solid or wholly molten, the mantle draws no latent heat and its
+    capacity is c_p M times that mean; a molten mantle is recognised without
+    integrating for its melt fraction. Inside the mushy zone the front adds
+    L M dphi/dT_p. Crossing the top solidus adds the latent term and leaves
+    the sensible heat whole, where the molten-only form fell to 4 % of it.
     """
+    mock_config.interior_struct.core_heatcap = 450.0
+    mock_config.interior_energetics.boundary.include_core_heat_capacity = True
     runner, _ = _adiabat_runner(
-        mock_config, tmp_path, monkeypatch, dtdp=ADIABAT_DTDP, curve_dtdp=CURVE_DTDP
+        mock_config, tmp_path, monkeypatch, curve_dtdp=CURVE_DTDP, dlntdp=ADIABAT_DLNTDP
     )
     calls = count_adiabat_solves(monkeypatch)
     cp = mock_config.interior_energetics.boundary.silicate_heat_capacity
+    L = mock_config.interior_energetics.latent_heat_of_fusion
     whole = cp * _ADB_M_MANTLE
 
     hottest = float(np.max(runner.melt_curve.model.tmp_liq))
     assert runner.melt_fraction(hottest + 10.3) == pytest.approx(1.0, abs=1e-15)
-    assert runner.heat_capacity(hottest + 10.3) == pytest.approx(whole, rel=1e-12)
     assert calls[0] == 0
-
+    for T_p in (hottest + 10.3, 900.4):
+        response = _mean_response(runner, T_p)
+        assert runner.mantle_heat_capacity(T_p) == pytest.approx(whole * response, rel=1e-9)
+        # Discrimination guard: dT/dT_p = 1 lies 18 % below.
+        assert abs(runner.mantle_heat_capacity(T_p) / whole - 1.0) > 0.1
     assert runner.melt_fraction(900.4) == pytest.approx(0.0, abs=1e-15)
-    assert runner.heat_capacity(900.4) == pytest.approx(whole, rel=1e-12)
 
-    # Inside the mushy zone the latent term is active: the capacity exceeds
-    # the molten part's sensible heat by L M dphi/dT_p.
+    # The core follows the base of the adiabat: 9.0e26 J/K times T_cmb / T_p.
     T_mush = 1850.4
-    phi = runner.melt_fraction(T_mush)
-    assert 0.0 < phi < 1.0
-    L = mock_config.interior_energetics.latent_heat_of_fusion
-    latent = L * _ADB_M_MANTLE * runner.melt_curve.dphi_dtmp(T_mush)
-    assert latent > 0.0
-    assert runner.heat_capacity(T_mush) == pytest.approx(
-        cp * phi * _ADB_M_MANTLE + latent, rel=1e-12
+    t_cmb = float(runner.melt_curve.model.state(T_mush).temperature[0])
+    assert runner.core_heat_capacity_at(T_mush) == pytest.approx(
+        9.0e26 * t_cmb / T_mush, rel=1e-9
     )
+    assert abs(runner.core_heat_capacity_at(T_mush) / 9.0e26 - 1.0) > 0.3
+
+    phi = runner.melt_fraction(T_mush)
+    latent = L * _ADB_M_MANTLE * runner.melt_curve.dphi_dtmp(T_mush)
+    assert 0.0 < phi < 1.0 and latent > 0.0
+    assert runner.heat_capacity(T_mush) == pytest.approx(
+        whole * _mean_response(runner, T_mush) + latent + 9.0e26 * t_cmb / T_mush, rel=1e-9
+    )
+    # Cp_eff stays the mantle's own.
+    assert runner.mantle_heat_capacity(T_mush) == pytest.approx(
+        runner.heat_capacity(T_mush) - runner.core_heat_capacity_at(T_mush), rel=1e-12
+    )
+
+    # Edge case: either side of the top solidus the capacity changes by the latent term only.
+    t_sol_top = float(runner.melt_curve.model.tmp_sol[-1])
+    below, above = (
+        runner.mantle_heat_capacity(t_sol_top - 0.6),
+        runner.mantle_heat_capacity(t_sol_top + 0.6),
+    )
+    assert 1.0 <= above / below < 1.2
+    molten_only = cp * runner.melt_fraction(t_sol_top + 0.6) * _ADB_M_MANTLE + L * (
+        _ADB_M_MANTLE * runner.melt_curve.dphi_dtmp(t_sol_top + 0.6)
+    )
+    assert molten_only / below < 0.1
 
 
 def test_adiabat_without_a_structure_mesh_names_the_boundary_switch(
@@ -2422,14 +2457,111 @@ def test_adiabat_step_cools_through_the_mushy_zone(mock_config, tmp_path, monkey
     assert out['Phi_global'] == pytest.approx(runner.melt_fraction(out['T_magma']), abs=1e-4)
 
 
+def _structure_resolve_config():
+    """Configuration fields the structure re-solve reads, for a boundary run."""
+    from unittest.mock import MagicMock
+
+    config = MagicMock()
+    config.interior_energetics.module = 'boundary'
+    config.interior_struct.zalmoxis.update_interval = 0.0
+    config.planet.temperature_mode = 'isothermal'
+    return config
+
+
+def _resolving_structure(tmp_path, calls):
+    """Stand-in for the Zalmoxis solve that evaluates the handed temperature on the mesh.
+
+    It keeps the structure as written, evaluates the temperature function on
+    every mesh level, top level last, the way the structure solve does, and
+    sets the boundary temperatures through the real Zalmoxis helper when the
+    caller asks for it.
+    """
+    from proteus.interior_struct.zalmoxis import _seed_boundary_temperatures
+
+    data = np.loadtxt(os.path.join(str(tmp_path), 'data', 'zalmoxis_output.dat'))
+
+    def _solve(config, outdir, hf_row, num_spider_nodes=0, **kwargs):
+        tf = kwargs['temperature_function']
+        temperature = np.array([tf(r, p) for r, p in zip(data[:, 0], data[:, 1])])
+        calls.append((kwargs['seed_boundary_temperatures'], temperature))
+        if kwargs['seed_boundary_temperatures']:
+            _seed_boundary_temperatures(config, hf_row, temperature)
+        return _ADB_R_CORE, None
+
+    return _solve
+
+
+@pytest.mark.physics_invariant
+def test_adiabat_structure_resolve_does_not_heat_the_mantle(mock_config, tmp_path, monkeypatch):
+    """Boundary steps alternating with structure re-solves keep T_magma where the steps put it.
+
+    Coupled cycle: a boundary step with no net cooling, then the real
+    structure re-solve with a stand-in solve, then the next step from the
+    updated row, five times. On a temperature-scaled adiabat (base 1.49 T_p)
+    the re-solve must see the top of the mantle at T_p, and T_magma must not
+    move. The shell-mean hand-off with the top node written back would raise
+    T_magma by the top shell's adiabatic increment on every cycle.
+    """
+    from proteus.interior_energetics.wrapper import (
+        interior_temperature_handoff,
+        update_structure_from_interior,
+    )
+
+    t_p = 2600.0
+    write_mantle_mesh(tmp_path, _ADB_R_CORE, _ADB_R_INT, _ADB_M_MANTLE)
+    patch_adiabat_inputs(
+        monkeypatch,
+        curve_dtdp=CURVE_DTDP,
+        tsol=_ADB_TSOL,
+        tliq=_ADB_TLIQ,
+        dlntdp=ADIABAT_DLNTDP,
+    )
+    from proteus.interior_energetics.common import Interior_t
+
+    interior_o = Interior_t(9)  # 8 shells
+    interior_o.ic = 2
+    config = _structure_resolve_config()
+    dirs = {'output': str(tmp_path)}
+    calls = []
+    hf_row = _adiabat_hf_row(t_p)
+    hf_row['gravity'] = 9.8
+
+    monkeypatch.setattr(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        _resolving_structure(tmp_path, calls),
+    )
+    for _ in range(5):
+        runner = _make_runner(
+            mock_config, tmp_path, interior_o, 'adiabat', T_magma=hf_row['T_magma']
+        )
+        _, out = _run_to(runner, interior_o, tmp_path, runner.T_p_0)
+        hf_row.update(out)
+        update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, hf_row['T_magma'], 0.5, force=True
+        )
+
+    assert len(calls) == 5
+    assert hf_row['T_magma'] == pytest.approx(t_p, rel=1e-12)
+    seeded, temperature = calls[-1]
+    assert seeded is False
+    # The re-solve saw the adiabat: T_p at the top, warmer with depth, 1.49 T_p at the base.
+    assert temperature[-1] == pytest.approx(t_p, rel=1e-12)
+    assert np.all(np.diff(temperature) <= 0.0)
+    assert temperature[0] / t_p == pytest.approx(1.4864, rel=1e-3)
+    assert len(interior_o.phi) == 8
+
+    # Discrimination guard: the shell means start the top of the mantle 60 K hotter, which a
+    # written-back top node would add to T_magma on every cycle.
+    interior_o.temp_profile = None
+    shell_top = interior_temperature_handoff(config, interior_o)[2](_ADB_R_INT, 1.0e5)
+    assert shell_top - t_p > 30.0
+
+
 # =============================================================================
 # Tests: the choices the dummy backend makes differently
 # =============================================================================
-#
-# include_core_heat_capacity, sensible_heat and tidal_viscosity default to this
-# backend's own behaviour; set to true / "whole" / "kervazo" they follow the
-# dummy backend. Isothermal limit throughout (no gradient, constant curves), so
-# phi = (T - 1420) / 600 at every level and dphi/dT_p = 1 / 600 K-1.
+# Set to true / "whole" / "kervazo" these follow the dummy backend. Isothermal limit throughout,
+# so phi = (T - 1420) / 600 at every level and dphi/dT_p = 1 / 600 K-1.
 
 # 1850.4 K inside the mushy zone, 900.4 K below it, 2100.7 K above it.
 _T_MUSH, _T_SOLID, _T_MOLTEN = 1850.4, 900.4, 2100.7
@@ -2478,17 +2610,21 @@ def test_core_heat_capacity_is_added_only_when_requested(mock_config, tmp_path, 
 def test_sensible_heat_whole_cools_the_whole_partly_molten_mantle(
     mock_config, tmp_path, monkeypatch
 ):
-    """sensible_heat = "whole" counts c_p M in the mushy zone, "molten" c_p phi M.
+    """On the linear model "whole" counts c_p M in the mushy zone, "molten" c_p phi M.
 
     At 1850.4 K, phi = 0.71733 and the latent capacity is
     L M / 600 = 4e5 x 4e24 / 600 = 2.66667e27 J/K, so "whole" gives
     4.8e27 + 2.66667e27 = 7.46667e27 J/K and "molten" gives
     3.44320e27 + 2.66667e27 = 6.10987e27 J/K. Outside the mushy zone the
-    two agree on c_p M. "whole" has no jump in sensible heat at the solidus.
+    two agree on c_p M. The adiabat model does not read the switch: its
+    sensible heat is always the whole mantle's, here 7.46667e27 J/K.
     """
-    molten, _ = _adiabat_runner(mock_config, tmp_path, monkeypatch)
+    interior_lin = _adiabat_interior(1)
+    molten = _make_runner(mock_config, tmp_path, interior_lin, 'linear')
+    adiabat_molten, _ = _adiabat_runner(mock_config, tmp_path, monkeypatch)
     mock_config.interior_energetics.boundary.sensible_heat = 'whole'
-    whole, _ = _adiabat_runner(mock_config, tmp_path, monkeypatch)
+    whole = _make_runner(mock_config, tmp_path, interior_lin, 'linear')
+    adiabat_whole, _ = _adiabat_runner(mock_config, tmp_path, monkeypatch)
 
     assert whole.heat_capacity(_T_MUSH) == pytest.approx(7.466667e27, rel=1e-6)
     assert molten.heat_capacity(_T_MUSH) == pytest.approx(6.109867e27, rel=1e-6)
@@ -2507,15 +2643,12 @@ def test_sensible_heat_whole_cools_the_whole_partly_molten_mantle(
     assert whole.heat_capacity(near_solidus) == pytest.approx(4.8e27 + latent, rel=1e-6)
     assert molten.heat_capacity(near_solidus) - latent < 1e-2 * 4.8e27
 
-    # The linear model takes the same switch: the whole mantle replaces the shell above the front.
-    interior_lin = _adiabat_interior(1)
-    lin_whole = _make_runner(mock_config, tmp_path, interior_lin, 'linear')
-    mock_config.interior_energetics.boundary.sensible_heat = 'molten'
-    lin_molten = _make_runner(mock_config, tmp_path, interior_lin, 'linear')
-    assert lin_whole.heat_capacity(_T_MUSH) > lin_molten.heat_capacity(_T_MUSH)
-    assert lin_whole.heat_capacity(_T_MOLTEN) == pytest.approx(
-        lin_molten.heat_capacity(_T_MOLTEN), rel=1e-12
-    )
+    # The adiabat ignores the switch and takes the whole mantle in both cases.
+    for tmp in (_T_MUSH, near_solidus):
+        assert adiabat_molten.heat_capacity(tmp) == pytest.approx(
+            adiabat_whole.heat_capacity(tmp), rel=1e-12
+        )
+    assert adiabat_molten.heat_capacity(_T_MUSH) == pytest.approx(7.466667e27, rel=1e-6)
 
 
 @pytest.mark.physics_invariant
@@ -2588,10 +2721,8 @@ def test_boundary_dummy_choice_keys_default_to_the_boundary_backend_and_validate
 # =============================================================================
 # Tests: viscosity_phi, the melt fraction behind the convective viscosity
 # =============================================================================
-#
-# With the test gradients the melting curves (2.0e-8 K/Pa) are steeper than the
-# adiabat (1.5e-8 K/Pa), so the mantle crystallises from the bottom up and its
-# top level is its most molten one, as in a real magma ocean.
+# The test melting curves (2.0e-8 K/Pa) are steeper than the adiabat (1.5e-8 K/Pa), so the
+# mantle crystallises from the bottom up and its top level is its most molten one.
 
 
 def _top_and_global_runners(config, tmp_path, monkeypatch):

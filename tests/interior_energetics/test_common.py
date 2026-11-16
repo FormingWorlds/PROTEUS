@@ -1532,9 +1532,8 @@ def test_solidification_radius_retreats_monotonically_as_the_mantle_warms():
     assert all(_R_CORE - 1e-6 <= r <= _R_INT + 1e-6 for r in radii)
     assert all(later <= earlier for earlier, later in zip(radii, radii[1:]))
 
-    # Discrimination against a front interpolated linearly in radius instead
-    # of in volume. At the midpoint of the melting curve the volume-weighted
-    # front sits at 5.13e6 m, the linear one at 4.89e6 m.
+    # Discrimination against a front linear in radius rather than volume: at the
+    # midpoint of the melting curve 4.89e6 m rather than 5.13e6 m.
     midpoint = solidification_radius(2000.0, _TMP_SOL, _TMP_LIQ, _R_INT, _R_CORE)
     linear_guess = _R_INT - 0.5 * (_R_INT - _R_CORE)
     assert midpoint == pytest.approx(
@@ -1561,9 +1560,8 @@ def test_d_solidification_radius_dT_matches_a_finite_difference():
         ) / (2.0 * step)
 
         assert analytic == pytest.approx(numeric, rel=1e-6)
-        # Sign guard: a flipped sign would advance the front outward on
-        # heating, which the finite difference alone could not catch if both
-        # implementations flipped together.
+        # Sign guard: the finite difference alone misses a sign flipped in both
+        # implementations, which would move the front outward on heating.
         assert analytic < 0.0
 
     # Degenerate melting curve has no gradient to report.

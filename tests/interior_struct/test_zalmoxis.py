@@ -5074,3 +5074,31 @@ def test_data_digest_property_gives_the_digest_of_the_current_data_lines():
             assert zmod._data_digest(str(f)) == want(second)
 
     _check()
+
+
+@pytest.mark.parametrize(
+    'module,expected',
+    [('boundary', (2950.0, 2400.0)), ('aragog', (3100.0, 1700.0))],
+    ids=['boundary-seeded', 'aragog-untouched'],
+)
+def test_seed_boundary_temperatures_takes_the_top_mantle_and_surface_nodes(module, expected):
+    """The boundary backend starts from the top mantle and surface nodes of the structure.
+
+    The structure temperature ascends from the centre with the surface last,
+    so T_magma is the second-last node and T_surf the last. Any other
+    energetics module keeps its own temperatures. The nodes differ from each
+    other and from the row, so a swapped or off-by-one index is caught.
+    """
+    from proteus.interior_struct.zalmoxis import _seed_boundary_temperatures
+
+    config = MagicMock()
+    config.interior_energetics.module = module
+    temperature = np.array([5200.0, 4100.0, 3300.0, 2950.0, 2400.0])
+    hf_row = {'T_magma': 3100.0, 'T_surf': 1700.0}
+
+    _seed_boundary_temperatures(config, hf_row, temperature)
+
+    assert (hf_row['T_magma'], hf_row['T_surf']) == pytest.approx(expected, rel=1e-15)
+    assert isinstance(hf_row['T_magma'], float)
+    # Edge case: the structure array itself is left as it was.
+    assert temperature[-2] == pytest.approx(2950.0, rel=1e-15)

@@ -780,23 +780,25 @@ class InteriorBoundary:
         Activation temperature [K] for Vogel-Fulcher-Tammann magma ocean model.
     include_core_heat_capacity: bool
         Whether the core's heat capacity (`interior_struct.core_heatcap` times
-        the core mass) is added to the mantle's, so the core cools in step with
-        the mantle as in the dummy backend. With false only the mantle stores
-        and releases heat.
+        the core mass) is added to the mantle's, as in the dummy backend. The
+        core sits at the core-mantle boundary temperature, so with
+        ``melt_model = "adiabat"`` its share is scaled by dT_cmb/dT_p on the
+        adiabat. With false only the mantle stores and releases heat.
     sensible_heat: str
-        Which part of a partly molten mantle the sensible heat counts. With
-        ``"molten"`` only the molten part cools with the potential temperature
-        (c_p phi M with ``melt_model = "adiabat"``, the shell above the
-        solidification front with ``"linear"``), the solidification-front
-        picture this backend was built on. With ``"whole"`` the whole mantle
-        does (c_p M), as in the dummy backend, which is what the adiabat
-        implies: it moves the temperature of every level, solid or molten. The
-        latent heat of the front is added in both cases.
+        Which part of a partly molten mantle the sensible heat counts with
+        ``melt_model = "linear"``. With ``"molten"`` only the shell above the
+        solidification front cools with the potential temperature, the
+        solidification-front picture this backend was built on. With
+        ``"whole"`` the whole mantle does (c_p M), as in the dummy backend. The
+        latent heat of the front is added in both cases. Not read with
+        ``melt_model = "adiabat"``: the adiabat moves the temperature of every
+        level, solid or molten, so the sensible heat is always that of the whole
+        mantle, c_p M times the mass mean of dT/dT_p at constant pressure.
     tidal_viscosity: str
         Viscosity of each mantle shell handed to the tides modules. With
         ``"boundary"`` it is this backend's own `viscosity_model`, the same
         viscosity that sets its convective heat flux. With ``"kervazo"`` it is
-        the melt-fraction rheology of Kervazo et al. (2021) that the dummy
+        the melt-fraction rheology of Kervazo et al. (2021)[^cite-kervazo2021] that the dummy
         backend hands them, which matches the shear and bulk moduli the
         interior wrapper sets for every 0-D backend. The convective heat flux
         always uses `viscosity_model`.
@@ -939,16 +941,16 @@ class Interior:
         Total potassium concentration in the mantle at radio_tref [ppmw].
     radio_K40_abund: float
         Mass ratio 40K/K at radio_tref [kg/kg]. The default is the present-day
-        atom ratio 1.1668e-4 of Ruedas (2017) as a mass ratio.
+        atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio.
     radio_U: float
         Total uranium concentration in the mantle at radio_tref [ppmw].
     radio_U235_abund: float
         Mass ratio 235U/U at radio_tref [kg/kg]. The default is the present-day
-        atom ratio 0.0072045 of Ruedas (2017) as a mass ratio.
+        atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio.
     radio_U238_abund: float
         Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund +
         radio_U238_abund must not exceed 1. The default is the present-day
-        atom ratio 0.9927955 of Ruedas (2017) as a mass ratio.
+        atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio.
     radio_Th: float
         Total thorium concentration in the mantle at radio_tref [ppmw].
     radio_Th232_abund: float

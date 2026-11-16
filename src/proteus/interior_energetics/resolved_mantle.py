@@ -1,4 +1,13 @@
-# Depth-resolved mantle shared by the zero-dimensional energetics backends
+"""Depth-resolved mantle shared by the zero-dimensional energetics backends.
+
+`DTMP_GRID` [K] is the spacing of the magma temperatures at which the melt
+curve integrates the adiabat. Between nodes the melt fraction and the thermal
+responses are interpolated linearly, an error second order in the spacing and
+negligible against a mushy zone several hundred kelvin wide. At 1 K the number
+of adiabat integrations per step stays close to the number of kelvin the mantle
+cools through.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -17,12 +26,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Spacing of the magma temperatures at which the melt curve evaluates the
-# adiabat [K]. Between these nodes the melt fraction is interpolated linearly,
-# so the error is second order in the spacing times the curvature of the melt
-# fraction, negligible against a mushy zone several hundred kelvin wide. One
-# kelvin keeps the number of adiabat integrations per step close to the number
-# of kelvin the mantle cools through.
+# Spacing of the melt curve's nodes in magma temperature [K] (see the module docstring).
 DTMP_GRID = 1.0
 
 
@@ -73,19 +77,22 @@ def get_melt_model(
 
 class MeltCurve:
     """
-    Mass melt fraction of the mantle as a function of the magma temperature.
+    Melt fraction and thermal response of the mantle against the magma temperature.
 
     An ODE solver evaluates the melt fraction and its response to the magma
     temperature many times per step, too often to integrate an adiabat each
     time. The curve integrates the adiabat once per node of a uniform grid in
     the magma temperature, keeps every node it has computed for as long as the
-    structure is unchanged, and interpolates linearly in between.
+    structure is unchanged, and interpolates linearly in between. Each node
+    holds the mass melt fraction, the mass-weighted mean temperature of the
+    adiabat and its temperature at the core-mantle boundary.
 
-    The response is the slope of the segment the temperature falls in, so the
-    latent heat drawn from the crystallisation front between two temperatures,
-    the latent capacity integrated over that interval, equals the latent heat
-    times the mantle mass times the change in melt fraction, whatever path the
-    solver takes.
+    Every response is the slope of the segment the temperature falls in. The
+    heat a solver draws between two magma temperatures, the heat capacity
+    integrated over that interval, is then exactly c_p M_mantle times the
+    change in mean mantle temperature, plus L M_mantle times the change in
+    melt fraction, plus the core's heat capacity times the change in T_cmb,
+    whatever path the solver takes.
 
     Attributes
     ----------
@@ -101,24 +108,68 @@ class MeltCurve:
         self.model = model
         self.dtmp = float(dtmp)
         self._nodes: dict[int, float] = {}
+        self._thermal_nodes: dict[int, tuple[float, float]] = {}
 
         # The adiabat never cools with depth, so an anchor at or above the
         # hottest liquidus anywhere in the mantle leaves every level molten.
         self._tmp_molten = float(np.max(model.tmp_liq))
 
+    def _node_tmp(self, k: int) -> float:
+        """Magma temperature of node `k` [K], floored at the lowest adiabat anchor."""
+        return max(k * self.dtmp, adiabat.TMP_MIN)
+
     def _phi_node(self, k: int) -> float:
         """Mass melt fraction at node `k`, integrating the adiabat on first use."""
         phi = self._nodes.get(k)
         if phi is None:
-            # The adiabat needs a positive anchor; no level is molten at the
-            # lowest temperature it admits.
-            tmp = max(k * self.dtmp, adiabat.TMP_MIN)
+            tmp = self._node_tmp(k)
             if tmp >= self._tmp_molten:
                 phi = 1.0
             else:
                 phi = self.model.state(tmp).phi_mass
             self._nodes[k] = phi
         return phi
+
+    def _thermal_node(self, k: int) -> tuple[float, float]:
+        """Mean mantle temperature and T_cmb at node `k` [K], integrating on first use."""
+        node = self._thermal_nodes.get(k)
+        if node is None:
+            tmp = self._node_tmp(k)
+            state = self.model.state(tmp)
+            node = (
+                adiabat.mass_weighted_mean(self.model.profile, state.temperature),
+                float(state.temperature[0]),
+            )
+            self._thermal_nodes[k] = node
+            # The same integration gives the melt fraction; the molten shortcut keeps priority.
+            self._nodes.setdefault(k, 1.0 if tmp >= self._tmp_molten else state.phi_mass)
+        return node
+
+    def _thermal_slopes(self, tmp: float) -> tuple[float, float]:
+        """Slopes of the mean mantle temperature and of T_cmb over the segment holding `tmp`."""
+        if math.isnan(tmp):
+            raise ValueError('Magma temperature is NaN; the thermal response is undefined')
+        k = math.floor(tmp / self.dtmp)
+        mean_lo, cmb_lo = self._thermal_node(k)
+        mean_hi, cmb_hi = self._thermal_node(k + 1)
+        return (mean_hi - mean_lo) / self.dtmp, (cmb_hi - cmb_lo) / self.dtmp
+
+    def dmean_dtmp(self, tmp: float) -> float:
+        """
+        Response of the mass-weighted mean mantle temperature to the magma temperature.
+
+        The mass mean of (dT/dT_p) at constant pressure over the adiabat,
+        dimensionless. Exactly 1 for an isothermal mantle; above 1 when the
+        temperature gradient grows with temperature, as on a PALEOS adiabat.
+        """
+        return self._thermal_slopes(tmp)[0]
+
+    def dcmb_dtmp(self, tmp: float) -> float:
+        """Response of the temperature at the core-mantle boundary to the magma temperature.
+
+        Dimensionless; exactly 1 for an isothermal mantle.
+        """
+        return self._thermal_slopes(tmp)[1]
 
     def _segment(self, tmp: float) -> tuple[float, float, float]:
         """Fractional position within the segment holding `tmp`, and its end values."""

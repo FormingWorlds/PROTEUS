@@ -312,11 +312,14 @@ def test_aragog_defaults():
 def test_boundary_melt_model_defaults_to_linear_and_rejects_unknown_models():
     """The boundary backend keeps its constant melting temperatures unless told otherwise.
 
-    ``melt_model`` defaults to ``"linear"``, so an existing boundary run keeps
-    its single-layer cooling trajectory, and accepts ``"adiabat"`` for the
+    ``melt_model`` defaults to ``"linear"``, so an existing boundary run stays
+    a single isothermal layer, and accepts ``"adiabat"`` for the
     pressure-dependent melting curves. Any other name is rejected at load
     rather than falling through to one of the two. The constant melting
-    temperatures keep their Schaefer et al. (2016) defaults.
+    temperatures keep their Schaefer et al. (2016) defaults. The linear
+    model's cooling above the liquidus does change: a wholly molten mantle no
+    longer draws latent heat (tests/interior_energetics/test_boundary.py,
+    test_dT_pdt_excludes_latent_heat_from_a_wholly_molten_mantle).
     """
     b = InteriorBoundary()
     assert b.melt_model == 'linear'

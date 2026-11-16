@@ -6720,7 +6720,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Whether the core's heat capacity (`interior_struct.core_heatcap` times the core mass) is added to the mantle's, so the core cools in step with the mantle as in the dummy backend. With false only the mantle stores and releases heat.",
+      "description": "Whether the core's heat capacity (`interior_struct.core_heatcap` times the core mass) is added to the mantle's, as in the dummy backend. The core sits at the core-mantle boundary temperature, so with ``melt_model = \"adiabat\"`` its share is scaled by dT_cmb/dT_p on the adiabat. With false only the mantle stores and releases heat.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6739,7 +6739,7 @@
         "whole"
       ],
       "bounds": null,
-      "description": "Which part of a partly molten mantle the sensible heat counts. With ``\"molten\"`` only the molten part cools with the potential temperature (c_p phi M with ``melt_model = \"adiabat\"``, the shell above the solidification front with ``\"linear\"``), the solidification-front picture this backend was built on. With ``\"whole\"`` the whole mantle does (c_p M), as in the dummy backend, which is what the adiabat implies: it moves the temperature of every level, solid or molten. The latent heat of the front is added in both cases.",
+      "description": "Which part of a partly molten mantle the sensible heat counts with ``melt_model = \"linear\"``. With ``\"molten\"`` only the shell above the solidification front cools with the potential temperature, the solidification-front picture this backend was built on. With ``\"whole\"`` the whole mantle does (c_p M), as in the dummy backend. The latent heat of the front is added in both cases. Not read with ``melt_model = \"adiabat\"``: the adiabat moves the temperature of every level, solid or molten, so the sensible heat is always that of the whole mantle, c_p M times the mass mean of dT/dT_p at constant pressure.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6758,7 +6758,7 @@
         "kervazo"
       ],
       "bounds": null,
-      "description": "Viscosity of each mantle shell handed to the tides modules. With ``\"boundary\"`` it is this backend's own `viscosity_model`, the same viscosity that sets its convective heat flux. With ``\"kervazo\"`` it is the melt-fraction rheology of Kervazo et al. (2021) that the dummy backend hands them, which matches the shear and bulk moduli the interior wrapper sets for every 0-D backend. The convective heat flux always uses `viscosity_model`.",
+      "description": "Viscosity of each mantle shell handed to the tides modules. With ``\"boundary\"`` it is this backend's own `viscosity_model`, the same viscosity that sets its convective heat flux. With ``\"kervazo\"`` it is the melt-fraction rheology of Kervazo et al. (2021)[^cite-kervazo2021] that the dummy backend hands them, which matches the shear and bulk moduli the interior wrapper sets for every 0-D backend. The convective heat flux always uses `viscosity_model`.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -7082,7 +7082,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 40K/K at radio_tref [kg/kg]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017) as a mass ratio.",
+      "description": "Mass ratio 40K/K at radio_tref [kg/kg]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 8,
@@ -7128,7 +7128,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 235U/U at radio_tref [kg/kg]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017) as a mass ratio.",
+      "description": "Mass ratio 235U/U at radio_tref [kg/kg]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 10,
@@ -7153,7 +7153,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017) as a mass ratio.",
+      "description": "Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 11,

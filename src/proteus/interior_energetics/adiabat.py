@@ -1,4 +1,24 @@
-# Depth-resolved mantle melt state for the zero-dimensional interior modules
+"""Depth-resolved mantle melt state for the zero-dimensional interior modules.
+
+Module constants:
+
+- `DEFAULT_MELTING_DIR`: the melting curve folder read when
+  `interior_struct.melting_dir` is unset and the structure module is not
+  Zalmoxis, which brings its own PALEOS curves. The basic interior data
+  download provides it, so a configuration that never names melting curves
+  still finds a solidus and a liquidus.
+- `PRES_FLOOR` [Pa]: below one bar the step dT/dP = nabla T / P divides by a
+  pressure that carries no information about the mantle, so the temperature is
+  carried through unchanged, as in the Zalmoxis structure adiabat.
+- `TMP_MIN`, `TMP_MAX` [K]: bounds on each adiabat step, as in the Zalmoxis
+  structure adiabat. They never bind on a physical mantle; a corrupt gradient
+  lookup then gives a bounded profile instead of an overflow that would reach
+  the melt fraction unseen.
+- `MAX_LEVELS`: the gradient lookup runs once per level per solve, and the
+  adiabat and melting curves are smooth on the scale of a mantle shell, so a
+  finer structure mesh is resampled linearly onto this many levels.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -13,31 +33,17 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Melting curve folder used when `interior_struct.melting_dir` is left unset
-# and the structure module is not Zalmoxis, which brings the PALEOS curves of
-# its own. This is the folder that the basic interior lookup-table download already
-# fetches, so a configuration that never mentions melting curves still finds
-# a solidus and a liquidus on disk.
+# Melting curve folder without interior_struct.melting_dir (see the module docstring).
 DEFAULT_MELTING_DIR = 'Wolf_Bower+2018'
 
-# Lowest pressure at which the adiabat is stepped [Pa]. Below one bar the
-# dT/dP = nabla T / P form divides by a pressure that carries no information
-# about the mantle, so the temperature is carried through unchanged. Matches
-# the guard in the Zalmoxis structure adiabat.
+# Lowest pressure at which the adiabat is stepped [Pa].
 PRES_FLOOR = 1.0e5
 
-# Temperature bounds applied to each adiabat step [K]. Wide enough never to
-# bind on a physical mantle profile; they exist so that a corrupt gradient
-# lookup produces a bounded profile instead of an overflow that propagates
-# silently into the melt fraction. Matches the Zalmoxis structure adiabat.
+# Temperature bounds applied to each adiabat step [K].
 TMP_MIN = 100.0
 TMP_MAX = 1.0e5
 
-# Largest number of levels the adiabat is integrated over. The gradient lookup
-# is evaluated once per level per solve, so a very finely resolved structure
-# mesh would dominate the cost of a step for no gain: the adiabat and the
-# melting curves are both smooth on the scale of a mantle shell. A mesh with
-# more levels than this is linearly resampled onto this many.
+# Largest number of levels the adiabat is integrated over.
 MAX_LEVELS = 400
 
 # Constant melting temperatures the boundary backend falls back on under its
@@ -431,12 +437,33 @@ def mass_melt_fraction(profile: MantleProfile, phi: np.ndarray) -> float:
         phi_mass : float
             Mass melt fraction, within [0, 1].
     """
+    return float(np.clip(mass_weighted_mean(profile, phi), 0.0, 1.0))
+
+
+def mass_weighted_mean(profile: MantleProfile, values: np.ndarray) -> float:
+    """
+    Mean of a per-level quantity over the mantle, weighted by mass.
+
+    Integrated with the trapezoid rule on the profile's own levels and density.
+
+    Parameters
+    ----------
+        profile : MantleProfile
+            Radial mantle profile.
+        values : np.ndarray
+            Quantity at each level, in its own unit.
+
+    Returns
+    ----------
+        mean : float
+            Mass-weighted mean, in the unit of `values`; 0 for a massless profile.
+    """
     radius = profile.radius
     weight = 4.0 * np.pi * radius**2 * profile.density
     mass = float(np.trapezoid(weight, radius))
     if mass <= 0.0:
         return 0.0
-    return float(np.clip(np.trapezoid(phi * weight, radius) / mass, 0.0, 1.0))
+    return float(np.trapezoid(np.asarray(values, dtype=float) * weight, radius) / mass)
 
 
 @dataclass(frozen=True)
@@ -599,9 +626,12 @@ def load_melting_curves(config: Config) -> tuple[Callable, Callable]:
 
     With the Zalmoxis structure module these are the PALEOS curves, see
     `load_paleos_melting_curves`. Otherwise they are the two-column
-    pressure-temperature curves shipped under
-    `FWL_DATA/interior_lookup_tables/Melting_curves/`, the same files the
-    Aragog and SPIDER backends are given.
+    pressure [Pa], temperature [K] curves of the folder named by
+    `resolve_melting_dir`, located by
+    `proteus.utils.data.resolve_melting_curve_files` as for the Aragog and
+    Zalmoxis readers: the checksum-verified dataset directory of a curve set
+    served through the manifest, otherwise
+    `FWL_DATA/interior_lookup_tables/Melting_curves/<melting_dir>`.
 
     Parameters
     ----------
@@ -612,20 +642,31 @@ def load_melting_curves(config: Config) -> tuple[Callable, Callable]:
     ----------
         solidus, liquidus : callable
             Map pressure [Pa] to temperature [K].
+
+    Raises
+    ----------
+        MissingDataError
+            A curve file is not on disk; a FileNotFoundError.
+        ValueError
+            A curve file cannot be read.
     """
     if uses_paleos_melting_curves(config):
         return load_paleos_melting_curves(config)
 
-    from proteus.utils.data import FWL_DATA_DIR, load_melting_curve
+    from proteus.utils.data import (
+        FWL_DATA_DIR,
+        load_melting_curve,
+        resolve_melting_curve_files,
+    )
+    from proteus.utils.helper import MissingDataError
 
     melting_dir = resolve_melting_dir(config)
-    folder = FWL_DATA_DIR / 'interior_lookup_tables' / 'Melting_curves' / melting_dir
+    paths = resolve_melting_curve_files(melting_dir, data_root=FWL_DATA_DIR)
 
     curves = []
-    for stem in ('solidus', 'liquidus'):
-        path = folder / f'{stem}_P-T.dat'
+    for stem, path in zip(('solidus', 'liquidus'), paths):
         if not path.is_file():
-            raise FileNotFoundError(
+            raise MissingDataError(
                 f'The {_energetics_module(config)} interior module needs the '
                 f'mantle {stem} at {path}. '
                 "Run 'proteus get interiordata' to fetch the melting curves, "
@@ -638,7 +679,7 @@ def load_melting_curves(config: Config) -> tuple[Callable, Callable]:
             raise ValueError(f'Could not read the mantle {stem} from {path}.')
         curves.append(curve)
 
-    log.debug('Mantle melting curves for the adiabat read from %s', folder)
+    log.debug('Mantle melting curves for the adiabat read from %s and %s', *paths)
     return curves[0], curves[1]
 
 

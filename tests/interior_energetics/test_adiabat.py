@@ -63,6 +63,7 @@ from proteus.interior_energetics.adiabat import (
     volume_melt_fraction,
     zalmoxis_nabla_ad,
 )
+from proteus.utils.helper import MissingDataError
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -347,10 +348,8 @@ def test_mesh_identity_tracks_a_structure_resolve(tmp_path):
     assert first != ()
 
     _write_mesh(tmp_path, radius, pressure, density * 1.05, gravity)
-    # Stamp an explicit modification time: the rewrite lands within the
-    # filesystem's timestamp granularity of the first, and the two files are
-    # the same size, so the identity would otherwise appear unchanged for a
-    # reason that has nothing to do with the caching being tested.
+    # Same size and within the filesystem's timestamp granularity, so stamp a later
+    # modification time or the identity would look unchanged for an unrelated reason.
     stat = os.stat(path)
     os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
     assert mesh_identity(str(tmp_path)) != first
@@ -382,10 +381,8 @@ def test_integrate_adiabat_recovers_the_constant_gradient_isentrope():
 
     ratio = profile.pressure[0] / profile.pressure[-1]
     expected = tmp_top * ratio**nabla
-    # rtol=2e-2: each step advances by nabla * dP / P evaluated at the shallower
-    # level, which overstates the exponential increment by nabla * x**2 / 2 with
-    # x = dlnP, accumulating to about 1.3 % over the 199 steps of this grid. The
-    # closed form is the exact isentrope the stepping approximates.
+    # rtol=2e-2: the explicit step overstates each increment by nabla dlnP**2 / 2,
+    # about 1.3 % over the 199 steps, against the exact isentrope.
     assert temperature[0] == pytest.approx(expected, rel=2e-2)
 
     # Exponent guard: a regression to nabla = 0.6 lands 4.4 times hotter.
@@ -776,6 +773,52 @@ def test_load_melting_curves_reads_the_tabulated_folder(monkeypatch, tmp_path):
     assert np.all(np.diff(solidus(pressures)) > 0.0)
 
 
+@pytest.mark.physics_invariant
+def test_load_melting_curves_reads_the_default_curves_from_their_dataset(monkeypatch, tmp_path):
+    """The default Wolf and Bower (2018) curves are read from their manifest dataset.
+
+    A fresh data tree holds them as solidus.dat and liquidus.dat in the
+    checksum-verified dataset directory, with no legacy
+    interior_lookup_tables folder, which is the layout the adiabat model must
+    run on with the dummy structure. When a legacy folder is also present the
+    dataset copy is read, as Aragog and Zalmoxis read it; the legacy curves
+    here are 300 K colder, so reading them is caught.
+    """
+    dataset = tmp_path / 'interior' / 'melting_curves' / 'wolf_bower_2018' / 'r1'
+    dataset.mkdir(parents=True)
+    np.savetxt(dataset / 'solidus.dat', [[0.0, 1420.0], [1.0e11, 4000.0]], header='P T')
+    np.savetxt(dataset / 'liquidus.dat', [[0.0, 1980.0], [1.0e11, 4500.0]], header='P T')
+    monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path, raising=False)
+    monkeypatch.setattr('proteus.data.dataset_dir', lambda key, data_root=None: dataset)
+
+    solidus, liquidus = load_melting_curves(_mesh_config(melting_dir=None))
+    assert float(solidus(5.0e10)) == pytest.approx(2710.0, rel=1e-12)
+    assert float(liquidus(5.0e10)) == pytest.approx(3240.0, rel=1e-12)
+    assert not (tmp_path / 'interior_lookup_tables').exists()
+
+    # Discrimination guard: a legacy folder with colder curves is not read.
+    _write_curve_folder(
+        tmp_path,
+        'Wolf_Bower+2018',
+        np.array([[0.0, 1120.0], [1.0e11, 3700.0]]),
+        np.array([[0.0, 1680.0], [1.0e11, 4200.0]]),
+    )
+    solidus, _ = load_melting_curves(_mesh_config(melting_dir=None))
+    assert float(solidus(5.0e10)) == pytest.approx(2710.0, rel=1e-12)
+
+    # Error contract: with the dataset file gone the run stops on missing data.
+    (dataset / 'liquidus.dat').unlink()
+    (
+        tmp_path
+        / 'interior_lookup_tables'
+        / 'Melting_curves'
+        / 'Wolf_Bower+2018'
+        / 'liquidus_P-T.dat'
+    ).unlink()
+    with pytest.raises(MissingDataError, match='liquidus'):
+        load_melting_curves(_mesh_config(melting_dir=None))
+
+
 def test_load_melting_curves_refuses_an_unreadable_file(monkeypatch, tmp_path):
     """A curve file without a temperature column is refused, naming the file.
 
@@ -796,11 +839,8 @@ def test_load_melting_curves_refuses_an_unreadable_file(monkeypatch, tmp_path):
     assert 'BrokenCurves' in str(excinfo.value)
 
 
-# Fei et al. (2021) pin their MgSiO3 liquidus to 6000 K at the 140 GPa
-# core-mantle boundary of the Earth; Belonoshko et al. (2005) anchor the
-# low-pressure branch at 1831 K at zero pressure. The tabulated Wolf and Bower
-# (2018) liquidus reaches only about 4760 K at 140 GPa, so the two sets are
-# told apart by far more than any tolerance used below.
+# Fei et al. (2021) liquidus at Earth's 140 GPa CMB and Belonoshko et al. (2005) at zero pressure;
+# the Wolf and Bower (2018) liquidus reaches only about 4760 K at 140 GPa.
 P_FEI_ANCHOR = 140.0e9
 T_FEI_ANCHOR = 6000.0
 T_BELONOSHKO_ZERO = 1831.0

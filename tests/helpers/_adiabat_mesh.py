@@ -21,12 +21,14 @@ import numpy as np
 ADIABAT_TSOL = 1500.0
 ADIABAT_TLIQ = 2500.0
 
-# Adiabat and melting-curve slopes used by the sloped tests, in K per pascal.
-# The melting curves rise with pressure faster than the adiabat, the ordering
-# that puts a magma ocean over a solid lower mantle. At 15 and 20 K/GPa both
-# are in the range the tabulated silicate curves occupy.
+# Adiabat and melting-curve slopes of the sloped tests [K Pa-1], 15 and 20 K/GPa as for silicates;
+# the curves outpace the adiabat, which puts a magma ocean over a solid lower mantle.
 ADIABAT_DTDP = 1.5e-8
 CURVE_DTDP = 2.0e-8
+
+# Relative adiabat slope dlnT/dP of the thermal-response tests [Pa-1]: T, and
+# dT/dT_p = T / T_p, rise by about 1.5 times from the top of the mantle to its base.
+ADIABAT_DLNTDP = 3.0e-12
 
 
 def write_mantle_mesh(
@@ -85,19 +87,22 @@ def patch_adiabat_inputs(
     curve_dtdp=0.0,
     tsol=ADIABAT_TSOL,
     tliq=ADIABAT_TLIQ,
+    dlntdp=0.0,
 ):
     """Stand in for the Zalmoxis gradient and the tabulated melting curves.
 
-    A constant dT/dP is used rather than a constant nabla_ad so the adiabat
-    stays in the temperature range a mantle occupies across six decades of
-    pressure, as the tabulated gradient does. With both slopes at zero the
-    mantle is isothermal at the anchor temperature and the melting curves are
-    constants, which is the limit in which the depth-resolved model must agree
-    with the constant-temperature one.
+    The adiabat follows dT/dP = dtdp + dlntdp T rather than a constant
+    nabla_ad, so it stays in the temperature range a mantle occupies across
+    six decades of pressure, as the tabulated gradient does. With `dlntdp` alone the
+    explicit stepping is linear in the anchor, so dT/dT_p = T / T_p at every
+    level exactly. With all slopes at zero the mantle is isothermal at the
+    anchor temperature and the melting curves are constants, which is the limit
+    in which the depth-resolved model must agree with the constant-temperature
+    one.
     """
     monkeypatch.setattr(
         'proteus.interior_energetics.adiabat.zalmoxis_nabla_ad',
-        lambda config, cache, sol, liq: lambda p, t: dtdp * p / t,
+        lambda config, cache, sol, liq: lambda p, t: (dtdp + dlntdp * t) * p / t,
     )
     monkeypatch.setattr(
         'proteus.interior_energetics.adiabat.load_melting_curves',

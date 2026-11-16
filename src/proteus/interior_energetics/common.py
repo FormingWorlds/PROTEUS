@@ -1379,6 +1379,9 @@ class Interior_t:
         self.bulk = np.zeros(self.nlev_s)  # Bulk modulus [Pa]
         self.pres = np.zeros(self.nlev_s)  # Pressure [Pa]
         self.temp = np.zeros(self.nlev_s)  # Temperature [K]
+        # Resolved mantle adiabat (radius [m], pressure [Pa], temperature [K]) for the
+        # structure re-solve; set by the boundary backend's adiabat model, None otherwise.
+        self.temp_profile = None
 
         # Basic-node profiles, length N+1, written by the aragog interior only.
         self.phi_b = None  # Melt fraction.

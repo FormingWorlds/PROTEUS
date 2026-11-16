@@ -158,12 +158,8 @@ class BoundaryRunner:
         self.T_solidus = config.interior_energetics.boundary.T_solidus
         self.T_liquidus = config.interior_energetics.boundary.T_liquidus
 
-        # How the melt fraction follows from the potential temperature. The
-        # adiabat model integrates T_p down the structure's mantle profile and
-        # compares each level with the pressure-dependent melting curves, and
-        # hands the tides modules the mantle as shells. The linear model treats
-        # the mantle as one isothermal, uniform-density layer between the
-        # constant solidus and liquidus above.
+        # Melt fraction from an adiabat on the structure's profile, split into shells ("adiabat"),
+        # or from one isothermal layer between the constants above ("linear").
         self.melt_model = config.interior_energetics.boundary.melt_model
         if self.melt_model == 'adiabat':
             self.melt_curve = get_melt_curve(config, dirs, hf_row, interior_o)
@@ -179,7 +175,7 @@ class BoundaryRunner:
         self.Tsurf_event_change = config.interior_energetics.tmagma_atol
 
         # Choices the dummy backend makes differently (InteriorBoundary). The
-        # core, when included, is lumped with the mantle and cools with T_p.
+        # core, when included, sits at T_cmb and cools with it.
         self.sensible_heat = config.interior_energetics.boundary.sensible_heat
         self.tidal_viscosity = config.interior_energetics.boundary.tidal_viscosity
         self.viscosity_phi = config.interior_energetics.boundary.viscosity_phi
@@ -255,9 +251,8 @@ class BoundaryRunner:
             radiogenic_inputs(config) if self.use_radiogenic_heating else ([], 0.0)
         )
 
-        # Tidal heating from the orbit module if enabled, otherwise zero. The
-        # tides module returns a rate per shell, so the heat it deposits is
-        # summed over the shells and expressed per unit mantle mass [W kg-1].
+        # Tidal heating per unit mantle mass [W kg-1]: the tides module's rate per shell,
+        # summed over the shell masses; zero without tidal heating.
         self.use_tidal_heating = config.interior_energetics.heat_tidal
         self.tidal_term = (
             tidal_power(interior_o.tides, shell_mass) / self.mantle_mass
@@ -626,21 +621,10 @@ class BoundaryRunner:
 
     def heat_capacity(self, T_p: float) -> float:
         """
-        Effective heat capacity of the mantle, sensible plus latent, plus the core's.
+        Effective heat capacity of the mantle and, when included, of the core.
 
-        With ``sensible_heat = "molten"`` only the molten part of a partially
-        molten mantle cools with the potential temperature; with ``"whole"``
-        the whole mantle does. Either way the crystallisation front releases
-        latent heat as it advances. A wholly molten mantle has no front to
-        advance, and a wholly solid one cools as a whole, so neither draws on
-        the latent budget. With ``include_core_heat_capacity`` the core's heat
-        capacity is added throughout.
-
-        Under the adiabat model the molten part is the mass melt fraction of
-        the adiabat and the latent term is L M_mantle dphi/dT_p. With no
-        adiabatic gradient, pressure-independent melting curves and a uniform
-        density this reduces exactly to the linear model's solidification-front
-        form.
+        The heat released per kelvin of cooling of the potential temperature:
+        `mantle_heat_capacity` plus `core_heat_capacity_at`.
 
         Parameters
         ----------
@@ -652,40 +636,98 @@ class BoundaryRunner:
         float
             Heat capacity [J/K], positive
         """
-        whole = self.silicate_heat_capacity * self.mantle_mass
-        phi = self.melt_fraction(T_p)
-        if not 0.0 < phi < 1.0:
-            return whole + self.core_heat_capacity
+        return self.mantle_heat_capacity(T_p) + self.core_heat_capacity_at(T_p)
 
+    def core_heat_capacity_at(self, T_p: float) -> float:
+        """
+        Heat the core releases per kelvin of cooling of the potential temperature.
+
+        The core sits at the temperature of the core-mantle boundary. On the
+        linear model the mantle is isothermal, so this is
+        ``core_heatcap * M_core``; on the adiabat model that is scaled by
+        dT_cmb/dT_p, the response of the base of the adiabat. Zero without
+        ``include_core_heat_capacity``.
+
+        Parameters
+        ----------
+        T_p : float
+            Potential temperature of the mantle [K]
+
+        Returns
+        -------
+        float
+            Core heat capacity [J/K], non-negative
+        """
+        if self.core_heat_capacity == 0.0 or self.melt_curve is None:
+            return self.core_heat_capacity
+        return self.core_heat_capacity * self.melt_curve.dcmb_dtmp(T_p)
+
+    def mantle_heat_capacity(self, T_p: float) -> float:
+        """
+        Effective heat capacity of the mantle, sensible plus latent.
+
+        Under the adiabat model every level follows T_p along the adiabat, so
+        the sensible term is c_p M_mantle times the mass mean of dT/dT_p at
+        constant pressure, and the latent term is L M_mantle dphi/dT_p. Both
+        responses come from the melt curve, so the heat drawn between two
+        temperatures closes on the change in mean mantle temperature and melt
+        fraction. ``sensible_heat`` is not read under this model.
+
+        Under the linear model the mantle is isothermal. With
+        ``sensible_heat = "molten"`` only the shell above the solidification
+        front cools with T_p; with ``"whole"`` the whole mantle does. The front
+        releases latent heat while the mantle is partly molten. A wholly molten
+        or wholly solid mantle has no front, and cools with c_p M_mantle.
+
+        With no adiabatic gradient, pressure-independent melting curves and a
+        uniform density, the adiabat model equals the linear one with
+        ``sensible_heat = "whole"``.
+
+        Parameters
+        ----------
+        T_p : float
+            Potential temperature of the mantle [K]
+
+        Returns
+        -------
+        float
+            Mantle heat capacity [J/K], positive
+        """
+        whole = self.silicate_heat_capacity * self.mantle_mass
         if self.melt_curve is not None:
-            molten = self.silicate_heat_capacity * phi * self.mantle_mass
+            sensible = whole * self.melt_curve.dmean_dtmp(T_p)
             latent = (
                 self.heat_fusion_silicate * self.mantle_mass * self.melt_curve.dphi_dtmp(T_p)
             )
-        else:
-            r_s_val = self.r_s(T_p)  # Update r_s_val based on current T_p
+            return sensible + latent
 
-            # Calculate dr_s/dT_p for the latent heat term
-            dr_s_dT_p = self.drs_dTp(T_p)
+        phi = self.melt_fraction(T_p)
+        if not 0.0 < phi < 1.0:
+            return whole
 
-            molten = (
-                (4 / 3)
-                * np.pi
-                * self.mantle_bulk_density
-                * self.silicate_heat_capacity
-                * (self.planet_radius**3 - r_s_val**3)
-            )
-            latent = (
-                -4
-                * np.pi
-                * r_s_val**2
-                * self.mantle_bulk_density
-                * self.heat_fusion_silicate
-                * dr_s_dT_p
-            )
+        r_s_val = self.r_s(T_p)  # Update r_s_val based on current T_p
+
+        # Calculate dr_s/dT_p for the latent heat term
+        dr_s_dT_p = self.drs_dTp(T_p)
+
+        molten = (
+            (4 / 3)
+            * np.pi
+            * self.mantle_bulk_density
+            * self.silicate_heat_capacity
+            * (self.planet_radius**3 - r_s_val**3)
+        )
+        latent = (
+            -4
+            * np.pi
+            * r_s_val**2
+            * self.mantle_bulk_density
+            * self.heat_fusion_silicate
+            * dr_s_dT_p
+        )
 
         sensible = whole if self.sensible_heat == 'whole' else molten
-        return sensible + latent + self.core_heat_capacity
+        return sensible + latent
 
     def dT_surfdt(self, T_p: float, T_surf: float) -> float:
         """
@@ -829,9 +871,8 @@ class BoundaryRunner:
         T_p_final = sol.y[0, -1]
         T_surf_final = sol.y[1, -1]
         if self.melt_curve is not None:
-            # The exact melt state at the end of the step, rather than the
-            # interpolated curve the solver stepped on, supplies the reported
-            # melt fractions, the front and the profiles handed on.
+            # The exact melt state at the end of the step, not the interpolated curve,
+            # supplies the reported melt fractions, front and profiles.
             state = self.melt_curve.model.state(T_p_final)
             phi_final = state.phi_mass
             phi_vol_final = state.phi_vol
@@ -906,12 +947,8 @@ class BoundaryRunner:
             else 0.0,
             'M_mantle': self.mantle_mass,
             'boundary_layer_thickness': delta,
-            # Effective specific heat capacity, including the latent heat the
-            # crystallisation front releases per kelvin of cooling.
-            # The core's share, when included, is left out so Cp_eff stays the
-            # mantle's own, as the dummy backend reports it.
-            'Cp_eff': (self.heat_capacity(T_p_final) - self.core_heat_capacity)
-            / self.mantle_mass,
+            # The mantle's own effective specific heat, latent heat included and core excluded.
+            'Cp_eff': self.mantle_heat_capacity(T_p_final) / self.mantle_mass,
         }
 
         # Store arrays
@@ -959,8 +996,12 @@ class BoundaryRunner:
         The shells carry the mass-weighted melt fraction and temperature of the
         adiabat over them, and each takes the viscosity this backend's own
         rheology assigns to that melt fraction and temperature. The adiabat
-        itself is handed to the structure re-solve on pressure, which a shell
-        keeps when the re-solve moves its radius.
+        itself, on every level of the structure's profile, goes in
+        `interior_o.temp_profile` for the structure re-solve
+        (`wrapper.interior_temperature_handoff`), which follows it on pressure
+        so that the top of the mantle stays at T_p when the re-solve moves its
+        radius. The shell means would place the top of the mantle at the mean
+        of the top shell, above T_p.
 
         Parameters
         ----------
@@ -981,6 +1022,7 @@ class BoundaryRunner:
             dtype=float,
         )
         interior_o.temp_profile = (
+            np.array(profile.radius, dtype=float),
             np.array(profile.pressure, dtype=float),
             np.array(state.temperature, dtype=float),
         )
