@@ -85,7 +85,7 @@ belong to the experimental binodal-aware mode.
 | `update_dw_comp_abs` | float | `0.05` | Re-solve when the relative dissolved-volatile (H2O or H2) mantle mass fraction changes by this amount. Must be > 0 and < 1. |
 | `update_interval` | float | `1000000000.0` | Maximum time between structure updates \[yr\]; effectively disabled at the default. Must be >= 0. |
 | `update_min_interval` | float | `0` | Minimum time between structure updates \[yr\]; prevents thrashing. Must be >= 0. |
-| `update_stale_ceiling` | float | `25000.0` | Time since the last successful re-solve after which a trigger refires \[yr\]; 0 disables. Must be >= 0. |
+| `update_stale_ceiling` | float | `25000.0` | After a failed re-solve, time since the last successful re-solve after which a re-solve is triggered \[yr\]; 0 disables. Must be >= 0. |
 | `mesh_max_shift` | float | `0.05` | Maximum fractional radius shift per structure update. Must be > 0 and < 1. |
 | `mesh_convergence_interval` | float | `10.0` | Convergence relaxation time after a mesh update \[yr\]. Must be > 0. |
 

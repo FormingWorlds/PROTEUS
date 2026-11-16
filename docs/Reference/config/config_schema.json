@@ -4675,7 +4675,7 @@
           "value": 0
         }
       ],
-      "description": "Time since the last successful re-solve after which a trigger refires [yr]; 0 disables.",
+      "description": "After a failed re-solve, time since the last successful re-solve after which a re-solve is triggered [yr]; 0 disables.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 5,
