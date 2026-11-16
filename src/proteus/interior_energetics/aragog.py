@@ -899,6 +899,14 @@ class AragogRunner:
                 solver = interior_o.aragog_solver
                 S_snap = interior_o._last_entropy
                 n_stag = getattr(solver, '_n_stag', len(S_snap))
+                aragog_resume.refuse_another_mesh(
+                    dirs['output'],
+                    float(hf_row['Time']),
+                    solver._r_basic_flat,
+                    config.interior_energetics.aragog,
+                    int(config.interior_energetics.num_levels),
+                    'the config of the resume',
+                )
 
                 if len(S_snap) != n_stag:
                     log.error(
@@ -1201,6 +1209,8 @@ class AragogRunner:
             adiabatic_bulk_modulus=config.interior_energetics.adiabatic_bulk_modulus,
             adams_williamson_beta=config.interior_energetics.adams_williamson_beta,
             mass_coordinates=config.interior_energetics.aragog.mass_coordinates,
+            cmb_cell_thickness=config.interior_energetics.aragog.cmb_cell_thickness,
+            surface_cell_thickness=config.interior_energetics.aragog.surface_cell_thickness,
             # Upper BC of the Adams-Williamson P(r) integration, set once here
             # and not updated later: 0 in a fresh run (no atmosphere step yet);
             # a resume restores the run's value in update_solver. bar -> Pa.
@@ -2691,11 +2701,8 @@ class AragogRunner:
         stiff_ramp = ((2, 2.0), (4, 5.0), (8, 10.0))
         n_ramp_rungs = len(stiff_ramp)
         max_steps_cap = base_max_steps * stiff_ramp[-1][0]
-        # A one-off spot-check: 10x rtol moves the coupler conservation metric
-        # E_residual_cons_frac from 1.46e-4 to 1.53e-4 on a recovered mush step
-        # (about 65x below its ~1% structural floor) and shifts Phi_global by
-        # ~3e-8 with T_core unchanged. It is not asserted per run; a
-        # docs/Validation/interior_energetics/aragog.md harness is a follow-up.
+        # 10x rtol moved E_residual_cons_frac from 1.46e-4 to 1.53e-4 and Phi_global by
+        # ~3e-8 on a recovered mush step, with T_core unchanged; not asserted per run.
         rtol_cap = base_rtol * stiff_ramp[-1][1]
 
         out = None
