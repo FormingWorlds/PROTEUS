@@ -3523,6 +3523,10 @@ def update_structure_from_interior(
             _zalmoxis_wall,
             reason,
         )
+        from proteus.utils.probe_maps import clear_jax_after_resolve, log_maps
+
+        log_maps('re-solve')
+        clear_jax_after_resolve()
     except RuntimeError as e:
         interior_o.zalmoxis_fail_count += 1
         log.warning(

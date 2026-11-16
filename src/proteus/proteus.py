@@ -1265,6 +1265,9 @@ class Proteus:
                 self.hf_row['f_remelt'] = 0.0
             log.info(' ')
             PrintSeparator()
+            from proteus.utils.probe_maps import log_maps
+
+            log_maps('loop')
             log.info('Loop counters')
             log.info('current    init    maximum')
             log.info(
