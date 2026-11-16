@@ -5886,6 +5886,39 @@ def test_resume_settling_monotonic_noop_records_zero_dr():
 
 
 @pytest.mark.unit
+def test_a_rejected_up_step_keeps_the_jax_caches(monkeypatch):
+    """An up-step the monotonic-radius guard rejects keeps the previous structure, so an
+    Aragog run keeps its compiled JAX programs."""
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    config.interior_energetics.module = 'aragog'
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 50
+    dirs['_last_resolve_dR_rel'] = 2.0e-4
+    r_prev = hf_row['R_int']
+    stub = _StubJax()
+    monkeypatch.setitem(sys.modules, 'jax', stub)
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, _mock_interior_o(), lt, lT, lP)
+    mock_solver.assert_called_once()
+    assert dirs['_last_resolve_dR_rel'] == 0.0  # the reject path ran
+    assert stub.calls == 0
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_monotonic_guard_permits_up_step_under_active_heating(caplog):
     """A genuine R_int up-step is kept when the interior is actively heating.
