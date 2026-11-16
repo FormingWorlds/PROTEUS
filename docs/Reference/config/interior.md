@@ -430,7 +430,7 @@ from the running mesh.
 | `layer_k_mix` | float | `10000000.0` | Eddy diffusivity \[m2 s-1\] of convective mixing in the stratified shell at the reference superadiabatic gradient. Used with the experimental stratification. Must be > 0. |
 | `layer_g_mix` | float | `0.001` | Reference superadiabatic gradient of the shell mixing, as a fraction of the adiabatic gradient at the CMB. Used with the experimental stratification. Must be > 0. |
 | `f_ohm` | float | `1.0` | Ohmic fraction of the dissipation in the field-strength scaling, in (0, 1\]; Christensen et al. (2009)[^cite-christensen2009] adopt 1 for planets. Must be > 0 and <= 1. |
-| `ra_crit_cmb` | float | `450.0` | Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast; the default is the theoretical value of Thiriet et al. (2019)[^cite-thiriet2019], Table 2. Must be > 0 and < inf. |
+| `ra_crit_cmb` | float or str | `"eq16"` | Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast. 'eq16' (the default) takes the lower-layer law of Thiriet et al. (2019)[^cite-thiriet2019], eq. 16, from the internal Rayleigh number of the mantle; a positive, finite number fixes it, for example 450, their Table 2 value for the upper boundary layer. |
 | `flux_geometry` | str | `"const_flux"` | Which printed Earth-core efficiency factor converts the superadiabatic flux into the field-strength scaling's F: 'const_flux' or 'zero_outer'. Choices: `"const_flux"`, `"zero_outer"`. |
 <!-- END GENERATED: config-table [interior_energetics.aragog.core_module] -->
 
