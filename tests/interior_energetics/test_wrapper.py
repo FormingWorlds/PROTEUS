@@ -2159,6 +2159,28 @@ def test_a_failed_resolve_keeps_the_compiled_jax_programs(tmp_path):
 
 
 @pytest.mark.unit
+def test_a_resolve_that_misses_the_mass_anchor_keeps_the_compiled_jax_programs(
+    tmp_path, caplog
+):
+    """A Zalmoxis result 1 % off the mass target falls back to the previous structure after
+    the solver returned, so the compiled programs stay cached."""
+    jax = pytest.importorskip('jax')
+    program = jax.jit(lambda x: 4.0 * x)
+    program(1.0)
+
+    def side(config, outdir, hf_row, **kwargs):
+        hf_row['M_int'] = 1.01 * 5.972e24
+        hf_row['M_int_target'] = 5.972e24
+        hf_row['R_int'] = 6.371e6
+        return (3.504e6, str(tmp_path / 'mesh.dat'))
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
+        _resolve_call(tmp_path, side)
+    assert any('Falling back to previous structure' in r.getMessage() for r in caplog.records)
+    assert program._cache_size() == 1
+
+
+@pytest.mark.unit
 def test_the_cache_clear_does_not_import_jax(monkeypatch, caplog):
     """A run whose modules do not use JAX gets no JAX import and no log line."""
     from proteus.interior_energetics import wrapper
