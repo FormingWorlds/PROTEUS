@@ -4345,6 +4345,29 @@ def test_setup_solver_threads_core_module_params(tmp_path):
     assert params['stratification'] is False
     assert params['m_core'] == pytest.approx(1.93e24)
     assert params['p_cen'] == pytest.approx(3.6e11)
+    assert params['ra_crit_cmb'] is None  # 'eq16' reaches aragog as None, its eq. 16
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(('value', 'sent'), [('eq16', None), (450.0, 450.0), (1800, 1800.0)])
+def test_the_critical_rayleigh_setting_reaches_aragog(value, sent):
+    """'eq16' is sent as None, which selects eq. 16 in aragog; a number is sent as a float."""
+    from types import SimpleNamespace
+
+    from proteus.config._interior import AragogCoreModule
+    from proteus.interior_energetics.aragog_core import core_module_params
+
+    config = SimpleNamespace(
+        interior_energetics=SimpleNamespace(
+            aragog=SimpleNamespace(core_module=AragogCoreModule(ra_crit_cmb=value))
+        ),
+        params=SimpleNamespace(resume=False),
+    )
+    params = core_module_params(
+        config, {'M_core': 1.93e24, 'P_center': 3.6e11}, SimpleNamespace(), '.'
+    )
+    assert params['ra_crit_cmb'] == sent
+    assert sent is None or isinstance(params['ra_crit_cmb'], float)
 
 
 @pytest.mark.unit

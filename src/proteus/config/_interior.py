@@ -75,6 +75,27 @@ def _valid_number(instance, attribute, value):
         raise TypeError(f'`{attribute.name}` must be a number, got {value!r}')
 
 
+RA_CRIT_EQ16 = 'eq16'
+
+
+def _ra_crit_cmb_number(value):
+    """Store a number of ``ra_crit_cmb`` as a float; leave a string or a bool for the check."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return float(value)
+    return value
+
+
+def _valid_ra_crit_cmb(instance, attribute, value):
+    """``ra_crit_cmb`` is 'eq16' or a positive, finite number."""
+    if value == RA_CRIT_EQ16 and isinstance(value, str):
+        return
+    if not (isinstance(value, float) and 0.0 < value < math.inf):
+        raise ValueError(
+            f"`{attribute.name}` must be '{RA_CRIT_EQ16}' or a positive, finite number, "
+            f'got {value!r}'
+        )
+
+
 def _valid_cell_thickness(instance, attribute, value):
     """Accept 0 or a finite number of at least 2 m, and "uniform" for the surface cell."""
     surface = attribute.name == 'surface_cell_thickness'
@@ -356,10 +377,12 @@ class AragogCoreModule:
     f_ohm: float
         Ohmic fraction of the dissipation in the field-strength scaling,
         in (0, 1]; Christensen et al. (2009)[^cite-christensen2009] adopt 1 for planets.
-    ra_crit_cmb: float
+    ra_crit_cmb: float | str
         Critical Rayleigh number of the mantle-side boundary layer that sets
-        the CMB heat flux from the core-mantle temperature contrast; the
-        default is the theoretical value of Thiriet et al. (2019)[^cite-thiriet2019], Table 2.
+        the CMB heat flux from the core-mantle temperature contrast. 'eq16' (the
+        default) takes the lower-layer law of Thiriet et al. (2019)[^cite-thiriet2019],
+        eq. 16, from the internal Rayleigh number of the mantle; a positive, finite number fixes
+        it, for example 450, their Table 2 value for the upper boundary layer.
     flux_geometry: str
         Which printed Earth-core efficiency factor converts the
         superadiabatic flux into the field-strength scaling's F:
@@ -384,7 +407,9 @@ class AragogCoreModule:
     layer_k_mix: float = field(default=1.0e7, validator=gt(0))
     layer_g_mix: float = field(default=1.0e-3, validator=gt(0))
     f_ohm: float = field(default=1.0, validator=(gt(0), le(1)))
-    ra_crit_cmb: float = field(default=450.0, validator=(gt(0), lt(float('inf'))))
+    ra_crit_cmb: float | str = field(
+        default=RA_CRIT_EQ16, converter=_ra_crit_cmb_number, validator=_valid_ra_crit_cmb
+    )
     flux_geometry: str = field(
         default='const_flux', validator=in_(('const_flux', 'zero_outer'))
     )

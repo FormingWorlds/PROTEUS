@@ -348,11 +348,13 @@ def test_aragog_core_module_defaults_and_mode_validator():
     with pytest.raises(ValueError):
         AragogCoreModule(flux_geometry='spherical_cow')
 
-    # CMB boundary-layer critical Rayleigh number: Thiriet et al. (2019) Table 2 default.
-    assert cm.ra_crit_cmb == pytest.approx(450.0)
+    # CMB boundary-layer critical Rayleigh number: Thiriet et al. (2019) eq. 16 by default,
+    # or a fixed positive number such as their upper-layer 450.
+    assert cm.ra_crit_cmb == 'eq16'
     assert AragogCoreModule(ra_crit_cmb=1000.0).ra_crit_cmb == pytest.approx(1000.0)
-    for bad in (0.0, float('inf'), float('nan')):
-        with pytest.raises(ValueError):
+    assert AragogCoreModule(ra_crit_cmb=450).ra_crit_cmb == pytest.approx(450.0)
+    for bad in (0.0, -1.0, float('inf'), float('nan'), 'eq17', '450', True, None):
+        with pytest.raises((ValueError, TypeError)):
             AragogCoreModule(ra_crit_cmb=bad)
 
 
