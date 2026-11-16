@@ -34,6 +34,7 @@ from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.wrapper import (
     _RESUME_STRUCT_DPHI_BACKSTOP_CAP,
     _RESUME_STRUCT_DR_REL_TOL,
+    _clear_jax_caches_after_resolve,
     _eos_grid_extent_up_step,
     _prevent_warming_clamp_active,
     _refresh_composition_sentinels,
@@ -2052,10 +2053,12 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
 # ============================================================================
 
 
-def _resolve_call(tmp_path, solver_side_effect):
-    """Run one ceiling-triggered re-solve with a mocked Zalmoxis solver."""
+def _resolve_call(tmp_path, solver_side_effect, module='aragog'):
+    """Run one ceiling-triggered re-solve with a mocked Zalmoxis solver; return the
+    Interior_t it updated."""
     config = _mock_config(update_interval=1e3, update_min_interval=0.0)
     config.interior_struct.zalmoxis.update_stale_ceiling = 0.0
+    config.interior_energetics.module = module
     dirs = _mock_dirs()
     dirs['output'] = str(tmp_path)
     (tmp_path / 'data').mkdir(exist_ok=True)
@@ -2078,14 +2081,15 @@ def _resolve_call(tmp_path, solver_side_effect):
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
         patch('proteus.interior_energetics.spider.blend_mesh_files', return_value=0.0),
     ):
-        out = update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
-    interior_o.zalmoxis_fail_count = 0
-    return out
+        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
+    return interior_o
 
 
-def _success_side(tmp_path):
+def _success_side(tmp_path, mass_factor=1.0):
+    """A Zalmoxis stand-in that converges to ``mass_factor`` times the target mass."""
+
     def side(config, outdir, hf_row, **kwargs):
-        hf_row['M_int'] = 5.972e24
+        hf_row['M_int'] = mass_factor * 5.972e24
         hf_row['M_int_target'] = 5.972e24
         hf_row['R_int'] = 6.371e6
         return (3.504e6, str(tmp_path / 'mesh.dat'))
@@ -2093,65 +2097,95 @@ def _success_side(tmp_path):
     return side
 
 
+class _StubJax:
+    """Stand-in for the jax module that counts clear_caches calls, or raises in them."""
+
+    def __init__(self, error=None):
+        self.calls, self.error = 0, error
+
+    def clear_caches(self):
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+
+
 @pytest.mark.unit
 def test_an_accepted_resolve_frees_the_compiled_jax_programs(tmp_path, caplog):
-    """An accepted re-solve empties the JAX compile caches, so the programs built for
-    the previous structure no longer hold memory; the call logs one INFO line."""
+    """An accepted re-solve of an Aragog run empties the JAX compile caches, so the
+    programs built for the previous structure no longer hold memory; one INFO line."""
     jax = pytest.importorskip('jax')
     program = jax.jit(lambda x: 2.0 * x + 1.0)
     program(1.0)
     assert program._cache_size() == 1
     with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
-        out = _resolve_call(tmp_path, _success_side(tmp_path))
-    assert out[0] == 7e4  # the re-solve was accepted
+        interior_o = _resolve_call(tmp_path, _success_side(tmp_path))
+    assert interior_o.structure_stale is False  # written on the success path only
+    assert interior_o.last_successful_struct_time == pytest.approx(7e4)
     assert program._cache_size() == 0
     assert sum('JAX caches cleared' in r.getMessage() for r in caplog.records) == 1
-    assert float(program(1.0)) == 3.0  # the program compiles again on its next call
+    assert float(program(1.0)) == pytest.approx(3.0)  # it compiles again on its next call
 
 
 @pytest.mark.unit
-def test_a_failed_resolve_keeps_the_compiled_jax_programs(tmp_path):
-    """A re-solve that falls back to the previous structure keeps the solver, so its
-    compiled programs stay cached."""
-    jax = pytest.importorskip('jax')
-    program = jax.jit(lambda x: 3.0 * x)
-    program(1.0)
-    _resolve_call(tmp_path, RuntimeError('mock failure'))
-    assert program._cache_size() == 1
-
-
-@pytest.mark.unit
-def test_a_resolve_that_misses_the_mass_anchor_keeps_the_compiled_jax_programs(
-    tmp_path, caplog
+@pytest.mark.parametrize(
+    ('side', 'module'),
+    [('failure', 'aragog'), ('mass anchor', 'aragog'), ('accepted', 'spider')],
+)
+def test_the_jax_caches_stay_without_an_accepted_aragog_resolve(
+    tmp_path, monkeypatch, caplog, side, module
 ):
-    """A Zalmoxis result 1 % off the mass target falls back to the previous structure after
-    the solver returned, so the compiled programs stay cached."""
-    jax = pytest.importorskip('jax')
-    program = jax.jit(lambda x: 4.0 * x)
-    program(1.0)
-
-    def side(config, outdir, hf_row, **kwargs):
-        hf_row['M_int'] = 1.01 * 5.972e24
-        hf_row['M_int_target'] = 5.972e24
-        hf_row['R_int'] = 6.371e6
-        return (3.504e6, str(tmp_path / 'mesh.dat'))
-
+    """A re-solve that fails, one whose result misses the mass anchor after the solver
+    returned, and an accepted re-solve of a run without Aragog keep the JAX caches."""
+    stub = _StubJax()
+    monkeypatch.setitem(sys.modules, 'jax', stub)
+    effect = {
+        'failure': RuntimeError('mock failure'),
+        'mass anchor': _success_side(tmp_path, 1.01),
+        'accepted': _success_side(tmp_path),
+    }[side]
     with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
-        _resolve_call(tmp_path, side)
-    assert any('Falling back to previous structure' in r.getMessage() for r in caplog.records)
-    assert program._cache_size() == 1
+        interior_o = _resolve_call(tmp_path, effect, module=module)
+    fell_back = any(
+        'Falling back to previous structure' in r.getMessage() for r in caplog.records
+    )
+    assert fell_back is (side != 'accepted')
+    assert interior_o.structure_stale is (side != 'accepted')
+    assert stub.calls == 0
+
+
+@pytest.mark.unit
+def test_a_failed_cache_clear_keeps_the_accepted_structure(tmp_path, monkeypatch, caplog):
+    """A clear that raises is logged as a warning; the accepted structure stays accepted."""
+    stub = _StubJax(RuntimeError('mock clear failure'))
+    monkeypatch.setitem(sys.modules, 'jax', stub)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
+        interior_o = _resolve_call(tmp_path, _success_side(tmp_path))
+    assert stub.calls == 1
+    assert interior_o.structure_stale is False
+    assert interior_o.zalmoxis_fail_count == 0
+    messages = [(r.levelno, r.getMessage()) for r in caplog.records]
+    assert (
+        logging.WARNING,
+        'JAX caches not cleared after the structure re-solve: mock clear failure',
+    ) in messages
+    assert not any('Falling back' in m for _, m in messages)
 
 
 @pytest.mark.unit
 def test_the_cache_clear_does_not_import_jax(monkeypatch, caplog):
-    """A run whose modules do not use JAX gets no JAX import and no log line."""
-    from proteus.interior_energetics import wrapper
-
+    """Without jax in sys.modules nothing is imported or logged; with it, one call."""
+    config = _mock_config()
+    config.interior_energetics.module = 'aragog'
     monkeypatch.delitem(sys.modules, 'jax', raising=False)
+    before = set(sys.modules)
     with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
-        wrapper._clear_jax_caches_after_resolve()
-    assert 'jax' not in sys.modules
-    assert not any('JAX caches cleared' in r.getMessage() for r in caplog.records)
+        _clear_jax_caches_after_resolve(config)
+    assert set(sys.modules) == before
+    assert not caplog.records
+    stub = _StubJax()
+    monkeypatch.setitem(sys.modules, 'jax', stub)
+    _clear_jax_caches_after_resolve(config)
+    assert stub.calls == 1
 
 
 # ============================================================================
