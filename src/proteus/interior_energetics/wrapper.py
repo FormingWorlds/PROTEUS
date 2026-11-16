@@ -2815,19 +2815,23 @@ def run_interior(
     # equilibration sees the final zalmoxis_output.dat.
 
 
-def _clear_jax_caches_after_resolve() -> None:
+def _clear_jax_caches_after_resolve(config: Config) -> None:
     """Free the compiled JAX programs after an accepted structure re-solve.
 
-    The interior solver built on the new structure compiles its programs again,
-    and the programs of the previous structure stay mapped in memory until the
-    caches are cleared; without this a run that re-solves often reaches the
-    per-process memory-map limit of Linux. No call when JAX is not imported.
+    Aragog, updated in place on the new structure, compiles its programs again, and
+    those of the previous structure stay mapped until the caches are cleared; a run that
+    re-solves often then reaches the per-process memory-map limit of Linux. Only with the
+    Aragog interior and when JAX is imported; a failure is logged, not raised.
     """
     jax = sys.modules.get('jax')
-    if jax is None:
+    if jax is None or config.interior_energetics.module != 'aragog':
         return
     t0 = time.perf_counter()
-    jax.clear_caches()
+    try:
+        jax.clear_caches()
+    except Exception as e:
+        log.warning('JAX caches not cleared after the structure re-solve: %s', e)
+        return
     log.info(
         'JAX caches cleared after the structure re-solve (%.2f s)', time.perf_counter() - t0
     )
@@ -3542,7 +3546,7 @@ def update_structure_from_interior(
             _zalmoxis_wall,
             reason,
         )
-        _clear_jax_caches_after_resolve()
+        _clear_jax_caches_after_resolve(config)
     except RuntimeError as e:
         interior_o.zalmoxis_fail_count += 1
         log.warning(
