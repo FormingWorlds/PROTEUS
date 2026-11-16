@@ -1984,8 +1984,10 @@ def test_stale_aware_ceiling_fires_after_failure_window(tmp_path):
     # Returned tuple unchanged (no_update path).
     assert out == (last_struct_time, hf_row['T_magma'], hf_row['Phi_global'])
 
-    # Now seed a successful past re-solve at t=7e4 (= 30 kyr ago).
+    # Now seed a successful past re-solve at t=7e4 (= 30 kyr ago), followed by the
+    # failed call at 7e4 that raised the stale flag.
     interior_o.last_successful_struct_time = 7e4
+    interior_o.structure_stale = True
 
     # Same hf_row, same elapsed; this time stale-aware ceiling SHOULD
     # fire (3e4 yr >= 2.5e4 yr).
@@ -2026,6 +2028,89 @@ def test_stale_aware_ceiling_fires_after_failure_window(tmp_path):
     )
 
     interior_o.zalmoxis_fail_count = 0
+
+
+def _stale_ceiling_case(tmp_path, *, stale, last_success=7e4):
+    """Real Interior_t 30 kyr after its last success, under a 25 kyr stale ceiling and a
+    50 kyr routine ceiling, with no Phi or T_magma change."""
+    config = _mock_config(update_interval=5e4, update_min_interval=0.0)
+    config.interior_struct.zalmoxis.update_stale_ceiling = 2.5e4
+    dirs = _mock_dirs()
+    dirs['output'] = str(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    interior_o = Interior_t(50)
+    interior_o.radius = np.linspace(6.371e6, 3.504e6, 50)
+    interior_o.temp = np.full(49, 3000.0)
+    interior_o.last_successful_struct_time = last_success
+    interior_o.structure_stale = stale
+    hf_row = {
+        'Time': 1e5,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'M_int': 5.972e24,
+    }
+    return config, dirs, interior_o, hf_row
+
+
+def _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, last_struct_time):
+    """Run update_structure_from_interior with a converging solver stub; return the
+    output tuple and the solver mock."""
+
+    def _success_side(config, outdir, hf_row, **kwargs):
+        hf_row['M_int'] = 5.972e24
+        hf_row['M_int_target'] = 5.972e24
+        hf_row['R_int'] = 6.371e6
+        return (3.504e6, str(tmp_path / 'mesh.dat'))
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=_success_side
+        ) as solver,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+        patch('proteus.interior_energetics.spider.blend_mesh_files', return_value=0.0),
+    ):
+        out = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, last_struct_time, 3000.0, 0.8
+        )
+    return out, solver
+
+
+@pytest.mark.unit
+def test_stale_ceiling_stays_silent_when_every_resolve_succeeded(tmp_path):
+    """The stale ceiling is a recovery path: with no failure since the last success it
+    never fires, however long ago that success was. Same state with the stale flag
+    raised fires it, so the silence comes from the flag alone."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
+    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_not_called()
+    assert out == (7e4, 3000.0, 0.8)
+    assert interior_o.last_successful_struct_time == 7e4
+
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_called_once()
+    assert out[0] == 1e5 and interior_o.structure_stale is False
+
+
+@pytest.mark.unit
+def test_resume_after_a_failure_keeps_the_pending_recovery(tmp_path):
+    """A run that stopped after a failed re-solve resumes with the stale flag and the time
+    of its last success, so the stale ceiling still fires 25 kyr after that success."""
+    config, dirs, before, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    before.write_structure_stale(str(tmp_path))
+
+    resumed = Interior_t(50)
+    resumed.radius, resumed.temp = before.radius, before.temp
+    resumed.resume_structure_stale(str(tmp_path))
+    assert resumed.structure_stale is True
+    assert resumed.last_successful_struct_time == 7e4
+
+    out, solver = _call_with_success_solver(tmp_path, config, dirs, resumed, hf_row, 7e4)
+    solver.assert_called_once()
+    assert out[0] == 1e5 and resumed.last_successful_struct_time == 1e5
 
 
 @pytest.mark.unit
