@@ -5,6 +5,8 @@ import gc
 import logging
 import os
 import shutil
+import sys
+import time
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
@@ -2816,6 +2818,24 @@ def run_interior(
     # equilibration sees the final zalmoxis_output.dat.
 
 
+def _clear_jax_caches_after_resolve() -> None:
+    """Free the compiled JAX programs after an accepted structure re-solve.
+
+    The interior solver built on the new structure compiles its programs again,
+    and the programs of the previous structure stay mapped in memory until the
+    caches are cleared; without this a run that re-solves often reaches the
+    per-process memory-map limit of Linux. No call when JAX is not imported.
+    """
+    jax = sys.modules.get('jax')
+    if jax is None:
+        return
+    t0 = time.perf_counter()
+    jax.clear_caches()
+    log.info(
+        'JAX caches cleared after the structure re-solve (%.2f s)', time.perf_counter() - t0
+    )
+
+
 def _refresh_composition_sentinels(dirs: dict, hf_row: dict) -> None:
     """Refresh the dissolved-volatile composition sentinels to the current state.
 
@@ -3523,6 +3543,7 @@ def update_structure_from_interior(
             _zalmoxis_wall,
             reason,
         )
+        _clear_jax_caches_after_resolve()
     except RuntimeError as e:
         interior_o.zalmoxis_fail_count += 1
         log.warning(

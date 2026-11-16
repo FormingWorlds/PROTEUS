@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import sys
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -2044,6 +2045,91 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
     mock_solver.assert_called_once()
 
     interior_o.zalmoxis_fail_count = 0
+
+
+# ============================================================================
+# JAX caches cleared after an accepted re-solve
+# ============================================================================
+
+
+def _resolve_call(tmp_path, solver_side_effect):
+    """Run one ceiling-triggered re-solve with a mocked Zalmoxis solver."""
+    config = _mock_config(update_interval=1e3, update_min_interval=0.0)
+    config.interior_struct.zalmoxis.update_stale_ceiling = 0.0
+    dirs = _mock_dirs()
+    dirs['output'] = str(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    interior_o = Interior_t(50)
+    interior_o.radius = np.linspace(6.371e6, 3.504e6, 50)
+    interior_o.temp = np.full(49, 3000.0)
+    hf_row = {
+        'Time': 7e4,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'M_int': 5.972e24,
+    }
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solver_side_effect
+        ),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+        patch('proteus.interior_energetics.spider.blend_mesh_files', return_value=0.0),
+    ):
+        out = update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
+    interior_o.zalmoxis_fail_count = 0
+    return out
+
+
+def _success_side(tmp_path):
+    def side(config, outdir, hf_row, **kwargs):
+        hf_row['M_int'] = 5.972e24
+        hf_row['M_int_target'] = 5.972e24
+        hf_row['R_int'] = 6.371e6
+        return (3.504e6, str(tmp_path / 'mesh.dat'))
+
+    return side
+
+
+@pytest.mark.unit
+def test_an_accepted_resolve_frees_the_compiled_jax_programs(tmp_path, caplog):
+    """An accepted re-solve empties the JAX compile caches, so the programs built for
+    the previous structure no longer hold memory; the call logs one INFO line."""
+    jax = pytest.importorskip('jax')
+    program = jax.jit(lambda x: 2.0 * x + 1.0)
+    program(1.0)
+    assert program._cache_size() == 1
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
+        out = _resolve_call(tmp_path, _success_side(tmp_path))
+    assert out[0] == 7e4  # the re-solve was accepted
+    assert program._cache_size() == 0
+    assert sum('JAX caches cleared' in r.getMessage() for r in caplog.records) == 1
+    assert float(program(1.0)) == 3.0  # the program compiles again on its next call
+
+
+@pytest.mark.unit
+def test_a_failed_resolve_keeps_the_compiled_jax_programs(tmp_path):
+    """A re-solve that falls back to the previous structure keeps the solver, so its
+    compiled programs stay cached."""
+    jax = pytest.importorskip('jax')
+    program = jax.jit(lambda x: 3.0 * x)
+    program(1.0)
+    _resolve_call(tmp_path, RuntimeError('mock failure'))
+    assert program._cache_size() == 1
+
+
+@pytest.mark.unit
+def test_the_cache_clear_does_not_import_jax(monkeypatch, caplog):
+    """A run whose modules do not use JAX gets no JAX import and no log line."""
+    from proteus.interior_energetics import wrapper
+
+    monkeypatch.delitem(sys.modules, 'jax', raising=False)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
+        wrapper._clear_jax_caches_after_resolve()
+    assert 'jax' not in sys.modules
+    assert not any('JAX caches cleared' in r.getMessage() for r in caplog.records)
 
 
 # ============================================================================
