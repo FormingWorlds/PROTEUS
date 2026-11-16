@@ -1398,16 +1398,18 @@ class Interior_t:
                 hdl.write('%.7e %.7e \n' % (self.phi[i], self.tides[i]))
 
     def write_structure_stale(self, outdir: str):
-        # Persist the stale-structure flag so a resumed run recovers it. Written
-        # whenever the flag changes (the Zalmoxis success and fall-back paths in
-        # wrapper.py), so the on-disk value tracks the in-memory one. A write
-        # failure (disk full, absent data/ directory) must not abort the run or,
-        # on the fall-back path, skip the mesh and zalmoxis_output.dat rollback
-        # that follows this call: the flag is only a resume-visibility bit, so
-        # log and continue rather than propagate.
+        # Persist the stale flag and the last-success time for a resume; written on every
+        # Zalmoxis success, fall-back and rejected up-step. A write failure is logged, never
+        # raised, so the fall-back rollback that follows this call still runs.
         try:
             with open(get_file_structure_stale(outdir), 'w') as hdl:
-                hdl.write('%d\n' % (1 if self.structure_stale else 0))
+                hdl.write(
+                    '%d %r\n'
+                    % (
+                        1 if self.structure_stale else 0,
+                        float(self.last_successful_struct_time),
+                    )
+                )
         except OSError as exc:
             log.warning('Could not persist stale-structure flag file: %s', exc)
 
@@ -1416,16 +1418,24 @@ class Interior_t:
         # means no fall-back was recorded, so the mesh
         # is fresh and the flag stays False. A malformed file is treated the
         # same way rather than aborting the resume over a visibility bit.
+        # The second field is the time of the last successful re-solve, the anchor of the
+        # stale-aware ceiling; without it the anchor is unknown (-inf).
         path = get_file_structure_stale(outdir)
+        self.last_successful_struct_time = float('-inf')
         if not os.path.exists(path):
             self.structure_stale = False
             return
         try:
             with open(path) as hdl:
-                self.structure_stale = bool(int(hdl.read().strip()))
-        except (ValueError, OSError):
+                fields = hdl.read().split()
+            stale = bool(int(fields[0]))
+            last_success = float(fields[1]) if len(fields) > 1 else float('-inf')
+        except (ValueError, OSError, IndexError):
             log.warning('Could not parse stale-structure flag file; assuming fresh')
             self.structure_stale = False
+            return
+        self.structure_stale = stale
+        self.last_successful_struct_time = last_success
 
     def update_rheology(self, visc: bool = False):
         # Update shear and bulk moduli arrays based on the melt fraction at each layer.

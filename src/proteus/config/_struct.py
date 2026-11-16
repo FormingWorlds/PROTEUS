@@ -222,8 +222,8 @@ class Zalmoxis:
     update_min_interval: float
         Minimum time between structure updates [yr]; prevents thrashing.
     update_stale_ceiling: float
-        Time since the last successful re-solve after which a trigger
-        refires [yr]; 0 disables.
+        After a failed re-solve, time since the last successful re-solve
+        after which a re-solve is triggered [yr]; 0 disables.
     mesh_max_shift: float
         Maximum fractional radius shift per structure update.
     mesh_convergence_interval: float
@@ -277,12 +277,9 @@ class Zalmoxis:
     # this threshold between consecutive iterations. Pairs with the
     # T_magma and Phi triggers above.
     update_dw_comp_abs: float = field(default=0.05, validator=(gt(0), lt(1)))
-    # Stale-aware ceiling on time since the last *successful* Zalmoxis
-    # re-solve (vs `update_interval` which counts since the last call).
-    # Default 25 kyr at 1 M_E sized to be ~half the typical 50 kyr
-    # ceiling, so a fall-back stretch refires the trigger after half a
-    # normal interval rather than waiting a full one.
-    # Set to 0 to disable. Set high to relax.
+    # Recovery after a failed Zalmoxis re-solve: re-solve once this time has passed
+    # since the last *successful* one (`update_interval` counts from the last call,
+    # which a failure resets). No effect while every re-solve succeeds; 0 disables.
     update_stale_ceiling: float = field(default=2.5e4, validator=ge(0))
 
     # Mesh smoothing

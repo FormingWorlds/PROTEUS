@@ -3004,17 +3004,10 @@ def update_structure_from_interior(
         triggered = True
         reason = f'ceiling ({elapsed:.1f} yr >= {config.interior_struct.zalmoxis.update_interval:.1f} yr)'
 
-    # Stale-aware ceiling: trigger if elapsed time since the LAST
-    # SUCCESSFUL structure refresh (not the last call) exceeds
-    # update_stale_ceiling. Without this, a sequence of failed
-    # re-solves resets `last_struct_time` to the failure time and
-    # the next ceiling waits a full update_interval, meaning Aragog
-    # can integrate through an entire window with a frozen mesh
-    # (tens of kyr). Bypasses the
-    # update_min_interval floor for the same reason as the
-    # mesh-converging trigger: this is a recovery path, not a
-    # routine refresh.
-    if not triggered:
+    # Stale-aware ceiling, a recovery path: after a failed re-solve (structure_stale),
+    # re-solve once update_stale_ceiling has passed since the last SUCCESSFUL one, since a
+    # failure resets `last_struct_time` and would hold off the routine ceiling.
+    if not triggered and getattr(interior_o, 'structure_stale', False) is True:
         stale_ceiling = config.interior_struct.zalmoxis.update_stale_ceiling
         if stale_ceiling > 0:
             last_success = float(
@@ -3457,6 +3450,7 @@ def update_structure_from_interior(
                 interior_o.last_successful_struct_time = float(current_time)
             except AttributeError:
                 pass
+            interior_o.write_structure_stale(dirs['output'])
             # The previous structure was retained, so the accepted radius did
             # not change: record zero so the resume-settling guard treats this
             # as converged and suppresses further spurious dT/T re-solves (a
@@ -3499,6 +3493,13 @@ def update_structure_from_interior(
         # It lives on interior_o (not hf_row) to stay out of the floats-only
         # helpfile schema, and is persisted so a resume recovers it.
         interior_o.structure_stale = False
+        # Anchor the stale-aware ceiling on the last SUCCESSFUL re-solve (vs
+        # `last_struct_time`, reset on every call); the sidecar stores both.
+        try:
+            interior_o.last_successful_struct_time = float(current_time)
+        except AttributeError:
+            # Mock callers without Interior_t: best-effort no-op.
+            pass
         interior_o.write_structure_stale(dirs['output'])
         # Record the relative radius change this accepted re-solve produced.
         # The resume-settling guard reads it next loop: a value below the
@@ -3507,14 +3508,6 @@ def update_structure_from_interior(
         _R_int_post = float(hf_row.get('R_int', 0.0) or 0.0)
         if R_int_prev > 0.0:
             dirs['_last_resolve_dR_rel'] = abs(_R_int_post - R_int_prev) / R_int_prev
-        # Anchor the stale-aware ceiling on the last SUCCESSFUL
-        # re-solve (vs `last_struct_time` which is reset on every
-        # call regardless of success).
-        try:
-            interior_o.last_successful_struct_time = float(current_time)
-        except AttributeError:
-            # Mock callers without Interior_t: best-effort no-op.
-            pass
         # Per-re-solve wall-time trace logged at INFO so the
         # convergence cadence cost can be read from proteus_00.log.
         log.info(
