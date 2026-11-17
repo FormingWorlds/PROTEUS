@@ -1,6 +1,6 @@
 # Weekly ecosystem digest
 
-Each week, a GitHub Actions workflow in this repository writes a digest of the PROTEUS ecosystem. The digest lists the pull requests merged since the last digest, the open pull requests that need review, and the new releases. It goes to the FormingWorlds Discussions tab in the category Weekly digest, before the Tuesday PROTEUS meeting.
+Each week, a GitHub Actions workflow in this repository writes a digest of the PROTEUS ecosystem. The digest lists the pull requests merged since the last digest, the open pull requests that need review, and the new releases. When posting is switched on, it goes to the FormingWorlds Discussions tab in the category Weekly digest, before the Tuesday PROTEUS meeting.
 
 The digest is written automatically: a language model drafts the text from the collected data, and a script checks every entry before anything is posted. The post says so in its first line. Read the linked pull requests before you act on an entry.
 
@@ -82,7 +82,7 @@ Change the line in a pull request. To add or remove a repository, edit `repos` i
 | Setting | Meaning |
 | --- | --- |
 | `publish` | `true` to post, `false` for dry runs only |
-| `category` | Slug of the discussion category; the run fails if it does not exist |
+| `category` | Slug of the discussion category; a run that posts fails if it does not exist |
 | `model` | Model that drafts the entries |
 | `max_bodies` | Number of the largest pull requests (by changed lines) whose text the model reads; the others give their titles only. From 0 to 500 |
 | `body_chars` | Characters kept of each pull-request or release text. From 1 to 20000 |
