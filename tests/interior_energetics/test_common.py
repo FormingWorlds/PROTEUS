@@ -638,17 +638,27 @@ def test_resume_structure_stale_missing_or_malformed_file_defaults_fresh(tmp_pat
     # Absent file: no sidecar written.
     missing = Interior_t(5)
     missing.structure_stale = True  # seed non-default so the reset is observable
+    missing.last_successful_struct_time = 5e4
     missing.resume_structure_stale(str(tmp_path))
     assert missing.structure_stale is False, 'absent file must reset to not-stale'
+    assert missing.last_successful_struct_time == float('-inf')
 
-    # Malformed file: unparseable content must warn and fall back to False.
-    with open(get_file_structure_stale(str(tmp_path)), 'w') as hdl:
-        hdl.write('not-an-int\n')
-    corrupt = Interior_t(5)
-    corrupt.structure_stale = True
-    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
-        corrupt.resume_structure_stale(str(tmp_path))
-    assert corrupt.structure_stale is False, 'malformed file must fall back to not-stale'
+    # Malformed and empty files: warn and fall back to not-stale, never raise.
+    for content in ('not-an-int\n', ''):
+        with open(get_file_structure_stale(str(tmp_path)), 'w') as hdl:
+            hdl.write(content)
+        corrupt = Interior_t(5)
+        corrupt.structure_stale = True
+        corrupt.last_successful_struct_time = 5e4
+        raised = None
+        with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+            try:
+                corrupt.resume_structure_stale(str(tmp_path))
+            except Exception as exc:
+                raised = exc
+        assert raised is None, f'{content!r} must not raise, got {raised!r}'
+        assert corrupt.structure_stale is False, 'malformed file must fall back to not-stale'
+        assert corrupt.last_successful_struct_time == float('-inf')
     assert any('stale-structure flag' in r.message for r in caplog.records), (
         'the malformed-file branch must emit a warning for provenance'
     )

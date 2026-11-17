@@ -2093,6 +2093,20 @@ def test_stale_ceiling_stays_silent_when_every_resolve_succeeded(tmp_path):
     out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 7e4)
     solver.assert_called_once()
     assert out[0] == 1e5 and interior_o.structure_stale is False
+    resumed = Interior_t(50)
+    resumed.resume_structure_stale(str(tmp_path))
+    assert resumed.structure_stale is False and resumed.last_successful_struct_time == 1e5
+
+
+@pytest.mark.unit
+def test_stale_ceiling_without_a_stale_attribute_stays_silent(tmp_path):
+    """An interior without a ``structure_stale`` attribute counts as fresh: 30 kyr after
+    its last success the stale ceiling does not fire."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
+    del interior_o.structure_stale
+    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_not_called()
+    assert out == (7e4, 3000.0, 0.8)
 
 
 @pytest.mark.unit
@@ -5799,6 +5813,10 @@ def test_resume_settling_monotonic_noop_records_zero_dr():
     dirs['_last_resolve_dR_rel'] = 2.0e-4
     interior_o = _mock_interior_o()
     r_prev = hf_row['R_int']
+    anchors = []  # the stale-ceiling anchor at each sidecar write
+    interior_o.write_structure_stale.side_effect = lambda out: anchors.append(
+        interior_o.last_successful_struct_time
+    )
 
     def _up_step(*args, **kwargs):
         # Solve nudges the radius UP past the running minimum -> rejected as a
@@ -5822,6 +5840,7 @@ def test_resume_settling_monotonic_noop_records_zero_dr():
     # rejected up-step), then the guard records the retained-structure outcome.
     mock_solver.assert_called_once()
     assert dirs['_last_resolve_dR_rel'] == 0.0
+    assert anchors == [float(hf_row['Time'])]
     # Discrimination: the rejected up-step was +1e-3 relative; recording THAT
     # (or leaving the prior 2e-4) would keep the guard above tolerance forever.
     # Zero is what lets the next dT/T trigger skip.
