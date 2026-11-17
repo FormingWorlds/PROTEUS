@@ -34,6 +34,7 @@ FORBIDDEN = {
     'a backtick': re.compile(r'`'),
     'a commit id': re.compile(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', re.I),
     'a superscript': re.compile('[\u00b2\u00b3\u00b9\u2070-\u207f]'),
+    'the action marker': re.compile(r'action\W+for\W+everyone', re.I),
 }
 MINUS = '\u2212\u02d7'
 FIELDS = {

@@ -62,7 +62,7 @@ If a job fails, the last job sends a message to Discord when the secret exists.
 
 ## Sections of a digest
 
-The sections appear in the order of the table below. The first section is a table with the columns Setting, Change (old value → new value), Merged and Links. A section without entries is left out.
+The sections appear in the order of the table below, and a section without entries is left out. The section Changes that affect your results is a table with the columns Setting, Change (the entry text, then old value → new value for each cited fact), Merged and Links (with the authors). The model sets the action marker of an entry; the script adds the words **Action for everyone:** in front of its text.
 
 | Section | What goes in it |
 | --- | --- |

@@ -35,12 +35,17 @@ def tuesday_title(until: str) -> str:
 
 
 def window_dates(window: dict) -> str:
-    """``1 September 2026 and 29 September 2026 (UTC ...)``: first and last day of the window."""
-    first, last = (
-        parse_time(window['since']),
-        parse_time(window['until']) - timedelta(seconds=1),
-    )
-    days = ' and '.join(f'{d.day} {d:%B %Y}' for d in (first, last))
+    """``1 and 29 September 2026 (UTC ...)``: first and last day of the window ``[since, until)``."""
+    first = parse_time(window['since'])
+    last = max(first, parse_time(window['until']) - timedelta(microseconds=1))
+    if first.date() == last.date():
+        days = f'{first.day} {first:%B %Y}'
+    elif (first.year, first.month) == (last.year, last.month):
+        days = f'{first.day} and {last.day} {last:%B %Y}'
+    elif first.year == last.year:
+        days = f'{first.day} {first:%B} and {last.day} {last:%B %Y}'
+    else:
+        days = f'{first.day} {first:%B %Y} and {last.day} {last:%B %Y}'
     return f'{days} (UTC {window["since"]} to {window["until"]})'
 
 
@@ -147,10 +152,12 @@ def render_body(
     rels = {r['ref']: r for r in data['releases']}
     facts = {f['id']: f for f in data.get('facts', [])}
     lines = [
+        'Additions and changes from across the ecosystem that affect more than one project. '
+        'This is a selection, not a complete change list.',
+        '',
         'This digest is written automatically by a workflow in FormingWorlds/PROTEUS from merged '
         'pull requests, open pull requests and releases; check the linked pull requests before you '
-        'act on it. Additions and changes from across the ecosystem that affect more than one '
-        'project. This is a selection, not a complete change list.',
+        'act on it.',
         '',
     ]
     if not live:
@@ -161,7 +168,7 @@ def render_body(
     if draft['empty']:
         lines.append(
             f'Quiet week: no pull request was merged and no release was published between '
-            f'{window["since"]} and {window["until"]} (UTC).'
+            f'{window_dates(window)}.'
         )
         lines.append('')
     announced_now = set()

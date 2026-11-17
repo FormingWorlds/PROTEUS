@@ -903,7 +903,7 @@ def test_render_results_table_and_footer():
         '| 6 Sep | [PROTEUS#849](https://github.com/FormingWorlds/PROTEUS/pull/849), by `@alice` |'
     )
     assert (
-        'between 1 September 2026 and 29 September 2026 (UTC 2026-09-01T00:00:00Z to 2026-09-30T00:00:00Z)'
+        'between 1 and 29 September 2026 (UTC 2026-09-01T00:00:00Z to 2026-09-30T00:00:00Z)'
         in body
     )
     assert '[Workflow run](https://run)' in body
@@ -1568,7 +1568,7 @@ def test_number_signs_match_in_text_and_source():
 def test_quiet_week_note_is_a_paragraph():
     """The quiet-week sentence is followed by a blank line, so the rule below cannot make it a heading."""
     body, _ = _render(_draft(empty=True), _data(prs=[], fact_list=[]))
-    assert '(UTC).\n\n---' in body
+    assert '2026-09-30T00:00:00Z).\n\n---' in body
 
 
 def test_publish_skips_a_second_post_with_the_same_title(tmp_path, monkeypatch, capsys):

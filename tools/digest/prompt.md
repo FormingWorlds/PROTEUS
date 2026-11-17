@@ -6,7 +6,7 @@ Return entries in these sections:
 
 - `results`: changes after which a run with the same config gives a different result than before: a changed default, a removed option, a changed physical law or numerical method, a new floor of a module that changes results. Each entry cites at least one fact or one release.
 - `capabilities`: new physics, new modules, new options or new tools that users can now use.
-- `install`: installation, environments, platforms, compilers, Julia and Python versions, the command-line interface. Set `action` to true when every user must do something (update a tool, reinstall, change a config); `action` is false in every other entry and section.
+- `install`: installation, environments, platforms, compilers, Julia and Python versions, the command-line interface. Set `action` to true when every user must do something (update a tool, reinstall, change a config); `action` is false in every other entry and section. Do not write the words of the marker in `text`; the script adds them.
 - `data`: reference data, downloads, licences.
 - `design`: choices that maintainers should check against their own plans: new interfaces between modules, new defaults, coupling choices, new dependencies.
 - `open`: open pull requests that are in review and coming soon. Cite only open pull requests here, and only merged pull requests or releases in the other sections.
