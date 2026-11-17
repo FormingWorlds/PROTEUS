@@ -19,7 +19,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -51,7 +50,7 @@ def create_discussion(gh: GitHub, home: str, category: str, title: str, body: st
     repo, cat = find_category(gh, home, category)
     if cat is None:
         raise DigestError(f'no discussion category with slug "{category}" in {home}')
-    out = gh.graphql(CREATE, repo=repo, category=cat, title=title, body=body)
+    out = gh.graphql(CREATE, retry=False, repo=repo, category=cat, title=title, body=body)
     return out['createDiscussion']['discussion']['url']
 
 
@@ -62,15 +61,12 @@ def discord(message: str, webhook: str | None = None) -> bool:
         print('No DISCORD_WEBHOOK_URL: Discord step skipped.')
         return False
     payload = json.dumps({'content': message, 'allowed_mentions': {'parse': []}}).encode()
-    req = urllib.request.Request(
-        webhook,
-        data=payload,
-        headers={'Content-Type': 'application/json', 'User-Agent': 'proteus-weekly-digest'},
-    )
+    headers = {'Content-Type': 'application/json', 'User-Agent': 'proteus-weekly-digest'}
     try:
+        req = urllib.request.Request(webhook, data=payload, headers=headers)
         with urllib.request.urlopen(req, timeout=30):
             return True
-    except (urllib.error.URLError, OSError) as err:
+    except (OSError, ValueError) as err:
         print(f'Warning: Discord ping failed: {err}')
         return False
 

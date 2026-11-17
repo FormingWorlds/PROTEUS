@@ -1133,7 +1133,13 @@ def test_create_discussion_finds_the_category_by_slug():
         post.create_discussion(gh, 'FormingWorlds/PROTEUS', 'weekly-digest', 'T', 'B')
         == 'https://d/5'
     )
-    assert gh.queries[1] == {'repo': 'R', 'category': 'C9', 'title': 'T', 'body': 'B'}
+    assert gh.queries[1] == {
+        'retry': False,
+        'repo': 'R',
+        'category': 'C9',
+        'title': 'T',
+        'body': 'B',
+    }
     gh = _FakeGH(
         [
             {

@@ -97,7 +97,11 @@ def parse_state(body: str) -> dict | None:
     post (for example in a fact value) cannot replace the real one.
     """
     found = STATE_RE.findall(body or '')
-    return json.loads(found[-1]) if found else None
+    try:
+        state = json.loads(found[-1]) if found else None
+    except json.JSONDecodeError:
+        return None
+    return state if isinstance(state, dict) else None
 
 
 def previous_state(gh: GitHub, home: str, category: str) -> dict | None:
@@ -113,12 +117,10 @@ def previous_state(gh: GitHub, home: str, category: str) -> dict | None:
     posts = gh.graphql(POSTS_QUERY, owner=owner, name=name, category=cat)
     for post in posts['repository']['discussions']['nodes']:
         author = post['author'] or {}
+        if author.get('login') != 'github-actions' or author.get('__typename') != 'Bot':
+            continue
         state = parse_state(post['body'])
-        if (
-            author.get('login') == 'github-actions'
-            and author.get('__typename') == 'Bot'
-            and state
-        ):
+        if state:
             return {**state, 'url': post['url']}
     return None
 

@@ -31,8 +31,8 @@ FORBIDDEN = {
     'a markdown link or image': re.compile(r'[\[\]]'),
     'a # reference': re.compile(r'#\s*\d|\bGH-\d', re.I),
     'a backtick': re.compile(r'`'),
-    'a commit id': re.compile(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b'),
-    'a superscript': re.compile('[\u00b2\u00b3\u00b9\u2070-\u209f]'),
+    'a commit id': re.compile(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', re.I),
+    'a superscript': re.compile('[\u00b2\u00b3\u00b9\u2070-\u207f]'),
 }
 FIELDS = {
     'section': str,
@@ -47,7 +47,8 @@ FIELDS = {
 
 def numbers(text: str) -> set[str]:
     """Return the number tokens of a text, for example ``-0.8``, ``1.13.0``, ``v1.0.0``, ``1,000`` or ``1e-3``."""
-    return set(NUMBER_RE.findall(re.sub(r'\bv(?=\d)', ' ', text)))
+    text = re.sub('[\u2212\ufe63\uff0d]', '-', re.sub(r'\bv(?=\d)', ' ', text))
+    return set(NUMBER_RE.findall(text))
 
 
 def _float(token: str) -> float | None:
@@ -162,8 +163,6 @@ def check_entry(entry: dict, index: dict) -> list[str]:
         sources |= numbers(
             f'{item.get("title", "")} {item.get("name", "")} {item.get("body", "")}'
         )
-    for fact in facts:
-        sources |= numbers(f'{fact["key"]} {fact["old"]} {fact["new"]}')
     fails += [
         f'{name}: number {n} is in no cited source'
         for n in sorted(numbers(text))
@@ -196,8 +195,7 @@ def check(data: dict, draft: dict) -> list[str]:
     }
     fails = []
     for entry in draft['entries']:
-        shape = shape_failures(entry)
-        fails += shape or check_entry(entry, index)
+        fails += shape_failures(entry) or check_entry(entry, index)
     return fails
 
 

@@ -16,6 +16,7 @@ import argparse
 import json
 import re
 import sys
+import urllib.parse
 from datetime import timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -41,7 +42,7 @@ def short_date(stamp: str) -> str:
 
 def escape(text: str) -> str:
     """Backslash-escape the markdown characters of untrusted text, so it renders as text only."""
-    text = re.sub(r'([\\`*_{}\[\]()<>#&!~])', r'\\\1', text)
+    text = re.sub(r'([\\`*_{}\[\]()<>#&!~$])', r'\\\1', text)
     text = re.sub(r'^(\d+)\.(?=\s|$)', r'\1\\.', text)
     return re.sub(r'^([-+=])', r'\\\1', text)
 
@@ -111,7 +112,8 @@ def links(items: list[dict]) -> str:
         re.sub(r'([\\\[\]()`<>*_])', r'\\\1', i['ref'].replace('@', ' ').replace('|', '/'))
         for i in items
     ]
-    return ', '.join(f'[{text}]({i["url"]})' for text, i in zip(texts, items))
+    urls = [urllib.parse.quote(i['url'], safe=':/#?=&%@+.,-_~') for i in items]
+    return ', '.join(f'[{text}]({url})' for text, url in zip(texts, urls))
 
 
 def authors(items: list[dict], mentions: Mentions) -> str:

@@ -142,11 +142,14 @@ class GitHub:
         self.token = token if token is not None else os.environ.get('GITHUB_TOKEN', '')
         self.retries = retries
 
-    def _request(self, url: str, data: bytes | None = None, accept: str | None = None):
+    def _request(
+        self, url: str, data: bytes | None = None, accept: str | None = None, retry: bool = True
+    ):
         headers = {'Accept': accept or 'application/vnd.github+json'}
         if self.token:
             headers['Authorization'] = f'Bearer {self.token}'
-        for attempt in range(self.retries + 1):
+        retries = self.retries if retry else 0
+        for attempt in range(retries + 1):
             req = urllib.request.Request(url, data=data, headers=headers)
             try:
                 with urllib.request.urlopen(req, timeout=60) as resp:
@@ -154,18 +157,21 @@ class GitHub:
             except urllib.error.HTTPError as err:
                 if err.code == 404:
                     return None
-                if err.code not in (403, 429, 502, 503) or attempt == self.retries:
+                if err.code not in (403, 429, 502, 503) or attempt == retries:
                     raise DigestError(f'GitHub API {err.code} for {url}') from err
                 time.sleep(int(err.headers.get('Retry-After') or 20 * (attempt + 1)))
-            except (urllib.error.URLError, OSError) as err:
-                if attempt == self.retries:
+            except OSError as err:
+                if attempt == retries:
                     raise DigestError(f'GitHub API unreachable for {url}: {err}') from err
                 time.sleep(20 * (attempt + 1))
 
-    def graphql(self, query: str, **variables) -> dict:
-        """Run a GraphQL query and return its ``data``; raise on any error."""
+    def graphql(self, query: str, retry: bool = True, **variables) -> dict:
+        """Run a GraphQL query and return its ``data``; raise on any error.
+
+        A mutation passes ``retry=False``: a lost answer must not apply it twice.
+        """
         body = json.dumps({'query': query, 'variables': variables}).encode()
-        raw = self._request(f'{API}/graphql', data=body)
+        raw = self._request(f'{API}/graphql', data=body, retry=retry)
         out = json.loads(raw) if raw is not None else {'errors': 'not found'}
         if out.get('errors'):
             raise DigestError(f'GraphQL error: {out["errors"]}')
