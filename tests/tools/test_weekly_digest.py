@@ -1196,8 +1196,10 @@ def test_workflow_jobs_keep_the_model_token_away_from_write_tokens():
     assert set(jobs) == {'collect', 'draft', 'publish', 'alert'}
     assert '\npermissions: {}\n' in text and 'shell: bash' in text
     assert '    permissions: {}\n' in jobs['draft']
-    assert '      discussions: write\n' in jobs['publish']
+    perms = re.search(r'    permissions:\n((?:      .*\n)+)', jobs['publish']).group(1)
+    assert perms == '      contents: read\n      discussions: write\n'
     assert all('write' not in jobs[j] for j in ('collect', 'draft', 'alert'))
+    assert 'github.token' not in jobs['draft'] and 'GITHUB_TOKEN' not in jobs['draft']
     for name, job in jobs.items():
         assert ('CLAUDE_CODE_OAUTH_TOKEN' in job) is (name == 'draft'), name
     assert "if: steps.mode.outputs.live == 'true'" in jobs['publish']
@@ -1466,3 +1468,67 @@ def test_model_runs_outside_the_repository(tmp_path, monkeypatch):
     draft.run_model('p', 'm')
     cwd = Path(log.read_text())
     assert cwd != _ROOT and not (cwd / 'CLAUDE.md').exists() and _ROOT not in cwd.parents
+
+
+def test_previous_state_skips_a_malformed_marker_of_a_person():
+    """A broken marker in a post by anybody else neither crashes the run nor counts."""
+    cats = {
+        'repository': {
+            'id': 'R',
+            'discussionCategories': {'nodes': [{'id': 'C1', 'slug': 'weekly-digest'}]},
+        }
+    }
+    bad = _post(author='mallory', kind='User', state='{oops}')
+    posts = {'repository': {'discussions': {'nodes': [bad, _post()]}}}
+    state = collect.previous_state(
+        _FakeGH([cats, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
+    )
+    assert state['until'] == '2026-11-16T22:30:00Z'
+    assert collect.parse_state('<!-- weekly-digest-state {oops} -->') is None
+    assert collect.parse_state('<!-- weekly-digest-state {"until":1} -->') == {'until': 1}
+    assert collect.parse_state('<!-- weekly-digest-state ["x"] -->') is None
+
+
+def test_check_rejects_a_numeric_value_stated_backwards():
+    """The old number of a cited change is no source, so the text cannot state it as the new value."""
+    data = _data()
+    data['prs'][0]['body'] = 'Settling velocity scales with grain radius squared.'
+    fails = check.check(data, _draft(_entry(text='The default grain size is now 0.1 m.')))
+    assert any('number 0.1 is in no cited source' in f for f in fails), fails
+    fails = check.check(data, _draft(_entry(text='The default grain size is now −0.001 m.')))
+    assert any('number -0.001 is in no cited source' in f for f in fails), fails
+
+
+def test_check_accepts_subscripts_and_rejects_uppercase_commit_ids():
+    """Chemical formulas with subscripts pass; a commit id in capitals still fails."""
+    assert check.check(_data(), _draft(_entry(text='Outgassed CO₂ changed.'))) == []
+    fails = check.check(_data(), _draft(_entry(text='It reverts 1A2B3C4D5E6F.')))
+    assert any('commit id' in f for f in fails), fails
+
+
+def test_mutation_is_sent_once_on_a_network_error(monkeypatch):
+    """A create call is not retried, so a lost answer cannot post the digest twice."""
+    calls = []
+
+    def flaky(req, timeout):
+        calls.append(1)
+        raise TimeoutError('read timeout')
+
+    monkeypatch.setattr(common.urllib.request, 'urlopen', flaky)
+    monkeypatch.setattr(common.time, 'sleep', lambda s: None)
+    with pytest.raises(common.DigestError):
+        common.GitHub('t').graphql('mutation {x}', retry=False)
+    assert len(calls) == 1
+
+
+def test_discord_bad_webhook_is_a_warning(capsys):
+    """A malformed webhook address is a warning after a post, not a failed job."""
+    assert post.discord('m', 'discord.example/x') is False
+    assert 'Discord ping failed' in capsys.readouterr().out
+
+
+def test_render_escapes_dollar_and_release_url():
+    """A dollar sign cannot start math, and a release URL cannot close its link early."""
+    assert render.escape('costs $5 and $6') == 'costs \\$5 and \\$6'
+    rel = dict(_release(), url='https://github.com/a/b/releases/tag/1.0)|x y')
+    assert render.links([rel]).endswith('(https://github.com/a/b/releases/tag/1.0%29%7Cx%20y)')
