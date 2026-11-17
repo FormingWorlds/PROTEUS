@@ -362,6 +362,37 @@ def check_accretion_core_stratification_compatibility(instance, attribute, value
         )
 
 
+def check_core_profile_source_requirements(instance, attribute, value):
+    """Reject the PALEOS core profile where it does not apply.
+
+    Only core_module reads the profile; Aragog builds no stratified shell on it; and a giant
+    impact refits the Gaussian profile to the grown core, which the PALEOS profile does not
+    support.
+    """
+    interior = instance.interior_energetics
+    if interior.module != 'aragog':
+        return
+    aragog = interior.aragog
+    if aragog.core_module.profile_source != 'paleos':
+        return
+    if aragog.core_bc != 'core_module':
+        raise ValueError(
+            "interior_energetics.aragog.core_module.profile_source = 'paleos' needs "
+            f"interior_energetics.aragog.core_bc = 'core_module', not '{aragog.core_bc}'."
+        )
+    if aragog.core_module.stratification:
+        raise ValueError(
+            "interior_energetics.aragog.core_module.profile_source = 'paleos' cannot run with "
+            'stratification = true: Aragog builds no stratified shell on the PALEOS profile.'
+        )
+    if instance.accretion.module is not None:
+        raise ValueError(
+            f"accretion.module = '{instance.accretion.module}' cannot run with "
+            "interior_energetics.aragog.core_module.profile_source = 'paleos': a giant impact "
+            'refits the Gaussian core profile to the grown core.'
+        )
+
+
 def check_core_module_requirements(instance, attribute, value):
     """Reject an Aragog core_module core that its structure or solver cannot serve.
 
@@ -977,6 +1008,7 @@ class Config:
             check_accretion_vapourise_compatibility,
             check_accretion_core_stratification_compatibility,
             check_core_module_requirements,
+            check_core_profile_source_requirements,
             parameterized_excludes_accretion,
         ),
     )
