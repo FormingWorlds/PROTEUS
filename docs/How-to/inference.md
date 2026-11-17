@@ -185,6 +185,15 @@ The optimization will run until `n_steps` evaluations are completed or manually 
 
 With `patience = N` (default 0, off), the study stops earlier, once `N` evaluations in a row have not raised the best objective by more than 0.01. Stalls of tens of evaluations happen, so set patience after a few test runs; too low a value stops a study early.
 
+### One GP per observable
+
+With `bo_per_observable = true` (default `false`), each optimisation step fits one GP per observable instead of one GP to `J`, as the [posterior](#posterior-samples) does by default. Each GP models its observable in the space the objective compares it in (log10 or linear), with its noise learned, and the acquisition scores a candidate by `J` of joint draws from these GPs, computed as for a run. The steep, narrow valley of `J` near the best fit then comes from the formula of `J`, which the single GP has to learn from the runs.
+
+- `acqf` must be `LogEI`, `LogPI` or `UCB`, each in its Monte Carlo form; `TS` is refused.
+- A run that failed or was excluded enters no GP. An observable compared in log10 whose value is zero, as the gas fractions of an escaped atmosphere are, or a non-finite value, is left out of that observable's GP only; `J` of that run still counts as the best value to improve on.
+- `init.csv` and `data.csv` gain one `s_*` column per observable, in the order of `[observables]`, holding the values the GPs are fitted to (NaN where left out).
+- A step takes a few seconds longer than with one GP: one fit per observable, and a Monte Carlo acquisition.
+
 ### Acquisition functions
 
 The acquisition function is an analytical function that is aware of the current state of the optimisation.
@@ -216,7 +225,7 @@ See docs [here](https://botorch.readthedocs.io/en/latest/models.html#module-boto
 The system generates several outputs in:
 
 ### Data Files
-- `data.csv`: Final dataset with all evaluated parameters (`x_*`) and objective values (`y`)
+- `data.csv`: Final dataset with all evaluated parameters (`x_*`) and objective values (`y`), and with `bo_per_observable` the observables (`s_*`)
 - `logs.csv`: Detailed logs of each BO step
 - `Ts.csv`: Timestamps for performance analysis
 - `init.csv`: Data used as an initial guess for starting the optimisation

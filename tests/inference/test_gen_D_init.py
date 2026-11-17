@@ -47,6 +47,7 @@ def test_create_init_falls_back_to_n_workers_when_init_samps_less_than_one(monke
         sigma=None,
         correlation=None,
         loss=None,
+        with_observables=False,
     ):
         received.append(n)
         return n
@@ -121,6 +122,7 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
         sigma=None,
         correlation=None,
         loss=None,
+        with_observables=False,
     ):
         observed['grid_dir'] = grid_dir
         observed['loss'] = loss
@@ -396,7 +398,7 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
         init_mod, 'get_proteus_directories', lambda _output: {'output': str(tmp_path)}
     )
 
-    def fake_save_dataset_csv(X, Y, fpath):
+    def fake_save_dataset_csv(X, Y, fpath, S=None):
         captured['saved_shape'] = (tuple(X.shape), tuple(Y.shape))
         captured['saved_path'] = fpath
 
@@ -503,3 +505,37 @@ def test_real_halton_accepts_rng_keyword_and_is_deterministic():
     )
     np.testing.assert_allclose(x, x_same, rtol=0.0, atol=0.0)
     assert not np.allclose(x, x_diff)
+
+
+def test_sample_from_grid_writes_the_compared_observables(monkeypatch, tmp_path):
+    """With with_observables, init.csv gains one s_* column per observable, in the space the
+    objective compares it in: R_obs linear, P_surf in log10, and NaN for a zero P_surf."""
+    grid_dir = tmp_path / 'grid'
+    output_dir = tmp_path / 'output'
+    output_dir.mkdir(parents=True)
+    for i, (r, p) in enumerate([(9.0e6, 100.0), (9.5e6, 0.0)]):
+        case = grid_dir / f'case_{i}'
+        case.mkdir(parents=True)
+        pd.DataFrame([{'R_obs': r, 'P_surf': p}]).to_csv(
+            case / 'runtime_helpfile.csv', sep=' ', index=False
+        )
+        (case / 'init_coupler.toml').write_text(
+            toml.dumps({'planet': {'mass_tot': 1.0 + i}}), encoding='utf-8'
+        )
+    monkeypatch.setattr(
+        init_mod, 'get_proteus_directories', lambda _output: {'output': str(output_dir)}
+    )
+
+    init_mod.sample_from_grid(
+        output='ignored',
+        params={'planet.mass_tot': [0.0, 10.0]},
+        observables={'R_obs': 9.25e6, 'P_surf': 50.0},
+        grid_dir=str(grid_dir),
+        with_observables=True,
+    )
+
+    data = pd.read_csv(output_dir / 'init.csv')
+    assert list(data.columns) == ['x_0', 'y', 's_0', 's_1']
+    assert data['s_0'].tolist() == pytest.approx([9.0e6, 9.5e6], rel=1e-12)
+    assert data['s_1'][0] == pytest.approx(2.0, rel=1e-12)  # log10(100), not 100
+    assert np.isnan(data['s_1'][1])

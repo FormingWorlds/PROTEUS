@@ -31,6 +31,7 @@ from proteus.config import (
 
 # bayesopt source files
 from proteus.inference.async_BO import checkpoint, parallel_process
+from proteus.inference.composite import validate_bo_per_observable
 from proteus.inference.correlation import (
     composition_from_names,
     ratio_correlation,
@@ -421,6 +422,11 @@ def run_inference(config):
         config.get('posterior_per_observable'), config['posterior_samples']
     )
 
+    # One GP per observable in the optimisation, instead of one GP of the objective
+    config['bo_per_observable'] = validate_bo_per_observable(
+        config.get('bo_per_observable'), config['acqf']
+    )
+
     # How each worker runs its evaluations, validated before the output folder is emptied.
     set_dispatch(config.get('dispatch'), config.get('runner_max_jobs'))
 
@@ -496,6 +502,10 @@ def run_inference(config):
         log.info(f'    patience      = {config["patience"]} evaluations')
     log.info(f'    kernel        = {config["kernel"]}')
     log.info(f'    acquisition   = {config["acqf"]}')
+    log.info(
+        '    surrogate     = '
+        + ('one GP per observable' if config['bo_per_observable'] else 'one GP of J')
+    )
     log.info(f'    dispatch      = {dispatch_mode()}')
     objective = 'chi-squared' if config['sigma'] else 'relative'
     if config['correlation']:
@@ -537,6 +547,7 @@ def run_inference(config):
         config['correlation'],
         config['patience'],
         config['loss'],
+        config['bo_per_observable'],
     )
 
     t_1 = time.perf_counter()

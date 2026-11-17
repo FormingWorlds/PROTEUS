@@ -149,7 +149,7 @@ def test_gp_mean_matches_the_botorch_posterior_mean(learned_noise):
     X, Y = _study_data(n=40)
     Y = 100.0 * Y + 50.0
     Yvar = None if learned_noise else torch.full_like(Y, post.GP_NOISE)
-    gp = post._fit_gp(X, Y, 'MAT3/2', 0, Yvar, 1)
+    gp = post.fit_gp(X, Y, 'MAT3/2', 0, Yvar, 1)
     U = torch.rand(300, 2, generator=torch.Generator().manual_seed(1), dtype=torch.double)
     with torch.no_grad():
         expected = gp.posterior(U.unsqueeze(1)).mean.reshape(-1)

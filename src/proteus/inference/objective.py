@@ -562,27 +562,52 @@ def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None, loss=None):
         raise ValueError(f'objective {loss[0]!r} needs sigma: sigma is the scale of each error')
 
     sim_vals, tru_vals, sig_vals = observable_space(sim_dict, tru_dict, sigma)
-
-    # Convert to tensor and reshape
     sim = torch.tensor(sim_vals, dtype=dtype).reshape(1, -1)
-    true_y = torch.tensor(tru_vals, dtype=dtype).reshape(1, -1)
+    true_y = torch.tensor(tru_vals, dtype=dtype)
+    sig = torch.tensor(sig_vals, dtype=dtype) if sigma is not None else None
+    return objective_from_observables(sim, true_y, sig, list(sim_dict.keys()), whitener, loss)
 
-    # Compute normalized difference and squared distance
 
-    if sigma is None:
+def objective_from_observables(sim, tru, sig, names, whitener=None, loss=None):
+    """Objective of each row of simulated observables, in the space `observable_space` gives.
+
+    Parameters
+    ----------
+    - sim (torch.Tensor): Simulated observables, shape (..., m), log10 or linear per observable.
+    - tru (torch.Tensor): Targets in the same space, shape (m,).
+    - sig (torch.Tensor | None): Sigmas in the same space, shape (m,); None for the
+      relative-difference objective.
+    - names (list[str]): Observable names, in column order.
+    - whitener (CorrelationWhitener | None): Observable correlations.
+    - loss (tuple[str, float] | None): Robust loss; None for chi-squared.
+
+    Returns
+    ----------
+    - torch.Tensor: Objective, shape (..., 1).
+    """
+    if sig is None:
         # reproduces the original objective function
-        denom = torch.where(true_y >= 0, true_y + EPS_CLIP, true_y - EPS_CLIP)
-        diff = torch.ones_like(true_y) - sim / denom
+        denom = torch.where(tru >= 0, tru + EPS_CLIP, tru - EPS_CLIP)
+        diff = 1.0 - sim / denom
     else:
-        # Use the provided sigma values, no epsilon offset
-        sigma_tensor = torch.tensor(sig_vals, dtype=dtype).reshape(1, -1)
-        diff = (sim - true_y) / sigma_tensor
+        diff = (sim - tru) / sig
+    flat = diff.reshape(-1, diff.shape[-1])
+    sq_dist = squared_distance(flat, names, whitener, loss)
+    return log_warp(sq_dist).reshape(*diff.shape[:-1], 1)
 
-    sq_dist = squared_distance(diff, list(sim_dict.keys()), whitener, loss)
 
-    obj = log_warp(sq_dist)
+def observable_row(sim_dict, tru_dict, sigma=None) -> torch.Tensor:
+    """Simulated observables of one run in the space eval_obj compares them in, shape (1, m).
 
-    return obj
+    An observable compared in log10 whose value is not positive is NaN, as is any non-finite
+    value, so the GPs of the observables leave that run out instead of fitting the clip value.
+    """
+    sim_vals, _, _ = observable_space(sim_dict, tru_dict, sigma)
+    row = torch.tensor(sim_vals, dtype=dtype).reshape(1, -1)
+    raw = torch.tensor([float(sim_dict[k]) for k in sim_dict.keys()], dtype=dtype)
+    logged = torch.tensor([compared_in_log(k, sigma) for k in sim_dict.keys()])
+    bad = ~torch.isfinite(raw) | (logged & (raw <= 0))
+    return row.masked_fill(bad.reshape(1, -1), float('nan'))
 
 
 def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
@@ -661,6 +686,7 @@ def J(
     sigma: dict | None = None,
     whitener: CorrelationWhitener | None = None,
     loss: tuple[str, float] | None = None,
+    with_observables: bool = False,
 ) -> torch.Tensor:
     """Run PROTEUS, and then compute the objective value for a given normalized input.
 
@@ -686,11 +712,17 @@ def J(
     - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
     - whitener (CorrelationWhitener | None): Observable correlations, passed to `eval_obj`.
     - loss (tuple[str, float] | None): Objective name and parameter, passed to `eval_obj`; None for chi-squared.
+    - with_observables (bool): Append the run's observables, as `observable_row` gives them
+      (NaN for an unscored run), after the objective.
 
     Returns
     ----------
-    - torch.Tensor: Objective value tensor of shape (1, 1).
+    - torch.Tensor: Objective value tensor of shape (1, 1), or (1, 1 + m) with_observables.
     """
+    nan_row = torch.full((1, len(true_observables)), float('nan'), dtype=dtype)
+
+    def out(obj, row=nan_row):
+        return torch.cat([obj, row], dim=1) if with_observables else obj
 
     # Map normalized x to raw parameter dict and run PROTEUS
     raw = {parameters[i]: x[0, i].item() for i in range(len(parameters))}
@@ -705,7 +737,7 @@ def J(
         )
     except ProteusRunFailure as failure:
         # Parameters the simulator cannot integrate are expected in a wide box.
-        return _handle_unscored(failure, output)
+        return out(_handle_unscored(failure, output))
 
     # A clean exit on an error status (e.g. 25, stopped via the keepalive file),
     # one that never reached the main loop (0, 1), or with no readable status.
@@ -734,10 +766,12 @@ def J(
             parameters=raw,
             category=CATEGORY_FAILURE if failed else CATEGORY_EXCLUDED,
         )
-        return _handle_unscored(failure, output)
+        return out(_handle_unscored(failure, output))
 
     # Compute value of objective function given these results
-    return eval_obj(sim_vals, true_observables, sigma, whitener, loss)
+    obj = eval_obj(sim_vals, true_observables, sigma, whitener, loss)
+    ordered = {k: sim_vals[k] for k in true_observables}
+    return out(obj, observable_row(ordered, true_observables, sigma))
 
 
 def _handle_unscored(failure: ProteusRunFailure, output: str) -> torch.Tensor:
@@ -782,6 +816,7 @@ def prot_builder(
     sigma: dict | None = None,
     correlation: dict | None = None,
     loss: tuple[str, float] | None = None,
+    with_observables: bool = False,
 ) -> callable:
     """Factory returning a BO-compatible objective function for PROTEUS inference.
 
@@ -800,6 +835,7 @@ def prot_builder(
     - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
     - correlation (dict | None): Observable correlations, factored once here.
     - loss (tuple[str, float] | None): Objective name and parameter, passed to `eval_obj`; None for chi-squared.
+    - with_observables (bool): f also returns the observables, as `J` describes.
 
     Returns
     ----------
@@ -839,10 +875,11 @@ def prot_builder(
             sigma=sigma,
             whitener=whitener,
             loss=loss,
+            with_observables=with_observables,
         )
 
-        # Check J is finite
-        if not torch.isfinite(J_eval).all():
+        # Check J is finite; the observables of an unscored run are NaN on purpose
+        if not torch.isfinite(J_eval[:, :1]).all():
             x_param = {param_keys[i]: x_raw[0, i].item() for i in range(d)}
 
             log.warning('Non-finite objective value')

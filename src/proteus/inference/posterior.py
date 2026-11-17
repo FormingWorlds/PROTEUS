@@ -22,9 +22,8 @@ from proteus.inference.correlation import CorrelationWhitener
 from proteus.inference.objective import (
     BAD_OBJ_VALUE,
     compared_in_log,
-    log_warp,
+    objective_from_observables,
     observable_space,
-    squared_distance,
 )
 from proteus.inference.plot_fit import case_parameters
 from proteus.inference.transforms import normalize_parameters, unnormalize_parameters
@@ -75,15 +74,16 @@ def fit_surrogate(X: torch.Tensor, Y: torch.Tensor, kernel: str, seed: int) -> S
     """Fit a GP to the scored evaluations, as BO_step does."""
     scored = Y[:, 0] > BAD_OBJ_VALUE
     X, Y = X[scored], Y[scored]
-    return _fit_gp(X, Y, kernel, seed, torch.full_like(Y, GP_NOISE), 10)
+    return fit_gp(X, Y, kernel, seed, torch.full_like(Y, GP_NOISE), 10)
 
 
-def _fit_gp(X, Y, kernel: str, seed: int, Yvar, attempts: int) -> SingleTaskGP:
-    """GP on X in the unit cube; Yvar None learns the noise."""
+def fit_gp(X, Y, kernel: str, seed: int | None, Yvar, attempts: int) -> SingleTaskGP:
+    """GP on X in the unit cube; Yvar None learns the noise, seed None keeps the torch state."""
     d = X.shape[-1]
     if len(X) < d + 1:
         raise ValueError(f'{len(X)} scored evaluations cannot constrain a GP in {d} parameters')
-    torch.manual_seed(seed)
+    if seed is not None:
+        torch.manual_seed(seed)
     gp = SingleTaskGP(
         train_X=X,
         train_Y=Y,
@@ -118,7 +118,7 @@ def observables_objective(config: dict, directory, cases: pd.DataFrame):
     log.info(f'    fitting one GP per observable to {len(X)} scored cases')
     # One hyperparameter attempt each, with the noise learned per observable
     gps = [
-        _fit_gp(X, S[:, [j]], config['kernel'], config['seed'], None, 1)
+        fit_gp(X, S[:, [j]], config['kernel'], config['seed'], None, 1)
         for j in range(len(keys))
     ]
     _, tru, sig = observable_space(obs, obs, sigma)
@@ -128,8 +128,7 @@ def observables_objective(config: dict, directory, cases: pd.DataFrame):
 
     def objective(U):
         P = torch.stack([gp_mean(gp, U) for gp in gps], dim=1)
-        sq = squared_distance((P - tru) / sig, keys, whitener, config.get('loss'))
-        return log_warp(sq).reshape(-1)
+        return objective_from_observables(P, tru, sig, keys, whitener, config.get('loss'))[:, 0]
 
     return objective
 

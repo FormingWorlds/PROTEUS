@@ -38,6 +38,7 @@ kernel     = "MAT1/2"                             # Kernel type for GP, "RBF" | 
 acqf       = "LogEI"                              # Acquisition function, "UCB" | "LogEI" | "LogPI" | "TS"
 n_steps    = 100                                  # Total number of evaluations (i.e. BO steps)
 patience   = 0                                    # Stop after this many evaluations without improvement; 0 is off
+# bo_per_observable = true                       # Optimise with one GP per observable instead of one GP of the objective; acqf "LogEI" | "LogPI" | "UCB"; default false
 # objective     = "student-t"                     # "chi-2" (default) | "student-t" | "huber": heavy-tailed errors; needs [sigma]
 # student_t_dof = 4                               # Degrees of freedom of "student-t", default 4
 # posterior_samples = 2000                        # Posterior samples from the GP at the end; needs [sigma], default 2000 with it, 0 is off

@@ -23,6 +23,7 @@ pytest.importorskip('gpytorch')
 
 import proteus.inference.async_BO as async_mod  # noqa: E402
 from proteus.inference.failures import ProteusRunFailure  # noqa: E402
+from proteus.inference.objective import BAD_OBJ_VALUE  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -347,7 +348,7 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
     assert logs == [None]
     assert elapsed == []
     # The initial proposals use the configured kernel, not the init_locs default
-    assert init_kwargs == {'acqf': 'LogEI', 'kernel': 'MAT3/2'}
+    assert init_kwargs == {'acqf': 'LogEI', 'kernel': 'MAT3/2', 'surrogate': None}
     # Each worker gets its own torch seed, seed + 1 + worker id
     assert [p.args[-1] for p in created_processes] == [2, 3]
 
@@ -1161,3 +1162,43 @@ def test_parallel_process_passes_patience_to_every_worker(monkeypatch, tmp_path)
     assert [args[-3] for args in seen] == [7, 7]
     assert seen[0][-2] is seen[1][-2]
     assert isinstance(seen[0][-2], threading.Event)
+
+
+@pytest.mark.physics_invariant
+def test_worker_loop_keeps_the_observables_apart_from_the_objective(tmp_path):
+    """With 'S' in the shared data, the row f returns is split: J goes to Y, the
+    observables to S, so the patience check and logs see J alone; data.csv holds both."""
+    D_shared = {
+        'X': torch.tensor([[0.1]], dtype=torch.double),
+        'Y': torch.tensor([[-2.0]], dtype=torch.double),
+        'S': torch.tensor([[1.0, 2.0]], dtype=torch.double),
+    }
+    rows = [[-1.0, 1.5, 2.5], [BAD_OBJ_VALUE, float('nan'), float('nan')]]
+
+    def step(**_kwargs):
+        y = torch.tensor([rows[len(D_shared['X']) - 1]], dtype=torch.double)
+        return torch.tensor([[0.5]], dtype=torch.double), y, 0, 0, 0, 0, 0, None
+
+    logs = []
+    async_mod._worker_loop(
+        process_fun=step,
+        build_obj=lambda **kwargs: lambda x: x,
+        D_shared=D_shared,
+        B={},
+        T=[],
+        T0=0.0,
+        x_init=None,
+        n_init=1,
+        lock=_DummyLock(),
+        max_len=3,
+        worker_id=0,
+        log_list=logs,
+        output_dir=str(tmp_path),
+    )
+    assert D_shared['Y'].reshape(-1).tolist() == pytest.approx([-2.0, -1.0, -20.0])
+    assert D_shared['S'].shape == (3, 2)
+    assert D_shared['S'][1].tolist() == pytest.approx([1.5, 2.5])
+    assert torch.isnan(D_shared['S'][2]).all()
+    assert [entry['y_value'] for entry in logs] == pytest.approx([-1.0, -20.0])
+    data = pd.read_csv(tmp_path / 'data.csv')
+    assert list(data.columns) == ['x_0', 'y', 's_0', 's_1']

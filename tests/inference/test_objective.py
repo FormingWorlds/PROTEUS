@@ -1826,3 +1826,58 @@ def test_J_reports_a_clean_exit_failure_with_only_the_swept_values(
     assert [r['status'] for r in recorded] == [25]
     assert recorded[0]['planet.mass_tot'] == pytest.approx(3.25)
     assert 'params.out.path' not in recorded[0]
+
+
+@pytest.mark.physics_invariant
+def test_observable_row_marks_unusable_values_and_keeps_the_compared_space():
+    """A log10-compared observable that is zero (an escaped atmosphere) or non-finite becomes
+    NaN; usable values sit in the space eval_obj compares them in."""
+    tru = {'R_obs': 9.25e6, 'H2O_vmr': 0.3, 'P_surf': 100.0}
+    row = objective_mod.observable_row({'R_obs': 9.0e6, 'H2O_vmr': 0.0, 'P_surf': 50.0}, tru)
+    assert row.shape == (1, 3)
+    # R_obs linear, P_surf in log10 (a logarithmic variable), H2O_vmr zero
+    assert row[0, 0].item() == pytest.approx(9.0e6, rel=1e-12)
+    assert row[0, 2].item() == pytest.approx(math.log10(50.0), rel=1e-12)
+    assert math.isnan(row[0, 1].item())
+    # Not the clipped log10 that eval_obj uses for the objective itself
+    assert objective_mod.observable_space({'H2O_vmr': 0.0}, tru)[0][0] == pytest.approx(-20.0)
+    bad = objective_mod.observable_row(
+        {'R_obs': float('inf'), 'H2O_vmr': 0.1, 'P_surf': 1.0}, tru
+    )
+    assert math.isnan(bad[0, 0].item()) and math.isfinite(bad[0, 1].item())
+
+
+@pytest.mark.physics_invariant
+def test_J_with_observables_appends_the_compared_observables(monkeypatch, tmp_path):
+    """with_observables appends the run's observables in target order after J, and NaN for a
+    run that failed, which still scores BAD_OBJ_VALUE."""
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(tmp_path)}
+    )
+    monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
+    tru = {'R_obs': 9.25e6, 'P_surf': 100.0}
+    # Returned in the other order, so a row in dict order would swap them
+    monkeypatch.setattr(
+        objective_mod, 'run_proteus', lambda **_kwargs: ({'P_surf': 10.0, 'R_obs': 9.0e6}, 13)
+    )
+    kwargs = dict(
+        x=torch.tensor([[0.5]], dtype=torch.double),
+        parameters=['planet.mass_tot'],
+        true_observables=tru,
+        worker=0,
+        iter=0,
+        output='dummy_output',
+        ref_config='reference.toml',
+    )
+    out = objective_mod.J(**kwargs, with_observables=True)
+    plain = objective_mod.J(**kwargs)
+    assert out.shape == (1, 3) and plain.shape == (1, 1)
+    assert out[0, 0].item() == pytest.approx(plain.item(), rel=1e-12)
+    assert out[0, 1:].tolist() == pytest.approx([9.0e6, 1.0], rel=1e-12)
+
+    monkeypatch.setattr(
+        objective_mod, 'run_proteus', lambda **_kwargs: ({'P_surf': 10.0, 'R_obs': 9.0e6}, 25)
+    )
+    failed = objective_mod.J(**kwargs, with_observables=True)
+    assert failed[0, 0].item() == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    assert torch.isnan(failed[0, 1:]).all()

@@ -34,6 +34,7 @@ pytest.importorskip('botorch')
 pytest.importorskip('gpytorch')
 
 import proteus.inference.BO as bo_mod  # noqa: E402
+from proteus.inference.composite import ObservableObjective, ObservableSurrogate  # noqa: E402
 
 from ._bo_helpers import make_quadratic_objective  # noqa: E402
 
@@ -1065,3 +1066,69 @@ def test_bo_step_and_init_locs_fit_with_botorch_default_lbfgs(monkeypatch):
     )
     assert len(calls) == 2
     assert all('optimizer' not in kw for kw in calls)
+
+
+def _gp_with_lengthscales(*values):
+    """Stand-in GP whose covariance carries the given ARD lengthscales."""
+    gp = type('G', (), {})()
+    gp.covar_module = type('K', (), {})()
+    gp.covar_module.lengthscale = torch.tensor([values], dtype=torch.double)
+    return gp
+
+
+def test_random_irrelevant_needs_every_observable_gp_to_find_a_parameter_irrelevant():
+    """In a model list, a parameter is drawn at random only when every GP has a long
+    lengthscale for it: one observable that depends on it keeps it in the optimisation."""
+    models = type('M', (), {})()
+    models.models = [_gp_with_lengthscales(3.0, 2.0, 0.2), _gp_with_lengthscales(0.4, 2.5, 0.3)]
+    torch.manual_seed(0)
+    fixed = bo_mod.random_irrelevant(models, 3, 'test')
+    assert sorted(fixed) == [1]
+    assert 0.0 <= fixed[1] <= 1.0
+
+
+@pytest.mark.physics_invariant
+def test_bo_step_with_surrogate_fits_the_observables_and_returns_them(monkeypatch):
+    """With a surrogate, BO_step fits it to D['S'], builds its acquisition with the best
+    scored J and the other workers' points, skips the 1D plot, and returns f's full row."""
+    plotted = []
+    monkeypatch.setattr(bo_mod, 'plot_iter', lambda **kw: plotted.append(kw))
+    target = {'R_obs': 1.0, 'T_obs': 2.0}
+    objective = ObservableObjective(target, {'R_obs': 0.1, 'T_obs': 0.1})
+
+    class Recording(ObservableSurrogate):
+        def fit(self, X, Y, S):
+            self.fit_args = (X, Y, S)
+            return super().fit(X, Y, S)
+
+        def acqf(self, name, model, best, X_pending=None):
+            self.acqf_args = (name, best, X_pending)
+            return super().acqf(name, model, best, X_pending)
+
+    surrogate = Recording(objective, 'RBF', attempts=1)
+    torch.manual_seed(0)
+    X = torch.linspace(0.05, 0.95, 8, dtype=torch.double).reshape(-1, 1)
+    S = torch.cat([0.5 + X, 1.0 + 2 * X], dim=1)
+    Y = objective(S).reshape(-1, 1)
+    Y[3] = bo_mod.BAD_OBJ_VALUE
+    S[3] = float('nan')
+    other = torch.tensor([[0.9]], dtype=torch.double)
+    row = torch.tensor([[0.1, 1.0, 2.0]], dtype=torch.double)
+    x, y, *_ = bo_mod.BO_step(
+        D={'X': X, 'Y': Y, 'S': S},
+        B={1: other},
+        f=lambda _x: row,
+        k=bo_mod.get_kernel('RBF', 1),
+        acqf='LogEI',
+        lock=_DummyLock(),
+        worker_id=0,
+        surrogate=surrogate,
+    )
+    assert surrogate.fit_args[2] is S
+    name, best, pending = surrogate.acqf_args
+    assert name == 'LogEI'
+    assert best == pytest.approx(Y[Y[:, 0] > bo_mod.BAD_OBJ_VALUE].max().item(), rel=1e-12)
+    torch.testing.assert_close(pending, other)
+    assert y is row and plotted == []
+    # Both observables match their targets at x = 0.5, so the proposal is drawn towards it
+    assert abs(x.item() - 0.5) < 0.2

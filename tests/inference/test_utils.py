@@ -198,3 +198,21 @@ def test_flatten_returns_empty_dict_for_empty_input():
     result = utils_mod.flatten({})
     assert result == {}
     assert isinstance(result, dict)
+
+
+def test_dataset_csv_round_trips_observables_with_nan(tmp_path):
+    """S is written as s_* columns and read back with its NaN; a file without them has no S."""
+    X = torch.tensor([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]], dtype=torch.double)
+    Y = torch.tensor([[1.0], [-20.0], [0.5]], dtype=torch.double)
+    S = torch.tensor(
+        [[1.5, -2.25], [float('nan'), float('nan')], [3.0, 0.125]], dtype=torch.double
+    )
+    path = tmp_path / 'data.csv'
+    utils_mod.save_dataset_csv(X, Y, str(path), S)
+    D = utils_mod.load_dataset_csv(str(path))
+    torch.testing.assert_close(D['S'], S, equal_nan=True)
+    torch.testing.assert_close(D['Y'], Y)
+    utils_mod.save_dataset_csv(X, Y, str(path))
+    assert 'S' not in utils_mod.load_dataset_csv(str(path))
+    with pytest.raises(ValueError, match='S shape'):
+        utils_mod.save_dataset_csv(X, Y, str(path), S[:2])

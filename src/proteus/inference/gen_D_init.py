@@ -16,7 +16,12 @@ import torch
 from scipy.stats.qmc import Halton
 
 from proteus.inference.correlation import CorrelationWhitener
-from proteus.inference.objective import child_timeout_s, eval_obj, prot_builder
+from proteus.inference.objective import (
+    child_timeout_s,
+    eval_obj,
+    observable_row,
+    prot_builder,
+)
 from proteus.inference.transforms import normalize_parameters
 from proteus.inference.utils import save_dataset_csv
 from proteus.utils.coupler import (
@@ -78,6 +83,7 @@ def create_init(config):
             sigma=config.get('sigma'),
             correlation=config.get('correlation'),
             loss=config.get('loss'),
+            with_observables=config.get('bo_per_observable', False),
         )
 
     # read from grid
@@ -92,6 +98,7 @@ def create_init(config):
             sigma=config.get('sigma'),
             correlation=config.get('correlation'),
             loss=config.get('loss'),
+            with_observables=config.get('bo_per_observable', False),
         )
 
     return n_init
@@ -105,6 +112,7 @@ def sample_from_grid(
     sigma: dict | None = None,
     correlation: dict | None = None,
     loss: tuple[str, float] | None = None,
+    with_observables: bool = False,
 ):
     """Build initial BO data from an existing PROTEUS grid.
 
@@ -122,6 +130,8 @@ def sample_from_grid(
     - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
     - correlation (dict | None): Correlations between the observable uncertainties.
     - loss (tuple[str, float] | None): Objective name and parameter, passed to `eval_obj`; None for chi-squared.
+    - with_observables (bool): Also write each case's observables, as `observable_row`
+      gives them, to `init.csv`.
 
     Returns
     ----------
@@ -175,6 +185,7 @@ def sample_from_grid(
     #     This variable is 2D, with shape [nsamp, dims]
     X = torch.zeros(nsamp, dims, dtype=dtype)
     Y = torch.zeros(nsamp, 1, dtype=dtype)
+    S = torch.zeros(nsamp, len(observables), dtype=dtype)
     for i in range(nsamp):
         # Get input parameters from grid configs
         raw_x = [recursive_get(confs[i], k.split('.')) for k in keys]
@@ -189,13 +200,14 @@ def sample_from_grid(
 
         # Evaluate objective and store (float)
         Y[i] = eval_obj(obs_y, observables, sigma, whitener, loss)
+        S[i] = observable_row(obs_y, observables, sigma)
 
     log.info(f'Generated initial dataset with {nsamp} points in {dims}-dim space')
 
     # Save dataset for use in BO pipeline
     proteus_out = get_proteus_directories(output)['output']
     D_init_path = Path(proteus_out) / 'init.csv'
-    save_dataset_csv(X, Y, str(D_init_path))
+    save_dataset_csv(X, Y, str(D_init_path), S if with_observables else None)
 
     # Return number of samples
     return len(Y.flatten())
@@ -223,8 +235,9 @@ def f_aug(x, iter, builder_args):
 
     Returns
     ----------
-    - torch.Tensor | None: Objective value tensor with shape (1, 1), or None
-      for a sample skipped because the batch is stopping.
+    - torch.Tensor | None: Objective value tensor with shape (1, 1), followed by the
+      observables with `with_observables`, or None for a sample skipped because the batch
+      is stopping.
     """
     if _stop is not None and _stop.is_set():
         return None
@@ -239,6 +252,7 @@ def f_aug(x, iter, builder_args):
         sigma=builder_args.get('sigma'),
         correlation=builder_args.get('correlation'),
         loss=builder_args.get('loss'),
+        with_observables=builder_args.get('with_observables', False),
     )
     try:
         return f(x)
@@ -274,6 +288,7 @@ def sample_from_bounds(
     sigma: dict | None = None,
     correlation: dict | None = None,
     loss: tuple[str, float] | None = None,
+    with_observables: bool = False,
 ) -> int:
     """Generate initial BO data by evaluating Halton samples in parameter space.
 
@@ -291,6 +306,7 @@ def sample_from_bounds(
     - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
     - correlation (dict | None): Correlations between the observable uncertainties.
     - loss (tuple[str, float] | None): Objective name and parameter, passed to `eval_obj`; None for chi-squared.
+    - with_observables (bool): Also write each run's observables to `init.csv`.
 
     Returns
     ----------
@@ -317,6 +333,7 @@ def sample_from_bounds(
         sigma=sigma,
         correlation=correlation,
         loss=loss,
+        with_observables=with_observables,
     )
 
     # Halton points in [0, 1]^d, shape [nsamp, dims], each axis normalised to its bounds
@@ -342,13 +359,14 @@ def sample_from_bounds(
     log.info(f'Initial sampling took {t1 - t0:.2f}s')
 
     Y = torch.vstack(results)
+    Y, S = (Y[:, :1], Y[:, 1:]) if with_observables else (Y, None)
 
     log.info(f'Generated initial dataset with {nsamp} points in {dims}-dim space')
 
     # Save dataset for use in BO pipeline
     proteus_out = get_proteus_directories(output)['output']
     D_init_path = Path(proteus_out) / 'init.csv'
-    save_dataset_csv(X, Y, str(D_init_path))
+    save_dataset_csv(X, Y, str(D_init_path), S)
 
     # Return number of samples
     return len(Y.flatten())
