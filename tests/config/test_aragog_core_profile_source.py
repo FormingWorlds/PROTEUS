@@ -58,6 +58,7 @@ def test_the_c_p_override_is_a_positive_finite_number(value):
     except OverflowError:
         want = False
     assert _kept('core_cp_override', value) is want
+    assert _kept('core_cp_override', 840) and not _kept('core_cp_override', 0.0)
 
 
 @given(value=NUMBERS)
@@ -68,6 +69,7 @@ def test_the_grid_step_is_a_positive_finite_number(value):
     except OverflowError:
         want = False
     assert _kept('core_t_cmb_step', value) is want
+    assert _kept('core_t_cmb_step', 1e-300) and not _kept('core_t_cmb_step', 0)
 
 
 @pytest.mark.parametrize('value', [True, False, None, '840', 'Table', b'table', [840.0]])
@@ -98,11 +100,9 @@ def test_a_config_file_sets_the_three_fields(tmp_path):
     path = tmp_path / 'user.toml'
     path.write_text(text)
     cm = read_config_object(path).interior_energetics.aragog.core_module
-    assert (cm.profile_source, cm.core_cp_override, cm.core_t_cmb_step) == (
-        'paleos',
-        'table',
-        5,
-    )
+    assert cm.profile_source == 'paleos'
+    assert cm.core_cp_override == 'table'
+    assert cm.core_t_cmb_step == 5 and isinstance(cm.core_t_cmb_step, int)
 
 
 @pytest.mark.parametrize(
@@ -124,6 +124,9 @@ def test_a_config_file_value_of_the_wrong_type_is_refused(tmp_path, name, value,
     )
     with pytest.raises(ValueError, match=f'{name}.*{refusal}|{refusal}.*{name}'):
         read_config_object(path)
+    path.write_text(path.read_text().replace(f'= {value}', '= 5.0'))
+    cm = read_config_object(path).interior_energetics.aragog.core_module
+    assert getattr(cm, name) == pytest.approx(5.0)
 
 
 @pytest.mark.parametrize(

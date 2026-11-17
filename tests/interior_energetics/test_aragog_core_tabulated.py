@@ -292,3 +292,8 @@ def test_the_gaussian_source_gives_aragog_the_parameters_of_main():
         'layer_base_fraction', 'layer_k_mix', 'layer_g_mix', 'ra_crit_cmb', 'm_core', 'p_cen',
     }  # fmt: skip
     assert set(params) == main
+    config.interior_energetics.aragog.core_module = AragogCoreModule(profile_source='paleos')
+    paleos = core_module_params(
+        config, {'M_core': 1.94e24, 'P_center': 3.6e11}, SimpleNamespace(), ''
+    )
+    assert set(paleos) - main == {'profile_source', 'core_cp_override', 'core_t_cmb_step'}
