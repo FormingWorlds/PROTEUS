@@ -8,9 +8,10 @@ Usage::
 
 ``decide`` prints ``live=true`` or ``live=false`` for ``$GITHUB_OUTPUT``. ``publish``
 creates the discussion in the digest category of the first repository in the
-settings and then sends the link to ``DISCORD_WEBHOOK_URL``; without that secret
-the Discord step is skipped. ``alert`` sends a failure message to Discord, or
-does nothing without the secret.
+settings, unless the newest digest post already covers the same window (a rerun),
+and then sends the link to ``DISCORD_WEBHOOK_URL``. Without that secret the Discord
+step is skipped, and a failed send is a warning, because the post stands. ``alert``
+sends a failure message to Discord, or does nothing without the secret.
 """
 
 from __future__ import annotations
@@ -18,19 +19,12 @@ from __future__ import annotations
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
-from common import DigestError, GitHub, load_settings
-
-CATEGORY_QUERY = """
-query($owner: String!, $name: String!) {
-  repository(owner: $owner, name: $name) {
-    id
-    discussionCategories(first: 50) { nodes { id slug } }
-  }
-}
-"""
+from collect import parse_state, previous_state
+from common import DigestError, GitHub, find_category, load_settings
 
 CREATE = """
 mutation($repo: ID!, $category: ID!, $title: String!, $body: String!) {
@@ -54,17 +48,15 @@ def create_discussion(gh: GitHub, home: str, category: str, title: str, body: st
     DigestError
         When the category does not exist.
     """
-    owner, name = home.split('/')
-    repo = gh.graphql(CATEGORY_QUERY, owner=owner, name=name)['repository']
-    ids = [c['id'] for c in repo['discussionCategories']['nodes'] if c['slug'] == category]
-    if not ids:
+    repo, cat = find_category(gh, home, category)
+    if cat is None:
         raise DigestError(f'no discussion category with slug "{category}" in {home}')
-    out = gh.graphql(CREATE, repo=repo['id'], category=ids[0], title=title, body=body)
+    out = gh.graphql(CREATE, repo=repo, category=cat, title=title, body=body)
     return out['createDiscussion']['discussion']['url']
 
 
 def discord(message: str, webhook: str | None = None) -> bool:
-    """Send a message to the Discord webhook; return False when no webhook is set."""
+    """Send a message to the Discord webhook; return False when none is set or the send fails."""
     webhook = webhook if webhook is not None else os.environ.get('DISCORD_WEBHOOK_URL', '')
     if not webhook:
         print('No DISCORD_WEBHOOK_URL: Discord step skipped.')
@@ -75,8 +67,12 @@ def discord(message: str, webhook: str | None = None) -> bool:
         data=payload,
         headers={'Content-Type': 'application/json', 'User-Agent': 'proteus-weekly-digest'},
     )
-    with urllib.request.urlopen(req, timeout=30):
-        return True
+    try:
+        with urllib.request.urlopen(req, timeout=30):
+            return True
+    except (urllib.error.URLError, OSError) as err:
+        print(f'Warning: Discord ping failed: {err}')
+        return False
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -94,9 +90,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f'live={str(live).lower()}')
     elif args[0] == 'publish':
         post = json.loads((Path(args[1]) / 'digest.json').read_text())
-        url = create_discussion(
-            GitHub(), settings['repos'][0], settings['category'], post['title'], post['body']
-        )
+        gh, home = GitHub(), settings['repos'][0]
+        last = previous_state(gh, home, settings['category']) or {}
+        until = (parse_state(post['body']) or {}).get('until')
+        if until and last.get('until') == until:
+            print(f'This window is already posted: {last.get("url")}')
+            return 0
+        url = create_discussion(gh, home, settings['category'], post['title'], post['body'])
         print(f'Posted {url}')
         discord(f'{post["title"]}: {url}')
     elif args[0] == 'alert':

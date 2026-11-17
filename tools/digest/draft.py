@@ -6,7 +6,8 @@ Usage::
 
 The model runs as ``claude -p`` with no tools; the instruction and the data both
 go on stdin, because a prompt argument makes the CLI ignore piped input. Its
-structured output must follow ``entry_schema.json``. A window with no merged
+structured output must follow ``entry_schema.json``. The CLI starts in an empty
+folder, so no project instruction file of the checkout joins the prompt. A window with no merged
 pull request and no release skips the model and gives an empty draft.
 """
 
@@ -16,8 +17,9 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 
-from check import check
+from check import check, is_empty
 from common import DIGEST_DIR, DigestError, load_settings
 
 PR_FIELDS = ('ref', 'status', 'title', 'body', 'author', 'labels', 'size')
@@ -33,11 +35,6 @@ def model_input(data: dict) -> dict:
         'releases': [{k: r[k] for k in RELEASE_FIELDS} for r in data['releases']],
         'facts': [{k: f[k] for k in FACT_FIELDS} for f in data.get('facts', [])],
     }
-
-
-def is_empty(data: dict) -> bool:
-    """True when the window has no merged pull request and no release."""
-    return not data['releases'] and not any(p['status'] == 'merged' for p in data['prs'])
 
 
 def build_prompt(data: dict) -> str:
@@ -79,7 +76,10 @@ def run_model(prompt: str, model: str) -> dict:
         '--json-schema',
         schema,
     ]
-    proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=1500)
+    with tempfile.TemporaryDirectory() as empty_dir:
+        proc = subprocess.run(
+            cmd, input=prompt, capture_output=True, text=True, timeout=1500, cwd=empty_dir
+        )
     if proc.returncode != 0:
         raise DigestError(
             f'model call failed with code {proc.returncode}: {proc.stderr[-2000:]}'

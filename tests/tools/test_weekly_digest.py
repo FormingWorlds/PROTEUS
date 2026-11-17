@@ -486,7 +486,8 @@ def test_previous_state_trusts_only_the_workflow_bot():
     """A marker in a post by a person is skipped; the newest bot post gives the state."""
     cats = {
         'repository': {
-            'discussionCategories': {'nodes': [{'id': 'C1', 'slug': 'weekly-digest'}]}
+            'id': 'R',
+            'discussionCategories': {'nodes': [{'id': 'C1', 'slug': 'weekly-digest'}]},
         }
     }
     posts = {
@@ -510,7 +511,7 @@ def test_previous_state_trusts_only_the_workflow_bot():
         collect.previous_state(_FakeGH([cats, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest')
         is None
     )
-    none = {'repository': {'discussionCategories': {'nodes': []}}}
+    none = {'repository': {'id': 'R', 'discussionCategories': {'nodes': []}}}
     assert (
         collect.previous_state(_FakeGH([none]), 'FormingWorlds/PROTEUS', 'weekly-digest')
         is None
@@ -677,7 +678,7 @@ def test_attach_facts_reads_only_merged_prs_that_touch_tracked_files():
                 'pyproject.toml',
                 'm',
             ): '[project]\ndependencies = ["a>=2"]\n',
-            ('FormingWorlds/PROTEUS', facts.CONFIG_SCHEMA, 'HEAD'): _schema(
+            ('FormingWorlds/PROTEUS', facts.CONFIG_SCHEMA, None): _schema(
                 **{'a.grain_size': {}, 'plain': {}}
             ),
         }
@@ -721,7 +722,7 @@ def test_a_valid_draft_passes():
             {'text': 'interior_energetics.rfront_loc moved.'},
             'key interior_energetics.rfront_loc',
         ),
-        ({'text': 'T_surf is lower.'}, 'key T_surf is in no cited fact'),
+        ({'text': 'T_surf is lower.'}, 'key t_surf is in no cited fact'),
         ({'section': 'open'}, 'is merged, not allowed in section open'),
     ],
 )
@@ -1166,6 +1167,7 @@ def test_publish_and_alert_commands(tmp_path, monkeypatch, capsys):
     (tmp_path / 'digest.json').write_text(json.dumps({'title': 'T', 'body': 'B'}))
     calls = []
     monkeypatch.setattr(post, 'GitHub', lambda: 'gh')
+    monkeypatch.setattr(post, 'previous_state', lambda *a: None)
     monkeypatch.setattr(
         post, 'create_discussion', lambda *a: calls.append(('post', a)) or 'https://d/1'
     )
@@ -1254,10 +1256,10 @@ def test_known_keys_cover_every_tracked_file_kind():
     """Config paths, helpfile columns and default-file keys with _ or . are known keys."""
     gh = _FakeGH(
         files={
-            ('a/P', facts.OUTPUT_SCHEMA, 'HEAD'): json.dumps(
+            ('a/P', facts.OUTPUT_SCHEMA, None): json.dumps(
                 {'keys': [{'name': 'T_surf'}, {'name': 'Time'}]}
             ),
-            ('a/Z', 'input/default.toml', 'HEAD'): '[eos]\nmushy = 1\n',
+            ('a/Z', 'input/default.toml', None): '[eos]\nmushy = 1\n',
         }
     )
     keys = facts.known_keys(
@@ -1271,6 +1273,7 @@ def test_facts_main_rewrites_the_file(tmp_path, monkeypatch):
     path = tmp_path / 'c.json'
     path.write_text(json.dumps({'prs': []}))
     monkeypatch.setattr(facts, 'GitHub', lambda: _FakeGH())
+    monkeypatch.setattr(facts, 'load_settings', lambda: {'tracked': {}})
     assert facts.main([str(path)]) == 0
     assert json.loads(path.read_text()) == {'prs': [], 'facts': [], 'known_keys': []}
 
@@ -1310,12 +1313,16 @@ def test_check_rejects_more_link_and_value_forms(change, message):
 
 
 def test_check_rejects_a_string_value_of_a_cited_fact():
-    """Text may not repeat a string value of a cited fact, so it cannot state the change backwards."""
+    """Text may not repeat the old string value of a cited change, so it cannot state the change backwards."""
     fact = _fact(key='interior_energetics.mixing_length', old='"nearest"', new='"constant"')
     data = _data(fact_list=[fact])
     data['known_keys'].append('interior_energetics.mixing_length')
     fails = check.check(data, _draft(_entry(text='The default mixing length is now nearest.')))
-    assert any('value "nearest" of fact F1' in f for f in fails), fails
+    assert any('old value "nearest" of fact F1' in f for f in fails), fails
+    assert (
+        check.check(data, _draft(_entry(text='The default mixing length is now constant.')))
+        == []
+    )
     assert (
         check.check(data, _draft(_entry(text='The default mixing length rule changed.'))) == []
     )

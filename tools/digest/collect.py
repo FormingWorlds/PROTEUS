@@ -19,19 +19,19 @@ import re
 import sys
 from datetime import datetime, timedelta, timezone
 
-from common import DigestError, GitHub, iso, load_settings, parse_time
+from common import DigestError, GitHub, find_category, iso, load_settings, parse_time
 
 STATE_RE = re.compile(r'<!-- weekly-digest-state (\{.*?\}) -->', re.S)
 
 PR_QUERY = """
 query($owner: String!, $name: String!, $cursor: String) {
   repository(owner: $owner, name: $name) {
-    isPrivate isArchived
+    isPrivate isArchived defaultBranchRef { name }
     pullRequests(first: 50, after: $cursor, states: [OPEN, MERGED],
                  orderBy: {field: UPDATED_AT, direction: DESC}) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        number url title body isDraft state createdAt mergedAt updatedAt
+        number url title body isDraft state createdAt mergedAt updatedAt baseRefName
         additions deletions
         author { login __typename }
         labels(first: 10) { nodes { name } }
@@ -43,14 +43,6 @@ query($owner: String!, $name: String!, $cursor: String) {
       nodes { tagName name url publishedAt isDraft isPrerelease description
               author { login __typename } }
     }
-  }
-}
-"""
-
-STATE_QUERY = """
-query($owner: String!, $name: String!) {
-  repository(owner: $owner, name: $name) {
-    discussionCategories(first: 50) { nodes { id slug } }
   }
 }
 """
@@ -98,29 +90,36 @@ def short_name(repo: str) -> str:
     return repo.split('/', 1)[1]
 
 
+def parse_state(body: str) -> dict | None:
+    """Return the state marker at the end of a post body, or None.
+
+    Only the last marker counts, so a marker that appears inside the content of a
+    post (for example in a fact value) cannot replace the real one.
+    """
+    found = STATE_RE.findall(body or '')
+    return json.loads(found[-1]) if found else None
+
+
 def previous_state(gh: GitHub, home: str, category: str) -> dict | None:
     """Return the state marker of the newest digest post written by ``github-actions``.
 
     A marker in a post by any other author is ignored, because anybody can write a
     discussion in the category.
     """
-    owner, name = home.split('/')
-    cats = gh.graphql(STATE_QUERY, owner=owner, name=name)['repository']
-    match = [c['id'] for c in cats['discussionCategories']['nodes'] if c['slug'] == category]
-    if not match:
+    _, cat = find_category(gh, home, category)
+    if cat is None:
         return None
-    posts = gh.graphql(POSTS_QUERY, owner=owner, name=name, category=match[0])
+    owner, name = home.split('/')
+    posts = gh.graphql(POSTS_QUERY, owner=owner, name=name, category=cat)
     for post in posts['repository']['discussions']['nodes']:
         author = post['author'] or {}
-        found = STATE_RE.search(post['body'] or '')
+        state = parse_state(post['body'])
         if (
             author.get('login') == 'github-actions'
             and author.get('__typename') == 'Bot'
-            and found
+            and state
         ):
-            state = json.loads(found.group(1))
-            state['url'] = post['url']
-            return state
+            return {**state, 'url': post['url']}
     return None
 
 
@@ -211,10 +210,12 @@ def collect_repo(gh: GitHub, repo: str, window: dict) -> tuple[list, list]:
             releases = [
                 release_record(repo, n, since, until) for n in data['releases']['nodes']
             ]
-        page = data['pullRequests']
-        for node in page['nodes']:
-            if node['updatedAt'] >= since:
-                prs.append(pr_record(repo, node, since, until))
+        page, main = data['pullRequests'], (data.get('defaultBranchRef') or {}).get('name')
+        prs += [
+            pr_record(repo, n, since, until)
+            for n in page['nodes']
+            if n['updatedAt'] >= since and n.get('baseRefName', main) == main
+        ]
         oldest = page['nodes'][-1]['updatedAt'] if page['nodes'] else ''
         if not page['pageInfo']['hasNextPage'] or oldest < since:
             break

@@ -17,8 +17,8 @@ Rules:
 2. `title` is a short noun phrase. `text` is 1 to 3 plain sentences that say what changed and why it matters to a user of PROTEUS. Write for a scientist, not for the code author.
 3. Cite pull requests by their `ref` (for example `PROTEUS#849`), releases by their `ref` (for example `AGNI@1.13.0`), and facts by their `id` (for example `F3`). Put them only in the lists `prs`, `releases` and `facts`, never in `text`.
 4. `logins` lists the authors of the cited pull requests and releases, exactly as in the JSON. Never put a login or an `@` in `text`.
-5. Do not write URLs, markdown links, HTML, `#` references or code blocks in `text`.
+5. Write plain sentences in `title` and `text`: no URLs, no markdown (links, square brackets, emphasis, headings, lists), no HTML or HTML entities, no `#` or `GH-` references, no commit ids and no code.
 6. Do not write a config key, a helpfile column, a default value or a version floor in `text`; the script prints them from the facts you cite. You can describe the change in words ("the grain size default is now smaller").
-7. Use only numbers that appear in the cited facts or in the title or body of a cited pull request or release. Write no dates; the script prints them.
+7. Use only numbers that appear, with the same sign, in the title or body of a cited pull request or release. Do not repeat the values of cited facts, and write no dates; the script prints both.
 8. Do not guess. When the JSON does not say why a change was made, say what changed and stop.
 9. Write in plain, formal English with no em dashes. Do not claim that the digest is complete.

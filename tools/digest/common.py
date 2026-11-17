@@ -19,6 +19,22 @@ from pathlib import Path
 DIGEST_DIR = Path(__file__).resolve().parent
 API = 'https://api.github.com'
 TRACKED_ALWAYS = ('pyproject.toml', 'Project.toml')
+SECTIONS = {
+    'results': 'Changes that affect your results',
+    'capabilities': 'New capabilities',
+    'install': 'Installing and running',
+    'data': 'Data and licensing',
+    'design': 'Design choices to look at',
+    'open': 'Open for review',
+}
+CATEGORY_QUERY = """
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    id
+    discussionCategories(first: 50) { nodes { id slug } }
+  }
+}
+"""
 
 
 class DigestError(RuntimeError):
@@ -91,7 +107,7 @@ def parse_time(text: str) -> datetime:
     datetime
         A timezone-aware UTC time.
     """
-    value = datetime.fromisoformat(text.replace('Z', '+00:00'))
+    value = datetime.fromisoformat(text)
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
@@ -138,25 +154,36 @@ class GitHub:
             except urllib.error.HTTPError as err:
                 if err.code == 404:
                     return None
-                if err.code in (403, 429, 502, 503) and attempt < self.retries:
-                    time.sleep(int(err.headers.get('Retry-After') or 20 * (attempt + 1)))
-                    continue
-                raise DigestError(f'GitHub API {err.code} for {url}') from err
-        raise DigestError(f'GitHub API gave up on {url}')
+                if err.code not in (403, 429, 502, 503) or attempt == self.retries:
+                    raise DigestError(f'GitHub API {err.code} for {url}') from err
+                time.sleep(int(err.headers.get('Retry-After') or 20 * (attempt + 1)))
+            except (urllib.error.URLError, OSError) as err:
+                if attempt == self.retries:
+                    raise DigestError(f'GitHub API unreachable for {url}: {err}') from err
+                time.sleep(20 * (attempt + 1))
 
     def graphql(self, query: str, **variables) -> dict:
         """Run a GraphQL query and return its ``data``; raise on any error."""
         body = json.dumps({'query': query, 'variables': variables}).encode()
-        out = json.loads(self._request(f'{API}/graphql', data=body))
+        raw = self._request(f'{API}/graphql', data=body)
+        out = json.loads(raw) if raw is not None else {'errors': 'not found'}
         if out.get('errors'):
             raise DigestError(f'GraphQL error: {out["errors"]}')
         return out['data']
 
-    def raw_file(self, repo: str, path: str, ref: str) -> str | None:
-        """Return a file's text at ``ref``, or None when it does not exist there."""
-        quoted = urllib.parse.quote(path)
+    def raw_file(self, repo: str, path: str, ref: str | None) -> str | None:
+        """Return a file's text at ``ref`` (None: the default branch), or None when it is absent."""
+        query = f'?ref={ref}' if ref else ''
         raw = self._request(
-            f'{API}/repos/{repo}/contents/{quoted}?ref={ref}',
+            f'{API}/repos/{repo}/contents/{urllib.parse.quote(path)}{query}',
             accept='application/vnd.github.raw',
         )
         return None if raw is None else raw.decode()
+
+
+def find_category(gh: GitHub, home: str, slug: str) -> tuple[str, str | None]:
+    """Return the repository id and the id of its discussion category ``slug`` (None if absent)."""
+    owner, name = home.split('/')
+    repo = gh.graphql(CATEGORY_QUERY, owner=owner, name=name)['repository']
+    ids = [c['id'] for c in repo['discussionCategories']['nodes'] if c['slug'] == slug]
+    return repo['id'], (ids[0] if ids else None)

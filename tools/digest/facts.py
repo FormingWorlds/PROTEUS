@@ -17,7 +17,7 @@ import re
 import sys
 import tomllib
 
-from common import TRACKED_ALWAYS, GitHub, load_settings
+from common import TRACKED_ALWAYS, DigestError, GitHub, load_settings
 
 CONFIG_SCHEMA = 'docs/Reference/config/config_schema.json'
 OUTPUT_SCHEMA = 'docs/Reference/output_schema.json'
@@ -176,18 +176,13 @@ def group_facts(facts: list[dict], limit: int = GROUP_LIMIT) -> list[dict]:
     return out
 
 
-def tracked_paths(settings: dict, repo: str) -> list[str]:
-    """Files whose changes become facts in ``repo``."""
-    return list(settings.get('tracked', {}).get(repo, [])) + list(TRACKED_ALWAYS)
-
-
 def attach_facts(gh: GitHub, data: dict, settings: dict) -> None:
     """Add ``facts`` and ``known_keys`` to the collected data in place."""
     facts = []
     for pr in data['prs']:
         if pr['status'] != 'merged' or not pr['parent_oid']:
             continue
-        for path in tracked_paths(settings, pr['repo']):
+        for path in [*settings.get('tracked', {}).get(pr['repo'], []), *TRACKED_ALWAYS]:
             if path not in pr['files']:
                 continue
             old = gh.raw_file(pr['repo'], path, pr['parent_oid'])
@@ -203,7 +198,9 @@ def known_keys(gh: GitHub, settings: dict) -> set[str]:
     keys = set()
     for repo, paths in settings.get('tracked', {}).items():
         for path in paths:
-            text = gh.raw_file(repo, path, 'HEAD')
+            text = gh.raw_file(repo, path, None)
+            if text is None:
+                raise DigestError(f'cannot read {path} of {repo} for the key check')
             if path == CONFIG_SCHEMA:
                 keys |= set(config_schema_map(text))
             elif path == OUTPUT_SCHEMA:

@@ -20,16 +20,8 @@ from datetime import timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from common import is_bot, load_settings, parse_time
+from common import SECTIONS, is_bot, load_settings, parse_time
 
-SECTIONS = {
-    'results': 'Changes that affect your results',
-    'capabilities': 'New capabilities',
-    'install': 'Installing and running',
-    'data': 'Data and licensing',
-    'design': 'Design choices to look at',
-    'open': 'Open for review',
-}
 MAX_FACTS = 4
 VALUE_CHARS = 60
 
@@ -47,15 +39,22 @@ def short_date(stamp: str) -> str:
     return f'{value.day} {value:%b}'
 
 
+def escape(text: str) -> str:
+    """Backslash-escape the markdown characters of untrusted text, so it renders as text only."""
+    text = re.sub(r'([\\`*_{}\[\]()<>#&!~])', r'\\\1', text)
+    text = re.sub(r'^(\d+)\.(?=\s|$)', r'\1\\.', text)
+    return re.sub(r'^([-+=])', r'\\\1', text)
+
+
 def plain(text: str) -> str:
-    """Model text for a table cell or paragraph: dashes to commas, no pipes or line breaks."""
-    text = re.sub(r'\s*[–—]\s*', ', ', text)
-    return re.sub(r'\s+', ' ', text.replace('|', '/')).strip()
+    """Model text for a table cell or paragraph: one line, no dashes or pipes, markdown escaped."""
+    text = re.sub(r'\s*[\u2013\u2014]\s*', ', ', text)
+    return escape(re.sub(r'\s+', ' ', text.replace('|', '/')).strip())
 
 
 def value(item: object) -> str:
-    """A fact value as a short code span."""
-    text = re.sub(r'[`|\n]', ' ', str(item))[:VALUE_CHARS]
+    """A fact value as a short code span with no line break, pipe, backtick or angle bracket."""
+    text = re.sub(r'[`|<>\s]', ' ', str(item))[:VALUE_CHARS]
     return f'`{text}`'
 
 
@@ -63,8 +62,9 @@ def fact_line(fact: dict) -> str:
     """One fact in words, for example ``grain_size``: ``0.1`` to ``0.001``."""
     key, change = value(fact['key']), fact['change']
     if fact.get('members'):
-        where = fact['key'] if '/' not in fact['key'] else fact['key'].rsplit('/', 1)[1]
-        return f'{len(fact["members"])} keys {change} in {value(where)}'
+        return (
+            f'{len(fact["members"])} keys {change} in {value(fact["key"].rsplit("/", 1)[-1])}'
+        )
     if change == 'added':
         return f'{key} added' + (
             f', default {value(fact["new"])}' if fact['new'] is not None else ''
@@ -86,7 +86,8 @@ def facts_text(facts: list[dict]) -> str:
 
 
 class Mentions:
-    """Mention each person once per post, never a bot, never in a dry run."""
+    """Mention each person once per post, never a bot, never in a dry run, and not again for
+    an open pull request that the previous post announced."""
 
     def __init__(self, live: bool, bots: list[str], announced: set[str]):
         self.live, self.bots, self.announced, self.done = live, bots, announced, set()
@@ -96,7 +97,9 @@ class Mentions:
         login = item['author']
         if is_bot(login, item['author_kind'], self.bots):
             return login or 'unknown'
-        if login in self.done or item['ref'] in self.announced:
+        if login in self.done or (
+            item.get('status') == 'open' and item['ref'] in self.announced
+        ):
             return login
         self.done.add(login)
         return f'@{login}' if self.live else f'`@{login}`'
@@ -104,7 +107,11 @@ class Mentions:
 
 def links(items: list[dict]) -> str:
     """Markdown links to the cited pull requests and releases."""
-    return ', '.join(f'[{i["ref"].replace("@", " ")}]({i["url"]})' for i in items)
+    texts = [
+        re.sub(r'([\\\[\]()`<>*_])', r'\\\1', i['ref'].replace('@', ' ').replace('|', '/'))
+        for i in items
+    ]
+    return ', '.join(f'[{text}]({i["url"]})' for text, i in zip(texts, items))
 
 
 def authors(items: list[dict], mentions: Mentions) -> str:
