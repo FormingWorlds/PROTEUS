@@ -53,8 +53,8 @@ def plain(text: str) -> str:
 
 
 def value(item: object) -> str:
-    """A fact value as a short code span with no line break, pipe, backtick or angle bracket."""
-    text = re.sub(r'[`|<>\s]', ' ', str(item))[:VALUE_CHARS]
+    """A fact value as a short code span with no line break, pipe, backtick or comment delimiter."""
+    text = re.sub(r'<!--|-->|[`|\s]', ' ', str(item))[:VALUE_CHARS]
     return f'`{text}`'
 
 
