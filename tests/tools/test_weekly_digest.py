@@ -2044,3 +2044,41 @@ def test_footer_without_a_cut_says_every_body_was_read():
     """With no pull request cut, the footer does not count the titles of 0 others."""
     body, _ = _render(_draft(_entry()))
     assert 'the other 0' not in body and 'read the text of every pull request' in body
+
+
+def test_open_prs_of_outside_accounts_are_dropped_and_logged():
+    """An open pull request counts only from an owner, member, collaborator or contributor."""
+    page = _janus()
+    for node in page['repository']['pullRequests']['nodes']:
+        if node['number'] in (105, 103):
+            node['authorAssociation'] = 'NONE'
+    settings_ = {**_VALID, 'repos': ['FormingWorlds/JANUS']}
+    window = {'since': '2026-11-01T00:00:00Z', 'until': '2026-11-18T00:00:00Z'}
+    out = collect.collect(_FakeGH([page]), settings_, window)
+    assert [p['ref'] for p in out['prs']] == ['JANUS#104', 'JANUS#103']
+    assert out['dropped_open'] == [
+        {'ref': 'JANUS#105', 'login': 'stuitje', 'association': 'NONE'}
+    ]
+
+
+def test_collect_main_logs_the_dropped_open_prs(tmp_path, monkeypatch, capsys):
+    """Each dropped pull request is printed and added to the summary as plain text."""
+    dropped = [{'ref': 'JANUS#105', 'login': 'stuitje', 'association': 'NONE'}]
+    monkeypatch.setattr(collect, 'GitHub', lambda: 'gh')
+    monkeypatch.setattr(
+        collect,
+        'collect',
+        lambda gh, s, w: {'window': w, 'prs': [], 'releases': [], 'dropped_open': dropped},
+    )
+    out, summary = tmp_path / 'c.json', tmp_path / 's.md'
+    args = ['--out', str(out), '--since', '2026-09-01', '--until', '2026-09-30']
+    assert collect.main([*args, '--summary', str(summary)]) == 0
+    line = 'Open pull request left out: JANUS#105 by stuitje (association NONE)'
+    assert line in capsys.readouterr().out
+    assert summary.read_text() == f'<pre>\n{line}\n</pre>\n'
+
+
+def test_workflow_collect_writes_the_summary():
+    """The collect step adds the dropped pull requests to the run summary."""
+    _, jobs = _jobs()
+    assert '--summary "$GITHUB_STEP_SUMMARY"' in jobs['collect']
