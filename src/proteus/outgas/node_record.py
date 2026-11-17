@@ -632,6 +632,8 @@ def advance_record(
     liquid : dict
         Mass of each species in the melt reservoir [kg], the cap on new burials.
 
+    Notes
+    -----
     A ``record`` of ``None``, or one sized for another mesh, starts the record
     on the current profiles without draining. With ``bury_found_mush``, the
     mush it finds buries its pore melt at the current concentrations; without

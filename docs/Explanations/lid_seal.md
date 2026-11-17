@@ -107,7 +107,7 @@ The floor is one way: a species below its floor does not move, because gas does 
 
 ### The reservoir with front trapping
 
-With front trapping, the solid that froze before closure keeps its own trapped volatiles and is not part of the reservoir. The reservoir counts only the solid formed since closure, as [trapping](outgas.md#the-burial-rule) buries it. A step that freezes the mass $\Delta M$ \[kg\] splits it by the trapped melt fraction $F_\mathrm{tl}$ \[1\] (`trap_F_tl`):
+With front trapping, the solid that froze before closure keeps its own trapped volatiles and is not part of the reservoir. The reservoir counts only the solid formed since closure, as [trapping](outgas.md#the-trapping-rule) buries it. A step that freezes the mass $\Delta M$ \[kg\] splits it by the trapped melt fraction $F_\mathrm{tl}$ \[1\] (`trap_F_tl`):
 
 - $(1 - F_\mathrm{tl})\,\Delta M$ is crystals, which hold the species at $D_i$ times its melt concentration;
 - $F_\mathrm{tl}\,\Delta M$ is trapped melt, which holds the species at the melt concentration.
