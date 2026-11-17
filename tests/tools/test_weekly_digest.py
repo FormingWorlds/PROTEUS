@@ -1642,3 +1642,15 @@ def test_old_value_as_an_ordinary_word_passes():
     assert (
         check.check(data, _draft(_entry(text='Defaults are now nearest; see the guide.'))) != []
     )
+
+
+def test_numeric_old_value_in_a_now_sentence_fails():
+    """A number that is the old value of a cited change fails in a sentence that says what it is now."""
+    fact = _fact(key='interior_energetics.grain_size', old='100', new='200')
+    data = _data(fact_list=[fact])
+    data['prs'][0]['body'] = 'The cell count went from 100 to 200.'
+    fails = check.check(data, _draft(_entry(text='The default is now 100 cells.')))
+    assert any('old value "100" of fact F1' in f for f in fails), fails
+    assert (
+        check.check(data, _draft(_entry(text='The default rose from 100 to 200 cells.'))) == []
+    )
