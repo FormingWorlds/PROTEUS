@@ -491,7 +491,6 @@ def _post(
 
 def test_previous_state_trusts_only_the_workflow_bot():
     """A marker in a post by a person is skipped; the newest bot post gives the state."""
-    cats = _CATS
     posts = {
         'repository': {
             'discussions': {
@@ -505,13 +504,15 @@ def test_previous_state_trusts_only_the_workflow_bot():
         }
     }
     state = collect.previous_state(
-        _FakeGH([cats, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
+        _FakeGH([_CATS, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
     )
     assert state['until'] == '2026-11-16T22:30:00Z' and state['url'] == 'https://d/1'
     end = {'hasNextPage': False, 'endCursor': None}
     posts = {'repository': {'discussions': {'nodes': [_post(kind='User')], 'pageInfo': end}}}
     assert (
-        collect.previous_state(_FakeGH([cats, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest')
+        collect.previous_state(
+            _FakeGH([_CATS, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
+        )
         is None
     )
     none = {'repository': {'id': 'R', 'discussionCategories': {'nodes': []}}}
@@ -1403,11 +1404,10 @@ def test_model_runs_outside_the_repository(tmp_path, monkeypatch):
 
 def test_previous_state_skips_a_malformed_marker_of_a_person():
     """A broken marker in a post by anybody else neither crashes the run nor counts."""
-    cats = _CATS
     bad = _post(author='mallory', kind='User', state='{oops}')
     posts = {'repository': {'discussions': {'nodes': [bad, _post()]}}}
     state = collect.previous_state(
-        _FakeGH([cats, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
+        _FakeGH([_CATS, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
     )
     assert state['until'] == '2026-11-16T22:30:00Z'
     assert collect.parse_state('<!-- weekly-digest-state {oops} -->') is None
@@ -1508,10 +1508,9 @@ def test_state_without_a_valid_end_is_ignored(marker):
 
 def test_previous_state_passes_over_a_broken_bot_marker():
     """A bot post with a broken marker is skipped and the next bot post gives the state."""
-    cats = _CATS
     posts = {'repository': {'discussions': {'nodes': [_post(state='{oops}'), _post()]}}}
     state = collect.previous_state(
-        _FakeGH([cats, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
+        _FakeGH([_CATS, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
     )
     assert state['until'] == '2026-11-16T22:30:00Z'
 
@@ -1557,11 +1556,10 @@ def test_check_survivor_cases():
 
 def test_previous_state_ignores_another_bot():
     """A marker in a post by a bot other than the workflow does not count."""
-    cats = _CATS
     other = _post(author='dependabot', state='{"until":"2020-01-01T00:00:00Z"}')
     posts = {'repository': {'discussions': {'nodes': [other, _post()]}}}
     state = collect.previous_state(
-        _FakeGH([cats, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
+        _FakeGH([_CATS, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
     )
     assert state['until'] == '2026-11-16T22:30:00Z'
 
@@ -1744,7 +1742,18 @@ def test_model_error_text_is_one_json_string(tmp_path, monkeypatch):
     assert '\n' not in str(err.value) and '"a\\n::warning::x"' in str(err.value)
 
 
-def _publish(tmp_path, monkeypatch, last, until, run_id='9', entry=None, **window):
+def _publish(
+    tmp_path,
+    monkeypatch,
+    last,
+    until,
+    run_id='9',
+    entry=None,
+    live=True,
+    event='schedule',
+    post_input='false',
+    **window,
+):
     """Render a digest for ``until`` and run publish against a newest post ``last``.
 
     ``entry`` replaces the draft after the render, as a draft that failed the check.
@@ -1754,7 +1763,9 @@ def _publish(tmp_path, monkeypatch, last, until, run_id='9', entry=None, **windo
     src, dft, out = tmp_path / 'c.json', tmp_path / 'd.json', tmp_path / 'out'
     src.write_text(json.dumps(data))
     dft.write_text(json.dumps(_draft(_entry())))
-    render.main([str(src), str(dft), str(out), '--run-id', run_id])
+    render.main(
+        [str(src), str(dft), str(out), '--run-id', run_id, *(['--live'] if live else [])]
+    )
     if entry:
         dft.write_text(json.dumps(_draft(entry)))
     posted = []
@@ -1764,7 +1775,8 @@ def _publish(tmp_path, monkeypatch, last, until, run_id='9', entry=None, **windo
     monkeypatch.setattr(
         post, 'create_discussion', lambda *a: posted.append(a[3]) or 'https://d/2'
     )
-    return post.main(['publish', str(src), str(dft), str(out)]), posted
+    args = ['--event', event, '--post-input', post_input]
+    return post.main(['publish', str(src), str(dft), str(out), *args]), posted
 
 
 _MON = '2026-11-23T22:23:00Z'
@@ -1773,65 +1785,40 @@ _MON = '2026-11-23T22:23:00Z'
 def test_publish_refuses_a_failed_check_a_backdated_window_or_publish_off(
     tmp_path, monkeypatch
 ):
-    """The post command repeats the guards, so a broken shell step cannot post."""
-    with pytest.raises(common.DigestError, match='check'):
-        _publish(tmp_path, monkeypatch, None, _MON, entry=_entry(prs=['PROTEUS#1']))
-    with pytest.raises(common.DigestError, match='back-dated'):
-        _publish(tmp_path, monkeypatch, None, _MON, backdated=True)
-    rc, posted = _publish(tmp_path, monkeypatch, None, _MON)
+    """The post command repeats every guard, so a broken shell step cannot post."""
+    cases = [
+        ({'entry': _entry(prs=['PROTEUS#1'])}, '1 check failures'),
+        ({'backdated': True}, 'the window is back-dated'),
+        ({'event': 'workflow_dispatch'}, 'not a live run'),
+        ({'live': False}, 'the body is a dry run'),
+    ]
+    for kwargs, reason in cases:
+        with pytest.raises(common.DigestError) as err:
+            _publish(tmp_path, monkeypatch, None, _MON, **kwargs)
+        assert str(err.value) == f'not posted: {reason}', kwargs
+    rc, posted = _publish(
+        tmp_path, monkeypatch, None, _MON, event='workflow_dispatch', post_input='true'
+    )
     assert rc == 0 and posted == ['PROTEUS weekly digest, 24 November 2026']
     monkeypatch.setattr(post, 'load_settings', lambda: _VALID)
-    with pytest.raises(common.DigestError, match='publish'):
-        post.main(['publish', *(str(tmp_path / f) for f in ('c.json', 'd.json', 'out'))])
+    args = ['--event', 'schedule', '--post-input', 'false']
+    with pytest.raises(common.DigestError, match='^not posted: posting is switched off$'):
+        post.main(['publish', *(str(tmp_path / f) for f in ('c.json', 'd.json', 'out')), *args])
+
+
+def _last(until, run_id='8', title='PROTEUS weekly digest, 24 November 2026'):
+    return {'run_id': run_id, 'until': until, 'title': title}
 
 
 @pytest.mark.parametrize(
     ('case', 'last', 'until', 'run_id', 'posts'),
     [
-        # (a) a re-run of all jobs on a later day keeps the run id
-        (
-            'rerun',
-            {'run_id': '7', 'until': _MON, 'title': 'x'},
-            '2026-12-02T09:00:00Z',
-            '7',
-            False,
-        ),
-        # (b) a Wednesday recovery, then the Monday schedule
-        (
-            'recovery',
-            {
-                'run_id': '8',
-                'until': '2026-11-25T10:00:00Z',
-                'title': 'PROTEUS weekly digest, 24 November 2026',
-            },
-            '2026-11-30T22:23:00Z',
-            '9',
-            True,
-        ),
-        # (c) 2 dispatches on one day
-        (
-            'twice',
-            {
-                'run_id': '8',
-                'until': '2026-11-25T10:00:00Z',
-                'title': 'PROTEUS weekly digest, 24 November 2026',
-            },
-            '2026-11-25T15:00:00Z',
-            '10',
-            False,
-        ),
-        # (e) a Monday daytime dispatch, then the Monday schedule
-        (
-            'monday',
-            {
-                'run_id': '8',
-                'until': '2026-11-23T10:00:00Z',
-                'title': 'PROTEUS weekly digest, 24 November 2026',
-            },
-            _MON,
-            '9',
-            False,
-        ),
+        ('rerun', _last(_MON, '7', 'x'), '2026-12-02T09:00:00Z', '7', False),
+        ('recovery', _last('2026-11-25T10:00:00Z'), '2026-11-30T22:23:00Z', '9', True),
+        ('twice', _last('2026-11-25T10:00:00Z'), '2026-11-25T15:00:00Z', '10', False),
+        ('monday', _last('2026-11-23T10:00:00Z'), _MON, '9', False),
+        ('no run ids', _last(_MON, '', 'x'), '2026-11-30T22:23:00Z', '', True),
+        ('same end only', _last(_MON, '8', 'x'), _MON, '9', True),
     ],
 )
 def test_publish_dedupe_cases(tmp_path, monkeypatch, capsys, case, last, until, run_id, posts):
@@ -1842,14 +1829,9 @@ def test_publish_dedupe_cases(tmp_path, monkeypatch, capsys, case, last, until, 
         assert '::notice' in capsys.readouterr().out
 
 
-def test_publish_skips_the_same_window_end_and_stops_on_an_unknown_command(
-    tmp_path, monkeypatch, capsys
-):
-    """A post with the same window end is not repeated; an unknown command stops."""
-    rc, posted = _publish(
-        tmp_path, monkeypatch, {'until': '2026-12-02T09:00:00Z'}, '2026-12-02T09:00:00Z'
-    )
-    assert rc == 0 and posted == [] and 'same until' in capsys.readouterr().out
+def test_publish_stops_on_an_unknown_command(tmp_path):
+    """An unknown command stops."""
+    (tmp_path / 'c.json').write_text(json.dumps(_data()))
     with pytest.raises(SystemExit):
         post.main(['alert', str(tmp_path / 'c.json')])
 
@@ -2083,3 +2065,138 @@ def test_workflow_collect_writes_the_summary():
     """The collect step adds the dropped pull requests to the run summary."""
     _, jobs = _jobs()
     assert '--summary "$GITHUB_STEP_SUMMARY"' in jobs['collect']
+
+
+@pytest.mark.parametrize(
+    ('text', 'found'),
+    [
+        ('Use V100 now.', {'100'}),
+        ('The grid has N128 levels.', {'128'}),
+        ('Uses S8 and H2.', {'8', '2'}),
+        ('Water as H2O, CO2 and Fe2O3.', set()),
+    ],
+)
+def test_a_single_element_letter_before_digits_is_a_number(text, found):
+    """Only a word of 2 or more element symbols is a formula whose digits are not numbers."""
+    assert check.numbers(text) == found
+
+
+@pytest.mark.parametrize(
+    ('text', 'fails'),
+    [
+        ('From this release the grain size is set to 0.1 m.', True),
+        ('The grain size changed from 0.001 m to 0.1 m.', True),
+        ('The grain size equals 0.1 m.', True),
+        ('The grain size goes to 0.1 m.', True),
+        ('The default drops from 0.1 m for faster settling.', False),
+        ('It changed from 0.1 m to 0.001 m.', False),
+    ],
+)
+def test_old_value_marker_order_and_verbs(text, fails):
+    """The old-value marker counts only just before the old value, and a swapped pair fails."""
+    data = _data()
+    data['prs'][0]['body'] += ' 0.001 m'
+    out = check.check(data, _draft(_entry(title='Grain size', text=text)))
+    assert any('old value "0.1"' in f for f in out) is fails, out
+
+
+def test_small_integer_old_value_needs_the_key():
+    """An old value of 1 or 2 digits fails only in a sentence that names the setting."""
+    fact = _fact(key='interior_energetics.grain_size', old='3', new='4')
+    data = _data(fact_list=[fact])
+    data['prs'][0]['body'] = 'The cells went from 3 to 4.'
+    ok = 'There are 3 new cells and the default mesh is covered.'
+    assert check.check(data, _draft(_entry(title='Mesh', text=ok))) == []
+    bad = 'The default grain size is now 3.'
+    assert check.check(data, _draft(_entry(title='Mesh', text=bad))) != []
+
+
+def test_still_open_drops_an_unreadable_ref(capsys):
+    """A ref that GitHub cannot resolve is dropped and named, so it cannot stop every run."""
+
+    class Gh(_FakeGH):
+        def graphql(self, query, **variables):
+            if variables['number'] == 5:
+                raise common.DigestError('GraphQL error: not found')
+            return {'repository': {'pullRequest': {'state': 'OPEN'}}}
+
+    refs = ['PROTEUS#900', 'AGNI#5']
+    assert collect.still_open(Gh(), ['FormingWorlds/PROTEUS', 'nichollsh/AGNI'], refs) == [
+        'PROTEUS#900'
+    ]
+    assert 'AGNI#5' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ('association', 'kept'),
+    [
+        ('OWNER', True),
+        ('MEMBER', True),
+        ('COLLABORATOR', True),
+        ('CONTRIBUTOR', True),
+        ('NONE', False),
+        ('FIRST_TIME_CONTRIBUTOR', False),
+        ('FIRST_TIMER', False),
+        ('MANNEQUIN', False),
+    ],
+)
+def test_association_filter_for_each_value(association, kept):
+    """Each author association GitHub reports is kept or left out as the rule says."""
+    page = _janus()
+    for node in page['repository']['pullRequests']['nodes']:
+        node['authorAssociation'] = association
+    settings_ = {**_VALID, 'repos': ['FormingWorlds/JANUS']}
+    window = {'since': '2026-11-01T00:00:00Z', 'until': '2026-11-18T00:00:00Z'}
+    out = collect.collect(_FakeGH([page]), settings_, window)
+    assert ('JANUS#105' in [p['ref'] for p in out['prs']]) is kept
+
+
+def test_model_stdout_tail_is_one_json_string(tmp_path, monkeypatch):
+    """An error result of the CLI cannot start a workflow command line in the log."""
+    script, _ = _fake_cli(tmp_path, [{'is_error': True, 'result': 'x'}])
+    monkeypatch.setenv('CLAUDE_BIN', str(script))
+    with pytest.raises(common.DigestError) as err:
+        draft.run_model('p', 'm')
+    assert '\n' not in str(err.value)
+
+
+def test_limits_and_query_details():
+    """Boundaries of the file list, the lengths and the body, the post cursor and the schedule."""
+    node = _node(merged='2026-09-05T00:00:00Z')
+    node['files'] = {'totalCount': 1, 'nodes': [{'path': 'a.py'}]}
+    assert (
+        collect.pr_record('FormingWorlds/PROTEUS', node, SINCE, UNTIL)['files_truncated']
+        is False
+    )
+    assert (
+        check.check(_data(), _draft(_entry(title='a' * 80, text='The grain size is smaller.')))
+        == []
+    )
+    text = ('Smaller grains settle slower. ' * 14)[:400]
+    assert len(text) == 400 and check.check(_data(), _draft(_entry(text=text))) == []
+    assert render.BODY_LIMIT == 65536
+    assert 'after: $cursor' in collect.POSTS_QUERY
+    text, _ = _jobs()
+    assert "cron: '23 22 * * 1'" in text and 'cancel-in-progress: false' in text
+
+
+def test_workflow_post_step_passes_the_live_inputs():
+    """The post step gets the event and the post input, so publish repeats the decision."""
+    _, jobs = _jobs()
+    assert 'EVENT: ${{ github.event_name }}' in jobs['publish']
+    assert 'POST: ${{ inputs.post || false }}' in jobs['publish']
+    assert (
+        'post.py publish collected.json draft.json out --event "$EVENT" --post-input "$POST"'
+        in jobs['publish']
+    )
+
+
+def test_collect_main_prints_no_empty_line(tmp_path, monkeypatch, capsys):
+    """Without a dropped pull request the collect log is one line."""
+    monkeypatch.setattr(collect, 'GitHub', lambda: 'gh')
+    monkeypatch.setattr(
+        collect, 'collect', lambda gh, s, w: {'window': w, 'prs': [], 'releases': []}
+    )
+    out = tmp_path / 'c.json'
+    collect.main(['--out', str(out), '--since', '2026-09-01', '--until', '2026-09-30'])
+    assert len(capsys.readouterr().out.splitlines()) == 1
