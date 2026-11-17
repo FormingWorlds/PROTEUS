@@ -1607,7 +1607,11 @@ def test_http_protocol_errors_are_handled(monkeypatch, capsys):
 @pytest.mark.parametrize('marker', ['{"until":1}', '{"x":1}', '{"until":"garbage"}', '{}'])
 def test_state_without_a_valid_end_is_ignored(marker):
     """A marker whose window end is missing or not a time counts as no marker."""
-    assert collect.parse_state(f'<!-- weekly-digest-state {marker} -->') is None
+    good = '<!-- weekly-digest-state {"until":"2026-11-16T22:30:00Z"} -->'
+    assert collect.parse_state(f'{good}\n<!-- weekly-digest-state {marker} -->') is None
+    assert collect.parse_state(f'<!-- weekly-digest-state {marker} -->\n{good}') == {
+        'until': '2026-11-16T22:30:00Z'
+    }
 
 
 def test_previous_state_passes_over_a_broken_bot_marker():
