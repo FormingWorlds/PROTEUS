@@ -100,8 +100,12 @@ def shape_failures(entry: object) -> list[str]:
         if not isinstance(entry.get(k), t)
         or (t is list and not all(isinstance(x, str) for x in entry[k]))
     ]
+    if 'action' in entry and not isinstance(entry['action'], bool):
+        fails.append(f'{name}: field action is not a boolean')
     if not fails and entry['section'] not in SECTIONS:
         fails.append(f'{name}: unknown section {entry["section"]}')
+    if not fails and entry.get('action') and entry['section'] != 'install':
+        fails.append(f'{name}: action is only for section install')
     return fails
 
 

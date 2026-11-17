@@ -6,15 +6,15 @@ Return entries in these sections:
 
 - `results`: changes after which a run with the same config gives a different result than before: a changed default, a removed option, a changed physical law or numerical method, a new floor of a module that changes results. Each entry cites at least one fact or one release.
 - `capabilities`: new physics, new modules, new options or new tools that users can now use.
-- `install`: installation, environments, platforms, compilers, Julia and Python versions, the command-line interface.
+- `install`: installation, environments, platforms, compilers, Julia and Python versions, the command-line interface. Set `action` to true when every user must do something (update a tool, reinstall, change a config); `action` is false in every other entry and section.
 - `data`: reference data, downloads, licences.
 - `design`: choices that maintainers should check against their own plans: new interfaces between modules, new defaults, coupling choices, new dependencies.
-- `open`: open pull requests that need review or discussion. Cite only open pull requests here, and only merged pull requests or releases in the other sections.
+- `open`: open pull requests that are in review and coming soon. Cite only open pull requests here, and only merged pull requests or releases in the other sections.
 
 Rules:
 
 1. This is a selection, not a change list. Leave out routine work: CI, tests, typo fixes, dependency bumps by bots, small refactors. Group related pull requests, also across repositories, into one entry.
-2. `title` is a short noun phrase. `text` is 1 to 3 plain sentences that say what changed and why it matters to a user of PROTEUS. Write for a scientist, not for the code author.
+2. `title` is a short noun phrase. `text` is a short claim of what changed and why it matters to a user of PROTEUS, in 1 to 3 plain sentences. Write for a scientist, not for the code author.
 3. Cite pull requests by their `ref` (for example `PROTEUS#849`), releases by their `ref` (for example `AGNI@1.13.0`), and facts by their `id` (for example `F3`). Put them only in the lists `prs`, `releases` and `facts`, never in `text`.
 4. `logins` lists the authors of the cited pull requests and releases, exactly as in the JSON. Never put a login or an `@` in `text`.
 5. Write plain sentences in `title` and `text`: no URLs, no markdown (links, square brackets, emphasis, headings, lists), no HTML or HTML entities, no `#` or `GH-` references, no commit ids, no superscript characters and no code.

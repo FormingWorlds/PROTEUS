@@ -34,6 +34,16 @@ def tuesday_title(until: str) -> str:
     return f'PROTEUS weekly digest, {day.day} {day:%B %Y}'
 
 
+def window_dates(window: dict) -> str:
+    """``1 September 2026 and 29 September 2026 (UTC ...)``: first and last day of the window."""
+    first, last = (
+        parse_time(window['since']),
+        parse_time(window['until']) - timedelta(seconds=1),
+    )
+    days = ' and '.join(f'{d.day} {d:%B %Y}' for d in (first, last))
+    return f'{days} (UTC {window["since"]} to {window["until"]})'
+
+
 def short_date(stamp: str) -> str:
     """``2026-09-06T21:07:16Z`` as ``6 Sep``."""
     value = parse_time(stamp)
@@ -75,7 +85,7 @@ def fact_line(fact: dict) -> str:
     if change == 'description':
         return f'{key}: description changed'
     label = '' if change in ('default', 'value') else f' {change}'
-    return f'{key}{label}: {value(fact["old"])} to {value(fact["new"])}'
+    return f'{key}{label}: {value(fact["old"])} → {value(fact["new"])}'
 
 
 def facts_text(facts: list[dict]) -> str:
@@ -138,8 +148,9 @@ def render_body(
     facts = {f['id']: f for f in data.get('facts', [])}
     lines = [
         'This digest is written automatically by a workflow in FormingWorlds/PROTEUS from merged '
-        'pull requests, open pull requests and releases. It is a selection; check the linked pull '
-        'requests before you act on it.',
+        'pull requests, open pull requests and releases; check the linked pull requests before you '
+        'act on it. Additions and changes from across the ecosystem that affect more than one '
+        'project. This is a selection, not a complete change list.',
         '',
     ]
     if not live:
@@ -161,11 +172,12 @@ def render_body(
         lines += [f'## {heading}', '']
         if key == 'results':
             lines += [
-                'Runs started after these merges can give different results than earlier runs with '
-                'the same config.',
+                'Runs started after these merges will not reproduce earlier runs with the same '
+                'config. Compare old and new runs with care, and check whether any figures in '
+                'progress need a rerun.',
                 '',
-                '| Setting | Change | Merged | Links | By |',
-                '| --- | --- | --- | --- | --- |',
+                '| Setting | Change | Merged | Links |',
+                '| --- | --- | --- | --- |',
             ]
         for entry in entries:
             items = [prs[r] for r in entry['prs']] + [rels[r] for r in entry['releases']]
@@ -178,10 +190,12 @@ def render_body(
                 when = min(i.get('merged_at') or i['published_at'] for i in items)
                 change = f'{text} {detail}.' if detail else text
                 lines.append(
-                    f'| {plain(entry["title"])} | {change} | {short_date(when)} | {links(items)} | '
-                    f'{authors(items, mentions)} |'
+                    f'| {plain(entry["title"])} | {change} | {short_date(when)} | {links(items)}, '
+                    f'by {authors(items, mentions)} |'
                 )
                 continue
+            if entry.get('action'):
+                text = f'**Action for everyone:** {text}'
             lines += [f'### {plain(entry["title"])}', '', text, '']
             if detail:
                 lines += [f'Settings: {detail}.', '']
@@ -197,7 +211,7 @@ def render_body(
     lines += [
         '---',
         '',
-        f'Collected between {window["since"]} and {window["until"]} (UTC) from {merged} merged '
+        f'Collected between {window_dates(window)} from {merged} merged '
         f'and {len(open_now)} open pull requests and {len(data["releases"])} releases in {names}. '
         f'The model read the bodies of the {data["bodies_kept"]} largest '
         f'pull requests and only the titles of the other {data["bodies_cut"]}. '

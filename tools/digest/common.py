@@ -26,7 +26,7 @@ SECTIONS = {
     'install': 'Installing and running',
     'data': 'Data and licensing',
     'design': 'Design choices to look at',
-    'open': 'Open for review',
+    'open': 'In review, coming soon',
 }
 CATEGORY_QUERY = """
 query($owner: String!, $name: String!) {

@@ -35,11 +35,12 @@ A file that gains more than 8 keys in one pull request gives one fact for the ad
 
 - the model returns no entry for a window that has a merged pull request or a release;
 - an entry cites a pull request, release or fact that is not in the collected data;
-- an entry cites no pull request and no release, or cites a release in the section Open for review;
+- an entry cites no pull request and no release, or cites a release in the section In review, coming soon;
 - an entry cites a fact but not the pull request that the fact comes from;
 - an entry names a login that is not an author of a cited item;
-- an entry cites an open pull request outside the section Open for review, or a merged pull request inside it;
+- an entry cites an open pull request outside the section In review, coming soon, or a merged pull request inside it;
 - an entry in the section Changes that affect your results cites no fact and no release;
+- an entry outside the section Installing and running carries the action marker;
 - the title or text of an entry holds a URL, an `@`, square brackets, HTML, an HTML entity, a `#` or `GH-` reference, a commit id, a backtick, an invisible character or a special number character (superscripts, fractions);
 - the title or text uses a number that is not in the title or text of a cited pull request or release (the values of cited facts do not count);
 - the title or text names a config key or helpfile column that is not in a cited fact;
@@ -61,14 +62,16 @@ If a job fails, the last job sends a message to Discord when the secret exists.
 
 ## Sections of a digest
 
+The sections appear in the order of the table below. The first section is a table with the columns Setting, Change (old value → new value), Merged and Links. A section without entries is left out.
+
 | Section | What goes in it |
 | --- | --- |
 | Changes that affect your results | Changes after which a run with the same config gives a different result, with the config changes as facts |
 | New capabilities | New physics, modules, options and tools |
-| Installing and running | Installation, environments, platforms and the command-line interface |
+| Installing and running | Installation, environments, platforms and the command-line interface; an entry that every user must act on starts with **Action for everyone:** |
 | Data and licensing | Reference data, downloads and licences |
 | Design choices to look at | New interfaces, defaults, coupling choices and dependencies that maintainers can check against their plans |
-| Open for review | Open pull requests that need review (drafts are left out) |
+| In review, coming soon | Open pull requests in review (drafts are left out) |
 
 ## Mentions
 
