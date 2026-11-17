@@ -22,7 +22,7 @@ The seal also needs:
 - `escape.reservoir = "outgas"` (the default) or `"bulk"`;
 - with the Zalmoxis structure, `interior_struct.zalmoxis.dry_mantle = true` (the default).
 
-It cannot be combined with `params.stop.solid.freeze_volatiles = true`, which also freezes the melt inventory, or with `outgas.vapourise = true`.
+It cannot be combined with `params.stop.solid.freeze_volatiles = true`, which also freezes the melt inventory, with `outgas.vapourise = true`, or with layer trapping (`outgas.trap_mode = "layers"`).
 
 With the defaults `tau_leak = inf` and `crust_rate = 0`, no held mass leaves while the seal holds. The desiccation check counts the held mass. While the seal holds, a planet is therefore not desiccated if the held mass of any volatile element or noble gas is above `outgas.mass_thresh`. A planet is desiccated when it has lost its volatiles ([definition](../Explanations/outgas.md#terms-used-on-this-page)). Set a finite `tau_leak` or a positive `crust_rate` to let the held volatiles reach the atmosphere.
 

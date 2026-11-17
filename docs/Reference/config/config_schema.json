@@ -13087,7 +13087,7 @@
         "outgas.vapourise",
         "params.stop.solid.freeze_volatiles"
       ],
-      "doc": "The lid seal reads the Aragog mesh, freezes the CALLIOPE chemistry while it holds, and applies unfractionated escape."
+      "doc": "The lid seal reads the Aragog mesh, freezes the CALLIOPE chemistry while it holds, and applies unfractionated escape; it handles front trapping but not the layer scheme."
     },
     {
       "validator": "lowt_extension_requires_aragog",

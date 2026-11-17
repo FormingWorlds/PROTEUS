@@ -153,7 +153,7 @@ The settings of `[outgas.lid_seal]`, with their units and defaults, are in the [
 
 ## What the seal needs
 
-The seal needs the Aragog interior solver, because it reads the melt fraction and the radius of each mesh cell. [Lid seal](../How-to/usage_lid_seal.md) gives the settings that turn it on, the settings it needs, and the output columns that show what it does. Front trapping (`outgas.trap_mode = "front"`) can run with it. While the seal holds, the melt columns are empty, so trapping buries nothing; mass that a remelt releases from the solid joins the held mass.
+The seal needs the Aragog interior solver, because it reads the melt fraction and the radius of each mesh cell. [Lid seal](../How-to/usage_lid_seal.md) gives the settings that turn it on, the settings it needs, and the output columns that show what it does. Front trapping (`outgas.trap_mode = "front"`) can run with it. Layer trapping (`outgas.trap_mode = "layers"`) cannot: it buries and returns volatiles node by node, and the seal does not follow that record. While the seal holds, the melt columns are empty, so trapping buries nothing; mass that a remelt releases from the solid joins the held mass.
 
 ## What the seal changes elsewhere
 

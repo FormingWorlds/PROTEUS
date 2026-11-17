@@ -448,7 +448,7 @@ def trapping_requires_aragog(instance, attribute, value):
 
 def lid_seal_requirements(instance, attribute, value):
     """The lid seal reads the Aragog mesh, freezes the CALLIOPE chemistry while it holds,
-    and applies unfractionated escape."""
+    and applies unfractionated escape; it handles front trapping but not the layer scheme."""
     if not getattr(getattr(instance.outgas, 'lid_seal', None), 'enabled', False):
         return
     interior = instance.interior_energetics.module
@@ -457,6 +457,12 @@ def lid_seal_requirements(instance, attribute, value):
             'outgas.lid_seal.enabled = true requires interior_energetics.module = "aragog", '
             f'not "{interior}". The seal reads the melt fraction and radius of the mesh '
             'cells that only the Aragog interior exports.'
+        )
+    if getattr(instance.outgas, 'trap_mode', 'none') == 'layers':
+        raise ValueError(
+            'outgas.lid_seal.enabled = true cannot be combined with outgas.trap_mode = '
+            '"layers": the seal holds the melt inventory and counts the crystals of front '
+            'trapping alone, while the layer scheme buries and returns volatiles node by node.'
         )
     if instance.params.stop.solid.freeze_volatiles:
         raise ValueError(
