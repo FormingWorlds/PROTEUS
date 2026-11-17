@@ -841,7 +841,7 @@ def test_tuesday_title_in_amsterdam_time():
 @pytest.mark.parametrize(
     ('fact', 'line'),
     [
-        (_fact(), '`interior_energetics.grain_size`: `0.1` to `0.001`'),
+        (_fact(), '`interior_energetics.grain_size`: `0.1` → `0.001`'),
         (
             {**_fact(), 'change': 'added', 'old': None, 'new': '"mixture"'},
             '`interior_energetics.grain_size` added, default `"mixture"`',
@@ -857,7 +857,7 @@ def test_tuesday_title_in_amsterdam_time():
         ),
         (
             {**_fact(), 'change': 'choices', 'old': 'a|b', 'new': 'a`c'},
-            '`interior_energetics.grain_size` choices: `a b` to `a c`',
+            '`interior_energetics.grain_size` choices: `a b` → `a c`',
         ),
         (
             {**_fact(key=facts.CONFIG_SCHEMA), 'change': 'added', 'members': ['a', 'b']},
@@ -877,7 +877,7 @@ def test_fact_line(fact, line):
 def test_facts_text_dedupes_and_caps():
     """Equal lines from two PRs print once; more than the cap end in a count."""
     same = [_fact('F1'), _fact('F2', pr='PROTEUS#2')]
-    assert render.facts_text(same) == '`interior_energetics.grain_size`: `0.1` to `0.001`'
+    assert render.facts_text(same) == '`interior_energetics.grain_size`: `0.1` → `0.001`'
     many = [_fact(f'F{i}', key=f'k{i}') for i in range(render.MAX_FACTS + 2)]
     assert render.facts_text(many).endswith('; and 2 more')
 
@@ -898,13 +898,12 @@ def test_render_results_table_and_footer():
     row = next(
         line for line in body.splitlines() if line.startswith('| Smaller default grain size')
     )
-    assert '`interior_energetics.grain_size`: `0.1` to `0.001`.' in row
-    assert (
-        '| 6 Sep | [PROTEUS#849](https://github.com/FormingWorlds/PROTEUS/pull/849) | `@alice` |'
-        in row
+    assert '`interior_energetics.grain_size`: `0.1` → `0.001`.' in row
+    assert row.endswith(
+        '| 6 Sep | [PROTEUS#849](https://github.com/FormingWorlds/PROTEUS/pull/849), by `@alice` |'
     )
     assert (
-        'Collected between 2026-09-01T00:00:00Z and 2026-09-30T00:00:00Z (UTC) from 1 merged'
+        'between 1 September 2026 and 29 September 2026 (UTC 2026-09-01T00:00:00Z to 2026-09-30T00:00:00Z)'
         in body
     )
     assert '[Workflow run](https://run)' in body
@@ -1690,7 +1689,7 @@ def test_fact_line_falsy_default_value_change_and_cap_edge():
     assert render.fact_line(added) == '`interior_energetics.grain_size` added, default `0`'
     assert (
         render.fact_line({**_fact(), 'change': 'value'})
-        == '`interior_energetics.grain_size`: `0.1` to `0.001`'
+        == '`interior_energetics.grain_size`: `0.1` → `0.001`'
     )
     four = [_fact(f'F{i}', key=f'k{i}') for i in range(render.MAX_FACTS)]
     assert 'more' not in render.facts_text(four) and render.facts_text(four).count(';') == 3
@@ -1703,3 +1702,49 @@ def test_short_numeric_old_value_in_a_now_sentence_fails():
     data['prs'][0]['body'] = 'The count went from 10 to 20.'
     fails = check.check(data, _draft(_entry(text='The default is now 10 cells.')))
     assert any('old value "10" of fact F1' in f for f in fails), fails
+
+
+def test_render_follows_the_highlights_layout():
+    """Sections, lede, note line and table follow the September highlights page."""
+    data = _data(prs=[_pr(), _pr('PROTEUS#900', status='open', author='carol')])
+    entries = [
+        _entry(
+            section='open',
+            prs=['PROTEUS#900'],
+            facts=[],
+            logins=['carol'],
+            title='O',
+            text='Needs review.',
+        ),
+        _entry(section='design', facts=[], title='D'),
+        _entry(section='install', facts=[], title='I', action=True, text='Update Julia.'),
+        _entry(),
+    ]
+    body, _ = _render(_draft(*entries), data)
+    heads = [x for x in body.splitlines() if x.startswith('## ')]
+    assert heads == [
+        '## Changes that affect your results',
+        '## Installing and running',
+        '## Design choices to look at',
+        '## In review, coming soon',
+    ]
+    assert (
+        'Additions and changes from across the ecosystem that affect more than one project. This is a selection, not a complete change list.'
+        in body
+    )
+    assert (
+        'Runs started after these merges will not reproduce earlier runs with the same config. Compare old and new runs with care, and check whether any figures in progress need a rerun.'
+        in body
+    )
+    assert '| Setting | Change | Merged | Links |\n| --- | --- | --- | --- |' in body
+    assert '**Action for everyone:** Update Julia.' in body
+    assert 'Publications' not in body
+
+
+def test_check_action_field():
+    """The action marker is a boolean, allowed only in the section Installing and running."""
+    assert check.check(_data(), _draft(_entry(section='install', facts=[], action=True))) == []
+    fails = check.check(_data(), _draft(_entry(action=True)))
+    assert any('action is only for section install' in f for f in fails), fails
+    assert any('field action' in f for f in check.check(_data(), _draft(_entry(action='yes'))))
+    assert check.check(_data(), _draft(_entry(action=False))) == []
