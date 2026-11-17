@@ -1623,3 +1623,18 @@ def test_previous_state_passes_over_a_broken_bot_marker():
         _FakeGH([cats, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
     )
     assert state['until'] == '2026-11-16T22:30:00Z'
+
+
+def test_old_value_as_an_ordinary_word_passes():
+    """The old value fails only in a sentence that states a new state without the new value."""
+    fact = _fact(key='interior_energetics.mixing_length', old='"nearest"', new='"constant"')
+    data = _data(fact_list=[fact])
+    real = (
+        'Aragog and SPIDER now default to a mixing length that is a fixed fraction of the mantle depth. '
+        'The other form, based on the distance to the nearest boundary, let the core heat flux stay near zero.'
+    )
+    assert check.check(data, _draft(_entry(text=real))) == []
+    assert check.check(data, _draft(_entry(text='It changed from nearest to constant.'))) == []
+    assert (
+        check.check(data, _draft(_entry(text='Defaults are now nearest; see the guide.'))) != []
+    )
