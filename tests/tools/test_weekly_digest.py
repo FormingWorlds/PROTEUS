@@ -1281,8 +1281,10 @@ def test_check_rejects_a_string_value_of_a_cited_fact():
     fact = _fact(key='interior_energetics.mixing_length', old='"nearest"', new='"constant"')
     data = _data(fact_list=[fact])
     data['known_keys'].append('interior_energetics.mixing_length')
-    fails = check.check(data, _draft(_entry(text='The default mixing length is now nearest.')))
-    assert any('old value "nearest" of fact F1' in f for f in fails), fails
+    warned = check.warnings(
+        data, _draft(_entry(text='The default mixing length is now nearest.'))
+    )
+    assert any('old value "nearest" of fact F1' in w for w in warned), warned
     assert (
         check.check(data, _draft(_entry(text='The default mixing length is now constant.')))
         == []
@@ -1515,33 +1517,6 @@ def test_previous_state_passes_over_a_broken_bot_marker():
     assert state['until'] == '2026-11-16T22:30:00Z'
 
 
-def test_old_value_as_an_ordinary_word_passes():
-    """The old value fails only in a sentence that states a new state without the new value."""
-    fact = _fact(key='interior_energetics.mixing_length', old='"nearest"', new='"constant"')
-    data = _data(fact_list=[fact])
-    real = (
-        'Aragog and SPIDER now default to a mixing length that is a fixed fraction of the mantle depth. '
-        'The other form, based on the distance to the nearest boundary, let the core heat flux stay near zero.'
-    )
-    assert check.check(data, _draft(_entry(text=real))) == []
-    assert check.check(data, _draft(_entry(text='It changed from nearest to constant.'))) == []
-    assert (
-        check.check(data, _draft(_entry(text='Defaults are now nearest; see the guide.'))) != []
-    )
-
-
-def test_numeric_old_value_in_a_now_sentence_fails():
-    """A number that is the old value of a cited change fails in a sentence that says what it is now."""
-    fact = _fact(key='interior_energetics.grain_size', old='100', new='200')
-    data = _data(fact_list=[fact])
-    data['prs'][0]['body'] = 'The cell count went from 100 to 200.'
-    fails = check.check(data, _draft(_entry(text='The default is now 100 cells.')))
-    assert any('old value "100" of fact F1' in f for f in fails), fails
-    assert (
-        check.check(data, _draft(_entry(text='The default rose from 100 to 200 cells.'))) == []
-    )
-
-
 def test_check_survivor_cases():
     """Close cases: a subscript minus, a near number, a non-string list item, a value change, a 3-letter value."""
     fails = check.check(_data(), _draft(_entry(text='Now ₋0.001 m.')))
@@ -1550,8 +1525,10 @@ def test_check_survivor_cases():
     assert any('number 0.105 is in no cited source' in f for f in fails), fails
     assert any('field prs' in f for f in check.check(_data(), _draft(_entry(prs=[849]))))
     fact = {**_fact(key='planet.mode', old='"off"', new='"auto"'), 'change': 'value'}
-    fails = check.check(_data(fact_list=[fact]), _draft(_entry(text='The mode is now off.')))
-    assert any('old value "off" of fact F1' in f for f in fails), fails
+    warned = check.warnings(
+        _data(fact_list=[fact]), _draft(_entry(text='The mode is now off.'))
+    )
+    assert any('old value "off" of fact F1' in w for w in warned), warned
 
 
 def test_previous_state_ignores_another_bot():
@@ -1574,15 +1551,6 @@ def test_fact_line_falsy_default_value_change_and_cap_edge():
     )
     four = [_fact(f'F{i}', key=f'k{i}') for i in range(render.MAX_FACTS)]
     assert 'more' not in render.facts_text(four) and render.facts_text(four).count(';') == 3
-
-
-def test_short_numeric_old_value_in_a_now_sentence_fails():
-    """A one- or two-digit old value is checked in a sentence that names the setting."""
-    fact = _fact(key='interior_energetics.grain_size', old='10', new='20')
-    data = _data(fact_list=[fact])
-    data['prs'][0]['body'] = 'The count went from 10 to 20.'
-    fails = check.check(data, _draft(_entry(text='The default grain size is now 10 cells.')))
-    assert any('old value "10" of fact F1' in f for f in fails), fails
 
 
 def test_render_follows_the_highlights_layout():
@@ -1819,6 +1787,13 @@ def _last(until, run_id='8', title='PROTEUS weekly digest, 24 November 2026'):
         ('monday', _last('2026-11-23T10:00:00Z'), _MON, '9', False),
         ('no run ids', _last(_MON, '', 'x'), '2026-11-30T22:23:00Z', '', True),
         ('same end only', _last(_MON, '8', 'x'), _MON, '9', True),
+        (
+            'stale rerun',
+            _last('2026-11-30T22:23:00Z', '9', 'x'),
+            '2026-11-25T10:00:00Z',
+            '8',
+            False,
+        ),
     ],
 )
 def test_publish_dedupe_cases(tmp_path, monkeypatch, capsys, case, last, until, run_id, posts):
@@ -1920,20 +1895,6 @@ def test_announced_open_pr_stays_until_merged_or_closed():
 def test_numbers_split_a_capital_or_underscore_prefix_but_keep_formulas(text, found):
     """A digit run after a single capital or an underscore is a number; a formula is not."""
     assert check.numbers(text) == found
-
-
-@pytest.mark.parametrize(
-    'text',
-    [
-        'The grain size was lowered to 0.1 m.',
-        'Grain size is set to 0.1 m.',
-        'Grain size becomes 0.1 m.',
-    ],
-)
-def test_old_value_stated_as_the_setting_fails(text):
-    """The old value of a cited change fails where the sentence assigns it."""
-    fails = check.check(_data(), _draft(_entry(title='Grain size', text=text)))
-    assert any('old value "0.1" of fact F1' in f for f in fails), fails
 
 
 def test_title_and_text_are_separate_sentences():
@@ -2078,36 +2039,6 @@ def test_a_single_element_letter_before_digits_is_a_number(text, found):
     assert check.numbers(text) == found
 
 
-@pytest.mark.parametrize(
-    ('text', 'fails'),
-    [
-        ('From this release the grain size is set to 0.1 m.', True),
-        ('The grain size changed from 0.001 m to 0.1 m.', True),
-        ('The grain size equals 0.1 m.', True),
-        ('The grain size goes to 0.1 m.', True),
-        ('The default drops from 0.1 m for faster settling.', False),
-        ('It changed from 0.1 m to 0.001 m.', False),
-    ],
-)
-def test_old_value_marker_order_and_verbs(text, fails):
-    """The old-value marker counts only just before the old value, and a swapped pair fails."""
-    data = _data()
-    data['prs'][0]['body'] += ' 0.001 m'
-    out = check.check(data, _draft(_entry(title='Grain size', text=text)))
-    assert any('old value "0.1"' in f for f in out) is fails, out
-
-
-def test_small_integer_old_value_needs_the_key():
-    """An old value of 1 or 2 digits fails only in a sentence that names the setting."""
-    fact = _fact(key='interior_energetics.grain_size', old='3', new='4')
-    data = _data(fact_list=[fact])
-    data['prs'][0]['body'] = 'The cells went from 3 to 4.'
-    ok = 'There are 3 new cells and the default mesh is covered.'
-    assert check.check(data, _draft(_entry(title='Mesh', text=ok))) == []
-    bad = 'The default grain size is now 3.'
-    assert check.check(data, _draft(_entry(title='Mesh', text=bad))) != []
-
-
 def test_still_open_drops_an_unreadable_ref(capsys):
     """A ref that GitHub cannot resolve is dropped and named, so it cannot stop every run."""
 
@@ -2150,11 +2081,11 @@ def test_association_filter_for_each_value(association, kept):
 
 def test_model_stdout_tail_is_one_json_string(tmp_path, monkeypatch):
     """An error result of the CLI cannot start a workflow command line in the log."""
-    script, _ = _fake_cli(tmp_path, [{'is_error': True, 'result': 'x'}])
+    script, _ = _fake_cli(tmp_path, [{'is_error': True, 'result': 'x\n::warning::y'}])
     monkeypatch.setenv('CLAUDE_BIN', str(script))
     with pytest.raises(common.DigestError) as err:
         draft.run_model('p', 'm')
-    assert '\n' not in str(err.value)
+    assert '\n' not in str(err.value) and '::warning::y' in str(err.value)
 
 
 def test_limits_and_query_details():
@@ -2197,3 +2128,84 @@ def test_collect_main_prints_no_empty_line(tmp_path, monkeypatch, capsys):
     out = tmp_path / 'c.json'
     collect.main(['--out', str(out), '--since', '2026-09-01', '--until', '2026-09-30'])
     assert len(capsys.readouterr().out.splitlines()) == 1
+
+
+def test_still_open_keeps_a_ref_on_a_server_error(capsys):
+    """Only a pull request that GitHub cannot resolve leaves the state; a server error keeps it."""
+
+    class Gh(_FakeGH):
+        def graphql(self, query, **variables):
+            raise common.DigestError('GitHub API 502 for https://api.github.com/graphql')
+
+    assert collect.still_open(Gh(), ['FormingWorlds/PROTEUS'], ['PROTEUS#900']) == [
+        'PROTEUS#900'
+    ]
+
+
+def test_numbers_after_a_dot_and_letter_numbers():
+    """A number written with a leading dot is a number; a Roman numeral character fails the text."""
+    assert check.numbers('The step is .5 s.') == {'.5'}
+    assert check.number_in('.5', {'0.5'})
+    fails = check.check(_data(), _draft(_entry(text='Runs take about \u216b steps.')))
+    assert any('special number character' in f for f in fails), fails
+
+
+def test_body_limit_boundary(tmp_path, monkeypatch):
+    """A body of exactly the limit passes; one character more stops the run."""
+    src, dft = tmp_path / 'c.json', tmp_path / 'd.json'
+    src.write_text(json.dumps(_data()))
+    dft.write_text(json.dumps(_draft(_entry())))
+    body, _ = render.render_body(_data(), _draft(_entry()), False, '', [])
+    monkeypatch.setattr(render, 'BODY_LIMIT', len(body))
+    assert render.main([str(src), str(dft), str(tmp_path / 'out')]) == 0
+    monkeypatch.setattr(render, 'BODY_LIMIT', len(body) - 1)
+    with pytest.raises(common.DigestError):
+        render.main([str(src), str(dft), str(tmp_path / 'out')])
+
+
+def test_post_step_alone_carries_the_live_inputs():
+    """The env lines and arguments that publish needs sit in the Post step itself."""
+    _, jobs = _jobs()
+    step = jobs['publish'].split('- name: Post\n', 1)[1]
+    assert (
+        'EVENT: ${{ github.event_name }}' in step
+        and 'POST: ${{ inputs.post || false }}' in step
+    )
+    assert '--event "$EVENT" --post-input "$POST"' in step
+
+
+_SENTENCES = json.loads((_DATA / 'value_sentences.json').read_text())
+
+
+@pytest.mark.parametrize('row', _SENTENCES, ids=[r['text'][:50] for r in _SENTENCES])
+def test_value_sentence_corpus(row):
+    """The old-value rule warns on every assignment of the old value and on no correct sentence."""
+    fact = _fact(key=row['key'], old=row['old'], new=row['new'])
+    warned = check.value_warnings('e', [row['text']], [fact])
+    assert bool(warned) is row['warn'], (row['source'], warned)
+
+
+def test_value_warning_does_not_fail_the_check():
+    """A sentence that states the old value warns; the check still passes and the post goes out."""
+    draft_doc = _draft(_entry(title='Grain size', text='Grain size is set to 0.1 m.'))
+    assert check.check(_data(), draft_doc) == []
+    assert check.warnings(_data(), draft_doc) == [
+        'entry "Grain size": text gives the old value "0.1" of fact F1 as the current value'
+    ]
+    entry = _entry(title='Slower settling by default', text='Settling is slower with 0.1 m.')
+    assert check.warnings(_data(), _draft(entry)) == []
+
+
+def test_check_main_prints_warnings_and_passes(tmp_path, capsys):
+    """A warning is a WARN line, a warning annotation and a summary line; the exit code stays 0."""
+    src, dft = tmp_path / 'c.json', tmp_path / 'd.json'
+    src.write_text(json.dumps(_data()))
+    dft.write_text(
+        json.dumps(_draft(_entry(title='Grain size', text='Grain size is set to 0.1 m.')))
+    )
+    summary = tmp_path / 's.md'
+    assert check.main([str(src), str(dft), '--summary', str(summary)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].startswith('WARN "entry') and lines[1].startswith('::warning::"entry')
+    assert lines[-1] == '0 failures and 1 warnings in 1 entries'
+    assert 'WARN &quot;entry' in summary.read_text()
