@@ -59,7 +59,7 @@ config_version = "3.0"
 
         [params.stop.solid]                  # solidification criterion
             enabled           = true
-            phi_crit          = 0.03         # stop when global melt fraction < phi_crit
+            phi_crit          = 0.05         # stop when global melt fraction < phi_crit
             freeze_volatiles  = true        # freeze mantle volatiles at solidification
 
         [params.stop.radeqm]                 # radiative equilibrium criterion
@@ -69,7 +69,7 @@ config_version = "3.0"
 
         [params.stop.escape]                 # atmosphere loss criterion
             enabled           = true
-            p_stop            = 0.1          # stop when surface pressure < p_stop [bar]
+            p_stop            = 0.5          # stop when surface pressure < p_stop [bar]
 
         [params.stop.disint]                 # planetary disintegration criterion
             enabled           = false
@@ -456,7 +456,7 @@ config_version = "3.0"
     spectral_group            = "Cliffshade"  # opacity k-table set
     spectral_bands            = "64"         # wavenumber bands in k-table
     num_levels                = 40           # vertical atmosphere levels (min 15)
-    p_top                     = 2.0e-4       # top-of-atmosphere pressure [bar]
+    p_top                     = 1.0e-4       # top-of-atmosphere pressure [bar]
     p_obs                     = 'none'       # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
@@ -552,7 +552,7 @@ config_version = "3.0"
     [escape.zephyrus]
         Pxuv                  = 5e-5         # XUV opacity pressure level [bar]
         efficiency            = 0.1          # escape efficiency
-        tidal                 = false        # tidal contribution
+        tidal                 = true        # tidal contribution
 
     [escape.dummy]
         rate                  = 0.0          # bulk escape rate [kg s-1]
