@@ -88,6 +88,8 @@ def test_a_config_file_sets_the_three_fields(tmp_path):
     from helpers import PROTEUS_ROOT
 
     text = (PROTEUS_ROOT / MINIMAL).read_text() + (
+        '\n[interior_energetics.aragog]\n'
+        '    core_bc = "core_module"\n'
         '\n[interior_energetics.aragog.core_module]\n'
         '    profile_source = "paleos"\n'
         '    core_cp_override = "table"\n'
