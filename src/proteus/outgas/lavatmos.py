@@ -43,8 +43,6 @@ SURFACE_MELT_FRAC = 1.0  # melt fraction at the surface (LavAtmos input)
 
 # Custom modules
 class paths_importer:
-    """LavAtmos and FastChem input and output paths, from ``LAVA_DIR`` and ``FC_DIR``."""
-
     def __init__(self, dirs):
         """
 
@@ -109,12 +107,6 @@ class paths_importer:
 
 
 class set_magmaproperties:
-    """Melt state passed to LavAtmos.
-
-    The surface temperature [K] is ``max(outgas.lavatmos.T_min, T_magma)``, the
-    volatile pressure [bar] is ``P_surf`` and the melt fraction is 1.
-    """
-
     def __init__(self, config: Config, hf_row: dict, volatile_comp, dirs: dict):
         """
 
@@ -127,7 +119,7 @@ class set_magmaproperties:
 
         # Import input from config
         self.T_surf = max(config.outgas.lavatmos.T_min, hf_row['T_magma'])
-        self.P_volatile = hf_row['P_surf']
+        self.P_volatile = hf_row['P_vol']
         self.melt_comp_name = config.outgas.lavatmos.melt_comp_name
         self.output_dir = paths.output_dir
         self.run_name = 'proteus_run'
@@ -136,8 +128,6 @@ class set_magmaproperties:
 
 
 class Species_db(object):
-    """A gas species: name, FastChem formula and molar mass [g mol-1]."""
-
     def __init__(self, name, fc_name, weight):
         self.name = name
         self.fc_name = fc_name  # designation in Fastchem
@@ -232,8 +222,6 @@ _SPECIES_TABLE = [
     ('SiH4', 'H4Si1'),
     ('NaOH', 'H1Na1O1'),
     ('NaO', 'Na1O1'),
-    ('Mg2', 'Mg2'),
-    ('Na2', 'Na2'),
     ('SiN', 'N1Si1'),
     ('CaS', 'Ca1S1'),
     ('HO2', 'H1O2'),
@@ -381,7 +369,11 @@ def run_lavatmos(
             'Please check your LAVA_DIR environment variable.'
         ) from e
 
+    log.debug('lavatmos.py, Psurf:%.6e', hf_row['P_surf'])
+    log.debug('lavatmos.py, Pvol:%.6e', hf_row['P_vol'])
+
     Magma = set_magmaproperties(config, hf_row, volatile_fracs, dirs)
+    log.debug('pressure saved with set_magma properties %.6e', Magma.P_volatile)
 
     # Import melt composition
     melt_comp_fname = os.path.join(paths.lava_comps, Magma.melt_comp_name + '.csv')
@@ -396,8 +388,6 @@ def run_lavatmos(
     # Guess for fO2 [bar]
     fO2_initial_guess = 10 ** hf_row['fO2_vapourise_derived']
 
-    # Lavatmos tolerance
-    xatol = config.outgas.lavatmos.xatol
 
     system = lavatmos3.melt_vapor_system(paths)
     lavatmos_output = system.vaporise(
@@ -405,12 +395,17 @@ def run_lavatmos(
         Magma.P_volatile,
         melt_comp,
         volatile_fracs,
-        melt_fraction=Magma.melt_fraction,
+        melt_fraction= Magma.melt_fraction,
         P_melt=P_melt,
-        fO2_initial_guess=fO2_initial_guess,
+        fO2_initial_guess = fO2_initial_guess,
         fO2_tries_from_last=bool(not first_iter),
-        xatol=xatol,
+        allow_unconverged = False,
+        phi_env = None,
+        logfO2_min = -45.0,
+        logfO2_max = None,
+        one_sided = False,
     )
+
 
     # Save results
     output_name = f'{Magma.run_name}.csv'
@@ -460,7 +455,8 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
             else:
                 nfrac[e] = 0.0
     log.debug('volatile element fractions going as input to lavatmos : %s', nfrac)
-    log.debug('volatile pressure given to lavatmos : %.4e', hf_row['P_surf'])
+    log.debug('volatile pressure given to lavatmos : %.4e', hf_row['P_vol'])
+    log.debug('surface pressure given to lavatmos : %.4e', hf_row['P_surf'])
 
     # running lavatmos
     run_lavatmos(dirs, config, hf_row, nfrac, first_iter)
@@ -501,14 +497,14 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
     # rock-vapour part (P_vap). P_vap is the excess of the LavAtmos+FastChem total
     # over the volatile-only pressure that went in; it cannot be negative.
     P_surf_new = new_atmos_abundances['Pbar'][0]
-    P_vap_new = P_surf_new - hf_row['P_surf']  # rock-vapour pressure contribution
+    P_vap_new = P_surf_new - hf_row['P_vol']  # rock-vapour pressure contribution
     if P_vap_new < 0.0:
         log.warning(
             'rock-vapour pressure computed negative (%.3e bar); clamping to zero', P_vap_new
         )
         P_vap_new = 0.0
     log.debug('pressure of vapourised rock species: %.4f bar' % P_vap_new)
-    log.debug('pressure of volatiles before vapourisation: %.4f bar' % hf_row['P_surf'])
+    log.debug('pressure of volatiles before vapourisation: %.4f bar' % hf_row['P_vol'])
 
     hf_row['P_vap'] = P_vap_new
     hf_row['P_vol'] = P_surf_new - P_vap_new  # == old P_surf when P_vap_new >= 0
@@ -635,7 +631,7 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
     iw_buffer = OxygenFugacity(model=config.outgas.lavatmos.fO2_buffer_model)
     hf_row['fO2_vapourise_derived'] = log10_fO2
     hf_row['fO2_vapourise_shift_IW_derived'] = log10_fO2 - iw_buffer(hf_row['T_magma'])
-    hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]
+    hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]  # Psurf updated
     hf_row['M_atm'] = M_atmo_new
     # Refresh the volatile-only atmospheric mass against the recombined
     # species masses written above. M_atm now includes the rock vapour, so
@@ -658,6 +654,10 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
             # don't spam log with species of negligible abundance
             log.debug(_s)
 
+    # print O2 abundance:
+    log.info(
+        '    %-6s     = %-9.2f bar (%.4e VMR)' % ('O2', hf_row['O2_bar'], hf_row['O2_vmr'])
+    )
     # print total pressure and mmw
     log.info('    total      = %-9.2f bar' % hf_row['P_surf'])
     log.info('    mmw        = %-9.5f g mol-1' % (hf_row['atm_kg_per_mol'] * 1e3))
