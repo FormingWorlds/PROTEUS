@@ -221,6 +221,12 @@ def _http_error(code):
     return urllib.error.HTTPError('u', code, 'x', {'Retry-After': '0'}, None)
 
 
+def _urlopen_raises(monkeypatch, exc):
+    monkeypatch.setattr(
+        common.urllib.request, 'urlopen', lambda r, timeout: (_ for _ in ()).throw(exc)
+    )
+
+
 def test_github_retries_a_rate_limit_then_reads(monkeypatch):
     """A 403 is retried; a 404 gives None; a 500 stops the run."""
     calls = []
@@ -236,17 +242,9 @@ def test_github_retries_a_rate_limit_then_reads(monkeypatch):
     assert common.GitHub('t').raw_file('a/b', 'x y.toml', 'abc') == 'text'
     assert len(calls) == 2 and 'x%20y.toml?ref=abc' in calls[0]
 
-    monkeypatch.setattr(
-        common.urllib.request,
-        'urlopen',
-        lambda r, timeout: (_ for _ in ()).throw(_http_error(404)),
-    )
+    _urlopen_raises(monkeypatch, _http_error(404))
     assert common.GitHub('t').raw_file('a/b', 'f', 'r') is None
-    monkeypatch.setattr(
-        common.urllib.request,
-        'urlopen',
-        lambda r, timeout: (_ for _ in ()).throw(_http_error(500)),
-    )
+    _urlopen_raises(monkeypatch, _http_error(500))
     with pytest.raises(common.DigestError, match='500'):
         common.GitHub('t').raw_file('a/b', 'f', 'r')
 
@@ -469,6 +467,14 @@ def test_collect_refuses_two_repositories_with_one_name():
         collect.collect(_FakeGH(), {**_VALID, 'repos': ['a/SOCRATES', 'b/SOCRATES']}, {})
 
 
+_CATS = {
+    'repository': {
+        'id': 'R',
+        'discussionCategories': {'nodes': [{'id': 'C1', 'slug': 'weekly-digest'}]},
+    }
+}
+
+
 def _post(
     author='github-actions',
     kind='Bot',
@@ -484,12 +490,7 @@ def _post(
 
 def test_previous_state_trusts_only_the_workflow_bot():
     """A marker in a post by a person is skipped; the newest bot post gives the state."""
-    cats = {
-        'repository': {
-            'id': 'R',
-            'discussionCategories': {'nodes': [{'id': 'C1', 'slug': 'weekly-digest'}]},
-        }
-    }
+    cats = _CATS
     posts = {
         'repository': {
             'discussions': {
@@ -506,7 +507,8 @@ def test_previous_state_trusts_only_the_workflow_bot():
         _FakeGH([cats, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
     )
     assert state['until'] == '2026-11-16T22:30:00Z' and state['url'] == 'https://d/1'
-    posts = {'repository': {'discussions': {'nodes': [_post(kind='User')]}}}
+    end = {'hasNextPage': False, 'endCursor': None}
+    posts = {'repository': {'discussions': {'nodes': [_post(kind='User')], 'pageInfo': end}}}
     assert (
         collect.previous_state(_FakeGH([cats, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest')
         is None
@@ -822,22 +824,6 @@ def test_any_text_with_a_url_or_mention_fails(noise):
 # render
 
 
-def test_tuesday_title_in_amsterdam_time():
-    """Monday night UTC gives the next day; a Tuesday stays; a late Monday in summer is Tuesday."""
-    assert (
-        render.tuesday_title('2026-11-23T22:23:00Z')
-        == 'PROTEUS weekly digest, 24 November 2026'
-    )
-    assert (
-        render.tuesday_title('2026-11-24T10:00:00Z')
-        == 'PROTEUS weekly digest, 24 November 2026'
-    )
-    assert render.tuesday_title('2026-06-22T22:23:00Z') == 'PROTEUS weekly digest, 23 June 2026'
-    assert (
-        render.tuesday_title('2026-11-25T00:00:00Z') == 'PROTEUS weekly digest, 1 December 2026'
-    )
-
-
 @pytest.mark.parametrize(
     ('fact', 'line'),
     [
@@ -908,9 +894,9 @@ def test_render_results_table_and_footer():
     )
     assert '[Workflow run](https://run)' in body
     assert body.rstrip().endswith(
-        '<!-- weekly-digest-state {"until":"2026-09-30T00:00:00Z","announced_open":[]} -->'
+        '<!-- weekly-digest-state {"until":"2026-09-30T00:00:00Z","run_id":"","announced_open":[]} -->'
     )
-    assert state == {'until': UNTIL, 'announced_open': []}
+    assert state == {'until': UNTIL, 'run_id': '', 'announced_open': []}
 
 
 def test_render_mentions_once_per_person_and_never_bots():
@@ -982,7 +968,7 @@ def test_render_main_writes_both_files(tmp_path):
         render.main([str(src), str(dr), str(tmp_path / 'out'), '--live', '--run-url', 'R']) == 0
     )
     doc = json.loads((tmp_path / 'out' / 'digest.json').read_text())
-    assert doc['title'] == 'PROTEUS weekly digest, 6 October 2026'
+    assert doc['title'] == 'PROTEUS weekly digest, 29 September 2026'
     assert (tmp_path / 'out' / 'digest.md').read_text() == f'# {doc["title"]}\n\n{doc["body"]}'
     assert '@alice' in doc['body'] and '`@alice`' not in doc['body']
 
@@ -1102,20 +1088,22 @@ def test_decide(publish, event, post_input, backdated, live):
     assert post.decide({'publish': publish}, event, post_input, backdated) is live
 
 
-def test_decide_command_prints_the_output_line(capsys, monkeypatch):
-    """The decide command prints a line for GITHUB_OUTPUT; the committed settings never post."""
-    assert (
-        post.main(
-            ['decide', '--event', 'schedule', '--post-input', 'true', '--backdated', 'false']
-        )
-        == 0
-    )
+def test_decide_command_prints_the_output_line(tmp_path, capsys, monkeypatch):
+    """The decide command reads the window and prints a line for GITHUB_OUTPUT."""
+    src = tmp_path / 'c.json'
+    data = _data()
+    data['window']['backdated'] = False
+    src.write_text(json.dumps(data))
+    args = ['decide', str(src), '--event', 'schedule', '--post-input', 'false']
+    assert post.main(args) == 0
     assert capsys.readouterr().out.strip() == 'live=false'
     monkeypatch.setattr(post, 'load_settings', lambda: {**_VALID, 'publish': True})
-    post.main(
-        ['decide', '--event', 'schedule', '--post-input', 'false', '--backdated', 'false']
-    )
+    post.main(args)
     assert capsys.readouterr().out.strip() == 'live=true'
+    data['window']['backdated'] = True
+    src.write_text(json.dumps(data))
+    post.main(args)
+    assert capsys.readouterr().out.strip() == 'live=false'
 
 
 def test_create_discussion_finds_the_category_by_slug():
@@ -1126,7 +1114,8 @@ def test_create_discussion_finds_the_category_by_slug():
             'discussionCategories': {'nodes': [{'id': 'C9', 'slug': 'weekly-digest'}]},
         }
     }
-    made = {'createDiscussion': {'discussion': {'url': 'https://d/5'}}}
+    bot = {'login': 'github-actions', '__typename': 'Bot'}
+    made = {'createDiscussion': {'discussion': {'url': 'https://d/5', 'author': bot}}}
     gh = _FakeGH([cats, made])
     assert (
         post.create_discussion(gh, 'FormingWorlds/PROTEUS', 'weekly-digest', 'T', 'B')
@@ -1154,20 +1143,6 @@ def test_create_discussion_finds_the_category_by_slug():
     assert len(gh.queries) == 1
 
 
-def test_publish_posts_once_and_has_no_alert_command(tmp_path, monkeypatch):
-    """Publish posts the rendered title and body; there is no Discord ping and no alert command."""
-    (tmp_path / 'digest.json').write_text(json.dumps({'title': 'T', 'body': 'B'}))
-    calls = []
-    monkeypatch.setattr(post, 'GitHub', lambda: 'gh')
-    monkeypatch.setattr(post, 'previous_state', lambda *a: None)
-    monkeypatch.setattr(post, 'create_discussion', lambda *a: calls.append(a) or 'https://d/1')
-    assert post.main(['publish', str(tmp_path)]) == 0
-    assert calls == [('gh', 'FormingWorlds/PROTEUS', 'weekly-digest', 'T', 'B')]
-    assert not hasattr(post, 'discord')
-    with pytest.raises(SystemExit):
-        post.main(['alert', 'failed'])
-
-
 def _jobs():
     """The jobs of the workflow as text blocks, read without a YAML parser."""
     text = (_ROOT / '.github' / 'workflows' / 'weekly-digest.yml').read_text()
@@ -1179,7 +1154,6 @@ def test_workflow_jobs_keep_the_model_token_away_from_write_tokens():
     """The draft job alone sees the model token and has no permissions; posting needs the live flag."""
     text, jobs = _jobs()
     assert set(jobs) == {'collect', 'draft', 'publish'}
-    assert 'DISCORD' not in text and 'discord' not in text.lower()
     assert '\npermissions: {}\n' in text and 'shell: bash' in text
     assert '    permissions: {}\n' in jobs['draft']
     perms = re.search(r'    permissions:\n((?:      .*\n)+)', jobs['publish']).group(1)
@@ -1399,11 +1373,7 @@ def test_github_retries_a_network_error_and_rejects_a_missing_graphql_answer(mon
     monkeypatch.setattr(common.urllib.request, 'urlopen', flaky)
     monkeypatch.setattr(common.time, 'sleep', lambda s: None)
     assert common.GitHub('t').raw_file('a/b', 'f', None) == 'ok'
-    monkeypatch.setattr(
-        common.urllib.request,
-        'urlopen',
-        lambda r, timeout: (_ for _ in ()).throw(_http_error(404)),
-    )
+    _urlopen_raises(monkeypatch, _http_error(404))
     with pytest.raises(common.DigestError, match='GraphQL'):
         common.GitHub('t').graphql('{x}')
 
@@ -1412,19 +1382,6 @@ def test_known_keys_fail_when_a_tracked_file_is_missing():
     """A schema that cannot be read stops the run instead of turning the key check off."""
     with pytest.raises(common.DigestError, match='cannot read'):
         facts.known_keys(_FakeGH(), {'tracked': {'a/P': [facts.CONFIG_SCHEMA]}})
-
-
-def test_publish_skips_a_window_that_is_already_posted(tmp_path, monkeypatch, capsys):
-    """A rerun after a post finds the post of the same window and does not post again."""
-    body = (
-        'x\n<!-- weekly-digest-state {"until":"2026-11-23T22:23:00Z","announced_open":[]} -->\n'
-    )
-    (tmp_path / 'digest.json').write_text(json.dumps({'title': 'T', 'body': body}))
-    monkeypatch.setattr(post, 'GitHub', lambda: 'gh')
-    monkeypatch.setattr(post, 'previous_state', lambda *a: {'until': '2026-11-23T22:23:00Z'})
-    monkeypatch.setattr(post, 'create_discussion', lambda *a: pytest.fail('posted twice'))
-    post.main(['publish', str(tmp_path)])
-    assert 'already posted' in capsys.readouterr().out
 
 
 def test_model_runs_outside_the_repository(tmp_path, monkeypatch):
@@ -1445,12 +1402,7 @@ def test_model_runs_outside_the_repository(tmp_path, monkeypatch):
 
 def test_previous_state_skips_a_malformed_marker_of_a_person():
     """A broken marker in a post by anybody else neither crashes the run nor counts."""
-    cats = {
-        'repository': {
-            'id': 'R',
-            'discussionCategories': {'nodes': [{'id': 'C1', 'slug': 'weekly-digest'}]},
-        }
-    }
+    cats = _CATS
     bad = _post(author='mallory', kind='User', state='{oops}')
     posts = {'repository': {'discussions': {'nodes': [bad, _post()]}}}
     state = collect.previous_state(
@@ -1533,31 +1485,11 @@ def test_quiet_week_note_is_a_paragraph():
     assert '2026-09-30T00:00:00Z).\n\n---' in body
 
 
-def test_publish_skips_a_second_post_with_the_same_title(tmp_path, monkeypatch, capsys):
-    """A full rerun collects a new short window; the same title as the newest post still stops it."""
-    body = (
-        'x\n<!-- weekly-digest-state {"until":"2026-11-23T22:30:00Z","announced_open":[]} -->\n'
-    )
-    (tmp_path / 'digest.json').write_text(
-        json.dumps({'title': 'PROTEUS weekly digest, 24 November 2026', 'body': body})
-    )
-    monkeypatch.setattr(post, 'GitHub', lambda: 'gh')
-    last = {'until': '2026-11-23T22:23:00Z', 'title': 'PROTEUS weekly digest, 24 November 2026'}
-    monkeypatch.setattr(post, 'previous_state', lambda *a: last)
-    monkeypatch.setattr(post, 'create_discussion', lambda *a: pytest.fail('posted twice'))
-    post.main(['publish', str(tmp_path)])
-    assert 'already posted' in capsys.readouterr().out
-
-
 def test_http_protocol_errors_are_handled(monkeypatch, capsys):
     """A broken HTTP answer from GitHub is a digest error."""
     import http.client
 
-    monkeypatch.setattr(
-        common.urllib.request,
-        'urlopen',
-        lambda r, timeout: (_ for _ in ()).throw(http.client.IncompleteRead(b'')),
-    )
+    _urlopen_raises(monkeypatch, http.client.IncompleteRead(b''))
     monkeypatch.setattr(common.time, 'sleep', lambda s: None)
     with pytest.raises(common.DigestError):
         common.GitHub('t').graphql('{x}')
@@ -1575,12 +1507,7 @@ def test_state_without_a_valid_end_is_ignored(marker):
 
 def test_previous_state_passes_over_a_broken_bot_marker():
     """A bot post with a broken marker is skipped and the next bot post gives the state."""
-    cats = {
-        'repository': {
-            'id': 'R',
-            'discussionCategories': {'nodes': [{'id': 'C1', 'slug': 'weekly-digest'}]},
-        }
-    }
+    cats = _CATS
     posts = {'repository': {'discussions': {'nodes': [_post(state='{oops}'), _post()]}}}
     state = collect.previous_state(
         _FakeGH([cats, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
@@ -1629,12 +1556,7 @@ def test_check_survivor_cases():
 
 def test_previous_state_ignores_another_bot():
     """A marker in a post by a bot other than the workflow does not count."""
-    cats = {
-        'repository': {
-            'id': 'R',
-            'discussionCategories': {'nodes': [{'id': 'C1', 'slug': 'weekly-digest'}]},
-        }
-    }
+    cats = _CATS
     other = _post(author='dependabot', state='{"until":"2020-01-01T00:00:00Z"}')
     posts = {'repository': {'discussions': {'nodes': [other, _post()]}}}
     state = collect.previous_state(
@@ -1822,13 +1744,18 @@ def test_model_error_text_is_one_json_string(tmp_path, monkeypatch):
 
 
 def _publish(tmp_path, monkeypatch, last, until, run_id='9', entry=None, **window):
-    """Render a digest for ``until`` and run publish against a newest post ``last``."""
+    """Render a digest for ``until`` and run publish against a newest post ``last``.
+
+    ``entry`` replaces the draft after the render, as a draft that failed the check.
+    """
     data = _data()
-    data['window'].update(until=until, backdated=False, **window)
+    data['window'].update({'until': until, 'backdated': False, **window})
     src, dft, out = tmp_path / 'c.json', tmp_path / 'd.json', tmp_path / 'out'
     src.write_text(json.dumps(data))
-    dft.write_text(json.dumps(_draft(entry or _entry())))
+    dft.write_text(json.dumps(_draft(_entry())))
     render.main([str(src), str(dft), str(out), '--run-id', run_id])
+    if entry:
+        dft.write_text(json.dumps(_draft(entry)))
     posted = []
     monkeypatch.setattr(post, 'load_settings', lambda: {**_VALID, 'publish': True})
     monkeypatch.setattr(post, 'GitHub', lambda: 'gh')
@@ -1914,6 +1841,18 @@ def test_publish_dedupe_cases(tmp_path, monkeypatch, capsys, case, last, until, 
         assert '::notice' in capsys.readouterr().out
 
 
+def test_publish_skips_the_same_window_end_and_stops_on_an_unknown_command(
+    tmp_path, monkeypatch, capsys
+):
+    """A post with the same window end is not repeated; an unknown command stops."""
+    rc, posted = _publish(
+        tmp_path, monkeypatch, {'until': '2026-12-02T09:00:00Z'}, '2026-12-02T09:00:00Z'
+    )
+    assert rc == 0 and posted == [] and 'same until' in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        post.main(['alert', str(tmp_path / 'c.json')])
+
+
 def test_monday_dispatch_window_continues_at_its_end():
     """After a skipped schedule run the next window starts at the end of the dispatch."""
     state = {'until': '2026-11-23T10:00:00Z'}
@@ -1929,6 +1868,8 @@ def test_monday_dispatch_window_continues_at_its_end():
         ('2026-11-25T09:00:00Z', '24 November'),  # Wednesday recovery
         ('2026-11-29T20:00:00Z', '24 November'),  # Sunday
         ('2026-11-30T10:00:00Z', '1 December'),  # Monday daytime
+        ('2026-11-24T10:00:00Z', '24 November'),  # Tuesday
+        ('2026-06-22T22:23:00Z', '23 June'),  # Monday 22:23 UTC in summer
     ],
 )
 def test_title_is_the_meeting_tuesday(until, day):
@@ -1949,7 +1890,8 @@ def test_state_marker_holds_the_run_id(tmp_path):
 def test_workflow_wiring_of_the_guards():
     """The check step fails the job, the decide step reads the window, and post repeats the guards."""
     text, jobs = _jobs()
-    assert 'continue-on-error' not in text and '||' not in jobs['publish']
+    assert 'continue-on-error' not in text
+    assert '||' not in re.sub(r'\$\{\{.*?\}\}', '', jobs['publish'])
     assert 'needs: draft' in jobs['publish'] and 'needs: collect' in jobs['draft']
     assert (
         'run: python tools/digest/check.py collected.json draft.json --out check.txt '
@@ -2044,14 +1986,6 @@ def test_truncated_file_list_diffs_every_tracked_file():
     assert [f['key'] for f in data['facts']] == ['a']
 
 
-_CATS1 = {
-    'repository': {
-        'id': 'R',
-        'discussionCategories': {'nodes': [{'id': 'C1', 'slug': 'weekly-digest'}]},
-    }
-}
-
-
 def test_previous_state_pages_until_a_bot_post():
     """Posts by people on the first page do not hide the newest bot post on a later page."""
     people = [_post(author='p', kind='User') for _ in range(3)]
@@ -2071,7 +2005,7 @@ def test_previous_state_pages_until_a_bot_post():
             }
         }
     }
-    gh = _FakeGH([_CATS1, first, second])
+    gh = _FakeGH([_CATS, first, second])
     state = collect.previous_state(gh, 'FormingWorlds/PROTEUS', 'weekly-digest')
     assert state['until'] == '2026-11-16T22:30:00Z' and gh.queries[2]['cursor'] == 'c1'
 
@@ -2085,7 +2019,7 @@ def test_create_discussion_refuses_an_author_the_next_run_would_not_trust():
     }
     with pytest.raises(common.DigestError, match='https://d/5'):
         post.create_discussion(
-            _FakeGH([_CATS1, made]), 'FormingWorlds/PROTEUS', 'weekly-digest', 'T', 'B'
+            _FakeGH([_CATS, made]), 'FormingWorlds/PROTEUS', 'weekly-digest', 'T', 'B'
         )
 
 

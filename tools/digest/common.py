@@ -42,13 +42,8 @@ class DigestError(RuntimeError):
     """A condition that stops the digest run before anything is posted."""
 
 
-def load_settings(path: Path | None = None) -> dict:
+def load_settings() -> dict:
     """Read ``repos.toml``.
-
-    Parameters
-    ----------
-    path : Path, optional
-        Settings file; the default is ``repos.toml`` next to this module.
 
     Returns
     -------
@@ -60,7 +55,7 @@ def load_settings(path: Path | None = None) -> dict:
     DigestError
         When a setting is missing or has the wrong type or range.
     """
-    with open(path or DIGEST_DIR / 'repos.toml', 'rb') as fh:
+    with open(DIGEST_DIR / 'repos.toml', 'rb') as fh:
         return validate_settings(tomllib.load(fh))
 
 

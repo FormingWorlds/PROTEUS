@@ -2,7 +2,7 @@
 
 Usage::
 
-    python tools/digest/render.py collected.json draft.json OUTDIR [--live] [--run-url URL]
+    python tools/digest/render.py collected.json draft.json OUTDIR [--live] [--run-url URL] [--run-id ID]
 
 Writes ``OUTDIR/digest.md`` (title and body, for reading) and ``OUTDIR/digest.json``
 (``title``, ``body`` for the post). Settings, values, links, dates and mentions
@@ -21,16 +21,22 @@ from datetime import timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from common import SECTIONS, is_bot, load_settings, parse_time
+from common import SECTIONS, DigestError, is_bot, load_settings, parse_time
 
 MAX_FACTS = 4
 VALUE_CHARS = 60
+BODY_LIMIT = 65536
 
 
 def tuesday_title(until: str) -> str:
-    """Title with the date of the first Tuesday on or after ``until`` in Amsterdam time."""
-    day = parse_time(until).astimezone(ZoneInfo('Europe/Amsterdam')).date()
-    day += timedelta(days=(1 - day.weekday()) % 7)
+    """Title with the date of the meeting Tuesday: the Tuesday on or before the day after ``until``.
+
+    In Amsterdam time a run on Monday takes the next day, and a run from Tuesday to
+    Sunday takes the Tuesday of its week, so a late run keeps the title of the
+    meeting it was made for.
+    """
+    day = parse_time(until).astimezone(ZoneInfo('Europe/Amsterdam')).date() + timedelta(days=1)
+    day -= timedelta(days=(day.weekday() - 1) % 7)
     return f'PROTEUS weekly digest, {day.day} {day:%B %Y}'
 
 
@@ -142,7 +148,7 @@ def authors(items: list[dict], mentions: Mentions) -> str:
 
 
 def render_body(
-    data: dict, draft: dict, live: bool, run_url: str, bots: list[str]
+    data: dict, draft: dict, live: bool, run_url: str, bots: list[str], run_id: str = ''
 ) -> tuple[str, dict]:
     """Return the markdown body and the state marker of the next post."""
     window, prev = data['window'], data['window'].get('previous') or {}
@@ -209,20 +215,26 @@ def render_body(
             lines += [f'{links(items)}, by {authors(items, mentions)}', '']
         lines.append('')
     open_now = {r for r, p in prs.items() if p['status'] == 'open'}
+    still = open_now | set(data.get('still_open', []))
     state = {
         'until': window['until'],
-        'announced_open': sorted(announced_now | (announced_before & open_now)),
+        'run_id': run_id,
+        'announced_open': sorted(announced_now | (announced_before & still)),
     }
     merged = sum(p['status'] == 'merged' for p in data['prs'])
     names = ', '.join(r.split('/', 1)[1] for r in data['repos'])
+    read = (
+        f'the bodies of the {data["bodies_kept"]} largest pull requests '
+        f'and only the titles of the other {data["bodies_cut"]}'
+        if data['bodies_cut']
+        else 'the text of every pull request'
+    )
     lines += [
         '---',
         '',
         f'Collected between {window_dates(window)} from {merged} merged '
         f'and {len(open_now)} open pull requests and {len(data["releases"])} releases in {names}. '
-        f'The model read the bodies of the {data["bodies_kept"]} largest '
-        f'pull requests and only the titles of the other {data["bodies_cut"]}. '
-        f'[Workflow run]({run_url}).',
+        f'The model read {read}. [Workflow run]({run_url}).',
         '',
         f'<!-- weekly-digest-state {json.dumps(state, separators=(",", ":"))} -->',
     ]
@@ -237,10 +249,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('outdir')
     parser.add_argument('--live', action='store_true')
     parser.add_argument('--run-url', default='')
+    parser.add_argument('--run-id', default='')
     args = parser.parse_args(argv)
     data = json.loads(Path(args.collected).read_text())
     draft = json.loads(Path(args.draft).read_text())
-    body, _ = render_body(data, draft, args.live, args.run_url, load_settings()['bots'])
+    bots = load_settings()['bots']
+    body, _ = render_body(data, draft, args.live, args.run_url, bots, args.run_id)
+    if len(body) > BODY_LIMIT:
+        raise DigestError(f'the body has {len(body)} characters, longer than {BODY_LIMIT}')
     title = tuesday_title(data['window']['until'])
     out = Path(args.outdir)
     out.mkdir(parents=True, exist_ok=True)

@@ -82,11 +82,11 @@ def run_model(prompt: str, model: str) -> dict:
         )
     if proc.returncode != 0:
         raise DigestError(
-            f'model call failed with code {proc.returncode}: {proc.stderr[-2000:]}'
+            f'model call failed with code {proc.returncode}: {json.dumps(proc.stderr[-2000:])}'
         )
     out = json.loads(proc.stdout)
     if out.get('is_error') or not isinstance(out.get('structured_output'), dict):
-        raise DigestError(f'model gave no structured output: {proc.stdout[-2000:]}')
+        raise DigestError(f'model gave no structured output: {json.dumps(proc.stdout[-2000:])}')
     return out['structured_output']
 
 

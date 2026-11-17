@@ -110,27 +110,20 @@ jobs:
         with:
           name: draft
       - name: Check the draft
-        run: |
-          rc=0
-          python tools/digest/check.py collected.json draft.json > check.txt || rc=$?
-          cat check.txt >> "$GITHUB_STEP_SUMMARY"
-          cat check.txt
-          exit "$rc"
+        run: python tools/digest/check.py collected.json draft.json --out check.txt --summary "$GITHUB_STEP_SUMMARY"
       - name: Decide whether to post
         id: mode
         env:
           EVENT: ${{ github.event_name }}
           POST: ${{ inputs.post || false }}
-        run: |
-          backdated=$(python -c "import json; print(str(json.load(open('collected.json'))['window']['backdated']).lower())")
-          python tools/digest/post.py decide --event "$EVENT" --post-input "$POST" --backdated "$backdated" | tee -a "$GITHUB_OUTPUT"
+        run: python tools/digest/post.py decide collected.json --event "$EVENT" --post-input "$POST" | tee -a "$GITHUB_OUTPUT"
       - name: Render
         env:
           LIVE: ${{ steps.mode.outputs.live }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           live=(); [ "$LIVE" = true ] && live=(--live)
-          python tools/digest/render.py collected.json draft.json out --run-url "$RUN_URL" "${live[@]}"
+          python tools/digest/render.py collected.json draft.json out --run-url "$RUN_URL" --run-id "$GITHUB_RUN_ID" "${live[@]}"
           cat out/digest.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v6
         if: always()
@@ -145,4 +138,4 @@ jobs:
         if: steps.mode.outputs.live == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python tools/digest/post.py publish out
+        run: python tools/digest/post.py publish collected.json draft.json out

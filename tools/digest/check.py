@@ -2,9 +2,11 @@
 
 Usage::
 
-    python tools/digest/check.py collected.json draft.json
+    python tools/digest/check.py collected.json draft.json [--out FILE] [--summary FILE]
 
-Exit code 1 and one line per failure when a check fails. Every pull request,
+Exit code 1 and one line per failure when a check fails. Each failure line holds
+model text as one JSON string, so it cannot start a workflow command; the
+summary copy is an HTML-escaped ``<pre>`` block, so it renders as plain text. Every pull request,
 release, fact and login in the draft must come from the collected data; the text
 must hold no link, mention, HTML or reference; every number must appear in a
 cited source, and every config key or helpfile column in a cited fact.
@@ -12,13 +14,15 @@ cited source, and every config key or helpfile column in a cited fact.
 
 from __future__ import annotations
 
+import argparse
+import html
 import json
 import math
 import re
 import sys
 import unicodedata
 
-from common import SECTIONS
+from common import DIGEST_DIR, SECTIONS
 
 NUMBER_RE = re.compile(
     r'(?<![\w.])[-+]?(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)*(?:[eE][-+]?\d+)?)'
@@ -37,6 +41,31 @@ FORBIDDEN = {
     'the action marker': re.compile(r'action\W+for\W+everyone', re.I),
 }
 MINUS = '\u2212\u02d7'
+ELEMENTS = set(
+    'H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As '
+    'Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd '
+    'Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am '
+    'Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og'.split()
+)
+PREFIX_RE = re.compile(r'(?<![\w.])[A-Za-z](?=\d)(?:[\w.]*\w)?')
+ASSIGN_RE = re.compile(
+    r'(?:\b(?:set|changed?|lower(?:s|ed)?|rais(?:es|ed)|reduc(?:es|ed)|increas(?:es|ed)|'
+    r'revert(?:s|ed)?|switch(?:es|ed)?|defaults?|moved?)\s+to|\bbecomes?|\b(?:is|are)(?:\s+now)?)'
+    r'\s+(?:the\s+)?$',
+    re.I,
+)
+OLD_MARK_RE = re.compile(
+    r'\b(?:from|instead\s+of|rather\s+than|previously|replac\w*|used\s+to)\b', re.I
+)
+CLAIM_RE = re.compile(
+    r'(?:\b(?:is|are)\s+now|\bnow\s+(?:is|are|uses?)|\bdefaults?\s+to|\bset\s+to|\bbecomes?)'
+    r'\s+[\w-]+\s*(?:[,:(]|$)',
+    re.I,
+)
+_ITEM = json.loads((DIGEST_DIR / 'entry_schema.json').read_text())['properties']['entries']
+LIMITS = {
+    k: v['maxLength'] for k, v in _ITEM['items']['properties'].items() if 'maxLength' in v
+}
 FIELDS = {
     'section': str,
     'title': str,
@@ -48,11 +77,28 @@ FIELDS = {
 }
 
 
-def numbers(text: str) -> set[str]:
-    """Return the number tokens of a text, for example ``-0.8``, ``1.13.0``, ``v1.0.0``, ``1,000`` or ``1e-3``."""
+def _split_prefix(match: re.Match) -> str:
+    word = match.group(0)
+    symbols = re.findall(r'[A-Z][a-z]?', word)
+    if re.fullmatch(r'(?:[A-Z][a-z]?\d*)+', word) and set(symbols) <= ELEMENTS:
+        return word
+    return f'{word[0]} {word[1:]}'
+
+
+def prepare(text: str) -> str:
+    """Normalise a text for number matching: NFKC, one minus sign, prefixes split from digits.
+
+    A single letter or an underscore before digits is split off (``v1.0``, ``X100``,
+    ``mode_42``); a chemical formula of element symbols (``H2O``) stays whole.
+    """
     text = unicodedata.normalize('NFKC', text)
     text = ''.join('-' if c in MINUS or unicodedata.category(c) == 'Pd' else c for c in text)
-    return set(NUMBER_RE.findall(re.sub(r'(?<![\w.])([a-z])(?=\d)', r'\1 ', text)))
+    return re.sub(r'_(?=\d)', '_ ', PREFIX_RE.sub(_split_prefix, text))
+
+
+def numbers(text: str) -> set[str]:
+    """Return the number tokens of a text, for example ``-0.8``, ``1.13.0``, ``v1.0.0``, ``1,000`` or ``1e-3``."""
+    return set(NUMBER_RE.findall(prepare(text)))
 
 
 def _float(token: str) -> float | None:
@@ -110,29 +156,53 @@ def shape_failures(entry: object) -> list[str]:
     return fails
 
 
-def _has(word: str, text: str) -> bool:
-    return bool(re.search(rf'(?<!\w){re.escape(word)}(?!\w)', text, re.I))
+def _find(value: str, sentence: str) -> int | None:
+    """Position of ``value`` in a prepared sentence (numbers compared as numbers), or None."""
+    if _float(value) is not None:
+        found = (m for m in NUMBER_RE.finditer(sentence) if number_in(m.group(), {value}))
+    else:
+        found = re.finditer(rf'(?<!\w){re.escape(value)}(?!\w)', sentence, re.I)
+    return next((m.start() for m in found), None)
 
 
-def fact_value_failures(name: str, text: str, facts: list[dict]) -> list[str]:
-    """Sentences that state a new setting with the old value of a cited change.
+def fact_value_failures(name: str, parts: list[str], facts: list[dict]) -> list[str]:
+    """Sentences that give a cited setting a value other than its new value.
 
-    A sentence fails when it holds the old value and "now" or "default" but not the
-    new value; the old value as an ordinary word elsewhere passes.
+    For a default or value change, a sentence fails when it holds the old value but
+    not the new one, with "now" or "default" in it or an assignment ("set to",
+    "becomes", "is") just before the old value, and no "from", "instead of" or
+    similar before it. For a string value, a sentence that names the key and ends a
+    clause with one word after "is now", "defaults to" or similar, while it does not
+    hold the new value, also fails ("the mixing length is now linear"). The
+    title and the text are split into sentences separately.
     """
     fails = []
-    sentences = re.split(r'[.;!?](?:\s|$)', text)
+    sentences = [s for p in parts for s in re.split(r'[.;!?](?:\s|$)', prepare(p))]
     for fact in facts:
-        old, new = (str(v).strip('\'"') for v in (fact['old'], fact['new']))
-        if fact['change'] not in ('default', 'value') or (
-            _float(old) is None and not 3 <= len(old) <= 40
-        ):
+        if fact['change'] not in ('default', 'value'):
             continue
-        if any(
-            _has(old, s) and not _has(new, s) and re.search(r'\b(now|default)', s, re.I)
-            for s in sentences
-        ):
-            fails.append(f'{name}: text holds the old value "{old}" of fact {fact["id"]}')
+        old, new = (str(v).strip('\'"') for v in (fact['old'], fact['new']))
+        key = re.escape(fact['key'].rsplit('.', 1)[-1]).replace('_', '[ _]')
+        for s in sentences:
+            at = _find(old, s) if _float(old) is not None or 3 <= len(old) <= 40 else None
+            if (
+                at is not None
+                and _find(new, s) is None
+                and not OLD_MARK_RE.search(s[:at])
+                and (re.search(r'\b(now|default)', s, re.I) or ASSIGN_RE.search(s[:at]))
+            ):
+                fails.append(f'{name}: text holds the old value "{old}" of fact {fact["id"]}')
+                break
+            if (
+                _float(new) is None
+                and CLAIM_RE.search(s)
+                and re.search(rf'(?<!\w){key}(?!\w)', s, re.I)
+                and _find(new, s) is None
+            ):
+                fails.append(
+                    f'{name}: text gives a value other than the new value "{new}" of fact {fact["id"]}'
+                )
+                break
     return fails
 
 
@@ -178,6 +248,11 @@ def check_entry(entry: dict, index: dict) -> list[str]:
         for x in entry['logins']
         if x not in authors
     ]
+    fails += [
+        f'{name}: {k} is longer than {n} characters'
+        for k, n in LIMITS.items()
+        if len(entry[k]) > n
+    ]
     text = f'{entry["title"]} {entry["text"]}'
     fails += [f'{name}: text holds {what}' for what, rx in FORBIDDEN.items() if rx.search(text)]
     kinds = {unicodedata.category(c) for c in text if c not in '\t\n\r'}
@@ -202,7 +277,7 @@ def check_entry(entry: dict, index: dict) -> list[str]:
         forms = key_forms({token}) | {token}
         if forms & index['keys'] and not forms & allowed:
             fails.append(f'{name}: key {token} is in no cited fact')
-    return fails + fact_value_failures(name, text, facts)
+    return fails + fact_value_failures(name, [entry['title'], entry['text']], facts)
 
 
 def check(data: dict, draft: dict) -> list[str]:
@@ -228,15 +303,26 @@ def check(data: dict, draft: dict) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     """Command-line entry point."""
-    src, draft_path = argv or sys.argv[1:3]
-    with open(src) as fh:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument('collected')
+    parser.add_argument('draft')
+    parser.add_argument('--out')
+    parser.add_argument('--summary')
+    args = parser.parse_args(argv)
+    with open(args.collected) as fh:
         data = json.load(fh)
-    with open(draft_path) as fh:
+    with open(args.draft) as fh:
         draft = json.load(fh)
     fails = check(data, draft)
-    for line in fails:
-        print(f'FAIL {line}')
-    print(f'{len(fails)} failures in {len(draft["entries"])} entries')
+    report = ''.join(f'FAIL {json.dumps(line)}\n' for line in fails)
+    report += f'{len(fails)} failures in {len(draft["entries"])} entries\n'
+    print(report, end='')
+    if args.out:
+        with open(args.out, 'w') as fh:
+            fh.write(report)
+    if args.summary:
+        with open(args.summary, 'a') as fh:
+            fh.write(f'<pre>\n{html.escape(report)}</pre>\n')
     return 1 if fails else 0
 
 

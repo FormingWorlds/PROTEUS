@@ -35,7 +35,7 @@ query($owner: String!, $name: String!, $cursor: String) {
         additions deletions
         author { login __typename }
         labels(first: 10) { nodes { name } }
-        files(first: 100) { nodes { path } }
+        files(first: 100) { totalCount nodes { path } }
         mergeCommit { oid parents(first: 1) { nodes { oid } } }
       }
     }
@@ -48,12 +48,20 @@ query($owner: String!, $name: String!, $cursor: String) {
 """
 
 POSTS_QUERY = """
-query($owner: String!, $name: String!, $category: ID!) {
+query($owner: String!, $name: String!, $category: ID!, $cursor: String) {
   repository(owner: $owner, name: $name) {
-    discussions(first: 20, categoryId: $category, orderBy: {field: CREATED_AT, direction: DESC}) {
+    discussions(first: 50, after: $cursor, categoryId: $category,
+                orderBy: {field: CREATED_AT, direction: DESC}) {
+      pageInfo { hasNextPage endCursor }
       nodes { url title createdAt body author { login __typename } }
     }
   }
+}
+"""
+
+PR_STATE_QUERY = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) { pullRequest(number: $number) { state } }
 }
 """
 
@@ -105,24 +113,48 @@ def parse_state(body: str) -> dict | None:
     return state
 
 
+def trusted(author: dict | None) -> bool:
+    """True for the account that the workflow posts as: ``github-actions``, a bot."""
+    author = author or {}
+    return author.get('login') == 'github-actions' and author.get('__typename') == 'Bot'
+
+
 def previous_state(gh: GitHub, home: str, category: str) -> dict | None:
     """Return the state marker of the newest digest post written by ``github-actions``.
 
     A marker in a post by any other author is ignored, because anybody can write a
-    discussion in the category.
+    discussion in the category. Pages are read until a trusted post with a valid
+    marker is found.
     """
     _, cat = find_category(gh, home, category)
     if cat is None:
         return None
     owner, name = home.split('/')
-    posts = gh.graphql(POSTS_QUERY, owner=owner, name=name, category=cat)
-    for post in posts['repository']['discussions']['nodes']:
-        author = post['author'] or {}
-        if author.get('login') != 'github-actions' or author.get('__typename') != 'Bot':
+    cursor = None
+    while True:
+        page = gh.graphql(POSTS_QUERY, owner=owner, name=name, category=cat, cursor=cursor)
+        posts = page['repository']['discussions']
+        for post in posts['nodes']:
+            if trusted(post['author']) and (state := parse_state(post['body'])):
+                return {**state, 'url': post['url'], 'title': post.get('title')}
+        if not posts['pageInfo']['hasNextPage']:
+            return None
+        cursor = posts['pageInfo']['endCursor']
+
+
+def still_open(gh: GitHub, repos: list[str], refs: list[str]) -> list[str]:
+    """Return the announced pull requests (``name#number``) that GitHub reports open."""
+    full = {short_name(r): r for r in repos}
+    out = []
+    for ref in refs:
+        name, number = ref.split('#')
+        if name not in full:
             continue
-        if state := parse_state(post['body']):
-            return {**state, 'url': post['url'], 'title': post.get('title')}
-    return None
+        owner, repo = full[name].split('/')
+        found = gh.graphql(PR_STATE_QUERY, owner=owner, name=repo, number=int(number))
+        if ((found['repository'] or {}).get('pullRequest') or {}).get('state') == 'OPEN':
+            out.append(ref)
+    return out
 
 
 def resolve_window(
@@ -168,6 +200,7 @@ def pr_record(repo: str, node: dict, since: str, until: str) -> dict | None:
         'size': node['additions'] + node['deletions'],
         'labels': [label['name'] for label in node['labels']['nodes']],
         'files': [f['path'] for f in node['files']['nodes']],
+        'files_truncated': node['files'].get('totalCount', 0) > len(node['files']['nodes']),
         'merge_oid': commit['oid'] if commit else None,
         'parent_oid': parents[0]['oid'] if parents else None,
     }
@@ -278,6 +311,9 @@ def main(argv: list[str] | None = None) -> int:
     window = resolve_window(args.since, args.until, state, datetime.now(timezone.utc))
     window['previous'] = state
     data = collect(gh, settings, window)
+    data['still_open'] = still_open(
+        gh, settings['repos'], (state or {}).get('announced_open', [])
+    )
     with open(args.out, 'w') as fh:
         json.dump(data, fh)
     print(f'{len(data["prs"])} PRs, {len(data["releases"])} releases in {window}')

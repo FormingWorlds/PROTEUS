@@ -82,9 +82,7 @@ def requirement_map(specs: list[str], group: str) -> dict:
 
 def pyproject_map(text: str | None) -> dict:
     """Dependency floors of a ``pyproject.toml``: runtime, extras and PROTEUS module pins."""
-    if not text:
-        return {}
-    data = tomllib.loads(text)
+    data = tomllib.loads(text or '')
     project = data.get('project', {})
     out = requirement_map(project.get('dependencies', []), 'dependencies')
     for extra, specs in project.get('optional-dependencies', {}).items():
@@ -96,9 +94,7 @@ def pyproject_map(text: str | None) -> dict:
 
 def project_toml_map(text: str | None) -> dict:
     """Julia ``[compat]`` entries of a ``Project.toml``."""
-    if not text:
-        return {}
-    compat = tomllib.loads(text).get('compat', {})
+    compat = tomllib.loads(text or '').get('compat', {})
     return {f'compat:{k}': {'value': v} for k, v in compat.items()}
 
 
@@ -183,7 +179,7 @@ def attach_facts(gh: GitHub, data: dict, settings: dict) -> None:
         if pr['status'] != 'merged' or not pr['parent_oid']:
             continue
         for path in [*settings.get('tracked', {}).get(pr['repo'], []), *TRACKED_ALWAYS]:
-            if path not in pr['files']:
+            if path not in pr['files'] and not pr.get('files_truncated'):
                 continue
             old = gh.raw_file(pr['repo'], path, pr['parent_oid'])
             new = gh.raw_file(pr['repo'], path, pr['merge_oid'])
