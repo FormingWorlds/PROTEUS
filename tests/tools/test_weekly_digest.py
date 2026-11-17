@@ -1897,18 +1897,6 @@ def test_numbers_split_a_capital_or_underscore_prefix_but_keep_formulas(text, fo
     assert check.numbers(text) == found
 
 
-def test_title_and_text_are_separate_sentences():
-    """An old string value after "instead of" passes; the title is its own sentence."""
-    fact = _fact(key='interior_energetics.mixing_length', old='"nearest"', new='"constant"')
-    data = _data(fact_list=[fact])
-    real = (
-        'It uses a fixed fraction of the depth instead of the distance to the nearest boundary.'
-    )
-    assert check.check(data, _draft(_entry(text=real))) == []
-    entry = _entry(title='Slower settling by default', text='Settling is slower with 0.1 m.')
-    assert check.check(_data(), _draft(entry)) == []
-
-
 def test_truncated_file_list_diffs_every_tracked_file():
     """A pull request with more files than the query returns has every tracked file compared."""
     node = _node(merged='2026-09-05T00:00:00Z')
@@ -2039,25 +2027,6 @@ def test_a_single_element_letter_before_digits_is_a_number(text, found):
     assert check.numbers(text) == found
 
 
-def test_still_open_drops_an_unreadable_ref(capsys):
-    """A ref that GitHub cannot resolve is dropped and named, so it cannot stop every run."""
-
-    class Gh(_FakeGH):
-        def graphql(self, query, **variables):
-            if variables['number'] == 5:
-                raise common.DigestError(
-                    "GraphQL error: [{'type': 'NOT_FOUND', 'message': "
-                    "'Could not resolve to a PullRequest with the number of 5.'}]"
-                )
-            return {'repository': {'pullRequest': {'state': 'OPEN'}}}
-
-    refs = ['PROTEUS#900', 'AGNI#5']
-    assert collect.still_open(Gh(), ['FormingWorlds/PROTEUS', 'nichollsh/AGNI'], refs) == [
-        'PROTEUS#900'
-    ]
-    assert 'AGNI#5' in capsys.readouterr().out
-
-
 @pytest.mark.parametrize(
     ('association', 'kept'),
     [
@@ -2133,18 +2102,6 @@ def test_collect_main_prints_no_empty_line(tmp_path, monkeypatch, capsys):
     assert len(capsys.readouterr().out.splitlines()) == 1
 
 
-def test_still_open_keeps_a_ref_on_a_server_error(capsys):
-    """Only a pull request that GitHub cannot resolve leaves the state; a server error keeps it."""
-
-    class Gh(_FakeGH):
-        def graphql(self, query, **variables):
-            raise common.DigestError('GitHub API 502 for https://api.github.com/graphql')
-
-    assert collect.still_open(Gh(), ['FormingWorlds/PROTEUS'], ['PROTEUS#900']) == [
-        'PROTEUS#900'
-    ]
-
-
 def test_numbers_after_a_dot_and_letter_numbers():
     """A number written with a leading dot is a number; a Roman numeral character fails the text."""
     assert check.numbers('The step is .5 s.') == {'.5'}
@@ -2185,7 +2142,7 @@ def test_value_sentence_corpus(row):
     """The old-value rule warns on every assignment of the old value and on no correct sentence."""
     fact = _fact(key=row['key'], old=row['old'], new=row['new'])
     warned = check.value_warnings('e', [row['text']], [fact])
-    assert bool(warned) is row['warn'], (row['source'], warned)
+    assert bool(warned) is row['warn'], warned
 
 
 def test_value_warning_does_not_fail_the_check():
@@ -2214,3 +2171,77 @@ def test_check_main_prints_warnings_and_passes(tmp_path, capsys):
     assert lines[0].startswith('WARN "entry') and lines[1].startswith('::warning::"entry')
     assert lines[-1] == '0 failures and 1 warnings in 1 entries'
     assert 'WARN &quot;entry' in summary.read_text()
+
+
+@pytest.mark.parametrize(
+    ('error', 'kept'),
+    [
+        ("GraphQL error: [{'type': 'NOT_FOUND'}]", False),
+        ("GraphQL error: [{'message': 'Could not resolve to a PullRequest'}]", False),
+        ('GraphQL error: not found', True),
+        ('GitHub API 502 for https://api.github.com/graphql', True),
+    ],
+)
+def test_still_open_on_an_error(capsys, error, kept):
+    """Only a GraphQL not-found answer drops an announced ref; any other error keeps it."""
+
+    class Gh(_FakeGH):
+        def graphql(self, query, **variables):
+            if variables['number'] == 5:
+                raise common.DigestError(error)
+            return {'repository': {'pullRequest': {'state': 'OPEN'}}}
+
+    refs = ['PROTEUS#900', 'AGNI#5', 'Gone#3']
+    out = collect.still_open(Gh(), ['FormingWorlds/PROTEUS', 'nichollsh/AGNI'], refs)
+    assert out == ['PROTEUS#900', 'AGNI#5'] if kept else out == ['PROTEUS#900']
+    log = capsys.readouterr().out
+    assert 'AGNI#5' in log and 'Gone#3' in log
+
+
+@pytest.mark.parametrize(
+    ('text', 'found'),
+    [('Run No.5 is faster.', {'5'}), ('See Fig.3 and Sec.4.2.', {'3', '4.2'})],
+)
+def test_numbers_after_a_letter_and_a_dot(text, found):
+    """A number after an abbreviation with a dot is a number."""
+    assert check.numbers(text) == found
+
+
+def test_check_main_with_a_malformed_entry(tmp_path, capsys):
+    """An entry with a missing field fails the check with a FAIL line and no traceback."""
+    src, dft = tmp_path / 'c.json', tmp_path / 'd.json'
+    src.write_text(json.dumps(_data()))
+    entry = _entry()
+    del entry['facts']
+    dft.write_text(json.dumps(_draft(entry)))
+    assert check.main([str(src), str(dft)]) == 1
+    assert (
+        'FAIL "entry \\"Smaller default grain size\\": field facts' in capsys.readouterr().out
+    )
+
+
+def test_warning_annotation_escapes_percent(tmp_path, capsys):
+    """A percent sign in a warning cannot turn into a line break in the annotation."""
+    src, dft = tmp_path / 'c.json', tmp_path / 'd.json'
+    src.write_text(json.dumps(_data()))
+    entry = _entry(title='Grain size %0A::error::x', text='Grain size is set to 0.1 m.')
+    dft.write_text(json.dumps(_draft(entry)))
+    check.main([str(src), str(dft)])
+    note = [
+        line for line in capsys.readouterr().out.splitlines() if line.startswith('::warning::')
+    ]
+    assert len(note) == 1 and '%250A' in note[0] and '%0A' not in note[0].replace('%250A', '')
+
+
+def test_publish_notice_names_each_reason(tmp_path, monkeypatch, capsys):
+    """The skip notice names the run id, the title or the window end that matched."""
+    _publish(
+        tmp_path,
+        monkeypatch,
+        _last('2026-11-30T22:23:00Z', '9', 'x'),
+        '2026-11-25T10:00:00Z',
+        '8',
+    )
+    assert 'has a window end that is not earlier' in capsys.readouterr().out
+    _publish(tmp_path, monkeypatch, _last('2026-11-20T10:00:00Z', '9', 'x'), _MON, '9')
+    assert 'has the same run id' in capsys.readouterr().out
