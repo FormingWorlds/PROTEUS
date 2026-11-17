@@ -17,7 +17,6 @@ from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
 from botorch.models.transforms import Normalize, Standardize
 from botorch.optim import optimize_acqf
-from botorch.optim.fit import fit_gpytorch_mll_torch
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
 from proteus.inference.objective import BAD_OBJ_VALUE
@@ -231,7 +230,6 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
         mll = ExactMarginalLogLikelihood(lik, gp)
         fit_gpytorch_mll(
             mll,
-            optimizer=fit_gpytorch_mll_torch,
             kwargs={'pick_best_of_all_attempts': True, 'max_attempts': 10},
         )
 
@@ -343,7 +341,6 @@ def init_locs(
     mll = ExactMarginalLogLikelihood(lik, gp)
     fit_gpytorch_mll(
         mll,
-        optimizer=fit_gpytorch_mll_torch,
         kwargs={'pick_best_of_all_attempts': True, 'max_attempts': 10},
     )
 

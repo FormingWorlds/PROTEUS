@@ -142,6 +142,16 @@ def test_fit_surrogate_leaves_failed_evaluations_out(no_hyperfit):
     assert post.gp_mean(gp, X[5:10]).min().item() > -5.0
 
 
+def test_fit_surrogate_uses_botorch_default_lbfgs(no_hyperfit):
+    """The hyperparameters are fitted with botorch's default L-BFGS, not a torch optimizer,
+    which took about a minute at 500 points."""
+    X, Y = _study_data()
+    post.fit_surrogate(X, Y, 'MAT3/2', seed=0)
+    assert 'optimizer' not in no_hyperfit[0]
+    # still the best of 10 restarts, as before the optimizer change
+    assert no_hyperfit[0]['kwargs'] == {'pick_best_of_all_attempts': True, 'max_attempts': 10}
+
+
 def test_fit_surrogate_refuses_too_few_scored_evaluations(no_hyperfit):
     """Two scored points in two parameters raise before any fit."""
     X, Y = _study_data(n=6)

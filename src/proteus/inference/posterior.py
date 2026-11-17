@@ -16,7 +16,6 @@ import torch
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
 from botorch.models.transforms import Normalize, Standardize
-from botorch.optim.fit import fit_gpytorch_mll_torch
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
 from proteus.inference.correlation import CorrelationWhitener
@@ -95,7 +94,6 @@ def _fit_gp(X, Y, kernel: str, seed: int, Yvar, attempts: int) -> SingleTaskGP:
     )
     fit_gpytorch_mll(
         ExactMarginalLogLikelihood(gp.likelihood, gp),
-        optimizer=fit_gpytorch_mll_torch,
         kwargs={'pick_best_of_all_attempts': True, 'max_attempts': attempts},
     )
     return gp.eval()
@@ -118,7 +116,7 @@ def observables_objective(config: dict, directory, cases: pd.DataFrame):
         dtype=dtype,
     )
     log.info(f'    fitting one GP per observable to {len(X)} scored cases')
-    # One hyperparameter attempt each: these fits dominate the cost of the posterior
+    # One hyperparameter attempt each, with the noise learned per observable
     gps = [
         _fit_gp(X, S[:, [j]], config['kernel'], config['seed'], None, 1)
         for j in range(len(keys))

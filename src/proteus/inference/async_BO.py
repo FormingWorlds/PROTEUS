@@ -29,6 +29,9 @@ log = logging.getLogger('fwl.' + __name__)
 # Smallest rise of the best objective that resets the `patience` count
 PATIENCE_MIN_GAIN = 0.01
 
+# Torch threads per worker: the GP fits take under a second, and the PROTEUS runs need the cores
+WORKER_TORCH_THREADS = 1
+
 
 def evaluations_since_improvement(
     Y: torch.Tensor, n_init: int, min_gain: float = PATIENCE_MIN_GAIN
@@ -171,6 +174,7 @@ def worker(
     # the very first iteration is still recorded in the logfile.
     if logpath:
         attach_worker_logfile(logpath, log_level)
+    torch.set_num_threads(WORKER_TORCH_THREADS)
     if seed is not None:
         torch.manual_seed(seed)
 

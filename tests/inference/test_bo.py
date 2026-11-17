@@ -1043,3 +1043,25 @@ def test_failed_run_no_longer_pulls_gp_mean_down_near_best_point():
     assert -2.0 <= clean <= 1.5  # within the scored range, with room for overshoot
     # Discrimination: the fit with the failure sits many units below that range
     assert raw < -5.0
+
+
+def test_bo_step_and_init_locs_fit_with_botorch_default_lbfgs(monkeypatch):
+    """Both GP fits use botorch's default L-BFGS: no torch optimizer is passed."""
+    calls = []
+    monkeypatch.setattr(bo_mod, 'fit_gpytorch_mll', lambda *a, **kw: calls.append(kw))
+    monkeypatch.setattr(bo_mod, 'plot_iter', lambda **kw: None)
+    g = torch.Generator().manual_seed(0)
+    X = torch.rand(8, 2, generator=g, dtype=torch.double)
+    D = {'X': X, 'Y': -((X - 0.5) ** 2).sum(dim=1, keepdim=True)}
+    bo_mod.init_locs(1, D, acqf='UCB', kernel='RBF')
+    bo_mod.BO_step(
+        D=D,
+        B={},
+        f=lambda x: torch.zeros((1, 1), dtype=torch.double),
+        k=bo_mod.get_kernel('RBF', 2),
+        acqf='UCB',
+        lock=_DummyLock(),
+        worker_id=0,
+    )
+    assert len(calls) == 2
+    assert all('optimizer' not in kw for kw in calls)

@@ -228,6 +228,37 @@ def test_worker_seeds_its_torch_generator(monkeypatch, tmp_path):
     assert not torch.equal(draws[3], draws[0])
 
 
+def test_worker_limits_torch_to_its_thread_budget(monkeypatch, tmp_path):
+    """A worker runs its loop on WORKER_TORCH_THREADS torch threads, whatever it inherited,
+    so its GP fits do not take cores from the PROTEUS runs."""
+    seen = []
+    monkeypatch.setattr(
+        async_mod, '_worker_loop', lambda *a: seen.append(torch.get_num_threads())
+    )
+    before = torch.get_num_threads()
+    torch.set_num_threads(3)
+    try:
+        async_mod.worker(
+            process_fun=None,
+            build_obj=None,
+            D_shared={},
+            B={},
+            T=[],
+            T0=0.0,
+            x_init=None,
+            n_init=1,
+            lock=_DummyLock(),
+            max_len=2,
+            worker_id=0,
+            log_list=[],
+            output_dir=str(tmp_path),
+        )
+    finally:
+        torch.set_num_threads(before)
+    assert seen == [async_mod.WORKER_TORCH_THREADS]
+    assert async_mod.WORKER_TORCH_THREADS != 3
+
+
 def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
     """With a mocked multiprocessing Manager and Process, ``parallel_process``
     spawns one Process per worker, returns the final dataset, the per-worker
