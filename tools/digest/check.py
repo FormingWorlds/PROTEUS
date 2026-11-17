@@ -49,7 +49,7 @@ FIELDS = {
 
 def numbers(text: str) -> set[str]:
     """Return the number tokens of a text, for example ``-0.8``, ``1.13.0``, ``v1.0.0``, ``1,000`` or ``1e-3``."""
-    text = unicodedata.normalize('NFKC', re.sub(r'\bv(?=\d)', ' ', text))
+    text = unicodedata.normalize('NFKC', text)
     text = ''.join('-' if c in MINUS or unicodedata.category(c) == 'Pd' else c for c in text)
     return set(NUMBER_RE.findall(re.sub(r'(?<![\w.])([a-z])(?=\d)', r'\1 ', text)))
 
@@ -110,7 +110,7 @@ def _has(word: str, text: str) -> bool:
 
 
 def fact_value_failures(name: str, text: str, facts: list[dict]) -> list[str]:
-    """Sentences that state a new setting with the old string value of a cited change.
+    """Sentences that state a new setting with the old value of a cited change.
 
     A sentence fails when it holds the old value and "now" or "default" but not the
     new value; the old value as an ordinary word elsewhere passes.
@@ -119,10 +119,8 @@ def fact_value_failures(name: str, text: str, facts: list[dict]) -> list[str]:
     sentences = re.split(r'[.;!?](?:\s|$)', text)
     for fact in facts:
         old, new = (str(v).strip('\'"') for v in (fact['old'], fact['new']))
-        if (
-            fact['change'] not in ('default', 'value')
-            or not 3 <= len(old) <= 40
-            or _float(old) is not None
+        if fact['change'] not in ('default', 'value') or (
+            _float(old) is None and not 3 <= len(old) <= 40
         ):
             continue
         if any(

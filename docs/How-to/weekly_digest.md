@@ -43,7 +43,7 @@ A file that gains more than 8 keys in one pull request gives one fact for the ad
 - the title or text of an entry holds a URL, an `@`, square brackets, HTML, an HTML entity, a `#` or `GH-` reference, a commit id, a backtick, an invisible character or a special number character (superscripts, fractions);
 - the title or text uses a number that is not in the title or text of a cited pull request or release (the values of cited facts do not count);
 - the title or text names a config key or helpfile column that is not in a cited fact;
-- a sentence says what a setting is now and holds the old text value of a cited change but not the new one.
+- a sentence says what a setting is now and holds the old value of a cited change but not the new one.
 
 ### Render and post
 

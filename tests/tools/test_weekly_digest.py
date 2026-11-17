@@ -1654,3 +1654,43 @@ def test_numeric_old_value_in_a_now_sentence_fails():
     assert (
         check.check(data, _draft(_entry(text='The default rose from 100 to 200 cells.'))) == []
     )
+
+
+def test_check_survivor_cases():
+    """Close cases: a subscript minus, a near number, a non-string list item, a value change, a 3-letter value."""
+    fails = check.check(_data(), _draft(_entry(text='Now ₋0.001 m.')))
+    assert any('number -0.001 is in no cited source' in f for f in fails), fails
+    fails = check.check(_data(), _draft(_entry(text='The grain size is now 0.105 m.')))
+    assert any('number 0.105 is in no cited source' in f for f in fails), fails
+    assert any('field prs' in f for f in check.check(_data(), _draft(_entry(prs=[849]))))
+    fact = {**_fact(key='planet.mode', old='"off"', new='"auto"'), 'change': 'value'}
+    fails = check.check(_data(fact_list=[fact]), _draft(_entry(text='The mode is now off.')))
+    assert any('old value "off" of fact F1' in f for f in fails), fails
+
+
+def test_previous_state_ignores_another_bot():
+    """A marker in a post by a bot other than the workflow does not count."""
+    cats = {
+        'repository': {
+            'id': 'R',
+            'discussionCategories': {'nodes': [{'id': 'C1', 'slug': 'weekly-digest'}]},
+        }
+    }
+    other = _post(author='dependabot', state='{"until":"2020-01-01T00:00:00Z"}')
+    posts = {'repository': {'discussions': {'nodes': [other, _post()]}}}
+    state = collect.previous_state(
+        _FakeGH([cats, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
+    )
+    assert state['until'] == '2026-11-16T22:30:00Z'
+
+
+def test_fact_line_falsy_default_value_change_and_cap_edge():
+    """A falsy new default is printed, a value change reads like a default, and 4 lines need no count."""
+    added = {**_fact(), 'change': 'added', 'old': None, 'new': 0}
+    assert render.fact_line(added) == '`interior_energetics.grain_size` added, default `0`'
+    assert (
+        render.fact_line({**_fact(), 'change': 'value'})
+        == '`interior_energetics.grain_size`: `0.1` to `0.001`'
+    )
+    four = [_fact(f'F{i}', key=f'k{i}') for i in range(render.MAX_FACTS)]
+    assert 'more' not in render.facts_text(four) and render.facts_text(four).count(';') == 3
