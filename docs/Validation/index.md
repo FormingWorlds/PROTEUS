@@ -27,6 +27,7 @@ Without `--validation-plots` the tests write nothing, but each plot test compare
 | Atmosphere climate | `atmos_clim/agni.py` | [Transparent black-body limit](atmos_clim/agni.md) | [grey-gas column](atmos_clim/agni.md#black-body-emission-of-a-grey-gas-transparent-column) |
 | Atmosphere climate | `atmos_clim/common.py` | [Lid and open surface in the call](atmos_clim/common.md) | [parallel sum](atmos_clim/common.md#the-atmosphere-call-sees-the-lid-and-the-open-surface-in-parallel) |
 | Interior energetics | `interior_energetics/aragog.py` | [Mixing length at the core-mantle boundary](interior_energetics/aragog.md) | [core heat flux](interior_energetics/aragog.md#the-constant-length-keeps-the-heat-flux-out-of-the-core-on-every-mesh) |
+| Interior energetics | `interior_energetics/aragog_core_tabulated.py` | [PALEOS core across a structure update](interior_energetics/aragog_core_tabulated.md) | [structure term](interior_energetics/aragog_core_tabulated.md#the-update-keeps-the-entropy-and-books-the-heat-of-the-warmer-parcels) |
 | Interior energetics | `interior_energetics/remelt.py` | [Partial giant-impact re-melt](interior_energetics/remelt.md) | [melt front](interior_energetics/remelt.md#melt-front-against-the-closed-form) |
 | Interior structure | `interior_struct/zalmoxis.py` | [Liquidus-super IC anchor](interior_struct/zalmoxis.md) | [MgSiO3 liquidus](interior_struct/zalmoxis.md#mgsio3-liquidus-at-135-gpa) |
 | Orbit | `orbit/orbit.py` | [Orbital evolution](orbit/orbit.md) | [eccentricity rate](orbit/orbit.md#eccentricity-rate-of-sp0d) |

@@ -76,6 +76,7 @@ nav:
           - Lid and open surface in the call (common.py): Validation/atmos_clim/common.md
       - Interior energetics:
           - Mixing length at the core-mantle boundary (aragog.py): Validation/interior_energetics/aragog.md
+          - PALEOS core across a structure update (aragog_core_tabulated.py): Validation/interior_energetics/aragog_core_tabulated.md
           - Partial giant-impact re-melt (remelt.py): Validation/interior_energetics/remelt.md
       - Interior structure:
           - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md

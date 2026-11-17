@@ -40,6 +40,14 @@ nothing. The inner core releases no gravitational energy (`alpha_c = 0`,
 A config without `core_bc` and without the `core_module` table runs the
 default `energy_balance` mode.
 
+The core profile is a Gaussian density fitted to the structure by default.
+`profile_source = "paleos"` selects an isentrope of the PALEOS liquid iron
+table on the core arrays of the structure instead, with its secular heat
+capacity `core_cp_override` and its temperature step `core_t_cmb_step`
+([how it works](../Explanations/model.md#the-core-profile-from-the-paleos-liquid-iron-table)).
+PROTEUS does not write the core arrays of a structure solve, so a run with this
+profile stops at the start with the Aragog error that names the missing files.
+
 ## What it needs
 
 - **The Zalmoxis structure.** The density profile of the core is fitted to

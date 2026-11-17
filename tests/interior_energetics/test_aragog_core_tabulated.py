@@ -83,7 +83,7 @@ def _inner_mass(budget, t):
 @pytest.mark.physics_invariant
 def test_the_structure_term_does_not_see_the_table_floor(pair, high_cut):
     """The carried temperature and the structure term on 2 cuts of one table that differ only
-    in the lowest temperature column agree to 1e-12 (measured 2e-16 and 8.5e-14 at 5000 K),
+    in the lowest temperature column agree to 1e-12 (measured 4.4e-16 and 9.6e-14 at 5000 K),
     while the difference of the floor-referenced heat contents moves by more than 1e27 J
     (measured 4.4e27 J): the content counts from 0 K, not from the table floor."""
     old, new = pair
@@ -108,7 +108,7 @@ def test_the_structure_term_does_not_see_the_table_floor(pair, high_cut):
 @pytest.mark.parametrize('t', [3800.0, 4100.0, 4500.0, 5200.0])
 def test_the_content_of_a_gaussian_budget_is_its_heat_content(t):
     """On the Gaussian profile the content is the heat content of Aragog to 1e-12, above and
-    below the onset (near 4147 K for this alloy core)."""
+    below the onset (near 4149 K for this alloy core)."""
     from aragog.core import build_core_module_budget
 
     b = build_core_module_budget(
@@ -140,8 +140,8 @@ def _parcel_term(old, new, t_old, t_new, c_p=840.0, n=256):
 def test_the_update_keeps_the_entropy_and_books_the_parcel_heat(pair, validation_plot):
     """A liquid core keeps its specific entropy at the CMB (1e-10), the structure term equals
     c_p int (T_new - T_old) dm with the override c_p of 840 J/kg/K over equal-mass parcels
-    (1e-5; measured 4.7e-6 at 5000 K), and the term is 1.63 times the same integral with the
-    table c_p (506 to 523 J/kg/K): the content uses the secular c_p of the budget. A wrong
+    (1e-5; measured 4.7e-6 at 5000 K), and the term is about 1.6 times the same integral with
+    the table c_p at the CMB (516 to 547 J/kg/K): the content uses the secular c_p of the budget. A wrong
     sign of the update or a floor-referenced content falls outside these bounds."""
     old, new = pair
     temps = np.linspace(4600.0, 6400.0, 7)

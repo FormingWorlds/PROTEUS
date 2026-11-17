@@ -71,6 +71,22 @@ The interior energetics module evolves the mantle temperature and melt fraction 
 
 By default the core below the Aragog mantle is a heat reservoir of fixed heat capacity. With `interior_energetics.aragog.core_bc = "core_module"` the core has its own energy budget instead: secular cooling along the core adiabat, the latent heat of a growing inner core, the gravitational energy of the light elements it rejects, and radiogenic heat. The core temperature is then a state of the solver, and the heat flux through the core-mantle boundary follows from the temperature contrast between the core and the base of the mantle across a boundary layer. See [Core evolution](../How-to/usage_core_evolution.md).
 
+### The core profile from the PALEOS liquid iron table
+
+How warm is a core after compression by a structure solve? With `core_module.profile_source = "paleos"`, the core follows an isentrope of the PALEOS liquid iron table of Attia et al. (2026)[^cite-attia2026]: a line of constant specific entropy $s_c$ through the core-mantle boundary (CMB) temperature $T$. A structure update keeps the core mass $M$ and total entropy, so the core warms.
+
+The total entropy is $M\,s_c - \Delta s_f\,M_{ic}$, with $\Delta s_f$ the entropy of fusion (J kg$^{-1}$ K$^{-1}$) and $M_{ic}$ the inner-core mass (kg). The heat content is $T\,C_s(T) - R(T)$ in J, with $C_s$ the secular heat capacity (J K$^{-1}$) and $R$ the latent and gravitational energy released below the onset of the inner core. It counts from 0 K, as on the Gaussian profile, and an update books its change in `step_dE_struct_core_J`.
+
+For example, the core of a 1 Earth-mass planet at 5000 K warms to 5195 K when its CMB pressure rises from 127.7 to 141.3 GPa; the update books 6.0e29 J.
+
+Limits:
+
+- Another `core_bc`, `stratification = true` or a giant-impact module is refused.
+- `core_dynamo_margin` and `core_B_rms` are 0: Aragog has no entropy budget here.
+- Above a centre pressure of 3.8 TPa the core temperature rises outward from the centre ([Aragog limits](https://proteus-framework.org/aragog/Explanations/core_tabulated.html#limits-of-the-model)).
+
+**Where this is checked.** [The PALEOS core across a structure update](../Validation/interior_energetics/aragog_core_tabulated.md).
+
 **[SPIDER](https://proteus-framework.org/SPIDER/)** (C) uses the temperature-entropy (T-S) formulation [^cite-bower2018]. It discretises the mantle on a staggered radial grid and solves the entropy equation using PETSc's implicit time integrator. SPIDER provides an independent cross-check on Aragog for the same physical problem formulated in a different thermodynamic variable. It requires PETSc and is an optional installation component.
 
 **Boundary** solves a simplified single-node energy balance ODE for the mantle surface temperature, treating the mantle as a single thermal reservoir with Arrhenius or aggregate viscosity. It is useful for rapid exploration of parameter space and for configurations where the full radial resolution of Aragog or SPIDER is not needed.
@@ -377,3 +393,5 @@ Only the interior and star modules have an explicit notion of time-evolution. Al
  [^cite-noack2020]: Noack, L. & Lasbleis, M., *[Parameterisations of interior properties of rocky planets](https://doi.org/10.1051/0004-6361/202037723)*, Astronomy & Astrophysics, 638, A129, 2020. [SciX](https://scixplorer.org/abs/2020A%26A...638A.129N/abstract).
 
  [^cite-kimura2025]: Kimura, T., Hoshino, H., Kokubo, E., Matsumoto, Y. & Ikoma, M., *[Semi-analytical model for the dynamical evolution of planetary systems via giant impacts](https://doi.org/10.3847/1538-4357/ade992)*, The Astrophysical Journal, 989, 109, 2025.
+
+[^cite-attia2026]: M. Attia, T. Lichtenberg, E. Jungová, M. Sastre, *[PALEOS: Multiphase equations of state and mass–radius relations for exoplanet interiors](https://doi.org/10.1051/0004-6361/202660790)*, Astronomy & Astrophysics, 713, A225, 2026.
