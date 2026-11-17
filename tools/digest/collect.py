@@ -156,7 +156,9 @@ def still_open(gh: GitHub, repos: list[str], refs: list[str]) -> list[str]:
         try:
             found = gh.graphql(PR_STATE_QUERY, owner=owner, name=repo, number=int(number))
         except DigestError as err:
-            print(f'Announced pull request {ref} cannot be read and leaves the state: {err}')
+            if 'NOT_FOUND' not in str(err) and 'Could not resolve' not in str(err):
+                out.append(ref)
+            print(f'Announced pull request {ref} cannot be read: {err}')
             continue
         if ((found['repository'] or {}).get('pullRequest') or {}).get('state') == 'OPEN':
             out.append(ref)

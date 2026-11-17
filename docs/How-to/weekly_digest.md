@@ -1,6 +1,6 @@
 # Weekly ecosystem digest
 
-This page explains how to run, test and switch on the workflow that writes the weekly digest of the PROTEUS ecosystem (PROTEUS and its module repositories). It is for people who run or change the workflow. It covers what the workflow does, how to make a dry run (a run that writes the digest and posts nothing), and how to switch posting on or off.
+This page explains how to run and switch on the workflow that writes the weekly digest of the PROTEUS ecosystem (PROTEUS and its module repositories). It is for people who run or change the workflow. It covers what the workflow does, how to make a dry run (a run that writes the digest and posts nothing), and how to switch posting on or off.
 
 Developers read the digest at the start of their Tuesday meeting. It is a selection of the pull requests merged since the last digest, the open pull requests that need review, and the new releases. When posting is switched on, a GitHub Actions workflow in this repository posts it to the FormingWorlds Discussions tab, in the category Weekly digest.
 
@@ -39,7 +39,7 @@ Each entry has an action marker, a flag that the model sets when every user must
 
 `check.py` checks the corrected answer. The run fails, and nothing is posted, if one of the conditions below is true.
 
-#### Citations and form
+#### Checks on citations and form
 
 - the model returns no entry for a window that has a merged pull request or a release, or the draft says the window is empty when it is not, or the reverse;
 - an entry misses a field, has a field of the wrong type, or names a section that does not exist;
@@ -52,20 +52,24 @@ Each entry has an action marker, a flag that the model sets when every user must
 - an entry outside the section "Installing and running" carries the action marker;
 - the title of an entry is longer than 80 characters, or its text is longer than 400 characters.
 
-#### Text
+#### Checks on the words of an entry
 
 - the title or text of an entry holds any of these:
     - a link or a mention: a URL, an `@` or square brackets;
     - markup: HTML, an HTML entity or a backtick;
     - a reference: a `#` or `GH-` reference or a commit id;
-    - a hidden or special character: an invisible character, a superscript or a fraction;
+    - a hidden or special character: an invisible character, a superscript, a fraction or a letter number such as a Roman numeral;
     - the words "Action for everyone", which only the script adds;
-- the title or text uses a number that is not in a cited pull request or release (cited fact values do not count). A number after a single letter or an underscore counts (`v1.0`, `V100`, `mode_42`); the digits of a formula of 2 or more element symbols (`H2O`, `CO2`) do not;
-- the title or text names a config key or helpfile column that is not in a cited fact;
-- a sentence gives a cited setting the old value of its change but not the new one ("is set to", "becomes", "equals", "is now", "default"), unless "from", "instead of" or a similar word marks the old value. An old value of 1 or 2 digits counts only when the sentence names the setting;
-- a sentence holds both values but gives the old one as the result ("from 0.001 to 0.1" for a change from 0.1 to 0.001).
+- the title or text uses a number that is not in a cited pull request or release (cited fact values do not count):
+    - The check reads `v1.0`, `V100`, `mode_42` and `.5` as the numbers 1.0, 100, 42 and 0.5. It also reads the 2 of `H2`.
+    - It does not read the digits of a formula of 2 or more element symbols (`H2O`, `CO2`) as numbers;
+- the title or text names a config key or helpfile column that is not in a cited fact.
 
-The check prints each failure as one line: `FAIL` and a quoted JSON string, so entry text cannot break the line. The job summary and `check.txt` in the artifact `digest` hold the same lines.
+#### Warnings
+
+A sentence that gives the old value of a cited config key change as the current value gives a warning, not a failure. The sentence must name the config key, and either an assignment ("is now", "set to", "becomes", "equals", "uses") stands directly before the old value while the new value is absent or marked as old ("from", "not", "instead of"), or the sentence reads "from" the new value "to" the old value. A warning does not stop the run, and the post goes out.
+
+The check prints each failure as one line, `FAIL` and a quoted JSON string, so entry text cannot break the line. Each warning is a `WARN` line and an annotation on the run page. The job summary and `check.txt` in the artifact `digest` hold the `FAIL` and `WARN` lines.
 
 ### Render the post
 
@@ -78,17 +82,22 @@ The check prints each failure as one line: `FAIL` and a quoted JSON string, so e
 
 ### Post it once
 
-The post step runs only in a live run (see Switch posting on or off). Before it posts, `post.py` repeats every guard: posting is switched on, the window is not back-dated, the run is scheduled or its box **Post the digest** is ticked, the draft passes `check.py`, and the body is not a dry run.
+The post step runs only in a live run, a run that is allowed to post (see Switch posting on or off). Before it posts, `post.py` repeats every guard: posting is switched on, the window is not back-dated, the run is scheduled or its box **Post the digest** is ticked, the draft passes `check.py`, and the body is not a dry run.
 
-`post.py` makes at most one post per run and one per meeting. It reads the newest digest post, and skips posting when that post has the same workflow run id or the same title. The skip rules mean:
+`post.py` makes at most one post per run and one per meeting. It reads the newest digest post, and skips posting when that post has the same workflow run id (the number of the Actions run, which a rerun keeps), the same title, or a window end that is not earlier than its own. The skip rules mean:
 
 - A rerun of failed jobs or of all jobs of the run that made the newest post, on any day, makes no second post.
 - A second manual run for the same meeting makes no second post.
+- A rerun of an older run after a newer post makes no post, so the next window does not move back.
 - A manual run on a Monday before the scheduled run takes the same title as the scheduled run. The scheduled run then posts nothing, and the next window starts at the end of the manual run, so no pull request is left out.
 
-A skipped post gives a notice annotation on the run page, and the run stays green. After `post.py` creates the post, it reads back the author. If the author is not `github-actions`, the run is red, because the next run would not find the post. A rerun of that run then posts again.
+A skipped post gives a notice annotation on the run page, and the run stays green. After `post.py` creates the post, it reads back the author (see If a run is red).
 
-A run that fails a check or a step before the post step is red in the Actions tab and posts nothing. Read the check lines in the job summary, or open `check.txt` in the artifact `digest` (see Make a dry run). A run that fails in the post step after GitHub created the post is red, and the post stays. Look at the category before you start the run again.
+### If a run is red
+
+A run that fails a check or a step before the post step is red in the Actions tab and posts nothing. Read the check lines in the job summary, or open `check.txt` in the artifact `digest` (see Make a dry run).
+
+A run that fails in the post step after GitHub created the post is red, and the post stays. If the author of the post is not `github-actions`, the run is red too, because the next run would not find the post, and a rerun of that run posts again. Look at the category before you start the run again.
 
 ## Sections of a digest
 
@@ -109,7 +118,7 @@ The post names each author as `@login`, which notifies that person. The rules:
 
 - Each person is mentioned once per post; later names are plain text.
 - Bots and organisations are never mentioned (the list `bots` in `repos.toml`, and every account that GitHub marks as a bot).
-- The author of an open pull request that an earlier digest announced is not mentioned again for it while it stays open. Before each run, `collect.py` asks GitHub which announced pull requests are still open.
+- The author of an open pull request that an earlier digest announced is not mentioned again for it while it stays open. Before each run, `collect.py` asks GitHub which announced pull requests are still open. A pull request that GitHub cannot find leaves the list; on any other error it stays.
 - A dry run shows the mentions in code spans, so nobody is notified.
 
 ## Make a dry run
@@ -176,7 +185,7 @@ What a digest can miss:
 - An open pull request counts only when it was updated after the window start.
 - A window with no merged pull request and no release gives a post that says Quiet week and lists no open pull requests, even when some are open.
 - At most the 20 newest releases of each repository are read.
-- A word that gives a wrong new value of a setting ("the mixing length is now linear") is not caught; the table next to it shows the fact.
+- The value warning covers only the old value in the wordings above. A third value ("the mixing length is now linear" for a change from nearest to constant), another wording or a sentence that does not name the config key gives no warning. The table next to the entry shows the fact.
 - The author association is what the token of the run can see. A member with a private organisation membership can show as a contributor or with no association; an open pull request with no association is left out and named in the job summary.
 
 Windows set by hand (back-dated):

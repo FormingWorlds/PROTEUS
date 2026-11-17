@@ -10,7 +10,8 @@ repeats every guard (posting switched on, a window that is not back-dated, a
 scheduled run or a ticked post box, a draft that passes the check, a body that is
 not a dry run), then creates the discussion in the digest category of the first
 repository in the settings. It skips with a notice when the newest digest post has
-the same run id or title: one post per run and per meeting.
+the same run id or title, or a window end that is not earlier than this one: one
+post per run and per meeting, and no stale post after a newer one.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from pathlib import Path
 
 from check import check
 from collect import parse_state, previous_state, trusted
-from common import DigestError, GitHub, find_category, load_settings
+from common import DigestError, GitHub, find_category, load_settings, parse_time
 
 CREATE = """
 mutation($repo: ID!, $category: ID!, $title: String!, $body: String!) {
@@ -32,9 +33,14 @@ mutation($repo: ID!, $category: ID!, $title: String!, $body: String!) {
 """
 
 
+def live_event(event: str, post_input: bool) -> bool:
+    """True for a scheduled run or a manual run with the post box ticked."""
+    return event == 'schedule' or post_input
+
+
 def decide(settings: dict, event: str, post_input: bool, backdated: bool) -> bool:
     """True only when posting is switched on and the run is a scheduled or confirmed live run."""
-    return settings['publish'] and not backdated and (event == 'schedule' or post_input)
+    return settings['publish'] and not backdated and live_event(event, post_input)
 
 
 def create_discussion(gh: GitHub, home: str, category: str, title: str, body: str) -> str:
@@ -83,10 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         for reason, bad in (
             ('posting is switched off', not settings['publish']),
             ('the window is back-dated', data['window']['backdated']),
-            (
-                'not a live run',
-                opts['--event'] != 'schedule' and opts['--post-input'] != 'true',
-            ),
+            ('not a live run', not live_event(opts['--event'], opts['--post-input'] == 'true')),
             (f'{len(fails)} check failures', fails),
             ('the body is a dry run', post['body'].startswith('**Dry run')),
         )
@@ -98,6 +101,8 @@ def main(argv: list[str] | None = None) -> int:
     last = previous_state(gh, home, settings['category']) or {}
     mine = {**(parse_state(post['body']) or {}), 'title': post['title']}
     same = [k for k in ('run_id', 'title') if mine.get(k) and last.get(k) == mine[k]]
+    if last.get('until') and parse_time(mine['until']) <= parse_time(last['until']):
+        same.append('or a later window end')
     if same:
         print(
             f'::notice::Not posted: the newest digest {last.get("url")} has the same {", ".join(same)}'

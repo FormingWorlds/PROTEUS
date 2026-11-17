@@ -1786,7 +1786,7 @@ def _last(until, run_id='8', title='PROTEUS weekly digest, 24 November 2026'):
         ('twice', _last('2026-11-25T10:00:00Z'), '2026-11-25T15:00:00Z', '10', False),
         ('monday', _last('2026-11-23T10:00:00Z'), _MON, '9', False),
         ('no run ids', _last(_MON, '', 'x'), '2026-11-30T22:23:00Z', '', True),
-        ('same end only', _last(_MON, '8', 'x'), _MON, '9', True),
+        ('same end only', _last(_MON, '8', 'x'), _MON, '9', False),
         (
             'stale rerun',
             _last('2026-11-30T22:23:00Z', '9', 'x'),
@@ -2045,7 +2045,10 @@ def test_still_open_drops_an_unreadable_ref(capsys):
     class Gh(_FakeGH):
         def graphql(self, query, **variables):
             if variables['number'] == 5:
-                raise common.DigestError('GraphQL error: not found')
+                raise common.DigestError(
+                    "GraphQL error: [{'type': 'NOT_FOUND', 'message': "
+                    "'Could not resolve to a PullRequest with the number of 5.'}]"
+                )
             return {'repository': {'pullRequest': {'state': 'OPEN'}}}
 
     refs = ['PROTEUS#900', 'AGNI#5']
@@ -2194,6 +2197,8 @@ def test_value_warning_does_not_fail_the_check():
     ]
     entry = _entry(title='Slower settling by default', text='Settling is slower with 0.1 m.')
     assert check.warnings(_data(), _draft(entry)) == []
+    added = {**_fact(), 'change': 'added'}
+    assert check.value_warnings('e', ['Grain size is set to 0.1 m.'], [added]) == []
 
 
 def test_check_main_prints_warnings_and_passes(tmp_path, capsys):

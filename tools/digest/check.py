@@ -26,6 +26,7 @@ from common import DIGEST_DIR, SECTIONS
 
 NUMBER_RE = re.compile(
     r'(?<![\w.])[-+]?(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)*(?:[eE][-+]?\d+)?)'
+    r'|(?<![\w])\.\d+'
 )
 TOKEN_RE = re.compile(r'[A-Za-z_][A-Za-z0-9_.]*[A-Za-z0-9_]')
 FORBIDDEN = {
@@ -49,14 +50,15 @@ ELEMENTS = set(
 )
 PREFIX_RE = re.compile(r'(?<![\w.])[A-Za-z](?=\d)(?:[\w.]*\w)?')
 ASSIGN_RE = re.compile(
-    r'(?:\b(?:set|changed?|lower(?:s|ed)?|rais(?:es|ed)|reduc(?:es|ed)|increas(?:es|ed)|'
-    r'revert(?:s|ed)?|switch(?:es|ed)?|defaults?|moved?|go(?:es)?)\s+to|\bbecomes?|\bequals?|='
-    r'|\b(?:is|are)(?:\s+now)?)'
-    r'\s+(?:the\s+)?$',
+    r'(?:\b(?:is|are)(?:\s+now)?|\b(?:(?:re)?set|changed?|lower(?:s|ed)?|rais(?:es|ed)|'
+    r'reduc(?:es|ed)|increas(?:es|ed)|decreas(?:es|ed)|updated?|adjusted?|revert(?:s|ed)?|'
+    r'switch(?:es|ed)?|defaults?|moved?|go(?:es)?)\s+to|\bbec[oa]mes?|\bequals?|\buses?|=)'
+    r'\s*(?:(?:the|about|roughly|still|~)\s*)?$',
     re.I,
 )
-OLD_MARK_RE = re.compile(
-    r'\b(?:from|instead\s+of|rather\s+than|previously|replac\w*|used\s+to)\b', re.I
+CAN_RE = re.compile(r'\b(?:can|could|may)\s+be\s+(?:re)?set\s+to\s+\S*\s*$', re.I)
+NEW_MARK_RE = re.compile(
+    r'\b(?:from|not|instead\s+of|rather\s+than|previously|replac\w*)\s+(?:\S+\s+)?$', re.I
 )
 _ITEM = json.loads((DIGEST_DIR / 'entry_schema.json').read_text())['properties']['entries']
 LIMITS = {
@@ -165,27 +167,17 @@ def _find(value: str, sentence: str) -> int | None:
     return next((m.start() for m in found), None)
 
 
-def _old_marked(prefix: str) -> bool:
-    """True when "from", "instead of" or similar marks the value after ``prefix`` as old.
+def value_warnings(name: str, parts: list[str], facts: list[dict]) -> list[str]:
+    """Sentences that give the old value of a cited default or value change as the current value.
 
-    The marker counts only when no assignment ("is set to", "is now") follows it.
+    A sentence warns only when it names the setting (the last key segment, ``_`` or a
+    space) and either an assignment ("is now", "set to", "becomes", "equals", "uses")
+    stands directly before the old value while the new value is absent or marked as
+    old ("from", "not", "instead of"), or it reads "from <new> ... to <old>". "Can be
+    set to" and an old value followed by "before" or "earlier" do not warn. The title
+    and the text are split into sentences separately.
     """
-    marks = list(OLD_MARK_RE.finditer(prefix))
-    return bool(marks) and not ASSIGN_RE.search(prefix[marks[-1].end() :])
-
-
-def fact_value_failures(name: str, parts: list[str], facts: list[dict]) -> list[str]:
-    """Sentences that state the old value of a cited change as the current setting.
-
-    For a default or value change, a sentence fails when it holds the old value but
-    not the new one, with "now" or "default" in it or an assignment ("set to",
-    "becomes", "is") just before the old value, and no "from", "instead of" or
-    similar before it. It also fails when it assigns the old value after the new
-    one ("from new to old"). An old value of 1 or 2 digits counts only in a
-    sentence that names the setting. The title and the text are split into
-    sentences separately.
-    """
-    fails = []
+    warns = []
     sentences = [s for p in parts for s in re.split(r'[.;!?](?:\s|$)', prepare(p))]
     for fact in facts:
         if fact['change'] not in ('default', 'value'):
@@ -193,23 +185,28 @@ def fact_value_failures(name: str, parts: list[str], facts: list[dict]) -> list[
         old, new = (str(v).strip('\'"') for v in (fact['old'], fact['new']))
         key = re.escape(fact['key'].rsplit('.', 1)[-1]).replace('_', '[ _]')
         for s in sentences:
-            named = re.search(rf'(?<!\w){key}(?!\w)', s, re.I)
             at = _find(old, s) if _float(old) is not None or 3 <= len(old) <= 40 else None
-            if re.fullmatch(r'\d{1,2}', old) and not named:
-                at = None
+            if at is None or not re.search(rf'(?<!\w){key}(?!\w)', s, re.I):
+                continue
             at_new = _find(new, s)
-            swapped = at_new is not None and at is not None and at_new < at
-            if at is not None and (
-                (swapped and re.search(r'\bto\s+(?:the\s+)?$', s[:at], re.I))
-                or (
-                    at_new is None
-                    and not _old_marked(s[:at])
-                    and (re.search(r'\b(now|default)', s, re.I) or ASSIGN_RE.search(s[:at]))
+            assigned = (
+                ASSIGN_RE.search(s[:at])
+                and not CAN_RE.search(s[:at])
+                and not re.match(r'\S+(?:\s+\S+)?\s+(?:before|earlier)\b', s[at:], re.I)
+                and (at_new is None or NEW_MARK_RE.search(s[:at_new]))
+            )
+            swapped = (
+                at_new is not None
+                and at_new < at
+                and re.search(r'\bfrom\s+(?:\S+\s+)?$', s[:at_new], re.I)
+                and re.search(r'\bto\s+(?:\S+\s+)?$', s[:at], re.I)
+            )
+            if assigned or swapped:
+                warns.append(
+                    f'{name}: text gives the old value "{old}" of fact {fact["id"]} as the current value'
                 )
-            ):
-                fails.append(f'{name}: text holds the old value "{old}" of fact {fact["id"]}')
                 break
-    return fails
+    return warns
 
 
 def check_entry(entry: dict, index: dict) -> list[str]:
@@ -264,7 +261,9 @@ def check_entry(entry: dict, index: dict) -> list[str]:
     kinds = {unicodedata.category(c) for c in text if c not in '\t\n\r'}
     if kinds & {'Cf', 'Cc'}:
         fails.append(f'{name}: text holds an invisible character')
-    if any(unicodedata.category(c) == 'No' and not '\u2080' <= c <= '\u2089' for c in text):
+    if any(
+        unicodedata.category(c) in ('No', 'Nl') and not '\u2080' <= c <= '\u2089' for c in text
+    ):
         fails.append(f'{name}: text holds a special number character')
     sources = set()
     for item in prs + rels:
@@ -283,7 +282,7 @@ def check_entry(entry: dict, index: dict) -> list[str]:
         forms = key_forms({token}) | {token}
         if forms & index['keys'] and not forms & allowed:
             fails.append(f'{name}: key {token} is in no cited fact')
-    return fails + fact_value_failures(name, [entry['title'], entry['text']], facts)
+    return fails
 
 
 def check(data: dict, draft: dict) -> list[str]:
@@ -307,6 +306,21 @@ def check(data: dict, draft: dict) -> list[str]:
     return fails
 
 
+def warnings(data: dict, draft: dict) -> list[str]:
+    """Return the value warnings of the draft; they are reported but never stop the run."""
+    facts = {f['id']: f for f in data.get('facts', [])}
+    return [
+        w
+        for e in draft.get('entries', [])
+        if not shape_failures(e)
+        for w in value_warnings(
+            f'entry "{e["title"][:40]}"',
+            [e['title'], e['text']],
+            [facts[f] for f in e['facts'] if f in facts],
+        )
+    ]
+
+
 def main(argv: list[str] | None = None) -> int:
     """Command-line entry point."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -319,10 +333,17 @@ def main(argv: list[str] | None = None) -> int:
         data = json.load(fh)
     with open(args.draft) as fh:
         draft = json.load(fh)
-    fails = check(data, draft)
+    fails, warns = check(data, draft), warnings(data, draft)
+    count = (
+        f'{len(fails)} failures and {len(warns)} warnings in {len(draft["entries"])} entries'
+    )
     report = ''.join(f'FAIL {json.dumps(line)}\n' for line in fails)
-    report += f'{len(fails)} failures in {len(draft["entries"])} entries\n'
-    print(report, end='')
+    report += ''.join(f'WARN {json.dumps(line)}\n' for line in warns) + count + '\n'
+    for line in fails:
+        print(f'FAIL {json.dumps(line)}')
+    for line in warns:
+        print(f'WARN {json.dumps(line)}\n::warning::{json.dumps(line)}')
+    print(count)
     if args.out:
         with open(args.out, 'w') as fh:
             fh.write(report)
