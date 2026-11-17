@@ -1911,7 +1911,7 @@ def test_announced_open_pr_stays_until_merged_or_closed():
         {'repository': {'pullRequest': {'state': 'MERGED'}}},
         {'repository': {'pullRequest': {'state': 'CLOSED'}}},
     ]
-    refs = ['PROTEUS#900', 'AGNI#5', 'PROTEUS#901']
+    refs = ['PROTEUS#900', 'AGNI#5', 'Gone#3', 'PROTEUS#901']
     repos = ['FormingWorlds/PROTEUS', 'nichollsh/AGNI']
     gh = _FakeGH(pages)
     assert collect.still_open(gh, repos, refs) == ['PROTEUS#900']
