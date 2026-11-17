@@ -37,9 +37,45 @@ def load_settings(path: Path | None = None) -> dict:
     -------
     dict
         The parsed settings.
+
+    Raises
+    ------
+    DigestError
+        When a setting is missing or has the wrong type or range.
     """
     with open(path or DIGEST_DIR / 'repos.toml', 'rb') as fh:
-        return tomllib.load(fh)
+        return validate_settings(tomllib.load(fh))
+
+
+def _is_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def validate_settings(settings: dict) -> dict:
+    """Check the types and ranges of the settings and return them unchanged."""
+    rules = {
+        'publish': lambda v: isinstance(v, bool),
+        'category': lambda v: isinstance(v, str) and v.strip() != '',
+        'model': lambda v: isinstance(v, str) and v.strip() != '',
+        'max_bodies': lambda v: _is_int(v) and 0 <= v <= 500,
+        'body_chars': lambda v: _is_int(v) and 1 <= v <= 20000,
+        'bots': lambda v: isinstance(v, list) and all(isinstance(b, str) for b in v),
+        'repos': lambda v: (
+            isinstance(v, list)
+            and len(v) > 0
+            and all(isinstance(r, str) and r.count('/') == 1 for r in v)
+        ),
+        'tracked': lambda v: (
+            isinstance(v, dict)
+            and all(
+                isinstance(p, list) and all(isinstance(x, str) for x in p) for p in v.values()
+            )
+        ),
+    }
+    for key, ok in rules.items():
+        if key not in settings or not ok(settings[key]):
+            raise DigestError(f'setting {key} is missing or invalid: {settings.get(key)!r}')
+    return settings
 
 
 def parse_time(text: str) -> datetime:

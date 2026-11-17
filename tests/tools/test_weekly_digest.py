@@ -1,0 +1,1263 @@
+"""Unit tests for the weekly ecosystem digest scripts in ``tools/digest/``.
+
+The digest posts text that a model drafts from pull-request text, which is untrusted.
+These tests pin the parts that keep a wrong or injected entry out of a post: the
+cleaning of collected text, the mechanical facts, the fail-closed checks, the
+mention rules, the posting decision and the settings validation. No test uses
+the network; GitHub answers are recorded fixtures or fakes.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import stat
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip('hypothesis')
+from hypothesis import given, settings  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(60)]
+
+_ROOT = Path(__file__).resolve().parents[2]
+_DATA = _ROOT / 'tests' / 'data' / 'digest'
+sys.path.insert(0, str(_ROOT / 'tools' / 'digest'))
+
+import check  # noqa: E402
+import collect  # noqa: E402
+import common  # noqa: E402
+import draft  # noqa: E402
+import facts  # noqa: E402
+import post  # noqa: E402
+import render  # noqa: E402
+
+SINCE, UNTIL = '2026-09-01T00:00:00Z', '2026-09-30T00:00:00Z'
+
+
+def _pr(ref='PROTEUS#849', status='merged', author='alice', kind='User', **extra):
+    repo = 'FormingWorlds/' + ref.split('#')[0]
+    return {
+        'ref': ref,
+        'repo': repo,
+        'number': int(ref.split('#')[1]),
+        'url': f'https://github.com/{repo}/pull/{ref.split("#")[1]}',
+        'status': status,
+        'title': 'Lower the default interior grain size to 1e-3 m',
+        'body': 'Settling velocity scales with grain radius squared; 0.1 m was too large.',
+        'author': author,
+        'author_kind': kind,
+        'created_at': '2026-09-05T10:00:00Z',
+        'merged_at': '2026-09-06T21:07:16Z' if status == 'merged' else None,
+        'size': 10,
+        'labels': [],
+        'files': [],
+        'merge_oid': 'm1',
+        'parent_oid': 'p1',
+        **extra,
+    }
+
+
+def _release(ref='AGNI@1.13.0', author='bob'):
+    return {
+        'ref': ref,
+        'repo': 'nichollsh/AGNI',
+        'tag': ref.split('@')[1],
+        'url': 'https://github.com/nichollsh/AGNI/releases/tag/1.13.0',
+        'name': 'AGNI v1.13.0',
+        'prerelease': False,
+        'body': 'Handles unbound atmospheres.',
+        'author': author,
+        'author_kind': 'User',
+        'published_at': '2026-09-29T09:19:58Z',
+    }
+
+
+def _fact(
+    fid='F1', pr='PROTEUS#849', key='interior_energetics.grain_size', old='0.1', new='0.001'
+):
+    return {
+        'id': fid,
+        'pr': pr,
+        'file': facts.CONFIG_SCHEMA,
+        'kind': 'config',
+        'change': 'default',
+        'key': key,
+        'old': old,
+        'new': new,
+    }
+
+
+def _data(prs=None, releases=None, fact_list=None, previous=None):
+    return {
+        'window': {'since': SINCE, 'until': UNTIL, 'backdated': True, 'previous': previous},
+        'repos': ['FormingWorlds/PROTEUS', 'nichollsh/AGNI'],
+        'prs': prs if prs is not None else [_pr()],
+        'releases': releases if releases is not None else [],
+        'facts': fact_list if fact_list is not None else [_fact()],
+        'known_keys': [
+            'interior_energetics.grain_size',
+            'interior_energetics.rfront_loc',
+            'T_surf',
+        ],
+        'bodies_kept': 1,
+        'bodies_cut': 0,
+    }
+
+
+def _entry(**over):
+    entry = {
+        'section': 'results',
+        'title': 'Smaller default grain size',
+        'text': 'The default grain size is now smaller, so settling is slower.',
+        'prs': ['PROTEUS#849'],
+        'releases': [],
+        'facts': ['F1'],
+        'logins': ['alice'],
+    }
+    entry.update(over)
+    return entry
+
+
+def _draft(*entries, empty=False):
+    return {'entries': list(entries), 'empty': empty}
+
+
+# common
+
+
+def test_parse_time_date_and_zulu():
+    """A bare date is 00:00 UTC and a Z time keeps its clock time."""
+    assert common.parse_time('2026-09-01') == datetime(2026, 9, 1, tzinfo=timezone.utc)
+    assert common.iso(common.parse_time('2026-09-01T12:30:00Z')) == '2026-09-01T12:30:00Z'
+    assert common.iso(common.parse_time('2026-09-01T14:30:00+02:00')) == '2026-09-01T12:30:00Z'
+
+
+@pytest.mark.parametrize(
+    ('login', 'kind', 'expected'),
+    [
+        ('alice', 'User', False),
+        ('alice', None, False),
+        ('dependabot', 'User', True),
+        ('Dependabot', 'User', True),
+        ('renovate[bot]', 'User', True),
+        ('github-actions', 'Bot', True),
+        ('acme', 'Organization', True),
+        (None, 'User', True),
+    ],
+)
+def test_is_bot(login, kind, expected):
+    """Bots, organisations and deleted accounts are never mentioned; people are."""
+    assert common.is_bot(login, kind, ['dependabot']) is expected
+
+
+def test_repository_settings_are_valid_and_exclude_archived_and_boreas():
+    """The committed settings load, list each repository once and leave BOREAS and the archived SOCRATES out."""
+    loaded = common.load_settings()
+    assert loaded['publish'] is False
+    assert len(set(loaded['repos'])) == len(loaded['repos'])
+    assert not any('BOREAS' in r or r == 'nichollsh/SOCRATES' for r in loaded['repos'])
+    assert loaded['repos'][0] == 'FormingWorlds/PROTEUS'
+
+
+_VALID = common.load_settings()
+_BAD_VALUES = {
+    'publish': [1, 'true', 0, None],
+    'category': ['', '  ', 3, None],
+    'model': ['', None, 5],
+    'max_bodies': [-1, 501, 1.5, True, 'ten', float('nan'), float('inf')],
+    'body_chars': [0, -5, 20001, 2.0, False, float('nan')],
+    'bots': ['dependabot', [1], None],
+    'repos': [[], ['PROTEUS'], ['a/b/c'], 'FormingWorlds/PROTEUS', [3]],
+    'tracked': [[], {'a/b': 'file'}, {'a/b': [1]}],
+}
+
+
+@pytest.mark.parametrize(('key', 'bad'), [(k, v) for k, vs in _BAD_VALUES.items() for v in vs])
+def test_settings_reject_wrong_types_and_ranges(key, bad):
+    """Every setting rejects a wrong type, a bool for an int, NaN, inf and an out-of-range value."""
+    with pytest.raises(common.DigestError, match=key):
+        common.validate_settings({**_VALID, key: bad})
+
+
+@pytest.mark.parametrize('key', sorted(_BAD_VALUES))
+def test_settings_reject_a_missing_key(key):
+    """A setting left out of the file stops the run."""
+    with pytest.raises(common.DigestError, match=key):
+        common.validate_settings({k: v for k, v in _VALID.items() if k != key})
+
+
+@given(st.integers(min_value=0, max_value=500), st.integers(min_value=1, max_value=20000))
+@settings(max_examples=50, deadline=None)
+def test_settings_accept_the_valid_range(max_bodies, body_chars):
+    """Every integer inside both ranges is accepted, including the limits."""
+    out = common.validate_settings(
+        {**_VALID, 'max_bodies': max_bodies, 'body_chars': body_chars}
+    )
+    assert (out['max_bodies'], out['body_chars']) == (max_bodies, body_chars)
+
+
+class _Resp:
+    def __init__(self, body: bytes):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return self.body
+
+
+def _http_error(code):
+    import urllib.error
+
+    return urllib.error.HTTPError('u', code, 'x', {'Retry-After': '0'}, None)
+
+
+def test_github_retries_a_rate_limit_then_reads(monkeypatch):
+    """A 403 is retried; a 404 gives None; a 500 stops the run."""
+    calls = []
+
+    def fake(req, timeout):
+        calls.append(req.full_url)
+        if len(calls) == 1:
+            raise _http_error(403)
+        return _Resp(b'text')
+
+    monkeypatch.setattr(common.urllib.request, 'urlopen', fake)
+    monkeypatch.setattr(common.time, 'sleep', lambda s: None)
+    assert common.GitHub('t').raw_file('a/b', 'x y.toml', 'abc') == 'text'
+    assert len(calls) == 2 and 'x%20y.toml?ref=abc' in calls[0]
+
+    monkeypatch.setattr(
+        common.urllib.request,
+        'urlopen',
+        lambda r, timeout: (_ for _ in ()).throw(_http_error(404)),
+    )
+    assert common.GitHub('t').raw_file('a/b', 'f', 'r') is None
+    monkeypatch.setattr(
+        common.urllib.request,
+        'urlopen',
+        lambda r, timeout: (_ for _ in ()).throw(_http_error(500)),
+    )
+    with pytest.raises(common.DigestError, match='500'):
+        common.GitHub('t').raw_file('a/b', 'f', 'r')
+
+
+def test_graphql_error_stops_the_run(monkeypatch):
+    """A GraphQL answer with errors raises instead of returning partial data."""
+    body = json.dumps({'data': None, 'errors': [{'message': 'boom'}]}).encode()
+    monkeypatch.setattr(common.urllib.request, 'urlopen', lambda r, timeout: _Resp(body))
+    with pytest.raises(common.DigestError, match='boom'):
+        common.GitHub('t').graphql('{x}')
+
+
+# collect
+
+
+def test_clean_text_removes_links_html_mentions_and_cuts():
+    """Link text stays; URLs, images, HTML, comments and every @ go; the result is cut."""
+    raw = (
+        '<!-- template -->Fixes [the bug](https://evil.example/x) for @alice. '
+        '![img](https://i.png) <b>bold</b> see https://x.org/a and www.y.org; ping @org/team'
+    )
+    out = collect.clean_text(raw, 1000)
+    assert out == 'Fixes the bug for alice. bold see and ping org/team'
+    assert collect.clean_text(raw, 5) == out[:5]
+    assert collect.clean_text(None, 10) == '' and collect.clean_text('abc', 0) == ''
+
+
+@given(st.text(max_size=400), st.integers(min_value=0, max_value=300))
+@settings(max_examples=200, deadline=None)
+def test_clean_text_never_leaks_a_mention_link_or_tag(text, limit):
+    """Whatever the input, the cleaned text has no @, no URL scheme, no tag and fits the limit."""
+    out = collect.clean_text(text, limit)
+    assert '@' not in out and '://' not in out and len(out) <= limit
+    assert not re.search(r'<[^>]*>', out)
+
+
+def test_resolve_window_rules():
+    """Inputs make a back-dated window; else the last post's end; else 7 days."""
+    now = datetime(2026, 11, 23, 22, 23, tzinfo=timezone.utc)
+    got = collect.resolve_window('2026-09-01', '2026-09-30', None, now)
+    assert got == {'since': SINCE, 'until': UNTIL, 'backdated': True}
+    got = collect.resolve_window(None, None, {'until': '2026-11-16T22:30:00Z'}, now)
+    assert got == {
+        'since': '2026-11-16T22:30:00Z',
+        'until': '2026-11-23T22:23:00Z',
+        'backdated': False,
+    }
+    got = collect.resolve_window(None, None, None, now)
+    assert got['since'] == '2026-11-16T22:23:00Z' and not got['backdated']
+    got = collect.resolve_window(None, '2026-10-01', {'until': '2026-09-01T00:00:00Z'}, now)
+    assert got['since'] == '2026-09-24T00:00:00Z' and got['backdated']
+    with pytest.raises(common.DigestError, match='empty window'):
+        collect.resolve_window('2026-09-30', '2026-09-30', None, now)
+
+
+def _node(merged=None, created='2026-09-02T00:00:00Z', draft=False):
+    return {
+        'number': 7,
+        'url': 'u',
+        'title': 't',
+        'body': 'b',
+        'isDraft': draft,
+        'state': 'MERGED' if merged else 'OPEN',
+        'createdAt': created,
+        'mergedAt': merged,
+        'updatedAt': '2026-10-01T00:00:00Z',
+        'additions': 3,
+        'deletions': 4,
+        'author': {'login': 'alice', '__typename': 'User'},
+        'labels': {'nodes': []},
+        'files': {'nodes': [{'path': 'a.py'}]},
+        'mergeCommit': {'oid': 'm', 'parents': {'nodes': [{'oid': 'p'}]}} if merged else None,
+    }
+
+
+@pytest.mark.parametrize(
+    ('node', 'status'),
+    [
+        (_node(merged=SINCE), 'merged'),
+        (_node(merged='2026-09-29T23:59:59Z'), 'merged'),
+        (_node(merged='2026-08-31T23:59:59Z'), None),
+        (_node(merged=UNTIL), 'open'),
+        (_node(merged='2026-10-13T00:00:00Z'), 'open'),
+        (_node(), 'open'),
+        (_node(draft=True), None),
+        (_node(created=UNTIL), None),
+    ],
+)
+def test_pr_record_window_edges(node, status):
+    """Merged in [since, until) is merged; open at until and not draft is open; else dropped."""
+    rec = collect.pr_record('FormingWorlds/PROTEUS', node, SINCE, UNTIL)
+    assert (rec['status'] if rec else None) == status
+    if status == 'merged':
+        assert (rec['merge_oid'], rec['parent_oid'], rec['size']) == ('m', 'p', 7)
+    if status == 'open':
+        assert rec['merged_at'] is None and rec['merge_oid'] is None
+
+
+def test_release_record_window_and_draft():
+    """Only a published, non-draft release inside the window is kept."""
+    node = {
+        'tagName': '1.13.0',
+        'name': None,
+        'url': 'u',
+        'publishedAt': '2026-09-29T09:19:58Z',
+        'isDraft': False,
+        'isPrerelease': False,
+        'description': 'd',
+        'author': {'login': 'bob', '__typename': 'User'},
+    }
+    rec = collect.release_record('nichollsh/AGNI', node, SINCE, UNTIL)
+    assert (rec['ref'], rec['name']) == ('AGNI@1.13.0', '1.13.0')
+    assert (
+        collect.release_record('nichollsh/AGNI', {**node, 'isDraft': True}, SINCE, UNTIL)
+        is None
+    )
+    assert (
+        collect.release_record('nichollsh/AGNI', {**node, 'publishedAt': UNTIL}, SINCE, UNTIL)
+        is None
+    )
+    assert (
+        collect.release_record('nichollsh/AGNI', {**node, 'publishedAt': None}, SINCE, UNTIL)
+        is None
+    )
+
+
+class _FakeGH:
+    """Answers GraphQL queries from a list of pages and files from a dict."""
+
+    def __init__(self, pages=(), files=None):
+        self.pages, self.files, self.queries = list(pages), files or {}, []
+
+    def graphql(self, query, **variables):
+        self.queries.append(variables)
+        return self.pages.pop(0)
+
+    def raw_file(self, repo, path, ref):
+        return self.files.get((repo, path, ref))
+
+
+def _janus():
+    page = json.loads((_DATA / 'janus_page.json').read_text())
+    page['repository']['pullRequests']['pageInfo'] = {'hasNextPage': False, 'endCursor': None}
+    return page
+
+
+def test_collect_repo_reads_a_recorded_page():
+    """The recorded JANUS page gives the merged PR of the window, the open PRs and the release."""
+    window = {'since': '2026-11-01T00:00:00Z', 'until': '2026-11-17T12:00:00Z'}
+    prs, rels = collect.collect_repo(_FakeGH([_janus()]), 'FormingWorlds/JANUS', window)
+    assert [(p['ref'], p['status']) for p in prs] == [('JANUS#103', 'merged')]
+    assert [r['ref'] for r in rels] == ['JANUS@26.11.05']
+    later = {'since': '2026-11-01T00:00:00Z', 'until': '2026-11-18T00:00:00Z'}
+    prs, _ = collect.collect_repo(_FakeGH([_janus()]), 'FormingWorlds/JANUS', later)
+    assert {p['ref']: p['status'] for p in prs} == {
+        'JANUS#105': 'open',
+        'JANUS#104': 'open',
+        'JANUS#103': 'merged',
+    }
+
+
+def test_collect_repo_pages_until_older_than_the_window():
+    """A full page whose oldest PR is in the window asks for the next page; an older one stops."""
+    first = _janus()
+    first['repository']['pullRequests']['pageInfo'] = {'hasNextPage': True, 'endCursor': 'c1'}
+    second = _janus()
+    second['repository']['pullRequests']['nodes'] = []
+    gh = _FakeGH([first, second])
+    collect.collect_repo(
+        gh,
+        'FormingWorlds/JANUS',
+        {'since': '2026-11-01T00:00:00Z', 'until': '2026-11-18T00:00:00Z'},
+    )
+    assert [q['cursor'] for q in gh.queries] == [None, 'c1']
+    gh = _FakeGH([_janus()])
+    gh.pages[0]['repository']['pullRequests']['pageInfo'] = {
+        'hasNextPage': True,
+        'endCursor': 'c1',
+    }
+    collect.collect_repo(
+        gh,
+        'FormingWorlds/JANUS',
+        {'since': '2026-11-15T00:00:00Z', 'until': '2026-11-18T00:00:00Z'},
+    )
+    assert len(gh.queries) == 1
+
+
+@pytest.mark.parametrize('flag', ['isPrivate', 'isArchived'])
+def test_collect_repo_stops_on_a_private_or_archived_repository(flag):
+    """A repository that is not public and active stops the run."""
+    page = _janus()
+    page['repository'][flag] = True
+    with pytest.raises(common.DigestError, match='not a public, active'):
+        collect.collect_repo(
+            _FakeGH([page]), 'FormingWorlds/JANUS', {'since': SINCE, 'until': UNTIL}
+        )
+    with pytest.raises(common.DigestError):
+        collect.collect_repo(
+            _FakeGH([{'repository': None}]), 'a/b', {'since': SINCE, 'until': UNTIL}
+        )
+
+
+def test_add_bodies_keeps_the_largest_and_every_release():
+    """Bodies stay for the largest PRs and for releases; the other PRs give titles only."""
+    prs = [dict(_pr(f'PROTEUS#{n}', size=n), raw_body=f'body @x {n}') for n in (1, 5, 3)]
+    rels = [dict(_release(), raw_body='rel https://u body')]
+    out = collect.add_bodies(prs, rels, 2, 100)
+    assert out == {'bodies_kept': 2, 'bodies_cut': 1}
+    assert {p['ref']: p['body'] for p in prs} == {
+        'PROTEUS#1': '',
+        'PROTEUS#5': 'body x 5',
+        'PROTEUS#3': 'body x 3',
+    }
+    assert rels[0]['body'] == 'rel body' and 'raw_body' not in rels[0]
+
+
+def test_collect_refuses_two_repositories_with_one_name():
+    """Two repositories with the same name would make references ambiguous."""
+    with pytest.raises(common.DigestError, match='share a name'):
+        collect.collect(_FakeGH(), {**_VALID, 'repos': ['a/SOCRATES', 'b/SOCRATES']}, {})
+
+
+def _post(
+    author='github-actions',
+    kind='Bot',
+    state='{"until":"2026-11-16T22:30:00Z","announced_open":["X#1"]}',
+):
+    return {
+        'url': 'https://d/1',
+        'createdAt': 'c',
+        'body': f'text\n<!-- weekly-digest-state {state} -->',
+        'author': {'login': author, '__typename': kind},
+    }
+
+
+def test_previous_state_trusts_only_the_workflow_bot():
+    """A marker in a post by a person is skipped; the newest bot post gives the state."""
+    cats = {
+        'repository': {
+            'discussionCategories': {'nodes': [{'id': 'C1', 'slug': 'weekly-digest'}]}
+        }
+    }
+    posts = {
+        'repository': {
+            'discussions': {
+                'nodes': [
+                    _post(
+                        author='mallory', kind='User', state='{"until":"2020-01-01T00:00:00Z"}'
+                    ),
+                    _post(),
+                ]
+            }
+        }
+    }
+    state = collect.previous_state(
+        _FakeGH([cats, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
+    )
+    assert state['until'] == '2026-11-16T22:30:00Z' and state['url'] == 'https://d/1'
+    posts = {'repository': {'discussions': {'nodes': [_post(kind='User')]}}}
+    assert (
+        collect.previous_state(_FakeGH([cats, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest')
+        is None
+    )
+    none = {'repository': {'discussionCategories': {'nodes': []}}}
+    assert (
+        collect.previous_state(_FakeGH([none]), 'FormingWorlds/PROTEUS', 'weekly-digest')
+        is None
+    )
+
+
+# facts
+
+
+def _schema(**fields):
+    return json.dumps({'fields': [{'path': k, **v} for k, v in fields.items()]})
+
+
+def test_config_schema_diff_kinds():
+    """Added, removed, default, choices, bounds and description changes each give one fact."""
+    old = _schema(
+        a={'default': '1'}, b={'default': '2', 'choices': ['x']}, gone={'default': '0'}
+    )
+    new = _schema(
+        a={'default': '1', 'description': 'new'},
+        b={'default': '3', 'choices': ['x', 'y']},
+        c={'default': '5'},
+    )
+    got = [
+        (f['change'], f['key'], f['old'], f['new'])
+        for f in facts.diff_file(facts.CONFIG_SCHEMA, old, new)
+    ]
+    assert got == [
+        ('description', 'a', None, 'new'),
+        ('default', 'b', '2', '3'),
+        ('choices', 'b', ['x'], ['x', 'y']),
+        ('added', 'c', None, '5'),
+        ('removed', 'gone', '0', None),
+    ]
+    assert facts.diff_file(facts.CONFIG_SCHEMA, old, old) == []
+
+
+def test_september_schema_changes_are_recovered():
+    """The recorded schemas of PROTEUS 849, 918, 848 and 858 give the facts of the September rows."""
+    pairs = json.loads((_DATA / 'september_schema.json').read_text())
+
+    def run(ref):
+        return [
+            (f['change'], f['key'], f['old'], f['new'])
+            for f in facts.diff_file(
+                facts.CONFIG_SCHEMA,
+                json.dumps(pairs[ref]['old']),
+                json.dumps(pairs[ref]['new']),
+            )
+        ]
+
+    assert run('PROTEUS#849') == [('default', 'interior_energetics.grain_size', '0.1', '0.001')]
+    assert ('default', 'interior_energetics.rfront_loc', '0.5', '0.4') in run('PROTEUS#918')
+    assert run('PROTEUS#848') == [
+        ('added', 'interior_energetics.aragog.separation_viscosity', None, '"mixture"')
+    ]
+    assert [c[:2] for c in run('PROTEUS#858')] == [
+        ('description', 'interior_energetics.aragog.phi_step_cap')
+    ]
+
+
+def test_output_schema_diff_reads_columns_and_units():
+    """A new helpfile column and a unit change are facts; producers are ignored."""
+    old = json.dumps({'keys': [{'name': 'T_surf', 'unit': 'K', 'producers': [1]}]})
+    new = json.dumps(
+        {
+            'keys': [
+                {'name': 'T_surf', 'unit': 'C', 'producers': [2]},
+                {'name': 'R_sat', 'unit': 'm'},
+            ]
+        }
+    )
+    got = {(f['change'], f['key']) for f in facts.diff_file(facts.OUTPUT_SCHEMA, old, new)}
+    assert got == {('unit', 'T_surf'), ('added', 'R_sat')}
+
+
+def test_pyproject_floors_extras_and_module_pins():
+    """Runtime floors, extras and PROTEUS module pins are compared per package."""
+    old = '[project]\ndependencies = ["fwl-zalmoxis>=26.07.17", "numpy"]\n[project.optional-dependencies]\nvulcan = ["fwl-vulcan>=1"]\n[tool.proteus.modules.agni]\nref = "aaa"\n'
+    new = '[project]\ndependencies = ["fwl-zalmoxis>=26.09.21", "numpy", "scipy[all] >= 1.0 ; python_version>\'3\'"]\n[project.optional-dependencies]\nvulcan = ["fwl-vulcan>=2"]\n[tool.proteus.modules.agni]\nref = "bbb"\n'
+    got = {
+        (f['change'], f['key'], f['old'], f['new'])
+        for f in facts.diff_file('pyproject.toml', old, new)
+    }
+    assert got == {
+        ('value', 'dependencies:fwl-zalmoxis', '>=26.07.17', '>=26.09.21'),
+        ('added', 'dependencies:scipy', None, ">= 1.0 ; python_version>'3'"),
+        ('value', 'extra vulcan:fwl-vulcan', '>=1', '>=2'),
+        ('value', 'tool.proteus.modules.agni.ref', 'aaa', 'bbb'),
+    }
+
+
+def test_julia_compat_and_default_toml():
+    """Julia compat bounds and nested default TOML values are compared; a missing file is empty."""
+    got = facts.diff_file(
+        'Project.toml', '[compat]\nJulia = "1.11"\n', '[compat]\nJulia = "1.13"\n'
+    )
+    assert [(f['key'], f['old'], f['new']) for f in got] == [('compat:Julia', '1.11', '1.13')]
+    got = facts.diff_file(
+        'input/default.toml', '[a]\n[a.b]\nc = 1\n', '[a]\n[a.b]\nc = 2\nd = 3\n'
+    )
+    assert {(f['change'], f['key']) for f in got} == {('value', 'a.b.c'), ('added', 'a.b.d')}
+    assert [
+        f['change'] for f in facts.diff_file('Project.toml', None, '[compat]\nX = "1"\n')
+    ] == ['added']
+    assert facts.diff_file('pyproject.toml', None, None) == []
+
+
+def test_long_values_are_cut():
+    """A description longer than the limit is cut and marked."""
+    long_text = 'x' * (facts.DESCRIPTION_CHARS + 10)
+    got = facts.diff_file(
+        facts.CONFIG_SCHEMA,
+        _schema(a={'description': 'short'}),
+        _schema(a={'description': long_text}),
+    )
+    assert (
+        got[0]['new'].endswith(' [cut]') and len(got[0]['new']) == facts.DESCRIPTION_CHARS + 6
+    )
+
+
+def test_group_facts_merges_large_sets_only():
+    """More than the limit of additions in one file become one fact with all keys; fewer stay."""
+    many = [
+        {
+            'file': 'f',
+            'kind': 'config',
+            'change': 'added',
+            'key': f'orbit.solver.k{i}',
+            'old': None,
+            'new': i,
+        }
+        for i in range(9)
+    ]
+    other = {'file': 'f', 'kind': 'config', 'change': 'default', 'key': 'z', 'old': 1, 'new': 2}
+    out = facts.group_facts(many + [other], limit=8)
+    grouped = [f for f in out if f.get('members')]
+    assert len(out) == 2 and len(grouped) == 1
+    assert grouped[0]['key'] == 'orbit.solver' and grouped[0]['members'] == [
+        f['key'] for f in many
+    ]
+    assert grouped[0]['new'].startswith('9 keys added: orbit.solver.k0')
+    assert facts.group_facts(many[:8], limit=8) == many[:8]
+    mixed = [dict(m, key=k) for m, k in zip(many, ['a.x', 'b.y'] * 5)]
+    assert facts.group_facts(mixed, limit=8)[0]['key'] == 'f'
+
+
+def test_attach_facts_reads_only_merged_prs_that_touch_tracked_files():
+    """Facts come from the parent and merge commit of merged PRs that change a tracked file."""
+    touch = _pr(
+        'PROTEUS#1', files=['pyproject.toml', 'src/x.py'], merge_oid='m', parent_oid='p'
+    )
+    skip_files = _pr('PROTEUS#2', files=['src/x.py'])
+    skip_open = _pr('PROTEUS#3', status='open', files=['pyproject.toml'], parent_oid=None)
+    gh = _FakeGH(
+        files={
+            (
+                'FormingWorlds/PROTEUS',
+                'pyproject.toml',
+                'p',
+            ): '[project]\ndependencies = ["a>=1"]\n',
+            (
+                'FormingWorlds/PROTEUS',
+                'pyproject.toml',
+                'm',
+            ): '[project]\ndependencies = ["a>=2"]\n',
+            ('FormingWorlds/PROTEUS', facts.CONFIG_SCHEMA, 'HEAD'): _schema(
+                **{'a.grain_size': {}, 'plain': {}}
+            ),
+        }
+    )
+    data = {'prs': [touch, skip_files, skip_open]}
+    facts.attach_facts(gh, data, {'tracked': {'FormingWorlds/PROTEUS': [facts.CONFIG_SCHEMA]}})
+    assert [(f['id'], f['pr'], f['key']) for f in data['facts']] == [
+        ('F1', 'PROTEUS#1', 'dependencies:a')
+    ]
+    assert data['known_keys'] == ['a.grain_size']
+
+
+# check
+
+
+def test_a_valid_draft_passes():
+    """A draft whose every reference, login, number and key comes from the data has no failure."""
+    assert check.check(_data(), _draft(_entry())) == []
+
+
+@pytest.mark.parametrize(
+    ('change', 'message'),
+    [
+        ({'prs': ['PROTEUS#9999']}, 'PR PROTEUS#9999 is not in the collected set'),
+        ({'releases': ['AGNI@9.9.9']}, 'release AGNI@9.9.9 is not in the collected set'),
+        ({'facts': ['F1', 'F77']}, 'fact F77 is not in the collected set'),
+        ({'logins': ['mallory']}, 'login mallory is not an author'),
+        ({'prs': [], 'facts': []}, 'cites no pull request or release'),
+        ({'facts': []}, 'a results entry cites no fact or release'),
+        ({'text': 'See https://evil.example now.'}, 'text holds a URL'),
+        ({'text': 'See www.evil.example now.'}, 'text holds a URL'),
+        ({'text': 'Thanks to @alice.'}, 'text holds an @'),
+        ({'text': 'A <img src=x> tag.'}, 'text holds HTML'),
+        ({'text': 'A [link](x) here.'}, 'text holds a markdown link'),
+        ({'text': 'Merged in PROTEUS#849.'}, 'text holds a # reference'),
+        ({'text': 'Use `code` here.'}, 'text holds a backtick'),
+        ({'title': 'Grain size @bob'}, 'text holds an @'),
+        ({'text': 'The grain size is now 0.05 m.'}, 'number 0.05 is in no cited source'),
+        ({'text': 'The rfront_loc moved too.'}, 'key rfront_loc is in no cited fact'),
+        (
+            {'text': 'interior_energetics.rfront_loc moved.'},
+            'key interior_energetics.rfront_loc',
+        ),
+        ({'text': 'T_surf is lower.'}, 'key T_surf is in no cited fact'),
+        ({'section': 'open'}, 'is merged, not allowed in section open'),
+    ],
+)
+def test_check_fails_closed(change, message):
+    """Each invented or unsafe item in a draft is a failure that names the cause."""
+    fails = check.check(_data(), _draft(_entry(**change)))
+    assert any(message in f for f in fails), fails
+
+
+def test_check_accepts_numbers_and_keys_from_cited_sources():
+    """A number written another way, a version after a v and a key of a cited fact pass."""
+    data = _data(releases=[_release()])
+    entry = _entry(
+        text='The grain size is now 1e-3 instead of 0.10; grain_size and interior_energetics.grain_size changed with AGNI 1.13.0.',
+        releases=['AGNI@1.13.0'],
+        logins=['alice', 'bob'],
+    )
+    assert check.check(data, _draft(entry)) == []
+
+
+def test_check_section_rules_for_open_prs_and_releases():
+    """Open PRs belong in open only; a release cannot be in open; a fact needs its PR cited."""
+    data = _data(
+        prs=[_pr(), _pr('PROTEUS#900', status='open', author='carol')], releases=[_release()]
+    )
+    fails = check.check(
+        data,
+        _draft(_entry(section='capabilities', prs=['PROTEUS#900'], facts=[], logins=['carol'])),
+    )
+    assert any('PROTEUS#900 is open' in f for f in fails)
+    fails = check.check(
+        data,
+        _draft(
+            _entry(
+                section='open',
+                prs=['PROTEUS#900'],
+                releases=['AGNI@1.13.0'],
+                facts=[],
+                logins=[],
+            )
+        ),
+    )
+    assert any('a release in section open' in f for f in fails)
+    ok = _entry(
+        section='open', prs=['PROTEUS#900'], facts=[], logins=['carol'], text='Needs review.'
+    )
+    assert check.check(data, _draft(ok)) == []
+    fails = check.check(
+        data, _draft(_entry(prs=['PROTEUS#900'], section='open', facts=['F1'], logins=[]))
+    )
+    assert any('fact F1 belongs to PROTEUS#849, not cited' in f for f in fails)
+
+
+def test_check_grouped_fact_members_count_as_cited_keys():
+    """A key listed in a grouped fact may be named in the text."""
+    grouped = {
+        **_fact('F2', key='orbit.solver', old=None, new='9 keys added'),
+        'change': 'added',
+        'members': ['orbit.solver.max_rel_de'],
+    }
+    data = _data(fact_list=[_fact(), grouped])
+    data['known_keys'].append('orbit.solver.max_rel_de')
+    entry = _entry(section='capabilities', facts=['F2'], text='New max_rel_de limit.')
+    assert check.check(data, _draft(entry)) == []
+    data['facts'][1]['members'] = []
+    assert check.check(data, _draft(entry)) != []
+
+
+def test_check_empty_flag_and_missing_entries():
+    """The empty flag must match the window, and a non-empty window needs entries."""
+    assert 'does not match' in check.check(_data(), _draft(empty=True))[0]
+    assert 'no entries' in check.check(_data(), _draft())[0]
+    quiet = _data(prs=[_pr(status='open')], fact_list=[])
+    assert check.check(quiet, _draft(empty=True)) == []
+    assert 'does not match' in check.check(quiet, _draft(_entry()))[0]
+
+
+def test_check_main_exit_code(tmp_path, capsys):
+    """The command exits 1 and lists the failure on a bad draft, 0 on a good one."""
+    src, bad, good = tmp_path / 'c.json', tmp_path / 'bad.json', tmp_path / 'good.json'
+    src.write_text(json.dumps(_data()))
+    bad.write_text(json.dumps(_draft(_entry(prs=['PROTEUS#1']))))
+    good.write_text(json.dumps(_draft(_entry())))
+    assert check.main([str(src), str(bad)]) == 1
+    assert 'FAIL' in capsys.readouterr().out
+    assert check.main([str(src), str(good)]) == 0
+
+
+@given(st.text(min_size=1, max_size=60))
+@settings(max_examples=150, deadline=None)
+def test_any_text_with_a_url_or_mention_fails(noise):
+    """Text that holds a URL or an @ never passes, whatever surrounds it."""
+    for bad in (f'{noise} https://x.y {noise}', f'{noise}@{noise}'):
+        assert check.check(_data(), _draft(_entry(text=bad))) != []
+
+
+# render
+
+
+def test_tuesday_title_in_amsterdam_time():
+    """Monday night UTC gives the next day; a Tuesday stays; a late Monday in summer is Tuesday."""
+    assert (
+        render.tuesday_title('2026-11-23T22:23:00Z')
+        == 'PROTEUS weekly digest, 24 November 2026'
+    )
+    assert (
+        render.tuesday_title('2026-11-24T10:00:00Z')
+        == 'PROTEUS weekly digest, 24 November 2026'
+    )
+    assert render.tuesday_title('2026-06-22T22:23:00Z') == 'PROTEUS weekly digest, 23 June 2026'
+    assert (
+        render.tuesday_title('2026-11-25T00:00:00Z') == 'PROTEUS weekly digest, 1 December 2026'
+    )
+
+
+@pytest.mark.parametrize(
+    ('fact', 'line'),
+    [
+        (_fact(), '`interior_energetics.grain_size`: `0.1` to `0.001`'),
+        (
+            {**_fact(), 'change': 'added', 'old': None, 'new': '"mixture"'},
+            '`interior_energetics.grain_size` added, default `"mixture"`',
+        ),
+        (
+            {**_fact(), 'change': 'added', 'old': None, 'new': None},
+            '`interior_energetics.grain_size` added',
+        ),
+        ({**_fact(), 'change': 'removed'}, '`interior_energetics.grain_size` removed'),
+        (
+            {**_fact(), 'change': 'description'},
+            '`interior_energetics.grain_size`: description changed',
+        ),
+        (
+            {**_fact(), 'change': 'choices', 'old': 'a|b', 'new': 'a`c'},
+            '`interior_energetics.grain_size` choices: `a b` to `a c`',
+        ),
+        (
+            {**_fact(key=facts.CONFIG_SCHEMA), 'change': 'added', 'members': ['a', 'b']},
+            '2 keys added in `config_schema.json`',
+        ),
+        (
+            {**_fact(key='orbit.solver'), 'change': 'added', 'members': ['a', 'b', 'c']},
+            '3 keys added in `orbit.solver`',
+        ),
+    ],
+)
+def test_fact_line(fact, line):
+    """Each kind of fact is printed in words, with pipes and backticks removed from values."""
+    assert render.fact_line(fact) == line
+
+
+def test_facts_text_dedupes_and_caps():
+    """Equal lines from two PRs print once; more than the cap end in a count."""
+    same = [_fact('F1'), _fact('F2', pr='PROTEUS#2')]
+    assert render.facts_text(same) == '`interior_energetics.grain_size`: `0.1` to `0.001`'
+    many = [_fact(f'F{i}', key=f'k{i}') for i in range(render.MAX_FACTS + 2)]
+    assert render.facts_text(many).endswith('; and 2 more')
+
+
+def test_plain_replaces_dashes_pipes_and_breaks():
+    """Model text loses em and en dashes, pipes and line breaks."""
+    assert render.plain('A \u2014 B\u2013C | D\n\nE') == 'A, B, C / D E'
+
+
+def _render(draft_doc, data=None, live=False, bots=('dependabot',)):
+    return render.render_body(data or _data(), draft_doc, live, 'https://run', list(bots))
+
+
+def test_render_results_table_and_footer():
+    """A results entry is a table row with the setting change, date, link and author."""
+    body, state = _render(_draft(_entry()))
+    assert '**Dry run: not posted.' in body
+    row = next(
+        line for line in body.splitlines() if line.startswith('| Smaller default grain size')
+    )
+    assert '`interior_energetics.grain_size`: `0.1` to `0.001`.' in row
+    assert (
+        '| 6 Sep | [PROTEUS#849](https://github.com/FormingWorlds/PROTEUS/pull/849) | `@alice` |'
+        in row
+    )
+    assert (
+        'Collected between 2026-09-01T00:00:00Z and 2026-09-30T00:00:00Z (UTC) from 1 merged'
+        in body
+    )
+    assert '[Workflow run](https://run)' in body
+    assert body.rstrip().endswith(
+        '<!-- weekly-digest-state {"until":"2026-09-30T00:00:00Z","announced_open":[]} -->'
+    )
+    assert state == {'until': UNTIL, 'announced_open': []}
+
+
+def test_render_mentions_once_per_person_and_never_bots():
+    """Live: the first mention is @login and later ones plain; bots never; dry: code spans."""
+    data = _data(
+        prs=[
+            _pr(),
+            _pr('PROTEUS#850', author='alice'),
+            _pr('PROTEUS#851', author='dependabot', kind='Bot'),
+        ],
+        fact_list=[],
+    )
+    entries = [
+        _entry(section='capabilities', facts=[], title='A'),
+        _entry(section='install', facts=[], prs=['PROTEUS#850'], title='B'),
+        _entry(
+            section='install', facts=[], prs=['PROTEUS#851'], title='C', logins=['dependabot']
+        ),
+    ]
+    live, _ = _render(_draft(*entries), data, live=True)
+    assert (
+        live.count('@alice') == 1
+        and 'by alice' in live
+        and '@dependabot' not in live
+        and 'by dependabot' in live
+    )
+    assert 'Dry run' not in live
+    dry, _ = _render(_draft(*entries), data)
+    assert 'by `@alice`' in dry and dry.count('@alice') == 1
+
+
+def test_render_open_pr_announced_before_is_not_mentioned_again():
+    """An open PR from the previous post keeps its author unmentioned; a new open PR mentions."""
+    prs = [
+        _pr(),
+        _pr('PROTEUS#900', status='open', author='carol'),
+        _pr('PROTEUS#901', status='open', author='dan'),
+        _pr('PROTEUS#902', status='open', author='erin'),
+    ]
+    previous = {'until': SINCE, 'announced_open': ['PROTEUS#900', 'PROTEUS#902', 'PROTEUS#5']}
+    data = _data(prs=prs, previous=previous)
+    entries = [
+        _entry(),
+        _entry(
+            section='open',
+            prs=['PROTEUS#900', 'PROTEUS#901'],
+            facts=[],
+            logins=['carol', 'dan'],
+            title='O',
+        ),
+    ]
+    body, state = _render(_draft(*entries), data, live=True)
+    assert 'by carol, @dan' in body
+    assert state['announced_open'] == ['PROTEUS#900', 'PROTEUS#901', 'PROTEUS#902']
+
+
+def test_render_quiet_week():
+    """An empty window renders the short note and no section."""
+    body, _ = _render(_draft(empty=True), _data(prs=[], fact_list=[]))
+    assert 'Quiet week: no pull request was merged' in body and '## ' not in body
+
+
+def test_render_main_writes_both_files(tmp_path):
+    """The command writes the readable markdown and the post JSON with the same body."""
+    src, dr = tmp_path / 'c.json', tmp_path / 'd.json'
+    src.write_text(json.dumps(_data()))
+    dr.write_text(json.dumps(_draft(_entry())))
+    assert (
+        render.main([str(src), str(dr), str(tmp_path / 'out'), '--live', '--run-url', 'R']) == 0
+    )
+    doc = json.loads((tmp_path / 'out' / 'digest.json').read_text())
+    assert doc['title'] == 'PROTEUS weekly digest, 6 October 2026'
+    assert (tmp_path / 'out' / 'digest.md').read_text() == f'# {doc["title"]}\n\n{doc["body"]}'
+    assert '@alice' in doc['body'] and '`@alice`' not in doc['body']
+
+
+# draft
+
+
+def test_model_input_has_no_urls_or_commit_ids():
+    """The model sees references, text and facts, never URLs, commits or the window flags."""
+    text = json.dumps(draft.model_input(_data(releases=[_release()])))
+    assert 'https://' not in text and '"m1"' not in text and 'backdated' not in text
+    assert '"ref": "PROTEUS#849"' in text and '"id": "F1"' in text
+
+
+def test_prompt_puts_instruction_and_data_together():
+    """The instruction and the JSON data go in one stdin text."""
+    prompt = draft.build_prompt(_data())
+    assert prompt.startswith((_ROOT / 'tools' / 'digest' / 'prompt.md').read_text())
+    assert '```json\n{"window": {"since": "2026-09-01T00:00:00Z"' in prompt
+
+
+def _fake_cli(tmp_path, outputs, rc=0):
+    """A stand-in for the CLI that answers each call with the next output and logs its stdin."""
+    state = tmp_path / 'calls'
+    script = tmp_path / 'claude'
+    answers = tmp_path / 'answers.json'
+    answers.write_text(json.dumps(outputs))
+    script.write_text(
+        f'#!{sys.executable}\n'
+        'import json, sys, pathlib\n'
+        f'state = pathlib.Path({str(state)!r})\n'
+        'n = len(state.read_text().splitlines()) if state.exists() else 0\n'
+        'state.open("a").write(json.dumps(sys.argv[1:]) + "\\n")\n'
+        f'pathlib.Path({str(tmp_path)!r}, f"stdin{{n}}").write_text(sys.stdin.read())\n'
+        f'print(json.dumps(json.load(open({str(answers)!r}))[n]))\n'
+        f'sys.exit({rc})\n'
+    )
+    script.chmod(script.stat().st_mode | stat.S_IEXEC)
+    return script, state
+
+
+def test_run_model_passes_no_tools_and_the_schema(tmp_path, monkeypatch):
+    """The CLI gets no tools, the schema and the prompt on stdin; its structured output returns."""
+    script, state = _fake_cli(
+        tmp_path, [{'is_error': False, 'structured_output': {'entries': []}}]
+    )
+    monkeypatch.setenv('CLAUDE_BIN', str(script))
+    assert draft.run_model('PROMPT', 'm') == {'entries': []}
+    args = json.loads(state.read_text().splitlines()[0])
+    assert args[args.index('--tools') + 1] == '' and args[args.index('--model') + 1] == 'm'
+    assert json.loads(args[args.index('--json-schema') + 1])['required'] == ['entries']
+    assert '-p' in args and not any(a == 'PROMPT' for a in args)
+    assert (tmp_path / 'stdin0').read_text() == 'PROMPT'
+
+
+@pytest.mark.parametrize(
+    ('outputs', 'rc', 'message'),
+    [
+        ([{'is_error': True, 'structured_output': {'entries': []}}], 0, 'no structured output'),
+        ([{'is_error': False, 'result': 'text'}], 0, 'no structured output'),
+        ([{'is_error': False, 'structured_output': {'entries': []}}], 3, 'failed with code 3'),
+    ],
+)
+def test_run_model_failures_stop_the_run(tmp_path, monkeypatch, outputs, rc, message):
+    """An error result, a missing structured output or a failed call raises."""
+    script, _ = _fake_cli(tmp_path, outputs, rc)
+    monkeypatch.setenv('CLAUDE_BIN', str(script))
+    with pytest.raises(common.DigestError, match=message):
+        draft.run_model('p', 'm')
+
+
+def test_draft_main_repairs_once_then_keeps_the_answer(tmp_path, monkeypatch):
+    """A first answer that fails the checks gets one repair call with the failures; no third call."""
+    bad = {'entries': [_entry(prs=['PROTEUS#9999'])]}
+    good = {'entries': [_entry()]}
+    script, state = _fake_cli(
+        tmp_path, [{'structured_output': bad}, {'structured_output': good}, {}]
+    )
+    monkeypatch.setenv('CLAUDE_BIN', str(script))
+    src, dst = tmp_path / 'c.json', tmp_path / 'd.json'
+    src.write_text(json.dumps(_data()))
+    assert draft.main([str(src), str(dst)]) == 0
+    out = json.loads(dst.read_text())
+    assert out['entries'] == good['entries'] and out['empty'] is False
+    assert any('PROTEUS#9999' in f for f in out['first_failures'])
+    assert len(state.read_text().splitlines()) == 2
+    assert 'It failed these checks' in (tmp_path / 'stdin1').read_text()
+
+
+def test_draft_main_skips_the_model_on_an_empty_window(tmp_path, monkeypatch):
+    """A window with no merged PR and no release gives an empty draft without a model call."""
+    monkeypatch.setenv('CLAUDE_BIN', str(tmp_path / 'missing'))
+    src, dst = tmp_path / 'c.json', tmp_path / 'd.json'
+    src.write_text(json.dumps(_data(prs=[_pr(status='open')], fact_list=[])))
+    assert draft.main([str(src), str(dst)]) == 0
+    assert json.loads(dst.read_text()) == {'entries': [], 'empty': True}
+
+
+# post
+
+
+@pytest.mark.parametrize(
+    ('publish', 'event', 'post_input', 'backdated', 'live'),
+    [
+        (False, 'schedule', False, False, False),
+        (True, 'schedule', False, False, True),
+        (True, 'schedule', False, True, False),
+        (True, 'workflow_dispatch', False, False, False),
+        (True, 'workflow_dispatch', True, False, True),
+        (True, 'workflow_dispatch', True, True, False),
+        (False, 'workflow_dispatch', True, False, False),
+        (True, 'push', False, False, False),
+    ],
+)
+def test_decide(publish, event, post_input, backdated, live):
+    """Only a switched-on, non-back-dated scheduled run or confirmed dispatch posts."""
+    assert post.decide({'publish': publish}, event, post_input, backdated) is live
+
+
+def test_decide_command_prints_the_output_line(capsys, monkeypatch):
+    """The decide command prints a line for GITHUB_OUTPUT; the committed settings never post."""
+    assert (
+        post.main(
+            ['decide', '--event', 'schedule', '--post-input', 'true', '--backdated', 'false']
+        )
+        == 0
+    )
+    assert capsys.readouterr().out.strip() == 'live=false'
+    monkeypatch.setattr(post, 'load_settings', lambda: {**_VALID, 'publish': True})
+    post.main(
+        ['decide', '--event', 'schedule', '--post-input', 'false', '--backdated', 'false']
+    )
+    assert capsys.readouterr().out.strip() == 'live=true'
+
+
+def test_create_discussion_finds_the_category_by_slug():
+    """The category id is looked up by slug; a missing slug stops before any mutation."""
+    cats = {
+        'repository': {
+            'id': 'R',
+            'discussionCategories': {'nodes': [{'id': 'C9', 'slug': 'weekly-digest'}]},
+        }
+    }
+    made = {'createDiscussion': {'discussion': {'url': 'https://d/5'}}}
+    gh = _FakeGH([cats, made])
+    assert (
+        post.create_discussion(gh, 'FormingWorlds/PROTEUS', 'weekly-digest', 'T', 'B')
+        == 'https://d/5'
+    )
+    assert gh.queries[1] == {'repo': 'R', 'category': 'C9', 'title': 'T', 'body': 'B'}
+    gh = _FakeGH(
+        [
+            {
+                'repository': {
+                    'id': 'R',
+                    'discussionCategories': {'nodes': [{'id': 'C1', 'slug': 'general'}]},
+                }
+            }
+        ]
+    )
+    with pytest.raises(common.DigestError, match='no discussion category'):
+        post.create_discussion(gh, 'FormingWorlds/PROTEUS', 'weekly-digest', 'T', 'B')
+    assert len(gh.queries) == 1
+
+
+def test_discord_skips_without_a_webhook_and_blocks_pings(monkeypatch):
+    """No webhook: nothing is sent; with one: the message goes with all pings off."""
+    sent = []
+    monkeypatch.setattr(
+        post.urllib.request, 'urlopen', lambda req, timeout: sent.append(req) or _Resp(b'')
+    )
+    monkeypatch.delenv('DISCORD_WEBHOOK_URL', raising=False)
+    assert post.discord('hi') is False and sent == []
+    assert post.discord('hi @everyone', 'https://hook') is True
+    payload = json.loads(sent[0].data)
+    assert payload == {'content': 'hi @everyone', 'allowed_mentions': {'parse': []}}
+
+
+def test_publish_and_alert_commands(tmp_path, monkeypatch, capsys):
+    """Publish posts the rendered title and body, then pings; alert pings only."""
+    (tmp_path / 'digest.json').write_text(json.dumps({'title': 'T', 'body': 'B'}))
+    calls = []
+    monkeypatch.setattr(post, 'GitHub', lambda: 'gh')
+    monkeypatch.setattr(
+        post, 'create_discussion', lambda *a: calls.append(('post', a)) or 'https://d/1'
+    )
+    monkeypatch.setattr(post, 'discord', lambda m: calls.append(('discord', m)))
+    post.main(['publish', str(tmp_path)])
+    assert calls == [
+        ('post', ('gh', 'FormingWorlds/PROTEUS', 'weekly-digest', 'T', 'B')),
+        ('discord', 'T: https://d/1'),
+    ]
+    post.main(['alert', 'failed'])
+    assert calls[-1] == ('discord', 'failed')
+    with pytest.raises(SystemExit):
+        post.main(['other'])
+
+
+def test_workflow_jobs_keep_the_model_token_away_from_write_tokens():
+    """The draft job alone sees the model token and has no permissions; posting needs the live flag."""
+    yaml = pytest.importorskip('yaml')
+    flow = yaml.safe_load((_ROOT / '.github' / 'workflows' / 'weekly-digest.yml').read_text())
+    jobs = flow['jobs']
+    assert flow['permissions'] == {} and jobs['draft']['permissions'] == {}
+    assert jobs['publish']['permissions'] == {'contents': 'read', 'discussions': 'write'}
+    for name, job in jobs.items():
+        text = json.dumps(job)
+        assert ('CLAUDE_CODE_OAUTH_TOKEN' in text) is (name == 'draft'), name
+    steps = {s.get('name'): s for s in jobs['publish']['steps']}
+    assert steps['Post']['if'] == "steps.mode.outputs.live == 'true'"
+    assert flow['defaults']['run']['shell'] == 'bash'
+    assert '@anthropic-ai/claude-code@2.1.318' in json.dumps(jobs['draft'])
+
+
+def test_collect_joins_repositories_and_records_the_cut():
+    """Collect reads each repository once and records how many bodies were kept."""
+    settings_ = {
+        **_VALID,
+        'repos': ['FormingWorlds/JANUS', 'FormingWorlds/MORS'],
+        'max_bodies': 1,
+    }
+    window = {'since': '2026-11-01T00:00:00Z', 'until': '2026-11-18T00:00:00Z'}
+    mors = _janus()
+    mors['repository']['pullRequests']['nodes'] = []
+    mors['repository']['releases']['nodes'] = []
+    out = collect.collect(_FakeGH([_janus(), mors]), settings_, window)
+    assert [p['ref'] for p in out['prs']] == ['JANUS#105', 'JANUS#104', 'JANUS#103']
+    assert (out['bodies_kept'], out['bodies_cut'], out['window']) == (1, 2, window)
+    assert all('raw_body' not in p for p in out['prs'])
+
+
+def test_collect_main_marks_a_dated_run_and_skips_the_state(tmp_path, monkeypatch):
+    """With --since the previous post is not read and the window is back-dated."""
+    seen = []
+    monkeypatch.setattr(collect, 'GitHub', lambda: 'gh')
+    monkeypatch.setattr(collect, 'previous_state', lambda *a: seen.append(a))
+    monkeypatch.setattr(
+        collect, 'collect', lambda gh, s, w: {'window': w, 'prs': [], 'releases': []}
+    )
+    out = tmp_path / 'c.json'
+    assert (
+        collect.main(['--out', str(out), '--since', '2026-09-01', '--until', '2026-09-30']) == 0
+    )
+    window = json.loads(out.read_text())['window']
+    assert window == {'since': SINCE, 'until': UNTIL, 'backdated': True, 'previous': None}
+    assert seen == []
+    monkeypatch.setattr(collect, 'previous_state', lambda *a: {'until': '2026-11-10T00:00:00Z'})
+    assert collect.main(['--out', str(out), '--until', '2026-11-17']) == 0
+    window = json.loads(out.read_text())['window']
+    assert (
+        window['previous'] == {'until': '2026-11-10T00:00:00Z'}
+        and window['since'] == '2026-11-10T00:00:00Z'
+    )
+
+
+def test_known_keys_cover_every_tracked_file_kind():
+    """Config paths, helpfile columns and default-file keys with _ or . are known keys."""
+    gh = _FakeGH(
+        files={
+            ('a/P', facts.OUTPUT_SCHEMA, 'HEAD'): json.dumps(
+                {'keys': [{'name': 'T_surf'}, {'name': 'Time'}]}
+            ),
+            ('a/Z', 'input/default.toml', 'HEAD'): '[eos]\nmushy = 1\n',
+        }
+    )
+    keys = facts.known_keys(
+        gh, {'tracked': {'a/P': [facts.OUTPUT_SCHEMA], 'a/Z': ['input/default.toml']}}
+    )
+    assert keys == {'T_surf', 'eos.mushy'}
+
+
+def test_facts_main_rewrites_the_file(tmp_path, monkeypatch):
+    """The command adds facts and known keys to the collected file in place."""
+    path = tmp_path / 'c.json'
+    path.write_text(json.dumps({'prs': []}))
+    monkeypatch.setattr(facts, 'GitHub', lambda: _FakeGH())
+    assert facts.main([str(path)]) == 0
+    assert json.loads(path.read_text()) == {'prs': [], 'facts': [], 'known_keys': []}
