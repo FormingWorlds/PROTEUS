@@ -8,7 +8,7 @@ This page is for people who run or change the workflow. It explains what the wor
 
 ## What the workflow does
 
-The workflow is `.github/workflows/weekly-digest.yml`, with its scripts in `tools/digest/`. It runs every Monday at 22:23 UTC (23:23 in Amsterdam in winter, 00:23 on Tuesday in summer). You can also start it by hand. It has 4 jobs: collect, draft, a job that checks and posts, and a last job that reports a failure.
+The workflow is `.github/workflows/weekly-digest.yml`, with its scripts in `tools/digest/`. It runs every Monday at 22:23 UTC (23:23 in Amsterdam in winter, 00:23 on Tuesday in summer). You can also start it by hand. It has 3 jobs: collect, draft, and a job that checks and posts.
 
 A digest covers a window, a period of time. The window starts where the window of the last digest post ended. `collect.py` reads that time from a hidden marker (an HTML comment) at the end of the post. It trusts only a marker in a post by `github-actions`. The window ends at the time of the run. With no earlier post, the window is the last 7 days.
 
@@ -53,12 +53,9 @@ A file that gains more than 8 keys in one pull request gives one fact for the ad
 - The config keys, their values, the links, the dates and the mentions come from the collected data, not from the model text.
 - The model text is escaped, so any markdown in it shows as plain text.
 
-`post.py` posts only when posting is switched on:
+`post.py` posts only when posting is switched on. It does not post again when the newest digest post covers the same window or has the same title, so a rerun of the failed jobs or of all jobs makes no second post.
 
-- It does not post again when the newest digest post covers the same window or has the same title, so a rerun of a run that posted, failed jobs or all jobs, makes no second post.
-- After a new post, it sends the link to Discord if the repository has the secret `DISCORD_WEBHOOK_URL` (a GitHub repository secret that holds the Discord webhook address). A failed Discord message is a warning, because the post stands.
-
-If a job fails, the last job sends a message to Discord when the secret exists.
+A run that fails a check or a step is red in the Actions tab and posts nothing.
 
 ## Sections of a digest
 
@@ -115,7 +112,7 @@ The draft step needs the `claude` command line and a login or `CLAUDE_CODE_OAUTH
 
 To switch posting on:
 
-1. Check that the repository secret `CLAUDE_CODE_OAUTH_TOKEN` exists. The draft job needs it. The secret `DISCORD_WEBHOOK_URL` is optional.
+1. Check that the repository secret `CLAUDE_CODE_OAUTH_TOKEN` exists. The draft job needs it.
 2. Check that the Discussions category with the slug in `category` exists in the PROTEUS repository. A run that posts fails without it.
 3. Set `publish = true` in a pull request.
 

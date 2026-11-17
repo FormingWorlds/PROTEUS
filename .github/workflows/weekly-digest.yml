@@ -145,26 +145,4 @@ jobs:
         if: steps.mode.outputs.live == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python tools/digest/post.py publish out
-
-  alert:
-    name: Report a failed run
-    needs: [collect, draft, publish]
-    if: failure()
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions: {}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-      - name: Send the failure to Discord
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          python tools/digest/post.py alert "The weekly digest run failed; read the run before the meeting: $RUN_URL"
