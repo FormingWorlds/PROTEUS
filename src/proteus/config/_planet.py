@@ -244,8 +244,9 @@ class Planet:
             current EOS would put the mantle into the mushy zone at IC
             and you want to force a fully molten initial state by pinning
             the CMB temperature instead. PROTEUS converts the (P_cmb,
-            tcmb_init) anchor into a target entropy via PALEOS-2phase
-            lookup, then hands that S to the interior solver as if it
+            tcmb_init) anchor into a target entropy by a lookup on the
+            PALEOS MgSiO3 two-phase table pair (for either PALEOS mantle
+            key), then hands that S to the interior solver as if it
             were the isentropic IC.
         'accretion': White & Li (2025)[^cite-white2025] parameterization.
         'isentropic': set the initial specific entropy directly via

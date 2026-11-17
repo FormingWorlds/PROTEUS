@@ -2873,7 +2873,7 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
         liquid_eos = eos_entry['melted_mantle'].get('eos_file', '')
     else:
         # Unified mantle: the property surfaces come from the 2-phase pair of the
-        # same family (API or shipped), which generate_spider_tables requires.
+        # same family (API or shipped), which holds the latent-heat entropy gap.
         solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
 
     solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
@@ -2963,11 +2963,13 @@ def generate_spider_tables(config: Config, outdir: str):
        ratio applied to the PALEOS liquidus); the liquidus is the analytic
        PALEOS Belonoshko+2005 / Fei+2021 curve.
     2. ``PALEOS-2phase:<solid>`` (e.g. ``PALEOS-2phase:MgSiO3``): separate
-       solid + liquid PALEOS tables. The solidus is derived exactly as in the
-       unified layout, ``mushy_zone_factor * liquidus`` (default 0.8); the
-       two-phase tables additionally supply the latent-heat entropy gap
-       between the liquid-table entropy at the liquidus and the solid-table
-       entropy at the derived solidus.
+       solid + liquid PALEOS tables as the backbone too, with the solidus
+       derived exactly as in the unified layout, ``mushy_zone_factor * liquidus``
+       (default 0.8).
+
+    In both layouts the two-phase tables supply the latent-heat entropy gap
+    between the liquid-table entropy at the liquidus and the solid-table
+    entropy at the derived solidus.
 
     For non-PALEOS EOS types (WolfBower2018, RTPress100TPa), returns None
     and the caller is expected to fall back on pre-existing SPIDER tables.

@@ -168,7 +168,7 @@ The default is the constant solidus-to-liquidus ratio ($\approx 0.809$) of the S
 The derived solidus is therefore a constant depression of the PALEOS liquidus, not the Stixrude solidus curve: its absolute value lies well above the Stixrude solidus at low to moderate pressure (about 2900 K against 1700 K at 20 GPa, and about 10% higher at 140 GPa) and below it above roughly 200 GPa.
 The melt fraction then follows from the lever rule between this solidus and liquidus.
 
-With `mantle_eos = "PALEOS-2phase:MgSiO3"`, the SPIDER/Aragog entropy tables use the separate solid and liquid PALEOS tables, which supply the latent-heat entropy gap across the melting curve directly rather than through a single interpolated unified table.
+With either PALEOS MgSiO$_3$ key, `PALEOS:MgSiO3` or `PALEOS-2phase:MgSiO3`, the SPIDER and Aragog entropy tables and the initial-condition lookups use the separate solid and liquid PALEOS tables, which supply the latent-heat entropy gap across the melting curve. The key sets the table of the structure solve, the unified table for `PALEOS:MgSiO3`, and the top of the entropy range of the energetics tables, which follows the highest temperature of the primary table.
 Their phase boundaries follow the same construction as the unified case: the liquidus is the analytic PALEOS curve, and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor`.
 
 A run with a PALEOS EOS requires the table of each PALEOS layer, with the MgSiO$_3$ unified table only when a layer is `PALEOS:MgSiO3`. A mantle with a PALEOS component also requires the MgSiO$_3$ two-phase solid and liquid pair: the high-resolution pair for `PALEOS-2phase:MgSiO3-highres`, and the PALEOS-API cache for the PALEOS-API family.
