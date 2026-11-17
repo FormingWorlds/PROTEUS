@@ -1414,12 +1414,9 @@ class Interior_t:
             log.warning('Could not persist stale-structure flag file: %s', exc)
 
     def resume_structure_stale(self, outdir: str):
-        # Restore the stale-structure flag from disk on resume. A missing file
-        # means no fall-back was recorded, so the mesh
-        # is fresh and the flag stays False. A malformed file is treated the
-        # same way rather than aborting the resume over a visibility bit.
-        # The second field is the time of the last successful re-solve, the anchor of the
-        # stale-aware ceiling; without it the anchor is unknown (-inf).
+        # Restore the stale flag and the last-success time (the anchor of the stale-aware
+        # ceiling) on resume. A missing or malformed file means a fresh mesh; a missing
+        # second field leaves the anchor unknown (-inf).
         path = get_file_structure_stale(outdir)
         self.last_successful_struct_time = float('-inf')
         if not os.path.exists(path):
