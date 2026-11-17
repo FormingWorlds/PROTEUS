@@ -18,6 +18,8 @@ log = logging.getLogger('fwl.' + __name__)
 _DIAGNOSTIC_ONLY_KEYS = ('f_ohm', 'flux_geometry')
 # core_module settings the solver reads itself; the budget factory rejects them.
 SOLVER_ONLY_KEYS = ('q_radio', 'ra_crit_cmb')
+# core_module settings of the tabulated profile, which the Gaussian profile does not pass.
+TABULATED_KEYS = ('profile_source', 'core_cp_override', 'core_t_cmb_step')
 # Scalars of the core profile and its CMB geometry, with their snapshot units.
 _FROZEN_UNITS = {
     'rho_cen': 'kg m-3',
@@ -126,6 +128,9 @@ def core_module_params(config, hf_row: dict, interior_o, outdir: str) -> dict:
     params = attrs.asdict(config.interior_energetics.aragog.core_module)
     for key in _DIAGNOSTIC_ONLY_KEYS:
         params.pop(key)
+    if params['profile_source'] == 'gaussian':
+        for key in TABULATED_KEYS:
+            params.pop(key)
 
     if getattr(config.params, 'resume', False) is True and 'Time' in hf_row:
         snap = _snapshot_frozen_profile(outdir, hf_row['Time'])
@@ -265,7 +270,10 @@ def profile_key(budget) -> tuple:
     """The density profile and the CMB geometry of a core budget; Aragog builds a new
     budget object for the same core when its parameter set changes form."""
     profiles = budget.profiles
-    return profiles.rho_cen, profiles.length_scale, profiles.r_cmb, profiles.p_cmb
+    shape = getattr(profiles, 'length_scale', None)
+    if shape is None:  # tabulated: the node count and the lowest isentrope
+        shape = (profiles.n_nodes, float(profiles.t_grid[0]))
+    return profiles.rho_cen, shape, profiles.r_cmb, profiles.p_cmb
 
 
 def fitted_core_budget(solver, m_core: float, p_cen: float) -> tuple:
@@ -434,6 +442,11 @@ def carry_core_across_update(hf_row: dict, interior_o, solver, before: tuple) ->
     r_cmb, p_cmb = float(solver._r_basic_flat[0]), float(solver._P_basic_flat[0])
     if (r_cmb, p_cmb) == (old.profiles.r_cmb, old.profiles.p_cmb):
         return
+    if getattr(old, 'tabulated', False) is True:
+        from proteus.interior_energetics.aragog_core_tabulated import carry_tabulated
+
+        carry_tabulated(interior_o, solver, old, t_old)
+        return
     m_core = getattr(interior_o, '_frozen_core_m_core', None)
     if m_core is None:  # a snapshot without the core mass: the mass of the profile before
         m_core = old.profiles.enclosed_mass(old.profiles.r_cmb)
@@ -498,9 +511,17 @@ def write_core_diagnostics(runner, output: dict, dt_actual_yr: float = 0.0, out=
     from aragog.core import CoreEntropyBudget, crystallization_regime
 
     cm_cfg = runner._config.interior_energetics.aragog.core_module
-    ent = CoreEntropyBudget(
-        budget, k_core=cm_cfg.k_core, f_ohm=cm_cfg.f_ohm, flux_geometry=cm_cfg.flux_geometry
-    )
+    tabulated = getattr(budget, 'tabulated', False) is True
+    if tabulated and not getattr(runner, '_dynamo_skip_logged', False):
+        log.info(
+            'Tabulated core profile: core_dynamo_margin and core_B_rms are not computed (0)'
+        )
+        runner._dynamo_skip_logged = True
+    ent = None
+    if not tabulated:
+        ent = CoreEntropyBudget(
+            budget, k_core=cm_cfg.k_core, f_ohm=cm_cfg.f_ohm, flux_geometry=cm_cfg.flux_geometry
+        )
 
     t_cmb = float(output['T_cmb'])
     area = 4.0 * np.pi * float(budget.profiles.r_cmb) ** 2
@@ -515,10 +536,12 @@ def write_core_diagnostics(runner, output: dict, dt_actual_yr: float = 0.0, out=
     upper = {'gravitational_upper': base} if np.isfinite(base) else {}
     output['core_r_icb'] = float(budget.r_icb(t_cmb))
     output['core_C_eff'] = float(budget.effective_capacity(t_cmb, **upper))
-    output['core_dynamo_margin'] = float(
-        ent.entropy_margin(t_cmb, q_cmb, q_radio=cm_cfg.q_radio, t_shell=t_shell)
-    )
-    output['core_B_rms'] = float(ent.b_rms_core(t_cmb, q_cmb))
+    output['core_dynamo_margin'] = output['core_B_rms'] = 0.0
+    if ent is not None:
+        output['core_dynamo_margin'] = float(
+            ent.entropy_margin(t_cmb, q_cmb, q_radio=cm_cfg.q_radio, t_shell=t_shell)
+        )
+        output['core_B_rms'] = float(ent.b_rms_core(t_cmb, q_cmb))
     output['core_regime'] = float(int(crystallization_regime(budget, t_cmb)))
     output['core_strat_depth'] = (
         float(budget.profiles.r_cmb) - base if np.isfinite(base) else 0.0

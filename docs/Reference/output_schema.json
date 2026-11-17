@@ -2247,7 +2247,7 @@
     {
       "name": "core_dynamo_margin",
       "unit": "W K-1",
-      "description": "entropy margin for dynamo action; computed only with core_bc = core_module, 0 otherwise",
+      "description": "entropy margin for dynamo action; computed only with core_bc = core_module and profile_source = gaussian, 0 otherwise",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
@@ -2262,7 +2262,7 @@
     {
       "name": "core_B_rms",
       "unit": "T",
-      "description": "rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); computed only with core_bc = core_module, 0 otherwise",
+      "description": "rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); computed only with core_bc = core_module and profile_source = gaussian, 0 otherwise",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [

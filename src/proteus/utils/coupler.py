@@ -1155,8 +1155,8 @@ def GetHelpfileKeys():
         # Core evolution diagnostic keys for core_module mode
         'core_r_icb',           # inner-core boundary radius; computed only with core_bc = core_module, 0 otherwise [m]
         'core_C_eff',           # core effective heat capacity incl. nucleation terms; computed only with core_bc = core_module, 0 otherwise [J K-1]
-        'core_dynamo_margin',   # entropy margin for dynamo action; computed only with core_bc = core_module, 0 otherwise [W K-1]
-        'core_B_rms',           # rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); computed only with core_bc = core_module, 0 otherwise [T]
+        'core_dynamo_margin',   # entropy margin for dynamo action; computed only with core_bc = core_module and profile_source = gaussian, 0 otherwise [W K-1]
+        'core_B_rms',           # rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); computed only with core_bc = core_module and profile_source = gaussian, 0 otherwise [T]
         'core_regime',          # crystallisation code: 0 fully liquid, 1 freezing from the centre outwards, 4 fully frozen; 2 (from the top) and 3 (snow) do not appear, Aragog ends the run at such a state; computed only with core_bc = core_module, 0 otherwise [1]
         'core_strat_depth',     # thermally stratified layer depth below the CMB; computed only with core_bc = core_module, 0 otherwise [m]
         'core_T_top',           # temperature at the top of the core, the top shell cell with stratification, else T_cmb; computed only with core_bc = core_module, 0 otherwise [K]

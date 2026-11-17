@@ -160,18 +160,33 @@ def test_the_update_keeps_the_entropy_and_books_the_parcel_heat(pair, validation
     )
     assert 1.5 < ratio < 1.75
 
+    table = [
+        _parcel_term(old, new, t, carried_temperature(old, new, t)[0], c_p=cp)
+        for t, cp in zip(temps, old.profiles.table.value('cp', old.profiles.p_cmb, temps))
+    ]
+
     def figure():
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(figsize=(6, 4))
-        ax.plot(temps, np.array(terms) / 1e29, 'o-', label='content change T C$_s$ - R')
-        ax.plot(temps, np.array(parcels) / 1e29, 'x--', ms=9, label='840 J/kg/K x parcel dT')
-        ax.set_xlabel('CMB temperature before the update [K]')
+        ax.plot(temps, np.array(terms) / 1e29, 'o-', label='T C$_s$ - R')
+        ax.plot(temps, np.array(parcels) / 1e29, 'x--', ms=9, label='840 x parcel dT')
+        ax.plot(temps, np.array(table) / 1e29, 's:', label='table c$_p$ x parcel dT')
+        ax.set_xlabel('CMB temperature before [K]')
         ax.set_ylabel('structure term [10$^{29}$ J]')
-        ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1.0), fontsize=8)
+        ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1.0))
         fig.tight_layout()
         return fig
 
+    fig = figure()
+    fig.canvas.draw()
+    ax, renderer = fig.axes[0], fig.canvas.get_renderer()
+    points = np.vstack(
+        [ax.transData.transform(np.column_stack(ln.get_data())) for ln in ax.lines]
+    )
+    for artist in (ax.get_legend(), ax.xaxis.label, ax.yaxis.label):
+        box = artist.get_window_extent(renderer)
+        assert not any(box.contains(x, y) for x, y in points)
     validation_plot(figure, 'core_tabulated_structure_term')
 
 
