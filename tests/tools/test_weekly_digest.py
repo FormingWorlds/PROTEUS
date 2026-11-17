@@ -1154,38 +1154,18 @@ def test_create_discussion_finds_the_category_by_slug():
     assert len(gh.queries) == 1
 
 
-def test_discord_skips_without_a_webhook_and_blocks_pings(monkeypatch):
-    """No webhook: nothing is sent; with one: the message goes with all pings off."""
-    sent = []
-    monkeypatch.setattr(
-        post.urllib.request, 'urlopen', lambda req, timeout: sent.append(req) or _Resp(b'')
-    )
-    monkeypatch.delenv('DISCORD_WEBHOOK_URL', raising=False)
-    assert post.discord('hi') is False and sent == []
-    assert post.discord('hi @everyone', 'https://hook') is True
-    payload = json.loads(sent[0].data)
-    assert payload == {'content': 'hi @everyone', 'allowed_mentions': {'parse': []}}
-
-
-def test_publish_and_alert_commands(tmp_path, monkeypatch, capsys):
-    """Publish posts the rendered title and body, then pings; alert pings only."""
+def test_publish_posts_once_and_has_no_alert_command(tmp_path, monkeypatch):
+    """Publish posts the rendered title and body; there is no Discord ping and no alert command."""
     (tmp_path / 'digest.json').write_text(json.dumps({'title': 'T', 'body': 'B'}))
     calls = []
     monkeypatch.setattr(post, 'GitHub', lambda: 'gh')
     monkeypatch.setattr(post, 'previous_state', lambda *a: None)
-    monkeypatch.setattr(
-        post, 'create_discussion', lambda *a: calls.append(('post', a)) or 'https://d/1'
-    )
-    monkeypatch.setattr(post, 'discord', lambda m: calls.append(('discord', m)))
-    post.main(['publish', str(tmp_path)])
-    assert calls == [
-        ('post', ('gh', 'FormingWorlds/PROTEUS', 'weekly-digest', 'T', 'B')),
-        ('discord', 'T: https://d/1'),
-    ]
-    post.main(['alert', 'failed'])
-    assert calls[-1] == ('discord', 'failed')
+    monkeypatch.setattr(post, 'create_discussion', lambda *a: calls.append(a) or 'https://d/1')
+    assert post.main(['publish', str(tmp_path)]) == 0
+    assert calls == [('gh', 'FormingWorlds/PROTEUS', 'weekly-digest', 'T', 'B')]
+    assert not hasattr(post, 'discord')
     with pytest.raises(SystemExit):
-        post.main(['other'])
+        post.main(['alert', 'failed'])
 
 
 def _jobs():
@@ -1198,12 +1178,13 @@ def _jobs():
 def test_workflow_jobs_keep_the_model_token_away_from_write_tokens():
     """The draft job alone sees the model token and has no permissions; posting needs the live flag."""
     text, jobs = _jobs()
-    assert set(jobs) == {'collect', 'draft', 'publish', 'alert'}
+    assert set(jobs) == {'collect', 'draft', 'publish'}
+    assert 'DISCORD' not in text and 'discord' not in text.lower()
     assert '\npermissions: {}\n' in text and 'shell: bash' in text
     assert '    permissions: {}\n' in jobs['draft']
     perms = re.search(r'    permissions:\n((?:      .*\n)+)', jobs['publish']).group(1)
     assert perms == '      contents: read\n      discussions: write\n'
-    assert all('write' not in jobs[j] for j in ('collect', 'draft', 'alert'))
+    assert all('write' not in jobs[j] for j in ('collect', 'draft'))
     assert 'github.token' not in jobs['draft'] and 'GITHUB_TOKEN' not in jobs['draft']
     for name, job in jobs.items():
         assert ('CLAUDE_CODE_OAUTH_TOKEN' in job) is (name == 'draft'), name
@@ -1433,19 +1414,6 @@ def test_known_keys_fail_when_a_tracked_file_is_missing():
         facts.known_keys(_FakeGH(), {'tracked': {'a/P': [facts.CONFIG_SCHEMA]}})
 
 
-def test_discord_failure_after_a_post_is_a_warning(monkeypatch, capsys):
-    """A failed ping returns False and prints a warning; the post stands."""
-    import urllib.error
-
-    monkeypatch.setattr(
-        post.urllib.request,
-        'urlopen',
-        lambda req, timeout: (_ for _ in ()).throw(urllib.error.URLError('down')),
-    )
-    assert post.discord('hi', 'https://hook') is False
-    assert 'Discord ping failed' in capsys.readouterr().out
-
-
 def test_publish_skips_a_window_that_is_already_posted(tmp_path, monkeypatch, capsys):
     """A rerun after a post finds the post of the same window and does not post again."""
     body = (
@@ -1525,12 +1493,6 @@ def test_mutation_is_sent_once_on_a_network_error(monkeypatch):
     assert len(calls) == 1
 
 
-def test_discord_bad_webhook_is_a_warning(capsys):
-    """A malformed webhook address is a warning after a post, not a failed job."""
-    assert post.discord('m', 'discord.example/x') is False
-    assert 'Discord ping failed' in capsys.readouterr().out
-
-
 def test_render_escapes_dollar_and_release_url():
     """A dollar sign cannot start math, and a release URL cannot close its link early."""
     assert render.escape('costs $5 and $6') == 'costs \\$5 and \\$6'
@@ -1588,11 +1550,9 @@ def test_publish_skips_a_second_post_with_the_same_title(tmp_path, monkeypatch, 
 
 
 def test_http_protocol_errors_are_handled(monkeypatch, capsys):
-    """A bad webhook address or a broken HTTP answer is a warning for Discord and a digest error for GitHub."""
+    """A broken HTTP answer from GitHub is a digest error."""
     import http.client
 
-    assert post.discord('m', 'https://discord.com/api/webhooks/1/a b') is False
-    assert 'Discord ping failed' in capsys.readouterr().out
     monkeypatch.setattr(
         common.urllib.request,
         'urlopen',
