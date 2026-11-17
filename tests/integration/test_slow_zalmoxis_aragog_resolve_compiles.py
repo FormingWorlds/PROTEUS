@@ -10,7 +10,7 @@ The compile count comes from JAX's backend-compile event; a log handler on the s
 wrapper marks each accepted re-solve ("Zalmoxis re-solve wall"). Atmosphere, star, orbit,
 escape and chemistry are dummy modules; CALLIOPE stays from the shared config.
 
-Runtime: about 8 min on an Apple M1 Ultra with one XLA thread.
+Runtime: about 9 min on an Apple M1 Ultra with one XLA thread.
 """
 
 from __future__ import annotations
@@ -68,7 +68,8 @@ def test_structure_resolves_reuse_the_compiled_programs(tmp_path):
     assert marks[0] > 0, 'no JAX compile seen before the first re-solve'
     radii = runner.hf_all['R_int'].round(0).unique()
     assert radii.size >= 5, f'the radius took only {radii.size} values'
-    assert len(compiles) == marks[1], (
-        f'{len(compiles) - marks[1]} JAX compiles after the second re-solve; '
-        f'count at each re-solve {marks}, at the end {len(compiles)}'
+    n_end = len(compiles)
+    assert n_end == marks[1], (
+        f'{n_end - marks[1]} JAX compiles after the second re-solve; '
+        f'count at each re-solve {marks}, at the end {n_end}'
     )
