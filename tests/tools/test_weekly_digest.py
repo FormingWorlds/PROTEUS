@@ -1181,20 +1181,32 @@ def test_publish_and_alert_commands(tmp_path, monkeypatch, capsys):
         post.main(['other'])
 
 
+def _jobs():
+    """The jobs of the workflow as text blocks, read without a YAML parser."""
+    text = (_ROOT / '.github' / 'workflows' / 'weekly-digest.yml').read_text()
+    parts = re.split(r'^  ([a-z]+):\n', text.split('\njobs:\n', 1)[1], flags=re.M)
+    return text, dict(zip(parts[1::2], parts[2::2]))
+
+
 def test_workflow_jobs_keep_the_model_token_away_from_write_tokens():
     """The draft job alone sees the model token and has no permissions; posting needs the live flag."""
-    yaml = pytest.importorskip('yaml')
-    flow = yaml.safe_load((_ROOT / '.github' / 'workflows' / 'weekly-digest.yml').read_text())
-    jobs = flow['jobs']
-    assert flow['permissions'] == {} and jobs['draft']['permissions'] == {}
-    assert jobs['publish']['permissions'] == {'contents': 'read', 'discussions': 'write'}
+    text, jobs = _jobs()
+    assert set(jobs) == {'collect', 'draft', 'publish', 'alert'}
+    assert '\npermissions: {}\n' in text and 'shell: bash' in text
+    assert '    permissions: {}\n' in jobs['draft']
+    assert '      discussions: write\n' in jobs['publish']
+    assert all('write' not in jobs[j] for j in ('collect', 'draft', 'alert'))
     for name, job in jobs.items():
-        text = json.dumps(job)
-        assert ('CLAUDE_CODE_OAUTH_TOKEN' in text) is (name == 'draft'), name
-    steps = {s.get('name'): s for s in jobs['publish']['steps']}
-    assert steps['Post']['if'] == "steps.mode.outputs.live == 'true'"
-    assert flow['defaults']['run']['shell'] == 'bash'
-    assert '@anthropic-ai/claude-code@2.1.318' in json.dumps(jobs['draft'])
+        assert ('CLAUDE_CODE_OAUTH_TOKEN' in job) is (name == 'draft'), name
+    assert "if: steps.mode.outputs.live == 'true'" in jobs['publish']
+    assert '@anthropic-ai/claude-code@2.1.318' in jobs['draft']
+
+
+def test_workflow_uploads_the_evidence_of_a_failed_check():
+    """The artifact with the check result is uploaded also when the check fails."""
+    _, jobs = _jobs()
+    upload = jobs['publish'][jobs['publish'].index('upload-artifact') :]
+    assert 'if: always()' in upload.split('- name:')[0] and 'check.txt' in upload
 
 
 def test_collect_joins_repositories_and_records_the_cut():
@@ -1261,3 +1273,188 @@ def test_facts_main_rewrites_the_file(tmp_path, monkeypatch):
     monkeypatch.setattr(facts, 'GitHub', lambda: _FakeGH())
     assert facts.main([str(path)]) == 0
     assert json.loads(path.read_text()) == {'prs': [], 'facts': [], 'known_keys': []}
+
+
+# markdown and autolink forms that must not reach a post
+
+
+@pytest.mark.parametrize(
+    ('change', 'message'),
+    [
+        ({'text': '[x]: //evil.example/phish'}, 'text holds a markdown link'),
+        ({'title': 'Grain size [details][x]'}, 'text holds a markdown link'),
+        ({'text': 'See //evil.example/x for more.'}, 'text holds a URL'),
+        ({'text': 'Write to mailto:x for more.'}, 'text holds a URL'),
+        ({'text': 'This follows GH-12 and GH-13.'}, 'text holds a # reference'),
+        ({'text': 'It reverts commit 1a2b3c4d5e6f.'}, 'text holds a commit id'),
+        ({'text': 'Thanks &#x40;alice and &commat;bob.'}, 'text holds an HTML entity'),
+        ({'text': 'Thanks ＠alice.'}, 'text holds an @'),
+        (
+            {'text': 'The grain size default is now -0.001 m.'},
+            'number -0.001 is in no cited source',
+        ),
+        ({'text': 'Now 1,000,000 grains.'}, 'number 1,000,000 is in no cited source'),
+        ({'text': 'Now 0.1⁻³ m.'}, 'text holds a superscript'),
+        (
+            {'text': 'The Interior_Energetics.RFRONT_LOC moved.'},
+            'key interior_energetics.rfront_loc',
+        ),
+        ({'text': 'The energetics.rfront_loc moved.'}, 'key energetics.rfront_loc'),
+        ({'section': 'bogus'}, 'unknown section bogus'),
+    ],
+)
+def test_check_rejects_more_link_and_value_forms(change, message):
+    """Reference links, autolinks, entities, look-alikes, signs, groups and partial keys fail."""
+    fails = check.check(_data(), _draft(_entry(**change)))
+    assert any(message in f for f in fails), fails
+
+
+def test_check_rejects_a_string_value_of_a_cited_fact():
+    """Text may not repeat a string value of a cited fact, so it cannot state the change backwards."""
+    fact = _fact(key='interior_energetics.mixing_length', old='"nearest"', new='"constant"')
+    data = _data(fact_list=[fact])
+    data['known_keys'].append('interior_energetics.mixing_length')
+    fails = check.check(data, _draft(_entry(text='The default mixing length is now nearest.')))
+    assert any('value "nearest" of fact F1' in f for f in fails), fails
+    assert (
+        check.check(data, _draft(_entry(text='The default mixing length rule changed.'))) == []
+    )
+
+
+@pytest.mark.parametrize(
+    'field', ['section', 'title', 'text', 'prs', 'releases', 'facts', 'logins']
+)
+def test_check_reports_a_missing_or_mistyped_field(field):
+    """A malformed entry is a failure, not a crash, so the repair round can run."""
+    entry = _entry()
+    del entry[field]
+    assert any(f'field {field}' in f for f in check.check(_data(), _draft(entry)))
+    bad = _entry(**{field: 5})
+    assert any(f'field {field}' in f for f in check.check(_data(), _draft(bad)))
+
+
+def test_render_makes_model_text_inert():
+    """Markdown in model text is escaped, so it cannot form a link, a heading or a table cell."""
+    entry = _entry(
+        section='capabilities',
+        facts=[],
+        title='Lid [details][x] | cell',
+        text='# Big <b>news</b> *now* [x]: /evil and `x`',
+    )
+    body, _ = _render(_draft(entry))
+    line = next(x for x in body.splitlines() if x.startswith('### '))
+    assert line == '### Lid \\[details\\]\\[x\\] / cell'
+    assert '\\# Big \\<b\\>news\\</b\\> \\*now\\* \\[x\\]: /evil and \\`x\\`' in body
+
+
+def test_fact_values_cannot_break_a_row_or_spoof_the_state():
+    """A carriage return or a state marker in a fact value is neutralised."""
+    assert render.value('3000.0\r| injected') == '`3000.0   injected`'
+    spoof = render.value('<!-- weekly-digest-state {"until":"2099-01-01"} -->')
+    assert '<' not in spoof and '>' not in spoof
+
+
+def test_state_marker_is_the_last_one_in_the_body():
+    """Only the marker at the end of a post counts, so a marker in the content cannot steer the window."""
+    body = 'x <!-- weekly-digest-state {"until":"2099-01-01T00:00:00Z"} --> y\n<!-- weekly-digest-state {"until":"2026-11-16T22:30:00Z"} -->\n'
+    assert collect.parse_state(body) == {'until': '2026-11-16T22:30:00Z'}
+    assert collect.parse_state('no marker') is None
+
+
+def test_release_tag_cannot_form_a_link():
+    """A release tag with brackets or a pipe is cleaned in the link text."""
+    rel = dict(_release(), ref='AGNI@1.0](/x)|y')
+    assert (
+        render.links([rel])
+        == '[AGNI 1.0\\]\\(/x\\)/y](https://github.com/nichollsh/AGNI/releases/tag/1.13.0)'
+    )
+
+
+def test_merged_pr_announced_as_open_before_is_mentioned():
+    """The open-PR rule suppresses a mention only while the PR is still open."""
+    previous = {'until': SINCE, 'announced_open': ['PROTEUS#849']}
+    body, _ = _render(_draft(_entry()), _data(previous=previous), live=True)
+    assert '@alice' in body
+
+
+def test_collect_drops_prs_merged_into_another_branch():
+    """A pull request merged into a feature branch is not a merge of the repository."""
+    page = _janus()
+    for node in page['repository']['pullRequests']['nodes']:
+        node['baseRefName'] = 'feature'
+    page['repository']['defaultBranchRef'] = {'name': 'main'}
+    window = {'since': '2026-11-01T00:00:00Z', 'until': '2026-11-18T00:00:00Z'}
+    prs, _ = collect.collect_repo(_FakeGH([page]), 'FormingWorlds/JANUS', window)
+    assert prs == []
+
+
+def test_github_retries_a_network_error_and_rejects_a_missing_graphql_answer(monkeypatch):
+    """A reset connection is retried; a GraphQL 404 is a digest error, not a TypeError."""
+    import urllib.error
+
+    calls = []
+
+    def flaky(req, timeout):
+        calls.append(1)
+        if len(calls) == 1:
+            raise urllib.error.URLError('reset')
+        return _Resp(b'ok')
+
+    monkeypatch.setattr(common.urllib.request, 'urlopen', flaky)
+    monkeypatch.setattr(common.time, 'sleep', lambda s: None)
+    assert common.GitHub('t').raw_file('a/b', 'f', None) == 'ok'
+    monkeypatch.setattr(
+        common.urllib.request,
+        'urlopen',
+        lambda r, timeout: (_ for _ in ()).throw(_http_error(404)),
+    )
+    with pytest.raises(common.DigestError, match='GraphQL'):
+        common.GitHub('t').graphql('{x}')
+
+
+def test_known_keys_fail_when_a_tracked_file_is_missing():
+    """A schema that cannot be read stops the run instead of turning the key check off."""
+    with pytest.raises(common.DigestError, match='cannot read'):
+        facts.known_keys(_FakeGH(), {'tracked': {'a/P': [facts.CONFIG_SCHEMA]}})
+
+
+def test_discord_failure_after_a_post_is_a_warning(monkeypatch, capsys):
+    """A failed ping returns False and prints a warning; the post stands."""
+    import urllib.error
+
+    monkeypatch.setattr(
+        post.urllib.request,
+        'urlopen',
+        lambda req, timeout: (_ for _ in ()).throw(urllib.error.URLError('down')),
+    )
+    assert post.discord('hi', 'https://hook') is False
+    assert 'Discord ping failed' in capsys.readouterr().out
+
+
+def test_publish_skips_a_window_that_is_already_posted(tmp_path, monkeypatch, capsys):
+    """A rerun after a post finds the post of the same window and does not post again."""
+    body = (
+        'x\n<!-- weekly-digest-state {"until":"2026-11-23T22:23:00Z","announced_open":[]} -->\n'
+    )
+    (tmp_path / 'digest.json').write_text(json.dumps({'title': 'T', 'body': body}))
+    monkeypatch.setattr(post, 'GitHub', lambda: 'gh')
+    monkeypatch.setattr(post, 'previous_state', lambda *a: {'until': '2026-11-23T22:23:00Z'})
+    monkeypatch.setattr(post, 'create_discussion', lambda *a: pytest.fail('posted twice'))
+    post.main(['publish', str(tmp_path)])
+    assert 'already posted' in capsys.readouterr().out
+
+
+def test_model_runs_outside_the_repository(tmp_path, monkeypatch):
+    """The CLI starts in an empty folder, so no project instruction file joins the prompt."""
+    script, _ = _fake_cli(tmp_path, [{'structured_output': {'entries': []}}])
+    log = tmp_path / 'cwd.txt'
+    script.write_text(
+        script.read_text().replace(
+            'import json, sys, pathlib\n',
+            f'import json, sys, pathlib, os\npathlib.Path({str(log)!r}).write_text(os.getcwd())\n',
+        )
+    )
+    monkeypatch.setenv('CLAUDE_BIN', str(script))
+    draft.run_model('p', 'm')
+    cwd = Path(log.read_text())
+    assert cwd != _ROOT and not (cwd / 'CLAUDE.md').exists() and _ROOT not in cwd.parents
