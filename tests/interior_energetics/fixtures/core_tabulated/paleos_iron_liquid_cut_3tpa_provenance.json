@@ -1,0 +1,16 @@
+{
+"source_file": "2phase_iron_liquid_b303091f12_897e5808_839234458a.dat",
+"source_md5": "4b5bbad2fef7355f59a76fb39ac3850b",
+"source_data_rows_md5": "ef3a620f93a478abb3be73ee71d1986e",
+"source_grid": [140, 53],
+"box": {"P_Pa": [47000000000.0, 3000000000000.0], "T_K": [2000.0, 20000.0]},
+"cut_P_Pa": [44772074200.0, 3000000000000.0, 74],
+"cut_T_K": [1996.35463, 20000.0, 41],
+"units": {"P_Pa": "Pa", "T_K": "K", "rho": "kg/m^3", "u": "J/kg", "s": "J/(kg K)", "cp": "J/(kg K)", "cv": "J/(kg K)", "alpha": "1/K", "nabla_ad": "-"},
+"layout": "each property is a 2D array [P index, T index]; h = u + P/rho; bilinear in (log10 P, log10 T)",
+"header_lines": ["# ==============================================================================", "# PALEOS Fe EoS Lookup Table \u2014 PROTEUS (live-generated)", "# ==============================================================================", "#", "# Kind: liquid (Luo24, metastable extension below melting)", "# Generator: zalmoxis.eos.paleos_api", "# PALEOS_SHA: b303091f12cc4cb73a3fdf04684ba89fda3e651a", "# BUILD_KEY: 897e5808", "# grid_hash: 839234458a", "# generated: 2026-11-07 12:35:03 UTC", "#", "# P grid: 140 pts log-uniform in [1.00000000e+09, 3.00000000e+12] Pa", "# T grid: 53 pts log-uniform in [1.00000000e+03, 2.00000000e+04] K", "# Grid size: 140 x 53 = 7420 points", "#            (7420 valid / 0 skipped due to non-convergence)", "#", "# Columns: P[Pa] T[K] rho[kg/m^3] u[J/kg] s[J/(kg K)] cp[J/(kg K)] cv[J/(kg K)] alpha[1/K] nabla_ad[-] phase", "# Interpolation: bilinear in (log10 P, log10 T); NaNs mark non-converged cells, consumer uses NN fallback.", "# Luo24 evaluated everywhere; phase column is always \"liquid\".", "# =============================================================================="],
+"npz_md5": "4a2f10fc1d6ce99b32b787992014eac4",
+"npz_bytes": 123855,
+"script": "make_core_liquid_cut.py",
+"npz_file": "paleos_iron_liquid_cut_3tpa.npz"
+}
