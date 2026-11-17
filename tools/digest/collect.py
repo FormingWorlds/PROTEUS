@@ -51,7 +51,7 @@ POSTS_QUERY = """
 query($owner: String!, $name: String!, $category: ID!) {
   repository(owner: $owner, name: $name) {
     discussions(first: 20, categoryId: $category, orderBy: {field: CREATED_AT, direction: DESC}) {
-      nodes { url createdAt body author { login __typename } }
+      nodes { url title createdAt body author { login __typename } }
     }
   }
 }
@@ -99,9 +99,10 @@ def parse_state(body: str) -> dict | None:
     found = STATE_RE.findall(body or '')
     try:
         state = json.loads(found[-1]) if found else None
-    except json.JSONDecodeError:
+        parse_time(state['until'])
+    except (json.JSONDecodeError, TypeError, KeyError, ValueError):
         return None
-    return state if isinstance(state, dict) else None
+    return state
 
 
 def previous_state(gh: GitHub, home: str, category: str) -> dict | None:
@@ -119,9 +120,8 @@ def previous_state(gh: GitHub, home: str, category: str) -> dict | None:
         author = post['author'] or {}
         if author.get('login') != 'github-actions' or author.get('__typename') != 'Bot':
             continue
-        state = parse_state(post['body'])
-        if state:
-            return {**state, 'url': post['url']}
+        if state := parse_state(post['body']):
+            return {**state, 'url': post['url'], 'title': post.get('title')}
     return None
 
 

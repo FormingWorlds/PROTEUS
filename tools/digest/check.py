@@ -16,6 +16,7 @@ import json
 import math
 import re
 import sys
+import unicodedata
 
 from common import SECTIONS
 
@@ -34,6 +35,7 @@ FORBIDDEN = {
     'a commit id': re.compile(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', re.I),
     'a superscript': re.compile('[\u00b2\u00b3\u00b9\u2070-\u207f]'),
 }
+MINUS = '\u2212\u02d7'
 FIELDS = {
     'section': str,
     'title': str,
@@ -47,8 +49,9 @@ FIELDS = {
 
 def numbers(text: str) -> set[str]:
     """Return the number tokens of a text, for example ``-0.8``, ``1.13.0``, ``v1.0.0``, ``1,000`` or ``1e-3``."""
-    text = re.sub('[\u2212\ufe63\uff0d]', '-', re.sub(r'\bv(?=\d)', ' ', text))
-    return set(NUMBER_RE.findall(text))
+    text = unicodedata.normalize('NFKC', re.sub(r'\bv(?=\d)', ' ', text))
+    text = ''.join('-' if c in MINUS or unicodedata.category(c) == 'Pd' else c for c in text)
+    return set(NUMBER_RE.findall(re.sub(r'(?<![\w.])([a-z])(?=\d)', r'\1 ', text)))
 
 
 def _float(token: str) -> float | None:
@@ -102,15 +105,31 @@ def shape_failures(entry: object) -> list[str]:
     return fails
 
 
+def _has(word: str, text: str) -> bool:
+    return bool(re.search(rf'(?<!\w){re.escape(word)}(?!\w)', text, re.I))
+
+
 def fact_value_failures(name: str, text: str, facts: list[dict]) -> list[str]:
-    """Text that repeats the old string value of a changed setting, which can state the change backwards."""
+    """Sentences that state a new setting with the old string value of a cited change.
+
+    A sentence fails when it holds the old value and "now" or "default" but not the
+    new value; the old value as an ordinary word elsewhere passes.
+    """
     fails = []
+    sentences = re.split(r'[.;!?](?:\s|$)', text)
     for fact in facts:
-        word = fact['old'].strip('\'"') if isinstance(fact['old'], str) else ''
-        if fact['change'] not in ('default', 'value') or len(word) < 3 or len(word) > 40:
+        old, new = (str(v).strip('\'"') for v in (fact['old'], fact['new']))
+        if (
+            fact['change'] not in ('default', 'value')
+            or not 3 <= len(old) <= 40
+            or _float(old) is not None
+        ):
             continue
-        if _float(word) is None and re.search(rf'(?<!\w){re.escape(word)}(?!\w)', text, re.I):
-            fails.append(f'{name}: text holds the old value "{word}" of fact {fact["id"]}')
+        if any(
+            _has(old, s) and not _has(new, s) and re.search(r'\b(now|default)', s, re.I)
+            for s in sentences
+        ):
+            fails.append(f'{name}: text holds the old value "{old}" of fact {fact["id"]}')
     return fails
 
 
@@ -158,6 +177,11 @@ def check_entry(entry: dict, index: dict) -> list[str]:
     ]
     text = f'{entry["title"]} {entry["text"]}'
     fails += [f'{name}: text holds {what}' for what, rx in FORBIDDEN.items() if rx.search(text)]
+    kinds = {unicodedata.category(c) for c in text if c not in '\t\n\r'}
+    if kinds & {'Cf', 'Cc'}:
+        fails.append(f'{name}: text holds an invisible character')
+    if any(unicodedata.category(c) == 'No' and not '\u2080' <= c <= '\u2089' for c in text):
+        fails.append(f'{name}: text holds a special number character')
     sources = set()
     for item in prs + rels:
         sources |= numbers(

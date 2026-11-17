@@ -2,7 +2,7 @@
 
 The developers of the PROTEUS ecosystem (PROTEUS and its module repositories) read a short digest at the start of their Tuesday meeting. A GitHub Actions workflow in this repository writes it each week. The digest is a selection of the pull requests merged since the last digest, the open pull requests that need review, and the new releases. When posting is switched on, it goes to the FormingWorlds Discussions tab, in the category Weekly digest.
 
-A language model drafts the text from the collected data. A script checks every entry before anything is posted: each pull request, release, number and config key in an entry must come from the collected data. The post says so in its first line. Read the linked pull requests before you act on an entry.
+A language model drafts the text from the collected data. A script checks every entry before anything is posted: each pull request, release, number and config key in an entry must come from the collected data. The first line of the post says that a workflow wrote it and that it is a selection. The last paragraph says for how many pull requests the model read the text and for how many only the title. Read the linked pull requests before you act on an entry.
 
 This page is for people who run or change the workflow. It explains what the workflow does, how to make a dry run (a run that writes the digest and posts nothing), and how to switch posting on or off.
 
@@ -10,39 +10,54 @@ This page is for people who run or change the workflow. It explains what the wor
 
 The workflow is `.github/workflows/weekly-digest.yml`, with its scripts in `tools/digest/`. It runs every Monday at 22:23 UTC (23:23 in Amsterdam in winter, 00:23 on Tuesday in summer). You can also start it by hand. It has 4 jobs: collect, draft, a job that checks and posts, and a last job that reports a failure.
 
-The window of a digest is the period it covers. It starts at the end of the window of the last digest post, which the script reads from a hidden marker at the end of that post. It trusts only a marker in a post by `github-actions`. With no earlier post, the window is the last 7 days.
+A digest covers a window, a period of time. The window starts where the window of the last digest post ended. `collect.py` reads that time from a hidden marker (an HTML comment) at the end of the post. It trusts only a marker in a post by `github-actions`. The window ends at the time of the run. With no earlier post, the window is the last 7 days.
 
 ### Collect the data
 
-`collect.py` reads the pull requests and releases of every repository in `tools/digest/repos.toml` through the GitHub API. It stops if a repository is private or archived. Links, images, HTML and `@` mentions are removed from the pull-request text, because that text is untrusted input.
+`collect.py` reads the pull requests and releases of every repository in `tools/digest/repos.toml` through the GitHub API. It stops if a repository is private or archived. Links, images, HTML, URLs and `@` mentions are removed from the titles and texts of pull requests and releases, because that text is untrusted input.
 
 For each merged pull request that changes a tracked file, `facts.py` compares the file before and after the merge. A tracked file is one listed in `repos.toml` (see the settings table below). Each change becomes a fact, which is one of:
 
 - a config key that was added or removed, or whose default, choices, bounds or description changed;
 - a helpfile column (a column of the PROTEUS output table) that was added or removed, or whose unit changed;
-- a dependency that was added or removed, or whose version changed, for example a new floor (the lowest version a package accepts) or a changed module pin (a module version under `tool.proteus.modules` in `pyproject.toml`);
+- a dependency that was added or removed, or whose version changed. This covers a new floor (the lowest version a package accepts), a Julia `[compat]` entry in `Project.toml`, and a changed module pin (a module version under `tool.proteus.modules` in `pyproject.toml`);
 - a key that was added, removed or changed in another tracked TOML file.
 
-A file that gains or loses more than 8 keys in one pull request gives one fact that names them all.
+A file that gains more than 8 keys in one pull request gives one fact for the added keys. A file that loses more than 8 keys gives one fact for the removed keys. Each of these facts holds the number of keys and their names, cut at 600 characters.
 
 ### Draft the entries
 
-`draft.py` gives the collected data and `prompt.md` to the model, which returns entries in a fixed form (`entry_schema.json`). The model runs with no tools, no GitHub token and in an empty folder. If the checks below fail, the model gets the failures once and returns a corrected answer.
+`draft.py` gives the collected data and `prompt.md` to the model, which returns entries in a fixed form (`entry_schema.json`). The model runs with no tools, no GitHub token and in an empty folder. If the checks below fail, the model gets the failures once and returns a corrected answer. If the corrected answer fails the checks too, the job that checks and posts fails the run.
 
 ### Check the draft
 
-`check.py` fails the run, and nothing is posted, if an entry:
+`check.py` fails the run, and nothing is posted, if:
 
-- cites a pull request, release or fact that is not in the collected data, a fact whose pull request it does not also cite, or a login that is not an author of a cited item;
-- cites an open pull request outside the section Open for review, or a merged pull request inside it;
-- is in the section Changes that affect your results and cites no fact and no release;
-- holds a URL, an `@`, square brackets, HTML, an HTML entity, a `#` or `GH-` reference, a commit id, a superscript character or a backtick in its text;
-- uses a number that is not in the title or text of a cited pull request or release (the values of cited facts do not count);
-- names a config key or helpfile column that is not in a cited fact, or repeats the old text value of a cited change.
+- the model returns no entry for a window that has a merged pull request or a release;
+- an entry cites a pull request, release or fact that is not in the collected data;
+- an entry cites no pull request and no release, or cites a release in the section Open for review;
+- an entry cites a fact but not the pull request that the fact comes from;
+- an entry names a login that is not an author of a cited item;
+- an entry cites an open pull request outside the section Open for review, or a merged pull request inside it;
+- an entry in the section Changes that affect your results cites no fact and no release;
+- the title or text of an entry holds a URL, an `@`, square brackets, HTML, an HTML entity, a `#` or `GH-` reference, a commit id, a backtick, an invisible character or a special number character (superscripts, fractions);
+- the title or text uses a number that is not in the title or text of a cited pull request or release (the values of cited facts do not count);
+- the title or text names a config key or helpfile column that is not in a cited fact;
+- a sentence says what a setting is now and holds the old text value of a cited change but not the new one.
 
 ### Render and post
 
-`render.py` writes the post. The config keys, their values, the links, the dates and the mentions come from the collected data, not from the model text, and the model text is escaped so that any markdown in it shows as plain text. `post.py` posts only when posting is switched on. It does not post again for a window that is already posted, so a rerun of a failed job is safe. After a new post, it sends the link to Discord if the repository has the secret `DISCORD_WEBHOOK_URL` (a GitHub repository secret that holds the Discord webhook address). A failed Discord message is a warning, because the post stands. If a job fails, the last job sends a message to Discord when the secret exists.
+`render.py` writes the post:
+
+- The config keys, their values, the links, the dates and the mentions come from the collected data, not from the model text.
+- The model text is escaped, so any markdown in it shows as plain text.
+
+`post.py` posts only when posting is switched on:
+
+- It does not post again when the newest digest post covers the same window or has the same title, so a rerun of a run that posted, failed jobs or all jobs, makes no second post.
+- After a new post, it sends the link to Discord if the repository has the secret `DISCORD_WEBHOOK_URL` (a GitHub repository secret that holds the Discord webhook address). A failed Discord message is a warning, because the post stands.
+
+If a job fails, the last job sends a message to Discord when the secret exists.
 
 ## Sections of a digest
 
@@ -114,7 +129,7 @@ To add or remove a repository, edit `repos` in the same file. Each repository mu
 | `body_chars` | Characters kept of each pull-request or release text. From 1 to 20000 |
 | `bots` | Logins that are never mentioned |
 | `repos` | Repositories in the digest, as `owner/name` |
-| `tracked` | Files per repository whose changes become facts; `pyproject.toml` and `Project.toml` are always tracked |
+| `tracked` | Files per repository whose changes become facts; `pyproject.toml` and `Project.toml` are always tracked. A listed file must exist on the default branch of its repository, or the run stops |
 
 The run stops if a setting is missing or has the wrong type or range.
 
@@ -126,4 +141,5 @@ The run stops if a setting is missing or has the wrong type or range.
 - Open pull requests count only when they were last updated after the window start, so an open pull request with no activity drops out of the digest.
 - A window with no merged pull request and no release gives a post that says Quiet week and lists no open pull requests, even when some are open.
 - A pull request that is a draft when the digest is made is left out of the open pull requests, even if it was ready for review during a back-dated window.
+- In a back-dated window, a pull request that was created before the window end and merged after it counts as open, unless it is a draft now.
 - At most the 20 newest releases of each repository are read.

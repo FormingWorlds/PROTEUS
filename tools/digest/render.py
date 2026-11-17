@@ -152,6 +152,7 @@ def render_body(
             f'Quiet week: no pull request was merged and no release was published between '
             f'{window["since"]} and {window["until"]} (UTC).'
         )
+        lines.append('')
     announced_now = set()
     for key, heading in SECTIONS.items():
         entries = [e for e in draft['entries'] if e['section'] == key]

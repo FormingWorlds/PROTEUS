@@ -8,7 +8,8 @@ Usage::
 
 ``decide`` prints ``live=true`` or ``live=false`` for ``$GITHUB_OUTPUT``. ``publish``
 creates the discussion in the digest category of the first repository in the
-settings, unless the newest digest post already covers the same window (a rerun),
+settings, unless the newest digest post covers the same window or has the same
+title (a rerun),
 and then sends the link to ``DISCORD_WEBHOOK_URL``. Without that secret the Discord
 step is skipped, and a failed send is a warning, because the post stands. ``alert``
 sends a failure message to Discord, or does nothing without the secret.
@@ -16,6 +17,7 @@ sends a failure message to Discord, or does nothing without the secret.
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import sys
@@ -66,7 +68,7 @@ def discord(message: str, webhook: str | None = None) -> bool:
         req = urllib.request.Request(webhook, data=payload, headers=headers)
         with urllib.request.urlopen(req, timeout=30):
             return True
-    except (OSError, ValueError) as err:
+    except (OSError, ValueError, http.client.HTTPException) as err:
         print(f'Warning: Discord ping failed: {err}')
         return False
 
@@ -89,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         gh, home = GitHub(), settings['repos'][0]
         last = previous_state(gh, home, settings['category']) or {}
         until = (parse_state(post['body']) or {}).get('until')
-        if until and last.get('until') == until:
+        if (until and last.get('until') == until) or last.get('title') == post['title']:
             print(f'This window is already posted: {last.get("url")}')
             return 0
         url = create_discussion(gh, home, settings['category'], post['title'], post['body'])

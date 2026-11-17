@@ -6,6 +6,7 @@ step beyond Python itself.
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import time
@@ -160,7 +161,7 @@ class GitHub:
                 if err.code not in (403, 429, 502, 503) or attempt == retries:
                     raise DigestError(f'GitHub API {err.code} for {url}') from err
                 time.sleep(int(err.headers.get('Retry-After') or 20 * (attempt + 1)))
-            except OSError as err:
+            except (OSError, http.client.HTTPException) as err:
                 if attempt == retries:
                     raise DigestError(f'GitHub API unreachable for {url}: {err}') from err
                 time.sleep(20 * (attempt + 1))
