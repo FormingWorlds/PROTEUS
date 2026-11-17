@@ -1784,3 +1784,329 @@ def test_check_action_rules(change, message):
     assert any(message in f for f in fails), fails
     assert check.check(data, _draft(_entry(section='install', facts=[], action=True))) == []
     assert check.check(data, _draft(_entry(action=False))) == []
+
+
+# guards, dedupe and text rules
+
+
+def test_check_output_is_inert_in_the_log_and_the_summary(tmp_path, capsys):
+    """Model text in a failure line is one JSON string; the summary is an escaped pre block."""
+    src, bad = tmp_path / 'c.json', tmp_path / 'd.json'
+    src.write_text(json.dumps(_data()))
+    title = '[w](https://evil.example) </pre><b>x</b> @egpbos'
+    bad.write_text(json.dumps(_draft(_entry(title=title, logins=['x\n::warning::injected']))))
+    out, summary = tmp_path / 'check.txt', tmp_path / 'summary.md'
+    summary.write_text('before\n')
+    assert check.main([str(src), str(bad), '--out', str(out), '--summary', str(summary)]) == 1
+    printed = capsys.readouterr().out
+    assert printed == out.read_text()
+    lines = printed.splitlines()
+    assert all(line.startswith('FAIL "') for line in lines[:-1]), lines
+    assert not any(line.startswith('::') for line in lines)
+    text = summary.read_text()
+    assert text.startswith('before\n<pre>\n') and text.endswith('</pre>\n')
+    assert text.count('<') == 2 and '&lt;/pre&gt;' in text
+
+
+def test_model_error_text_is_one_json_string(tmp_path, monkeypatch):
+    """The CLI error tail cannot start a workflow command line in the log."""
+    script = tmp_path / 'claude'
+    script.write_text(
+        f'#!{sys.executable}\nimport sys\nsys.stderr.write("a\\n::warning::x")\nsys.exit(2)\n'
+    )
+    script.chmod(script.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setenv('CLAUDE_BIN', str(script))
+    with pytest.raises(common.DigestError) as err:
+        draft.run_model('p', 'm')
+    assert '\n' not in str(err.value) and '"a\\n::warning::x"' in str(err.value)
+
+
+def _publish(tmp_path, monkeypatch, last, until, run_id='9', entry=None, **window):
+    """Render a digest for ``until`` and run publish against a newest post ``last``."""
+    data = _data()
+    data['window'].update(until=until, backdated=False, **window)
+    src, dft, out = tmp_path / 'c.json', tmp_path / 'd.json', tmp_path / 'out'
+    src.write_text(json.dumps(data))
+    dft.write_text(json.dumps(_draft(entry or _entry())))
+    render.main([str(src), str(dft), str(out), '--run-id', run_id])
+    posted = []
+    monkeypatch.setattr(post, 'load_settings', lambda: {**_VALID, 'publish': True})
+    monkeypatch.setattr(post, 'GitHub', lambda: 'gh')
+    monkeypatch.setattr(post, 'previous_state', lambda *a: last)
+    monkeypatch.setattr(
+        post, 'create_discussion', lambda *a: posted.append(a[3]) or 'https://d/2'
+    )
+    return post.main(['publish', str(src), str(dft), str(out)]), posted
+
+
+_MON = '2026-11-23T22:23:00Z'
+
+
+def test_publish_refuses_a_failed_check_a_backdated_window_or_publish_off(
+    tmp_path, monkeypatch
+):
+    """The post command repeats the guards, so a broken shell step cannot post."""
+    with pytest.raises(common.DigestError, match='check'):
+        _publish(tmp_path, monkeypatch, None, _MON, entry=_entry(prs=['PROTEUS#1']))
+    with pytest.raises(common.DigestError, match='back-dated'):
+        _publish(tmp_path, monkeypatch, None, _MON, backdated=True)
+    rc, posted = _publish(tmp_path, monkeypatch, None, _MON)
+    assert rc == 0 and posted == ['PROTEUS weekly digest, 24 November 2026']
+    monkeypatch.setattr(post, 'load_settings', lambda: _VALID)
+    with pytest.raises(common.DigestError, match='publish'):
+        post.main(['publish', *(str(tmp_path / f) for f in ('c.json', 'd.json', 'out'))])
+
+
+@pytest.mark.parametrize(
+    ('case', 'last', 'until', 'run_id', 'posts'),
+    [
+        # (a) a re-run of all jobs on a later day keeps the run id
+        (
+            'rerun',
+            {'run_id': '7', 'until': _MON, 'title': 'x'},
+            '2026-12-02T09:00:00Z',
+            '7',
+            False,
+        ),
+        # (b) a Wednesday recovery, then the Monday schedule
+        (
+            'recovery',
+            {
+                'run_id': '8',
+                'until': '2026-11-25T10:00:00Z',
+                'title': 'PROTEUS weekly digest, 24 November 2026',
+            },
+            '2026-11-30T22:23:00Z',
+            '9',
+            True,
+        ),
+        # (c) 2 dispatches on one day
+        (
+            'twice',
+            {
+                'run_id': '8',
+                'until': '2026-11-25T10:00:00Z',
+                'title': 'PROTEUS weekly digest, 24 November 2026',
+            },
+            '2026-11-25T15:00:00Z',
+            '10',
+            False,
+        ),
+        # (e) a Monday daytime dispatch, then the Monday schedule
+        (
+            'monday',
+            {
+                'run_id': '8',
+                'until': '2026-11-23T10:00:00Z',
+                'title': 'PROTEUS weekly digest, 24 November 2026',
+            },
+            _MON,
+            '9',
+            False,
+        ),
+    ],
+)
+def test_publish_dedupe_cases(tmp_path, monkeypatch, capsys, case, last, until, run_id, posts):
+    """One post per meeting and per run; a skip says why in an annotation and exits 0."""
+    rc, posted = _publish(tmp_path, monkeypatch, last, until, run_id)
+    assert rc == 0 and bool(posted) is posts, case
+    if not posts:
+        assert '::notice' in capsys.readouterr().out
+
+
+def test_monday_dispatch_window_continues_at_its_end():
+    """After a skipped schedule run the next window starts at the end of the dispatch."""
+    state = {'until': '2026-11-23T10:00:00Z'}
+    now = datetime(2026, 11, 30, 22, 23, tzinfo=timezone.utc)
+    assert collect.resolve_window(None, None, state, now)['since'] == state['until']
+
+
+@pytest.mark.parametrize(
+    ('until', 'day'),
+    [
+        ('2026-11-23T22:23:00Z', '24 November'),  # Monday 23:23 CET
+        ('2026-06-29T22:23:00Z', '30 June'),  # Tuesday 00:23 CEST
+        ('2026-11-25T09:00:00Z', '24 November'),  # Wednesday recovery
+        ('2026-11-29T20:00:00Z', '24 November'),  # Sunday
+        ('2026-11-30T10:00:00Z', '1 December'),  # Monday daytime
+    ],
+)
+def test_title_is_the_meeting_tuesday(until, day):
+    """The title is the Tuesday on or before the day after the window end, in Amsterdam time."""
+    assert render.tuesday_title(until) == f'PROTEUS weekly digest, {day} {until[:4]}'
+
+
+def test_state_marker_holds_the_run_id(tmp_path):
+    """The run id goes into the state marker, so a re-run finds its own post."""
+    src, dft, out = tmp_path / 'c.json', tmp_path / 'd.json', tmp_path / 'out'
+    src.write_text(json.dumps(_data()))
+    dft.write_text(json.dumps(_draft(_entry())))
+    render.main([str(src), str(dft), str(out), '--run-id', '42'])
+    body = json.loads((out / 'digest.json').read_text())['body']
+    assert collect.parse_state(body)['run_id'] == '42'
+
+
+def test_workflow_wiring_of_the_guards():
+    """The check step fails the job, the decide step reads the window, and post repeats the guards."""
+    text, jobs = _jobs()
+    assert 'continue-on-error' not in text and '||' not in jobs['publish']
+    assert 'needs: draft' in jobs['publish'] and 'needs: collect' in jobs['draft']
+    assert (
+        'run: python tools/digest/check.py collected.json draft.json --out check.txt '
+        '--summary "$GITHUB_STEP_SUMMARY"\n' in jobs['publish']
+    )
+    assert (
+        'post.py decide collected.json --event "$EVENT" --post-input "$POST"' in jobs['publish']
+    )
+    assert 'post.py publish collected.json draft.json out\n' in jobs['publish']
+    assert '--run-id "$GITHUB_RUN_ID"' in jobs['publish']
+
+
+def test_announced_open_pr_stays_until_merged_or_closed():
+    """An announced pull request stays in the state while GitHub reports it open."""
+    pages = [
+        {'repository': {'pullRequest': {'state': 'OPEN'}}},
+        {'repository': {'pullRequest': {'state': 'MERGED'}}},
+        {'repository': {'pullRequest': {'state': 'CLOSED'}}},
+    ]
+    refs = ['PROTEUS#900', 'AGNI#5', 'PROTEUS#901']
+    repos = ['FormingWorlds/PROTEUS', 'nichollsh/AGNI']
+    gh = _FakeGH(pages)
+    assert collect.still_open(gh, repos, refs) == ['PROTEUS#900']
+    assert [q['number'] for q in gh.queries] == [900, 5, 901]
+    data = _data(previous={'until': SINCE, 'announced_open': ['PROTEUS#900']})
+    data['still_open'] = ['PROTEUS#900']
+    body, state = _render(_draft(_entry()), data)
+    assert state['announced_open'] == ['PROTEUS#900']
+    data['still_open'] = []
+    assert _render(_draft(_entry()), data)[1]['announced_open'] == []
+
+
+@pytest.mark.parametrize(
+    ('text', 'found'),
+    [
+        ('Runs are X100 faster.', {'100'}),
+        ('Use V9.5 now.', {'9.5'}),
+        ('Runs use mode_42 cells.', {'42'}),
+        ('Water as H2O and CO2, and MgSiO3.', set()),
+        ('Escape of H2O.', set()),
+        ('v1.0.0 and x100', {'1.0.0', '100'}),
+    ],
+)
+def test_numbers_split_a_capital_or_underscore_prefix_but_keep_formulas(text, found):
+    """A digit run after a single capital or an underscore is a number; a formula is not."""
+    assert check.numbers(text) == found
+
+
+@pytest.mark.parametrize(
+    'text',
+    [
+        'The grain size was lowered to 0.1 m.',
+        'Grain size is set to 0.1 m.',
+        'Grain size becomes 0.1 m.',
+    ],
+)
+def test_old_value_stated_as_the_setting_fails(text):
+    """The old value of a cited change fails where the sentence assigns it."""
+    fails = check.check(_data(), _draft(_entry(title='Grain size', text=text)))
+    assert any('old value "0.1" of fact F1' in f for f in fails), fails
+
+
+def test_a_third_string_value_and_title_sentences():
+    """A sentence that sets a string key to another value fails; the title is its own sentence."""
+    fact = _fact(key='interior_energetics.mixing_length', old='"nearest"', new='"constant"')
+    data = _data(fact_list=[fact])
+    fails = check.check(data, _draft(_entry(text='The default mixing length is now linear.')))
+    assert any('new value "constant" of fact F1' in f for f in fails), fails
+    real = (
+        'It uses a fixed fraction of the depth instead of the distance to the nearest boundary.'
+    )
+    assert check.check(data, _draft(_entry(text=real))) == []
+    entry = _entry(title='Slower settling by default', text='Settling is slower with 0.1 m.')
+    assert check.check(_data(), _draft(entry)) == []
+
+
+def test_truncated_file_list_diffs_every_tracked_file():
+    """A pull request with more files than the query returns has every tracked file compared."""
+    node = _node(merged='2026-09-05T00:00:00Z')
+    node['files'] = {'totalCount': 250, 'nodes': [{'path': 'src/a.py'}]}
+    record = collect.pr_record('FormingWorlds/PROTEUS', node, SINCE, UNTIL)
+    assert record['files_truncated'] is True
+    old, new = _schema(a={'default': 1}), _schema(a={'default': 2})
+    files = {
+        ('FormingWorlds/PROTEUS', facts.CONFIG_SCHEMA, 'p1'): old,
+        ('FormingWorlds/PROTEUS', facts.CONFIG_SCHEMA, 'm1'): new,
+        ('FormingWorlds/PROTEUS', facts.CONFIG_SCHEMA, None): new,
+    }
+    data = {'prs': [_pr(files=['src/a.py'], files_truncated=True)]}
+    settings_ = {'tracked': {'FormingWorlds/PROTEUS': [facts.CONFIG_SCHEMA]}}
+    facts.attach_facts(_FakeGH(files=files), data, settings_)
+    assert [f['key'] for f in data['facts']] == ['a']
+
+
+_CATS1 = {
+    'repository': {
+        'id': 'R',
+        'discussionCategories': {'nodes': [{'id': 'C1', 'slug': 'weekly-digest'}]},
+    }
+}
+
+
+def test_previous_state_pages_until_a_bot_post():
+    """Posts by people on the first page do not hide the newest bot post on a later page."""
+    people = [_post(author='p', kind='User') for _ in range(3)]
+    first = {
+        'repository': {
+            'discussions': {
+                'nodes': people,
+                'pageInfo': {'hasNextPage': True, 'endCursor': 'c1'},
+            }
+        }
+    }
+    second = {
+        'repository': {
+            'discussions': {
+                'nodes': [_post()],
+                'pageInfo': {'hasNextPage': False, 'endCursor': None},
+            }
+        }
+    }
+    gh = _FakeGH([_CATS1, first, second])
+    state = collect.previous_state(gh, 'FormingWorlds/PROTEUS', 'weekly-digest')
+    assert state['until'] == '2026-11-16T22:30:00Z' and gh.queries[2]['cursor'] == 'c1'
+
+
+def test_create_discussion_refuses_an_author_the_next_run_would_not_trust():
+    """The author of the new post is read back; a post the state reader would skip stops the run."""
+    made = {
+        'createDiscussion': {
+            'discussion': {'url': 'https://d/5', 'author': {'login': 'x', '__typename': 'User'}}
+        }
+    }
+    with pytest.raises(common.DigestError, match='https://d/5'):
+        post.create_discussion(
+            _FakeGH([_CATS1, made]), 'FormingWorlds/PROTEUS', 'weekly-digest', 'T', 'B'
+        )
+
+
+def test_check_enforces_the_schema_lengths():
+    """A title or text longer than the schema allows fails the check."""
+    fails = check.check(_data(), _draft(_entry(title='a' * 81, text='b ' * 201)))
+    assert any('title is longer than 80' in f for f in fails), fails
+    assert any('text is longer than 400' in f for f in fails), fails
+
+
+def test_render_refuses_a_body_over_the_post_limit(tmp_path, monkeypatch):
+    """A body longer than a discussion can hold stops the run before the post step."""
+    monkeypatch.setattr(render, 'BODY_LIMIT', 100)
+    src, dft = tmp_path / 'c.json', tmp_path / 'd.json'
+    src.write_text(json.dumps(_data()))
+    dft.write_text(json.dumps(_draft(_entry())))
+    with pytest.raises(common.DigestError, match='longer than'):
+        render.main([str(src), str(dft), str(tmp_path / 'out')])
+
+
+def test_footer_without_a_cut_says_every_body_was_read():
+    """With no pull request cut, the footer does not count the titles of 0 others."""
+    body, _ = _render(_draft(_entry()))
+    assert 'the other 0' not in body and 'read the text of every pull request' in body
