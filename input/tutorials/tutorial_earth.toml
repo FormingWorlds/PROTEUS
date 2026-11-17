@@ -83,7 +83,7 @@ config_version = "3.0"
 
     [interior_struct.zalmoxis]
         core_eos          = "PALEOS:iron"
-        mantle_eos        = "PALEOS:MgSiO3"
+        mantle_eos        = "PALEOS-2phase:MgSiO3"
         mushy_zone_factor = 0.8
         num_levels        = 150
         dry_mantle        = true
