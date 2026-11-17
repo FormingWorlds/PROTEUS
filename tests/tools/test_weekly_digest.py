@@ -314,6 +314,7 @@ def _node(merged=None, created='2026-09-02T00:00:00Z', draft=False):
         'additions': 3,
         'deletions': 4,
         'author': {'login': 'alice', '__typename': 'User'},
+        'authorAssociation': 'MEMBER',
         'labels': {'nodes': []},
         'files': {'nodes': [{'path': 'a.py'}]},
         'mergeCommit': {'oid': 'm', 'parents': {'nodes': [{'oid': 'p'}]}} if merged else None,

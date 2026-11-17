@@ -16,6 +16,8 @@ A digest covers a window, a period of time. The window starts where the window o
 
 `collect.py` reads the pull requests and releases of every repository in `tools/digest/repos.toml` through the GitHub API. It stops if a repository is private or archived. Links, images, HTML, URLs and `@` mentions are removed from the titles and texts of pull requests and releases, because anyone with a GitHub account can write that text, and a link or a mention in it must not reach the post.
 
+An open pull request counts only when GitHub reports its author as an owner, member, collaborator or contributor of the repository (the author association). `collect.py` leaves out the other open pull requests and names each one, with its login and association, in the run log and the run summary. Merged pull requests count whatever the association.
+
 For each merged pull request that changes a tracked file, `facts.py` compares the file before and after the merge. A tracked file is one listed in `repos.toml` (see the settings table below). Each change becomes a fact: a change that the script reads from the files, not from the model. A fact is one of:
 
 - a config key that was added or removed, or whose default, choices, bounds or description changed;
@@ -88,7 +90,7 @@ The sections appear in the order of the table below, and a section without entri
 | Installing and running | Installation, environments, platforms and the command-line interface; an entry that every user must act on starts with **Action for everyone:** |
 | Data and licensing | Reference data, downloads and licences |
 | Design choices to look at | New interfaces, defaults, coupling choices and dependencies that maintainers can check against their plans |
-| In review, coming soon | Open pull requests in review (drafts are left out) |
+| In review, coming soon | Open pull requests in review by owners, members, collaborators and contributors (drafts are left out) |
 
 ## Mentions
 
@@ -163,6 +165,7 @@ What a digest can miss:
 - Open pull requests count only when they were last updated after the window start, so an open pull request with no activity drops out of the digest.
 - A window with no merged pull request and no release gives a post that says Quiet week and lists no open pull requests, even when some are open.
 - At most the 20 newest releases of each repository are read.
+- The author association is what the token of the run can see. A member whose membership of the organisation is private can show as a contributor or with no association, and an open pull request with no association is left out. Read the left-out pull requests in the run summary.
 
 Back-dated windows:
 

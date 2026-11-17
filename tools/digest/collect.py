@@ -14,6 +14,7 @@ HTML and mentions are removed before anything reaches the model.
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import sys
@@ -21,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 
 from common import DigestError, GitHub, find_category, iso, load_settings, parse_time
 
+MEMBERS = ('OWNER', 'MEMBER', 'COLLABORATOR', 'CONTRIBUTOR')
 STATE_RE = re.compile(r'<!-- weekly-digest-state (\{.*?\}) -->', re.S)
 
 PR_QUERY = """
@@ -31,7 +33,7 @@ query($owner: String!, $name: String!, $cursor: String) {
                  orderBy: {field: UPDATED_AT, direction: DESC}) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        number url title body isDraft state createdAt mergedAt updatedAt baseRefName
+        number url title body isDraft state createdAt mergedAt updatedAt baseRefName authorAssociation
         additions deletions
         author { login __typename }
         labels(first: 10) { nodes { name } }
@@ -195,6 +197,7 @@ def pr_record(repo: str, node: dict, since: str, until: str) -> dict | None:
         'raw_body': node['body'] or '',
         'author': author.get('login'),
         'author_kind': author.get('__typename'),
+        'association': node['authorAssociation'],
         'created_at': node['createdAt'],
         'merged_at': merged if status == 'merged' else None,
         'size': node['additions'] + node['deletions'],
@@ -287,12 +290,18 @@ def collect(gh: GitHub, settings: dict, window: dict) -> dict:
         got_prs, got_releases = collect_repo(gh, repo, window)
         prs += got_prs
         releases += got_releases
+    dropped = [p for p in prs if p['status'] == 'open' and p['association'] not in MEMBERS]
+    prs = [p for p in prs if p not in dropped]
     cut = add_bodies(prs, releases, settings['max_bodies'], settings['body_chars'])
     return {
         'window': window,
         'repos': settings['repos'],
         'prs': prs,
         'releases': releases,
+        'dropped_open': [
+            {'ref': p['ref'], 'login': p['author'], 'association': p['association']}
+            for p in dropped
+        ],
         **cut,
     }
 
@@ -303,6 +312,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--out', required=True)
     parser.add_argument('--since')
     parser.add_argument('--until')
+    parser.add_argument('--summary')
     args = parser.parse_args(argv)
     settings = load_settings()
     gh = GitHub()
@@ -317,6 +327,14 @@ def main(argv: list[str] | None = None) -> int:
     with open(args.out, 'w') as fh:
         json.dump(data, fh)
     print(f'{len(data["prs"])} PRs, {len(data["releases"])} releases in {window}')
+    lines = [
+        f'Open pull request left out: {d["ref"]} by {d["login"]} (association {d["association"]})'
+        for d in data.get('dropped_open', [])
+    ]
+    print(*lines, sep='\n')
+    if args.summary and lines:
+        with open(args.summary, 'a') as fh:
+            fh.write(f'<pre>\n{html.escape(chr(10).join(lines))}\n</pre>\n')
     return 0
 
 

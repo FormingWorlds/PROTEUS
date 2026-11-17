@@ -51,7 +51,7 @@ jobs:
           SINCE: ${{ inputs.since }}
           UNTIL: ${{ inputs.until }}
         run: |
-          args=(--out collected.json)
+          args=(--out collected.json --summary "$GITHUB_STEP_SUMMARY")
           [ -n "$SINCE" ] && args+=(--since "$SINCE")
           [ -n "$UNTIL" ] && args+=(--until "$UNTIL")
           python tools/digest/collect.py "${args[@]}"
