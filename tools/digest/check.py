@@ -90,11 +90,13 @@ def _split_prefix(match: re.Match) -> str:
 def prepare(text: str) -> str:
     """Normalise a text for number matching: NFKC, one minus sign, prefixes split from digits.
 
-    A single letter or an underscore before digits is split off (``v1.0``, ``V100``,
-    ``mode_42``); a formula of 2 or more element symbols (``H2O``) stays whole.
+    A single letter, an underscore or a letter and a dot before digits is split off
+    (``v1.0``, ``V100``, ``mode_42``, ``No.5``); a formula of 2 or more element symbols
+    (``H2O``) stays whole.
     """
     text = unicodedata.normalize('NFKC', text)
     text = ''.join('-' if c in MINUS or unicodedata.category(c) == 'Pd' else c for c in text)
+    text = re.sub(r'(?<=[A-Za-z])\.(?=\d)', '. ', text)
     return re.sub(r'_(?=\d)', '_ ', PREFIX_RE.sub(_split_prefix, text))
 
 
@@ -342,7 +344,7 @@ def main(argv: list[str] | None = None) -> int:
     for line in fails:
         print(f'FAIL {json.dumps(line)}')
     for line in warns:
-        print(f'WARN {json.dumps(line)}\n::warning::{json.dumps(line)}')
+        print(f'WARN {json.dumps(line)}\n::warning::{json.dumps(line).replace("%", "%25")}')
     print(count)
     if args.out:
         with open(args.out, 'w') as fh:

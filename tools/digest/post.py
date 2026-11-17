@@ -100,12 +100,16 @@ def main(argv: list[str] | None = None) -> int:
     gh, home = GitHub(), settings['repos'][0]
     last = previous_state(gh, home, settings['category']) or {}
     mine = {**(parse_state(post['body']) or {}), 'title': post['title']}
-    same = [k for k in ('run_id', 'title') if mine.get(k) and last.get(k) == mine[k]]
+    same = [
+        f'the same {k.replace("_", " ")}'
+        for k in ('run_id', 'title')
+        if mine.get(k) and last.get(k) == mine[k]
+    ]
     if last.get('until') and parse_time(mine['until']) <= parse_time(last['until']):
-        same.append('or a later window end')
+        same.append('a window end that is not earlier')
     if same:
         print(
-            f'::notice::Not posted: the newest digest {last.get("url")} has the same {", ".join(same)}'
+            f'::notice::Not posted: the newest digest {last.get("url")} has {", ".join(same)}'
         )
         return 0
     url = create_discussion(gh, home, settings['category'], post['title'], post['body'])

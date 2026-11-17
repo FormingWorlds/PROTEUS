@@ -1,16 +1,16 @@
 # Weekly ecosystem digest
 
-This page explains how to run and switch on the workflow that writes the weekly digest of the PROTEUS ecosystem (PROTEUS and its module repositories). It is for people who run or change the workflow. It covers what the workflow does, how to make a dry run (a run that writes the digest and posts nothing), and how to switch posting on or off.
+The weekly digest is a short post that tells the developers of the PROTEUS ecosystem (PROTEUS and its module repositories) what changed. It lists the pull requests merged since the last digest, the open pull requests that need review, and the new releases. Developers read it at the start of their weekly meeting on Tuesday, so a change that alters model results, or that every user must act on, does not stay hidden in a long list of pull requests.
 
-Developers read the digest at the start of their Tuesday meeting. It is a selection of the pull requests merged since the last digest, the open pull requests that need review, and the new releases. When posting is switched on, a GitHub Actions workflow in this repository posts it to the FormingWorlds Discussions tab, in the category Weekly digest.
+A GitHub Actions workflow in this repository writes the digest and, when posting is switched on, posts it to the FormingWorlds Discussions tab (the forum of a GitHub repository), in the category Weekly digest. This page is for people who run or change the workflow. It explains what the workflow does, how to make a dry run (a run that writes the digest and posts nothing), how to switch posting on or off, and what to do when a run is red.
 
-A language model drafts the text from the collected data. A script checks every entry before anything is posted: each pull request, release, number and config key in an entry must come from the collected data. The top of the post says that it is a selection and that a workflow wrote it. The closing paragraph gives the collection window and says how many pull requests the model read in full and how many by title only. Readers must read the linked pull requests before they act on an entry.
+A language model drafts the text from the collected data. A script checks every entry before anything is posted: each pull request, release, number and config key in an entry must come from the collected data. The top of the post says that it is a selection and that a workflow wrote it. The closing paragraph gives the collection window and the number of pull requests, releases and repositories, and says whether the model read the text of every pull request or only of the largest ones (the others by title only). Readers must read the linked pull requests before they act on an entry.
 
 ## What the workflow does
 
-The workflow is `.github/workflows/weekly-digest.yml`, with its scripts in `tools/digest/`. It runs every Monday at 22:23 UTC (23:23 in Amsterdam in winter, 00:23 on Tuesday in summer). You can also start it by hand. It has 3 jobs, shown in the Actions tab as `Collect pull requests, releases and facts`, `Draft the entries` and `Check, render and post`. This page calls them the collect, draft and publish jobs.
+The workflow is `.github/workflows/weekly-digest.yml`, with its scripts in `tools/digest/`. It runs every Monday at 22:23 UTC (23:23 in Amsterdam in winter, 00:23 on Tuesday in summer). You can also start it by hand. It has 3 jobs, shown in the Actions tab as `Collect pull requests, releases and facts`, `Draft the entries` and `Check, render and post`. This page calls them the collect, draft and publish jobs. The publish job uploads its files as the artifact `digest`, a file set that you can download from the run page.
 
-A digest covers a window of time. The window starts where the window of the last digest post ended. `collect.py` reads that time from a hidden marker (an HTML comment) at the end of the post. It trusts only a marker in a post by the login (GitHub user name) `github-actions`, the account the workflow posts as. The window ends at the time of the run. With no earlier post, the window is the last 7 days. A window that you set by hand, with a start or an end, is back-dated, and a back-dated run never posts.
+A digest covers a window of time. The window starts where the window of the last digest post ended. `collect.py` reads that time from a hidden marker (an HTML comment) at the end of the post. The marker holds the window end, the run id and the open pull requests that the digest announced. `collect.py` trusts only a marker in a post by the login (GitHub user name) `github-actions`, the account the workflow posts as. The window ends at the time of the run. With no earlier post, the window is the last 7 days. A window that you set by hand, with a start or an end, is back-dated, and a back-dated run never posts.
 
 ### Collect the data
 
@@ -20,7 +20,7 @@ An open pull request counts only when GitHub reports its author as an owner, mem
 
 ### Read the file changes as facts
 
-For each merged pull request that changes a tracked file, `facts.py` compares the file before and after the merge. A tracked file is one listed in `repos.toml` (see the settings table below). Each change becomes a fact: a change that the script reads from the files, not from the model. A fact is one of:
+For each merged pull request that changes a tracked file, `facts.py` compares the file before and after the merge. A tracked file is one listed in `repos.toml` (see [Settings in `repos.toml`](#settings-in-repostoml)). Each change becomes a fact: a change that the script reads from the files, not from the model. A fact is one of:
 
 - a config key that was added or removed, or whose default, choices, bounds or description changed;
 - a helpfile column (a column of the PROTEUS output table) that was added or removed, or whose unit changed;
@@ -31,13 +31,13 @@ A file that gains more than 8 keys in one pull request gives one fact for the ad
 
 ### Draft the entries
 
-`draft.py` gives the collected data and `prompt.md` to the model, which returns entries in a fixed form (`entry_schema.json`). The model runs with no tools, no GitHub token and in an empty folder. If the checks below fail, the model gets the failures once and returns a corrected answer.
+`draft.py` gives the collected data and `prompt.md` to the model, which returns entries in a fixed form (`entry_schema.json`). The model runs with no tools, no GitHub token and in an empty folder. If the checks below fail, the model gets the failures once and returns a corrected draft.
 
 Each entry has an action marker, a flag that the model sets when every user must act on the entry. The script then adds the words **Action for everyone:** in front of its text.
 
 ### Check the draft
 
-`check.py` checks the corrected answer. The run fails, and nothing is posted, if one of the conditions below is true.
+`check.py` checks the corrected draft. The run fails, and nothing is posted, if one of the conditions below is true.
 
 #### Checks on citations and form
 
@@ -61,7 +61,7 @@ Each entry has an action marker, a flag that the model sets when every user must
     - a hidden or special character: an invisible character, a superscript, a fraction or a letter number such as a Roman numeral;
     - the words "Action for everyone", which only the script adds;
 - the title or text uses a number that is not in a cited pull request or release (cited fact values do not count):
-    - The check reads `v1.0`, `V100`, `mode_42` and `.5` as the numbers 1.0, 100, 42 and 0.5. It also reads the 2 of `H2`.
+    - The check reads `v1.0`, `V100`, `mode_42`, `No.5` and `.5` as the numbers 1.0, 100, 42, 5 and 0.5. It also reads the 2 of `H2`.
     - It does not read the digits of a formula of 2 or more element symbols (`H2O`, `CO2`) as numbers;
 - the title or text names a config key or helpfile column that is not in a cited fact.
 
@@ -82,44 +82,17 @@ The check prints each failure as one line, `FAIL` and a quoted JSON string, so e
 
 ### Post it once
 
-The post step runs only in a live run, a run that is allowed to post (see Switch posting on or off). Before it posts, `post.py` repeats every guard: posting is switched on, the window is not back-dated, the run is scheduled or its box **Post the digest** is ticked, the draft passes `check.py`, and the body is not a dry run.
+The post step runs only in a live run, a run that is allowed to post (see [Switch posting on or off](#switch-posting-on-or-off)). Before it posts, `post.py` repeats every guard: posting is switched on, the window is not back-dated, the run is scheduled or its box **Post the digest** is ticked, the draft passes `check.py`, and the body is not a dry run.
 
-`post.py` makes at most one post per run and one per meeting. It reads the newest digest post, and skips posting when that post has the same workflow run id (the number of the Actions run, which a rerun keeps), the same title, or a window end that is not earlier than its own. The skip rules mean:
+`post.py` makes at most one post per meeting. It reads the newest digest post, and skips posting when that post has the same workflow run id (the number of the Actions run, which a rerun keeps), the same title, or a window end that is the same as or later than the window end of this run. The skip rules mean:
 
 - A rerun of failed jobs or of all jobs of the run that made the newest post, on any day, makes no second post.
 - A second manual run for the same meeting makes no second post.
-- A rerun of an older run after a newer post makes no post, so the next window does not move back.
+- A rerun of the failed jobs of an older run after a newer post makes no post, so the next window does not move back.
+- A rerun of all jobs of an older run collects a new window from the newest post. It posts like a manual run: for the meeting of its week, unless that meeting has a post.
 - A manual run on a Monday before the scheduled run takes the same title as the scheduled run. The scheduled run then posts nothing, and the next window starts at the end of the manual run, so no pull request is left out.
 
-A skipped post gives a notice annotation on the run page, and the run stays green. After `post.py` creates the post, it reads back the author (see If a run is red).
-
-### If a run is red
-
-A run that fails a check or a step before the post step is red in the Actions tab and posts nothing. Read the check lines in the job summary, or open `check.txt` in the artifact `digest` (see Make a dry run).
-
-A run that fails in the post step after GitHub created the post is red, and the post stays. If the author of the post is not `github-actions`, the run is red too, because the next run would not find the post, and a rerun of that run posts again. Look at the category before you start the run again.
-
-## Sections of a digest
-
-The sections appear in the order of the table below, and a section without entries is left out. The section "Changes that affect your results" is a table with the columns Setting, Change (the entry text, then old value → new value for each cited fact), Merged and Links (with the authors).
-
-| Section | What goes in it |
-| --- | --- |
-| Changes that affect your results | Changes after which a run with the same config gives a different result, with the config changes as facts |
-| New capabilities | New physics, modules, options and tools |
-| Installing and running | Installation, environments, platforms and the command-line interface; an entry that every user must act on starts with **Action for everyone:** |
-| Data and licensing | Reference data, downloads and licences |
-| Design choices to look at | New interfaces, defaults, coupling choices and dependencies that maintainers can check against their plans |
-| In review, coming soon | Open pull requests in review by owners, members, collaborators and contributors (drafts are left out) |
-
-## Mentions
-
-The post names each author as `@login`, which notifies that person. The rules:
-
-- Each person is mentioned once per post; later names are plain text.
-- Bots and organisations are never mentioned (the list `bots` in `repos.toml`, and every account that GitHub marks as a bot).
-- The author of an open pull request that an earlier digest announced is not mentioned again for it while it stays open. Before each run, `collect.py` asks GitHub which announced pull requests are still open. A pull request that GitHub cannot find leaves the list; on any other error it stays.
-- A dry run shows the mentions in code spans, so nobody is notified.
+A skipped post gives a notice annotation on the run page, and the run stays green. After `post.py` creates the post, it checks the author in the answer of GitHub (see [If a run is red](#if-a-run-is-red)).
 
 ## Make a dry run
 
@@ -130,7 +103,7 @@ A manual run with all inputs empty and the box **Post the digest** unticked is a
 3. Enter **Window start** and **Window end** as dates or times in UTC, for example `2026-09-01` and `2026-09-30`. If you set only the end, the window starts 7 days before it. If you set only the start, the window ends now.
 4. Read the digest in the job summary, or download the artifact `digest` and open `out/digest.md`.
 
-The artifact `digest` (a file set that you can download from the run page) holds `collected.json`, `draft.json` and `check.txt`. If the check passes, it also holds `out/digest.md`, and the digest also appears in the job summary. If the check fails, there is no `out/digest.md`: read `check.txt` or the job summary instead.
+The artifact `digest` holds `collected.json`, `draft.json` and `check.txt`. If the check passes, it also holds `out/digest.md`, and the digest also appears in the job summary. If the check fails, there is no `out/digest.md`: read `check.txt` or the job summary instead.
 
 A run with a window start or end never posts. You can run the same scripts locally with a token that can read public repositories:
 
@@ -160,6 +133,36 @@ To switch posting on:
 
 To add or remove a repository, edit `repos` in the same file. Each repository must be public and must not be archived, and no two repositories may have the same name after the slash. The first repository in the list receives the post, so keep `FormingWorlds/PROTEUS` first.
 
+## If a run is red
+
+If the collect job or the draft job is red, the publish job does not run and there is no `check.txt`. Open the log of that job: the collect job names each open pull request that it left out, and the draft job prints the error text of the model call.
+
+If the publish job is red before the post step, nothing is posted. Read the check lines in the job summary, or open `check.txt` in the artifact `digest` (see [Make a dry run](#make-a-dry-run)).
+
+A run that fails in the post step after GitHub created the post is red, and the post stays. If the author of the post is not `github-actions`, the run is red too, because the next run would not find the post, and a rerun of that run posts again. Look at the category before you start the run again.
+
+## Sections of a digest
+
+The sections appear in the order of the table below, and a section without entries is left out. The section "Changes that affect your results" is a table with the columns Setting, Change (the entry text, then old value → new value for each cited fact), Merged and Links (with the authors).
+
+| Section | What goes in it |
+| --- | --- |
+| Changes that affect your results | Changes after which a run with the same config gives a different result, with the config changes as facts |
+| New capabilities | New physics, modules, options and tools |
+| Installing and running | Installation, environments, platforms and the command-line interface; an entry that every user must act on starts with **Action for everyone:** |
+| Data and licensing | Reference data, downloads and licences |
+| Design choices to look at | New interfaces, defaults, coupling choices and dependencies that maintainers can check against their plans |
+| In review, coming soon | Open pull requests in review by owners, members, collaborators and contributors (draft pull requests are left out) |
+
+## Mentions
+
+The post names each author as `@login`, which notifies that person. The rules:
+
+- Each person is mentioned once per post; later names are plain text.
+- Bots and organisations are never mentioned: the logins in the list `bots` in `repos.toml`, every login that ends in `[bot]`, and every account that GitHub does not mark as a user.
+- The author of an open pull request that an earlier digest announced is not mentioned again for it while it stays open. Before each run, `collect.py` asks GitHub which announced pull requests are still open. A pull request leaves the list when GitHub answers that it does not exist, or when its repository is no longer in `repos.toml`; on any other error it stays.
+- A dry run shows the mentions in code spans, so nobody is notified.
+
 ## Settings in `repos.toml`
 
 | Setting | Meaning |
@@ -185,6 +188,7 @@ What a digest can miss:
 - An open pull request counts only when it was updated after the window start.
 - A window with no merged pull request and no release gives a post that says Quiet week and lists no open pull requests, even when some are open.
 - At most the 20 newest releases of each repository are read.
+- The number check does not read digits after 2 or more letters (`step200`, `RK45`).
 - The value warning covers only the old value in the wordings above. A third value ("the mixing length is now linear" for a change from nearest to constant), another wording or a sentence that does not name the config key gives no warning. The table next to the entry shows the fact.
 - The author association is what the token of the run can see. A member with a private organisation membership can show as a contributor or with no association; an open pull request with no association is left out and named in the job summary.
 
