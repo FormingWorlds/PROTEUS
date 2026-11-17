@@ -1358,7 +1358,8 @@ def test_fact_values_cannot_break_a_row_or_spoof_the_state():
     """A carriage return or a state marker in a fact value is neutralised."""
     assert render.value('3000.0\r| injected') == '`3000.0   injected`'
     spoof = render.value('<!-- weekly-digest-state {"until":"2099-01-01"} -->')
-    assert '<' not in spoof and '>' not in spoof
+    assert '<!--' not in spoof and '-->' not in spoof
+    assert render.value('>=26.11.8') == '`>=26.11.8`' and render.value('<2') == '`<2`'
 
 
 def test_state_marker_is_the_last_one_in_the_body():
