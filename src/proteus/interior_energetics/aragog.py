@@ -602,6 +602,27 @@ def _lid_out(out, name: str) -> float:
     return float(np.nan_to_num(float(getattr(out, name, np.nan))))
 
 
+def _surface_temperature_of_row(hf_row: dict) -> float | None:
+    """Surface temperature [K] that the Aragog CMB law takes for its shell contrast.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row, with ``T_surf`` from the atmosphere.
+
+    Returns
+    -------
+    float or None
+        ``T_surf``, or None when the row has no finite positive ``T_surf`` (Aragog then
+        takes the top cell).
+    """
+    try:
+        T_surf = float(hf_row.get('T_surf'))
+    except (TypeError, ValueError):
+        return None
+    return T_surf if np.isfinite(T_surf) and T_surf > 0.0 else None
+
+
 def _set_lid_surface(bc, hf_row: dict, slope: float | None = None) -> None:
     """Hold the lid surface of the next interior step at the atmosphere surface, with its cap.
 
@@ -1165,6 +1186,7 @@ class AragogRunner:
             subgrid_lid=config.interior_energetics.aragog.lid_mush_base,
             lid_mush_base=config.interior_energetics.aragog.lid_mush_base,
             core_module_params=core_module_params,
+            surface_temperature=_surface_temperature_of_row(hf_row),
             **lid_kw,
         )
 
@@ -1813,6 +1835,11 @@ class AragogRunner:
                         solver.jax_lid_params() if getattr(solver, '_lid_on', False) else None
                     ),
                     core_module_ra_crit_cmb=getattr(solver, '_core_module_ra_crit_cmb', None),
+                    core_module_surface_temperature=(
+                        solver.cmb_shell_surface_temperature()
+                        if core_bc_mode == 'core_module'
+                        else None
+                    ),
                 )
                 return rhs_fn, jac_fn
 
@@ -2301,6 +2328,7 @@ class AragogRunner:
         live = getattr(bc, 'subgrid_lid', False) and lid_acts(hf_row)
         bc.outer_boundary_value = hf_row['lid_F_open'] if live else hf_row['F_atm']
         _set_lid_surface(bc, hf_row, lid_flux_slope(hf_all, hf_row))
+        bc.surface_temperature = _surface_temperature_of_row(hf_row)
 
         # Update equilibrium temperature (tracks stellar luminosity evolution).
         # SPIDER receives fresh T_eqm at every call via -teqm (spider.py:748).

@@ -2289,6 +2289,8 @@ def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch, r
     )
     if ra_crit is not None:
         solver._core_module_ra_crit_cmb = ra_crit
+    surface = {'T': 1500.0}
+    solver.cmb_shell_surface_temperature = lambda: surface['T']
     installed = {}
     solver.set_jax_cvode_factory = lambda f: installed.update(factory=f)
     interior_o = SimpleNamespace(aragog_solver=solver, _spider_eos_dir='/nonexistent')
@@ -2305,8 +2307,10 @@ def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch, r
         AragogRunner._maybe_install_jax_cvode_factory(_jax_factory_config(), interior_o)
         # An impact replaces the budget after install; the factory must read it per call.
         solver._core_module_budget = 'refit-sentinel'
+        surface['T'] = 1601.5  # the surface of the next step
         installed['factory'](MagicMock(), 'core_module')
     kwargs = build.call_args.kwargs
+    assert kwargs['core_module_surface_temperature'] == 1601.5
     assert kwargs['core_bc_mode'] == 'core_module'
     assert kwargs['core_module_budget'] == 'refit-sentinel'
     assert kwargs['core_module_q_radio'] == pytest.approx(3.0e12)
@@ -4507,6 +4511,34 @@ def test_setup_solver_passes_the_lid_onset_thickness_with_the_lid(tmp_path, lid)
         assert kwargs['lid_delta_on'] == pytest.approx(0.06, rel=1e-14)
     else:
         assert 'lid_delta_on' not in kwargs
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('T_surf', 'want'), [(1529.0, 1529.0), (0.0, None), (float('nan'), None)]
+)
+def test_setup_solver_passes_the_surface_temperature_of_the_row(tmp_path, T_surf, want):
+    """The boundary conditions of a new solver hold the row's surface temperature, the
+    surface of the shell contrast of the CMB law; a row without a positive finite one
+    passes None, so Aragog takes its top cell."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = _make_aragog_config(struct_module='zalmoxis')
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
+    hf_row.update(R_core=3.48e6, T_surf=T_surf)
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch(
+            'proteus.interior_energetics.aragog._BoundaryConditionsParameters'
+        ) as mock_bc_cls,
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
+
+    assert mock_bc_cls.call_args.kwargs['surface_temperature'] == want
 
 
 @pytest.mark.unit

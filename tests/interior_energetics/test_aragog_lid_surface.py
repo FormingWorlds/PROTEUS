@@ -15,6 +15,7 @@ from proteus.interior_energetics.aragog import (
     _lid_surface_of_row,
     _set_lid_surface,
     _surface_flux_of_step,
+    _surface_temperature_of_row,
     lid_cap_secant,
     lid_resolve_skip,
 )
@@ -319,6 +320,54 @@ def test_update_solver_passes_the_lid_boundary_of_the_row(w, lid):
     else:
         assert bc.lid_surface_flux_cap is None
     assert bc.equilibrium_temperature == pytest.approx(255.0, rel=1e-15)
+
+
+@pytest.mark.parametrize(
+    ('row', 'want'),
+    [
+        ({'T_surf': 727.3}, 727.3),
+        ({'T_surf': 0.0}, None),
+        ({'T_surf': -5.0}, None),
+        ({'T_surf': float('nan')}, None),
+        ({'T_surf': float('inf')}, None),
+        ({'T_surf': None}, None),
+        ({}, None),
+    ],
+)
+def test_the_surface_temperature_of_a_row_is_its_positive_finite_t_surf(row, want):
+    """The CMB law takes the row surface when it is a finite number above 0, else None."""
+    assert _surface_temperature_of_row(row) == want
+
+
+@pytest.mark.parametrize(('obc', 'lid'), [(4, True), (4, False), (1, False)])
+def test_update_solver_passes_the_surface_temperature_in_every_mode(obc, lid):
+    """Each step holds the row surface on the solver boundary in flux and grey-body mode, with
+    and without the lid, for the shell contrast of the CMB law."""
+    bc = SimpleNamespace(
+        outer_boundary_condition=obc,
+        subgrid_lid=lid,
+        lid_mush_base=lid,
+        outer_boundary_value=None,
+        lid_surface_temperature=-1.0,
+        lid_surface_flux_cap=-1.0,
+        equilibrium_temperature=None,
+        surface_temperature=-1.0,
+    )
+    params = SimpleNamespace(
+        solver=SimpleNamespace(start_time=None, end_time=None),
+        boundary_conditions=bc,
+        energy=SimpleNamespace(tidal_array=None),
+    )
+    interior_o = SimpleNamespace(
+        aragog_solver=SimpleNamespace(parameters=params, solution=None), tides=np.zeros(3)
+    )
+    row = _row(0.4 if lid else 0.0, G=21.9, T_b=1440.0, T_surf=727.3, F_atm=7000.0)
+    row.update(Time=30000.0, T_eqm=255.0, lid_F_open=165000.0)
+    AragogRunner.update_solver(25.0, row, interior_o)
+    assert bc.surface_temperature == 727.3
+    row['T_surf'] = float('nan')
+    AragogRunner.update_solver(25.0, row, interior_o)
+    assert bc.surface_temperature is None
 
 
 def _lid_out_row(lid_weight=0.37, F_step=15500.0, dt=25.0):
