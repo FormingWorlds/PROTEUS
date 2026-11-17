@@ -1718,33 +1718,109 @@ def test_render_follows_the_highlights_layout():
         ),
         _entry(section='design', facts=[], title='D'),
         _entry(section='install', facts=[], title='I', action=True, text='Update Julia.'),
+        _entry(section='install', facts=[], title='J', action=False, text='Faster install.'),
+        _entry(section='data', facts=[], title='E'),
+        _entry(section='capabilities', facts=[], title='C'),
         _entry(),
     ]
     body, _ = _render(_draft(*entries), data)
     heads = [x for x in body.splitlines() if x.startswith('## ')]
     assert heads == [
         '## Changes that affect your results',
+        '## New capabilities',
         '## Installing and running',
+        '## Data and licensing',
         '## Design choices to look at',
         '## In review, coming soon',
     ]
-    assert (
-        'Additions and changes from across the ecosystem that affect more than one project. This is a selection, not a complete change list.'
-        in body
+    paragraphs = body.split('\n\n')
+    lede = 'Additions and changes from across the ecosystem that affect more than one project. This is a selection, not a complete change list.'
+    assert paragraphs[1] == lede and paragraphs[2].startswith(
+        'This digest is written automatically'
     )
     assert (
         'Runs started after these merges will not reproduce earlier runs with the same config. Compare old and new runs with care, and check whether any figures in progress need a rerun.'
         in body
     )
     assert '| Setting | Change | Merged | Links |\n| --- | --- | --- | --- |' in body
-    assert '**Action for everyone:** Update Julia.' in body
-    assert 'Publications' not in body
+    assert (
+        body.count('Action for everyone') == 1
+        and '**Action for everyone:** Update Julia.' in body
+    )
 
 
-def test_check_action_field():
-    """The action marker is a boolean, allowed only in the section Installing and running."""
-    assert check.check(_data(), _draft(_entry(section='install', facts=[], action=True))) == []
-    fails = check.check(_data(), _draft(_entry(action=True)))
-    assert any('action is only for section install' in f for f in fails), fails
-    assert any('field action' in f for f in check.check(_data(), _draft(_entry(action='yes'))))
-    assert check.check(_data(), _draft(_entry(action=False))) == []
+@pytest.mark.parametrize(
+    ('since', 'until', 'days'),
+    [
+        ('2026-09-01T00:00:00Z', '2026-09-30T00:00:00Z', '1 and 29 September 2026'),
+        ('2026-09-24T07:00:00Z', '2026-10-06T07:00:00Z', '24 September and 6 October 2026'),
+        ('2025-12-30T00:00:00Z', '2026-01-02T00:00:00Z', '30 December 2025 and 1 January 2026'),
+        ('2026-10-06T00:00:00Z', '2026-10-06T00:00:00Z', '6 October 2026'),
+        ('2026-10-06T07:00:00Z', '2026-10-06T09:00:00Z', '6 October 2026'),
+    ],
+)
+def test_window_dates(since, until, days):
+    """The footer names the first and last day of the window in the form of the highlights page."""
+    assert (
+        render.window_dates({'since': since, 'until': until})
+        == f'{days} (UTC {since} to {until})'
+    )
+
+
+def test_quiet_week_uses_readable_dates():
+    """The quiet-week line names the days like the footer."""
+    body, _ = _render(_draft(empty=True), _data(prs=[], fact_list=[]))
+    assert 'between 1 and 29 September 2026 (UTC' in body.split('---')[0]
+
+
+def test_old_draft_without_action_renders():
+    """A draft made before the action field passes the check and renders with no marker."""
+    entry = _entry(section='install', facts=[])
+    assert 'action' not in entry
+    assert check.check(_data(), _draft(entry)) == []
+    body, _ = _render(_draft(entry))
+    assert 'Action for everyone' not in body
+
+
+@pytest.mark.parametrize('value', [None, 1, 0, 'true', [True]])
+def test_check_action_must_be_boolean(value):
+    """A non-boolean action marker is a shape failure."""
+    assert any('field action' in f for f in check.check(_data(), _draft(_entry(action=value))))
+
+
+@pytest.mark.parametrize(
+    ('change', 'message'),
+    [
+        ({'action': True}, 'action is only for section install'),
+        (
+            {
+                'section': 'open',
+                'prs': ['PROTEUS#900'],
+                'facts': [],
+                'logins': ['carol'],
+                'action': True,
+            },
+            'action is only for section install',
+        ),
+        (
+            {
+                'section': 'install',
+                'facts': [],
+                'action': True,
+                'text': 'Action for everyone: update Julia.',
+            },
+            'text holds the action marker',
+        ),
+        (
+            {'section': 'capabilities', 'facts': [], 'text': 'Action for everyone: reinstall.'},
+            'text holds the action marker',
+        ),
+    ],
+)
+def test_check_action_rules(change, message):
+    """The marker comes only from the field, and the field only in Installing and running."""
+    data = _data(prs=[_pr(), _pr('PROTEUS#900', status='open', author='carol')])
+    fails = check.check(data, _draft(_entry(**change)))
+    assert any(message in f for f in fails), fails
+    assert check.check(data, _draft(_entry(section='install', facts=[], action=True))) == []
+    assert check.check(data, _draft(_entry(action=False))) == []
