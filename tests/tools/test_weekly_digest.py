@@ -1491,7 +1491,6 @@ def test_previous_state_skips_a_malformed_marker_of_a_person():
     )
     assert state['until'] == '2026-11-16T22:30:00Z'
     assert collect.parse_state('<!-- weekly-digest-state {oops} -->') is None
-    assert collect.parse_state('<!-- weekly-digest-state {"until":1} -->') == {'until': 1}
     assert collect.parse_state('<!-- weekly-digest-state ["x"] -->') is None
 
 
@@ -1538,3 +1537,89 @@ def test_render_escapes_dollar_and_release_url():
     assert render.escape('costs $5 and $6') == 'costs \\$5 and \\$6'
     rel = dict(_release(), url='https://github.com/a/b/releases/tag/1.0)|x y')
     assert render.links([rel]).endswith('(https://github.com/a/b/releases/tag/1.0%29%7Cx%20y)')
+
+
+@pytest.mark.parametrize(
+    ('text', 'message'),
+    [
+        ('Runs take 1​000 steps.', 'an invisible character'),
+        ('Also rfront​_loc changed.', 'an invisible character'),
+        ('Shown as ‮1.0‬ now.', 'an invisible character'),
+        ('Half is ½ now.', 'a special number character'),
+        ('Now ‐0.001 m.', 'number -0.001 is in no cited source'),
+        ('Now ˗0.001 m.', 'number -0.001 is in no cited source'),
+        ('Runs are x100 faster.', 'number 100 is in no cited source'),
+        ('Grain size now r0.5 m.', 'number 0.5 is in no cited source'),
+    ],
+)
+def test_check_rejects_hidden_characters_dashes_and_prefixed_numbers(text, message):
+    """Invisible characters, fraction characters, dash-like signs and letter-prefixed numbers fail."""
+    fails = check.check(_data(), _draft(_entry(text=text)))
+    assert any(message in f for f in fails), fails
+
+
+def test_number_signs_match_in_text_and_source():
+    """A Unicode minus in a source matches an ASCII minus in the text, and formulas give no number."""
+    assert check.numbers('−0.8 and H2O and CO₂') == {'-0.8'}
+    data = _data()
+    data['prs'][0]['body'] = 'The offset is now −0.8 dex.'
+    assert check.check(data, _draft(_entry(text='The offset is now -0.8 dex.'))) == []
+
+
+def test_quiet_week_note_is_a_paragraph():
+    """The quiet-week sentence is followed by a blank line, so the rule below cannot make it a heading."""
+    body, _ = _render(_draft(empty=True), _data(prs=[], fact_list=[]))
+    assert '(UTC).\n\n---' in body
+
+
+def test_publish_skips_a_second_post_with_the_same_title(tmp_path, monkeypatch, capsys):
+    """A full rerun collects a new short window; the same title as the newest post still stops it."""
+    body = (
+        'x\n<!-- weekly-digest-state {"until":"2026-11-23T22:30:00Z","announced_open":[]} -->\n'
+    )
+    (tmp_path / 'digest.json').write_text(
+        json.dumps({'title': 'PROTEUS weekly digest, 24 November 2026', 'body': body})
+    )
+    monkeypatch.setattr(post, 'GitHub', lambda: 'gh')
+    last = {'until': '2026-11-23T22:23:00Z', 'title': 'PROTEUS weekly digest, 24 November 2026'}
+    monkeypatch.setattr(post, 'previous_state', lambda *a: last)
+    monkeypatch.setattr(post, 'create_discussion', lambda *a: pytest.fail('posted twice'))
+    post.main(['publish', str(tmp_path)])
+    assert 'already posted' in capsys.readouterr().out
+
+
+def test_http_protocol_errors_are_handled(monkeypatch, capsys):
+    """A bad webhook address or a broken HTTP answer is a warning for Discord and a digest error for GitHub."""
+    import http.client
+
+    assert post.discord('m', 'https://discord.com/api/webhooks/1/a b') is False
+    assert 'Discord ping failed' in capsys.readouterr().out
+    monkeypatch.setattr(
+        common.urllib.request,
+        'urlopen',
+        lambda r, timeout: (_ for _ in ()).throw(http.client.IncompleteRead(b'')),
+    )
+    monkeypatch.setattr(common.time, 'sleep', lambda s: None)
+    with pytest.raises(common.DigestError):
+        common.GitHub('t').graphql('{x}')
+
+
+@pytest.mark.parametrize('marker', ['{"until":1}', '{"x":1}', '{"until":"garbage"}', '{}'])
+def test_state_without_a_valid_end_is_ignored(marker):
+    """A marker whose window end is missing or not a time counts as no marker."""
+    assert collect.parse_state(f'<!-- weekly-digest-state {marker} -->') is None
+
+
+def test_previous_state_passes_over_a_broken_bot_marker():
+    """A bot post with a broken marker is skipped and the next bot post gives the state."""
+    cats = {
+        'repository': {
+            'id': 'R',
+            'discussionCategories': {'nodes': [{'id': 'C1', 'slug': 'weekly-digest'}]},
+        }
+    }
+    posts = {'repository': {'discussions': {'nodes': [_post(state='{oops}'), _post()]}}}
+    state = collect.previous_state(
+        _FakeGH([cats, posts]), 'FormingWorlds/PROTEUS', 'weekly-digest'
+    )
+    assert state['until'] == '2026-11-16T22:30:00Z'
