@@ -138,4 +138,6 @@ jobs:
         if: steps.mode.outputs.live == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python tools/digest/post.py publish collected.json draft.json out
+          EVENT: ${{ github.event_name }}
+          POST: ${{ inputs.post || false }}
+        run: python tools/digest/post.py publish collected.json draft.json out --event "$EVENT" --post-input "$POST"

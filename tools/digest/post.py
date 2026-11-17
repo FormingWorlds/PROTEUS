@@ -3,13 +3,14 @@
 Usage::
 
     python tools/digest/post.py decide collected.json --event EVENT --post-input BOOL
-    python tools/digest/post.py publish collected.json draft.json OUTDIR
+    python tools/digest/post.py publish collected.json draft.json OUTDIR --event EVENT --post-input BOOL
 
 ``decide`` prints ``live=true`` or ``live=false`` for ``$GITHUB_OUTPUT``. ``publish``
-repeats the guards (posting switched on, a window that is not back-dated, a draft
-that passes the check), then creates the discussion in the digest category of the
-first repository in the settings. It skips with a notice when the newest digest
-post has the same run id, window end or title: one post per run and per meeting.
+repeats every guard (posting switched on, a window that is not back-dated, a
+scheduled run or a ticked post box, a draft that passes the check, a body that is
+not a dry run), then creates the discussion in the digest category of the first
+repository in the settings. It skips with a notice when the newest digest post has
+the same run id or title: one post per run and per meeting.
 """
 
 from __future__ import annotations
@@ -74,22 +75,29 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args[0] != 'publish':
         raise SystemExit(f'unknown command {args[0]}')
+    opts = dict(zip(args[4::2], args[5::2]))
     fails = check(data, json.loads(Path(args[2]).read_text()))
-    if not settings['publish'] or data['window']['backdated'] or fails:
-        raise DigestError(
-            f'not posted: publish={settings["publish"]}, back-dated={data["window"]["backdated"]}, '
-            f'{len(fails)} check failures'
-        )
     post = json.loads((Path(args[3]) / 'digest.json').read_text())
+    reasons = [
+        reason
+        for reason, bad in (
+            ('posting is switched off', not settings['publish']),
+            ('the window is back-dated', data['window']['backdated']),
+            (
+                'not a live run',
+                opts['--event'] != 'schedule' and opts['--post-input'] != 'true',
+            ),
+            (f'{len(fails)} check failures', fails),
+            ('the body is a dry run', post['body'].startswith('**Dry run')),
+        )
+        if bad
+    ]
+    if reasons:
+        raise DigestError(f'not posted: {", ".join(reasons)}')
     gh, home = GitHub(), settings['repos'][0]
     last = previous_state(gh, home, settings['category']) or {}
-    state = parse_state(post['body']) or {}
-    pairs = (
-        ('run_id', state.get('run_id')),
-        ('until', state.get('until')),
-        ('title', post['title']),
-    )
-    same = [k for k, v in pairs if v and last.get(k) == v]
+    mine = {**(parse_state(post['body']) or {}), 'title': post['title']}
+    same = [k for k in ('run_id', 'title') if mine.get(k) and last.get(k) == mine[k]]
     if same:
         print(
             f'::notice::Not posted: the newest digest {last.get("url")} has the same {", ".join(same)}'

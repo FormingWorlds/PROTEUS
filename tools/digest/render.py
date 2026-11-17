@@ -29,14 +29,9 @@ BODY_LIMIT = 65536
 
 
 def tuesday_title(until: str) -> str:
-    """Title with the date of the meeting Tuesday: the Tuesday on or before the day after ``until``.
-
-    In Amsterdam time a run on Monday takes the next day, and a run from Tuesday to
-    Sunday takes the Tuesday of its week, so a late run keeps the title of the
-    meeting it was made for.
-    """
-    day = parse_time(until).astimezone(ZoneInfo('Europe/Amsterdam')).date() + timedelta(days=1)
-    day -= timedelta(days=(day.weekday() - 1) % 7)
+    """Title with the Tuesday of the Monday-to-Sunday week of ``until`` in Amsterdam time."""
+    day = parse_time(until).astimezone(ZoneInfo('Europe/Amsterdam')).date()
+    day += timedelta(days=1 - day.weekday())
     return f'PROTEUS weekly digest, {day.day} {day:%B %Y}'
 
 

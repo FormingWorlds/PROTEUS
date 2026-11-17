@@ -153,7 +153,11 @@ def still_open(gh: GitHub, repos: list[str], refs: list[str]) -> list[str]:
         if name not in full:
             continue
         owner, repo = full[name].split('/')
-        found = gh.graphql(PR_STATE_QUERY, owner=owner, name=repo, number=int(number))
+        try:
+            found = gh.graphql(PR_STATE_QUERY, owner=owner, name=repo, number=int(number))
+        except DigestError as err:
+            print(f'Announced pull request {ref} cannot be read and leaves the state: {err}')
+            continue
         if ((found['repository'] or {}).get('pullRequest') or {}).get('state') == 'OPEN':
             out.append(ref)
     return out
@@ -331,7 +335,8 @@ def main(argv: list[str] | None = None) -> int:
         f'Open pull request left out: {d["ref"]} by {d["login"]} (association {d["association"]})'
         for d in data.get('dropped_open', [])
     ]
-    print(*lines, sep='\n')
+    if lines:
+        print(*lines, sep='\n')
     if args.summary and lines:
         with open(args.summary, 'a') as fh:
             fh.write(f'<pre>\n{html.escape(chr(10).join(lines))}\n</pre>\n')

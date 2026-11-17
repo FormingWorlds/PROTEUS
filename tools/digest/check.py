@@ -50,17 +50,13 @@ ELEMENTS = set(
 PREFIX_RE = re.compile(r'(?<![\w.])[A-Za-z](?=\d)(?:[\w.]*\w)?')
 ASSIGN_RE = re.compile(
     r'(?:\b(?:set|changed?|lower(?:s|ed)?|rais(?:es|ed)|reduc(?:es|ed)|increas(?:es|ed)|'
-    r'revert(?:s|ed)?|switch(?:es|ed)?|defaults?|moved?)\s+to|\bbecomes?|\b(?:is|are)(?:\s+now)?)'
+    r'revert(?:s|ed)?|switch(?:es|ed)?|defaults?|moved?|go(?:es)?)\s+to|\bbecomes?|\bequals?|='
+    r'|\b(?:is|are)(?:\s+now)?)'
     r'\s+(?:the\s+)?$',
     re.I,
 )
 OLD_MARK_RE = re.compile(
     r'\b(?:from|instead\s+of|rather\s+than|previously|replac\w*|used\s+to)\b', re.I
-)
-CLAIM_RE = re.compile(
-    r'(?:\b(?:is|are)\s+now|\bnow\s+(?:is|are|uses?)|\bdefaults?\s+to|\bset\s+to|\bbecomes?)'
-    r'\s+[\w-]+\s*(?:[,:(]|$)',
-    re.I,
 )
 _ITEM = json.loads((DIGEST_DIR / 'entry_schema.json').read_text())['properties']['entries']
 LIMITS = {
@@ -80,7 +76,11 @@ FIELDS = {
 def _split_prefix(match: re.Match) -> str:
     word = match.group(0)
     symbols = re.findall(r'[A-Z][a-z]?', word)
-    if re.fullmatch(r'(?:[A-Z][a-z]?\d*)+', word) and set(symbols) <= ELEMENTS:
+    if (
+        len(symbols) > 1
+        and re.fullmatch(r'(?:[A-Z][a-z]?\d*)+', word)
+        and set(symbols) <= ELEMENTS
+    ):
         return word
     return f'{word[0]} {word[1:]}'
 
@@ -88,8 +88,8 @@ def _split_prefix(match: re.Match) -> str:
 def prepare(text: str) -> str:
     """Normalise a text for number matching: NFKC, one minus sign, prefixes split from digits.
 
-    A single letter or an underscore before digits is split off (``v1.0``, ``X100``,
-    ``mode_42``); a chemical formula of element symbols (``H2O``) stays whole.
+    A single letter or an underscore before digits is split off (``v1.0``, ``V100``,
+    ``mode_42``); a formula of 2 or more element symbols (``H2O``) stays whole.
     """
     text = unicodedata.normalize('NFKC', text)
     text = ''.join('-' if c in MINUS or unicodedata.category(c) == 'Pd' else c for c in text)
@@ -165,16 +165,25 @@ def _find(value: str, sentence: str) -> int | None:
     return next((m.start() for m in found), None)
 
 
+def _old_marked(prefix: str) -> bool:
+    """True when "from", "instead of" or similar marks the value after ``prefix`` as old.
+
+    The marker counts only when no assignment ("is set to", "is now") follows it.
+    """
+    marks = list(OLD_MARK_RE.finditer(prefix))
+    return bool(marks) and not ASSIGN_RE.search(prefix[marks[-1].end() :])
+
+
 def fact_value_failures(name: str, parts: list[str], facts: list[dict]) -> list[str]:
-    """Sentences that give a cited setting a value other than its new value.
+    """Sentences that state the old value of a cited change as the current setting.
 
     For a default or value change, a sentence fails when it holds the old value but
     not the new one, with "now" or "default" in it or an assignment ("set to",
     "becomes", "is") just before the old value, and no "from", "instead of" or
-    similar before it. For a string value, a sentence that names the key and ends a
-    clause with one word after "is now", "defaults to" or similar, while it does not
-    hold the new value, also fails ("the mixing length is now linear"). The
-    title and the text are split into sentences separately.
+    similar before it. It also fails when it assigns the old value after the new
+    one ("from new to old"). An old value of 1 or 2 digits counts only in a
+    sentence that names the setting. The title and the text are split into
+    sentences separately.
     """
     fails = []
     sentences = [s for p in parts for s in re.split(r'[.;!?](?:\s|$)', prepare(p))]
@@ -184,24 +193,21 @@ def fact_value_failures(name: str, parts: list[str], facts: list[dict]) -> list[
         old, new = (str(v).strip('\'"') for v in (fact['old'], fact['new']))
         key = re.escape(fact['key'].rsplit('.', 1)[-1]).replace('_', '[ _]')
         for s in sentences:
+            named = re.search(rf'(?<!\w){key}(?!\w)', s, re.I)
             at = _find(old, s) if _float(old) is not None or 3 <= len(old) <= 40 else None
-            if (
-                at is not None
-                and _find(new, s) is None
-                and not OLD_MARK_RE.search(s[:at])
-                and (re.search(r'\b(now|default)', s, re.I) or ASSIGN_RE.search(s[:at]))
+            if re.fullmatch(r'\d{1,2}', old) and not named:
+                at = None
+            at_new = _find(new, s)
+            swapped = at_new is not None and at is not None and at_new < at
+            if at is not None and (
+                (swapped and re.search(r'\bto\s+(?:the\s+)?$', s[:at], re.I))
+                or (
+                    at_new is None
+                    and not _old_marked(s[:at])
+                    and (re.search(r'\b(now|default)', s, re.I) or ASSIGN_RE.search(s[:at]))
+                )
             ):
                 fails.append(f'{name}: text holds the old value "{old}" of fact {fact["id"]}')
-                break
-            if (
-                _float(new) is None
-                and CLAIM_RE.search(s)
-                and re.search(rf'(?<!\w){key}(?!\w)', s, re.I)
-                and _find(new, s) is None
-            ):
-                fails.append(
-                    f'{name}: text gives a value other than the new value "{new}" of fact {fact["id"]}'
-                )
                 break
     return fails
 

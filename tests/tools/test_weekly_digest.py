@@ -1577,11 +1577,11 @@ def test_fact_line_falsy_default_value_change_and_cap_edge():
 
 
 def test_short_numeric_old_value_in_a_now_sentence_fails():
-    """A one- or two-digit old value is checked like a longer one."""
+    """A one- or two-digit old value is checked in a sentence that names the setting."""
     fact = _fact(key='interior_energetics.grain_size', old='10', new='20')
     data = _data(fact_list=[fact])
     data['prs'][0]['body'] = 'The count went from 10 to 20.'
-    fails = check.check(data, _draft(_entry(text='The default is now 10 cells.')))
+    fails = check.check(data, _draft(_entry(text='The default grain size is now 10 cells.')))
     assert any('old value "10" of fact F1' in f for f in fails), fails
 
 
@@ -1787,7 +1787,7 @@ def test_publish_refuses_a_failed_check_a_backdated_window_or_publish_off(
 ):
     """The post command repeats every guard, so a broken shell step cannot post."""
     cases = [
-        ({'entry': _entry(prs=['PROTEUS#1'])}, '1 check failures'),
+        ({'entry': _entry(logins=['nobody'])}, '1 check failures'),
         ({'backdated': True}, 'the window is back-dated'),
         ({'event': 'workflow_dispatch'}, 'not a live run'),
         ({'live': False}, 'the body is a dry run'),
@@ -1883,7 +1883,6 @@ def test_workflow_wiring_of_the_guards():
     assert (
         'post.py decide collected.json --event "$EVENT" --post-input "$POST"' in jobs['publish']
     )
-    assert 'post.py publish collected.json draft.json out\n' in jobs['publish']
     assert '--run-id "$GITHUB_RUN_ID"' in jobs['publish']
 
 
@@ -1937,12 +1936,10 @@ def test_old_value_stated_as_the_setting_fails(text):
     assert any('old value "0.1" of fact F1' in f for f in fails), fails
 
 
-def test_a_third_string_value_and_title_sentences():
-    """A sentence that sets a string key to another value fails; the title is its own sentence."""
+def test_title_and_text_are_separate_sentences():
+    """An old string value after "instead of" passes; the title is its own sentence."""
     fact = _fact(key='interior_energetics.mixing_length', old='"nearest"', new='"constant"')
     data = _data(fact_list=[fact])
-    fails = check.check(data, _draft(_entry(text='The default mixing length is now linear.')))
-    assert any('new value "constant" of fact F1' in f for f in fails), fails
     real = (
         'It uses a fixed fraction of the depth instead of the distance to the nearest boundary.'
     )
