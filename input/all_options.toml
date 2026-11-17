@@ -567,6 +567,9 @@ config_version = "3.0"
             f_ohm                  = 1.0       # ohmic fraction of the dissipation in the field-strength scaling
             ra_crit_cmb            = 450.0     # critical Rayleigh number of the mantle-side CMB boundary layer that sets the core-mantle heat flux
             flux_geometry          = "const_flux"  # field-strength efficiency geometry: const_flux | zero_outer
+            profile_source         = "gaussian"  # core profile: gaussian (fitted to M_core, P_center) | paleos (Zalmoxis core arrays on a PALEOS liquid-iron isentrope)
+            core_cp_override       = 840.0     # secular heat capacity of the paleos profile [J kg-1 K-1], or "table" for the table value at the CMB
+            core_t_cmb_step        = 10.0      # CMB temperature step of the paleos isentrope grid [K]
 
     # SPIDER-only parameters
     [interior_energetics.spider]

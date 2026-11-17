@@ -6119,6 +6119,57 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.core_module.profile_source",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"gaussian\"",
+      "choices": [
+        "gaussian",
+        "paleos"
+      ],
+      "bounds": null,
+      "description": "Core profile: 'gaussian' (the density profile fitted to the core mass and the central pressure of the structure) or 'paleos' (the core arrays of the Zalmoxis structure on an isentrope of the PALEOS liquid iron table).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.core_cp_override",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float or str",
+      "accepts_none": false,
+      "default": "840.0",
+      "choices": null,
+      "bounds": null,
+      "description": "Secular specific heat capacity [J kg-1 K-1] of the 'paleos' profile, a positive number, or 'table' for the table value at the CMB; the PALEOS liquid has no electronic heat capacity, so the default is 840.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.core_t_cmb_step",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float or int",
+      "accepts_none": false,
+      "default": "10.0",
+      "choices": null,
+      "bounds": null,
+      "description": "Spacing [K] of the CMB temperatures on which the 'paleos' isentropes are tabulated.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.temperature_step_cap",
       "toml_section": "interior_energetics.aragog",
       "class": "Aragog",
@@ -12973,6 +13024,18 @@
         "planet.temperature_mode"
       ],
       "doc": "Reject an Aragog core_module core that its structure or solver cannot serve."
+    },
+    {
+      "validator": "check_core_profile_source_requirements",
+      "module": "_config.py",
+      "attached_to": [
+        "config_version"
+      ],
+      "touches": [
+        "accretion.module",
+        "interior_energetics"
+      ],
+      "doc": "Reject the PALEOS core profile where it does not apply."
     },
     {
       "validator": "check_module_dependencies",
