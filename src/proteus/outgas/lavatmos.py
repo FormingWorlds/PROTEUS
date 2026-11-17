@@ -119,7 +119,7 @@ class set_magmaproperties:
 
         # Import input from config
         self.T_surf = max(config.outgas.lavatmos.T_min, hf_row['T_magma'])
-        self.P_volatile = hf_row['P_surf']
+        self.P_volatile = hf_row['P_vol']
         self.melt_comp_name = config.outgas.lavatmos.melt_comp_name
         self.output_dir = paths.output_dir
         self.run_name = 'proteus_run'
@@ -388,8 +388,6 @@ def run_lavatmos(
     # Guess for fO2 [bar]
     fO2_initial_guess = 10 ** hf_row['fO2_vapourise_derived']
 
-    # Lavatmos tolerance
-    xatol = config.outgas.lavatmos.xatol
 
     system = lavatmos3.melt_vapor_system(paths)
     lavatmos_output = system.vaporise(
@@ -397,12 +395,17 @@ def run_lavatmos(
         Magma.P_volatile,
         melt_comp,
         volatile_fracs,
-        melt_fraction=Magma.melt_fraction,
+        melt_fraction= Magma.melt_fraction,
         P_melt=P_melt,
-        fO2_initial_guess=fO2_initial_guess,
+        fO2_initial_guess = fO2_initial_guess,
         fO2_tries_from_last=bool(not first_iter),
-        xatol=xatol,
+        allow_unconverged = False,
+        phi_env = None,
+        logfO2_min = -45.0,
+        logfO2_max = None,
+        one_sided = False,
     )
+
 
     # Save results
     output_name = f'{Magma.run_name}.csv'
