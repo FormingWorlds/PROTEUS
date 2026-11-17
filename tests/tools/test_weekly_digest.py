@@ -1694,3 +1694,12 @@ def test_fact_line_falsy_default_value_change_and_cap_edge():
     )
     four = [_fact(f'F{i}', key=f'k{i}') for i in range(render.MAX_FACTS)]
     assert 'more' not in render.facts_text(four) and render.facts_text(four).count(';') == 3
+
+
+def test_short_numeric_old_value_in_a_now_sentence_fails():
+    """A one- or two-digit old value is checked like a longer one."""
+    fact = _fact(key='interior_energetics.grain_size', old='10', new='20')
+    data = _data(fact_list=[fact])
+    data['prs'][0]['body'] = 'The count went from 10 to 20.'
+    fails = check.check(data, _draft(_entry(text='The default is now 10 cells.')))
+    assert any('old value "10" of fact F1' in f for f in fails), fails
