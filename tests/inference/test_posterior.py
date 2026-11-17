@@ -142,6 +142,36 @@ def test_fit_surrogate_leaves_failed_evaluations_out(no_hyperfit):
     assert post.gp_mean(gp, X[5:10]).min().item() > -5.0
 
 
+@pytest.mark.parametrize('learned_noise', [False, True], ids=['fixed_noise', 'learned_noise'])
+def test_gp_mean_matches_the_botorch_posterior_mean(learned_noise):
+    """gp_mean equals botorch's posterior mean on a fitted GP, with Y far from zero mean
+    and unit spread, so that a missing Standardize inverse fails by orders of magnitude."""
+    X, Y = _study_data(n=40)
+    Y = 100.0 * Y + 50.0
+    Yvar = None if learned_noise else torch.full_like(Y, post.GP_NOISE)
+    gp = post._fit_gp(X, Y, 'MAT3/2', 0, Yvar, 1)
+    U = torch.rand(300, 2, generator=torch.Generator().manual_seed(1), dtype=torch.double)
+    with torch.no_grad():
+        expected = gp.posterior(U.unsqueeze(1)).mean.reshape(-1)
+    got = post.gp_mean(gp, U)
+    assert got.shape == (300,)
+    assert torch.allclose(got, expected, rtol=0, atol=1e-8)
+    # the standardised mean, without the inverse transform, is far outside the tolerance
+    standardised = (got - gp.outcome_transform.means) / gp.outcome_transform.stdvs
+    assert (standardised - expected).abs().max() > 1
+
+
+def test_gp_mean_batches_give_the_same_values(monkeypatch):
+    """Splitting U into batches does not change the mean at any point."""
+    X, Y = _study_data(n=30)
+    gp = post.fit_surrogate(X, Y, 'RBF', seed=0)
+    U = torch.rand(250, 2, generator=torch.Generator().manual_seed(2), dtype=torch.double)
+    whole = post.gp_mean(gp, U)
+    assert whole.shape == (250,) and torch.isfinite(whole).all()
+    monkeypatch.setattr(post, 'BATCH', 64)
+    assert torch.allclose(post.gp_mean(gp, U), whole, rtol=0, atol=1e-12)
+
+
 def test_fit_surrogate_uses_botorch_default_lbfgs(no_hyperfit):
     """The hyperparameters are fitted with botorch's default L-BFGS, not a torch optimizer,
     which took about a minute at 500 points."""

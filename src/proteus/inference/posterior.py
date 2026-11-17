@@ -135,14 +135,22 @@ def observables_objective(config: dict, directory, cases: pd.DataFrame):
 
 
 def gp_mean(gp: SingleTaskGP, U: torch.Tensor) -> torch.Tensor:
-    """GP mean at each row of U, one point per batch so no joint covariance is formed."""
+    """GP mean at each row of U, from the cached training solve; no posterior variance.
+
+    The mean is m(u) + k(u, X) alpha in the transformed spaces, with alpha = K^-1 (y - m)
+    cached by gpytorch, then mapped back through the outcome Standardize transform.
+    """
+    gp.eval()
     with torch.no_grad():
-        return torch.cat(
-            [
-                gp.posterior(U[i : i + BATCH].unsqueeze(1)).mean.reshape(-1)
-                for i in range(0, len(U), BATCH)
-            ]
-        )
+        gp.posterior(U[:1])  # builds the prediction cache that holds alpha
+        alpha = gp.prediction_strategy.mean_cache.reshape(-1)
+        X_train = gp.train_inputs[0]
+        out = []
+        for i in range(0, len(U), BATCH):
+            u = gp.input_transform(U[i : i + BATCH])
+            out.append(gp.mean_module(u) + gp.covar_module(u, X_train).to_dense() @ alpha)
+        mean = torch.cat(out).reshape(-1, 1)
+        return gp.outcome_transform.untransform(mean)[0].reshape(-1)
 
 
 def _weights(lnw: torch.Tensor) -> tuple[torch.Tensor, float]:
