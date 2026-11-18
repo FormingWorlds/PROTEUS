@@ -84,7 +84,7 @@ class Zephyrus:
         dispatcher and off under "el".
     base_method: str
         Dispatcher wind base: "lopez" (where the base is optically thick to
-        XUV, Lopez 2017) or "fixed_pressure" (at ``Pxuv``).
+        XUV, Lopez 2017[^cite-lopez2017]) or "fixed_pressure" (at ``Pxuv``).
     base_out_of_range: str
         Dispatcher wind base above the top of the atmosphere profile: "clamp"
         to the top level, or "extend" the profile above it with the Bates upper
@@ -106,7 +106,7 @@ class Zephyrus:
         Escape temperature that tests exosphere stability: "neutral" or "plasma".
     efficiency_mode: str
         "fixed" uses ``efficiency``; "caldiroli" uses the fit of Caldiroli et
-        al. (2022).
+        al. (2022)[^cite-caldiroli2022].
     T_exo_mode: str
         Exobase temperature of the hydrostatic branch: "prescribed" uses
         ``T_exo``, "thermostat" estimates it from heating against cooling.

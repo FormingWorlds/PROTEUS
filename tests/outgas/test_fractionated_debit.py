@@ -74,7 +74,7 @@ def test_water_losing_hydrogen_leaves_its_oxygen_as_o2(validation_plot):
         ax.plot(shares, np.array(water) / 1e20, 'o', label='H$_2$O, debit')
         ax.plot(shares, np.array(o2) / 1e20, 's', mfc='none', label='O$_2$, debit')
         ax.set_xlabel('Share of the hydrogen removed [1]')
-        ax.set_ylabel('Gas mass over the initial water mass [1]')
+        ax.set_ylabel('Mass / initial H$_2$O mass [1]')
         ax.legend(fontsize=8)
         fig.tight_layout()
         return fig

@@ -37,14 +37,14 @@ efficiency.
 | `Pxuv` | float | `5e-05` | Pressure at which XUV radiation becomes opaque \[bar\]. Used by "el", and by the dispatcher when ``base_method = "fixed_pressure"``. Must be >= 0. |
 | `efficiency` | float | `0.1` | Escape efficiency factor. Must be >= 0 and <= 1. |
 | `tidal` | bool or none | `none` | Tidal reduction of the escape barrier. Unset resolves to on under the dispatcher and off under "el". |
-| `base_method` | str | `"lopez"` | Dispatcher wind base: "lopez" (where the base is optically thick to XUV, Lopez 2017) or "fixed_pressure" (at ``Pxuv``). Choices: `"lopez"`, `"fixed_pressure"`. |
+| `base_method` | str | `"lopez"` | Dispatcher wind base: "lopez" (where the base is optically thick to XUV, Lopez 2017[^cite-lopez2017]) or "fixed_pressure" (at ``Pxuv``). Choices: `"lopez"`, `"fixed_pressure"`. |
 | `base_out_of_range` | str | `"clamp"` | Dispatcher wind base above the top of the atmosphere profile: "clamp" to the top level, or "extend" the profile above it with the Bates upper structure of the hydrostatic branch. Choices: `"clamp"`, `"extend"`. |
 | `P_photo` | float | `0.02` | Photospheric level of the dispatcher \[bar\]: the radius of the energy-limited rate and the boil-off launch level. Must be > 0. |
 | `kappa_photo` | float | `0.01` | Grey photospheric opacity \[m2 kg-1\]; the boil-off rate scales as its inverse. Must be > 0. |
 | `kn_crit` | float | `1.0` | Sonic-point Knudsen number above which the wind is rarefied and the hydrostatic branch applies. Must be > 0. |
 | `kn_hysteresis` | float | `1.5` | Factor by which the previous step's side of the Knudsen switch widens the threshold, so an evolving track does not alternate between branches. 1 disables it. Must be >= 1. |
 | `gate` | str | `"neutral"` | Escape temperature that tests exosphere stability: "neutral" or "plasma". Choices: `"neutral"`, `"plasma"`. |
-| `efficiency_mode` | str | `"fixed"` | "fixed" uses ``efficiency``; "caldiroli" uses the fit of Caldiroli et al. (2022). Choices: `"fixed"`, `"caldiroli"`. |
+| `efficiency_mode` | str | `"fixed"` | "fixed" uses ``efficiency``; "caldiroli" uses the fit of Caldiroli et al. (2022)[^cite-caldiroli2022]. Choices: `"fixed"`, `"caldiroli"`. |
 | `T_exo_mode` | str | `"prescribed"` | Exobase temperature of the hydrostatic branch: "prescribed" uses ``T_exo``, "thermostat" estimates it from heating against cooling. Choices: `"prescribed"`, `"thermostat"`. |
 | `T_exo` | float | `1000.0` | Prescribed exobase temperature \[K\]. Must be > 0. |
 | `cool_atomic` | bool | `true` | Atomic line cooling in the wind thermostat. |
@@ -294,3 +294,5 @@ Cross-field constraints enforced when the config file loads:
 **See also:** [Escape modules](../../Explanations/model.md#atmospheric-escape-zephyrus) | [Outgassing modules](../../Explanations/model.md#volatile-outgassing-calliope-atmodeller)
 
 [^cite-schaefer2015]: L. Schaefer, D. Sasselov, *[The persistence of oceans on Earth-like planets: insights from the deep-water cycle](https://doi.org/10.1088/0004-637X/801/1/40)*, The Astrophysical Journal, 801, 40, 2015. [SciX](https://scixplorer.org/abs/2015ApJ...801...40S/abstract).
+[^cite-caldiroli2022]: A. Caldiroli, F. Haardt, E. Gallo, R. Spinelli, I. Malsky, E. Rauscher, *[Irradiation-driven escape of primordial planetary atmospheres. II. Evaporation efficiency of sub-Neptunes through hot Jupiters](https://doi.org/10.1051/0004-6361/202142763)*, Astronomy & Astrophysics, 663, A122, 2022. [SciX](https://scixplorer.org/abs/2022A%26A...663A.122C/abstract).
+[^cite-lopez2017]: E. D. Lopez, *[Born dry in the photoevaporation desert: Kepler's ultra-short-period planets formed water-poor](https://doi.org/10.1093/mnras/stx1558)*, Monthly Notices of the Royal Astronomical Society, 472, 245-253, 2017. [SciX](https://scixplorer.org/abs/2017MNRAS.472..245L/abstract).

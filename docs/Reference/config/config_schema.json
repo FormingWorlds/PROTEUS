@@ -11336,7 +11336,7 @@
         "fixed_pressure"
       ],
       "bounds": null,
-      "description": "Dispatcher wind base: \"lopez\" (where the base is optically thick to XUV, Lopez 2017) or \"fixed_pressure\" (at ``Pxuv``).",
+      "description": "Dispatcher wind base: \"lopez\" (where the base is optically thick to XUV, Lopez 2017[^cite-lopez2017]) or \"fixed_pressure\" (at ``Pxuv``).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11477,7 +11477,7 @@
         "caldiroli"
       ],
       "bounds": null,
-      "description": "\"fixed\" uses ``efficiency``; \"caldiroli\" uses the fit of Caldiroli et al. (2022).",
+      "description": "\"fixed\" uses ``efficiency``; \"caldiroli\" uses the fit of Caldiroli et al. (2022)[^cite-caldiroli2022].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

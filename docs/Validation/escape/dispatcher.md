@@ -11,7 +11,7 @@ This page checks `src/proteus/escape/dispatcher.py`, the coupling of PROTEUS to 
 
 | Test ID | Reference | What is pinned |
 |---|---|---|
-| `test_dispatcher::test_energy_limited_state_matches_the_energy_limited_formula` | Energy-limited escape, $\dot M = \epsilon \pi R_\mathrm{xuv}^2 F_\mathrm{xuv} R_p / (G M_p)$ (Erkaev et al. 2007, without the tidal factor), as the released `zephyrus.escape.EL_escape` evaluates it | The rate of a state the dispatcher labels energy-limited, at three XUV fluxes, to `rel=1e-12`, with the per-element rates summing to the bulk rate. |
+| `test_dispatcher::test_energy_limited_state_matches_the_energy_limited_formula` | Energy-limited escape, $\dot M = \epsilon \pi R_\mathrm{xuv}^2 F_\mathrm{xuv} R_p / (G M_p)$ (Erkaev et al. 2007[^cite-erkaev2007], without the tidal factor), as the released `zephyrus.escape.EL_escape` evaluates it | The rate of a state the dispatcher labels energy-limited, at three XUV fluxes, to `rel=1e-12`, with the per-element rates summing to the bulk rate. |
 
 ## An energy-limited state escapes at the energy-limited rate
 
@@ -21,7 +21,7 @@ This page checks `src/proteus/escape/dispatcher.py`, the coupling of PROTEUS to 
 
 **How we know the right answer.** The energy-limited rate is a closed form. The test evaluates it with the released ZEPHYRUS function `EL_escape` (`scaling = 2`), which ZEPHYRUS validates against Erkaev et al. (2007), at the photospheric radius read from the column.
 
-**Why it matters.** The energy-limited form is the escape rate PROTEUS used before the dispatcher, so this case also ties the dispatcher's rates to the earlier ones on the same state.
+**Why it matters.** The energy-limited rate is a closed form that can be evaluated by hand, so a coupling error shows here directly. The case does not reproduce the rates of the `el` scheme, which PROTEUS used before the dispatcher. That scheme takes the $R_\mathrm{xuv}^3$ form, which the dashed line shows at the same radius, and reads $R_\mathrm{xuv}$ at `escape.zephyrus.Pxuv` (5e-5 bar by default) rather than at the 0.02 bar level.
 
 **Known limit.** The case checks the coupling on one branch. The other branches (boil-off, recombination- and photon-limited winds, Jeans escape, and Roche-lobe overflow) take the same inputs, but their rates are pinned only in ZEPHYRUS.
 
@@ -36,3 +36,5 @@ This page checks `src/proteus/escape/dispatcher.py`, the coupling of PROTEUS to 
     - Test id: `tests/escape/test_dispatcher.py::test_energy_limited_state_matches_the_energy_limited_formula`
     - Command: `pytest -m reference_pinned tests/escape/test_dispatcher.py --validation-plots`
     - Last compared: 13 November 2026.
+
+[^cite-erkaev2007]: N. V. Erkaev, Yu. N. Kulikov, H. Lammer, F. Selsis, D. Langmayr, G. F. Jaritz, H. K. Biernat, *[Roche lobe effects on the atmospheric loss from “Hot Jupiters”](https://doi.org/10.1051/0004-6361:20066929)*, Astronomy & Astrophysics, 472, 329-334, 2007. [SciX](https://scixplorer.org/abs/2007A%26A...472..329E/abstract).

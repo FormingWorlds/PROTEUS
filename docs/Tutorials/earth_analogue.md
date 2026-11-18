@@ -34,7 +34,7 @@ structure from a core mass fraction instead of the fixed planet radius and core
 radius fraction of the protocol, with the MgSiO$_3$ equation of state of PALEOS
 for the mantle, where the protocol names a bulk silicate Earth (BSE)
 composition. The star follows the Spada tracks with the
-solar spectrum, where the protocol asks for the Baraffe et al. (2015) track
+solar spectrum, where the protocol asks for the Baraffe et al. (2015) [^cite-baraffe2015] track
 with a blackbody spectrum for models that evolve the stellar luminosity. The
 instellation is ~1005 W m$^{-2}$ at the start; the 920 W m$^{-2}$ of Table 2
 is the value of the protocol for models with a constant luminosity. Radiogenic heating is on
@@ -229,3 +229,5 @@ to ~0.5%.
  [^cite-lichtenberg2026]: Lichtenberg, T., Schaefer, L., Krissansen-Totton, J., et al., *[Coupled atmosHere Interior modeL Intercomparison (CHILI): Protocol Version 1.0](https://doi.org/10.3847/PSJ/ae593b)*, The Planetary Science Journal, 7, 108, 2026. [SciX](https://scixplorer.org/abs/2026PSJ.....7..108L/abstract).
 
  [^cite-spada2013]: Spada, F., Demarque, P., Kim, Y.C. & Sills, A., *[The radius discrepancy in low-mass stars: single versus binaries](https://doi.org/10.1088/0004-637X/776/2/87)*, The Astrophysical Journal, 776, 87, 2013. [SciX](https://scixplorer.org/abs/2013ApJ...776...87S/abstract).
+
+ [^cite-baraffe2015]: Baraffe, I., Homeier, D., Allard, F. & Chabrier, G., *[New evolutionary models for pre-main sequence and main sequence low-mass stars down to the hydrogen-burning limit](https://doi.org/10.1051/0004-6361/201425481)*, Astronomy & Astrophysics, 577, A42, 2015. [SciX](https://scixplorer.org/abs/2015A%26A...577A..42B/abstract).
