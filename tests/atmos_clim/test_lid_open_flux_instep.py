@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
 import pytest
 
 pytest.importorskip('hypothesis')
@@ -197,3 +198,51 @@ def test_the_scale_stop_writes_the_atmosphere_status():
         row = _balanced(_row(0.3, T_surf=900.0))
         assert lid_open_flux_or_stop({}, row) == lid_open_flux(row)
         assert status.call_count == 1
+
+
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_the_response_is_the_change_of_the_shared_surface(validation_plot):
+    """Validation: at 3 slopes F' of the atmosphere and 19 lid weights, ``(1 - w) G_eff``
+    equals ``F' dT_s/dT_m``, the change of the atmosphere flux at the shared surface of the call
+    when the open node warms (central difference of the surface balance); relative 1e-7."""
+    G_l = 7.27
+    weights = np.linspace(0.05, 0.95, 19)
+    slopes = (0.05, 0.306, 3.0)
+    rows = {}
+    for F_p in slopes:
+        got, want = [], []
+        for w in weights:
+            row = _row(w, G=G_l, T_node=1600.0, T_surf=900.0, d=0.01, k=2.0, F_atm=1.0)
+            G_eff, code = lid_open_conductance(row, F_p)
+            assert code == 0
+            h = 1e-3
+            dT_s = (
+                _shared_surface(row, F_p, 1600.0 + h) - _shared_surface(row, F_p, 1600.0 - h)
+            ) / (2.0 * h)
+            got.append((1.0 - w) * G_eff)
+            want.append(F_p * dT_s)
+        got, want = np.array(got), np.array(want)
+        np.testing.assert_allclose(got, want, rtol=1e-7)
+        rows[F_p] = (got, want)
+    # Discrimination: the open part alone (form A, G F'/(G + F')) misses at w = 0.5, F' = 3.
+    w, F_p = 0.5, 3.0
+    form_a = (1.0 - w) * 200.0 * F_p / (200.0 + F_p)
+    assert abs(form_a / rows[F_p][1][9] - 1.0) > 0.1
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fig, (top, bottom) = plt.subplots(2, 1, sharex=True, figsize=(6.4, 5.6))
+        for F_p, mk in zip(slopes, ('o', 's', '^'), strict=True):
+            got, want = rows[F_p]
+            line = top.plot(weights, want / F_p, label=f"F' = {F_p:g}")[0]
+            top.plot(weights, got / F_p, mk, ms=4, mfc='none', color=line.get_color())
+            bottom.plot(weights, np.abs(got / want - 1.0) / 1e-7, mk, ms=4, mfc='none')
+        top.set(ylabel="(1 - w) G_eff / F'")
+        top.legend(fontsize=8)
+        bottom.set(xlabel='Lid weight w', ylabel='Diff. / tol.', ylim=(0.0, 1.0))
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'atmos_clim_lid_open_response')
