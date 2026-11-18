@@ -2578,7 +2578,8 @@ class AragogRunner:
 
         The cap acts at the end where the lid surface ends above the held one. The secant of the
         atmosphere flux between the held and the end surface (``self._lid_flux_at``) replaces
-        the slope of the call, and the call runs again from its start; a secant equal to the
+        the slope of the call for the lid part and, through ``lid_open_conductance``, for the open
+        part, and the call runs again from its start; a secant equal to the
         slope (:func:`lid_resolve_skip`) or no flux provider keeps the first solve. The count
         and the wall time of the re-solves are kept on ``interior_o``.
 
@@ -2604,6 +2605,11 @@ class AragogRunner:
         t0 = time.perf_counter()
         _restore_call_start(solver, snap, interior_o)
         bc.lid_surface_flux_slope = secant
+        if getattr(bc, 'open_surface_conductance', None) is not None:
+            # the open part follows the same secant, with the guard of that slope
+            bc.open_surface_conductance, hf_row['lid_slope_guard'] = lid_open_conductance(
+                hf_row, secant
+            )
         out2 = self._solve_with_retry(hf_row, interior_o, S0_entry)
         wall = time.perf_counter() - t0
         interior_o.lid_cap_resolves = getattr(interior_o, 'lid_cap_resolves', 0) + 1
@@ -2659,6 +2665,9 @@ class AragogRunner:
         ------
         RuntimeError
             When every attempt of the ladder failed.
+        AcceptedStateRangeError
+            When the last attempt still leaves the EOS tables at an accepted state; earlier
+            such attempts count as failures of the dt-halving branch.
 
         Notes
         -----
@@ -2681,6 +2690,8 @@ class AragogRunner:
         follow-up; the relaxation is measured-safe on this recovery path and the
         guard only fires on a stall.
         """
+        from aragog.solver.entropy_solver import AcceptedStateRangeError
+
         solver = self.aragog_solver
         max_attempts = 6
         # A CV_TOO_MUCH_WORK stall front-loads three non-dt attempts (raise
@@ -2764,7 +2775,37 @@ class AragogRunner:
             # and drives the exhaustion check below.
             for attempt in range(1, max_attempts_stiff + 1):
                 _t0 = time.perf_counter()
-                solver.solve()
+                try:
+                    solver.solve()
+                except AcceptedStateRangeError as exc:
+                    # An accepted state outside the EOS tables: never accept it; retry with
+                    # half the step, and on the last attempt pass the error up (status 21).
+                    if attempt >= max_attempts:
+                        log.error(
+                            'Aragog left the EOS tables at an accepted state on every attempt '
+                            '(%d); stopping. %s',
+                            attempt,
+                            str(exc)[:200],
+                        )
+                        raise
+                    other_seen += 1
+                    dt_new = min(
+                        dt_requested * (0.5**other_seen),
+                        float(solver.parameters.solver.end_time) - t_start,
+                    )
+                    log.warning(
+                        'Aragog attempt %d/%d left the EOS tables at an accepted state (%s). '
+                        'Retrying with dt=%.3e yr.',
+                        attempt,
+                        max_attempts,
+                        str(exc)[:200],
+                        dt_new,
+                    )
+                    solver.parameters.solver.start_time = t_start
+                    solver.parameters.solver.end_time = t_start + dt_new
+                    solver.reset()
+                    solver._S0, solver._last_compression_J = S0_entry.copy(), compression
+                    continue
                 _solve_wall = time.perf_counter() - _t0
                 out = solver.get_state()
                 if _diag_on:

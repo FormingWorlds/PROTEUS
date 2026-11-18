@@ -26,6 +26,8 @@ from proteus.atmos_clim.common import (  # noqa: E402
 )
 from proteus.utils.constants import const_sigma as SIGMA  # noqa: E402
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _row(w, G=4.0, T_b=1400.0, T_node=1500.0, **kw):
     return dict(
@@ -174,13 +176,21 @@ def test_a_slope_of_zero_or_a_bad_slope_holds_the_start_value(F_p):
 
 @pytest.mark.physics_invariant
 def test_no_response_without_a_live_lid():
+    """Without a live lid there is no open response and no guard code."""
     for row in (_row(0.0, T_surf=900.0, F_atm=1.0), {'F_atm': 1.0, 'T_surf': 900.0}):
         assert lid_open_conductance(row, 0.3) == (None, 0)
 
 
 @pytest.mark.physics_invariant
-def test_the_guard_codes_are_distinct():
-    assert len({0, LID_SLOPE_GUARD_SIGN, LID_SLOPE_GUARD_SIZE}) == 3
+def test_the_response_caps_the_lid_conductance_at_the_skin():
+    """A lid conducting more than the skin enters ``G_eff`` at the skin conductance, as in the
+    parallel sum of the call."""
+    w, F_p, G = 0.5, 3.0, 200.0
+    G_eff, code = lid_open_conductance(_row(w, G=1000.0, T_surf=900.0, F_atm=1.0), F_p)
+    assert code == 0
+    assert G_eff == pytest.approx(G * F_p / (F_p + w * G + (1.0 - w) * G), rel=1e-14)
+    uncapped = G * F_p / (F_p + w * 1000.0 + (1.0 - w) * G)
+    assert abs(G_eff / uncapped - 1.0) > 0.5
 
 
 @pytest.mark.unit
@@ -246,3 +256,28 @@ def test_the_response_is_the_change_of_the_shared_surface(validation_plot):
         return fig
 
     validation_plot(figure, 'atmos_clim_lid_open_response')
+
+
+def test_only_the_scale_stop_writes_the_atmosphere_status():
+    """Another error from the open-part flux passes up without status 22."""
+    from unittest.mock import patch
+
+    from proteus.atmos_clim.wrapper import lid_open_flux_or_stop
+
+    with (
+        patch(
+            'proteus.atmos_clim.wrapper.lid_open_flux', side_effect=RuntimeError('zero skin')
+        ),
+        patch('proteus.atmos_clim.wrapper.UpdateStatusfile') as status,
+    ):
+        with pytest.raises(RuntimeError, match='zero skin'):
+            lid_open_flux_or_stop({}, _row(0.3, T_surf=900.0, F_atm=1.0))
+        status.assert_not_called()
+
+
+def test_a_scale_that_is_not_a_number_stops_with_a_message_that_says_so():
+    """A NaN atmosphere flux gives a scale that is not a number; the message says so."""
+    from proteus.atmos_clim.common import LidOpenFluxError
+
+    with pytest.raises(LidOpenFluxError, match='not positive'):
+        lid_open_flux(_row(0.3, T_surf=900.0, F_atm=float('nan')))

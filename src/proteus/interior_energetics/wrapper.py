@@ -2057,6 +2057,7 @@ LID_COLUMNS = (
     'lid_T_surface',
     'lid_T_base',
     'lid_T_node',
+    'lid_weight_max',
 )
 
 
@@ -2633,13 +2634,9 @@ def run_interior(
                     write_data=write_data,
                 )
             interior_o.aragog_fail_count = 0
-        except InteriorStalledError:
-            # InteriorStalledError indicates zero progress across successful steps.
-            # Do not absorb it under the consecutive retry failure counter.
-            UpdateStatusfile(dirs, 21)
-            raise
-        except AcceptedStateRangeError:
-            # an accepted state outside the EOS tables: the step is not usable, stop the run
+        except (InteriorStalledError, AcceptedStateRangeError):
+            # Zero progress across successful steps, or an accepted state outside the EOS tables
+            # on the last attempt of the ladder: stop the run, not under the retry counter.
             UpdateStatusfile(dirs, 21)
             raise
         except RuntimeError as e:

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 from proteus.atmos_clim.common import (
     Atmos_t,
     LevelsSource,
+    LidOpenFluxError,
     clip_radius_to_hill,
     lid_open_flux,
     require_spfile_path,
@@ -222,10 +223,10 @@ def realign_xuv_gravity(hf_row: dict, radius: float):
 
 
 def lid_open_flux_or_stop(dirs: dict, hf_row: dict) -> float:
-    """:func:`lid_open_flux` of the row; its stop for a scale at or below 0 writes status 22."""
+    """:func:`lid_open_flux` of the row; its stop for a scale that is not positive writes status 22."""
     try:
         return lid_open_flux(hf_row)
-    except RuntimeError:
+    except LidOpenFluxError:
         UpdateStatusfile(dirs, 22)
         raise
 

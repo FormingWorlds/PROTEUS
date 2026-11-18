@@ -538,6 +538,10 @@ def lid_flux_cap(hf_row: dict) -> float | None:
 _OPEN_FLUX_WARNED = [False]
 
 
+class LidOpenFluxError(RuntimeError):
+    """The open part of a live lid has no start value: its scale ``c`` is not positive."""
+
+
 def lid_open_flux(hf_row: dict) -> float:
     """Flux [W m-2] of the surface without a lid, the boundary value of the interior.
 
@@ -556,8 +560,9 @@ def lid_open_flux(hf_row: dict) -> float:
 
     Raises
     ------
-    RuntimeError
-        For a scale ``c`` of 0 or below: a positive balance with ``F_atm`` at or below 0.
+    LidOpenFluxError
+        For a scale ``c`` that is not positive: a positive balance with ``F_atm`` at or below 0
+        or not finite.
 
     Notes
     -----
@@ -587,8 +592,8 @@ def lid_open_flux(hf_row: dict) -> float:
         return F_atm
     c = F_atm / balance
     if not c > 0.0:
-        raise RuntimeError(
-            f'Lid open part: scale c = F_atm / balance = {c:.4g} at or below 0 (F_atm {F_atm:.4g}, '
+        raise LidOpenFluxError(
+            f'Lid open part: scale c = F_atm / balance = {c:.4g} not positive (F_atm {F_atm:.4g}, '
             f'balance {balance:.4g} W m-2, T_surf {T_surf:.2f} K, lid weight '
             f'{float(hf_row["lid_weight"]):.4g})'
         )

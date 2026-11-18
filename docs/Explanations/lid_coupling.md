@@ -149,6 +149,8 @@ $$G_\mathrm{eff} = \frac{G_\mathrm{skin}\,F'}{F' + w\,G_\mathrm{lid}' + (1 - w)\
 - As $w$ goes to 1 it is $G_\mathrm{skin} F' / (F' + G_\mathrm{lid}')$ per open area and 0 per total area.
 - It is at most $G_\mathrm{skin}$.
 
+The start value carries the scale $r$ of the call, $r\,G_\mathrm{skin}(T_m - T_\mathrm{surf})$, and the response uses $G_\mathrm{skin}$ without it. Where the atmosphere does not close its balance the response therefore differs from that of the scaled skin by the factor $r$; where it closes the balance, $r = 1$ and the two agree.
+
 **Example.** On a stored lid-onset row of a coupled run ($w = 0.703$, $G_\mathrm{lid}' = 7.27$, $F' = 0.306$ W m$^{-2}$ K$^{-1}$), $G_\mathrm{eff}$ is 0.944 W m$^{-2}$ K$^{-1}$ per open area and 0.280 per total area. An open part that followed the shared surface on its own, with the lid part held, would carry 4.96 W m$^{-2}$ K$^{-1}$ per total area, 17.7 times the change of the atmosphere.
 
 **The slope guard.** `lid_flux_slope` gives $F'$ from the last 2 rows; the column `lid_slope_guard` records what the guard did on rows with a live lid:

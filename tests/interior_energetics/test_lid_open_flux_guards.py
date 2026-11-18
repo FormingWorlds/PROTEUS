@@ -15,6 +15,8 @@ from proteus.interior_energetics.aragog import AragogRunner
 from proteus.interior_energetics.wrapper import guard_t_magma_clip
 from tests.atmos_clim.test_common import _row
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(60)]
+
 
 def _runner_bc(lid=True):
     bc = SimpleNamespace(
@@ -64,6 +66,7 @@ def test_update_solver_passes_the_open_conductance_of_a_live_lid(w, lid):
 
 
 def test_a_live_lid_without_a_usable_slope_holds_the_start_value():
+    """A live lid without a usable slope gets conductance 0 and guard code 1."""
     bc, interior_o = _runner_bc()
     row = _row(0.4, G=21.9, T_b=1440.0, T_surf=727.3, F_atm=7000.0, lid_F_open=165000.0)
     row.update(Time=30000.0, T_eqm=255.0)
@@ -98,6 +101,7 @@ def test_a_t_magma_clip_stops_only_with_a_live_lid_in_the_step(prev_w, w, w_max,
 
 
 def test_a_row_without_lid_columns_counts_the_clip():
+    """A row without lid columns counts a clip and does not stop."""
     row = {'Time': 1.0, 'T_magma': 3000.0}
     guard_t_magma_clip({}, row, float('nan'), 3100.0)
     assert row['T_magma_clipped'] == 1
@@ -131,3 +135,113 @@ def test_an_accepted_state_out_of_the_tables_ends_the_run():
         run_interior({}, config, hf_all, dict(hf_row), interior_o, MagicMock())
     assert interior_o.aragog_fail_count == 0
     assert 21 in [c.args[1] for c in status.call_args_list]
+
+
+def _range_solver(fail_attempts, n_total):
+    """A scripted solver whose solve() raises AcceptedStateRangeError on the given attempts."""
+    from aragog.solver.entropy_solver import AcceptedStateRangeError
+
+    from tests.interior_energetics.test_aragog import _retry_out, _retry_solver
+
+    solver, calls = _retry_solver([_retry_out(0)] * n_total)
+    record = solver.solve.side_effect
+
+    def solve():
+        record()
+        if len(calls) in fail_attempts:
+            raise AcceptedStateRangeError(f'cell 48 out of the tables at attempt {len(calls)}')
+
+    solver.solve.side_effect = solve
+    return solver, calls
+
+
+def test_a_state_out_of_the_tables_retries_with_half_the_step(monkeypatch):
+    """An attempt whose accepted state leaves the EOS tables is a failed attempt: the ladder
+    halves the step, and a later attempt inside the tables is the result."""
+    from tests.interior_energetics.test_aragog import _retry_runner
+
+    solver, calls = _range_solver({1, 2}, 4)
+    runner, interior_o, hf_row = _retry_runner(solver, monkeypatch)
+    out = runner._solve_with_retry(hf_row, interior_o)
+    assert out.status == 0
+    assert [round(c['dt'], 6) for c in calls] == [100.0, 50.0, 25.0]
+    assert solver.reset.call_count == 2
+
+
+def test_a_state_out_of_the_tables_on_every_attempt_stops_the_run(monkeypatch):
+    """When the last attempt still leaves the tables the error reaches the caller, which stops
+    the run with status 21; no attempt outside the tables is accepted."""
+    from aragog.solver.entropy_solver import AcceptedStateRangeError
+
+    from tests.interior_energetics.test_aragog import _retry_runner
+
+    solver, calls = _range_solver(set(range(1, 20)), 10)
+    runner, interior_o, hf_row = _retry_runner(solver, monkeypatch)
+    with pytest.raises(AcceptedStateRangeError, match='attempt 6'):
+        runner._solve_with_retry(hf_row, interior_o)
+    assert [round(c['dt'], 6) for c in calls] == [100.0, 50.0, 25.0, 12.5, 6.25, 3.125]
+    solver.get_state.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ('prev_w', 'T_magma', 'stops', 'clipped'),
+    [(0.3, 3500.0, True, None), (0.0, 3500.0, False, 1), (0.3, 3005.0, False, 0)],
+)
+def test_run_interior_guards_the_t_magma_clip_of_a_lid_step(prev_w, T_magma, stops, clipped):
+    """At its call site in run_interior: a clip where the previous row has a live lid stops the
+    run with status 21; without a lid the clip is counted; a step without a clip counts 0."""
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.interior_energetics.wrapper import run_interior
+    from tests.interior_energetics.test_wrapper import (
+        _make_run_interior_config,
+        _make_run_interior_state,
+    )
+
+    config = _make_run_interior_config(prevent_warming=False)
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=1.0)
+    hf_all['lid_weight'] = prev_w
+    hf_row.update(lid_weight=0.0, lid_weight_max=0.0)
+    out = {
+        'T_magma': T_magma,
+        'T_surf': 2805.0,
+        'Phi_global': 0.7,
+        'F_int': 2.0,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    interior_o = Interior_t(nlev_b=10)
+    interior_o.ic = 2
+    with (
+        patch('proteus.interior_energetics.dummy.run_dummy_int', return_value=(110.0, out)),
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+        patch('proteus.interior_energetics.wrapper.UpdateStatusfile') as status,
+    ):
+        if stops:
+            with pytest.raises(RuntimeError, match=r'T_magma clip from 3500\.00 K'):
+                run_interior({}, config, hf_all, hf_row, interior_o, MagicMock(), verbose=False)
+            assert [c.args[1] for c in status.call_args_list] == [21]
+        else:
+            run_interior({}, config, hf_all, hf_row, interior_o, MagicMock(), verbose=False)
+            assert hf_row['T_magma_clipped'] == clipped
+            status.assert_not_called()
+
+
+@pytest.mark.parametrize(('obc', 'mush'), [(4, True), (4, False), (1, True), (1, False)])
+def test_only_a_flux_lid_with_the_mush_base_gets_an_open_response(obc, mush):
+    """The open response needs the flux boundary (outer condition 4) and the mush base; any
+    other live lid gets no conductance and guard code 0."""
+    bc, interior_o = _runner_bc(True)
+    bc.outer_boundary_condition, bc.lid_mush_base = obc, mush
+    row = _row(0.4, G=21.9, T_b=1440.0, T_surf=727.3, F_atm=7000.0, lid_F_open=165000.0)
+    row.update(Time=30000.0, T_eqm=255.0)
+    hf_all = pd.DataFrame(
+        {'Time': [29975.0, 30000.0], 'T_surf': [717.3, 727.3], 'F_atm': [6500.0, 7000.0]}
+    )
+    AragogRunner.update_solver(25.0, row, interior_o, hf_all=hf_all)
+    if obc == 4 and mush:
+        assert bc.open_surface_conductance > 0.0
+    else:
+        assert bc.open_surface_conductance is None
+        assert row['lid_slope_guard'] == 0
