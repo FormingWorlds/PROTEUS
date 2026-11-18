@@ -13,6 +13,7 @@ import json
 import re
 import stat
 import sys
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -287,6 +288,8 @@ def test_clean_text_removes_every_url_scheme():
     assert collect.clean_text('see https:// and foo://y z', 100) == 'see and z'
     assert collect.clean_text('https:/@/evil.example/x', 100) == ''
     assert collect.clean_text('ht\u200btps://evil.example tail', 100) == 'tail'
+    assert collect.clean_text('see www. and www.x', 100) == 'see and'
+    assert collect.clean_text('a\u200bb\x00c\U000e0041d\U000e0002e\nf', 100) == 'abcde f'
 
 
 def test_clean_text_keeps_text_after_a_less_than_sign():
@@ -294,6 +297,7 @@ def test_clean_text_keeps_text_after_a_less_than_sign():
     assert collect.clean_text('T < 300 K and a -> b', 100) == 'T 300 K and a - b'
     assert collect.clean_text('<!DOCTYPE html><?xml v?><B>x</B>', 100) == 'x'
     assert collect.clean_text('<a <b>x', 100) == 'a x'
+    assert collect.clean_text('a<b>c x<3', 100) == 'a c x 3'
     out = collect.clean_text('T < 300 K ' + 'word ' * 5000 + 'tail', 20000)
     assert out == 'T 300 K ' + ' '.join(['word'] * 3998)
 
@@ -335,7 +339,11 @@ def test_clean_text_contract(text, limit):
     assert '@' not in out
     assert '://' not in out
     assert 'www.' not in out
-    assert not [c for c in out if collect.dropped_char(c)]
+    assert not [
+        c
+        for c in out
+        if unicodedata.category(c) in ('Cf', 'Cc') or 0xE0000 <= ord(c) <= 0xE007F
+    ]
     assert len(out) <= limit
     if set(text) <= set(PLAIN):
         assert out == ' '.join(text.split())[:limit]
