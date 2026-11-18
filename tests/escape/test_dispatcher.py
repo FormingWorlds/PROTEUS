@@ -26,6 +26,7 @@ from proteus.escape.dispatcher import (
     dispatch_settings,
     escape_inputs,
     escape_profile,
+    mass_ratio,
     run_dispatcher,
     store_result,
 )
@@ -398,6 +399,59 @@ def test_inputs_carry_the_planet_in_si():
     assert inp.reservoirs['H'] == pytest.approx(1.0e21, rel=1e-12)
     assert inp.M_p == pytest.approx(5.0 * M_EARTH, rel=1e-12)
     assert inp.R_p == pytest.approx(1.5 * R_EARTH, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_argon_and_neon_cross_to_zephyrus_atom_for_atom():
+    """Argon and neon keep their number of atoms across the two mass conventions.
+
+    ZEPHYRUS weighs argon and neon as 36Ar and 20Ne (35.968 and 19.992 amu),
+    PROTEUS at the standard weights (39.95 and 20.1797). A reservoir of one
+    mole of each enters ZEPHYRUS as one mole. A hydrostatic rate of one mole
+    per second returns as one mole per second, so the bulk rate grows by the
+    mass difference. A wind keeps its bulk rate, which an energy budget set,
+    and only the split between the elements follows the atom counts.
+    Discrimination: passing the kilograms through unchanged would move argon by
+    11 percent and neon by 0.9 percent.
+    """
+    from zephyrus.composition import ELEMENT_AMU
+
+    from proteus.utils.constants import element_mmw
+
+    config = _config()
+    row = dict(_row(), Ar_kg_atm=element_mmw['Ar'], Ne_kg_atm=element_mmw['Ne'])
+    inp = escape_inputs(config, row, escape_profile(config, row, _atmos(row))[0], 1.0)
+    assert inp.reservoirs['Ar'] == pytest.approx(ELEMENT_AMU['Ar'] * 1e-3, rel=1e-12)
+    assert inp.reservoirs['Ne'] == pytest.approx(ELEMENT_AMU['Ne'] * 1e-3, rel=1e-12)
+
+    per_mole = {e: ELEMENT_AMU[e] * 1e-3 for e in ('Ar', 'Ne', 'H')}
+    result = SimpleNamespace(
+        regime='hydrostatic',
+        rate_branch='hydrostatic',
+        mdot=sum(per_mole.values()),
+        per_species=per_mole,
+        flags={},
+        diagnostics={},
+    )
+    out = {}
+    store_result(out, result, PROFILE_SOLVE)
+    for e in ('Ar', 'Ne', 'H'):
+        assert out[f'esc_rate_{e}'] == pytest.approx(element_mmw[e], rel=1e-12), e
+    assert out['esc_rate_total'] == pytest.approx(
+        sum(element_mmw[e] for e in per_mole), rel=1e-12
+    )
+    assert mass_ratio('Ar') == pytest.approx(1.1107, rel=1e-4)
+    assert mass_ratio('Ne') == pytest.approx(1.0094, rel=1e-4)
+
+    wind = SimpleNamespace(**{**vars(result), 'regime': 'hydrodynamic:EL'})
+    wind.rate_branch = 'hydrodynamic:EL'
+    out = {}
+    store_result(out, wind, PROFILE_SOLVE)
+    assert out['esc_rate_total'] == pytest.approx(wind.mdot, rel=1e-12)
+    assert sum(out[f'esc_rate_{e}'] for e in per_mole) == pytest.approx(wind.mdot, rel=1e-12)
+    assert out['esc_rate_Ar'] / out['esc_rate_H'] == pytest.approx(
+        element_mmw['Ar'] / element_mmw['H'], rel=1e-12
+    )
 
 
 @pytest.mark.physics_invariant

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import M_sun, element_list, gas_list, secs_per_year
+from proteus.utils.constants import M_sun, element_list, element_mmw, gas_list, secs_per_year
 
 if TYPE_CHECKING:
     from proteus.atmos_clim.common import Atmos_t
@@ -89,6 +89,20 @@ FLAG_NAMES = (
 )
 FLAG_BITS = {name: 1 << i for i, name in enumerate(FLAG_NAMES)}
 FLAG_UNKNOWN_BIT = 1 << 52
+
+
+def mass_ratio(element: str) -> float:
+    """PROTEUS atomic mass over the ZEPHYRUS one for an element [1].
+
+    ZEPHYRUS gives neon and argon the 20Ne and 36Ar masses its diffusion
+    coefficients are printed for, PROTEUS the standard atomic weights. The
+    factor converts a mass at the same number of atoms: 1.111 for Ar, 1.009 for
+    Ne, within 1.5e-4 of 1 otherwise. ZEPHYRUS still computes argon escape for
+    36Ar, which this conversion does not change.
+    """
+    from zephyrus.composition import ELEMENT_AMU
+
+    return element_mmw[element] * 1e3 / ELEMENT_AMU[element]
 
 
 def raised_flags(flags: dict) -> list[str]:
@@ -296,7 +310,9 @@ def escape_inputs(config: Config, hf_row: dict, profile, dt: float):
     from zephyrus import EscapeInputs
 
     code = int(_finite_or(hf_row.get('esc_rate_branch', 0.0), 0.0))
-    reservoirs = {e: float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list}
+    reservoirs = {
+        e: float(hf_row.get(f'{e}_kg_atm', 0.0)) / mass_ratio(e) for e in element_list
+    }
     return EscapeInputs(
         M_p=float(hf_row['M_planet']),
         R_p=float(hf_row['R_int']),
@@ -321,6 +337,12 @@ def escape_inputs(config: Config, hf_row: dict, profile, dt: float):
 def store_result(hf_row: dict, result, source: int) -> None:
     """Write a dispatch result to the helpfile row.
 
+    Element rates cross from ZEPHYRUS atomic masses to PROTEUS ones
+    (:func:`mass_ratio`). A hydrostatic rate keeps the number of atoms of each
+    element, since Jeans and diffusion-limited escape set atom fluxes. A wind
+    keeps the bulk mass rate ZEPHYRUS computed, since energy, photon, or
+    pressure budgets set it, and converts only the split between elements.
+
     Raises
     ------
     ValueError
@@ -333,9 +355,20 @@ def store_result(hf_row: dict, result, source: int) -> None:
     hydrostatic = diag.get('hydrostatic', {})
     base = diag.get('base_level', {})
 
-    hf_row['esc_rate_total'] = float(result.mdot)
+    raw = {e: float(result.per_species.get(e, 0.0)) for e in element_list}
+    atoms = {e: rate * mass_ratio(e) for e, rate in raw.items()}
+    total = float(result.mdot)
+    if result.rate_branch == 'hydrostatic':
+        # Jeans and diffusion-limited rates are atom fluxes: keep them, the bulk follows.
+        total += sum(atoms.values()) - sum(raw.values())
+        rates = atoms
+    else:
+        # A wind sets a mass rate: keep it and convert only the split between elements.
+        scale = sum(raw.values()) / sum(atoms.values()) if sum(atoms.values()) > 0 else 0.0
+        rates = {e: rate * scale for e, rate in atoms.items()}
     for e in element_list:
-        hf_row[f'esc_rate_{e}'] = float(result.per_species.get(e, 0.0))
+        hf_row[f'esc_rate_{e}'] = rates[e]
+    hf_row['esc_rate_total'] = total
     hf_row['esc_regime'] = float(REGIME_CODES[result.regime])
     hf_row['esc_rate_branch'] = float(REGIME_CODES[result.rate_branch])
     hf_row['esc_kn_sonic'] = _finite_or(diag.get('knudsen', {}).get('kn_sc'))
@@ -406,7 +439,8 @@ def run_dispatcher(
     Returns
     -------
     mdot : float
-        Bulk escape rate [kg s-1].
+        Bulk escape rate [kg s-1]. A hydrostatic rate is in PROTEUS atomic masses,
+        a wind keeps the rate ZEPHYRUS computed (see :func:`store_result`).
     """
     from zephyrus import dispatch
 
@@ -444,4 +478,4 @@ def run_dispatcher(
         log.warning('Escape read the atmosphere column of an earlier converged solve')
     elif source == PROFILE_ISOTHERMAL and config.atmos_clim.module != 'dummy':
         log.warning('Escape read an isothermal stand-in: the climate solve left no column')
-    return float(result.mdot)
+    return float(hf_row['esc_rate_total'])
