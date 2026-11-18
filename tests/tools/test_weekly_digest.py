@@ -900,7 +900,7 @@ def test_render_results_table_and_footer():
 
 
 def test_render_mentions_once_per_person_and_never_bots():
-    """Live: the first mention is @login and later ones plain; bots never; dry: code spans."""
+    """Live: the first mention is @login, later names and bots in code spans; dry: all code spans."""
     data = _data(
         prs=[
             _pr(),
@@ -919,9 +919,9 @@ def test_render_mentions_once_per_person_and_never_bots():
     live, _ = _render(_draft(*entries), data, live=True)
     assert (
         live.count('@alice') == 1
-        and 'by alice' in live
+        and 'by `alice`' in live
         and '@dependabot' not in live
-        and 'by dependabot' in live
+        and 'by `dependabot`' in live
     )
     assert 'Dry run' not in live
     dry, _ = _render(_draft(*entries), data)
@@ -1158,7 +1158,7 @@ def test_workflow_jobs_keep_the_model_token_away_from_write_tokens():
     assert '    permissions: {}\n' in jobs['draft']
     perms = re.search(r'    permissions:\n((?:      .*\n)+)', jobs['publish']).group(1)
     assert perms == '      contents: read\n      discussions: write\n'
-    assert all(not re.search(r':\s*write\b', jobs[j]) for j in ('collect', 'draft'))
+    assert all(not re.search(r""":\s*['"]?write\b""", jobs[j]) for j in ('collect', 'draft'))
     assert 'github.token' not in jobs['draft'] and 'GITHUB_TOKEN' not in jobs['draft']
     for name, job in jobs.items():
         assert ('CLAUDE_CODE_OAUTH_TOKEN' in job) is (name == 'draft'), name
@@ -2257,28 +2257,32 @@ def test_check_reads_the_text_as_rendered(text):
 
 
 @pytest.mark.parametrize(
-    'bad',
+    ('bad', 'reason'),
     [
-        'See https://evil.example/x.',
-        'See https\\://evil.example.',
-        'See www.evil.example now.',
-        'See [x](https://evil.example).',
-        'See <a href="x">.',
-        'Ask @mallory.',
-        'Mail bob@evil.example.',
-        'See PROTEUS #12 and #12.',
-        'See PROTEUS\\#12.',
-        'See GH-12.',
-        'Use &#64; here.',
-        '\n[y]: /evil\n',
+        ('See https://evil.example/x.', 'a URL'),
+        ('See https\\://evil.example.', 'a URL'),
+        ('See www.evil.example now.', 'a URL'),
+        ('See www\\.evil.example now.', 'a URL'),
+        ('See [x](https://evil.example).', 'a link to https://evil.example'),
+        ('See <a href="x">.', 'HTML'),
+        ('Ask @mallory.', 'a mention of mallory'),
+        ('Mail bob@evil.example.', 'an @'),
+        ('See PROTEUS #12 and #12.', 'a # reference'),
+        ('See PROTEUS\\#12.', 'a # reference'),
+        ('See GH-12.', 'a # reference'),
+        ('Use &#64; here.', 'an HTML entity'),
+        ('\n[y]: /evil\n', 'a bracket'),
+        ('The old run was defaced.', 'a commit id'),
+        ('See run 1234567.', 'a commit id'),
+        ('By cafe123 now.', 'a commit id'),
     ],
 )
-def test_scan_body_allows_only_collected_links_and_authors(bad):
+def test_scan_body_allows_only_collected_links_and_authors(bad, reason):
     """The rendered body links only to collected items and the run, and mentions only authors."""
     body, _ = _render(_draft(_entry()), live=True)
     allowed = ([_GOOD, 'https://run'], ['alice'])
     assert '@alice' in body and render.scan_body(body, *allowed) == []
-    assert render.scan_body(body.replace('The default grain size', bad, 1), *allowed), bad
+    assert reason in render.scan_body(body.replace('The default grain size', bad, 1), *allowed)
 
 
 def test_publish_refuses_a_body_with_a_foreign_link(tmp_path, monkeypatch):
@@ -2362,8 +2366,8 @@ def test_workflow_dry_runs_cannot_cancel_a_live_run():
     """Only live runs share a concurrency group; each dry run has its own."""
     text, _ = _jobs()
     assert (
-        "group: weekly-digest-${{ (github.event_name == 'schedule' || inputs.post) "
-        "&& 'live' || github.run_id }}" in text
+        "group: weekly-digest-${{ (github.event_name == 'schedule' || (inputs.post && "
+        "!inputs.since && !inputs.until)) && 'live' || github.run_id }}" in text
     )
 
 
@@ -2374,6 +2378,9 @@ def test_empty_and_missing_fact_values_render_as_words():
     )
     line = render.fact_line(_fact(old='', new=None))
     assert line == '`interior_energetics.grain_size`: (empty) \u2192 (none)'
+    assert render.value('|') == render.value('`') == '(not shown)'
+    added = _fact(key='dependencies:scipy', old=None, new='')
+    assert render.fact_line(dict(added, change='added')) == '`dependencies:scipy` added'
 
 
 def test_token_is_dropped_on_a_redirect_to_another_host():
@@ -2386,6 +2393,8 @@ def test_token_is_dropped_on_a_redirect_to_another_host():
     same = handler.redirect_request(req, None, 302, 'Found', {}, 'https://api.github.com/r/1')
     assert not other.has_header('Authorization')
     assert same.get_header('Authorization') == 'Bearer S'
+    down = handler.redirect_request(req, None, 302, 'Found', {}, 'http://api.github.com/r/1')
+    assert not down.has_header('Authorization')
     assert any(isinstance(h, common.SameHostAuth) for h in common.OPENER.handlers)
 
 
@@ -2478,3 +2487,72 @@ def test_workflow_overwrites_artifacts_and_reports_unreadable_files():
     )
     step = jobs['publish'].split('- name: Post\n', 1)[1]
     assert '--run-url "$RUN_URL"' in step and 'RUN_URL: ${{ github.server_url }}' in step
+
+
+def test_names_that_are_not_mentions_are_code_spans():
+    """A repeated person and a bot are code spans, so a login never forms a reference or commit link."""
+    prs = [
+        _pr('PROTEUS#849', author='GH-12'),
+        _pr('PROTEUS#850', author='GH-12'),
+        _pr('PROTEUS#851', author='cafe123'),
+        _pr('PROTEUS#852', author='cafe123'),
+        _pr('PROTEUS#853', author='renovate[bot]', kind='Bot'),
+    ]
+    entries = [
+        _entry(section='install', facts=[], prs=[p['ref']], title=f'T{"abcde"[i]}', logins=[])
+        for i, p in enumerate(prs)
+    ]
+    data = _data(prs=prs, fact_list=[])
+    assert check.check(data, _draft(*entries)) == []
+    body, _ = _render(_draft(*entries), data, live=True, bots=())
+    assert '@GH-12' in body and 'by `GH-12`' in body and 'by `cafe123`' in body
+    assert 'by `renovate[bot]`' in body
+    urls = [p['url'] for p in prs] + ['https://run']
+    assert render.scan_body(body, urls, ['GH-12', 'cafe123']) == []
+
+
+@pytest.mark.parametrize('text', ['The old run was defaced.', 'See run 1234567.'])
+def test_check_refuses_text_shaped_like_a_commit_id(text):
+    """An all-letter or all-digit hex word of 7 or more characters fails the check."""
+    fails = check.check(_data(), _draft(_entry(text=text)))
+    assert any('a commit id' in f for f in fails), fails
+
+
+class _UndecodableGH(_FakeGH):
+    """Raises the error of a file whose bytes are not UTF-8."""
+
+    def raw_file(self, repo, path, ref):
+        if ref == 'm':
+            raise UnicodeDecodeError('utf-8', b'\xff', 0, 1, 'invalid start byte')
+        return super().raw_file(repo, path, ref)
+
+
+def test_unreadable_files_at_any_point_do_not_stop_the_run():
+    """Non-UTF-8 bytes, deep nesting and a file broken on the default branch are recorded and skipped."""
+    repo = 'FormingWorlds/PROTEUS'
+    files = {
+        (repo, 'Project.toml', 'p'): '[compat]\nJulia = "1"\n',
+        (repo, 'Project.toml', 'p2'): '[compat]\nJulia = "1"\n',
+        (repo, 'Project.toml', 'm2'): 'x = ' + '[' * 100000,
+        (repo, facts.CONFIG_SCHEMA, None): '{broken',
+    }
+    prs = [
+        _pr('PROTEUS#1', files=['Project.toml'], merge_oid='m', parent_oid='p'),
+        _pr('PROTEUS#2', files=['Project.toml'], merge_oid='m2', parent_oid='p2'),
+    ]
+    data = {'prs': prs}
+    tracked = {'tracked': {repo: [facts.CONFIG_SCHEMA]}}
+    facts.attach_facts(_UndecodableGH(files=files), data, tracked)
+    rows = [(r['pr'], r['file'], r['error'].split(':')[0]) for r in data['facts_unreadable']]
+    assert rows == [
+        ('PROTEUS#1', 'Project.toml', 'UnicodeDecodeError'),
+        ('PROTEUS#2', 'Project.toml', 'RecursionError'),
+        (f'{repo} default branch', facts.CONFIG_SCHEMA, 'JSONDecodeError'),
+    ]
+    assert data['facts'] == [] and data['known_keys'] == []
+
+
+def test_unchanged_nan_gives_no_fact():
+    """A nan value that does not change is not a change."""
+    text = 'a = nan\nb = [nan]\n'
+    assert facts.diff_file('input/default.toml', text, text) == []
