@@ -86,7 +86,8 @@ MINIMAL = 'input/minimal.toml'
 
 
 def test_a_config_file_sets_the_three_fields(tmp_path):
-    """Values in the config file reach the loaded config unchanged."""
+    """Values in the config file reach the loaded config unchanged; the PALEOS profile itself
+    is refused, because the Zalmoxis structure of PROTEUS has no 2-phase iron core."""
     from helpers import PROTEUS_ROOT
 
     text = (PROTEUS_ROOT / MINIMAL).read_text() + (
@@ -99,8 +100,11 @@ def test_a_config_file_sets_the_three_fields(tmp_path):
     )
     path = tmp_path / 'user.toml'
     path.write_text(text)
+    with pytest.raises(ValueError, match='2-phase iron core'):
+        read_config_object(path)
+    path.write_text(text.replace('"paleos"', '"gaussian"'))
     cm = read_config_object(path).interior_energetics.aragog.core_module
-    assert cm.profile_source == 'paleos'
+    assert cm.profile_source == 'gaussian'
     assert cm.core_cp_override == 'table'
     assert cm.core_t_cmb_step == 5 and isinstance(cm.core_t_cmb_step, int)
 
@@ -134,7 +138,7 @@ def test_a_config_file_value_of_the_wrong_type_is_refused(tmp_path, name, value,
     [
         ('gaussian', 'energy_balance', False, 'dummy', None),
         ('gaussian', 'core_module', True, None, None),
-        ('paleos', 'core_module', False, None, None),
+        ('paleos', 'core_module', False, None, '2-phase iron core'),
         ('paleos', 'energy_balance', False, None, 'needs interior_energetics.aragog.core_bc'),
         ('paleos', 'core_module', True, None, 'stratification'),
         ('paleos', 'core_module', False, 'dummy', 'accretion'),
@@ -144,8 +148,9 @@ def test_the_paleos_profile_requirements_are_checked(
     source, core_bc, stratified, accretion, refused
 ):
     """The PALEOS profile is read only by core_module, which it needs; it has no stratified
-    shell in Aragog and no refit at a giant impact, so both are refused with it. The Gaussian
-    profile passes in each case."""
+    shell in Aragog and no refit at a giant impact, so both are refused with it; and it needs
+    a 2-phase iron core in the structure, which is refused last. The Gaussian profile passes
+    in each case."""
     from types import SimpleNamespace
 
     from proteus.config._config import check_core_profile_source_requirements
@@ -169,9 +174,9 @@ def test_the_paleos_profile_requirements_are_checked(
     assert check_core_profile_source_requirements(instance, None, None) is None
 
 
-def test_the_paleos_profile_with_accretion_is_refused_when_the_config_is_built():
-    """Building a configuration runs the check: core_module with the PALEOS profile builds,
-    and adding a giant-impact module fails."""
+def test_the_paleos_profile_is_refused_when_the_config_is_built():
+    """Building a configuration runs the check: core_module with the PALEOS profile is refused
+    for the missing 2-phase iron core, and with a giant-impact module for the accretion."""
     import attrs
     from helpers import PROTEUS_ROOT
 
@@ -183,7 +188,12 @@ def test_the_paleos_profile_with_accretion_is_refused_when_the_config_is_built()
         module='aragog',
         aragog=attrs.evolve(aragog, core_bc='core_module', core_module=core),
     )
-    built = attrs.evolve(cfg, interior_energetics=interior)
-    assert built.interior_energetics.aragog.core_module.profile_source == 'paleos'
+    assert cfg.accretion.module is None
+    with pytest.raises(ValueError, match='2-phase iron core'):
+        attrs.evolve(cfg, interior_energetics=interior)
     with pytest.raises(ValueError, match='accretion'):
-        attrs.evolve(built, accretion=attrs.evolve(cfg.accretion, module='dummy'))
+        attrs.evolve(
+            cfg,
+            interior_energetics=interior,
+            accretion=attrs.evolve(cfg.accretion, module='dummy'),
+        )
