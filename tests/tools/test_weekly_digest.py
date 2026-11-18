@@ -237,7 +237,11 @@ def test_github_retries_a_rate_limit_then_reads(monkeypatch):
 
     monkeypatch.setattr(common.OPENER, 'open', fake)
     monkeypatch.setattr(common.time, 'sleep', lambda s: None)
-    assert common.GitHub('t').raw_file('a/b', 'x y.toml', 'abc') == 'text'
+    try:
+        text = common.GitHub('t').raw_file('a/b', 'x y.toml', 'abc')
+    except common.DigestError as err:
+        pytest.fail(f'the request did not go through common.OPENER: {err}')
+    assert text == 'text'
     assert len(calls) == 2 and 'x%20y.toml?ref=abc' in calls[0]
 
     _urlopen_raises(monkeypatch, _http_error(404))
@@ -1724,6 +1728,7 @@ def _publish(
     event='schedule',
     post_input='false',
     tamper=None,
+    run_url='',
     **window,
 ):
     """Render a digest for ``until`` and run publish against a newest post ``last``.
@@ -1736,7 +1741,8 @@ def _publish(
     src.write_text(json.dumps(data))
     dft.write_text(json.dumps(_draft(_entry())))
     render.main(
-        [str(src), str(dft), str(out), '--run-id', run_id, *(['--live'] if live else [])]
+        [str(src), str(dft), str(out), '--run-id', run_id, '--run-url', run_url]
+        + (['--live'] if live else [])
     )
     if entry:
         dft.write_text(json.dumps(_draft(entry)))
@@ -1752,7 +1758,7 @@ def _publish(
     monkeypatch.setattr(
         post, 'create_discussion', lambda *a: posted.append(a[3]) or 'https://d/2'
     )
-    args = ['--event', event, '--post-input', post_input]
+    args = ['--event', event, '--post-input', post_input, '--run-url', run_url]
     return post.main(['publish', str(src), str(dft), str(out), *args]), posted
 
 
@@ -2396,7 +2402,12 @@ def test_an_unreadable_file_skips_only_its_facts(path, old, new, error):
         (repo, facts.CONFIG_SCHEMA, None): _schema(a={}),
     }
     data = {'prs': [bad, good]}
-    facts.attach_facts(_FakeGH(files=files), data, {'tracked': {repo: [facts.CONFIG_SCHEMA]}})
+    try:
+        facts.attach_facts(
+            _FakeGH(files=files), data, {'tracked': {repo: [facts.CONFIG_SCHEMA]}}
+        )
+    except Exception as err:
+        pytest.fail(f'an unreadable file stopped the run: {err!r}')
     assert [f['pr'] for f in data['facts']] == ['PROTEUS#2']
     (row,) = data['facts_unreadable']
     assert row['pr'] == 'PROTEUS#1' and row['file'] == path and row['error'].startswith(error)
@@ -2506,7 +2517,10 @@ def test_unreadable_files_at_any_point_do_not_stop_the_run():
     ]
     data = {'prs': prs}
     tracked = {'tracked': {repo: [facts.CONFIG_SCHEMA]}}
-    facts.attach_facts(_UndecodableGH(files=files), data, tracked)
+    try:
+        facts.attach_facts(_UndecodableGH(files=files), data, tracked)
+    except Exception as err:
+        pytest.fail(f'an unreadable file stopped the run: {err!r}')
     rows = [(r['pr'], r['file'], r['error'].split(':')[0]) for r in data['facts_unreadable']]
     assert rows == [
         ('PROTEUS#1', 'Project.toml', 'UnicodeDecodeError'),
@@ -2520,3 +2534,13 @@ def test_unchanged_nan_gives_no_fact():
     """A nan value that does not change is not a change."""
     text = 'a = nan\nb = [nan]\n'
     assert facts.diff_file('input/default.toml', text, text) == []
+
+
+def test_publish_allows_the_link_to_its_own_run(tmp_path, monkeypatch):
+    """The footer link to the run passes the scan only because publish gets the run URL."""
+    url = 'https://github.com/FormingWorlds/PROTEUS/actions/runs/9'
+    try:
+        rc, posted = _publish(tmp_path, monkeypatch, None, _MON, run_url=url)
+    except common.DigestError as err:
+        pytest.fail(f'the run link was refused: {err}')
+    assert rc == 0 and posted == ['PROTEUS weekly digest, 24 November 2026']
