@@ -692,7 +692,7 @@ def test_lifecycle_final_pass_stores_reference_data_once(tmp_path):
         '#706 fixed the EOS/fixed-file inflation via snapshots_only=True but '
         'not this snapshot re-append: on main every snapshot lands in '
         'data.tar ~2x (observed inflation ~1.45x on this fixture). Expected '
-        'to pass once the Phase 2 archive redesign stores each distinct '
+        'to pass once the archive stores each distinct '
         'content once.'
     ),
     strict=True,
