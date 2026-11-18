@@ -286,8 +286,8 @@ def _set_path(node, keys, value):
             "interior_energetics.aragog.solver_method: 'solver_method' must be in "
             "('cvode', 'radau', 'bdf') (got 'rk4')",
         ),
-        (['planet', 'mass_tot'], 'heavy', 'planet.mass_tot: could not convert string'),
-        (['outgas', 'fO2_shift_IW'], [1], 'outgas.fO2_shift_IW: float() argument'),
+        (['planet', 'mass_tot'], 'heavy', "planet.mass_tot: must be a number, got 'heavy'"),
+        (['outgas', 'fO2_shift_IW'], [1], 'outgas.fO2_shift_IW: must be a number, got [1]'),
     ],
     ids=['depth1', 'depth2', 'depth3', 'depth2_type', 'depth2_list'],
 )
@@ -564,6 +564,19 @@ def test_read_config_object_reports_each_bad_value_on_its_own_line(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    'keys', [['escape', 'zephyrus', 'P_photo'], ['escape', 'zephyrus', 'Pxuv']]
+)
+def test_a_boolean_is_refused_for_a_float_setting(tmp_path, keys):
+    """``P_photo = true`` is refused, where a cast would have read it as 1 bar."""
+    with pytest.raises(ValueError) as excinfo:
+        read_config_object(
+            _write_variant(tmp_path, 'bad.toml', lambda raw: _set_path(raw, keys, True))
+        )
+    assert f'{".".join(keys)}: must be a number, got True' in str(excinfo.value)
+
+
+@pytest.mark.unit
 def test_read_config_object_names_the_list_index_of_a_bad_element(tmp_path):
     """A bad element of a list value is named by its index in the key path."""
 
@@ -574,7 +587,7 @@ def test_read_config_object_names_the_list_index_of_a_bad_element(tmp_path):
         read_config_object(_write_variant(tmp_path, 'bad.toml', _bad))
     lines = [row.strip() for row in str(excinfo.value).splitlines()]
     assert any(
-        row.startswith('accretion.morrigan.masses[1]: could not convert string')
+        row.startswith("accretion.morrigan.masses[1]: must be a number, got 'x'")
         for row in lines
     ), lines
 

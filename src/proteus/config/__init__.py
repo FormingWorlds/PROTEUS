@@ -62,10 +62,21 @@ def structure_number(val, _cls):
     return val
 
 
+def structure_float(val, _cls):
+    """Return a number as a float, and refuse a bool or a string, which float() would take.
+
+    Without this, ``P_photo = true`` loads as 1.0 and passes a positivity check.
+    """
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        raise TypeError(f'must be a number, got {val!r}')
+    return float(val)
+
+
 # PROTEUS's own converter, so importing PROTEUS leaves the global cattrs converter as it is
 converter = cattrs.Converter()
 converter.register_structure_hook(Union[int, Literal['none']], structure_k_val)
 converter.register_structure_hook(bool, structure_bool)
+converter.register_structure_hook(float, structure_float)
 converter.register_structure_hook(bool | None, structure_optional_bool)
 converter.register_structure_hook(float | str, structure_float_or_str)
 converter.register_structure_hook(float | int, structure_number)
