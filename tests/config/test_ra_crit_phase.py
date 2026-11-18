@@ -34,7 +34,7 @@ def test_a_band_inside_zero_to_one_is_accepted(loc, wid):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(('loc', 'wid'), [(0.05, 0.2), (0.95, 0.2), (0.5, 0.99)])
+@pytest.mark.parametrize(('loc', 'wid'), [(0.05, 0.2), (0.95, 0.2), (0.3, 0.8)])
 def test_a_band_that_leaves_zero_to_one_is_refused(loc, wid):
     """The law by phase blends across [rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2];
     that band must lie inside [0, 1]."""

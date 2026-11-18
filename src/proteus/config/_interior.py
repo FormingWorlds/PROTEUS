@@ -76,6 +76,7 @@ def _valid_number(instance, attribute, value):
 
 
 RA_CRIT_EQ16 = 'eq16'
+RA_CRIT_PHASE = 'phase'
 
 
 def _ra_crit_cmb_number(value):
@@ -86,13 +87,13 @@ def _ra_crit_cmb_number(value):
 
 
 def _valid_ra_crit_cmb(instance, attribute, value):
-    """``ra_crit_cmb`` is 'eq16' or a positive, finite number."""
-    if value == RA_CRIT_EQ16 and isinstance(value, str):
+    """``ra_crit_cmb`` is 'phase', 'eq16' or a positive, finite number."""
+    if isinstance(value, str) and value in (RA_CRIT_PHASE, RA_CRIT_EQ16):
         return
     if not (isinstance(value, float) and 0.0 < value < math.inf):
         raise ValueError(
-            f"`{attribute.name}` must be '{RA_CRIT_EQ16}' or a positive, finite number, "
-            f'got {value!r}'
+            f"`{attribute.name}` must be '{RA_CRIT_PHASE}', '{RA_CRIT_EQ16}' or a positive, "
+            f'finite number, got {value!r}'
         )
 
 
@@ -284,6 +285,29 @@ def _check_aragog_lid(interior) -> None:
         )
 
 
+def _check_aragog_cmb_phase_band(interior) -> None:
+    """Reject a transition band of the CMB law by phase that leaves [0, 1].
+
+    The band is ``[rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2]``, checked where the
+    law acts: the Aragog module with ``core_bc = 'core_module'`` and ``ra_crit_cmb = 'phase'``.
+    """
+    aragog = interior.aragog
+    if not (
+        interior.module == 'aragog'
+        and aragog.core_bc == 'core_module'
+        and aragog.core_module.ra_crit_cmb == RA_CRIT_PHASE
+    ):
+        return
+    lo = interior.rfront_loc - 0.5 * interior.rfront_wid
+    hi = interior.rfront_loc + 0.5 * interior.rfront_wid
+    if lo < 0.0 or hi > 1.0:
+        raise ValueError(
+            "interior_energetics.aragog.core_module.ra_crit_cmb = 'phase' blends across "
+            f'[rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2] = [{lo:g}, {hi:g}], which '
+            'must lie inside [0, 1]'
+        )
+
+
 def _check_aragog_top_cell_dt_limit_surface_bc(interior) -> None:
     """Reject Aragog top_cell_dt_limit with grey_body surface boundary conditions."""
     if (
@@ -379,10 +403,14 @@ class AragogCoreModule:
         in (0, 1]; Christensen et al. (2009)[^cite-christensen2009] adopt 1 for planets.
     ra_crit_cmb: float | str
         Critical Rayleigh number of the mantle-side boundary layer that sets
-        the CMB heat flux from the core-mantle temperature contrast. 'eq16' (the
-        default) takes the lower-layer law of Thiriet et al. (2019)[^cite-thiriet2019],
-        eq. 16, from the internal Rayleigh number of the mantle; a positive, finite number fixes
-        it, for example 450, their Table 2 value for the upper boundary layer.
+        the CMB heat flux from the core-mantle temperature contrast. 'phase' (the default)
+        takes 450 while the bottom cell is liquid and eq. 16 while it is solid (the switch of
+        Miyazaki and Korenaga (2019)[^cite-miyazaki2019b] at the critical melt fraction),
+        blended in the logarithm across [rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2]
+        of the bottom-cell melt fraction. 'eq16' takes the lower-layer law of Thiriet et al.
+        (2019)[^cite-thiriet2019], eq. 16, from the internal Rayleigh number of the mantle; a
+        positive, finite number fixes it, for example 450, their Table 2 value for the upper
+        boundary layer.
     flux_geometry: str
         Which printed Earth-core efficiency factor converts the
         superadiabatic flux into the field-strength scaling's F:
@@ -408,7 +436,7 @@ class AragogCoreModule:
     layer_g_mix: float = field(default=1.0e-3, validator=gt(0))
     f_ohm: float = field(default=1.0, validator=(gt(0), le(1)))
     ra_crit_cmb: float | str = field(
-        default=RA_CRIT_EQ16, converter=_ra_crit_cmb_number, validator=_valid_ra_crit_cmb
+        default=RA_CRIT_PHASE, converter=_ra_crit_cmb_number, validator=_valid_ra_crit_cmb
     )
     flux_geometry: str = field(
         default='const_flux', validator=in_(('const_flux', 'zero_outer'))
@@ -1270,8 +1298,9 @@ class Interior:
 
         All aliases will be removed in a future release. The Aragog cross-field
         checks run last: the top_cell_dt_rel_dT pair (again, for an aragog section
-        changed after its own construction) and top_cell_dt_limit against
-        surface_bc_mode = 'grey_body'.
+        changed after its own construction), top_cell_dt_limit against
+        surface_bc_mode = 'grey_body', the solid rheology against the module, the
+        sub-grid lid, and the transition band of the CMB law by phase.
         """
         # Whether each field was supplied is tracked via the sentinel
         # default, not by value-comparison against the resolved default.
@@ -1330,6 +1359,7 @@ class Interior:
         _check_aragog_top_cell_dt_limit_surface_bc(self)
         _check_aragog_rheology_module(self)
         _check_aragog_lid(self)
+        _check_aragog_cmb_phase_band(self)
 
 
 # Thematic grouping for the generated configuration reference. Each entry is
