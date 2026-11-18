@@ -2246,7 +2246,7 @@ def test_publish_notice_names_each_reason(tmp_path, monkeypatch, capsys):
     assert 'has the same run id' in capsys.readouterr().out
 
 
-# return 2: rendered body, Unicode numbers, unreadable files, redirects, fixtures
+# Rendered body, Unicode numbers, unreadable files, redirects, real-window fixtures
 
 _GOOD = 'https://github.com/FormingWorlds/PROTEUS/pull/849'
 
@@ -2532,6 +2532,25 @@ def test_unreadable_files_at_any_point_do_not_stop_the_run():
         (f'{repo} default branch', facts.CONFIG_SCHEMA, 'JSONDecodeError'),
     ]
     assert data['facts'] == [] and data['known_keys'] == []
+
+
+class _BrokenTransportGH(_FakeGH):
+    """Raises the error of an HTTP failure on the merge commit."""
+
+    def raw_file(self, repo, path, ref):
+        if ref == 'm':
+            raise common.DigestError('GitHub request failed: HTTP 502')
+        return super().raw_file(repo, path, ref)
+
+
+def test_a_transport_error_stops_the_run_instead_of_a_skip():
+    """An HTTP failure while a file is read propagates; it is never recorded as an unreadable file."""
+    repo = 'FormingWorlds/PROTEUS'
+    data = {'prs': [_pr('PROTEUS#1', files=['pyproject.toml'], merge_oid='m', parent_oid='p')]}
+    files = {(repo, 'pyproject.toml', 'p'): '[project]\ndependencies = ["a>=1"]\n'}
+    with pytest.raises(common.DigestError, match='HTTP 502'):
+        facts.attach_facts(_BrokenTransportGH(files=files), data, {'tracked': {}})
+    assert 'facts_unreadable' not in data
 
 
 def test_unchanged_nan_gives_no_fact():
