@@ -26,9 +26,25 @@ proteus offchem -c [cfgfile]
 |---|---|---|
 | `"end"` (default) | The final state of the simulation | 1 |
 | `"all"` | Every atmosphere snapshot, `data/<time>_atm.nc` | One per snapshot |
-| `[t1, t2, ...]` | For each time (yr), the atmosphere snapshot nearest it; a snapshot nearest two times runs once | Up to the length of the list |
+| `[t1, t2, ...]` | For each time (yr), the first helpfile row at or after it, as `{Time = [t1, t2, ...]}`; times that give the same row run once | Up to the length of the list |
+| `{key = [v1, v2, ...], ...}` | For each value, every helpfile row at which the column `key` reaches or crosses it (see below) | One per crossing |
 
-The snapshots run in order of increasing time. 
+The snapshots run in order of increasing time. Each target uses the latest atmosphere snapshot at or before its row, and each snapshot the latest helpfile row and stellar spectrum at or before its time: the state and spectrum the run had reached then, never a later one. A snapshot that AGNI treats as transparent (surface pressure below `atmos_clim.agni.psurf_thresh`) has no atmosphere to process, so it is skipped with a warning, as is a snapshot after desiccation.
+
+#### States of the evolution: a table of helpfile columns
+
+To run the chemistry at a state of the planet rather than at a fixed time, give `times` a table. Each key is a column of the helpfile (`runtime_helpfile.csv`), and each value is in that column's unit (see the [output reference](../Reference/output.md)): `T_surf` in K, `P_surf` in bar, `Phi_global` as a fraction, `Time` in years.
+
+```toml
+[atmos_chem]
+    times = {Time = [1e2, 1e4, 1e6], Phi_global = [0.01], T_surf = [1500.0], end = true}
+```
+
+A value selects **every** row at which its column reaches it or crosses it, in either direction. A melt fraction that rises again after a giant impact and then falls crosses `Phi_global = 0.5` three times, giving three chemistry runs. `Time = [t]` selects the first row at or after `t`. `end = true` adds the final state. A value that is never reached is skipped with a warning.
+
+With a list or a table, the run writes an atmosphere snapshot, and the helpfile, on each step that reaches a target, besides those it writes every `params.out.write_mod` steps, so each target has a snapshot of its own. A run made before this, or a target reached during the initialisation steps, uses the latest snapshot before the target instead, with a warning.
+
+The chemistry of a snapshot uses the stellar spectrum that the climate of that snapshot used. A new spectrum is written every `params.dt.starspec` years, so set that interval short enough for the targets you choose.
 
 ### Initial composition: `atmos_chem.vulcan.ini_mix`
 
@@ -42,6 +58,24 @@ VULCAN integrates from an initial composition to a steady state, and the initial
 
 `"previous"` is meant for `times = "all"` or a list, where consecutive snapshots are close in time and in composition, to help convergence.
 
+### Chemistry and climate together: `atmos_chem.vulcan.couple_agni`
+
+By default VULCAN keeps the temperature and eddy diffusion ($K_{zz}$) profiles of the snapshot, which AGNI solved with the outgassed composition, the same at every height. The gases that VULCAN makes and destroys change the radiation, and so the temperature. With `couple_agni = true` the climate is solved again from the composition VULCAN computes, until the two agree:
+
+```toml
+[atmos_chem]
+    module = "vulcan"
+    mode   = "offline"
+
+    [atmos_chem.vulcan]
+        couple_agni    = true
+        agni_call_frq  = 0      # climate updates only at the steady states of the chemistry
+        agni_T_rtol    = 0.01   # settled when an update changes T by at most 1 % in every layer
+        agni_max_calls = 10
+```
+
+PROTEUS sets AGNI up as it did for the snapshot, with the same configuration, surface condition and stellar spectrum, and loads the snapshot into it. Each time the chemistry reaches a steady state, AGNI solves the climate with VULCAN's composition, and VULCAN continues with the new temperature and $K_{zz}$ until an update leaves the temperature unchanged within `agni_T_rtol`. A positive `agni_call_frq` also updates the climate every that many VULCAN steps. AGNI's own equilibrium chemistry is off in these solves, and `atmos_chem.Kzz_const`, when set, keeps $K_{zz}$ fixed. The coupled climate is written to `data/<time>_chematm.nc`, beside the snapshot, and the log gives its net flux at the top of the atmosphere against that of the evolution. The interior does not see this climate: the coupled state is a diagnostic of the snapshot, not a step of the evolution. When the temperature settles, VULCAN saves the state from before that last update, the one its chemistry is steady for. A VULCAN run that stopped at its time or step limit, or with the climate still changing after `agni_max_calls` updates, is kept and reported with a warning. This needs `atmos_clim.module = "agni"` with `atmos_clim.agni.solve_energy = true`, since a prescribed profile does not respond to the composition.
+
 ### Output files
 
 Snapshot times in file names use the sub-year form of the other snapshots: `12p320` for t = 12.32 yr.
@@ -51,6 +85,7 @@ Snapshot times in file names use the sub-year form of the other snapshots: `12p3
 | `data/<time>_chem.nc` | VULCAN NetCDF output of one snapshot, in CGS units |
 | `offchem/<module>_<time>.csv` | Table of one snapshot, from the top of the atmosphere down. |
 | `offchem/<module>.csv` | Copy of the table at the latest snapshot processed |
+| `data/<time>_chematm.nc` | With `couple_agni`, the AGNI climate solved with the chemistry of that snapshot |
 | `offchem/mix.*`, `offchem/evo.*` | VULCAN's plots of the mixing ratios and their evolution |
 
 Each chemistry call first clears `offchem/` (and its VULCAN input files), while the `data/*_chem.nc` files are kept. The chemistry plot (`plots/plot_chem_atmosphere.*`) shows the latest chemistry snapshot.

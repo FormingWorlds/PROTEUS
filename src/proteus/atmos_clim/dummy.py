@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.atmos_clim.common import clip_radius_to_hill
+from proteus.atmos_clim.common import clip_radius_to_hill, lid_boundary
 from proteus.atmos_clim.surface_skin import effective_surf_state
 from proteus.utils.constants import const_R, const_sigma, gas_list
 from proteus.utils.helper import UpdateStatusfile
@@ -15,6 +15,29 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
+
+
+def _fluxes(config: Config, hf_row: dict, x: float) -> dict:
+    """Longwave, shortwave and net flux [W m-2] of the dummy atmosphere at the surface ``x`` [K]."""
+    gamma = config.atmos_clim.dummy.gamma
+    albedo_pl = float(hf_row['albedo_pl'])
+    albedo_s = config.atmos_clim.surf_greyalbedo
+    fl_U_LW = const_sigma * (x - gamma * x) ** 4.0
+    fl_D_SW = (
+        hf_row['F_ins']
+        * (1.0 - albedo_pl)
+        * config.orbit.s0_factor
+        * np.cos(config.orbit.zenith_angle * np.pi / 180.0)
+    )
+    fl_U_SW = fl_D_SW * albedo_s
+    fl_D_SW = fl_D_SW * (1.0 - albedo_s)
+    fl_N = fl_U_LW + fl_U_SW - fl_D_SW
+    return {'fl_U_LW': fl_U_LW, 'fl_D_SW': fl_D_SW, 'fl_U_SW': fl_U_SW, 'fl_N': fl_N}
+
+
+def net_flux(config: Config, hf_row: dict, T_surf: float) -> float:
+    """Net upward flux [W m-2] of the dummy atmosphere at the surface temperature ``T_surf`` [K]."""
+    return float(_fluxes(config, hf_row, T_surf)['fl_N'])
 
 
 # Run the dummy atmosphere module
@@ -60,34 +83,11 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
         return output
 
     # Parameters
-    gamma = config.atmos_clim.dummy.gamma
-    zenith_angle = config.orbit.zenith_angle
-    albedo_pl = float(hf_row['albedo_pl'])
-    inst_sf = config.orbit.s0_factor
-    albedo_s = config.atmos_clim.surf_greyalbedo
-    skin_d = float(hf_row['boundary_layer_thickness'])
-    skin_k = float(hf_row['boundary_layer_conductivity'])
+    skin_d, skin_k, T_melt = lid_boundary(hf_row)
     surf_state = effective_surf_state(config, hf_row)
 
     # Copy variables
     T_magma = float(hf_row['T_magma'])
-
-    # Simple rad trans
-    def _calc_fluxes(x):
-        # surface emission and stellar flux
-        fl_U_LW = const_sigma * (x - gamma * x) ** 4.0
-        fl_D_SW = (
-            hf_row['F_ins'] * (1.0 - albedo_pl) * inst_sf * np.cos(zenith_angle * np.pi / 180.0)
-        )
-
-        # surface reflection
-        fl_U_SW = fl_D_SW * albedo_s
-        fl_D_SW = fl_D_SW * (1.0 - albedo_s)
-
-        # net flux at surface
-        fl_N = fl_U_LW + fl_U_SW - fl_D_SW
-
-        return {'fl_U_LW': fl_U_LW, 'fl_D_SW': fl_D_SW, 'fl_U_SW': fl_U_SW, 'fl_N': fl_N}
 
     # fixed T_Surf
     if surf_state == 'fixed':
@@ -96,7 +96,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
             T_surf_atm = hf_row['T_surf']
         else:
             T_surf_atm = T_magma
-        fluxes = _calc_fluxes(T_surf_atm)
+        fluxes = _fluxes(config, hf_row, T_surf_atm)
 
     # conductive lid
     elif surf_state == 'skin':
@@ -106,15 +106,15 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
         # We need to solve for the state where fl_N = f_skn
         # This function takes T_surf_atm as the input value, and returns fl_N - f_skn
         def _resid(x):
-            F_skn = skin_k / skin_d * (hf_row['T_magma'] - x)
-            _f = _calc_fluxes(x)
+            F_skn = skin_k / skin_d * (T_melt - x)
+            _f = _fluxes(config, hf_row, x)
             return _f['fl_N'] - F_skn
 
         r = root_scalar(
             _resid, method='secant', x0=T_magma, x1=T_magma - 10.0, xtol=1.0e-7, maxiter=40
         )
         T_surf_atm = float(r.root)
-        fluxes = _calc_fluxes(T_surf_atm)
+        fluxes = _fluxes(config, hf_row, T_surf_atm)
 
         if r.converged:
             log.debug('    Found solution after %d iterations' % int(r.iterations))

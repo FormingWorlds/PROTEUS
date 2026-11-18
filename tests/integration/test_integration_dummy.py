@@ -42,14 +42,40 @@ def dummy_run():
     runner.start(offline=True)
 
 
+def _status_reference():
+    """The reference ``status`` of the IW buffer of the installed CALLIOPE; a buffer without one fails."""
+    from calliope.oxygen_fugacity import DEFAULT_FO2_MODEL
+
+    ref = ref_dir / f'status_{DEFAULT_FO2_MODEL}'
+    if not ref.is_file():
+        pytest.fail(
+            f'no reference status of the all-dummy run for the IW buffer {DEFAULT_FO2_MODEL!r}'
+        )
+    return ref
+
+
+def test_status_reference_follows_the_iw_buffer(monkeypatch):
+    """Each IW buffer with a reference gets its own status; a buffer without one fails by name."""
+    import calliope.oxygen_fugacity as fo2
+
+    status = {}
+    for model in ('fischer', 'hirschmann'):
+        monkeypatch.setattr(fo2, 'DEFAULT_FO2_MODEL', model)
+        status[model] = _status_reference().read_text().split('\n')[0]
+    assert status == {'fischer': '15', 'hirschmann': '13'}
+    monkeypatch.setattr(fo2, 'DEFAULT_FO2_MODEL', 'oneill')
+    with pytest.raises(pytest.fail.Exception, match="IW buffer 'oneill'"):
+        _status_reference()
+
+
 # run the integration
 @pytest.mark.slow
 def test_dummy_run(dummy_run):
     """All-dummy-backend integration produces a ``status`` file
-    bit-identical to the committed reference. This is the cheapest
-    binary-reproducibility check for the run loop end-to-end.
+    bit-identical to the committed reference of the IW buffer of CALLIOPE
+    (Fischer: volatiles escaped, status 15; Hirschmann (2021): target time, 13).
     """
-    assert filecmp.cmp(out_dir / 'status', ref_dir / 'status', shallow=False)
+    assert filecmp.cmp(out_dir / 'status', _status_reference(), shallow=False)
     # Discrimination: the bit-comparison above would pass on two empty
     # files. Pin a non-zero size so a regression that emitted an empty
     # status file (or skipped the write entirely) is caught.

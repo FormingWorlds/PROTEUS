@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:description>test: tests/integration/test_slow_accretion_partial_remelt.py::test_the_melted_mass_closes_on_the_pre_impact_cell_masses[core_module]; command: pytest 'tests/integration/test_slow_accretion_partial_remelt.py::test_the_melted_mass_closes_on_the_pre_impact_cell_masses[core_module]' --validation-plots; summary: {"v": 1, "axes": [{"scales": ["linear", "linear"], "categories": [["Structural mass", "Cell volume", "EOS mass $\\rho(P, S_\\mathrm{end})V$"], null], "lines": [[2, 0.0, 1.0, 0.5, 0.5, 0.3, 0.3, 0.3, 0.0]], "collections": [], "values": [], "value_scales": [], "patches": [[15, -0.25, 2.25, 0.95, 0.4619047619047618, 0.0, 0.35609541762144364, 0.12723263859498526, 0.00891179531306519]], "images": [], "image_scales": [], "extents": []}]}</dc:description>
+    <dc:description>test: tests/integration/test_slow_accretion_partial_remelt.py::test_the_melted_mass_closes_on_the_pre_impact_cell_masses[core_module]; command: pytest 'tests/integration/test_slow_accretion_partial_remelt.py::test_the_melted_mass_closes_on_the_pre_impact_cell_masses[core_module]' --validation-plots; summary: {"v": 1, "axes": [{"scales": ["linear", "linear"], "categories": [["Structural mass", "Cell volume", "EOS mass $\\rho(P, S_\\mathrm{end})V$"], null], "lines": [[2, 0.0, 1.0, 0.5, 0.5, 0.3, 0.3, 0.3, 0.0]], "collections": [], "values": [], "value_scales": [], "patches": [[15, -0.25, 2.25, 0.95, 0.4619047619047618, 0.0, 0.356097119671342, 0.1272330384428275, 0.008911947379236649]], "images": [], "image_scales": [], "extents": []}]}</dc:description>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -1140,16 +1140,16 @@ z
    <g id="patch_4">
     <path d="M 189.721311 240.540909 
 L 248.326477 240.540909 
-L 248.326477 65.839778 
-L 189.721311 65.839778 
+L 248.326477 65.838943 
+L 189.721311 65.838943 
 z
 " clip-path="url(#p597c22264b)" style="fill: #f2f5f7"/>
    </g>
    <g id="patch_5">
     <path d="M 306.931643 240.540909 
 L 365.536809 240.540909 
-L 365.536809 94.268225 
-L 306.931643 94.268225 
+L 365.536809 94.267589 
+L 306.931643 94.267589 
 z
 " clip-path="url(#p597c22264b)" style="fill: #f2f5f7"/>
    </g>

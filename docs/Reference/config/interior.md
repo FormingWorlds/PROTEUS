@@ -126,13 +126,36 @@ A giant impact adds `core_frac` of the impactor rock to the core mass: the impac
 With an ice layer the mantle is `zalmoxis.mantle_mass_fraction` of the target and the ice layer is the rest; the run stops with an error when the core and mantle fractions leave no ice layer.
 
 The helpfile column `M_core_target` holds this mass.
-Zalmoxis puts the core-mantle boundary of its output at the first grid node at or above the core fraction of the mass it converged to, and `M_core` is the mass inside that node.
-`M_core` is therefore between the target less the mass tolerance of the solve (`zalmoxis.solver_tol_outer`) and the target plus that tolerance and one mantle shell at the boundary.
-For a planet of 1 Earth mass with `core_frac = 0.325` and the default `zalmoxis.num_levels = 150` that shell holds about 1.6 % of the core mass, and the measured range of `M_core` in runs of that planet is 0.1 to 1.5 % above the target.
 The structure takes a changed core mass at its next solve, so a run with no structure update after the init stage keeps the core of its last solve.
 When the target leaves no mantle (a core mass at or above the target mass, which a large buffered oxygen inventory over a hot magma ocean can cause), the run stops with an error that names the masses.
-A run that resumes from a helpfile without the column takes `core_frac` of the structure target of the row of its first structure solve, logs a warning, and keeps that core mass from there.
+A run that resumes from a helpfile without `M_core_target` takes `core_frac` of the structure target of the row of its first structure solve, logs a warning, and keeps that core mass from there.
 This core mass depends on the oxygen inventory of that row, so it differs with the row at which the run resumes, and it is not the core mass of a run that starts with the column.
+
+**The core mass that Zalmoxis returns**
+
+Zalmoxis writes 2 core masses:
+
+- `M_core_solve`: the core mass of the last accepted solve. A helpfile without it resumes with this column at 0.
+- `M_core`: the mass inside `R_core`.
+
+An accepted solve gives an `M_core_solve` equal to `M_core_target` to round-off, and an impact raises `M_core_target` and solves at once.
+The end of the init stage sets `M_core_target` from the kept inventories of that row, so from there to the next accepted re-solve `M_core_solve` and `M_core_target` differ by `core_frac` times the change of those inventories since the last solve.
+A rejected re-solve keeps `M_core_solve` and `M_core` of the last accepted solve and leaves `M_core_target` unchanged.
+
+Zalmoxis puts the core-mantle boundary of its output (`R_core`, `P_cmb`) at the first grid node at or above `M_core_solve`.
+So `M_core` is larger than `M_core_solve` by at most the mass of the shell below that node.
+For a planet of 1 Earth mass with `core_frac = 0.325` and the default `zalmoxis.num_levels = 150`, that shell holds about 1.6 % of the core mass.
+The measured range of `M_core` in runs of that planet is 0.1 to 1.5 % above `M_core_target`.
+
+`core_density` is `M_core` divided by the volume inside `R_core`.
+The silicate in that shell, between the mass `M_core_solve` and the radius `R_core`, counts in `M_core` and not in the mantle.
+At a high core fraction it is a large part of the mantle.
+When it is more than 5 % of the mantle mass above `R_core`, the solve logs a warning with that share.
+In the PROTEUS grid case with `core_frac = 0.95`, 0.7 Earth masses and 150 levels, solved at a mass tolerance of $10^{-6}$ (the stored reference `tests/data/grid_start_up_reference.json` of Zalmoxis), it is 0.36 % of the core mass but 7.4 % of the mantle mass above `R_core` in the first solve, and 0.31 % and 6.4 % in the re-solve.
+
+With `interior_energetics.aragog.core_bc = "core_module"`, the core module keeps the `M_core` of its first setup and fits its core profile to that mass after each structure update.
+A re-solve that moves the boundary node then gives an `M_core` that differs from the mass of the core module.
+The default `core_bc = "energy_balance"` does not use this mass.
 
 **How the PALEOS mantle EOS is applied**
 
@@ -140,7 +163,7 @@ The MgSiO$_3$ mantle EOS resolves through two distinct paths depending on the `<
 
 With `mantle_eos = "PALEOS:MgSiO3"` (the default), the hydrostatic structure solve uses the PALEOS *unified* MgSiO$_3$ table for the density profile.
 The phase-specific property surfaces used by Aragog (density, heat capacity, thermal expansion, adiabatic gradient) and the pressure-entropy lookup tables are built from the PALEOS *two-phase* solid and liquid tables, which keeps the properties well resolved across the melting-curve discontinuity that a single unified table interpolates through.
-The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005 below 2.55 GPa, Fei et al. 2021 above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8).
+The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005[^cite-belonoshko2005] below 2.55 GPa, Fei et al. 2021[^cite-fei2021] above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8).
 The default is the constant solidus-to-liquidus ratio ($\approx 0.809$) of the Stixrude (2014)[^cite-stixrude2014] MgSiO$_3$ melting parametrization, applied to the PALEOS liquidus instead of the Stixrude liquidus.
 The derived solidus is therefore a constant depression of the PALEOS liquidus, not the Stixrude solidus curve: its absolute value lies well above the Stixrude solidus at low to moderate pressure (about 2900 K against 1700 K at 20 GPa, and about 10% higher at 140 GPa) and below it above roughly 200 GPa.
 The melt fraction then follows from the lever rule between this solidus and liquidus.
@@ -152,7 +175,7 @@ A run with a PALEOS EOS requires the table of each PALEOS layer, with the MgSiO$
 When one is missing, the run stops before the first solve with an error that names each missing file and the command that fetches them, `proteus get interiordata --config-path <config.toml>`; it does not fall back to another table set.
 With `dry_mantle = false` it also requires the tables of the dissolved volatiles (`PALEOS:H2O` and `Chabrier:H`).
 A resumed SPIDER run that keeps its pressure-entropy tables needs only the tables of its layers. With `temperature_mode = "liquidus_super"` it also needs the two-phase pair that its anchor reads. An Aragog resume always needs the two-phase pair, which it reads when the mesh changes.
-A mixture mantle (a `+` in `mantle_eos`) takes its melting curves, in the structure and in the energetics, and its SPIDER or Aragog tables from its MgSiO$_3$ component: with `PALEOS:MgSiO3` it gets exactly the curves and tables of a `PALEOS:MgSiO3` mantle, and with `WolfBower2018:MgSiO3` the `eos_dir` P-S tables (by default Wolf and Bower 2018) and the `melting_dir` curves. The other components enter only the structure density.
+A mixture mantle (a `+` in `mantle_eos`) takes its melting curves, in the structure and in the energetics, and its SPIDER or Aragog tables from its MgSiO$_3$ component: with `PALEOS:MgSiO3` it gets exactly the curves and tables of a `PALEOS:MgSiO3` mantle, and with `WolfBower2018:MgSiO3` the `eos_dir` P-S tables (by default Wolf and Bower 2018[^cite-wolf2018]) and the `melting_dir` curves. The other components enter only the structure density.
 A PALEOS mantle with no MgSiO$_3$ component (for example `mantle_eos = "PALEOS:H2O"`, `"PALEOS:iron"`, or a mixture of the two) uses the density of its own material in the structure, while the PALEOS MgSiO$_3$ melting curves and the two-phase MgSiO$_3$ tables of its PALEOS family stand in for the energetics.
 With SPIDER or Aragog, the energetics must follow a PALEOS, `WolfBower2018` or `RTPress100TPa` EOS; a mantle whose energetics would follow a Seager2007, Chabrier or analytic EOS is rejected when the configuration loads.
 `temperature_mode = "liquidus_super"` solves the initial adiabat on the MgSiO$_3$ two-phase tables for every mantle, so those tables are required at the start of the run.
@@ -244,12 +267,18 @@ controlled parity tests.
 |---|---|---|---|
 | `heat_tidal` | bool | `false` | Include tidal heating?. |
 | `heat_radiogenic` | bool | `true` | Include radiogenic heat production?. |
-| `radio_tref` | float | `4.567` | Reference age for setting radioactive decay \[Gyr\]. Must be >= 0. |
-| `radio_Al` | float | `0.0` | Concentration (ppmw) of aluminium-26 at reference age t=radio_tref; 1.23 is the canonical early solar system value. Must be >= 0. |
-| `radio_Fe` | float | `0.0` | Concentration (ppmw) of iron-60 at reference age t=radio_tref. Must be >= 0. |
-| `radio_K` | float | `310.0` | Concentration (ppmw) of potassium-40 at reference age t=radio_tref. Must be >= 0. |
-| `radio_U` | float | `0.031` | Concentration (ppmw) of uranium at reference age t=radio_tref. Must be >= 0. |
-| `radio_Th` | float | `0.124` | Concentration (ppmw) of thorium-232 at reference age t=radio_tref. Must be >= 0. |
+| `radio_tref` | float | `4.567` | Stellar age at which the radionuclide inputs below apply \[Gyr\]; 4.567 is the present day, 0 the formation of the Solar System. Must be >= 0. |
+| `radio_Al` | float | `23500.0` | Total aluminium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
+| `radio_Al26_abund` | float | `0.0` | Mass ratio 26Al/Al at radio_tref \[kg/kg\]. The canonical early Solar System 26Al/27Al = 5.25e-5 (atoms) is 5.0563e-5 kg/kg. Must be >= 0 and <= 1. |
+| `radio_Fe` | float | `62600.0` | Total iron concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
+| `radio_Fe60_abund` | float | `0.0` | Mass ratio 60Fe/Fe at radio_tref \[kg/kg\]. An early Solar System 60Fe/56Fe = 1e-8 (atoms) is 9.8472e-9 kg/kg. Must be >= 0 and <= 1. |
+| `radio_K` | float | `310.0` | Total potassium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
+| `radio_K40_abund` | float | `0.00011926` | Mass ratio 40K/K at radio_tref \[kg/kg\]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio. Must be >= 0 and <= 1. |
+| `radio_U` | float | `0.031` | Total uranium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
+| `radio_U235_abund` | float | `0.0071141` | Mass ratio 235U/U at radio_tref \[kg/kg\]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio. Must be >= 0 and <= 1. |
+| `radio_U238_abund` | float | `0.9928859` | Mass ratio 238U/U at radio_tref \[kg/kg\]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio. Must be >= 0 and <= 1. |
+| `radio_Th` | float | `0.124` | Total thorium concentration in the mantle at radio_tref \[ppmw\]. Must be >= 0. |
+| `radio_Th232_abund` | float | `1.0` | Mass ratio 232Th/Th at radio_tref \[kg/kg\]. Must be >= 0 and <= 1. |
 
 **Rheology and convection**
 
@@ -258,7 +287,7 @@ controlled parity tests.
 | `rfront_loc` | float | `0.4` | Centre of rheological transition in terms of melt fraction. SPIDER receives it as ``-phi_critical``. Aragog centres its viscosity blend, its reported rheological front and the melt-fraction ramp of ``kappah_floor`` on it; the boundary module uses it as the transition point of its viscosity models. SPIDER and Aragog use melt mass fraction (0.4 by volume is about 0.375 by mass at a 10 percent melt-solid density contrast); the boundary module takes its melt fraction linearly in temperature between solidus and liquidus and its rheological transition width from ``phase_transition_width``, not ``rfront_wid``. Must be > 0 and < 1. |
 | `rfront_wid` | float | `0.2` | Width of rheological transition in terms of melt fraction. Must be > 0 and < 1. |
 | `grain_size` | float | `0.001` | Crystal settling grain size \[m\]. Must be > 0. |
-| `mixing_length` | str | `"nearest"` | Mixing-length scale: 'nearest' (distance to nearest boundary) or 'constant' (a quarter of the mantle depth). Choices: `"nearest"`, `"constant"`. |
+| `mixing_length` | str | `"constant"` | Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle depth at every node) or 'nearest' (distance to the nearest boundary). A resume that changes the recorded value is refused unless interior_energetics.aragog.allow_resume_law_change is true. Choices: `"constant"`, `"nearest"`. |
 | `kappah_floor` | float | `10.0` | Eddy diffusivity floor \[m2 s-1\]; prevents mixing-length transport from freezing out. Must be >= 0. |
 
 **Coupling limits**
@@ -295,13 +324,13 @@ controlled parity tests.
 | `eddy_diffusivity_thermal` | float | `1.0` | Multiplier on the internally-computed thermal eddy diffusivity. SPIDER: -eddy_diffusivity_thermal (1.0 default). |
 | `eddy_diffusivity_chemical` | float | `1.0` | Multiplier on the internally-computed chemical eddy diffusivity. SPIDER: -eddy_diffusivity_chemical (1.0 default). |
 | `latent_heat_of_fusion` | float | `4000000.0` | Latent heat of fusion of silicate \[J/kg\]. Aragog uses this as a scalar in _PhaseMixedParameters. SPIDER derives it per-(P,S) from dS * T_fus via the EOS tables; the SPIDER derivation is more physically correct but this scalar is good to ~10% at Earth-mantle conditions. TODO: switch Aragog to SPIDER's derivation once the EntropyEOS exposes a dS_fus(P) method. Must be > 0. |
-| `phase_transition_width` | float | `0.1` | Width \[fraction\] of the mushy-zone transition in Aragog's _PhaseMixedParameters. Sets the width of the phase boundary in Aragog's mixed-phase blending (viscosity, thermal conductivity etc.). Distinct from ``[interior_energetics.spider].matprop_smooth_width`` which is SPIDER's analogous knob for its own solver. Must be > 0 and < 1. |
+| `phase_transition_width` | float | `0.1` | Width \[fraction\] of the mushy-zone transition in Aragog's _PhaseMixedParameters. Sets the width of the phase boundary in Aragog's mixed-phase blending (viscosity, thermal conductivity etc.). Distinct from ``[interior_energetics.spider].matprop_smooth_width`` which is SPIDER's corresponding setting for its own solver. Must be > 0 and < 1. |
 
 **Core thermal model**
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `core_tfac_avg` | float | `1.147` | Core T_avg / T_cmb ratio from adiabatic gradient (Bower+2018 Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg. SPIDER derives its own internally. Must be > 0. |
+| `core_tfac_avg` | float | `1.147` | Core T_avg / T_cmb ratio of an isentropic core (Bower et al. (2018)[^cite-bower2018], Eq. 20 and Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg. SPIDER derives its own internally. Must be > 0. |
 
 **Diagnostics**
 
@@ -334,16 +363,20 @@ Jacobians for robust convergence.
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `mass_coordinates` | bool | `true` | Whether to use mass coordinates in the model. Default is True. Uses uniform spacing in mass coordinate space, giving larger cells at the surface where density is lower, matching SPIDER's mesh. |
+| `cmb_cell_thickness` | float or int | `3000.0` | Radial thickness \[m\] of the mesh cell at the CMB: 0 (the uniform mesh at that end) or a finite value of at least 2 m. The cells grow away from the CMB with a tanh stretching. A value at or above the bottom cell of the uniform mesh of the same coordinate mode gives no CMB refinement, and aragog logs it: with the 'uniform' or 0 surface cell the mesh keeps that uniform bottom cell. A resume keeps the value its run was written with. |
+| `surface_cell_thickness` | float or str | `"uniform"` | Radial thickness \[m\] of the mesh cell at the surface: 0 (the uniform mesh at that end), 'uniform' (the top cell of the uniform mesh of the same coordinate mode; with mass_coordinates the top cell of the uniform mass-coordinate mesh), or a finite value of at least 2 m and below the uniform radial cell (R_int - R_core)/(num_levels - 1). It has no fallback: aragog refuses a larger value when it builds the mesh. With cmb_cell_thickness = 0 and 'uniform' the mesh is the uniform mesh. A resume keeps the value its run was written with. |
 | `backend` | str | `"jax"` | ODE backend selector. Default 'jax'. - 'jax'   : CVODE with JAX-derived RHS and JAX analytic Jacobian (`jax.jacrev`). Recommended for production. - 'numpy' : CVODE with numpy RHS and CVODE finite-difference Jacobian. Available for development and SPIDER-parity comparisons; less robust than 'jax' at production resolution because the FD-Jacobian noise can trip Aragog's T_core-jump retry guard at tight tolerances. The diffrax direct-JAX integration path is research-only and gated on a code-level flag in `proteus.interior_energetics.aragog`. Choices: `"numpy"`, `"jax"`. |
 | `atol_temperature_equivalent` | float | `1e-08` | Effective temperature-scale absolute tolerance \[K\] for Aragog's ODE integrator. Default 1e-8 matches SPIDER's atol=rtol=1e-8 setting; this tight tolerance avoids a marginal-stability bifurcation at the first dt jump after equilibration. Must be > 0. |
 | `core_bc` | str | `"energy_balance"` | Core-mantle boundary condition mode. Default 'energy_balance'. Valid values: - 'quasi_steady': alpha-factor heat-flux partition; gives about -19% T_core offset vs SPIDER. - 'energy_balance': SPIDER bit-parity BC with dSdr_cmb as a new state variable (mirrors SPIDER bc.c:76-131). - 'gradient': gradient-based state with two boundary entropies as state variables. - 'bower2018': experimental, do not use for production. - 'core_module': full core evolution module with nucleation, crystallisation regimes, and dynamo energetics (aragog.core), coupled through a boundary-layer CMB flux in the core-mantle temperature contrast. Choices: `"quasi_steady"`, `"energy_balance"`, `"gradient"`, `"bower2018"`, `"core_module"`. |
 | `phase_smoothing` | str | `"tanh"` | Phase-boundary smoothing for Jgrav and Jmix: 'tanh' (SPIDER parity) or 'cubic_hermite'. Choices: `"tanh"`, `"cubic_hermite"`. |
-| `separation_viscosity` | str | `"mixture"` | Drag viscosity for the gravitational-separation velocity v_rel = \|dRho\| g F(phi) / eta. 'melt' (fixed single-phase liquid viscosity, SPIDER parity) keeps separation active below the rheological transition in coupled caps-off runs, which collapses the CMB temperature; 'mixture' (rheological-transition-blended bulk viscosity) ties the drag viscosity to the same solid-fraction rise that stiffens the bulk rheology, so separation locks up at the same melt fraction instead, which is why the default here is 'mixture' while Aragog's own default stays 'melt' for SPIDER parity. The regime boundaries are the porosities where adjacent permeability laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c). The melt drainage of front trapping (outgas.trap_mode 'front') takes the melt viscosity whatever this setting. Choices: `"melt"`, `"mixture"`. |
-| `separation_buoyancy` | str | `"mixture"` | Buoyancy of the gravitational-separation velocity. 'mixture' takes it against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie 1984, Eq. 3.7), on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes (rho_s - rho_l) g on every regime (Abe 1995, Eq. 40), as SPIDER does, so 'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy. Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5; from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2. Choices: `"mixture"`, `"solid"`. |
-| `allow_resume_law_change` | bool | `false` | Let a resume change separation_viscosity or separation_buoyancy from the values in the run's init_coupler.toml, with one warning per switched law in the log. False stops such a resume, because the changed law would act from the resume row on. A law the record does not hold must be set in the config file either way; a record that names the Aragog module and lacks separation_viscosity counts as 'melt', and a record of another interior module holds neither law. init_coupler.toml records false. |
+| `separation_viscosity` | str | `"mixture"` | Drag viscosity for the gravitational-separation velocity v_rel = \|dRho\| g F(phi) / eta. 'melt' (fixed single-phase liquid viscosity, SPIDER parity) keeps separation active below the rheological transition in coupled caps-off runs, which collapses the CMB temperature; 'mixture' (rheological-transition-blended bulk viscosity) ties the drag viscosity to the same solid-fraction rise that stiffens the bulk rheology, so separation locks up at the same melt fraction instead, which is why the default here is 'mixture' while Aragog's own default stays 'melt' for SPIDER parity. The regime boundaries are the porosities where adjacent permeability laws cross (Bower et al. (2018)[^cite-bower2018], Section 2.1, Eqs. 13a to 13c). The melt drainage of front trapping (outgas.trap_mode 'front') takes the melt viscosity whatever this setting. Choices: `"melt"`, `"mixture"`. |
+| `separation_buoyancy` | str | `"mixture"` | Buoyancy of the gravitational-separation velocity. 'mixture' takes it against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie (1984)[^cite-mckenzie1984], Eq. 3.7), on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes (rho_s - rho_l) g on every regime (Abe (1995)[^cite-abe1995], Eq. 40), as SPIDER does, so 'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy. Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5; from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2. Choices: `"mixture"`, `"solid"`. |
+| `allow_resume_law_change` | bool | `false` | Let a resume change separation_viscosity, separation_buoyancy, rheology.enabled, lid_mush_base or interior_energetics.mixing_length (also of a SPIDER run) from the values in the run's init_coupler.toml, with one warning per switched law in the log. False stops such a resume, because the changed law would act from the resume row on. A law the record does not hold must be set in the config file either way; a record that names the Aragog module and lacks separation_viscosity counts as 'melt', one that lacks the rheology or lid_mush_base counts as off. A SPIDER record holds only the mixing length, a record that names no module holds the mixing length and the laws of its Aragog table, and a record of another interior module holds none of these laws. A missing record, or one that names no module and holds no Aragog table, leaves the rheology and the lid unchecked. init_coupler.toml records false. |
 | `solver_method` | str | `"cvode"` | ODE solver: 'cvode' (SUNDIALS, SPIDER parity; needs scikits-odes-sundials and stops the run at setup without it), 'radau' (scipy), 'bdf' (scipy). Choices: `"cvode"`, `"radau"`, `"bdf"`. |
-| `scalar_gravity_override` | bool | `false` | Scalar-gravity comparison knob. When True, the external mesh file that Zalmoxis writes has its gravity column overwritten with a uniform scalar (the surface value from ``hf_row['gravity']``) before Aragog reads it, so Aragog's per-node gravity path interpolates to that scalar everywhere. False by default; set True only when running a paired scalar-gravity comparison. |
+| `scalar_gravity_override` | bool | `false` | Scalar-gravity comparison setting. When True, the external mesh file that Zalmoxis writes has its gravity column overwritten with a uniform scalar (the surface value from ``hf_row['gravity']``) before Aragog reads it, so Aragog's per-node gravity path interpolates to that scalar everywhere. False by default; set True only when running a paired scalar-gravity comparison. |
 | `phi_step_cap` | float | `0.0` | Per-call melt-fraction step cap. When > 0 and any staggered cell is in or near the two-phase window at solve() entry, a CVODE root function (and the equivalent scipy event) returns control at the exact time the larger of the global mass-weighted \|ΔΦ\| and the maximum single-cell \|Δφ\| reaches this cap. Off by default: the schema default 0.0 resolves to no cap, because on a benign freezing-front crossing the root function slices the coupled step into many small ones and drives the reported CMB heat flux briefly negative where the uncapped run stays positive, so the cap is a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too. |
+| `lid_mush_base` | bool | `false` | Run the sub-grid lid with its base at the solidus. It needs the Aragog module with the solid rheology, surface_bc_mode = 'flux', kappah_floor > 0, the EOS tables and the dummy (without fixed_flux) or AGNI atmosphere with surf_state = 'skin' and a numeric surface_d, and is refused with core_bc gradient or bower2018, with param_utbl and with planet.prevent_warming. A resume that changes it stops unless allow_resume_law_change is true. |
+| `lid_delta_on` | float or none | `none` | Onset thickness \[m\] of the sub-grid lid. None takes solid_cond surface_d / surface_k, at which a linear lid conducts like the skin (0.02 m for the default skin). A finite value above 0 is used as given, with a warning beyond 10 % of the skin value. |
 | `temperature_step_cap` | float | `0.0` | Per-call per-cell temperature step cap \[K\]. Shares the same root function as phi_step_cap and fires on the maximum single-cell \|ΔT\| since solve() entry. When enabled it bounds the per-cell temperature change on the solid adiabat just below the solidus, where the melt-fraction cap cannot act because a fully solid cell's melt fraction no longer moves. Off by default (schema default 0.0 resolves to no cap); on a benign freezing-front crossing the caps slice the coupled step into many small ones and drive the reported CMB heat flux briefly negative, so they are a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too. |
 | `entropy_step_cap` | float | `0.0` | Per-call per-cell entropy step cap \[J/kg/K\], in the native solver variable; same role as temperature_step_cap without an EOS lookup in the root function. Off by default (schema default 0.0 resolves to no cap); on a benign freezing-front crossing the caps slice the coupled step into many small ones and drive the reported CMB heat flux briefly negative, so they are a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too. |
 | `phase_boundary_entropy_margin` | float | `200.0` | Phase-boundary proximity band \[J/kg/K\] within which a staggered cell counts as near a solidus or liquidus crossing, tightening the integrator max_step so CVODE resolves the stiff two-phase RHS across the boundary. This is a solver-accuracy control, not a cosmetic step-size setting: at the default it reproduces the fixed band and the converged trajectory is unchanged, but lowering it below the default can under-resolve a real phase crossing and shift the converged state, because CVODE's local error control can accept an over-large step across the near-discontinuous RHS. Keeping the default reproduces current behaviour, and modestly widening the band does not move a converged result because tighter steps only refine an adaptive integrator; but a value orders of magnitude above the default makes every cell count as near a boundary at all times, so every call runs under the phase-boundary step control: with phase_boundary_cap = 'fixed' that clamps the integrator to 1 yr steps (versus 100 yr otherwise) and stalls the run, and with 'rate' every call runs as CVODE segments with max_step between 1 and 100 yr. Keep the band of order a few hundred J/kg/K. Default 200.0, matching Aragog's own default; a positive value is required (0 or negative is not a valid disabled state for a proximity band). Must be > 0. |
@@ -353,6 +386,18 @@ Jacobians for robust convergence.
 | `top_cell_dt_rel_dT` | float | `0.08` | Relative surface-temperature change allowance eta_T at a top-cell melt fraction >= 0.40 (mush and liquid) for the top-cell drain-time step limit; must lie in (0, 0.15\]. A value below 0.08 also needs top_cell_dt_rel_dT_solid set at or below it; the pair is checked when the config is loaded. Sets the allowed temperature scale dT_allow = eta_eff * T_surf for the step energy q = cp_chord * dT_allow, bounding the linearized unresupplied top-cell temperature drop T_top - T(P_top, S_top - q / T_top) <= dT_allow under the step's linearization dS = q / T_top with the chord heat capacity cp_chord in the T_top form. A lookahead trial that reaches or spans the flat part of the PALEOS solid table (T held at T_sol from the last node below S_sol) can give a step that exceeds dT_allow; this is shown on constructed slice states, and no step of the coupled runs exceeded dT_allow. On an energy basis (integral of T dS = q at constant P_top) the drop also exceeds dT_allow in the liquid: at most 1.106 dT_allow at 0.08 and 1.204 at 0.15 for T_surf / T_top <= 1.02, and up to 1.110 and 1.211 at 1.05. See docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations. Must be > 0.0 and <= 0.15. |
 | `top_cell_dt_rel_dT_solid` | float | `0.08` | Relative surface-temperature change allowance eta_T_solid at a fully solid top cell (top-cell melt fraction 0), ramped linearly to top_cell_dt_rel_dT at a top-cell melt fraction of 0.40; must lie in (0, top_cell_dt_rel_dT\] (up to 0.15), with the pair checked when the config is loaded. See docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations. Must be > 0.0 and <= 0.15. |
 <!-- END GENERATED: config-table [interior_energetics.aragog] -->
+
+### Solid rheology `[interior_energetics.aragog.rheology]`
+
+Uses the temperature- and pressure-dependent solid viscosity and the stagnant-lid closure of Aragog, with the defaults of `aragog.rheology.SolidRheologyParams` for every other parameter. It needs `interior_energetics.module = "aragog"` and an Aragog whose entropy solver reads the rheology; a run stops at setup otherwise. A resume keeps the value the run was written with, unless `allow_resume_law_change` is set.
+
+<!-- BEGIN GENERATED: config-table [interior_energetics.aragog.rheology] -->
+<!-- Generated by tools/generate_config_reference.py; edit src/proteus/config/, not this table -->
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | bool | `false` | Use the temperature- and pressure-dependent solid viscosity and the stagnant-lid closure of ``aragog.rheology.SolidRheologyParams``, with its defaults for every other parameter but ``mlt_bottom_slope``. False uses the constant ``solid_log10visc``. |
+| `mlt_bottom_slope` | float or int | `1.0` | Slope of the viscous-branch mixing length above the CMB, l = slope (r - r_cmb), in (0, 1\]. The default 1.0 is the slope with which aragog's top slope ``s_top_inf`` was calibrated. Aragog's viscous flux carries a factor 1/18 that the mixing-length flux of Tachinami et al. (2011)[^cite-tachinami2011] (Eq. 13 and 14) does not, so a slope of 1 is a mixing length of 0.49 times the distance in their terms. Read only with ``enabled``. Must be > 0 and <= 1. |
+<!-- END GENERATED: config-table [interior_energetics.aragog.rheology] -->
 
 ### Core evolution `[interior_energetics.aragog.core_module]`
 
@@ -369,7 +414,7 @@ from the running mesh.
 |---|---|---|---|
 | `alpha` | float | `1.35e-05` | Core thermal expansion coefficient \[K-1\]. Must be > 0. |
 | `c_p` | float | `840.0` | Core specific heat capacity \[J kg-1 K-1\]. Must be > 0. |
-| `melting_curve` | str | `"iron"` | 'iron' (Anzellini et al. 2013 via PALEOS, with light-element depression) or 'quadratic' (Nimmo 2015 Eq. 6 parameterisation). Choices: `"iron"`, `"quadratic"`. |
+| `melting_curve` | str | `"iron"` | 'iron' (Anzellini et al. (2013)[^cite-anzellini2013] via PALEOS, with light-element depression) or 'quadratic' (Nimmo (2015)[^cite-nimmo2015] Eq. 6 parameterisation). Choices: `"iron"`, `"quadratic"`. |
 | `light_element_fraction` | float | `0.0` | Mole fraction of light elements depressing the iron melting curve. Must be >= 0 and < 1. |
 | `depression` | float | `0.0` | Melting-point depression per unit mole fraction, as a fraction of the melting temperature \[1\]; its product with light_element_fraction must stay below 1. Must be >= 0. |
 | `t_m0` | float | `2677.0` | Quadratic-curve prefactor \[K\] (melting_curve = 'quadratic'). Must be > 0. |
@@ -380,12 +425,12 @@ from the running mesh.
 | `c_light` | float | `0.0` | Light-element mass fraction of the outer core (complete rejection). Must be >= 0 and < 1. |
 | `q_radio` | float | `0.0` | Core radiogenic power \[W\], constant over a run. Must be >= 0. |
 | `stratification` | bool | `false` | When true, the outer core above layer_base_fraction of the CMB radius is a resolved shell whose temperatures are part of the solver state: heat moves through it by conduction and, where its gradient is superadiabatic, by convective mixing, so a stable layer forms below the CMB when the CMB heat flow is subadiabatic and erodes when it is not. The CMB heat flow sees the temperature of the top of the shell. Experimental: erosion of a layer does not run on CVODE at the default tolerances. Not available with accretion. |
-| `k_core` | float | `130.0` | Core thermal conductivity \[W m-1 K-1\] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015) Table 2 value. Must be > 0. |
+| `k_core` | float | `130.0` | Core thermal conductivity \[W m-1 K-1\] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015)[^cite-nimmo2015] Table 2 value. Must be > 0. |
 | `layer_base_fraction` | float | `0.4` | Base of the stratified shell as a fraction of the CMB radius, in (0, 1); the inner core must stay below it. Used with the experimental stratification. Must be > 0 and < 1. |
 | `layer_k_mix` | float | `10000000.0` | Eddy diffusivity \[m2 s-1\] of convective mixing in the stratified shell at the reference superadiabatic gradient. Used with the experimental stratification. Must be > 0. |
 | `layer_g_mix` | float | `0.001` | Reference superadiabatic gradient of the shell mixing, as a fraction of the adiabatic gradient at the CMB. Used with the experimental stratification. Must be > 0. |
-| `f_ohm` | float | `1.0` | Ohmic fraction of the dissipation in the field-strength scaling, in (0, 1\]; Christensen et al. (2009) adopt 1 for planets. Must be > 0 and <= 1. |
-| `ra_crit_cmb` | float | `450.0` | Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast; the default is the theoretical value of Thiriet et al. (2019, Table 2). Must be > 0 and < inf. |
+| `f_ohm` | float | `1.0` | Ohmic fraction of the dissipation in the field-strength scaling, in (0, 1\]; Christensen et al. (2009)[^cite-christensen2009] adopt 1 for planets. Must be > 0 and <= 1. |
+| `ra_crit_cmb` | float | `450.0` | Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast; the default is the theoretical value of Thiriet et al. (2019)[^cite-thiriet2019], Table 2. Must be > 0 and < inf. |
 | `flux_geometry` | str | `"const_flux"` | Which printed Earth-core efficiency factor converts the superadiabatic flux into the field-strength scaling's F: 'const_flux' or 'zero_outer'. Choices: `"const_flux"`, `"zero_outer"`. |
 <!-- END GENERATED: config-table [interior_energetics.aragog.core_module] -->
 
@@ -475,6 +520,8 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 <!-- Generated by tools/generate_config_reference.py; edit src/proteus/config/, not this table -->
 Cross-field constraints enforced when the config file loads:
 
+- Reject the Aragog sub-grid lid where Aragog refuses it or where it cannot act.
+- Reject the Aragog solid rheology when another interior module runs.
 - Reject Aragog top_cell_dt_limit with grey_body surface boundary conditions.
 - Require top_cell_dt_rel_dT_solid <= top_cell_dt_rel_dT.
 - Require ``interior_struct.melting_dir`` for Aragog without a PALEOS table set.
@@ -489,6 +536,7 @@ Cross-field constraints enforced when the config file loads:
 - Validate Boundary backend's solidus/liquidus ordering.
 - Dummy interior requires the liquidus to sit above the solidus.
 - SPIDER requires at least one energy transport term to be enabled.
+- Reject 235U/U + 238U/U above 1 (both mass ratios, kg/kg).
 - Validate Zalmoxis EOS format strings and reject unsupported miscibility options.
 <!-- END GENERATED: config-constraints interior -->
 
@@ -496,8 +544,30 @@ Cross-field constraints enforced when the config file loads:
 
 **See also:** [Interior modules](../../Explanations/model.md#interior-energetics-aragog-spider-boundary) | [Structure module](../../Explanations/model.md#interior-structure-zalmoxis) | [Melting curves](../melting_curves.md)
 
- [^cite-bower2018]: Bower, D.J., Sanan, P. & Wolf, A.S., *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49-62, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..274...49B/abstract).
+[^cite-bower2018]: D. J. Bower, P. Sanan, A. S. Wolf, *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49-62, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..274...49B/abstract).
 
- [^cite-schaefer2016]: Schaefer, L., Wordsworth, R.D., Berta-Thompson, Z. & Sasselov, D., *[Predictions of the atmospheric composition of GJ 1132b](https://doi.org/10.3847/0004-637X/829/2/63)*, The Astrophysical Journal, 829, 63, 2016. [SciX](https://scixplorer.org/abs/2016ApJ...829...63S/abstract).
+[^cite-schaefer2016]: L. Schaefer, R. D. Wordsworth, Z. Berta-Thompson, D. Sasselov, *[Predictions of the atmospheric composition of GJ 1132b](https://doi.org/10.3847/0004-637X/829/2/63)*, The Astrophysical Journal, 829, 63, 2016. [SciX](https://scixplorer.org/abs/2016ApJ...829...63S/abstract).
 
- [^cite-stixrude2014]: Stixrude, L., *[Melting in super-earths](https://doi.org/10.1098/rsta.2013.0076)*, Philosophical Transactions of the Royal Society A, 372, 20130076, 2014. [SciX](https://scixplorer.org/abs/2014RSPTA.37230076S/abstract).
+[^cite-stixrude2014]: L. Stixrude, *[Melting in super-earths](https://doi.org/10.1098/rsta.2013.0076)*, Philosophical Transactions of the Royal Society A, 372, 20130076, 2014. [SciX](https://scixplorer.org/abs/2014RSPTA.37230076S/abstract).
+
+[^cite-anzellini2013]: S. Anzellini, A. Dewaele, M. Mezouar, P. Loubeyre, G. Morard, *[Melting of iron at Earth's inner core boundary based on fast X-ray diffraction](https://doi.org/10.1126/science.1233514)*, Science, 340, 464-466, 2013.
+
+[^cite-belonoshko2005]: A. B. Belonoshko, N. V. Skorodumova, A. Rosengren, R. Ahuja, B. Johansson, L. Burakovsky, D. L. Preston, *[High-pressure melting of MgSiO$_3$](https://doi.org/10.1103/PhysRevLett.94.195701)*, Physical Review Letters, 94(19), 195701, 2005. [SciX](https://scixplorer.org/abs/2005PhRvL..94s5701B/abstract).
+
+[^cite-fei2021]: Y. Fei, C. T. Seagle, J. P. Townsend, C. A. McCoy, A. Boujibar, P. Driscoll, L. Shulenburger, M. D. Furnish, *[Melting and density of MgSiO$_3$ determined by shock compression of bridgmanite to 1254 GPa](https://doi.org/10.1038/s41467-021-21170-y)*, Nature Communications, 12, 876, 2021. [SciX](https://scixplorer.org/abs/2021NatCo..12..876F/abstract).
+
+[^cite-abe1995]: Y. Abe, *Basic equations for evolution of partially molten mantle and core*, in T. Yukutake (ed.), The Earth's Central Part: Its Structure and Dynamics, Terra Sci. Pub. Com., Tokyo, 215-230, 1995.
+
+[^cite-christensen2009]: U. R. Christensen, V. Holzwarth, A. Reiners, *[Energy flux determines magnetic field strength of planets and stars](https://doi.org/10.1038/nature07626)*, Nature, 457, 167-169, 2009.
+
+[^cite-mckenzie1984]: D. McKenzie, *[The generation and compaction of partially molten rock](https://doi.org/10.1093/petrology/25.3.713)*, Journal of Petrology, 25, 713-765, 1984.
+
+[^cite-nimmo2015]: F. Nimmo, *[Thermal and compositional evolution of the core](https://doi.org/10.1016/b978-0-444-53802-4.00160-3)*, in G. Schubert (ed.), Treatise on Geophysics, 2nd edition, vol. 9, Elsevier, 201-219, 2015.
+
+[^cite-ruedas2017]: T. Ruedas, *[Radioactive heat production of six geologically important nuclides](https://doi.org/10.1002/2017GC006997)*, Geochemistry, Geophysics, Geosystems, 18, 3530-3541, 2017. [SciX](https://scixplorer.org/abs/2017GGG....18.3530R/abstract).
+
+[^cite-tachinami2011]: C. Tachinami, H. Senshu, S. Ida, *[Thermal evolution and lifetime of intrinsic magnetic fields of super-Earths in habitable zones](https://doi.org/10.1088/0004-637X/726/2/70)*, The Astrophysical Journal, 726, 70, 2011. [SciX](https://scixplorer.org/abs/2011ApJ...726...70T/abstract).
+
+[^cite-thiriet2019]: M. Thiriet, D. Breuer, C. Michaut, A.-C. Plesa, *[Scaling laws of convection for cooling planets in a stagnant lid regime](https://doi.org/10.1016/j.pepi.2018.11.003)*, Physics of the Earth and Planetary Interiors, 286, 138-153, 2019.
+
+[^cite-wolf2018]: A. S. Wolf, D. J. Bower, *[An equation of state for high pressure-temperature liquids (RTpress) with application to MgSiO$_3$ melt](https://doi.org/10.1016/j.pepi.2018.02.004)*, Physics of the Earth and Planetary Interiors, 278, 59-74, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..278...59W/abstract).

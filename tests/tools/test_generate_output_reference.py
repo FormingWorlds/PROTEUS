@@ -116,6 +116,8 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
     unattributed = [k['name'] for k in matrix['keys'] if not k['producers']]
     assert unattributed == []
     expected_unresolved_reads = [
+        # the column of a chemistry target table is chosen in the config
+        'src/proteus/atmos_chem/common.py::resolve_chemistry_targets:dynamic key key',
         'src/proteus/atmos_clim/agni.py::_validate_surface_state:dynamic key name',
         'src/proteus/escape/common.py::calc_unfract_fluxes:dynamic key e + key',
         "src/proteus/escape/wrapper.py::reservoir_mass:dynamic key f'{element}{key}'",

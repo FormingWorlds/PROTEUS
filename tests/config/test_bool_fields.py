@@ -105,6 +105,7 @@ def test_every_bool_field_keeps_true_and_false():
         ('atmos_chem.vulcan.use_vm_mol', True),
         ('atmos_clim.agni.solve_energy', False),
         ('interior_energetics.heat_tidal', True),
+        ('interior_energetics.aragog.lid_mush_base', True),
         ('interior_struct.zalmoxis.global_miscibility', True),
         ('outgas.h2_binodal', True),
     }
@@ -161,3 +162,17 @@ def _outcome(converter, value):
         return converter.structure(value, bool)
     except Exception as exc:  # noqa: BLE001 -- a raise is an outcome to compare
         return type(exc)
+
+
+@pytest.mark.parametrize('value', ['false', 'true', 0, 1, None])
+def test_the_lid_and_rheology_switches_refuse_a_non_bool_when_built_directly(value):
+    """Code that builds the Aragog config sections without the loader also gets a bool or an
+    error: lid_mush_base and rheology.enabled refuse any other value, naming the field."""
+    from proteus.config._interior import Aragog, Rheology
+
+    with pytest.raises(TypeError, match='`lid_mush_base` must be a bool'):
+        Aragog(lid_mush_base=value)
+    with pytest.raises(TypeError, match='`enabled` must be a bool'):
+        Rheology(enabled=value)
+    assert Aragog(lid_mush_base=False).lid_mush_base is False
+    assert Rheology(enabled=True).enabled is True

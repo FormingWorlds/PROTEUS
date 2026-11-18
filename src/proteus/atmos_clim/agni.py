@@ -15,6 +15,7 @@ from scipy.interpolate import PchipInterpolator
 from proteus.atmos_clim.common import (
     clip_radius_to_hill,
     get_oarr_from_parr,
+    lid_boundary,
     require_spfile_path,
 )
 from proteus.atmos_clim.spectral_cache import cache_key, seed_from_cache, store_in_cache
@@ -48,6 +49,10 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Constant
 AGNI_LOGFILE_NAME = 'agni_recent.log'
+
+# Length in bytes of the file name variables of the SOCRATES tools (prep_spec.f90, open_file_in.f)
+SOCRATES_MAX_PATH = 132
+
 # Gases kept out of the condensate set. The noble gases are chemically inert
 # and are tracked as conserved reservoirs, so they never rain out.
 ALWAYS_DRY = ('CO', 'N2', 'H2', *noble_gases)
@@ -580,7 +585,14 @@ def _resolve_surface_material(name: str, fwl_dir: str) -> str:
     return os.path.join(fwl_dir, name)
 
 
-def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = True):
+def init_agni_atmos(
+    dirs: dict,
+    config: Config,
+    hf_row: dict,
+    use_cache: bool = True,
+    star_file: str | None = None,
+    io_dir: str | None = None,
+):
     """Initialise atmosphere struct for use by AGNI.
 
     Does not set the temperature profile.
@@ -595,11 +607,24 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
             Dictionary containing simulation variables for current iteration
         use_cache : bool
             Whether to read from and store into `atmos_clim.spectral_cache`.
+        star_file : str or None
+            Stellar spectrum (``.sflux``) to prepare the spectral file with, instead of
+            the newest in ``data/``; the prepared ``runtime.sf`` of the run is then not
+            reused. Postprocessing a snapshot passes the spectrum that snapshot used.
+        io_dir : str or None
+            Folder for AGNI's working files, instead of the output folder or a new
+            temporary folder.
 
     Returns
     ----------
         atmos : atmosphere.Atmos_t
             Atmosphere struct
+
+    Raises
+    ----------
+        ValueError
+            The stellar spectrum goes into the spectral file and the path of
+            ``io_dir/socstar.dat`` is longer than ``SOCRATES_MAX_PATH`` bytes.
 
     """
 
@@ -615,7 +640,9 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
 
     # Fast I/O folder. Decided before the spectral file, because AGNI writes the
     # prepared runtime.sf pair here and so this is where the cache reads from.
-    if (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == 'DEBUG'):
+    if io_dir is not None:
+        os.makedirs(io_dir, exist_ok=True)
+    elif (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == 'DEBUG'):
         io_dir = dirs['output']
     else:
         io_dir = create_tmp_folder()
@@ -640,8 +667,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
                 )
     else:
         # No spectral file provided: use existing runtime.sf in output, or
-        # let AGNI copy from FWL_DATA + modify as required.
-        try_spfile = os.path.join(dirs['output'], 'runtime.sf')
+        # let AGNI copy from FWL_DATA + modify as required (always, for a given star file).
+        try_spfile = '' if star_file else os.path.join(dirs['output'], 'runtime.sf')
 
     # Obtain spectral file
     if try_spfile == 'greygas':
@@ -656,16 +683,19 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
         # doesn't exist in output folder => AGNI will copy from FWL_DATA + modify.
         # Resolve the stellar spectrum path here, where it is actually needed.
         sflux_files = glob.glob(os.path.join(dirs['output'], 'data', '*.sflux'))
-        if not sflux_files:
+        if star_file:
+            sflux_path = star_file
+        elif not sflux_files:
             UpdateStatusfile(dirs, 20)
             raise FileNotFoundError(
                 f'No stellar spectrum (*.sflux) found in {dirs["output"]}/data; '
                 'AGNI cannot construct a fresh spectral file without it'
             )
-        sflux_times = [int(s.split('/')[-1].split('.')[0]) for s in sflux_files]
-        sflux_path = os.path.join(
-            dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1])
-        )
+        else:
+            sflux_times = [int(s.split('/')[-1].split('.')[0]) for s in sflux_files]
+            sflux_path = os.path.join(
+                dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1])
+            )
         input_sf = require_spfile_path(dirs, config)
         input_star = sflux_path
 
@@ -769,6 +799,17 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
             input_star = ''
         else:
             cache_store_key = key
+
+    # prep_spec reads io_dir/runtime.sf and io_dir/socstar.dat, the longer name, as bytes
+    socstar = os.path.join(io_dir, 'socstar.dat')
+    nbytes = len(os.fsencode(socstar))
+    if input_star and nbytes > SOCRATES_MAX_PATH:
+        UpdateStatusfile(dirs, 22)
+        raise ValueError(
+            f'AGNI writes runtime.sf and socstar.dat in {io_dir}; {socstar} is {nbytes} bytes '
+            f'long, and the SOCRATES tools read file names of at most {SOCRATES_MAX_PATH} bytes. '
+            'Use a shorter output path, or a shorter TMPDIR when AGNI works in a temporary folder.'
+        )
 
     # Build the AGNI setup! kwargs.
     setup_kwargs = dict(
@@ -1166,11 +1207,9 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     # Update surface temperature(s)
     _validate_surface_state(hf_row, dirs)
     atmos.tmp_surf = float(hf_row['T_surf'])
-    atmos.tmp_magma = float(hf_row['T_magma'])
 
     # Surface CBL
-    atmos.skin_d = float(hf_row['boundary_layer_thickness'])
-    atmos.skin_k = float(hf_row['boundary_layer_conductivity'])
+    atmos.skin_d, atmos.skin_k, atmos.tmp_magma = lid_boundary(hf_row)
 
     # ---------------------
     # Transparent mode?
@@ -1501,8 +1540,11 @@ def _solve_transparent(atmos, config: Config, sol_type: int | None = None):
     return atmos
 
 
-def write_atmos_ncdf(atmos, dirs: dict, time: float) -> None:
-    """Write the AGNI atmosphere struct to a timestamped NetCDF file."""
+def write_atmos_ncdf(atmos, dirs: dict, time: float, suffix: str = '_atm.nc') -> None:
+    """Write the AGNI atmosphere struct to the NetCDF file ``data/<time><suffix>``.
+
+    The default suffix names an atmosphere snapshot; another keeps that snapshot intact.
+    """
 
     # Only a successfully allocated struct can be used.
     if not bool(atmos.is_alloc):
@@ -1510,7 +1552,7 @@ def write_atmos_ncdf(atmos, dirs: dict, time: float) -> None:
         return
 
     # Write the file
-    ncdf_path = os.path.join(dirs['output'], 'data', format_subyear_time(time) + '_atm.nc')
+    ncdf_path = os.path.join(dirs['output'], 'data', format_subyear_time(time) + suffix)
     log.debug(f'Write AGNI atmosphere to {ncdf_path}')
     jl.AGNI.save.write_ncdf(atmos, ncdf_path)
 

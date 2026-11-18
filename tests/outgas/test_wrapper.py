@@ -2179,11 +2179,12 @@ config_version = "3.0"
 # ============================================================================
 
 
-def _cryst_cfg(reservoir='outgas'):
-    """Minimal config stub for run_crystallized: only ``escape.reservoir`` is
-    read (to confirm the escape model is unfractionated)."""
+def _cryst_cfg(reservoir='outgas', seal=False):
+    """Minimal config stub for run_crystallized: ``escape.reservoir`` (to confirm
+    the escape model is unfractionated) and ``outgas.lid_seal.enabled``."""
     cfg = MagicMock()
     cfg.escape.reservoir = reservoir
+    cfg.outgas.lid_seal.enabled = seal
     return cfg
 
 
@@ -2213,9 +2214,23 @@ def test_run_crystallized_escape_debits_atmosphere():
         'CO2_vmr': 0.2,
         'P_surf': 10.0,
         'atm_kg_per_mol': 0.025,
+        'H2O_mol_atm': 4440.0,
+        'CO2_mol_atm': 454.0,
+        'H2O_mol_total': 9000.0,
+        'H2O_kg_total': 162.0,
+        'CO2_mol_total': 700.0,
     }
-    run_crystallized(_cryst_cfg(), hf_row, dt)
+    run_crystallized(_cryst_cfg(seal=True), hf_row, dt)
 
+    # On a held step the moles scale with the masses, so the molar mass of each species holds.
+    assert hf_row['H2O_mol_atm'] == pytest.approx(3996.0, rel=1e-12)
+    assert hf_row['CO2_mol_atm'] / hf_row['CO2_kg_atm'] == pytest.approx(
+        454.0 / 20.0, rel=1e-12
+    )
+    # The escaped moles and mass leave the species totals too: 444 mol, 8 kg of H2O.
+    assert hf_row['H2O_mol_total'] == pytest.approx(9000.0 - 444.0, rel=1e-12)
+    assert hf_row['H2O_kg_total'] == pytest.approx(162.0 - 8.0, rel=1e-12)
+    assert hf_row['CO2_mol_total'] == pytest.approx(700.0 - 45.4, rel=1e-12)
     # 10 kg of 100 escaped -> 90 retained.
     assert hf_row['M_atm'] == pytest.approx(90.0, rel=1e-9)
     # Discrimination: a no-op (the reservoirs-preserved branch) would leave
@@ -2971,3 +2986,83 @@ def test_a_frozen_atmosphere_loses_per_element_what_escape_takes_from_each_total
     bare = {'M_atm': 100.0, 'esc_rate_total': 1.0, 'esc_step_kg': 10.0, 'H2O_kg_atm': 100.0}
     run_crystallized(_cryst_cfg(), bare, dt=1.0)
     assert bare['H2O_kg_atm'] == pytest.approx(90.0, rel=1e-12)
+
+
+def test_sealed_mass_blocks_desiccation_and_a_desiccation_empties_the_rest():
+    """A planet whose volatiles are held under a closed crust is not desiccated,
+    though escape cannot reach them; once desiccation fires, a sealed rest below
+    mass_thresh leaves with the atmosphere and is booked in M_desiccated."""
+    config = MagicMock()
+    config.outgas.mass_thresh = 1e16
+    config.outgas.vapourise = False
+    config.outgas.prevent_desaturation = False
+    config.outgas.trap_mode = 'none'
+    row = {f'{e}_kg_total': 0.0 for e in element_list}
+    row.update({'H_kg_total': 5e19, 'H_kg_sealed': 5e19, 'H2O_kg_sealed': 4.47e20})
+    assert check_desiccation(config, row) is False
+    row.update({'H_kg_total': 1e15, 'H_kg_sealed': 1e15, 'H2O_kg_sealed': 8.9e15})
+    row['H2O_mol_sealed'] = 5e17
+    row.update({'H_kg_leak_tau': 3e12, 'seal_crust_rate': 5e10, 'seal_active': 1.0})
+    row.update({'seal_delta': 6e4, 'seal_phi_top': 2e-4, 'seal_path': 1.0})
+    row.update({'seal_xtal_kg': 3e22, 'seal_tl_kg': 1e21})
+    assert check_desiccation(config, row) is True
+    with patch('proteus.outgas.wrapper.record_volatile_change'):
+        run_desiccated({}, config, row, False)
+    assert row['H_kg_sealed'] == row['H2O_kg_sealed'] == row['H2O_mol_sealed'] == 0.0
+    assert row['H_kg_total'] == 0.0
+    assert row['M_desiccated'] == pytest.approx(1e15, rel=1e-12)
+    assert row['H_kg_leak_tau'] == row['seal_crust_rate'] == row['seal_active'] == 0.0
+    assert row['seal_delta'] == row['seal_phi_top'] == row['seal_path'] == 0.0
+    assert row['seal_xtal_kg'] == row['seal_tl_kg'] == 0.0
+
+
+def test_run_outgassing_writes_the_element_ratios_of_the_atmosphere():
+    """After the chemistry solve the {e2}/{e1}_atm columns follow the element
+    masses of the atmosphere."""
+    config = MagicMock()
+    config.outgas.module = 'calliope'
+    config.planet.fO2_source = 'user_constant'
+    hf_row = {f'{s}_kg_atm': 1e16 for s in gas_list}
+    hf_row.update({f'{s}_vmr': 0.01 for s in gas_list})
+    hf_row.update({f'{s}_bar': 0.01 for s in gas_list})
+    hf_row.update({f'{e}_kg_atm': 0.0 for e in element_list if e not in gas_list})
+    hf_row.update({'C_kg_atm': 3.0e19, 'H_kg_atm': 1.0e18, 'C/H_atm': -1.0, 'P_surf': 1.0})
+    hf_row['atm_kg_per_mol'] = 0.03
+    with patch('proteus.outgas.calliope.calc_surface_pressures'):
+        run_outgassing({'output': '/tmp/test'}, config, hf_row, initial=False)
+    assert hf_row['C/H_atm'] == pytest.approx(30.0, rel=1e-15)
+    assert hf_row['M_atm'] == pytest.approx(1e16 * len(gas_list), rel=1e-12)
+
+
+def test_run_crystallized_leaves_an_element_named_total_to_escape():
+    """A noble gas total is also its element total, which escape debits; the
+    frozen-mantle rescale must not take the escaped mass off it a second time."""
+    from proteus.outgas.wrapper import run_crystallized
+    from proteus.utils.constants import secs_per_year
+
+    hf_row = {'M_atm': 100.0, 'esc_rate_total': 10.0 / secs_per_year, 'He_kg_atm': 100.0}
+    hf_row.update({'He_kg_total': 150.0, 'He_mol_atm': 25000.0, 'He_mol_total': 37500.0})
+    run_crystallized(_cryst_cfg(seal=True), hf_row, 1.0)
+    assert hf_row['He_kg_atm'] == pytest.approx(90.0, rel=1e-12)
+    assert hf_row['He_kg_total'] == 150
+    assert hf_row['He_mol_total'] == pytest.approx(37500.0 - 2500.0, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_run_crystallized_scales_moles_and_species_totals_only_under_the_seal():
+    """A crystallized mantle with the seal off (the seal refuses freeze_volatiles,
+    so this is every crystallized run) scales the atmospheric masses and leaves the
+    mole columns and species totals as they were; a held step of the seal scales
+    the moles with the masses and debits the species totals by what escaped."""
+    from proteus.outgas.wrapper import run_crystallized
+    from proteus.utils.constants import secs_per_year
+
+    base = {'M_atm': 100.0, 'esc_rate_total': 10.0 / secs_per_year, 'H2O_kg_atm': 100.0}
+    base.update({'H2O_mol_atm': 5000.0, 'H2O_mol_total': 9000.0, 'H2O_kg_total': 162.0})
+    for seal, keep in ((False, 1.0), (True, 0.9)):
+        row = dict(base)
+        run_crystallized(_cryst_cfg(seal=seal), row, 1.0)
+        assert row['H2O_kg_atm'] == pytest.approx(90.0, rel=1e-12)
+        assert row['H2O_mol_atm'] == pytest.approx(5000.0 * keep, rel=1e-12)
+        assert row['H2O_mol_total'] == pytest.approx(9000.0 - 5000.0 * (1.0 - keep), rel=1e-12)
+        assert row['H2O_kg_total'] == pytest.approx(162.0 - 100.0 * (1.0 - keep), rel=1e-12)

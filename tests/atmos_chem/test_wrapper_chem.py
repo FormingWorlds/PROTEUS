@@ -228,6 +228,35 @@ def test_run_chemistry_leaves_out_snapshots_without_an_atmosphere(tmp_path):
     assert not (tmp_path / 'offchem' / 'dummy_10p000.csv').exists()
 
 
+@pytest.mark.parametrize(
+    ('climate', 'expected'),
+    [('agni', [0.0, 250.0]), ('janus', [0.0, 100.0, 250.0])],
+    ids=['agni-skips-transparent', 'janus-has-no-transparent-regime'],
+)
+def test_run_chemistry_leaves_out_transparent_agni_snapshots(
+    tmp_path, caplog, climate, expected
+):
+    """With AGNI, a snapshot below `agni.psurf_thresh` (0.1 bar here) is the transparent
+    column AGNI solves instead of the atmosphere, so it is left out with a warning: the
+    row at 100 yr (0.05 bar) is skipped, the row at 250 yr (0.1 bar, at the threshold)
+    runs. Other climate modules have no such regime and run every snapshot."""
+    run, calls = _fake_backend(tmp_path)
+    hf_all = _helpfile([0.0, 100.0, 250.0])
+    hf_all['P_surf'] = [100.0, 0.05, 0.1]
+    config = _make_config(times='all')
+    config.atmos_clim.module = climate
+    config.atmos_clim.agni.psurf_thresh = 0.1  # bar
+
+    with (
+        patch('proteus.atmos_chem.dummy.run_dummy_chem', side_effect=run),
+        caplog.at_level('WARNING'),
+    ):
+        run_chemistry(_dirs(tmp_path), config, hf_all)
+
+    assert [c[0] for c in calls] == expected
+    assert ('transparent regime' in caplog.text) is (climate == 'agni')
+
+
 def test_run_chemistry_all_snapshots_desiccated_runs_nothing(tmp_path):
     """When every snapshot is desiccated (P_surf = 0), run_chemistry returns
     None without calling the backend or writing '<module>.csv'."""
