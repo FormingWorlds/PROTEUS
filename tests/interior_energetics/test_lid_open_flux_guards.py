@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from proteus.atmos_clim.common import lid_flux_slope, lid_open_conductance
+from proteus.atmos_clim.common import LID_SLOPE_GUARD_SIGN, lid_flux_slope, lid_open_conductance
 from proteus.interior_energetics.aragog import AragogRunner
 from proteus.interior_energetics.wrapper import guard_t_magma_clip
 from tests.atmos_clim.test_common import _row
@@ -53,7 +53,7 @@ def test_update_solver_passes_the_open_conductance_of_a_live_lid(w, lid):
     )
     AragogRunner.update_solver(25.0, row, interior_o, hf_all=hf_all)
     assert not hasattr(bc, 'lid_surface_temperature')
-    assert bc.surface_temperature == 727.3
+    assert bc.surface_temperature == row['T_surf']
     if w > 0.0 and lid:
         G_eff, code = lid_open_conductance(row, lid_flux_slope(hf_all, row))
         assert bc.open_surface_conductance == G_eff
@@ -71,8 +71,11 @@ def test_a_live_lid_without_a_usable_slope_holds_the_start_value():
     row = _row(0.4, G=21.9, T_b=1440.0, T_surf=727.3, F_atm=7000.0, lid_F_open=165000.0)
     row.update(Time=30000.0, T_eqm=255.0)
     AragogRunner.update_solver(25.0, row, interior_o, hf_all=None)
-    assert bc.open_surface_conductance == 0.0
-    assert row['lid_slope_guard'] == 1
+    # the guard of a slope of 0, exact
+    assert (bc.open_surface_conductance, row['lid_slope_guard']) == lid_open_conductance(
+        row, 0.0
+    )
+    assert row['lid_slope_guard'] == LID_SLOPE_GUARD_SIGN
 
 
 @pytest.mark.parametrize(
@@ -161,11 +164,65 @@ def test_a_state_out_of_the_tables_retries_with_half_the_step(monkeypatch):
     from tests.interior_energetics.test_aragog import _retry_runner
 
     solver, calls = _range_solver({1, 2}, 4)
+    solver._S0, solver._last_compression_J = np.array([1.0, 2.0]), 3.5
+    starts = []
+    fail = solver.solve.side_effect
+
+    def solve_from_a_state():
+        # each attempt records its start, then moves the state as a failed solve does
+        starts.append((solver._S0.copy(), solver._last_compression_J))
+        solver._S0, solver._last_compression_J = np.array([9.0, 9.0]), -1.0
+        fail()
+
+    solver.solve.side_effect = solve_from_a_state
     runner, interior_o, hf_row = _retry_runner(solver, monkeypatch)
     out = runner._solve_with_retry(hf_row, interior_o)
     assert out.status == 0
     assert [round(c['dt'], 6) for c in calls] == [100.0, 50.0, 25.0]
     assert solver.reset.call_count == 2
+    for S0, compression in starts:
+        np.testing.assert_array_equal(S0, [1.0, 2.0])
+        assert compression == starts[0][1]
+
+
+@pytest.mark.parametrize(
+    'first', [dict(cvode_flag=-1, cvode_flag_name='TOO_MUCH_WORK'), dict(cvode_flag=-4)]
+)
+def test_a_retry_after_a_state_out_of_the_tables_runs_at_the_base_controls(monkeypatch, first):
+    """After a stiff or another failed attempt, the attempt that follows a state out of the
+    tables runs at half the step with the base rtol, step budget and atol scale."""
+    from tests.interior_energetics.test_aragog import (
+        _RETRY_BASE_MAX_STEPS,
+        _RETRY_BASE_RTOL,
+        _retry_out,
+        _retry_runner,
+        _retry_solver,
+    )
+
+    solver, calls = _retry_solver([_retry_out(-1, **first), _retry_out(0)])
+    from aragog.solver.entropy_solver import AcceptedStateRangeError
+
+    record = solver.solve.side_effect
+
+    def solve():
+        record()
+        if len(calls) == 2:
+            raise AcceptedStateRangeError('cell 48 out of the tables at attempt 2')
+
+    solver.solve.side_effect = solve
+    runner, interior_o, hf_row = _retry_runner(solver, monkeypatch)
+    out = runner._solve_with_retry(hf_row, interior_o)
+    assert out.status == 0
+    assert len(calls) == 3
+    assert (calls[1]['rtol'], calls[1]['max_steps'], calls[1]['atol_sf']) != (
+        _RETRY_BASE_RTOL,
+        _RETRY_BASE_MAX_STEPS,
+        1.0,
+    )
+    assert calls[2]['dt'] < calls[1]['dt']
+    assert calls[2]['rtol'] == _RETRY_BASE_RTOL
+    assert calls[2]['max_steps'] == _RETRY_BASE_MAX_STEPS
+    assert calls[2]['atol_sf'] == calls[0]['atol_sf']
 
 
 def test_a_state_out_of_the_tables_on_every_attempt_stops_the_run(monkeypatch):

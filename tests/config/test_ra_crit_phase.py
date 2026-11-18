@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from proteus.config._interior import Aragog, AragogCoreModule, Interior
+from proteus.config._interior import (
+    Aragog,
+    AragogCoreModule,
+    Interior,
+    _check_aragog_cmb_phase_band,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -59,7 +64,14 @@ def test_a_band_that_leaves_zero_to_one_is_refused(loc, wid):
 def test_the_band_is_checked_only_where_the_law_by_phase_acts(kw):
     """A band outside [0, 1] passes where the law by phase does not act."""
     ie = _interior(loc=0.05, wid=0.2, **kw)
-    assert ie.rfront_loc - 0.5 * ie.rfront_wid < 0.0
+    # the same band is refused once the law by phase acts on this object
+    ie.module, ie.aragog.core_bc, ie.aragog.core_module.ra_crit_cmb = (
+        'aragog',
+        'core_module',
+        'phase',
+    )
+    with pytest.raises(ValueError, match='rfront_wid'):
+        _check_aragog_cmb_phase_band(ie)
 
 
 @pytest.mark.unit

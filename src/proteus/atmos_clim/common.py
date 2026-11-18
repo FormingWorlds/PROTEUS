@@ -561,8 +561,8 @@ def lid_open_flux(hf_row: dict) -> float:
     Raises
     ------
     LidOpenFluxError
-        For a scale ``c`` that is not positive: a positive balance with ``F_atm`` at or below 0
-        or not finite.
+        For an ``F_atm`` that is not finite, or a scale ``c`` that is not positive: a positive
+        balance with ``F_atm`` at or below 0.
 
     Notes
     -----
@@ -578,6 +578,8 @@ def lid_open_flux(hf_row: dict) -> float:
     d, k, T_melt = lid_boundary(hf_row)
     balance = k / d * (T_melt - T_surf)
     F_atm = float(hf_row['F_atm'])
+    if not math.isfinite(F_atm):
+        raise LidOpenFluxError(f'Lid open part: F_atm {F_atm} is not finite')
     if not (balance > 0.0 and skin > 0.0):
         if not _OPEN_FLUX_WARNED[0]:
             log.warning(
@@ -605,7 +607,9 @@ LID_SLOPE_GUARD_SIGN = 1
 LID_SLOPE_GUARD_SIZE = 2
 
 
-def lid_open_conductance(hf_row: dict, slope: float) -> tuple[float | None, int]:
+def lid_open_conductance(
+    hf_row: dict, slope: float, T_end: float | None = None
+) -> tuple[float | None, int]:
     """In-step response ``G_eff`` [W m-2 K-1] of the open part of a lid surface, per open area.
 
     Parameters
@@ -614,6 +618,9 @@ def lid_open_conductance(hf_row: dict, slope: float) -> tuple[float | None, int]
         Current helpfile row after the atmosphere step, with ``T_surf`` and the lid columns.
     slope : float
         Slope ``F'`` of ``F_atm`` with ``T_surf`` [W m-2 K-1], as :func:`lid_flux_slope`.
+    T_end : float, optional
+        End surface [K] of a secant ``slope`` from ``T_surf``; the size cut is then the grey
+        secant ``sigma (T_end^4 - T_surf^4) / (T_end - T_surf)`` over the same interval.
 
     Returns
     -------
@@ -636,7 +643,11 @@ def lid_open_conductance(hf_row: dict, slope: float) -> tuple[float | None, int]
     if not (math.isfinite(F_p) and F_p > 0.0):
         return 0.0, LID_SLOPE_GUARD_SIGN
     code = 0
-    F_grey = 4.0 * const_sigma * float(hf_row['T_surf']) ** 3
+    T_s = float(hf_row['T_surf'])
+    if T_end is not None and T_end > T_s:
+        F_grey = const_sigma * (T_end**4 - T_s**4) / (T_end - T_s)
+    else:
+        F_grey = 4.0 * const_sigma * T_s**3
     if F_p > F_grey:
         F_p, code = F_grey, LID_SLOPE_GUARD_SIZE
     w = float(hf_row['lid_weight'])

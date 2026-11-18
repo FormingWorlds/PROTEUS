@@ -166,6 +166,22 @@ def test_the_response_is_positive_and_at_most_the_skin(w, G_lid, k_over_d, F_p, 
 
 
 @pytest.mark.physics_invariant
+def test_a_secant_is_cut_at_the_grey_secant_of_its_interval():
+    """The grey secant over [T_surf, T_end] passes uncut; above it, the cut is that secant."""
+    T_s, T_end = 1500.0, 1520.0
+    row = _row(0.4, T_surf=T_s, F_atm=1.0)
+    grey = SIGMA * (T_end**4 - T_s**4) / (T_end - T_s)
+    assert grey > 4.0 * SIGMA * T_s**3 * 1.01
+    G_in, code_in = lid_open_conductance(row, grey, T_end)
+    assert code_in == 0
+    G_above, code_above = lid_open_conductance(row, 1.5 * grey, T_end)
+    assert code_above == LID_SLOPE_GUARD_SIZE
+    assert G_above == pytest.approx(G_in, rel=1e-12)
+    _, code_tangent = lid_open_conductance(row, grey)
+    assert code_tangent == LID_SLOPE_GUARD_SIZE
+
+
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize('F_p', [0.0, -1.0, math.nan, math.inf])
 def test_a_slope_of_zero_or_a_bad_slope_holds_the_start_value(F_p):
     """A slope of 0 (no usable slope, or a sign fault) or a non-finite one gives ``G_eff = 0``."""
@@ -275,9 +291,11 @@ def test_only_the_scale_stop_writes_the_atmosphere_status():
         status.assert_not_called()
 
 
-def test_a_scale_that_is_not_a_number_stops_with_a_message_that_says_so():
-    """A NaN atmosphere flux gives a scale that is not a number; the message says so."""
+@pytest.mark.parametrize('F_atm', [math.nan, math.inf, -math.inf])
+@pytest.mark.parametrize('T_surf', [900.0, 1490.0])
+def test_an_atmosphere_flux_that_is_not_finite_stops_under_a_live_lid(F_atm, T_surf):
+    """A flux that is not finite stops under a positive skin balance and under one at or below 0."""
     from proteus.atmos_clim.common import LidOpenFluxError
 
-    with pytest.raises(LidOpenFluxError, match='not positive'):
-        lid_open_flux(_row(0.3, T_surf=900.0, F_atm=float('nan')))
+    with pytest.raises(LidOpenFluxError, match='not finite'):
+        lid_open_flux(_row(0.3, T_surf=T_surf, F_atm=F_atm))

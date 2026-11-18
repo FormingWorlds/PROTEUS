@@ -2320,7 +2320,7 @@ def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch, r
         surface['T'] = 1601.5  # the surface of the next step
         installed['factory'](MagicMock(), 'core_module')
     kwargs = build.call_args.kwargs
-    assert kwargs['core_module_surface_temperature'] == pytest.approx(1601.5, abs=0.0)
+    assert kwargs['core_module_surface_temperature'] == surface['T']
     assert kwargs['core_bc_mode'] == 'core_module'
     assert kwargs['core_module_budget'] == 'refit-sentinel'
     assert kwargs['core_module_q_radio'] == pytest.approx(3.0e12)

@@ -1137,7 +1137,8 @@ class AragogRunner:
             # typical magma-ocean cooling rates).
             atol=float(config.interior_energetics.aragog.atol_temperature_equivalent),
             rtol=float(config.interior_energetics.rtol),
-            # an accepted state outside the EOS tables stops the run (status 21)
+            # an accepted state outside the EOS tables raises; the retry ladder halves the step
+            # and the run stops with status 21 after the last attempt
             strict_accepted_range=True,
         )
 
@@ -2608,7 +2609,7 @@ class AragogRunner:
         if getattr(bc, 'open_surface_conductance', None) is not None:
             # the open part follows the same secant, with the guard of that slope
             bc.open_surface_conductance, hf_row['lid_slope_guard'] = lid_open_conductance(
-                hf_row, secant
+                hf_row, secant, T_end
             )
         out2 = self._solve_with_retry(hf_row, interior_o, S0_entry)
         wall = time.perf_counter() - t0
@@ -2801,6 +2802,11 @@ class AragogRunner:
                         str(exc)[:200],
                         dt_new,
                     )
+                    # a shorter step at the base controls, not looser ones of an earlier attempt
+                    solver.parameters.solver.rtol = base_rtol
+                    if hasattr(solver, '_max_steps'):
+                        solver._max_steps = base_max_steps
+                    solver._atol_sf = 1.0
                     solver.parameters.solver.start_time = t_start
                     solver.parameters.solver.end_time = t_start + dt_new
                     solver.reset()

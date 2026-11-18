@@ -5,7 +5,12 @@
 This page checks how the atmosphere sees a thin solid crust, the sub-grid lid of Aragog, at the surface (`src/proteus/atmos_clim/common.py`).
 Under a lid the surface has two parts at one surface temperature: the part covered by the lid and the open part, where the melt conducts through the skin.
 Validation here means that we run the code on a case where another source gives the right answer, and the test checks that the code gives that answer within a stated tolerance.
-The right answer comes from algebra for the first 2 cases (two conductors in parallel, and a sum of two fluxes, have closed forms), from a numerical derivative of the surface balance for the third, and from stored coupled runs with a fixed open flux and with the lid off for the fourth.
+The right answer comes from 3 sources:
+
+- algebra, for the first 2 cases: two conductors in parallel, and a sum of two fluxes, have closed forms;
+- a numerical derivative of the surface balance, for the third case;
+- stored coupled runs with a fixed open flux and with the lid off, for the fourth case.
+
 If this part of the code were wrong, the atmosphere would solve for the wrong surface temperature, or the interior would lose more or less heat than the atmosphere takes.
 Each case below says why the check exists, what it tests, how we know the right answer and why it matters; the box "Test details" at the end of each case gives the reference, the tolerance, the test id and the command.
 
@@ -99,27 +104,27 @@ $$w C + (1 - w) F_\mathrm{open} = F_\mathrm{atm} - w C (r - 1).$$
 
 ## Coupled runs through the lid onset
 
-**Why this check exists.** The response of the previous case must also work in a coupled run. Two stored runs of a 1 Earth-mass planet keep the open flux fixed through each interior step. In the first segment the surface temperature changes by up to 53.7 K between coupled steps after the lid forms, and in one step the interior takes up 1655 W m$^{-2}$ at the surface. In the second segment the surface temperature changes by up to 330.6 K between steps, and the magma temperature reaches 4378 K. The test fails if the stored runs with the response lose these improvements.
+**Why this check exists.** The response of the previous case must also work in a coupled run. Two stored runs of a 1 Earth-mass planet keep the open flux fixed through each interior step. In the first segment the surface temperature changes by up to 53.7 K between coupled steps after the lid forms, and in one step the interior takes up 1655 W m$^{-2}$ at the surface. In the second segment the surface temperature changes by up to 330.5 K between steps, and the magma temperature reaches 4378 K. The test fails if a stored run with the response has a largest surface step of half that of its run with the fixed open flux or more, takes up more than 1 W m$^{-2}$ at the surface, or has a magma temperature of 1600 K or more.
 
-**What it tests.** Two segments of 1 Earth-mass runs, each from a stored state shortly before the lid forms. The first segment runs from 9.226 to 10 Myr on a mesh with a 1500 m cell at the core. It is run 3 times from the same state with the same code version: with the open flux fixed through each step, with the response and the solidus floor, and with the lid off. The second segment runs from 7.897 to 9 Myr on a mesh with a 3000 m cell. It compares a run with the fixed open flux, made with an older code version, with a restart from its state at 7.897 Myr with the response and the floor. The `provenance` entry of `tests/data/lid_open_flux/coupled_rows.json` gives the code version, the mesh and the settings of each run. The test reads the rows of these runs from `tests/data/lid_open_flux/coupled_rows.json`; it does not run PROTEUS. For each segment it asserts:
+**What it tests.** Two segments of 1 Earth-mass runs, each from a stored state shortly before the lid forms. The first segment runs from 9.226 to 10 Myr on a mesh with a 1500 m cell at the core. It is run 3 times from the same state: with the open flux fixed through each step, with the response and the solidus floor, and with the lid off. The second segment runs from 7.897 to 9 Myr on a mesh with a 3000 m cell. It compares the run with the fixed open flux that wrote the state at 7.897 Myr with a restart from that state with the response and the floor. In both segments the runs with the fixed open flux and with the lid off come from an earlier code version, which also lacks a change of the CMB flux of at most 0.18 %. The `provenance` entry of `tests/data/lid_open_flux/coupled_rows.json` gives the code version, the mesh and the settings of each run. The test reads the rows of these runs from `tests/data/lid_open_flux/coupled_rows.json`; it does not run PROTEUS. For each segment it asserts:
 
 - the largest step of $T_\mathrm{surf}$ between rows is below half that of the run with the fixed open flux;
 - the interior takes up at most 1 W m$^{-2}$ at the surface ($F_\mathrm{int} > -1$ W m$^{-2}$), where the run with the fixed open flux took up more;
 - the magma temperature stays below 1600 K, where the run with the fixed open flux went above it;
-- no clip of $T_\mathrm{magma}$, and an energy residual of at most $2.5 \times 10^{-5}$ of the content.
+- no clip of $T_\mathrm{magma}$, and an energy residual of at most $10^{-5}$ of the content, a sanity bound (the largest stored residual is $7.2 \times 10^{-6}$).
 
 For the first segment the largest step is also below that of the run without a lid.
 
-**How we know the right answer.** A surface under a thin crust over a convecting magma ocean should change smoothly from step to step; the run without a lid, which has no lid onset, gives the scale of the steps of the atmosphere alone. The largest steps are 22.0 K with the response, 43.4 K without a lid and 53.7 K with the fixed open flux in the first segment, and 31.8 K against 330.6 K in the second.
+**How we know the right answer.** A surface under a thin crust over a convecting magma ocean should change smoothly from step to step; the run without a lid, which has no lid onset, gives the scale of the steps of the atmosphere alone. The largest steps are 21.9 K with the response, 43.4 K without a lid and 53.7 K with the fixed open flux in the first segment, and 31.7 K against 330.5 K in the second.
 
 **Why it matters.** The surface temperature sets the outgassing and the next atmosphere step. Swings and a magma temperature far above the liquidus give wrong outgassing and can stop a run.
 
 ![Surface temperature against time in 2 coupled segments, with the fixed open flux, with the lid off and with the in-step open part](../../assets/validation/atmos_clim_lid_open_coupled.svg#only-light){ width="80%" }
 ![Surface temperature against time in 2 coupled segments, with the fixed open flux, with the lid off and with the in-step open part](../../assets/validation/atmos_clim_lid_open_coupled_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** Both panels show the surface temperature in K against time in Myr, one mark per coupled step. The top panel is the first segment, with the run with the fixed open flux (dotted), the run with the lid off (dashed) and the run with the response (solid). The bottom panel is the second segment; its vertical axis stops at 1650 K, so the run with the fixed open flux leaves the panel between 8.4 and 8.8 Myr. A pass is a solid line that stays close to the lid-off line and far below the swings of the dotted one.
+**How to read the plot.** Both panels show the surface temperature in K against time in Myr, one mark per coupled step. The top panel is the first segment, with the run with the fixed open flux (dotted), the run with the lid off (dashed) and the run with the response (solid). The bottom panel is the second segment; its vertical axis stops at 1650 K, so the run with the fixed open flux leaves the panel from 8.43 to 8.82 Myr. A pass is a solid line that stays close to the lid-off line and far below the swings of the dotted one.
 
-**Known limit.** The test checks stored rows of 2 segments. It does not run PROTEUS, so a later change of the code is not seen here; the response itself is checked by the case above and by the Aragog tests of the open part.
+**Known limit.** The test checks stored rows of 2 segments. The lid is live on 2 rows of the first segment and on 1 row of the second; the response acts only there, and the later rows differ because the runs took different paths from those rows. The test does not run PROTEUS, so a change of the code after the stored runs is not seen here; the response itself is checked by the case above and by the Aragog tests of the open part.
 
 ??? info "Test details"
     - Reference: the stored runs with the fixed open flux and with the lid off.

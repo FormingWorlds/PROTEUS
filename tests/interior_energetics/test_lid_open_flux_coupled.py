@@ -20,8 +20,8 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(60)]
 
 DATA = Path(__file__).parents[1] / 'data' / 'lid_open_flux' / 'coupled_rows.json'
 RUNS = json.loads(DATA.read_text())
-# Energy residual of the uniform-mesh run of the same code version, the bound of the check.
-E_RES_BOUND = 2.5e-5
+# Sanity bound on the energy residual: the largest of the 5 stored runs is 7.2e-6.
+E_RES_BOUND = 1.0e-5
 
 
 def _swing(run):
@@ -31,32 +31,36 @@ def _swing(run):
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_the_open_part_keeps_the_coupled_runs_from_swinging(validation_plot):
-    """Both segments: the runs with the response swing less than the runs with the fixed open
-    flux, the lid-off run
-    included for V1, take up at most 1 W/m2 at the surface, keep T_magma below 1600 K, clip
-    nothing and close the energy to the bound."""
-    for fixed, before in (('V1', 'R1_before'), ('V2', 'probe_before')):
-        f, b = RUNS[fixed], RUNS[before]
-        assert _swing(fixed).max() < 0.5 * _swing(before).max()
+    """Both segments: the runs with the response swing less than half as much as the runs with
+    the fixed open flux, and in the first segment less than the run with the lid off; they take up
+    at most 1 W/m2 at the surface, keep T_magma below 1600 K, clip nothing and close the energy to
+    the bound. The lid is live on 2 rows of the first segment and 1 of the second; later rows
+    differ through the path of each run."""
+    for response, fixed in (('seg1_response', 'seg1_fixed'), ('seg2_response', 'seg2_fixed')):
+        f, b = RUNS[response], RUNS[fixed]
+        assert sum(w > 0.0 for w in f['lid_weight']) in (1, 2)
+        assert _swing(response).max() < 0.5 * _swing(fixed).max()
         assert min(f['F_int']) > -1.0 > min(b['F_int'])
         assert max(f['T_magma']) < 1600.0 < max(b['T_magma'])
         assert sum(f['T_magma_clipped']) == 0.0
         assert max(abs(x) for x in f['E_residual_cons_frac']) <= E_RES_BOUND
-    assert _swing('V1').max() < _swing('R2_lid_off').max()
+    assert _swing('seg1_response').max() < _swing('seg1_lid_off').max()
 
     def figure():
         import matplotlib.pyplot as plt
 
         fig, axes = plt.subplots(2, 1, figsize=(6.4, 5.6))
         role = {
-            'R1_before': ('fixed open flux', ':', 'C0'),
-            'probe_before': ('fixed open flux', ':', 'C0'),
-            'R2_lid_off': ('lid off', '--', 'C1'),
-            'V1': ('in-step open part', '-', 'C2'),
-            'V2': ('in-step open part', '-', 'C2'),
+            'seg1_fixed': ('fixed open flux', ':', 'C0'),
+            'seg2_fixed': ('fixed open flux', ':', 'C0'),
+            'seg1_lid_off': ('lid off', '--', 'C1'),
+            'seg1_response': ('in-step open part', '-', 'C2'),
+            'seg2_response': ('in-step open part', '-', 'C2'),
         }
         for ax, names in zip(
-            axes, (('R1_before', 'R2_lid_off', 'V1'), ('probe_before', 'V2')), strict=True
+            axes,
+            (('seg1_fixed', 'seg1_lid_off', 'seg1_response'), ('seg2_fixed', 'seg2_response')),
+            strict=True,
         ):
             for name in names:
                 label, style, color = role[name]
