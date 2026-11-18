@@ -274,11 +274,22 @@ def test_clean_text_removes_links_html_mentions_and_cuts():
     assert collect.clean_text(None, 10) == '' and collect.clean_text('abc', 0) == ''
 
 
-def test_clean_text_drops_comments_as_github_ends_them():
-    """A comment ends at --> or --!>, an unclosed one hides the rest, and <!--> is empty."""
-    assert collect.clean_text('<!-- a --!> shown <!-- b -->', 100) == 'shown'
+def test_clean_text_hides_at_least_what_a_renderer_can_hide():
+    """A comment ends only at -->, an unclosed one hides the rest, and <!--> is empty."""
+    assert collect.clean_text('<!-- a --!> INJECT -->', 100) == ''
     assert collect.clean_text('shown <!-- hidden rest', 100) == 'shown'
     assert collect.clean_text('<!-->shown<!--->too', 100) == 'shown too'
+    assert collect.clean_text('a <!--\nhidden\n--> b <!--\nrest\nmore', 100) == 'a b'
+
+
+def test_clean_text_cuts_the_raw_text_first():
+    """Only the first 20000 raw characters are read; a cut inside markup leaks nothing."""
+    assert collect.clean_text('a' * 20000 + ' tail', 20100) == 'a' * 20000
+    for tail in ['<!-- hidden -->', '[t](https://evil.example/x)', '<b>x</b>', '@alice']:
+        out = collect.clean_text('x' * 19994 + ' ' + tail, 20000)
+        assert out.startswith('x' * 19994) and len(out) <= 20000
+        assert '@' not in out and '://' not in out and 'hidden' not in out
+        assert not re.search(r'<[^>]*>', out)
 
 
 @given(st.text(max_size=400), st.integers(min_value=0, max_value=300))
