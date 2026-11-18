@@ -1694,17 +1694,9 @@ class Proteus:
             ):
                 log.info('Updating archive of model output data')
                 _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                # pack new timestamped snapshots into data.tar, keeping the
-                # originals loose; the fixed-name runtime files and EOS table
-                # directories are left out so they are not re-appended (and so
-                # duplicated) on every archive cycle
-                archive.update(
-                    self.directories['output/data'], remove_files=False, snapshots_only=True
-                )
-                # prune archived snapshots older than the cutoff; fixed-name
-                # runtime files needed by the interior modules (mesh and EOS
-                # hand-off files) stay in place
-                archive.remove_old(self.directories['output/data'], self.hf_row['Time'] * 0.99)
+                # move older snapshots into data.tar; recent snapshots and the
+                # fixed-name runtime files stay loose until the final archive
+                archive.archive_old(self.directories['output/data'], self.hf_row['Time'] * 0.99)
                 if _IT_TIMING_ENABLED:
                     _t_mod['archive'] = time.perf_counter() - _t0
 

@@ -1,7 +1,7 @@
 """Unit tests for ``proteus.utils.archive``.
 
 Covers ``archive_exists``, ``create``, ``append``, ``extract``,
-``update``, and ``remove_old``. Uses real tarfile + tmp_path filesystem
+``update``, and ``archive_old``. Uses real tarfile + tmp_path filesystem
 operations because the functions are thin wrappers around tarfile and
 os.* primitives; mocking those would amount to mocking the function
 under test.
@@ -251,104 +251,173 @@ def test_extract_returns_none_when_directory_missing(tmp_path, caplog):
 
 
 # ---------------------------------------------------------------------------
-# remove_old
+# archive_old: rolling in-loop archive
 # ---------------------------------------------------------------------------
 
 
-def test_remove_old_keeps_archive_and_recent_snapshots(tmp_path):
-    """remove_old prunes timestamped snapshots whose age (parsed from the
-    filename prefix) is below the `before` cutoff and keeps everything
-    else: the .tar archive, recent snapshots, and fixed-name runtime
-    files that the interior modules re-read between structure re-solves.
+def _tar_contents(tar_path) -> dict:
+    """Return member name -> bytes (the last member wins, as on extraction)."""
+    with tarfile.open(tar_path, 'r') as tar:
+        return {m.name: tar.extractfile(m).read() for m in tar.getmembers() if m.isfile()}
 
-    Discrimination: with three snapshots at ages 100, 1000, 10000 and a
-    cutoff of 500, only the age-100 snapshot may disappear. The runtime
-    hand-off files (zalmoxis_output.dat, spider_mesh.dat) and the
-    spider_eos/ table directory must survive: deleting them kills the
-    next Aragog solver.reset(), which re-reads zalmoxis_output.dat.
+
+def test_archive_old_moves_old_snapshots_and_keeps_runtime_files(tmp_path):
+    """archive_old moves the snapshots older than the cutoff into the tar and
+    leaves everything else loose and out of the tar: recent snapshots, the
+    fixed-name runtime files the interior modules re-read between structure
+    re-solves, the stellar-flux inputs and the EOS table directory.
+
+    Discrimination: with snapshots at 100, 1000 and 10000 yr and a cutoff of
+    500 yr, only the 100 yr snapshot may leave the disk, and it must arrive
+    in the tar with its content. Deleting zalmoxis_output.dat would kill the
+    next Aragog reset(); archiving the EOS directory is the payload #706
+    stopped duplicating.
     """
-    # Pre-existing tar (must survive)
-    (tmp_path / f'{tmp_path.name}.tar').write_bytes(b'archive')
-    # Snapshots: <age>_int.nc and <age>_atm.nc
     (tmp_path / '100_int.nc').write_text('a', encoding='utf-8')
     (tmp_path / '1000_int.nc').write_text('b', encoding='utf-8')
     (tmp_path / '10000_atm.nc').write_text('c', encoding='utf-8')
-    # Fixed-name runtime files re-read by the interior modules
     (tmp_path / 'zalmoxis_output.dat').write_text('mesh', encoding='utf-8')
     (tmp_path / 'spider_mesh.dat').write_text('mesh', encoding='utf-8')
-    # EOS table directory (directories are kept wholesale)
+    (tmp_path / '1.sflux').write_text('flux', encoding='utf-8')
     (tmp_path / 'spider_eos').mkdir()
     (tmp_path / 'spider_eos' / 'table.dat').write_text('eos', encoding='utf-8')
 
-    archive_mod.remove_old(str(tmp_path), before=500)
+    # No tar yet: the first cycle creates it
+    archive_mod.archive_old(str(tmp_path), before=500)
 
-    # tar archive remains
-    assert (tmp_path / f'{tmp_path.name}.tar').exists()
-    # Snapshots: age 100 removed (< 500), 1000 + 10000 kept (>= 500)
+    assert _tar_member_counts(tmp_path / f'{tmp_path.name}.tar') == Counter({'100_int.nc': 1})
+    assert _tar_contents(tmp_path / f'{tmp_path.name}.tar') == {'100_int.nc': b'a'}
     assert not (tmp_path / '100_int.nc').exists()
     assert (tmp_path / '1000_int.nc').exists()
     assert (tmp_path / '10000_atm.nc').exists()
-    # Runtime hand-off files survive the prune
     assert (tmp_path / 'zalmoxis_output.dat').exists()
     assert (tmp_path / 'spider_mesh.dat').exists()
-    # The table directory survives with its contents intact
+    assert (tmp_path / '1.sflux').exists()
     assert (tmp_path / 'spider_eos' / 'table.dat').read_text(encoding='utf-8') == 'eos'
 
 
-def test_remove_old_prunes_the_zalmoxis_copy_with_its_snapshot(tmp_path):
-    """A <time>_zalmoxis.dat copy goes with the _int.nc of the same time."""
+def test_archive_old_moves_the_zalmoxis_copy_with_its_snapshot(tmp_path):
+    """A <time>_zalmoxis.dat copy goes into the tar with the _int.nc of the same time."""
     for name in ('100_int.nc', '100_zalmoxis.dat', '1000_int.nc', '1000_zalmoxis.dat'):
         (tmp_path / name).write_text(name, encoding='utf-8')
     (tmp_path / 'zalmoxis_output.dat').write_text('mesh', encoding='utf-8')
 
-    archive_mod.remove_old(str(tmp_path), before=500)
+    archive_mod.archive_old(str(tmp_path), before=500)
 
     assert sorted(p.name for p in tmp_path.iterdir()) == [
         '1000_int.nc',
         '1000_zalmoxis.dat',
+        f'{tmp_path.name}.tar',
         'zalmoxis_output.dat',
     ]
-    assert (tmp_path / '1000_zalmoxis.dat').read_text(encoding='utf-8') == '1000_zalmoxis.dat'
+    assert _tar_contents(tmp_path / f'{tmp_path.name}.tar') == {
+        '100_int.nc': b'100_int.nc',
+        '100_zalmoxis.dat': b'100_zalmoxis.dat',
+    }
 
 
-def test_remove_old_keeps_non_timestamped_nc_and_json_names(tmp_path):
-    """A .nc/.json name without a leading integer time token is not a
-    snapshot and must be kept rather than crashing the int() parse.
+def test_archive_old_keeps_non_timestamped_nc_and_json_names(tmp_path):
+    """A .nc/.json name without a leading time token is not a snapshot and
+    stays loose rather than crashing the time parse.
 
     Edge case for the prefix parser: 'notes.json' and 'mesh_summary.nc'
-    have no integer prefix, while '0_int.nc' is the boundary-age
-    snapshot (age 0 < any positive cutoff, so it is pruned). A
-    regression that re-applied delete-by-default or raised ValueError on
-    the parse would fail this test.
+    have no time prefix, while '0_int.nc' is the boundary-age snapshot
+    (age 0 < any positive cutoff, so it is archived). The archived 0 yr
+    snapshot shows the kept files survive because of the name check, not
+    because the call was a no-op.
     """
     (tmp_path / 'notes.json').write_text('a', encoding='utf-8')
     (tmp_path / 'mesh_summary.nc').write_text('b', encoding='utf-8')
-    # Boundary snapshot: age 0 parses cleanly and is below the cutoff
     (tmp_path / '0_int.nc').write_text('c', encoding='utf-8')
 
-    archive_mod.remove_old(str(tmp_path), before=500)
+    archive_mod.archive_old(str(tmp_path), before=500)
 
-    # Non-timestamped names kept; no exception raised on the parse
     assert (tmp_path / 'notes.json').exists()
     assert (tmp_path / 'mesh_summary.nc').exists()
-    # Discrimination: the parseable age-0 snapshot IS pruned, so the
-    # kept files above survive because of the name check, not because
-    # the prune was a no-op.
     assert not (tmp_path / '0_int.nc').exists()
+    assert _tar_contents(tmp_path / f'{tmp_path.name}.tar') == {'0_int.nc': b'c'}
 
 
-def test_remove_old_keeps_json_snapshots_alongside_nc(tmp_path):
-    """The age-based gate applies to .json snapshots in addition to .nc.
+def test_archive_old_handles_json_snapshots_alongside_nc(tmp_path):
+    """The age gate applies to the SPIDER .json snapshots as well as .nc.
     A regression that only handled .nc would leave old .json files behind.
     """
     (tmp_path / '100_int.json').write_text('a', encoding='utf-8')
     (tmp_path / '5000_int.json').write_text('b', encoding='utf-8')
 
-    archive_mod.remove_old(str(tmp_path), before=500)
+    archive_mod.archive_old(str(tmp_path), before=500)
 
-    # Discrimination: 100 (< 500) removed; 5000 (>= 500) kept
     assert not (tmp_path / '100_int.json').exists()
     assert (tmp_path / '5000_int.json').exists()
+    assert _tar_member_counts(tmp_path / f'{tmp_path.name}.tar') == Counter({'100_int.json': 1})
+
+
+def test_archive_old_without_old_snapshots_creates_no_tar(tmp_path):
+    """With nothing older than the cutoff, archive_old writes no tar and
+    removes nothing: an empty tar would make later code take the append path
+    and an `archive_exists` check report data that is not there.
+    """
+    (tmp_path / '1000_int.nc').write_text('b', encoding='utf-8')
+    (tmp_path / 'zalmoxis_output.dat').write_text('mesh', encoding='utf-8')
+
+    archive_mod.archive_old(str(tmp_path), before=1000)
+
+    # Boundary: a snapshot exactly at the cutoff is not older than it
+    assert not (tmp_path / f'{tmp_path.name}.tar').exists()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ['1000_int.nc', 'zalmoxis_output.dat']
+
+
+def test_archive_old_stores_each_snapshot_once_across_cycles(tmp_path):
+    """Across rolling cycles each snapshot enters the tar once, when it
+    leaves the disk; the newest snapshot stays loose and out of the tar
+    until the end-of-run archive, and the EOS directory never enters it.
+
+    Discrimination: the previous rolling archive appended every loose
+    snapshot each cycle before pruning, so each snapshot, loose for two
+    cycles, appeared twice and the newest one was in the tar already.
+    """
+    (tmp_path / 'spider_eos').mkdir()
+    (tmp_path / 'spider_eos' / 'table.dat').write_text('eos' * 100, encoding='utf-8')
+    times = [100, 1000, 10000, 100000]
+    for t in times:
+        (tmp_path / f'{t}_int.nc').write_text(f'snap-{t}', encoding='utf-8')
+        archive_mod.archive_old(str(tmp_path), before=t * 0.99)
+
+    counts = _tar_member_counts(tmp_path / f'{tmp_path.name}.tar')
+    assert counts == Counter({f'{t}_int.nc': 1 for t in times[:-1]})
+    assert (tmp_path / '100000_int.nc').exists()
+    assert (tmp_path / 'spider_eos' / 'table.dat').exists()
+
+
+def test_archive_old_then_extract_restores_every_snapshot(tmp_path):
+    """Resume extracts the tar of a stopped run: the archived snapshots and
+    the loose ones together give back every snapshot with its content.
+
+    Edge case: SPIDER names its JSON on the whole year, so two rows less than
+    a year apart write the same name. When both versions reach the tar, the
+    later one must come back on extraction, as `extractall` keeps the last
+    member of a name.
+    """
+    (tmp_path / '50.json').write_text('t=50.2', encoding='utf-8')
+    archive_mod.archive_old(str(tmp_path), before=50.5)
+    (tmp_path / '50.json').write_text('t=50.7', encoding='utf-8')
+    (tmp_path / '100_int.nc').write_text('t=100', encoding='utf-8')
+    archive_mod.archive_old(str(tmp_path), before=99)
+    (tmp_path / '200_int.nc').write_text('t=200', encoding='utf-8')
+    archive_mod.archive_old(str(tmp_path), before=198)
+    (tmp_path / '300_int.nc').write_text('t=300', encoding='utf-8')
+
+    assert _tar_member_counts(tmp_path / f'{tmp_path.name}.tar') == Counter(
+        {'50.json': 2, '100_int.nc': 1}
+    )
+    archive_mod.extract(str(tmp_path), remove_tar=True)
+
+    assert {p.name: p.read_text(encoding='utf-8') for p in tmp_path.iterdir()} == {
+        '50.json': 't=50.7',
+        '100_int.nc': 't=100',
+        '200_int.nc': 't=200',
+        '300_int.nc': 't=300',
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -360,7 +429,7 @@ def test_snapshot_time_recognizes_only_integer_prefixed_nc_json():
     """`_snapshot_time` returns the integer simulated time only for names
     ending in .nc/.json whose leading token parses as an integer, and None
     for everything else. This predicate is the single source of truth
-    shared by the archive filter and remove_old, so its boundary
+    used by archive_old, so its boundary
     behaviour is pinned here.
 
     Edge cases: the age-0 boundary snapshot parses to 0 (falsy but not
@@ -399,129 +468,6 @@ def test_snapshot_time_recognizes_only_integer_prefixed_nc_json():
 
 
 # ---------------------------------------------------------------------------
-# snapshots_only: rolling in-loop archive must not re-append runtime files
-# ---------------------------------------------------------------------------
-
-
-def test_update_snapshots_only_excludes_fixed_name_files_and_dirs(tmp_path):
-    """snapshots_only=True archives only timestamped snapshots; the
-    fixed-name runtime files, the stellar-flux inputs, and the EOS table
-    directory are neither added to the tar nor removed from disk.
-
-    This is the rolling in-loop configuration (remove_files=False): the
-    interior modules re-read the fixed-name files between structure
-    re-solves, so they must survive on disk while the snapshot is
-    archived. Discrimination: the snapshot is in the tar, the runtime
-    entries are not, and every runtime entry is still loose afterwards.
-    """
-    # Timestamped snapshots (should be archived)
-    (tmp_path / '1000_int.nc').write_text('snap', encoding='utf-8')
-    (tmp_path / '1000_atm.nc').write_text('snap', encoding='utf-8')
-    # Fixed-name runtime files + flux inputs (should NOT be archived)
-    (tmp_path / 'zalmoxis_output.dat').write_text('mesh', encoding='utf-8')
-    (tmp_path / 'spider_mesh.dat').write_text('mesh', encoding='utf-8')
-    (tmp_path / '1.sflux').write_text('flux', encoding='utf-8')
-    # EOS table directory (the worst-case duplicated payload)
-    (tmp_path / 'spider_eos').mkdir()
-    (tmp_path / 'spider_eos' / 'table.dat').write_text('eos', encoding='utf-8')
-
-    archive_mod.update(str(tmp_path), remove_files=False, snapshots_only=True)
-
-    counts = _tar_member_counts(tmp_path / f'{tmp_path.name}.tar')
-    # Snapshots archived
-    assert counts['1000_int.nc'] == 1
-    assert counts['1000_atm.nc'] == 1
-    # Runtime entries NOT archived (discrimination against the unfiltered path)
-    assert counts['zalmoxis_output.dat'] == 0
-    assert counts['spider_mesh.dat'] == 0
-    assert counts['1.sflux'] == 0
-    assert counts['spider_eos'] == 0
-    assert counts['spider_eos/table.dat'] == 0
-    # remove_files=False plus the snapshots_only skip: runtime entries stay loose
-    assert (tmp_path / 'zalmoxis_output.dat').exists()
-    assert (tmp_path / 'spider_mesh.dat').exists()
-    assert (tmp_path / '1.sflux').exists()
-    assert (tmp_path / 'spider_eos' / 'table.dat').exists()
-
-
-def test_update_snapshots_only_bounds_tar_growth_across_cycles(tmp_path):
-    """Across repeated rolling-archive cycles, snapshots_only=True keeps the
-    fixed-name EOS directory out of the tar entirely, so the archive does
-    not accumulate one extra copy of it per cycle.
-
-    Discrimination guard: an otherwise-identical directory archived with
-    snapshots_only=False (the unfiltered behaviour) gains one EOS-dir copy
-    every cycle, so after N cycles the EOS member count equals N there but
-    stays 0 under the fix. This proves the assertion fails for the
-    unfixed code path rather than passing trivially.
-    """
-
-    def build_dir(root):
-        d = tmp_path / root
-        d.mkdir()
-        (d / 'spider_eos').mkdir()
-        (d / 'spider_eos' / 'table.dat').write_text('eos' * 100, encoding='utf-8')
-        (d / 'zalmoxis_output.dat').write_text('mesh', encoding='utf-8')
-        return d
-
-    fixed = build_dir('fixed')
-    unfixed = build_dir('unfixed')
-    n_cycles = 4
-    times = [100, 1000, 10000, 100000]
-
-    for i in range(n_cycles):
-        t = times[i]
-        for d, snaps_only in ((fixed, True), (unfixed, False)):
-            (d / f'{t}_int.nc').write_text('snap', encoding='utf-8')
-            archive_mod.update(str(d), remove_files=False, snapshots_only=snaps_only)
-            # Prune snapshots older than ~1% below the current time
-            archive_mod.remove_old(str(d), before=t * 0.99)
-
-    fixed_counts = _tar_member_counts(fixed / 'fixed.tar')
-    unfixed_counts = _tar_member_counts(unfixed / 'unfixed.tar')
-
-    # Under the fix the EOS dir and runtime file never enter the tar
-    assert fixed_counts['spider_eos'] == 0
-    assert fixed_counts['spider_eos/table.dat'] == 0
-    assert fixed_counts['zalmoxis_output.dat'] == 0
-    # The unfiltered path duplicates the EOS dir once per cycle: proves the
-    # guard would fail on the pre-fix code and is not trivially satisfied
-    assert unfixed_counts['spider_eos'] == n_cycles
-    assert unfixed_counts['zalmoxis_output.dat'] == n_cycles
-    # The fix still archives the snapshots themselves (archive is not empty)
-    assert sum(v for k, v in fixed_counts.items() if k.endswith('_int.nc')) >= 1
-    # The EOS directory is still on disk for the next interior solve
-    assert (fixed / 'spider_eos' / 'table.dat').exists()
-
-
-def test_create_snapshots_only_first_cycle_skips_runtime_files(tmp_path):
-    """On the first rolling-archive cycle the tar does not yet exist, so
-    update() routes through create(); snapshots_only must apply there too.
-
-    Otherwise the very first archive would bake one copy of the EOS
-    directory and mesh files into the tar. Discrimination: the snapshot is
-    present, the runtime entries are absent, and (remove_files=False) the
-    runtime files remain on disk.
-    """
-    (tmp_path / '500_int.nc').write_text('snap', encoding='utf-8')
-    (tmp_path / 'spider_mesh.dat').write_text('mesh', encoding='utf-8')
-    (tmp_path / 'spider_eos').mkdir()
-    (tmp_path / 'spider_eos' / 'table.dat').write_text('eos', encoding='utf-8')
-
-    # Route through create(): no tar exists yet
-    assert not (tmp_path / f'{tmp_path.name}.tar').exists()
-    archive_mod.update(str(tmp_path), remove_files=False, snapshots_only=True)
-
-    counts = _tar_member_counts(tmp_path / f'{tmp_path.name}.tar')
-    assert counts['500_int.nc'] == 1
-    assert counts['spider_mesh.dat'] == 0
-    assert counts['spider_eos'] == 0
-    # Runtime files kept loose for the next solve
-    assert (tmp_path / 'spider_mesh.dat').exists()
-    assert (tmp_path / 'spider_eos' / 'table.dat').exists()
-
-
-# ---------------------------------------------------------------------------
 # End-to-end lifecycle inflation
 #
 # The tests above exercise archive.* in isolation. The two below replay the
@@ -529,20 +475,19 @@ def test_create_snapshots_only_first_cycle_skips_runtime_files(tmp_path):
 # output/data/ directory and measure tar inflation by *content*, not just by
 # name. This is what the production profiling exposed: a per-run data.tar that
 # stored far more bytes than it extracted to, because tarfile append never
-# deduplicates (archive.py:183-187).
+# deduplicates.
 #
 # The proteus.py sequence being mirrored:
-#   * rolling, in the coupling loop (proteus.py:1188-1198):
-#       archive.update(data, remove_files=False, snapshots_only=True)
-#       archive.remove_old(data, before=Time*0.99)
-#   * final, at run end (proteus.py:1269-1272):
-#       archive.update(data, remove_files=True)   # snapshots_only defaults False
+#   * rolling, in the coupling loop:
+#       archive.archive_old(data, before=Time*0.99)
+#   * final, at run end:
+#       archive.update(data, remove_files=True)
 # ---------------------------------------------------------------------------
 
 # Distinct simulated times [yr] for the rolling cycles. The ratio between
-# successive times exceeds 1/0.99, so remove_old(before=t*0.99) prunes the
-# previous cycle's snapshot only after the current cycle has already
-# re-appended it -- the mechanism that duplicates every snapshot.
+# successive times exceeds 1/0.99, so each cycle moves the previous cycle's
+# snapshot into the tar while the current one stays loose; a rolling archive
+# that also appended the loose snapshots would store every snapshot twice.
 _CYCLE_TIMES = [100, 1000, 10000, 100000]
 
 
@@ -603,29 +548,34 @@ def _build_data_dir(root):
     return root
 
 
-def _replay_lifecycle(data_dir, *, rolling_snapshots_only):
+def _archive_old_cycle(data_dir: str, t: float) -> None:
+    """The rolling archive of proteus.py at simulated time `t` [yr]."""
+    archive_mod.archive_old(data_dir, before=t * 0.99)
+
+
+def _append_everything_cycle(data_dir: str, t: float) -> None:
+    """The rolling archive before #706: append every loose entry each cycle."""
+    archive_mod.update(data_dir, remove_files=False)
+
+
+def _replay_lifecycle(data_dir, roll=_archive_old_cycle):
     """Replay the proteus.py archive lifecycle over :data:`_CYCLE_TIMES`.
 
     Each cycle writes the interior+atmosphere snapshots for the current time
     (content depends only on the time, so a given snapshot's bytes never
     change once written -- re-appending it is byte-identical waste), mutates
     the fixed-name ``zalmoxis_output.dat`` to a new content (as a dynamic run
-    does), rolls the directory into the tar, then prunes old snapshots. After
-    the loop the end-of-run full archive packs whatever is still loose.
+    does) and runs the rolling archive `roll`. After the loop the end-of-run
+    full archive packs whatever is still loose.
     """
     for i, t in enumerate(_CYCLE_TIMES):
         (data_dir / f'{t}_int.nc').write_bytes((b'int-%d' % t) * 64)
         (data_dir / f'{t}_atm.nc').write_bytes((b'atm-%d' % t) * 64)
         # Fixed-name file whose content legitimately evolves each cycle.
         (data_dir / 'zalmoxis_output.dat').write_bytes((b'zalmoxis-v%d' % i) * 64)
-        # Rolling in-loop archive (proteus.py:1188-1198).
-        archive_mod.update(
-            str(data_dir), remove_files=False, snapshots_only=rolling_snapshots_only
-        )
-        archive_mod.remove_old(str(data_dir), before=t * 0.99)
-    # End-of-run full archive (proteus.py:1269-1272): snapshots_only defaults
-    # to False, so this packs the still-loose snapshots plus every fixed-name
-    # file and the EOS directory in one pass.
+        roll(str(data_dir), t)
+    # End-of-run full archive: packs the still-loose snapshots plus every
+    # fixed-name file and the EOS directory in one pass.
     archive_mod.update(str(data_dir), remove_files=True)
 
 
@@ -633,21 +583,21 @@ def test_lifecycle_final_pass_stores_reference_data_once(tmp_path):
     """Over the *full* proteus.py lifecycle the static EOS table and the
     fixed-name runtime files end up in data.tar exactly once.
 
-    Scope vs the existing suite: that snapshots_only=True keeps these files
-    out of the per-cycle *rolling* growth is already covered by
-    ``test_update_snapshots_only_bounds_tar_growth_across_cycles`` (added in
-    PROTEUS #706), which stops after the rolling loop and checks name counts.
+    Scope vs the existing suite: that the rolling archive keeps these files
+    out of the tar is already covered by
+    ``test_archive_old_stores_each_snapshot_once_across_cycles``, which stops
+    after the rolling loop and checks name counts.
     This test extends that coverage in two ways it does not reach:
       1. it also runs the end-of-run full archive
-         (``update(remove_files=True)``, proteus.py:1269-1272), so the
+         (``update(remove_files=True)``), so the
          assertion is "exactly once across the whole lifecycle" rather than
          "zero during rolling" -- the final pass is where these files
          legitimately enter the tar;
       2. it measures by member *content*, not just by name.
 
     Content-level discrimination against the pre-#706 behaviour: replaying
-    the identical directory with snapshots_only=False (which emulates the
-    frozen release that produced the profiled dataset) re-appends the EOS
+    the identical directory with the rolling archive that appends every loose
+    entry (the release that produced the profiled dataset) re-appends the EOS
     table every cycle. By member *content* those repeats are one distinct
     payload duplicated len(_CYCLE_TIMES)+1 times -- pure waste -- whereas the
     evolving zalmoxis_output.dat yields one distinct content per cycle, which
@@ -658,7 +608,7 @@ def test_lifecycle_final_pass_stores_reference_data_once(tmp_path):
     n_cycles = len(_CYCLE_TIMES)
 
     fixed = _build_data_dir(tmp_path / 'fixed')
-    _replay_lifecycle(fixed, rolling_snapshots_only=True)
+    _replay_lifecycle(fixed)
     fixed_stats = _tar_content_stats(fixed / 'fixed.tar')
 
     # The fix: reference data and fixed-name files enter the tar exactly once.
@@ -669,7 +619,7 @@ def test_lifecycle_final_pass_stores_reference_data_once(tmp_path):
     assert fixed_stats['distinct_by_name']['spider_eos/table.dat'] == 1
 
     unfixed = _build_data_dir(tmp_path / 'unfixed')
-    _replay_lifecycle(unfixed, rolling_snapshots_only=False)
+    _replay_lifecycle(unfixed, roll=_append_everything_cycle)
     unfixed_stats = _tar_content_stats(unfixed / 'unfixed.tar')
 
     # Discrimination: without the filter the unchanging EOS table is re-added
@@ -683,34 +633,17 @@ def test_lifecycle_final_pass_stores_reference_data_once(tmp_path):
     assert unfixed_stats['distinct_by_name']['zalmoxis_output.dat'] == n_cycles
 
 
-@pytest.mark.xfail(
-    reason=(
-        'Snapshot .nc/.json members are re-appended across rolling cycles '
-        '(the in-loop archive uses remove_files=False, so a snapshot stays '
-        'loose and is appended again on the next cycle before remove_old '
-        'prunes it) and once more by the final full-archive pass. PROTEUS '
-        '#706 fixed the EOS/fixed-file inflation via snapshots_only=True but '
-        'not this snapshot re-append: on main every snapshot lands in '
-        'data.tar ~2x (observed inflation ~1.45x on this fixture). Expected '
-        'to pass once the archive stores each distinct '
-        'content once.'
-    ),
-    strict=True,
-)
 def test_lifecycle_snapshot_reappend_no_inflation(tmp_path):
-    """The archive should store each snapshot once: replaying the proteus.py
-    lifecycle must leave every timestamped snapshot in data.tar exactly once
-    and an overall content-inflation factor of ~1.0.
+    """The archive stores each snapshot once: replaying the proteus.py
+    lifecycle leaves every timestamped snapshot in data.tar exactly once
+    and an overall content-inflation factor of 1.0.
 
-    This encodes the *target* contract, which main does not yet meet -- hence
-    the strict xfail. Verified behaviour on main (commit reachable from this
-    branch, run with the snapshots_only=True rolling config, i.e. the current
-    fix): each snapshot appears twice and gross/distinct is ~1.45 on this
-    fixture. strict=True means the test turns into a hard failure the moment
-    the redesign removes the duplication, forcing this marker to be dropped.
+    The previous rolling archive appended the loose snapshots each cycle
+    before pruning the old ones, so every snapshot landed in data.tar twice
+    and gross/distinct was about 1.45 on this fixture.
     """
     data_dir = _build_data_dir(tmp_path / 'run')
-    _replay_lifecycle(data_dir, rolling_snapshots_only=True)
+    _replay_lifecycle(data_dir)
     stats = _tar_content_stats(data_dir / 'run.tar')
 
     # Primary contract: no snapshot is stored more than once.
