@@ -82,6 +82,24 @@ def test_postproc_once_raises_when_helpfile_missing(tmp_path):
 
 
 @pytest.mark.unit
+def test_postproc_once_keeps_old_output_when_the_helpfile_has_no_rows(tmp_path):
+    """A header-only helpfile is refused before the previous chili/ folder is removed."""
+    from proteus.utils.coupler import HelpfileFormatError
+
+    chili_postproc = _load_chili_postproc_module()
+    simdir = tmp_path / 'case_header_only'
+    (simdir / 'chili').mkdir(parents=True)
+    (simdir / 'chili' / 'previous.csv').write_text('kept\n')
+    (simdir / 'runtime_helpfile.csv').write_text('Time\tT_surf\n', encoding='utf-8')
+    (simdir / 'init_coupler.toml').write_text('[params]\n')
+
+    with pytest.raises(HelpfileFormatError, match='0 data rows'):
+        chili_postproc.postproc_once(str(simdir), plot=False)
+
+    assert (simdir / 'chili' / 'previous.csv').read_text() == 'kept\n'
+
+
+@pytest.mark.unit
 def test_postproc_once_writes_protocol_scalars(tmp_path, monkeypatch):
     """The scalar path writes the CHILI-MIP evolution CSV from a helpfile.
 
@@ -128,3 +146,40 @@ def test_postproc_once_writes_protocol_scalars(tmp_path, monkeypatch):
     assert out['R_solid(m)'].iloc[0] == pytest.approx(6.237e6, rel=1e-9)
     # Missing interior snapshots produce a NaN viscosity, not a crash.
     assert np.isnan(out['viscosity(Pa.s)'].iloc[0])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('surface_d', 'expected'),
+    [(0.01, 0.01), ('saturation', 5.9)],
+    ids=['numeric-skin-from-config', 'saturation-skin-from-helpfile'],
+)
+def test_postproc_once_reports_the_skin_thickness_in_effect(
+    tmp_path, monkeypatch, surface_d, expected
+):
+    """A skin from saturation is read from the helpfile `boundary_layer_thickness`
+    column (5.9 m); a numeric skin is the config value, whatever that column holds."""
+    import types
+
+    chili_postproc = _load_chili_postproc_module()
+    simdir = tmp_path / 'chili_earth'
+    (simdir / 'data').mkdir(parents=True)
+    helpfile = simdir / 'runtime_helpfile.csv'
+    _make_runtime_helpfile(helpfile, chili_postproc.vol_list)
+    df = pd.read_csv(helpfile, sep=' ')
+    df['boundary_layer_thickness'] = [5.9]  # m
+    df.to_csv(helpfile, sep=' ', index=False)
+    (simdir / 'init_coupler.toml').write_text('unused')
+    fake_config = types.SimpleNamespace(
+        orbit=types.SimpleNamespace(s0_factor=0.375),
+        atmos_clim=types.SimpleNamespace(albedo_pl=0.1, surface_d=surface_d),
+    )
+    handler = types.SimpleNamespace(extract_archives=lambda: None, create_archives=lambda: None)
+    monkeypatch.setattr(chili_postproc, 'read_config_object', lambda path: fake_config)
+    monkeypatch.setattr(chili_postproc, 'Proteus', lambda config_path: handler)
+
+    chili_postproc.postproc_once(str(simdir), plot=False)
+
+    out = pd.read_csv(simdir / 'chili' / 'evolution-proteus-earth-data.csv')
+    assert out['thick_surf_bl(m)'].iloc[0] == pytest.approx(expected, rel=1e-12)
+    assert out['thick_surf_bl(m)'].dtype.kind == 'f'

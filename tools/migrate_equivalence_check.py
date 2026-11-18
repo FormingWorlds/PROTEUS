@@ -219,11 +219,10 @@ def main(argv=None):
         return json.loads(r.stdout.decode())
 
     def resolve_v3(nested):
-        import cattrs
-
+        from proteus.config import converter
         from proteus.config._config import Config
 
-        return _flat(__import__('attrs').asdict(cattrs.structure(nested, Config)))
+        return _flat(__import__('attrs').asdict(converter.structure(nested, Config)))
 
     def check(path):
         v2 = resolve_v2(path)

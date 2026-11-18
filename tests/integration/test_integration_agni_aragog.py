@@ -59,15 +59,15 @@ def test_atmos_clim_agni_module_round_trips_through_schema():
     from proteus.config._atmos_clim import AtmosClim
 
     for known in ('agni', 'janus'):
-        ac = AtmosClim(module=known)
+        ac = AtmosClim(module=known, p_obs=20e-3)
         assert ac.module == known
     # 'dummy' carries an additional cross-validator: dummy atmos_clim
     # is incompatible with the default rayleigh=True, so we must
     # disable Rayleigh scattering in the dummy round-trip.
-    dummy_ac = AtmosClim(module='dummy', rayleigh=False)
+    dummy_ac = AtmosClim(module='dummy', rayleigh=False, p_obs=20e-3)
     assert dummy_ac.module == 'dummy'
     with pytest.raises(ValueError, match=r'(?i)module'):
-        AtmosClim(module='totally_invalid_backend')
+        AtmosClim(module='totally_invalid_backend', p_obs=20e-3)
 
 
 def test_interior_energetics_aragog_module_round_trips_through_schema():

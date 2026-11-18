@@ -1,7 +1,6 @@
 # Common atmosphere climate model functions
 from __future__ import annotations
 
-import glob
 import logging
 import os
 from enum import Enum, auto
@@ -9,7 +8,12 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.helper import find_nearest
+from proteus.utils.helper import (
+    UpdateStatusfile,
+    find_nearest,
+    list_snapshot_times,
+    snapshot_path_for_time,
+)
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -78,7 +82,7 @@ class Atmos_t:
         self.solves_seen: int = 0
 
 
-def ncdf_flag_to_bool(var) -> bool:
+def ncdf_flag_to_bool(var) -> bool | None:
     """Convert NetCDF flag (y/n) to Python bool (true/false)"""
     v = str(var[0].tobytes().decode()).lower()
 
@@ -88,7 +92,8 @@ def ncdf_flag_to_bool(var) -> bool:
     elif v == 'n':
         return False
     else:
-        raise ValueError(f'Could not parse NetCDF atmos flag variable \n {var}')
+        log.error(f'Could not parse NetCDF atmos flag variable: {var}')
+        return None
 
 
 def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool = True) -> dict:
@@ -130,8 +135,10 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
     pl = np.array(ds.variables['pl'][:])
 
     if 'gravity' not in ds.variables:
-        raise KeyError(f"NetCDF file '{nc_fpath}' is missing required variable 'gravity'")
-    g = np.array(ds.variables['gravity'][:])
+        log.error(f"NetCDF file '{nc_fpath}' is missing required variable 'gravity'")
+        g = np.zeros_like(p)  # fallback to zeros
+    else:
+        g = np.array(ds.variables['gravity'][:])
 
     t = np.array(ds.variables['tmp'][:])
     tl = np.array(ds.variables['tmpl'][:])
@@ -188,10 +195,11 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
 
     # flags
     for fk in ('transparent', 'solved', 'converged'):
+        out[fk] = False  # default if not found
         if fk in ds.variables.keys():
             out[fk] = ncdf_flag_to_bool(ds.variables[fk])
-        else:
-            out[fk] = False  # if not available
+            if out[fk] is None:
+                out[fk] = False
 
     # Read extra keys
     for key in extra_keys:
@@ -275,7 +283,8 @@ def read_atmosphere_data(output_dir: str, times: list, extra_keys=[]):
     """
     profiles = [
         read_ncdf_profile(
-            os.path.join(output_dir, 'data', '%.0f_atm.nc' % t), extra_keys=extra_keys
+            snapshot_path_for_time(os.path.join(output_dir, 'data'), t, '_atm.nc'),
+            extra_keys=extra_keys,
         )
         for t in times
     ]
@@ -286,6 +295,22 @@ def read_atmosphere_data(output_dir: str, times: list, extra_keys=[]):
         return
 
     return profiles
+
+
+def list_atmosphere_times(output_dir: str) -> list[float]:
+    """Return the times of the ``*_atm.nc`` snapshots on disk.
+
+    Arguments
+    ----------
+        output_dir : str
+            Path to PROTEUS output folder.
+
+    Returns
+    ----------
+        list of float
+            Snapshot times [yr] in ascending order. Empty if none are found.
+    """
+    return list_snapshot_times(os.path.join(output_dir, 'data'), '_atm.nc')
 
 
 def find_latest_atmosphere_time(output_dir: str) -> float | None:
@@ -301,22 +326,10 @@ def find_latest_atmosphere_time(output_dir: str) -> float | None:
         float or None
             Largest snapshot time [yr]. None if no snapshots found.
     """
-
-    # Find netcdf files and get times from their names
-    ncs = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
-    times = []
-    for f in ncs:
-        try:
-            times.append(float(os.path.basename(f).split('_atm')[0]))
-        except ValueError:
-            log.warning(f"Could not parse time from NetCDF file '{f}'")
-
-    # Return None if no files found
+    times = list_atmosphere_times(output_dir)
     if not times:
         return None
-
-    # Return latest (max) time
-    return float(max(times))
+    return float(times[-1])
 
 
 def get_spfile_name_and_bands(config: Config):
@@ -333,17 +346,232 @@ def get_spfile_name_and_bands(config: Config):
 def get_spfile_path(fwl_dir: str, config: Config):
     """
     Get path to spectral file, given name and bands.
+
+    The file lies in the version directory of the spectral-file dataset for the
+    configured group and band count; the path may not exist before the dataset
+    is fetched. A group and band count that no manifest declares is read from
+    ``<fwl_dir>/spectral_files/<group>/<bands>/<group>.sf``.
     """
+    from proteus.data import dataset_dir, spectral_file_key
 
     # Get group and bands (strings) from config
     group, bands = get_spfile_name_and_bands(config)
 
-    # Construct file path
-    return os.path.join(fwl_dir, 'spectral_files', group, bands, group) + '.sf'
+    try:
+        version_dir = dataset_dir(spectral_file_key(group, bands), data_root=fwl_dir)
+    except KeyError:
+        path = os.path.join(fwl_dir, 'spectral_files', group, str(bands), group) + '.sf'
+        log.info('Spectral file %s/%s is in no manifest; using %s', group, bands, path)
+        return path
+    return os.path.join(version_dir, group) + '.sf'
+
+
+def require_spfile_path(dirs: dict, config: Config) -> str:
+    """Return the configured spectral file, stopping the run when it is missing.
+
+    Raises
+    ------
+    FileNotFoundError
+        After writing the error status, naming the download command.
+    """
+    from proteus.utils.data import RELOCATE_HINT, SPECTRAL_FILE_FOLDERS
+
+    path = get_spfile_path(dirs['fwl'], config)
+    if not os.path.isfile(path):
+        UpdateStatusfile(dirs, 20)
+        group, bands = get_spfile_name_and_bands(config)
+        fix = (
+            f'Fetch it with `proteus get spectral`. {RELOCATE_HINT}'
+            if f'{group}/{bands}' in SPECTRAL_FILE_FOLDERS
+            else 'No manifest declares this group and band count, so place the file there.'
+        )
+        raise FileNotFoundError(f"Spectral file does not exist at '{path}'. {fix}")
+    return path
+
+
+def _lid_skin_conductance(hf_row: dict) -> float:
+    """Conductance [W m-2 K-1] of the skin in the helpfile columns, positive under a lid.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row, with ``boundary_layer_thickness`` and
+        ``boundary_layer_conductivity``.
+
+    Returns
+    -------
+    float
+        ``k / d`` of the skin.
+
+    Raises
+    ------
+    ValueError
+        If the skin has no resistance: the parallel sum has no open path without a skin, as
+        on a resume from a helpfile without ``boundary_layer_conductivity``.
+    """
+    d, k = (
+        float(hf_row['boundary_layer_thickness']),
+        float(hf_row['boundary_layer_conductivity']),
+    )
+    if not (d > 0.0 and k > 0.0):
+        raise ValueError(
+            f'a live Aragog lid needs a skin with a thickness and k, got {d}, {k}; '
+            'a helpfile without boundary_layer_conductivity resumes with k = 0'
+        )
+    return k / d
+
+
+def lid_acts(hf_row: dict) -> bool:
+    """True where the row has a live lid: a lid weight and a lid conductance above 0."""
+    return (
+        float(hf_row.get('lid_weight', 0.0)) > 0.0
+        and float(hf_row.get('lid_conductance', 0.0)) > 0.0
+    )
+
+
+def lid_boundary(hf_row: dict) -> tuple[float, float, float]:
+    """Skin and melt temperature for the surface balance of the atmosphere.
+
+    The lid and the open surface act in parallel on one surface temperature:
+    ``F = w G_lid (T_b - T) + (1 - w) G_skin (T_node - T) = k / d (T_melt - T)``, with
+    ``G_lid`` at most ``G_skin``, so that a lid never conducts more than the open surface.
+    Without a lid the columns and ``T_magma`` pass unchanged.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row, with the skin columns and ``T_magma``. A lid acts with
+        ``lid_weight``, ``lid_conductance``, ``lid_T_base`` and ``lid_T_node``.
+
+    Returns
+    -------
+    tuple of float
+        Skin thickness ``d`` [m], skin conductivity ``k`` [W m-1 K-1] and ``T_melt`` [K].
+    """
+    d, k = (
+        float(hf_row['boundary_layer_thickness']),
+        float(hf_row['boundary_layer_conductivity']),
+    )
+    if not lid_acts(hf_row):
+        return d, k, float(hf_row['T_magma'])
+    w, G_lid = float(hf_row['lid_weight']), float(hf_row['lid_conductance'])
+    G_skin = _lid_skin_conductance(hf_row)
+    G_lid = min(G_lid, G_skin)
+    G = w * G_lid + (1.0 - w) * G_skin
+    T_melt = w * G_lid * float(hf_row['lid_T_base']) + (1.0 - w) * G_skin * float(
+        hf_row['lid_T_node']
+    )
+    return k / G, k, T_melt / G
+
+
+# smallest surface step [K] of the 2 rows that give the slope of the lid cap
+LID_SLOPE_DT_MIN = 0.01
+
+
+def lid_flux_slope(hf_all, hf_row: dict) -> float:
+    """Slope ``F'`` [W m-2 K-1] of ``F_atm`` with ``T_surf`` over the last 2 rows, for the lid cap.
+
+    Parameters
+    ----------
+    hf_all : pandas.DataFrame or None
+        Helpfile rows, with or without the current row as the last one.
+    hf_row : dict
+        Current helpfile row, with ``Time``, ``T_surf`` and ``F_atm``.
+
+    Returns
+    -------
+    float
+        ``(F_atm - F_atm before) / (T_surf - T_surf before)``; 0 without a row before, for a
+        surface step below ``LID_SLOPE_DT_MIN``, for a slope of 0 or below, or a non-finite one.
+    """
+    if hf_all is None or len(hf_all) == 0:
+        return 0.0
+    k = -2 if float(hf_all['Time'].iloc[-1]) == float(hf_row['Time']) else -1
+    if len(hf_all) < -k:
+        return 0.0
+    prev = hf_all.iloc[k]
+    dT = float(hf_row['T_surf']) - float(prev['T_surf'])
+    if not abs(dT) >= LID_SLOPE_DT_MIN:
+        return 0.0
+    slope = (float(hf_row['F_atm']) - float(prev['F_atm'])) / dT
+    return slope if np.isfinite(slope) and slope > 0.0 else 0.0
+
+
+def lid_flux_cap(hf_row: dict) -> float | None:
+    """Largest surface flux [W m-2] of the lid in the next interior step, or None.
+
+    It is the lid branch of the last atmosphere balance, ``G (T_b - T_surf)`` with the
+    conductance of the call (at most ``G_skin``), so that the lid loses at most what the
+    atmosphere gave it.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row after the atmosphere step, with ``T_surf`` and the lid columns.
+
+    Returns
+    -------
+    float or None
+        The cap, or None without a lid or for a surface at or above ``T_b``.
+    """
+    if not lid_acts(hf_row):
+        return None
+    G_lid = float(hf_row['lid_conductance'])
+    C = min(G_lid, _lid_skin_conductance(hf_row)) * (
+        float(hf_row['lid_T_base']) - float(hf_row['T_surf'])
+    )
+    return C if C > 0.0 else None
+
+
+# set by the first unscaled open part, so that the warning is logged once per process
+_OPEN_FLUX_WARNED = [False]
+
+
+def lid_open_flux(hf_row: dict) -> float:
+    """Flux [W m-2] of the surface without a lid, the boundary value of the interior.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row after the atmosphere step, with ``T_surf`` and ``F_atm``.
+
+    Returns
+    -------
+    float
+        ``F_atm`` without a lid. Where a lid acts, the skin flux ``G_skin (T_node - T_surf)``
+        scaled by ``F_atm / (G (T_melt - T_surf))``, the ratio of the atmosphere flux to the
+        parallel balance of :func:`lid_boundary`; the skin flux alone where that balance is not
+        positive.
+
+    Notes
+    -----
+    The scale makes the boundary continuous at the onset: it tends to ``F_atm`` as the lid
+    weight goes to 0. Where the atmosphere closes the skin balance it is 1, and the weighted
+    lid and open parts sum to ``F_atm``.
+    """
+    if not lid_acts(hf_row):
+        return float(hf_row['F_atm'])
+    T_surf = float(hf_row['T_surf'])
+    skin = _lid_skin_conductance(hf_row) * (float(hf_row['lid_T_node']) - T_surf)
+    d, k, T_melt = lid_boundary(hf_row)
+    balance = k / d * (T_melt - T_surf)
+    if not (balance > 0.0 and skin > 0.0):
+        if not _OPEN_FLUX_WARNED[0]:
+            log.warning(
+                'Lid open part: the skin balance of the call is %.4g W m-2 and the skin flux %.4g '
+                'W m-2 at T_surf %.2f K; the open part takes the skin flux unscaled',
+                balance,
+                skin,
+                T_surf,
+            )
+            _OPEN_FLUX_WARNED[0] = True
+        return skin
+    return float(hf_row['F_atm']) / balance * skin
 
 
 def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:
     """Limit a level radius to the Hill radius, never below the solid body.
+
     Gas beyond the Hill radius is not bound to the planet, so an XUV radius
     outside it sizes the escape cross-section with material the planet does
     not hold, and the energy-limited rate grows as the cube of the excess.

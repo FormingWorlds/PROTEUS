@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import glob
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -9,10 +8,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import LogLocator
 
-from proteus.atmos_chem.common import read_result
-from proteus.atmos_clim.common import read_ncdf_profile
+from proteus.atmos_chem.common import chem_csv_name, read_result
+from proteus.atmos_clim.common import list_atmosphere_times, read_ncdf_profile
 from proteus.utils.constants import gas_list, vap_list
-from proteus.utils.helper import natural_sort
+from proteus.utils.helper import (
+    latest_at_or_before,
+    list_snapshot_times,
+    snapshot_path_for_time,
+)
 from proteus.utils.plot import get_colour, latexify
 
 if TYPE_CHECKING:
@@ -76,6 +79,28 @@ GASES_STANDARD = (
 REFRACTORY_GASES = tuple(vap_list)
 
 
+def _aerosol_gas(name: str, gases: list[str]) -> str | None:
+    """Match an aerosol name to a gas name of the same atmosphere file.
+
+    AGNI writes an aerosol as the name of its gas in lower case ('feo' for 'FeO').
+
+    Parameters
+    ----------
+    name : str
+        Aerosol name of the atmosphere file.
+    gases : list of str
+        Gas names of the same file.
+
+    Returns
+    -------
+    str or None
+        The one gas whose name equals ``name`` apart from case; None when no gas
+        or more than one gas matches ('co' with both 'CO' and 'Co').
+    """
+    match = [g for g in gases if g.lower() == name.lower()]
+    return match[0] if len(match) == 1 else None
+
+
 def plot_chem_atmosphere(
     output_dir: str,
     chem_module: str,
@@ -83,6 +108,7 @@ def plot_chem_atmosphere(
     plot_gases: list = None,
     plot_offchem: bool = True,
     xmin: float = 1e-10,
+    time: float | None = None,
 ):
     """
     Plot the chemical composition of the atmosphere.
@@ -101,6 +127,11 @@ def plot_chem_atmosphere(
         Whether to plot offline chemistry results.
     xmin : float, optional
         Minimum VMR for x-axis of the plot.
+    time : float, optional
+        Time [yr] to plot. The latest chemistry snapshot at or before it is drawn
+        (the first when all are later), with the latest atmosphere snapshot at or
+        before that. None draws the final chemistry snapshot, or the final
+        atmosphere snapshot when there is no chemistry.
     """
     log.info('Plot atmosphere chemical composition')
 
@@ -113,30 +144,46 @@ def plot_chem_atmosphere(
     # Remove duplicates, preserving order
     plot_gases = list(dict.fromkeys(plot_gases))
 
-    # Get last output NetCDF file
-    files = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
-    if len(files) == 0:
+    # Chemistry snapshot: the final one, or the latest at or before the requested time
+    atm_offchem = None
+    target = time
+    use_offchem = plot_offchem and (chem_module is not None) and (chem_module != 'none')
+    if use_offchem:
+        offchem_dir = os.path.join(output_dir, 'offchem')
+        chem_times = list_snapshot_times(offchem_dir, '.csv', prefix=f'{chem_module}_')
+        if chem_times:
+            latest = None if time is None else latest_at_or_before(chem_times, time)
+            if time is None:
+                target = chem_times[-1]
+            else:
+                target = chem_times[0] if latest is None else latest
+            atm_offchem = read_result(
+                output_dir, chem_module, filename=chem_csv_name(chem_module, target)
+            )
+        else:
+            # Output without per-snapshot files holds only the fixed name
+            atm_offchem = read_result(output_dir, chem_module)
+    has_offchem = atm_offchem is not None
+    if has_offchem:
+        # The chemistry grid is its own, so its profiles are drawn at its pressures
+        p_offchem = atm_offchem['p'].to_numpy() * 1e-5  # Pa to bar
+        atm_offchem.drop(columns=['tmp', 'p', 'z', 'Kzz'], inplace=True)
+
+    # Atmosphere snapshot at or before the chemistry snapshot, else the final one
+    atm_times = list_atmosphere_times(output_dir)
+    if len(atm_times) == 0:
         log.warning('No atmosphere NetCDF files found in output folder')
         return
-    nc_fpath = natural_sort(files)[-1]
+    year = atm_times[-1] if target is None else latest_at_or_before(atm_times, target)
+    if year is None:
+        year = atm_times[0]
+    nc_fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), year, '_atm.nc')
     atm_profile = read_ncdf_profile(
         nc_fpath, extra_keys=['pl', 'tmpl', 'x_gas', 'cloud_mmr', 'aer_mmr', 'aerosols']
     )
 
     parr = atm_profile['pl'] * 1e-5  # convert to bar
     tarr = atm_profile['tmpl']  # temperature profile
-
-    # Get year
-    year = float(nc_fpath.split('/')[-1].split('_atm')[0])
-
-    # Read offline chemistry output if available and requested
-    if plot_offchem and (chem_module is not None) and (chem_module != 'none'):
-        atm_offchem = read_result(output_dir, chem_module)
-        has_offchem = atm_offchem is not None
-        if has_offchem:
-            atm_offchem.drop(columns=['tmp', 'p', 'z', 'Kzz'], inplace=True)
-    else:
-        has_offchem = False
 
     # init plot with two panels
     scale = 1.15
@@ -178,8 +225,7 @@ def plot_chem_atmosphere(
             xarr = list(atm_offchem[gas].values)
             if np.amax(xarr) >= xmin:
                 vmr = float(xarr[-1])  # prefer vmr from offline chemistry
-                n = min(len(xarr), len(parr))
-                ax1.plot(xarr[:n], parr[:n], ls='solid', color=col, lw=_lw, alpha=al)
+                ax1.plot(xarr, p_offchem, ls='solid', color=col, lw=_lw, alpha=al)
 
         # create legend entry and store surface vmr
         if vmr > 0.0:
@@ -245,8 +291,10 @@ def plot_chem_atmosphere(
     # Check for individual aerosol species
     num_aerosols = 0
     if 'aerosols' in atm_profile.keys():
+        gases = [k[:-4] for k in atm_profile if k.endswith('_vmr')]
         for aer_name in atm_profile['aerosols']:
             num_aerosols += 1
+            gas = _aerosol_gas(aer_name, gases)
             aer_mmr = atm_profile[f'{aer_name}_mmr']
             aer_arr = [aer_mmr[0]] + list(aer_mmr)
             n = min(len(aer_arr), len(parr))
@@ -256,8 +304,8 @@ def plot_chem_atmosphere(
                 ls='solid',
                 lw=1.5,
                 alpha=0.7,
-                color=get_colour(aer_name),
-                label=aer_name,
+                color=get_colour(gas or aer_name),
+                label=latexify(gas) if gas else aer_name,
             )
 
     # Add temperature profile to Panel 2 (secondary x-axis at top)

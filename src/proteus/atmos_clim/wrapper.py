@@ -16,8 +16,11 @@ from proteus.atmos_clim.common import (
     Atmos_t,
     LevelsSource,
     clip_radius_to_hill,
-    get_spfile_path,
+    lid_open_flux,
+    require_spfile_path,
 )
+from proteus.atmos_clim.surface_skin import effective_surf_state
+from proteus.star.wrapper import flux_weighted_distance
 from proteus.utils.constants import const_R, gas_list
 from proteus.utils.helper import UpdateStatusfile, safe_rm
 
@@ -173,6 +176,51 @@ def carry_converged_levels(atmos_o: Atmos_t, hf_row: dict, previous_row: dict | 
             hf_row[key] = atmos_o.levels_converged[key]
 
 
+def realign_xuv_gravity(hf_row: dict, radius: float):
+    """Place the XUV gravity at a radius that has been moved on its own.
+
+    The level properties describe one height and are carried as a group, so
+    moving the radius by itself leaves a pressure, temperature and gravity
+    belonging to a different one. Gravity is the only one recoverable from the
+    radius alone, by the inverse-square form the dummy and JANUS modules use to
+    place it, so it is the only one brought along. AGNI reads gravity off the
+    profile it solved, which is not held once the solve is behind us, so the
+    radius-only form is the closest available estimate on every module.
+
+    Pressure, temperature and the composition in ``XUV_VMR_KEYS`` keep the
+    values the last converged solve read, at the height it read them from. A
+    reading from a nearby height is worth more than none: ``p_xuv`` is what
+    AGNI and JANUS derive ``R_xuv`` from when ``xuv_defined_by_radius`` is off,
+    BOREAS builds the outflow mean molecular weight from the composition, and
+    every helpfile column is required to stay finite.
+
+    The gravity is left alone rather than invalidated where the planet is
+    unknown, for the same reason: a stale gravity is readable and a missing one
+    is not.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Simulation variables for this iteration, modified in place.
+        radius : float
+            The radius the level now sits at [m].
+    """
+    if 'g_xuv' not in hf_row:
+        return
+
+    gravity = float(hf_row.get('gravity', np.nan))
+    r_int = float(hf_row.get('R_int', np.nan))
+    placeable = (
+        np.isfinite(radius)
+        and radius > 0.0
+        and np.isfinite(gravity)
+        and np.isfinite(r_int)
+        and r_int > 0.0
+    )
+    if placeable:
+        hf_row['g_xuv'] = gravity * (r_int / radius) ** 2
+
+
 def run_atmosphere(
     atmos_o: Atmos_t,
     config: Config,
@@ -239,19 +287,20 @@ def run_atmosphere(
         # Held at zero
         hf_row['albedo_pl'] = 0.0
 
-    # Handle new surface temperature
+    # Handle new surface temperature; a saturation skin is 'fixed' until a layer forms
+    surf_state = effective_surf_state(config, hf_row)
     if config.interior_energetics.module == 'boundary':
         # T_surf is already advanced by the Boundary backend's ODE, so the
         # atmosphere wrapper must not overwrite it.
         pass
 
-    elif config.atmos_clim.surf_state == 'mixed_layer':
+    elif surf_state == 'mixed_layer':
         # Argument order: (current hf_row, previous committed row). The
         # function integrates forward from hf_pre['Time'] to hf_cur['Time']
         # starting at hf_pre['T_surf'].
         hf_row['T_surf'] = ShallowMixedOceanLayer(hf_row, hf_all.iloc[-1].to_dict())
 
-    elif config.atmos_clim.surf_state == 'fixed':
+    elif surf_state == 'fixed':
         hf_row['T_surf'] = hf_row['T_magma']
 
     # elif surf_state=='skin':
@@ -268,12 +317,7 @@ def run_atmosphere(
 
         # Init atm object if first iteration or change in stellar spectrum
         if no_atm or update_stellar_spectrum:
-            spectral_file_nostar = get_spfile_path(dirs['fwl'], config)
-            if not os.path.exists(spectral_file_nostar):
-                UpdateStatusfile(dirs, 20)
-                raise FileNotFoundError(
-                    "Spectral file does not exist at '%s'" % spectral_file_nostar
-                )
+            spectral_file_nostar = require_spfile_path(dirs, config)
 
             wl = np.array(wl)
             fl = np.array(fl)
@@ -319,7 +363,8 @@ def run_atmosphere(
                 deallocate_atmos(atmos_o._atm)
 
             # allocate new
-            atmos_o._atm = init_agni_atmos(dirs, config, hf_row)
+            # Only the first build can match another run's spectral file.
+            atmos_o._atm = init_agni_atmos(dirs, config, hf_row, use_cache=no_atm)
 
             # Check allocation was ok
             if not bool(atmos_o._atm.is_alloc):
@@ -366,11 +411,18 @@ def run_atmosphere(
     carry_converged_levels(atmos_o, hf_row, previous_row=previous_row)
 
     # A carried radius can come from a row written before the clip existed, or
-    # under a different Hill radius, so bound it here as well. There is no
-    # profile on this path to re-read the rest of the level from, and the
-    # rate escape computes goes as the cube of this radius, so the bound wins.
+    # under a different Hill radius, so bound it here as well. The rate escape
+    # computes goes as the cube of this radius, so the bound wins; the gravity
+    # is then placed at the radius the bound left behind. The finiteness test is
+    # on the RESULT rather than on the carried value, because a radius of NaN
+    # compares unequal to everything: testing it there skips the placement in
+    # the one case where the bound does supply a real radius.
     if hasattr(config, 'escape') and 'R_xuv' in hf_row:
-        hf_row['R_xuv'] = clip_radius_to_hill(config, hf_row, float(hf_row['R_xuv']))
+        carried = float(hf_row['R_xuv'])
+        clipped = clip_radius_to_hill(config, hf_row, carried)
+        hf_row['R_xuv'] = clipped
+        if np.isfinite(clipped) and clipped != carried:
+            realign_xuv_gravity(hf_row, clipped)
 
     # Persist the solve outcome, so a row whose levels were carried can be
     # identified from the output alone rather than from the log.
@@ -380,6 +432,7 @@ def run_atmosphere(
     # Copy special cases
     hf_row['rho_obs'] = 3 * hf_row['M_planet'] / (4 * pi * hf_row['R_obs'] ** 3)
     hf_row['F_net'] = hf_row['F_int'] - hf_row['F_atm']
+    hf_row['lid_F_open'] = lid_open_flux(hf_row)
     hf_row['bond_albedo'] = atm_output['albedo']
 
     # Calculate bolometric observables (measured at infinite distance)
@@ -460,14 +513,13 @@ def update_bolometry(hf_row: dict):
     # Transit depth
     hf_row['transit_depth'] = (hf_row['R_obs'] / hf_row['R_star']) ** 2.0
 
-    # Eclipse depth
-    #    Accounting for fact that F_ins is scaled to TOA, not to stellar surface.
-    #    Also, F_ins can be zero when bol_scale is being appled.
+    # Eclipse depth. F_ins is the flux at the flux-weighted distance, not at
+    # the stellar surface, and can be zero when bol_scale is applied.
     if hf_row['F_ins'] == 0.0:
         hf_row['eclipse_depth'] = 0.0
     else:
         hf_row['eclipse_depth'] = ((hf_row['F_olr'] + hf_row['F_sct']) / hf_row['F_ins']) * (
-            hf_row['R_obs'] / hf_row['separation']
+            hf_row['R_obs'] / flux_weighted_distance(hf_row)
         ) ** 2.0
 
 

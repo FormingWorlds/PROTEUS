@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.interpolate import PchipInterpolator
 
-from proteus.star.wrapper import scale_spectrum_to_stellar_surface
+from proteus.star.wrapper import flux_weighted_distance, scale_spectrum_to_stellar_surface
 from proteus.utils.constants import (
     prt_cia_species,
     prt_gases,
@@ -278,16 +278,25 @@ def _get_reference_prt_values(atm: dict, config: Config) -> tuple[float, float, 
 def _get_atm_offchem(outdir: str, hf_row: dict, chem_module: str) -> dict:
     """
     Reads the atmosphere data from the csv file produced by the 'atmos_chem' module.
+
+    The file is the chemistry result at hf_row['Time'] [yr], so that the
+    composition and the planet come from the same time.
     """
 
     # Read file
-    from proteus.atmos_chem.common import read_result
+    from proteus.atmos_chem.common import chem_csv_name, read_result
 
-    df = read_result(outdir, chem_module)
+    df = None
+    if chem_module is not None:
+        fname = chem_csv_name(chem_module, float(hf_row['Time']))
+        df = read_result(outdir, chem_module, filename=fname)
 
     # Check file exists
     if df is None:
-        log.warning(f"Could not read offchem file from '{outdir}'")
+        log.warning(
+            'No chemistry result at t=%.3e yr in %s; it needs atmos_chem.times '
+            'to include this time' % (float(hf_row['Time']), outdir)
+        )
         return None
 
     df.rename(columns={'tmp': 'tmpl', 'p': 'pl', 'z': 'rl'}, inplace=True)
@@ -580,7 +589,7 @@ def eclipse_depth(hf_row: dict, config: Config, source: str, dirs: dict[str, str
     # All planet quantities in SI
     Rs = hf_row['R_star']  # Radius of star [m]
     Ts = hf_row['T_star']  # Stellar temperature
-    sep = hf_row['separation']
+    sep = flux_weighted_distance(hf_row)  # distance the stored spectrum was scaled to
     Rs_cm = Rs * 100.0
     sep_cm = sep * 100.0
 
@@ -663,13 +672,8 @@ def eclipse_depth(hf_row: dict, config: Config, source: str, dirs: dict[str, str
         wl_local = np.array(wl_cm_local, dtype=float) * 1e4
         stellar_wavelength_nm = np.array(wl_cm_local, dtype=float) * 1.0e7
         stellar_toa_flux = _load_stellar_toa_flux(outdir, hf_row, stellar_wavelength_nm)
-        # The eclipse depth compares the two emitting surfaces, so the denominator is
-        # the flux at the stellar surface. The stored spectrum is the flux arriving at
-        # the planet, still carrying the reduction by the orbital distance, so undo
-        # that reduction here; dividing by it as it stands leaves the reduction in the
-        # result on top of the geometric factor below. This assumes the stored spectrum
-        # was written at the separation this row holds, which is exact for a fixed orbit
-        # and leaves the ratio of the two separations behind while an orbit evolves.
+        # Undo the distance the stored spectrum was scaled to; this assumes the orbit has not
+        # moved since the file was written, which holds exactly only for a fixed orbit.
         stellar_surface_flux = scale_spectrum_to_stellar_surface(stellar_toa_flux, sep, Rs)
         depth_local = (
             np.array(planet_flux_local, dtype=float)

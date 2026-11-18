@@ -41,6 +41,30 @@ max_mem  = 12       # max memory per CPU [GB]
 jax_cache = false
 
 # -------------------------------------------------------
+# Post-processing (read by `proteus grid-analyse -o output/<grid folder>`)
+# -------------------------------------------------------
+# Optional table. `proteus grid` checks it at launch; `proteus grid-analyse`
+# reads it (from copy.grid.toml in the grid folder) to extract per-case
+# final-row results into summary CSVs and make the status and ECDF plots.
+[post_processing]
+    update_csv  = true      # rebuild the summary CSVs before plotting
+    plot_status = true      # make the status-summary bar plot
+    plot_ecdf   = true      # make the ECDF grid plot
+    colormap    = "batlowK_r"  # colour map for a parameter with many values
+    # style = "dark"           # "light" (default with proteus-mpl), "dark" or "matplotlib"
+    # Output columns (runtime_helpfile.csv) to plot; solidification_time is
+    # computed by the analysis (first time Phi_global <= params.stop.solid.phi_crit,
+    # also when the solidification stop is disabled). Without this key the
+    # default is solidification_time, Phi_global, T_surf, P_surf, atm_kg_per_mol.
+    output_variables = [
+        "solidification_time", "Phi_global", "T_surf",
+        "P_surf", "atm_kg_per_mol", "esc_rate_total", "rho_obs",
+    ]
+    # plot_format is optional; defaults to the base config's params.out.plot_fmt,
+    # then "png". Supported: "png", "pdf".
+    # plot_format = "png"
+
+# -------------------------------------------------------
 # Grid axes
 # -------------------------------------------------------
 

@@ -1,7 +1,7 @@
 """
 Defensive-skip tests for the population diagram loaders.
 
-Anti-happy-path discipline (per .github/.claude/rules/proteus-tests.md):
+Anti-happy-path discipline (per tests/AGENTS.md):
 - Tests must include the missing-data path AND the present-data path.
 - Tests must include malformed inputs that the loaders should tolerate.
 - Tests must verify the wrappers do not raise when the loaders return
@@ -353,7 +353,7 @@ def test_get_mr_data_skips_when_the_dataset_cannot_be_resolved(tmp_path, caplog,
 
     assert result is None
     msgs = ' '.join(rec.getMessage() for rec in caplog.records)
-    assert 'observe.mass_radius.zeng_2019' in msgs, f'the dataset is not named: {msgs}'
+    assert 'interior.mass_radius.zeng_2019' in msgs, f'the dataset is not named: {msgs}'
 
 
 def test_plot_wrapper_survives_an_unresolvable_dataset(tmp_path, monkeypatch):

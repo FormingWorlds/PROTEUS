@@ -419,6 +419,25 @@ def test_element_list_is_deduplicated_union_of_sources():
     assert list(dict.fromkeys(seeded)) == element_list
 
 
+def test_vap_list_includes_agni_species_with_thermo_support():
+    """vap_list includes the AGNI refractory species PROTEUS has adopted.
+
+    Only species AGNI itself ships thermodynamic data for were added (V, Mg2,
+    VO, AlO, Na2, NaO); AGNI's `vaps_standard` list has further species
+    (e.g. Cr, Li, NaCl) with no such data behind them, and those were
+    deliberately excluded, so this pins the adopted set rather than the
+    full AGNI list.
+    """
+    for species in ('V', 'Mg2', 'VO', 'AlO', 'Na2', 'NaO'):
+        assert species in vap_list, f'Missing adopted refractory species: {species}'
+        assert species in gas_list
+
+    assert 'V' in vap_element_list
+    assert 'V' in element_list
+    assert 'Cl' not in vap_element_list
+    assert 'Cl' not in element_list
+
+
 def test_element_mmw_all_positive():
     """All molar masses in element_mmw are strictly positive.
 

@@ -13,68 +13,81 @@ if ! [ -x "$(command -v pip)" ]; then
   exit 1
 fi
 
-portable_realpath() {
-    if command -v realpath >/dev/null 2>&1; then
-        realpath "$1"
-    else
-        python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
-    fi
-}
+# Shared helpers: see tools/_get_common.sh.
+source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 
 # Path to PROTEUS folder
-root=$(dirname "$(portable_realpath "$0")")
-root=$(portable_realpath "$root/..")
+root="$proteus_root"
 
-# Refuse to delete a checkout holding local work unless --force is given.
-# Keep this guard in sync across the get_* scripts that refresh checkouts.
-# Guarded states: modified tracked files, and commits not on any remote.
-# Untracked files (build artifacts, egg-info) do not block the refresh.
-force=false
-for arg in "$@"; do
-    [ "$arg" = "--force" ] && force=true
-done
+get_parse_args "$@"
 workpath="$root/ThermoEngineLite/"
 
-if [ -d "$workpath/.git" ] && [ "$force" != true ]; then
-    dirty=$(git -C "$workpath" status --porcelain --untracked-files=no 2>/dev/null | head -1)
-    unpushed=$(git -C "$workpath" log HEAD --not --remotes --oneline 2>/dev/null | head -1)
-    if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
-        echo "ERROR: $workpath has uncommitted changes or commits not on a remote." >&2
-        echo "       Refusing to delete it. Commit and push your work, or run" >&2
-        echo "       bash tools/get_thermoenginelite.sh --force  to discard the checkout." >&2
-        exit 1
-    fi
+# Locate GSL (conda, CPATH, Homebrew, /usr/include, /usr/local/include).
+# GSL_SYS_INCLUDE and GSL_LOCAL_INCLUDE are test hooks for offline unit tests.
+_cpath_gsl_dir() (
+    IFS=:
+    set -f
+    for d in ${CPATH:-}; do
+        case "$d" in
+            /*) [ -f "$d/gsl/gsl_multiroots.h" ] && { printf '%s\n' "$d"; exit 0; } ;;
+        esac
+    done
+    exit 1
+)
+gsl_lib=""
+if [ -n "${CONDA_PREFIX:-}" ] && [ -f "$CONDA_PREFIX/include/gsl/gsl_multiroots.h" ]; then
+    gsl_include="$CONDA_PREFIX/include"
+    gsl_lib="$CONDA_PREFIX/lib"
+elif cpath_gsl=$(_cpath_gsl_dir); then
+    gsl_include="$cpath_gsl"
+    for gsl_cand in "$cpath_gsl/../lib"/libgsl.{dylib,so,so.*,a}; do
+        if [ -f "$gsl_cand" ]; then
+            gsl_lib="$cpath_gsl/../lib"
+            break
+        fi
+    done
+elif command -v brew >/dev/null 2>&1 \
+    && brew_gsl=$(brew --prefix gsl 2>/dev/null) \
+    && [ -n "$brew_gsl" ] \
+    && [ -f "$brew_gsl/include/gsl/gsl_multiroots.h" ]; then
+    gsl_include="$brew_gsl/include"
+    gsl_lib="$brew_gsl/lib"
+elif [ -f "${GSL_SYS_INCLUDE:-/usr/include}/gsl/gsl_multiroots.h" ]; then
+    gsl_include="${GSL_SYS_INCLUDE:-/usr/include}"
+elif [ -f "${GSL_LOCAL_INCLUDE:-/usr/local/include}/gsl/gsl_multiroots.h" ]; then
+    gsl_include="${GSL_LOCAL_INCLUDE:-/usr/local/include}"
+else
+    echo "ERROR: GSL headers (gsl/gsl_multiroots.h) not found." >&2
+    echo "       Install GSL first, for example:" >&2
+    echo "         conda install -c conda-forge gsl" >&2
+    echo "         brew install gsl" >&2
+    echo "         sudo apt install libgsl-dev" >&2
+    exit 1
 fi
+case ":${CPATH:-}:" in
+    *":$gsl_include:"*) export CPATH ;;
+    *) export CPATH="$gsl_include${CPATH:+:$CPATH}" ;;
+esac
+if [ -n "${gsl_lib:-}" ]; then
+    export LIBRARY_PATH="$gsl_lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
+fi
+
+guard_dirty_checkout "$workpath" get_thermoenginelite.sh
 
 # Make room
 rm -rf "$workpath"
 
-# Detect SSH access to GitHub. `ssh -T git@github.com` exits 1 when
-# authentication succeeds (GitHub refuses the shell), so a plain call
-# would trip `set -e`; keeping it as the `if` condition keeps it in
-# scope where a non-zero exit is expected rather than fatal.
-if ssh -T git@github.com; then
-    use_ssh=false
-else
-    if [ $? -eq 1 ]; then
-        use_ssh=true
-    else
-        use_ssh=false
-    fi
-fi
+# Detect SSH access to GitHub.
+use_ssh=$(github_use_ssh)
 
 # Resolve the pinned URL + ref from pyproject.toml.
-l_url=$(python "$root/tools/_module_pins.py" thermoenginelite url)
-l_ref=$(python "$root/tools/_module_pins.py" thermoenginelite ref)
-if [ -z "$l_url" ] || [ -z "$l_ref" ]; then
-    echo "ERROR: could not resolve thermoenginelite url/ref from pyproject.toml" >&2
-    exit 1
-fi
+resolve_module_pin thermoenginelite
+l_url="$module_url"
+l_ref="$module_ref"
 
 echo "Cloning from GitHub"
 if [ "$use_ssh" = true ]; then
-    # Rewrite https://github.com/ -> git@github.com: for SSH transport.
-    uri=${l_url/https:\/\/github.com\//git@github.com:}
+    uri=$(github_ssh_url "$l_url")
 else
     uri="$l_url"
 fi
@@ -86,12 +99,15 @@ git -C "$workpath" checkout --quiet "$l_ref" \
 # Compile ThermoEngine
 echo "Compiling ThermoEngineLite..."
 echo "    This will take ~20 minutes to complete"
-cd "$workpath"
-make devinstall
+cd "$workpath" || exit 1
+if ! make devinstall; then
+    echo "ERROR: ThermoEngineLite failed to compile (make devinstall failed)." >&2
+    exit 1
+fi
 
-
-# Check that the library was and installed into python environment
-if ! python -c "import thermoengine" >/dev/null 2>&1; then
+# Verify import outside the clone so ./thermoengine does not shadow site-packages.
+if ! import_err=$(cd / && python -c "import thermoengine; assert thermoengine.__file__" 2>&1); then
+    [ -n "$import_err" ] && printf '%s\n' "$import_err" >&2
     echo "ERROR: ThermoEngineLite failed to install into your Python environment." >&2
     echo "       Check the output above for errors." >&2
     exit 1

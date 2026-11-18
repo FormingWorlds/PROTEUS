@@ -168,6 +168,7 @@ def test_aragog_enums_pinned_for_zephyrus_pair():
         'energy_balance',
         'gradient',
         'bower2018',
+        'core_module',
     }
     smoothing_allowed = attrs.fields(Aragog).phase_smoothing.validator.options
     assert set(smoothing_allowed) == {'tanh', 'cubic_hermite'}

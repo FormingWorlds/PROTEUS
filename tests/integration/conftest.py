@@ -150,20 +150,21 @@ def proteus_multi_timestep_run():
             runner.config.params.out.write_mod = 0
             runner.config.params.out.archive_mod = 'none'
 
-            # Ensure required data exists when using ARAGOG, AGNI, or Zalmoxis
-            # (download if missing). Runs locally and in CI; no-op or quick when
-            # data already present.
+            # Ensure required data exists when using ARAGOG, AGNI, MORS, or
+            # Zalmoxis (download if missing). Runs locally and in CI; no-op or
+            # quick when data already present.
             if (
                 runner.config.interior_energetics.module == 'aragog'
                 or runner.config.atmos_clim.module == 'agni'
                 or runner.config.interior_struct.module == 'zalmoxis'
+                or runner.config.star.module == 'mors'
             ):
                 from proteus.utils.data import download_sufficient_data
 
                 was_offline = runner.config.params.offline
                 runner.config.params.offline = False
                 try:
-                    download_sufficient_data(runner.config, clean=False)
+                    download_sufficient_data(runner.config)
                 except OSError:
                     pass  # e.g. no network; test will fail with FileNotFoundError if data missing
                 finally:

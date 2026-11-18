@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 import os
 import pandas as pd
 
+import numpy as np
+
 if TYPE_CHECKING:
     from proteus.config import Config
 
@@ -35,10 +37,29 @@ log = logging.getLogger('fwl.' + __name__)
 # Constants
 mass_ocean = ocean_moles * molar_mass['H2']
 
+# Seed of CALLIOPE's start and restart draws, so identical runs agree. The same integer
+# seeds CALLIOPE's own PCG64 generator (from_O_budget) or the global MT19937 stream.
+RANDOM_SEED = 42
 
-def construct_options(dirs: dict, config: Config, hf_row: dict):
-    """
-    Construct CALLIOPE options dictionary
+
+def construct_options(dirs: dict, config: Config, hf_row: dict, warn: bool = True):
+    """Construct the CALLIOPE options dictionary, with T_magma clipped to outgas.T_floor.
+
+    Parameters
+    ----------
+    dirs : dict
+        Run directories.
+    config : Config
+        PROTEUS configuration.
+    hf_row : dict
+        Current helpfile row; read only.
+    warn : bool, default True
+        Log a warning when T_magma lies below outgas.T_floor.
+
+    Returns
+    -------
+    dict
+        CALLIOPE options.
     """
 
     solvevol_inp = {}
@@ -54,8 +75,10 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     else:
         solvevol_inp['Phi_global'] = 0.0
 
-    # Surface properties
-    solvevol_inp['T_magma'] = hf_row['T_magma']
+    # Surface properties; the target masses and the solve both use the floored temperature
+    solvevol_inp['T_magma'] = max(hf_row['T_magma'], config.outgas.T_floor)
+    if warn and hf_row['T_magma'] < config.outgas.T_floor:
+        log.warning('Outgassing temperature clipped to %.1f K' % solvevol_inp['T_magma'])
 
     solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
 
@@ -210,8 +233,17 @@ def _resolve_element(
 
 
 def calc_target_masses(dirs: dict, config: Config, hf_row: dict):
+    """Write the delivered element budgets [kg] to ``{e}_kg_total``.
+
+    The budgets come from ``planet.elements`` when ``planet.volatile_mode`` is
+    ``'elements'``, else from the configured initial partial pressures. Oxygen is
+    not among them: its total follows from the fO2 or from the O budget.
+    """
     # make solvevol options
-    solvevol_inp = construct_options(dirs, config, hf_row)
+    # Only the pressure path reads T_magma, so only it warns about the clip.
+    solvevol_inp = construct_options(
+        dirs, config, hf_row, warn=config.planet.volatile_mode != 'elements'
+    )
 
     # calculate target mass of atoms (except O, which is derived from fO2)
     if config.planet.volatile_mode == 'elements':
@@ -239,7 +271,9 @@ def construct_guess(dirs: dict, hf_row: dict, target: dict, mass_thresh: float) 
     target : dict
         Dictionary containing the target elemental inventories [kg]
     mass_thresh : float
-        Minimum threshold for element mass [kg]. Inventories below this are set to zero.
+        Minimum threshold for element mass [kg]. A species with an element other than O
+        whose target is below this gets a zero guess; any positive noble-gas target
+        returns None instead.
 
     Returns
     -------
@@ -343,6 +377,26 @@ def flag_included_volatiles(guess: dict, config: Config) -> dict:
 
 
 def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
+    """Partition the volatile and noble-gas inventory with CALLIOPE.
+
+    Solves the gas-melt equilibrium for the element totals [kg] in ``hf_row``
+    and copies the partial pressures [bar], mixing ratios and reservoir masses
+    [kg] of ``expected_keys`` into the row. Under ``planet.fO2_source =
+    'from_O_budget'`` the O budget is a constraint and ``O_kg_total`` keeps its
+    input value; otherwise the fO2 is fixed at ``outgas.fO2_shift_IW``.
+
+    Raises
+    ------
+    RuntimeError
+        If the CALLIOPE solve fails.
+    ValueError
+        If H2O, CO2, N2 or S2 is excluded from the solve, or, with
+        ``planet.volatile_mode = 'elements'``, the hydrogen budget of
+        ``planet.elements`` is below 1 kg.
+    KeyError
+        If the row has no ``{e}_kg_total`` for a volatile element or a noble
+        gas. ``O_kg_total`` is needed under every ``planet.fO2_source``.
+    """
     # Inform
     log.debug('Running CALLIOPE...')
 
@@ -390,10 +444,8 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     for s in vol_list:
         opts[f'{s}_included'] = int(p_incl[s])
 
-    # Do not allow low temperatures
-    if opts['T_magma'] < config.outgas.T_floor:
-        opts['T_magma'] = config.outgas.T_floor
-        log.warning('Outgassing temperature clipped to %.1f K' % opts['T_magma'])
+    # The caller's global RNG state is handed back after the call (not thread-safe).
+    state = np.random.get_state()
 
     # Dispatch on planet.fO2_source. The two entry points share the
     # output-dict schema (volatile partial pressures, per-species reservoir
@@ -414,16 +466,13 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
                 nsolve=config.outgas.calliope.nsolve,
                 p_guess=p_guess,
                 p_guess_max=config.outgas.calliope.p_guess_max,
-                # Fixed seed so the Monte-Carlo restart draws are
-                # reproducible run to run. Without it the first-iteration
-                # cold solve (no p_guess) and any restart draw from the
-                # global RNG, so the derived IC redox state varies between
-                # identical runs and cannot be pinned by --deterministic.
-                random_seed=42,
+                random_seed=RANDOM_SEED,
                 print_result=False,
                 opt_solver=False,
             )
         else:
+            # equilibrium_atmosphere takes no seed and draws from the global stream.
+            np.random.seed(RANDOM_SEED)
             solvevol_result = equilibrium_atmosphere(
                 target,
                 opts,
@@ -441,6 +490,8 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         log.error('Outgassing calculation with CALLIOPE failed')
         UpdateStatusfile(dirs, 27)
         raise e
+    finally:
+        np.random.set_state(state)
 
     # Get result
     collist = []

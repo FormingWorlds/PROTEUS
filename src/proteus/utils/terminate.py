@@ -7,6 +7,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
+from proteus.utils.constants import R_earth
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -138,6 +139,53 @@ def _check_spinrate(handler: Proteus) -> bool:
     if axial_period <= breakup_period + offset:
         UpdateStatusfile(handler.directories, 16)
         _msg_termination('Planet has disintegrated')
+        return True
+
+    return False
+
+
+def _check_satellite(handler: Proteus) -> bool:
+    log.debug('Check satellite')
+
+    sma = handler.hf_row['semimajorax_sat']
+    sma_max = handler.config.params.stop.satellite.sma_max * R_earth
+    log.debug('    sma, sma_max = %.3e, %.3e  m' % (sma, sma_max))
+
+    if sma >= sma_max:
+        UpdateStatusfile(handler.directories, 17)
+        _msg_termination('Satellite reached escape semimajor axis')
+        return True
+
+    return False
+
+
+def _check_satellite_separation(handler: Proteus) -> bool:
+    log.debug('Check satellite separation')
+
+    separation_sat = handler.hf_row['separation_sat']
+    roche_limit_sat = handler.hf_row['roche_limit_sat']
+    offset = handler.config.params.stop.disint_sat.offset_roche
+    log.debug('    sep, roc = %.3e, %.3e  m' % (separation_sat, roche_limit_sat - offset))
+
+    if separation_sat <= roche_limit_sat + offset:
+        UpdateStatusfile(handler.directories, 18)
+        _msg_termination('Satellite has disintegrated')
+        return True
+
+    return False
+
+
+def _check_satellite_spinrate(handler: Proteus) -> bool:
+    log.debug('Check satellite spin rate')
+
+    axial_period_sat = handler.hf_row['axial_period_sat']
+    breakup_period_sat = handler.hf_row['breakup_period_sat']
+    offset = handler.config.params.stop.disint_sat.offset_spin
+    log.debug('    axr, bur = %.3e, %.3e  s' % (axial_period_sat, breakup_period_sat))
+
+    if axial_period_sat <= breakup_period_sat + offset:
+        UpdateStatusfile(handler.directories, 18)
+        _msg_termination('Satellite has disintegrated')
         return True
 
     return False
@@ -282,6 +330,20 @@ def check_termination(handler: Proteus) -> bool:
         # Spinning faster than breakup rate (centrifugal disruption)
         if handler.config.params.stop.disint.spin_enabled:
             finished = finished or _check_spinrate(handler)
+
+    # Two criteria for satellite disintegration
+    if handler.config.params.stop.disint_sat.enabled:
+        # Orbiting within Roche limit (tidal disruption when close to planet)
+        if handler.config.params.stop.disint_sat.roche_enabled:
+            finished = finished or _check_satellite_separation(handler)
+
+        # Spinning faster than breakup rate (centrifugal disruption)
+        if handler.config.params.stop.disint_sat.spin_enabled:
+            finished = finished or _check_satellite_spinrate(handler)
+
+    # Satellite escaped
+    if handler.config.params.stop.satellite.enabled:
+        finished = finished or _check_satellite(handler)
 
     # ------------------------
     # 3) Check resource-based criteria, set by user according to the

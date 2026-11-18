@@ -16,6 +16,29 @@ M_core_earth = 1.94e24  # kg
 # ~500 GPa. Above this pressure the high-pressure power-law liquidus branch is
 # an extrapolation, so a superheat margin evaluated there is uncertain.
 FEI2021_LIQUIDUS_P_CALIB_PA = 500e9  # Pa
+# EOS name prefixes of the PALEOS family. The mantle EOS is matched to derive
+# the solidus from mushy_zone_factor; the config validator matches the core
+# and ice-layer EOS too.
+PALEOS_EOS_PREFIXES = ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
+# Temperature-dependent silicate EOS whose energetics read melting_dir and the WB P-S set.
+TDEP_EOS_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
+# Zalmoxis EOS component of each dissolved volatile species that has a table.
+VOLATILE_EOS_MAP = {'H2O': 'PALEOS:H2O', 'H2': 'Chabrier:H'}
+# PALEOS keys of the Zalmoxis material registry (load_zalmoxis_material_dictionaries).
+PALEOS_REGISTRY_KEYS = frozenset(
+    {
+        'PALEOS:iron',
+        'PALEOS:MgSiO3',
+        'PALEOS:H2O',
+        'PALEOS-2phase:MgSiO3',
+        'PALEOS-2phase:MgSiO3-highres',
+        'PALEOS-API:iron',
+        'PALEOS-API:MgSiO3',
+        'PALEOS-API:H2O',
+        'PALEOS-API-2phase:MgSiO3',
+    }
+)
+
 mol = 6.02214076e23  # mol definition
 
 # Earth heat flux, globally averaged [W m-2]
@@ -54,6 +77,17 @@ electron_molar_mass = 5.4858e-4
 # Supported volatiles
 vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
 
+# Gases VULCAN can condense (it has their saturation pressure and growth rate),
+# with the bulk density of their condensate particles [g cm-3].
+CHEM_CONDENSATE_DENSITY = {
+    'C': 2.26,  # graphite
+    'H2O': 1.0,  # liquid water, VULCAN's own value
+    'H2SO4': 1.83,  # liquid sulfuric acid
+    'NH3': 0.82,  # ammonia ice
+    'S2': 2.07,  # orthorhombic sulfur
+    'S8': 2.07,  # orthorhombic sulfur
+}
+
 # Supported vapours
 vap_list = [
     'SiO',
@@ -77,6 +111,12 @@ vap_list = [
     'NaOH',
     'Ca',
     'KOH',
+    'V',
+    'Mg2',
+    'VO',
+    'AlO',
+    'Na2',
+    'NaO',
 ]
 
 prt_gases = [
@@ -126,12 +166,53 @@ gas_list = list(dict.fromkeys(vol_list + noble_gases + vap_list))
 # Gases except rock vapours - tracked separately in M_vaps.
 vol_gas_list = [s for s in gas_list if s not in vap_list]
 
+# Species with a CALLIOPE solubility law; the others do not dissolve in the melt
+soluble_gases = ['H2O', 'CO2', 'CO', 'CH4', 'N2', 'S2', *noble_gases]
+
 # Supported elements: volatiles, rock-forming elements, noble gases (above)
 vol_element_list = ['H', 'O', 'C', 'N', 'S']
-vap_element_list = ['Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K']
+vap_element_list = ['Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K', 'V']
 
 # Construct element list from all three sources (with duplicates removed)
 element_list = list(dict.fromkeys(vol_element_list + vap_element_list + noble_gases))
+
+# Condensates the atmodeller outgassing module includes, by Hill formula
+condensate_names = {'C': 'Graphite', 'S': 'Sulfur', 'H2O': 'Water', 'H2O4S': 'Sulfuric acid'}
+
+# Condensate densities [kg m-3]
+condensate_density = {
+    # https://material-properties.org/graphite-density-strength-hardness-melting-point/
+    'C': 2260.0,
+    # https://en.wikipedia.org/wiki/Sulfur?useskin=vector
+    'S': 2070.0,
+    # STP density of water [kg m-3]
+    'H2O': 1000.0,
+    # https://www.engineeringtoolbox.com/indsulfuric-acid-density-d_2163.html
+    'H2O4S': 1792.2,
+}
+
+# Condensate thermal conductivities [W m-1 K-1]
+condensate_conductivity = {
+    # polycrystalline graphite, https://www.eastcarb.com/graphite-thermal-conductivity/
+    'C': 100.0,
+    # https://material-properties.org/Sulfur-thermal-properties-melting-point-thermal-conductivity-expansion/
+    'S': 0.269,
+    # https://www.engineeringtoolbox.com/thermal-conductivity-liquids-d_1260.html
+    'H2O': 0.609,
+    'H2O4S': 0.3,
+}
+
+# Activity at and above which a condensate counts as saturated (stable) [1]
+CONDENSATE_SATURATED_ACTIVITY = 0.999
+
+# Condensed mass above which a condensate carries a real layer [kg]. Below saturation the
+# solver reports only a floor of order 1e-6 kg; a larger mass at lower activity is a layer
+# held by outgas.prevent_desaturation.
+CONDENSATE_HELD_MASS_KG = 1.0
+
+# Thermal resistance of the condensed stack below which it is negligible and the surface
+# stays fixed [m2 K W-1]; the skin then lowers T_surf by F * 1e-5 K, about 1 K at 1e5 W m-2.
+SKIN_RESISTANCE_MIN = 1.0e-5
 
 # Molar masses of elements [kg mol-1], from https://iupac.qmul.ac.uk/AtWt/
 element_mmw = {
@@ -245,38 +326,40 @@ noble_solar_mass_ratio = {
     'Xe': 2.32e-8,
 }
 
-# Radionuclide values below are from Ruedas (2017), via SPIDER
-# Natural concentrations (provided in config file) can
-#      be obtained from Turcotte & Schubert, 2014, p. 170
+# Radionuclide heat production and half-life from Ruedas (2017) via SPIDER; isotope molar
+# mass [kg mol-1] from AME2020. Isotope/element mass ratios and element totals are config inputs.
 radnuc_data = {
     'al26': {
-        'abundance': 1.0,  # 26Al/Al (user sets concentration as ppmw of Al)
-        'heatprod': 0.3583,  # W/kg (Ruedas 2017)
+        'heatprod': 0.3583,  # W/kg of 26Al
         'halflife': 0.717e6,  # yr
+        'mass': 2.5986892e-2,  # kg/mol
     },
     'fe60': {
-        'abundance': 1.0,  # 60Fe/Fe (user sets concentration as ratio)
-        'heatprod': 3.6579e-2,  # W/kg (Ruedas 2017)
+        'heatprod': 3.6579e-2,  # W/kg of 60Fe
         'halflife': 2.62e6,  # yr
+        'mass': 5.9934071e-2,  # kg/mol
     },
     'k40': {
-        'abundance': 1.1668e-4,  # 40K/K
-        'heatprod': 2.8761e-5,  # W/kg
+        'heatprod': 2.8761e-5,  # W/kg of 40K
         'halflife': 1.248e9,  # yr
+        'mass': 3.9963998e-2,  # kg/mol
     },
     'th232': {
-        'abundance': 1.0,  # 232Th/Th
-        'heatprod': 2.6368e-5,  # W/kg
+        'heatprod': 2.6368e-5,  # W/kg of 232Th
         'halflife': 14e9,  # yr
+        'mass': 2.3203806e-1,  # kg/mol
     },
     'u235': {
-        'abundance': 0.0072045,  # 235U/U
-        'heatprod': 5.68402e-4,  # W/kg
+        'heatprod': 5.68402e-4,  # W/kg of 235U
         'halflife': 0.704e9,  # yr
+        'mass': 2.3504393e-1,  # kg/mol
     },
     'u238': {
-        'abundance': 0.9927955,  # 238U/U
-        'heatprod': 9.4946e-5,  # W/kg
+        'heatprod': 9.4946e-5,  # W/kg of 238U
         'halflife': 4.468e9,  # yr
+        'mass': 2.3805079e-1,  # kg/mol
     },
 }
+
+# Upper limit on radiogenic heating at the model start [W/kg]
+RADIO_HEATING_MAX = 1.0e-4

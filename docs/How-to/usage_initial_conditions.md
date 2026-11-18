@@ -67,6 +67,35 @@ defaults to 500 K:
     delta_T_super    = 500.0              # [K] above the liquidus at the core-mantle boundary
 ```
 
+### Where `tsurf_init` enters
+
+In every mode, `planet.tsurf_init` is the initial magma temperature of the dummy
+and boundary energetics, the floor of their full re-melt after a giant impact (a partial re-melt with melt fraction $f$ moves the temperature the share $f$ of the way to it), and
+the temperature of the initial flux guess when `interior_energetics.flux_guess`
+is negative. Its other uses depend on the mode:
+
+| Mode | Structure solve | Spider and Aragog energetics |
+|------|-----------------|------------------------------|
+| `isothermal`, `linear`, `adiabatic` | surface temperature of the Zalmoxis solve and of the dummy structure | initial magma surface temperature; the Aragog re-melt after an impact takes it again in the melted share of the mantle |
+| `isentropic` | surface temperature of the Zalmoxis solve and of the dummy structure | not used (except the Aragog cross-check below); they start from `ini_entropy` |
+| `accretion` | surface temperature of the Zalmoxis solve; not used by the dummy structure | the accretion thermal state that the Zalmoxis solve writes; `tsurf_init` when that state is absent |
+| `adiabatic_from_cmb` | Zalmoxis: surface end of the first-guess profile, temperature of zero-pressure nodes, and temperature of the structure nodes below the CMB; not used by the dummy structure | not used (except the Aragog cross-check below); the entropy comes from `tcmb_init` at the CMB |
+| `liquidus_super` | Zalmoxis takes the surface and CMB temperatures of the solved super-liquidus adiabat in the `adiabatic_from_cmb` roles, see below for `tsurf_init`; not used by the dummy structure | not used; they start on the solved adiabat |
+
+In `liquidus_super`, the structure solve takes `tsurf_init` together with
+`tcmb_init` only when no super-liquidus pair was solved for the same
+`delta_T_super` and mantle EOS: on a call driven by an external temperature
+source (in a resumed run until the next anchor solve), where the external
+profile sets $T(r)$, and on a P-T anchor failure that a later step re-solves (a
+PALEOS mantle with spider or aragog energetics).
+
+The structure nodes below the CMB are part of the Zalmoxis profile only; the
+energetics set their own core temperature. With Aragog and a Zalmoxis PALEOS
+mantle, a fresh run also compares its entropy initial condition with an
+adiabat anchored at `tsurf_init` (at the accretion surface temperature when
+Zalmoxis wrote one), in every mode but `liquidus_super`; this check only logs and
+writes a diagnostic file.
+
 ## What to favour
 
 **Use the default `liquidus_super` for most runs.** It starts the mantle on the
@@ -74,34 +103,157 @@ coolest single adiabat that is fully molten everywhere, with at least
 $\Delta T_\mathrm{super}$ (`delta_T_super`, in K) of superheat above the
 silicate liquidus:
 
-$$\min_{P}\,\bigl[\,T_\mathrm{ad}(P) - T_\mathrm{liq}(P)\,\bigr] = \Delta T_\mathrm{super}$$
+$$\min_{P}\,\bigl\lbrack\,T_\mathrm{ad}(P) - T_\mathrm{liq}(P)\,\bigr\rbrack = \Delta T_\mathrm{super}$$
 
 where $T_\mathrm{ad}$ is the (isentropic) initial adiabat and $T_\mathrm{liq}$
 is the configured silicate liquidus. PROTEUS solves for the surface temperature,
 and hence the uniform initial entropy, that satisfies this at the
 most-constraining depth, checking the superheat against the liquidus actually in
-use. This guarantees a fully molten initial state with a known margin for any
-planet mass and any melting-curve parameterisation, without you choosing a
-surface temperature or entropy by hand. Because the binding depth is shallow,
-the solved entropy is essentially independent of planet mass, so a mass grid
-starts on a common adiabat.
+use. Where the tables reach it, this gives a fully molten initial state with a
+known margin, without you choosing a surface temperature or entropy by hand.
+Because the binding depth is shallow, the solved entropy is essentially
+independent of planet mass, so a mass grid starts on a common adiabat.
 
-The default `delta_T_super = 500` K gives a comfortably molten start across the
-Earth-mass to ten-Earth-mass range. Setting `delta_T_super = 0` makes the mantle
-marginally molten, just touching the liquidus at the binding depth.
+Whether the default `delta_T_super = 500` K is reachable depends on the P-S
+tables, the core-mantle boundary pressure and `planet.ini_dsdr`. On
+PALEOS-generated tables it is reached at 1 and 10 Earth masses. On the Wolf &
+Bower (2018) tables from FWL_DATA, with `ini_dsdr = 0`, it is reached up to a
+core-mantle boundary pressure of about 355 GPa. Above that the solve clamps to
+a smaller superheat (443 K at 360 GPa, 85 K at 390 GPa), and above about
+397 GPa the table liquidus entropy exceeds the table maximum, so no fully
+molten state exists and PROTEUS raises. With the Noack & Lasbleis (2020)
+pressure and radius estimates and a core mass fraction of 0.325, this means
+500 K up to 2.75 Earth masses, 194 K at 3 Earth masses, and a raise above
+about 3.1 Earth masses (398 GPa at 3.15 Earth masses). With the default
+`ini_dsdr = -4.698e-6` J/kg/K/m the usable entropy is lower by
+`|ini_dsdr|` times the mantle thickness (about 19.5 J/kg/K at 3 Earth masses):
+2.75 Earth masses clamp to 417 K, 3 Earth masses to 73 K, 3.05 Earth masses
+to 3 K, and 3.1 Earth masses (392 GPa) raise.
 
-!!! note "Requires the silicate liquidus"
-    `liquidus_super` evaluates the Fei et al. (2021) liquidus through the
-    interior structure module (Zalmoxis), which is part of the standard
-    installation. For a run built only from placeholder modules, use
-    `adiabatic_from_cmb` instead, which needs no melting-curve lookup.
+The molten check uses the uniform entropy of the initial adiabat. With
+`ini_dsdr < 0` the initial profile is hotter at depth, so the check is
+conservative: it can report a smaller superheat, or raise, where the deepest
+node is molten. The clamp warnings also give the superheat at the deepest
+node (194 K instead of 73 K at 3 Earth masses above). When the check raises
+but the adiabat at the deepest-node entropy is molten, the message names the
+`ini_dsdr` allowance as the cause and gives that margin. Setting
+`delta_T_super = 0` makes the mantle marginally molten, just touching the
+liquidus at the binding depth.
+
+!!! note "Requires a silicate liquidus"
+    For every structure module, the initial entropy is solved on the interior
+    P-S tables against their own liquidus (`liquidus_P-S.dat`), the same curve
+    the interior solver uses for its melt fraction. Where those tables come
+    from depends on the structure module:
+
+    - `"zalmoxis"` with a PALEOS mantle EOS (`interior_struct.zalmoxis.mantle_eos`,
+      default `"PALEOS:MgSiO3"`): Zalmoxis generates the tables from that EOS,
+      with a liquidus derived from the PALEOS (Fei et al. 2021) curve, and
+      Aragog builds its phase-property tables from PALEOS too.
+      `interior_struct.melting_dir` is not used. A mixture (a `+` in
+      `mantle_eos`) follows its MgSiO$_3$ component, so a mixture with
+      `PALEOS:MgSiO3` gets the tables of a `PALEOS:MgSiO3` mantle; a PALEOS
+      mixture without an MgSiO$_3$ component gets the MgSiO$_3$ two-phase
+      tables of its PALEOS family.
+    - `"spider"` and `"dummy"`, or `"zalmoxis"` when no PALEOS table set is
+      generated, which includes a mixture whose MgSiO$_3$ component is not
+      PALEOS (for example `"WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1"`): the
+      tables come from FWL_DATA (SPIDER also falls back to its own lookup
+      data), Aragog also takes its phase-property files from that Wolf & Bower
+      (2018) set or `interior_struct.eos_dir`, `interior_struct.melting_dir`
+      must be set (the run stops when it is unset, except for
+      `interior_energetics.module = "spider"` with `const_properties = true`),
+      and PROTEUS derives `liquidus_P-S.dat` from that P-T curve.
+
+    Aragog takes its thermodynamics and melt fraction from the P-S tables. With
+    `"zalmoxis"`, which gives the core-mantle boundary pressure, Aragog logs a
+    warning when that pressure is above the highest pressure of the P-S table
+    set in use (about 1 TPa for the fetched Wolf & Bower (2018) set).
+
+    With `"zalmoxis"`, the structure solve also anchors its temperature profile
+    on a P-T adiabat that is `delta_T_super` above the P-T liquidus, while the
+    initial entropy is solved on the P-S tables. The initial entropy solves
+    this anchor again at the core-mantle boundary pressure of the current
+    structure, before and after the structure equilibration. When it raises
+    there, no molten state exists and the run stops at the initial entropy;
+    the same error is raised when the anchor integration fails numerically.
+    With a PALEOS mantle and `"spider"` or `"aragog"` energetics, a failed
+    anchor in a structure solve or in the adiabat structure re-solve, at the
+    estimated or an intermediate pressure, only logs a warning: the structure
+    solve uses the last solved anchor for the same `delta_T_super` and mantle
+    EOS, or `tcmb_init` otherwise, as its core-mantle boundary temperature,
+    and the re-solve keeps the linear-guess structure. The initial entropy
+    then decides at the core-mantle boundary pressure of that fallback
+    structure. In other cases no later step solves the anchor again, so a
+    failed anchor stops the run there. A resumed run that restores the
+    entropy snapshot solves neither the anchor nor the initial entropy
+    again. When Aragog cannot restore the snapshot (no snapshot, or a
+    snapshot length that does not match the mesh), it sets a fresh initial
+    entropy, which solves the anchor again at the current core-mantle
+    boundary pressure and can raise. When
+    the anchor clamps at the PALEOS table below `delta_T_super`, the initial
+    entropy is capped at the anchor entropy, and
+    a warning names the superheat the anchor reached. The generated P-S tables
+    fill cells where PALEOS has no valid state, so on their own they can
+    report a superheat that PALEOS does not support. For 10 Earth masses
+    (core-mantle boundary at 1474 GPa), `delta_T_super = 5000` K and
+    `ini_dsdr = 0`, the capped initial adiabat matches the anchor within
+    0.1 K at the surface and at the core-mantle boundary, and is up to 38 K
+    colder near 1.25 GPa: at these entropies the first P-S table row above
+    1 bar (1.26 GPa) holds cells filled with the 1 bar values. With
+    `ini_dsdr < 0` the deepest node sits at the cap and the rest of the
+    profile is colder.
+
+    The capped initial entropy is the anchor entropy less the `ini_dsdr`
+    allowance, and the molten check uses that uniform value. If the P-S
+    adiabat at that entropy is below the P-S liquidus somewhere, PROTEUS
+    raises instead of going above the anchor entropy, where the P-S tables
+    hold filled cells. When the P-S adiabat at the anchor entropy itself is
+    molten, the message names the `ini_dsdr` allowance as the cause; when it
+    is not, the message gives its P-S superheat and the anchor superheat
+    against the P-T liquidus.
+
+    This cap has two known limits:
+
+    - The cap applies only when the anchor clamps. The anchor measures the
+      superheat against the P-T liquidus and the initial entropy against the
+      P-S table liquidus, and the two curves differ. For 10 Earth masses the
+      anchor reaches a requested `delta_T_super` of up to about 1181 K, but
+      at the anchor edge entropy the P-S tables give only about 1135 K of
+      superheat (measured with `ini_dsdr = 0`). A request in between puts
+      the initial entropy up to about 53 J/kg/K above the anchor edge (at
+      1180 K the surface is 35 K and the core-mantle boundary 113 K hotter
+      than the anchor at its edge).
+    - For 10 Earth masses the anchor edge comes from a narrow band near 1 GPa
+      (0.99 to 1.08 GPa) where the PALEOS liquid table has no valid state at
+      these temperatures. Whether an adiabat is marked valid depends on
+      which pressures the adiabat samples in that band, so the edge, and the
+      cap with it, can shift with the core-mantle boundary pressure.
+
+    The superheat is checked exactly at every pressure where the margin can
+    change slope: the table pressure nodes, the liquidus-file nodes, and the
+    pressures where the liquidus entropy crosses a table entropy node.
+    Between two such pressures the bilinear table can let the margin sag by
+    up to about 1 K on the PALEOS tables.
+
+    The core-mantle boundary pressure must lie inside the table; PROTEUS raises
+    if it is above the table maximum or if the table liquidus is undefined at
+    any evaluated pressure. If the requested superheat exceeds what the tables
+    reach, the entropy is clamped to the highest usable table entropy (the
+    table maximum, lowered by the entropy a negative `ini_dsdr` adds at the
+    core-mantle boundary) and a warning reports the achieved superheat. A
+    positive `ini_dsdr` is rejected with `liquidus_super`. For a run built only
+    from placeholder modules, use `adiabatic_from_cmb` instead, which needs no
+    melting-curve lookup.
 
 !!! note "Very deep mantles"
     A sufficiently deep mantle cannot be made molten with an arbitrarily large
-    superheat: past a point the deep adiabat would exceed the equation-of-state
-    table. If the requested `delta_T_super` cannot be reached, PROTEUS raises
-    with the largest achievable superheat rather than using an unphysical
-    initial condition; lower `delta_T_super` (or the planet mass) in that case.
+    superheat: past a point the adiabat would exceed the equation-of-state
+    table. If the requested `delta_T_super` cannot be reached, PROTEUS clamps
+    to the largest achievable superheat and logs a warning that reports it. If
+    no adiabat inside the table is fully molten at all, PROTEUS raises a
+    `RuntimeError` rather than start from a partially molten mantle; lower the
+    planet mass or change the equation of state in that case.
 
 **Use `adiabatic_from_cmb` for a fixed CMB temperature.** This mode anchors the
 adiabat at a user-set core-mantle-boundary temperature `tcmb_init` and

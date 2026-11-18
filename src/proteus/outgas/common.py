@@ -1,10 +1,100 @@
 # Shared code for outgassing wrapper
 from __future__ import annotations
 
-from proteus.utils.constants import element_list, gas_list, noble_gases
+from proteus.utils.constants import element_list, gas_list, noble_gases, vol_list
+
+# Atoms per formula unit of every species in constants.vol_list (SiO excluded,
+# as no backend outgasses it), splitting species masses into the element masses
+# the whole-planet accounting keeps. Checked against vol_list at import.
+VOLATILE_ELEMENT_STOICH: dict[str, dict[str, int]] = {
+    'H2O': {'H': 2, 'O': 1},
+    'CO2': {'C': 1, 'O': 2},
+    'O2': {'O': 2},
+    'H2': {'H': 2},
+    'CH4': {'C': 1, 'H': 4},
+    'CO': {'C': 1, 'O': 1},
+    'N2': {'N': 2},
+    'NH3': {'N': 1, 'H': 3},
+    'S2': {'S': 2},
+    'SO2': {'S': 1, 'O': 2},
+    'H2S': {'H': 2, 'S': 1},
+}
+
+assert set(VOLATILE_ELEMENT_STOICH) == set(vol_list), (
+    'VOLATILE_ELEMENT_STOICH must cover exactly constants.vol_list; '
+    f'missing={set(vol_list) - set(VOLATILE_ELEMENT_STOICH)} '
+    f'extra={set(VOLATILE_ELEMENT_STOICH) - set(vol_list)}'
+)
+
+
+# Columns an emptied atmosphere keeps, so AGNI still reads a composition and no
+# mean molar mass is zero.
+EMPTY_ATMOSPHERE_KEPT_KEYS = ('atm_kg_per_mol', *(f'{g}_vmr' for g in gas_list))
+
+
+def element_masses_from_species(species_kg: dict[str, float]) -> dict[str, float]:
+    """Split per-species masses [kg] into per-element masses [kg].
+
+    Each species mass is apportioned across its constituent elements by their
+    share of the formula mass, so the element masses sum back to the species
+    mass. A species absent from ``VOLATILE_ELEMENT_STOICH`` (a noble gas, a rock
+    vapour) is carried through under its own symbol, which is how those species
+    already appear in ``element_list``.
+
+    Parameters
+    ----------
+    species_kg : dict
+        Mass per gas species [kg].
+
+    Returns
+    -------
+    dict
+        Mass per element [kg], covering only the elements the input touches.
+    """
+    from proteus.utils.constants import element_mmw
+
+    out: dict[str, float] = {}
+    for species, mass in species_kg.items():
+        if not mass:
+            continue
+        stoich = VOLATILE_ELEMENT_STOICH.get(species)
+        if stoich is None:
+            # Monatomic species (noble gases, rock vapours) are their own element.
+            out[species] = out.get(species, 0.0) + float(mass)
+            continue
+        formula_mmw = sum(n * element_mmw[el] for el, n in stoich.items())
+        if formula_mmw <= 0.0:
+            continue
+        for el, n in stoich.items():
+            out[el] = out.get(el, 0.0) + float(mass) * (n * element_mmw[el] / formula_mmw)
+    return out
+
+
+def set_element_ratios(hf_row: dict) -> None:
+    """Write each ``{e2}/{e1}_atm`` column of the row from the atmospheric element masses.
+
+    A ratio whose numerator or denominator is below 1e-30 kg is set to 0; a ratio
+    column absent from the row is left absent.
+    """
+    for e1 in element_list:
+        for e2 in element_list:
+            key = f'{e2}/{e1}_atm'
+            if key not in hf_row:
+                continue
+            if min(hf_row[f'{e1}_kg_atm'], hf_row[f'{e2}_kg_atm']) < 1e-30:
+                hf_row[key] = 0.0
+            else:
+                hf_row[key] = hf_row[f'{e2}_kg_atm'] / hf_row[f'{e1}_kg_atm']
 
 
 def expected_keys():
+    """Helpfile keys that an outgassing module writes on every call.
+
+    The pressures [bar], mixing ratios, masses [kg] and moles of each gas per
+    reservoir, the element reservoirs, the atmospheric element mass ratios and
+    the bulk columns. ``{e}_kg_total`` is left out for every element except O,
+    since escape owns those totals.
+    """
     copy_keys = [
         'P_surf',
         'P_vol',

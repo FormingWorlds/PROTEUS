@@ -42,9 +42,6 @@ pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 # ---------------------------------------------------------------------------
-# Synthetic objectives
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
 # BO loop helper
 # ---------------------------------------------------------------------------
 def _run_bo_loop(
@@ -64,10 +61,8 @@ def _run_bo_loop(
     """
     assert d >= 2, 'use d >= 2 to avoid the d==1 plot side effect inside BO_step'
 
-    # Seed every RNG that botorch / scipy / Python could touch. torch alone
-    # is not enough: scipy.optimize internals and any numpy fall-back path
-    # in the acquisition optimiser would otherwise leave residual non-
-    # determinism that flakes the seed-determinism tests across hosts.
+    # Seed every RNG botorch or scipy could touch. torch alone leaves
+    # scipy.optimize and numpy fall-backs non-deterministic across hosts.
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -77,12 +72,9 @@ def _run_bo_loop(
     Y = torch.stack([objective(X[i : i + 1]) for i in range(n_init)]).reshape(-1, 1)
 
     D = {'X': X, 'Y': Y}
-    # BO_step computes the cdist between this worker's candidate and the
-    # OTHER workers' busy points; with only one entry the post-mask tensor
-    # is empty and torch.min raises. Use two workers (the test acts as
-    # worker 0; worker 1 is an inert placeholder so the cdist branch has
-    # something to compute against) to match how the production loop
-    # invokes BO_step.
+    # The test acts as worker 0. Worker 1 is an inert placeholder, so the
+    # distance to other workers' busy points has something to compute against,
+    # as in the production loop.
     B = {
         0: torch.zeros((1, d), dtype=torch.double),
         1: 0.5 * torch.ones((1, d), dtype=torch.double),
@@ -215,11 +207,9 @@ def test_bo_converges_with_each_acquisition_function(acqf):
         f'Acquisition {acqf!r} did not improve the best Y by 30%. '
         f'Y_init_best={Y_init_best:.4f}, Y_final_best={Y_final_best:.4f}.'
     )
-    # Discrimination: the best-x must approach the target geometrically, not
-    # just lower its Y by exploiting some pathological GP fit. A regression
-    # that returned constant `(0.5, 0.5)` for every acqf would still satisfy
-    # the gap check on this centered target; the proximity bound is what
-    # catches that mode.
+    # Discrimination: best-x must approach the target in x, not only in Y. A
+    # constant (0.5, 0.5) for every acqf would pass the gap check on this
+    # centred target; the proximity bound catches it.
     initial_min_dist = _initial_max_distance(X[:4], target)
     final_min_dist = torch.min(torch.norm(X - target, dim=1)).item()
     assert final_min_dist < initial_min_dist, (
@@ -271,10 +261,9 @@ def test_bo_different_seeds_produce_different_trajectories():
         'BO loop produced identical initial X under different seeds; the '
         'random-seed plumbing is broken or seeds are silently overridden.'
     )
-    # Discrimination: the BO-selected candidates (rows beyond the initial
-    # sample) must also diverge. A regression that re-seeded inside the
-    # acquisition optimiser would let the initial-X check pass while still
-    # collapsing the BO trajectory to a seed-independent path.
+    # Discrimination: the BO-selected rows must diverge too. Re-seeding inside
+    # the acquisition optimiser would pass the initial-X check but collapse
+    # the trajectory to a seed-independent path.
     assert not torch.allclose(X1[3:], X2[3:], rtol=1e-3), (
         'BO post-init trajectory is seed-independent; the acquisition '
         'optimiser is overriding the test seed.'
@@ -294,12 +283,8 @@ def test_bo_step_rejects_unknown_acquisition():
     objective = make_quadratic_objective(target)
     with pytest.raises(ValueError, match=r'Unsupported acquisition function: not-a-real-acqf'):
         _run_bo_loop(objective, d=2, n_init=3, n_iter=1, acqf='not-a-real-acqf', seed=4)
-    # Discrimination: a known-good acqf in the same harness must complete
-    # without raising AND grow the dataset by exactly one iteration.
-    # Without this paired call, a regression that raised
-    # `ValueError('Unsupported acquisition function')` for EVERY acqf would
-    # still pass the test above; without the shape pin, a regression that
-    # returned an empty X tensor would also pass.
+    # Discrimination: a known-good acqf completes and adds exactly one row,
+    # ruling out a harness that rejects every acqf or returns an empty X.
     X_ok, _ = _run_bo_loop(objective, d=2, n_init=3, n_iter=1, acqf='LogEI', seed=4)
     assert X_ok.shape == (4, 2)
 

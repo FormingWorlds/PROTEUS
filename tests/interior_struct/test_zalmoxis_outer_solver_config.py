@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from proteus.config._struct import Zalmoxis
+from proteus.utils.constants import M_earth
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -139,6 +140,7 @@ def _make_mock_config(
     """Build a mock proteus Config that exercises the Zalmoxis-config builder."""
     config = MagicMock()
     config.planet.mass_tot = 1.0  # 1 M_earth
+    config.interior_struct.core_frac = 0.325
     config.planet.tsurf_init = 1500.0
     config.planet.tcmb_init = 4000.0
     config.planet.tcenter_init = 5000.0
@@ -298,3 +300,365 @@ class TestNewtonPathTightensIntegratorTolerances:
         # regression that bumped the default below 1e-15 would
         # produce silent integrator stalls instead of useful steps.
         assert cp['relative_tolerance'] >= 1.0e-15
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('use_anderson', [True, False])
+def test_load_zalmoxis_configuration_propagates_use_anderson(monkeypatch, use_anderson):
+    """Verify that load_zalmoxis_configuration propagates use_anderson."""
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+
+    config = _make_mock_config()
+    config.interior_struct.zalmoxis.use_anderson = use_anderson
+    _stub_get_target_surface_pressure(monkeypatch)
+    cp = load_zalmoxis_configuration(config, _make_hf_row())
+    assert cp['use_anderson'] is use_anderson
+
+
+# ----------------------------------------------------------------------
+# Core mass of the structure target
+# ----------------------------------------------------------------------
+
+_BUFFERED = {'H_kg_total': 4.70e20, 'C_kg_total': 2.73e20, 'O_kg_total': 2.117e23}
+
+
+def _structure_target(
+    monkeypatch, hf_extra, outgas='calliope', fO2_source='user_constant', **cfg
+):
+    """Planet target [kg] and core mass [kg] that the builder hands to Zalmoxis."""
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+
+    config = _make_mock_config()
+    config.outgas.module, config.planet.fO2_source = outgas, fO2_source
+    config.planet.mass_tot = cfg.get('mass_tot', 1.0)
+    config.interior_struct.zalmoxis.dry_mantle = cfg.get('dry_mantle', True)
+    config.interior_struct.zalmoxis.ice_layer_eos = cfg.get('ice')
+    config.interior_struct.zalmoxis.mantle_mass_fraction = cfg.get('mmf', 0.0)
+    _stub_get_target_surface_pressure(monkeypatch)
+    params = load_zalmoxis_configuration(config, {**_make_hf_row(), **hf_extra})
+    return params['planet_mass'], params['core_mass_fraction'] * params['planet_mass'], params
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_core_does_not_move_with_an_oxygen_inventory_that_the_buffer_derives(monkeypatch):
+    """With a fixed fO2 the outgassing derives the oxygen: 2.117e23 kg over a hot magma ocean
+    at IW+4, 3.15e21 kg when it has cooled. The planet target falls by the oxygen, and the
+    core stays at 0.325 of the planet without its kept volatiles (H and C, 7.43e20 kg): the
+    mantle alone gives and takes the oxygen. With core_frac itself as the fraction the core
+    would differ by 0.325 of the oxygen change, 6.8e22 kg."""
+    hot_planet, hot_core, _ = _structure_target(monkeypatch, _BUFFERED)
+    cool_planet, cool_core, _ = _structure_target(
+        monkeypatch, {**_BUFFERED, 'O_kg_total': 3.15e21}
+    )
+    expected = 0.325 * (M_earth - 7.43e20)
+    assert hot_core == pytest.approx(expected, rel=1e-14)
+    assert cool_core == pytest.approx(expected, rel=1e-14)
+    assert hot_planet == pytest.approx(M_earth - 7.43e20 - 2.117e23, rel=1e-14)
+    assert cool_planet - hot_planet == pytest.approx(2.117e23 - 3.15e21, rel=1e-9)
+    assert abs(0.325 * cool_planet - 0.325 * hot_planet) > 6.7e22
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'outgas, fO2_source',
+    [
+        ('calliope', 'from_O_budget'),
+        ('atmodeller', 'from_O_budget'),
+        ('dummy', 'user_constant'),
+    ],
+)
+def test_the_core_fraction_is_the_config_value_when_no_inventory_is_derived(
+    monkeypatch, outgas, fO2_source
+):
+    """When the oxygen is an input of the outgassing (an oxygen budget, or the dummy
+    module) every inventory is kept: the solver gets core_frac itself, bit for bit, and the
+    core is 0.325 of the structure target, 2.117e23 kg of oxygen lighter than the planet."""
+    planet, core, params = _structure_target(monkeypatch, _BUFFERED, outgas, fO2_source)
+    assert params['core_mass_fraction'] == pytest.approx(0.325, rel=0.0, abs=0.0)
+    assert core == pytest.approx(0.325 * (M_earth - 7.43e20 - 2.117e23), rel=1e-14)
+    assert params['core_mass_target'] == pytest.approx(0.325 * planet, rel=1e-15)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_nitrogen_sulfur_and_a_noble_gas_are_kept_volatiles(monkeypatch):
+    """N, S and He are inputs of the outgassing like H and C, so the core is 0.325 of the
+    planet without all 5 (2.6793e21 kg here) and the structure target also loses the derived
+    oxygen. The 3 masses differ by a factor of 5 or more, so a kept set without one of
+    them moves the core by 0.325 of that mass: 1.0e19 kg (N), 6.2e20 kg (S), 1.7e18 kg (He)."""
+    extra = {'N_kg_total': 3.1e19, 'S_kg_total': 1.9e21, 'He_kg_total': 5.3e18}
+    planet, core, _ = _structure_target(monkeypatch, {**_BUFFERED, **extra})
+    kept = 4.70e20 + 2.73e20 + 3.1e19 + 1.9e21 + 5.3e18
+    assert core == pytest.approx(0.325 * (M_earth - kept), rel=1e-14)
+    assert planet == pytest.approx(M_earth - kept - 2.117e23, rel=1e-14)
+    for missing in extra.values():
+        assert abs(0.325 * (M_earth - kept + missing) - core) > 1.0e-7 * core
+    assert 0.0 < core < planet
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'hf_extra, cfg, core_change, planet_change',
+    [
+        ({'H_kg_total': 3.70e20, 'M_volatile_change': -1.0e20}, {}, 0.0, 0.0),
+        ({}, {'mass_tot': 1.05}, 0.325 * 0.05 * 5.972e24, 0.05 * 5.972e24),
+        ({'Si_kg_total': 1.0e21}, {}, 0.0, -1.0e21),
+    ],
+    ids=['escape', 'impact', 'rock_vapour'],
+)
+def test_the_core_mass_follows_the_rock_and_nothing_else(
+    monkeypatch, hf_extra, cfg, core_change, planet_change
+):
+    """Hydrogen that escapes lowers the inventory and the volatile ledger by the same mass,
+    so the core and the structure target stay; an impact that adds 0.05 Earth masses of rock
+    adds 0.325 of it to the core; and 1e21 kg of rock vapour leave the structure target as
+    mantle mass, not as a kept volatile."""
+    planet_base, base, _ = _structure_target(monkeypatch, _BUFFERED)
+    planet, core, _ = _structure_target(monkeypatch, {**_BUFFERED, **hf_extra}, **cfg)
+    assert core - base == pytest.approx(core_change, rel=2e-3, abs=1e12)
+    assert planet - planet_base == pytest.approx(planet_change, rel=1e-6, abs=1e12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_an_inventory_that_leaves_no_mantle_is_refused(monkeypatch):
+    """An oxygen inventory of 4.1e24 kg leaves 1.87e24 kg for the interior, less than the
+    core of 1.94e24 kg: the builder refuses the structure with the masses in the message.
+    With 3.9e24 kg the interior is 2.07e24 kg and the mantle 1.306e23 kg."""
+    with pytest.raises(ValueError, match=r'leaves no mantle: 1\.87\d+e\+24 kg .*, 1\.94'):
+        _structure_target(monkeypatch, {**_BUFFERED, 'O_kg_total': 4.1e24})
+    planet, core, _ = _structure_target(monkeypatch, {**_BUFFERED, 'O_kg_total': 3.9e24})
+    assert planet - core == pytest.approx(1.306e23, rel=1e-3)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_structure_target_of_zero_or_a_negative_core_is_refused(monkeypatch):
+    """Two bounds of the same refusal. An oxygen inventory equal to the planet mass leaves
+    a structure target of exactly 0 kg: the builder raises its own error and divides by
+    nothing. A row with more hydrogen than the planet (6.5e24 kg) and a negative oxygen
+    column (-2e24 kg) gives a core of -1.7e23 kg below a positive target of 1.47e24 kg:
+    the core mass must be positive, so that row is refused too, and so is a core of
+    exactly 0 kg (hydrogen equal to the planet mass) below a target of 1e24 kg. A stored
+    core equal to the structure target, a mantle of exactly 0 kg, is refused as well."""
+    empty = {'H_kg_total': 0.0, 'C_kg_total': 0.0, 'O_kg_total': M_earth}
+    with pytest.raises(ValueError, match=r'leaves no mantle: 0\.0000e\+00 kg .*, 1\.9409e\+24'):
+        _structure_target(monkeypatch, empty)
+    corrupt = {'H_kg_total': 6.5e24, 'C_kg_total': 2.73e20, 'O_kg_total': -2.0e24}
+    with pytest.raises(
+        ValueError, match=r'leaves no mantle: 1\.47\d+e\+24 kg .*, -1\.7\d+e\+23'
+    ):
+        _structure_target(monkeypatch, corrupt)
+    no_core = {'H_kg_total': M_earth, 'C_kg_total': 0.0, 'O_kg_total': -1.0e24}
+    with pytest.raises(ValueError, match=r'leaves no mantle: 1\.0000e\+24 kg .*, 0\.0000e\+00'):
+        _structure_target(monkeypatch, no_core)
+    planet, _, _ = _structure_target(monkeypatch, _BUFFERED)
+    all_core = {**_BUFFERED, 'Time': 250.0, 'M_core_target': planet}
+    with pytest.raises(
+        ValueError, match=r'leaves no mantle: (5\.7596e\+24) kg .*, \1 kg of it'
+    ):
+        _structure_target(monkeypatch, all_core)
+
+
+_WET = {'H_kg_atm': 1.0e20, 'C_kg_atm': 2.0e20, 'O_kg_atm': 2.079e23, 'H_kg_total': 6.0e21}
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_wet_mantle_core_is_computed_in_the_init_stage_and_kept_after(monkeypatch):
+    """With a wet mantle the structure target takes off the atmosphere only (2.082e23 kg
+    here), and on a row of the init stage the core is 0.325 of the planet without the
+    atmosphere mass of its kept elements (H and C, 3e20 kg; the derived oxygen is mantle
+    mass). After the init stage the core is read from the row: when 5e21 kg of water have
+    outgassed, the planet target is lower by that mass and the core is the kept one, to
+    the last bit, not 0.325 of the new target."""
+    planet, core, params = _structure_target(monkeypatch, _WET, dry_mantle=False)
+    assert planet == pytest.approx(M_earth - 2.082e23, rel=1e-14)
+    assert core == pytest.approx(0.325 * (M_earth - 3.0e20), rel=1e-14)
+    assert params['core_mass_target'] == pytest.approx(core, rel=1e-15)
+    # A row of the init stage computes also when the row before left a value.
+    _, again, _ = _structure_target(
+        monkeypatch, {**_WET, 'Time': 0.0, 'M_core_target': 1.5e24}, dry_mantle=False
+    )
+    assert again == pytest.approx(core, rel=1e-15)
+
+    kept = params['core_mass_target']
+    later = {**_WET, 'H_kg_atm': 5.1e21, 'Time': 250.0, 'M_core_target': kept}
+    planet_later, core_later, params_later = _structure_target(
+        monkeypatch, later, dry_mantle=False
+    )
+    assert planet - planet_later == pytest.approx(5.0e21, rel=1e-9)
+    assert params_later['core_mass_target'] == kept
+    assert core_later == pytest.approx(core, rel=1e-14)
+    assert abs(0.325 * (M_earth - 5.3e21) - core) > 1.0e21
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('stored', [None, 0.0], ids=['column_absent', 'zero_fill'])
+@pytest.mark.parametrize(
+    'inventory, dry_mantle, outside, kept',
+    [
+        ({**_WET, 'O_kg_atm': 2.0794e23}, False, 2.0824e23, 3.0e20),
+        ({**_BUFFERED, 'O_kg_total': 2.118e23}, True, 2.118e23 + 7.43e20, 7.43e20),
+    ],
+    ids=['wet', 'dry'],
+)
+def test_a_resume_without_the_core_target_continues_on_core_frac_of_the_structure_target(
+    monkeypatch, caplog, stored, inventory, dry_mantle, outside, kept
+):
+    """A helpfile row that predates the column, absent or filled with 0, comes from a run
+    whose core was core_frac of the structure target. A solve after the init stage hands
+    Zalmoxis core_frac itself, bit for bit, so that run has no step in its core; the mass
+    goes to the row and is kept from there. The row's M_core, a node mass, is not read.
+    The rule of a new run, 0.325 of the planet without its kept volatiles, would give a
+    core that is higher by 0.325 of the derived oxygen (6.9e22 kg dry, 6.8e22 kg wet).
+    One warning names the source. The planet has 0.75 Earth masses and these inventories
+    because (0.325 * m) / m is then another float than 0.325: a fraction computed as core
+    mass over structure target fails here."""
+    row = {**inventory, 'Time': 250.0, 'M_core': 1.8915e24}
+    row.update({} if stored is None else {'M_core_target': stored})
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        planet, core, params = _structure_target(
+            monkeypatch, row, dry_mantle=dry_mantle, mass_tot=0.75
+        )
+    assert planet == pytest.approx(0.75 * M_earth - outside, rel=1e-14)
+    assert (0.325 * planet) / planet != pytest.approx(0.325, rel=0.0, abs=0.0)
+    assert params['core_mass_fraction'] == pytest.approx(0.325, rel=0.0, abs=0.0)
+    assert params['core_mass_target'] == pytest.approx(0.325 * planet, rel=1e-15)
+    rule_of_a_new_run = 0.325 * (0.75 * M_earth - kept)
+    assert rule_of_a_new_run - core == pytest.approx(0.325 * (outside - kept), rel=1e-9)
+    assert rule_of_a_new_run - core > 6.7e22
+    assert abs(core - 1.8915e24) > 1.0e21
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == 'WARNING']
+    assert len(warnings) == 1
+    assert 'no M_core_target' in warnings[0]
+    assert 'structure target of the row of this solve' in warnings[0]
+    assert f'{core:.6e} kg' in warnings[0]
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'stored', [float('nan'), -1.9407e24, float('inf')], ids=['nan', 'negative', 'infinite']
+)
+def test_a_stored_core_target_that_is_not_a_mass_is_refused(monkeypatch, caplog, stored):
+    """A stored target that is NaN, negative or infinite is a damaged row: a solve after
+    the init stage raises an error that names the column and the value, and does not fall
+    back to a rule with a warning. On a row of the init stage the column is not read, so
+    the same row gives the core of the rule, 0.325 of the planet without H and C."""
+    row = {**_BUFFERED, 'M_core_target': stored}
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        with pytest.raises(ValueError, match='M_core_target is not a core mass') as err:
+            _structure_target(monkeypatch, {**row, 'Time': 250.0})
+    assert repr(stored) in str(err.value)
+    assert 'holds no M_core_target' not in caplog.text
+    _, core, _ = _structure_target(monkeypatch, {**row, 'Time': 0.0})
+    assert core == pytest.approx(0.325 * (M_earth - 7.43e20), rel=1e-14)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_dry_mantle_core_is_kept_when_derived_oxygen_leaves_the_planet(monkeypatch):
+    """With a dry mantle the core is also read from the row after the init stage. When
+    1e22 kg of buffered oxygen has escaped or been stripped, the ledger is lower by it and
+    no kept inventory is, so the structure target is lower by that mass and the core is
+    the kept one, to the last bit; computed from the row it would fall by 0.325 of the
+    lost oxygen, 3.25e21 kg."""
+    planet, base, params = _structure_target(monkeypatch, _BUFFERED)
+    kept = params['core_mass_target']
+    later = {**_BUFFERED, 'Time': 250.0, 'M_core_target': kept, 'M_volatile_change': -1.0e22}
+    planet_later, core, params_later = _structure_target(monkeypatch, later)
+    assert params_later['core_mass_target'] == kept
+    assert core == pytest.approx(base, rel=1e-14)
+    assert planet - planet_later == pytest.approx(1.0e22, rel=1e-9)
+    assert base - 0.325 * (M_earth - 1.0e22 - 7.43e20) > 3.2e21
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'module, equilibrate, dry, kept',
+    [
+        ('zalmoxis', False, True, 7.43e20),
+        ('zalmoxis', False, False, 3.0e20),
+        ('zalmoxis', True, True, 7.43e20),
+        ('zalmoxis', True, False, 3.0e20),
+        ('spider', False, True, 0.0),
+    ],
+    ids=['dry', 'wet', 'dry_equilibrated', 'wet_equilibrated', 'other_structure'],
+)
+def test_the_core_target_is_set_from_the_row_when_the_init_stage_ends(
+    monkeypatch, module, equilibrate, dry, kept
+):
+    """A structure solve of the init stage can leave a target that is not the one of the
+    final inventories: here 0.325 of the whole planet. When the init stage ends the row
+    holds H and C (7.43e20 kg, 3.0e20 kg of it in the atmosphere), and the target becomes
+    0.325 of the planet without them, with or without equilibrate_init; the solve at
+    250 yr reads it. With another structure module the stored value stays."""
+    from proteus.interior_struct.zalmoxis import set_core_target_at_init_end
+
+    config = _make_mock_config()
+    config.outgas.module, config.planet.fO2_source = 'calliope', 'user_constant'
+    config.interior_struct.module = module
+    config.interior_struct.zalmoxis.equilibrate_init = equilibrate
+    config.interior_struct.zalmoxis.dry_mantle = dry
+    row = {**_make_hf_row(), **_BUFFERED, 'H_kg_atm': 1.0e20, 'C_kg_atm': 2.0e20}
+    row['M_core_target'] = 0.325 * M_earth
+    set_core_target_at_init_end(config, row)
+    assert row['M_core_target'] == pytest.approx(0.325 * (M_earth - kept), rel=1e-14)
+    _, core, _ = _structure_target(monkeypatch, {**row, 'Time': 250.0}, dry_mantle=dry)
+    assert core == pytest.approx(0.325 * (M_earth - kept), rel=1e-14)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_raised_core_target_is_read_with_the_grown_planet(monkeypatch):
+    """An impact leaves a row with mass_tot raised by the rock and the stored target raised
+    by 0.325 of it (the accretion tests assert that write). For such a row, with 0.05 Earth
+    masses of rock, the solve at 250 yr takes the stored core and a structure target that
+    grew by the rock. The row holds 1e20 kg less hydrogen than the init stage did, so a
+    core computed from the row would be 3.25e19 kg higher than the stored one."""
+    stored, rock = 0.325 * (M_earth - 7.43e20), 0.05 * M_earth
+    late = {**_BUFFERED, 'Time': 250.0, 'H_kg_total': 3.70e20}
+    planet_base, _, _ = _structure_target(monkeypatch, {**late, 'M_core_target': stored})
+    planet, core, _ = _structure_target(
+        monkeypatch, {**late, 'M_core_target': stored + 0.325 * rock}, mass_tot=1.05
+    )
+    assert core == pytest.approx(stored + 0.325 * rock, rel=1e-14)
+    assert 0.325 * (1.05 * M_earth - 6.43e20) - core == pytest.approx(3.25e19, rel=1e-3)
+    assert planet - planet_base == pytest.approx(rock, rel=1e-9)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_core_and_mantle_fractions_that_sum_to_one_leave_no_ice_layer(monkeypatch):
+    """The bound of the ice-layer refusal. With oxygen as an input every inventory is kept,
+    so the core is 0.325 of the structure target, bit for bit. A mantle fraction of 0.675
+    then leaves an ice layer of exactly 0, which is refused like a negative one; 0.6749
+    leaves 1e-4 of the target and is accepted."""
+    ice = {'ice': 'Seager2007:H2O', 'fO2_source': 'from_O_budget'}
+    assert 0.325 + 0.675 == pytest.approx(1.0, rel=0.0, abs=0.0)
+    with pytest.raises(ValueError, match=r'leaves no ice layer: the core is 0\.3250 of it'):
+        _structure_target(monkeypatch, _BUFFERED, mmf=0.675, **ice)
+    _, _, params = _structure_target(monkeypatch, _BUFFERED, mmf=0.6749, **ice)
+    assert 1.0 - params['core_mass_fraction'] - 0.6749 == pytest.approx(1.0e-4, rel=1e-9)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_target_that_leaves_no_ice_layer_is_refused(monkeypatch):
+    """With an ice layer and mantle_mass_fraction = 0.45, an oxygen inventory of 2.5e24 kg
+    makes the core 0.5591 of the structure target: core and mantle take 1.009 of it and the
+    builder refuses. With 2.0e24 kg the core is 0.4887 and the ice layer keeps 0.0613.
+    Without an ice layer the fraction is not a layer boundary and 2.5e24 kg are accepted."""
+    ice = {'ice': 'Seager2007:H2O', 'mmf': 0.45}
+    with pytest.raises(ValueError, match=r'leaves no ice layer: the core is 0\.5591 of it'):
+        _structure_target(monkeypatch, {**_BUFFERED, 'O_kg_total': 2.5e24}, **ice)
+    _, _, params = _structure_target(monkeypatch, {**_BUFFERED, 'O_kg_total': 2.0e24}, **ice)
+    assert 1.0 - params['core_mass_fraction'] - 0.45 == pytest.approx(0.0613, rel=1e-2)
+    planet, _, _ = _structure_target(monkeypatch, {**_BUFFERED, 'O_kg_total': 2.5e24}, mmf=0.45)
+    assert planet == pytest.approx(M_earth - 7.43e20 - 2.5e24, rel=1e-12)

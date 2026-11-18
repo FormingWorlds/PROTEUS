@@ -1,16 +1,5 @@
-"""Utilities for configuration access and optimization result reporting.
-
-This module provides helper functions to:
-
-    * Extract values from nested dictionaries using dot-separated keys.
-    * Flatten nested dictionaries into a single-level dict with compound keys.
-    * Identify the best Bayesian optimization run and display true vs.
-      simulated observables and inferred parameter values.
-
-Functions:
-    get_nested: Retrieve a nested value by a dot-separated key path.
-    flatten: Flatten a nested dict into a single-level dict with dot-separated keys.
-    print_results: Select the best run and print its observables and parameters.
+"""Helpers for inference: nested-config access, dataset files, GP kernels and
+acquisition functions, and the end-of-study results report.
 """
 
 from __future__ import annotations
@@ -32,9 +21,10 @@ from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.kernels import MaternKernel, RBFKernel
 from gpytorch.priors.torch_priors import LogNormalPrior
 
-from proteus.inference.objective import EPS_CLIP, eval_obj
+from proteus.inference.objective import BAD_OBJ_VALUE, EPS_CLIP, eval_obj
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import gas_list
+from proteus.utils.coupler import read_helpfile_table
 
 # Use double precision for tensor computations
 dtype = torch.double
@@ -42,6 +32,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def str_time():
+    """Current local time, with its timezone, for log and file headers."""
     return datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')
 
 
@@ -172,8 +163,31 @@ def print_results(D, logs, config, output, n_init):
     X = D['X']
     Y = D['Y']
 
+    # Evaluations with no fit quality, so a study built mostly on them is not
+    # read as converged. The score cannot tell a failure from an excluded
+    # outcome, so the wording covers both; the tally above splits them.
+    optim_Y = Y[n_init:]
+    n_optim = len(optim_Y)
+    n_unscored = int((optim_Y == BAD_OBJ_VALUE).sum().item())
+    if n_unscored:
+        log.warning(
+            f'{n_unscored} of {n_optim} optimisation evaluations carry the failure '
+            'score rather than a fit quality, because they failed or completed on an '
+            'excluded status; the per-run reports above name each one.'
+        )
+
+    # No evaluation was scored, so the best of them is still a run with no fit
+    # to report. Say so rather than failing later on its missing helpfile.
+    if n_optim and n_unscored == n_optim:
+        raise RuntimeError(
+            f'None of the {n_optim} optimisation evaluations produced a fit quality, '
+            'so there is no best fit to report. The per-run reports above name the '
+            'cause of each; the most common causes are a parameter range that leaves the model unphysical, '
+            'and a `failure_codes` list that excludes the outcome most runs reach.'
+        )
+
     # Find best index, ignoring the initial points
-    i_opt: int = Y[n_init:].argmax() + n_init
+    i_opt: int = optim_Y.argmax() + n_init
     log_opt = logs[i_opt]
     J_opt: float = Y[i_opt].item()
 
@@ -183,7 +197,7 @@ def print_results(D, logs, config, output, n_init):
 
     # Read simulator output for this run
     out_path = Path(output) / 'workers' / f'w_{w}' / f'i_{id}' / 'runtime_helpfile.csv'
-    df = pd.read_csv(out_path, delimiter=r'\s+')
+    df = read_helpfile_table(out_path, min_rows=1)
 
     # True observables from config
     true_y = pd.Series(config['observables'])
@@ -215,16 +229,20 @@ def print_results(D, logs, config, output, n_init):
         log.info(f'{k:28s}   {tru:8.4e}    {obs:8.4e}    {dif:+.3f}')
     log.info(' ')
 
-    log.info(f'{"Parameter":28s} | Best fitting value')
-    for i, k in enumerate(param_keys):
-        log.info(f'{k:28s}   {input[k]:g}')
+    # True parameters are known when the observables came from a known simulation
+    truth = config.get('truth')
+    if truth is None:
+        log.info(f'{"Parameter":28s} | Best fitting value')
+        for k in param_keys:
+            log.info(f'{k:28s}   {input[k]:g}')
+    else:
+        log.info(f'{"Parameter":28s} |    True     |  Best fit')
+        for k in param_keys:
+            log.info(f'{k:28s}   {truth[k]:8.4e}    {input[k]:8.4e}')
     log.info(' ')
 
     # Log parameter statistics
-    d = len(param_keys)
-    bounds = torch.tensor(
-        [[list(config['parameters'].values())[i][j] for i in range(d)] for j in range(2)]
-    )
+    bounds = torch.tensor(list(config['parameters'].values())).T
     # remove intial data
     X_samp = np.array(unnormalize_parameters(X, bounds, param_keys), copy=None, dtype=float)[
         n_init:, :
@@ -240,31 +258,49 @@ def print_results(D, logs, config, output, n_init):
     return in_path
 
 
-def get_acqf(name: str, gp: SingleTaskGP, best: float):
+def get_acqf(name: str, gp: SingleTaskGP, best: float, X_pending: torch.Tensor | None = None):
     """Build the acquisition function.
 
     Supports 'UCB', 'LogEI', and 'LogPI' acquisition functions.
     See docs: https://botorch.readthedocs.io/en/latest/acquisition.html
+
+    With `X_pending`, each becomes its Monte Carlo version, which scores a
+    candidate jointly with the points other workers are still evaluating, so a
+    candidate next to one of them gains little. For LogPI that version is
+    qProbabilityOfImprovement, the probability itself rather than its log.
 
     Parameters
     ----------
     - name (str): Name of the acquisition function.
     - gp (SingleTaskGP): Fitted Gaussian Process model.
     - best (float): Current best observed value for EI/PI.
+    - X_pending (torch.Tensor | None): Points being evaluated, shape (n, d).
 
     Returns
     ----------
     - AcquisitionFunction: The constructed acquisition function.
     """
     if name == 'UCB':
+        if X_pending is not None:
+            from botorch.acquisition.monte_carlo import qUpperConfidenceBound
+
+            return qUpperConfidenceBound(gp, beta=2.0, X_pending=X_pending)
         from botorch.acquisition.analytic import UpperConfidenceBound
 
         return UpperConfidenceBound(gp, beta=2.0)
     elif name == 'LogEI':
+        if X_pending is not None:
+            from botorch.acquisition.logei import qLogExpectedImprovement
+
+            return qLogExpectedImprovement(gp, best_f=best, X_pending=X_pending)
         from botorch.acquisition.analytic import LogExpectedImprovement
 
         return LogExpectedImprovement(gp, best_f=best)
     elif name == 'LogPI':
+        if X_pending is not None:
+            from botorch.acquisition.monte_carlo import qProbabilityOfImprovement
+
+            return qProbabilityOfImprovement(gp, best_f=best, X_pending=X_pending)
         from botorch.acquisition.analytic import LogProbabilityOfImprovement
 
         return LogProbabilityOfImprovement(gp, best_f=best)
@@ -323,17 +359,13 @@ def get_kernel(kernel: str, d: int) -> MaternKernel | RBFKernel:
     ----------
     - MaternKernel | RBFKernel: Configured kernel instance.
     """
-    if kernel == 'RBF':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=True)
-    elif kernel == 'MAT1/2':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=0.5)
-    elif kernel == 'MAT3/2':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=1.5)
-    elif kernel == 'MAT5/2':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=2.5)
-    else:
+    # Matern smoothness per kernel name; None selects the RBF kernel
+    nus = {'RBF': None, 'MAT1/2': 0.5, 'MAT3/2': 1.5, 'MAT5/2': 2.5}
+    if kernel not in nus:
         raise ValueError('Unknown kernel, choices are RBF or MAT{1/2, 3/2, 5/2}')
-    return kernel
+    return get_kernel_w_prior(
+        ard_num_dims=d, use_rbf_kernel=nus[kernel] is None, nu=nus[kernel]
+    )
 
 
 def get_obs(out_csv, observables: list[str]):
@@ -351,7 +383,7 @@ def get_obs(out_csv, observables: list[str]):
     ----------
     - pandas.Series: Final-row observable values keyed by observable name.
     """
-    df_row = pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1]
+    df_row = read_helpfile_table(out_csv, min_rows=1).iloc[-1]
 
     # Handle case where atmosphere has escaped
     #   Set VMRs and MMW to zero

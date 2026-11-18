@@ -25,7 +25,7 @@ import pytest
 
 import proteus.atmos_clim.wrapper as atmos_wrapper
 from proteus.atmos_clim.common import Atmos_t, LevelsSource
-from proteus.utils.constants import const_R
+from proteus.utils.constants import AU, const_R, const_sigma
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -122,6 +122,8 @@ def test_update_bolometry_transit_depth_is_ratio_of_radii_squared():
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
     }
     atmos_wrapper.update_bolometry(hf_row)
 
@@ -136,13 +138,13 @@ def test_update_bolometry_transit_depth_is_ratio_of_radii_squared():
 
 @pytest.mark.physics_invariant
 def test_update_bolometry_eclipse_depth_is_flux_ratio_times_radius_ratio_squared():
-    """Eclipse depth = ((F_olr + F_sct) / F_ins) * (R_obs / separation)^2.
-    The F_olr + F_sct is the planet's thermal+scattered flux at TOA;
-    F_ins is the incoming stellar flux at TOA; the (R_obs/separation)^2
-    factor accounts for the inverse-square attenuation from the planet
-    to the star.
+    """Eclipse depth = ((F_olr + F_sct) / F_ins) * (R_obs / d)^2, with d the
+    flux-weighted distance a (1 - e^2)^(1/4), which is a on this circular
+    orbit. F_olr + F_sct is the planet's thermal and scattered flux at TOA,
+    F_ins the stellar flux arriving at d, and (R_obs / d)^2 carries F_ins
+    back to the stellar surface.
 
-    Discrimination: a regression that dropped the (R_obs/separation)^2
+    Discrimination: a regression that dropped the (R_obs / d)^2 factor
     would yield a much larger depth (~order unity).
     """
     hf_row = {
@@ -152,6 +154,8 @@ def test_update_bolometry_eclipse_depth_is_flux_ratio_times_radius_ratio_squared
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,  # 1 AU
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
     }
     atmos_wrapper.update_bolometry(hf_row)
 
@@ -166,6 +170,46 @@ def test_update_bolometry_eclipse_depth_is_flux_ratio_times_radius_ratio_squared
 
 
 @pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'ecc, separation_bias',
+    [(0.3, 0.873), (0.7, 0.460)],
+    ids=['mildly_eccentric', 'highly_eccentric'],
+)
+def test_update_bolometry_eclipse_depth_is_the_surface_brightness_ratio_when_eccentric(
+    ecc, separation_bias
+):
+    """On an eccentric orbit F_ins is the stellar flux at the flux-weighted
+    distance a (1 - e^2)^(1/4), so the depth must reduce to the planet-to-star
+    surface brightness ratio times (R_obs / R_star)^2, independent of the
+    orbit. Scaling with the time-averaged separation a (1 + e^2 / 2) instead
+    biases it by sqrt(1 - e^2) / (1 + e^2 / 2)^2: 0.873 at e = 0.3 and 0.460
+    at e = 0.7.
+    """
+    sigma_t4 = const_sigma * 5772.0**4  # stellar surface flux [W m-2]
+    r_star = 6.96e8
+    sma = 0.029 * AU
+    d_flux = sma * (1.0 - ecc**2) ** 0.25
+    hf_row = {
+        'R_obs': 9.0e6,
+        'R_star': r_star,
+        'F_olr': 2.0e5,
+        'F_sct': 0.0,
+        'F_ins': sigma_t4 * (r_star / d_flux) ** 2,
+        'separation': sma * (1.0 + 0.5 * ecc**2),
+        'semimajorax': sma,
+        'eccentricity': ecc,
+    }
+    atmos_wrapper.update_bolometry(hf_row)
+
+    expected = 2.0e5 / sigma_t4 * (9.0e6 / r_star) ** 2
+    assert hf_row['eclipse_depth'] == pytest.approx(expected, rel=1e-12)
+    # Guard: a depth scaled with the separation lands at the bias above.
+    wrong = hf_row['F_olr'] / hf_row['F_ins'] * (9.0e6 / hf_row['separation']) ** 2
+    assert wrong / expected == pytest.approx(separation_bias, abs=1e-3)
+    assert 1e-7 < hf_row['eclipse_depth'] < 1e-5  # about 0.5 ppm
+
+
+@pytest.mark.physics_invariant
 def test_update_bolometry_eclipse_depth_scales_with_flux_excess():
     """At fixed geometry, doubling (F_olr + F_sct) doubles the eclipse
     depth (linear in planet's emission flux). Discrimination: a
@@ -177,6 +221,8 @@ def test_update_bolometry_eclipse_depth_scales_with_flux_excess():
         'R_star': 6.96e8,
         'F_ins': 1361.0,
         'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
     }
     hf_base = {**base_geometry, 'F_olr': 200.0, 'F_sct': 100.0}
     hf_hot = {**base_geometry, 'F_olr': 400.0, 'F_sct': 200.0}
@@ -408,6 +454,8 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
     )
@@ -426,6 +474,9 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
+        'lid_F_open': -1.0,  # stale value; the call writes the open-surface flux
     }
     atm_output = {'albedo': 0.2, 'F_atm': 100.0}
 
@@ -450,6 +501,114 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
     assert run_janus.call_args.args[0] is seed
     assert atmos_o._atm is seed
     assert atmos_o._atm_janus_last is solved
+    # Without a lid the open-surface flux the interior takes is F_atm.
+    assert hf_row['lid_F_open'] == pytest.approx(100.0, rel=1e-15)
+
+
+@pytest.mark.unit
+def test_run_atmosphere_janus_stops_with_status_20_on_a_missing_spectral_file(tmp_path):
+    """The JANUS branch stops on a missing spectral file with status 20 written to the
+    run's status file and an error naming `proteus get spectral` and `fwl-io relocate`."""
+    from proteus.atmos_clim.common import Atmos_t
+
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            module='janus',
+            surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
+            albedo_pl=0.0,
+            spectral_group='Dayspring',
+            spectral_bands='48',
+        ),
+        params=SimpleNamespace(resume=False),
+        interior_energetics=SimpleNamespace(module='aragog'),
+    )
+    dirs = {'output': str(tmp_path / 'out'), 'fwl': str(tmp_path / 'fwl')}
+    with (
+        patch('proteus.atmos_clim.janus.RunJANUS') as run_janus,
+        pytest.raises(FileNotFoundError, match='`proteus get spectral`.*`fwl-io relocate`'),
+    ):
+        atmos_wrapper.run_atmosphere(
+            Atmos_t(),
+            config,
+            dirs,
+            {'total': 0},
+            [1.0],
+            [1.0],
+            False,
+            None,
+            {'T_magma': 1800.0},
+        )
+    run_janus.assert_not_called()
+    assert (tmp_path / 'out' / 'status').read_text().splitlines()[0] == '20'
+
+
+class _StopAfterInit(Exception):
+    """Raised by the stand-in for `init_agni_atmos`, once its arguments are known."""
+
+
+@pytest.mark.parametrize(
+    ('first_build', 'use_cache'),
+    [(True, True), (False, False)],
+    ids=['first-build-uses-cache', 'spectrum-update-bypasses-it'],
+)
+def test_run_atmosphere_uses_the_spectral_cache_only_for_the_first_agni_build(
+    tmp_path, first_build, use_cache
+):
+    """The first AGNI build of a run may use the spectral-file cache, because
+    its stellar spectrum can match another run's. A rebuild after a spectrum
+    update may not: its spectrum depends on when this run's adaptive timestep
+    reached the update, so a cache entry for it would never be read.
+    """
+    atmos_o = Atmos_t()
+    atmos_o._atm = None if first_build else object()
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            module='agni',
+            albedo_pl=0.0,
+            rayleigh=False,
+            cloud_enabled=False,
+            surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
+            agni=SimpleNamespace(verbosity=0),
+        ),
+        interior_energetics=SimpleNamespace(module='aragog'),
+        params=SimpleNamespace(resume=False),
+    )
+    hf_row = {'T_magma': 1800.0, 'T_surf': 0.0}
+    # A rebuild removes the previous prepared file first.
+    (tmp_path / 'runtime.sf').write_text('from the previous spectrum', encoding='utf-8')
+
+    seen = {}
+
+    def _init(_dirs, _config, _hf_row, use_cache=True):
+        seen['use_cache'] = use_cache
+        raise _StopAfterInit
+
+    with (
+        patch('proteus.atmos_clim.agni.activate_julia'),
+        patch('proteus.atmos_clim.agni.deallocate_atmos'),
+        patch('proteus.atmos_clim.agni.init_agni_atmos', side_effect=_init),
+        pytest.raises(_StopAfterInit),
+    ):
+        atmos_wrapper.run_atmosphere(
+            atmos_o,
+            config,
+            {'output': str(tmp_path), 'fwl': str(tmp_path)},
+            {'total': 0 if first_build else 7},
+            [1.0],
+            [1.0],
+            not first_build,
+            None,
+            hf_row,
+        )
+
+    assert seen == {'use_cache': use_cache}
+    # Edge case: the first build keeps a prepared file already on disk, which a
+    # resume relies on; a rebuild removes it so the new spectrum is inserted.
+    assert (tmp_path / 'runtime.sf').exists() == first_build
 
 
 # ---------------------------------------------------------------------------
@@ -703,6 +862,8 @@ def test_run_atmosphere_carries_levels_into_the_row_escape_reads():
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
     )
@@ -720,6 +881,8 @@ def test_run_atmosphere_carries_levels_into_the_row_escape_reads():
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
         **{key: 0.0 for key in _levels(1.0, 1.0)},
     }
 
@@ -805,6 +968,8 @@ def test_run_atmosphere_takes_the_resume_fallback_from_the_last_committed_row():
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
     )
@@ -822,6 +987,8 @@ def test_run_atmosphere_takes_the_resume_fallback_from_the_last_committed_row():
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
         **{key: 0.0 for key in _levels(1.0, 1.0)},
     }
 
@@ -991,6 +1158,8 @@ def test_run_atmosphere_clips_a_carried_radius_from_an_unclipped_row():
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
         escape=SimpleNamespace(hill_clamp=True, hill_clamp_frac=1.0),
@@ -1004,11 +1173,16 @@ def test_run_atmosphere_clips_a_carried_radius_from_an_unclipped_row():
         'atm_kg_per_mol': 0.029,
         'T_surf': 0.0,
         'R_int': 6.371e6,
+        # Surface gravity, which the interior writes before the atmosphere runs
+        # and the atmosphere modules already read to place the XUV level.
+        'gravity': 9.81,
         'R_star': 6.96e8,
         'F_olr': 200.0,
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
         'hill_radius': 1.0e8,
         **{key: 0.0 for key in _levels(1.0, 1.0)},
     }
@@ -1047,3 +1221,361 @@ def test_run_atmosphere_clips_a_carried_radius_from_an_unclipped_row():
     assert hf_row['R_xuv'] != pytest.approx(5.0e8, rel=1e-1)
     # The rest of the level still comes from the committed row.
     assert hf_row['H2O_vmr_xuv'] == pytest.approx(0.4, rel=1e-12)
+
+    # The bound moved the radius, so the gravity is placed at the radius the row
+    # now carries. The two quantities the profile would be needed to recompute
+    # keep the committed reading, which stays finite for the helpfile.
+    assert hf_row['g_xuv'] == pytest.approx(
+        hf_row['gravity'] * (hf_row['R_int'] / 1.0e8) ** 2, rel=1e-12
+    )
+    committed = _levels(4.0e8, 5.0e8, 0.4)
+    assert hf_row['p_xuv'] == pytest.approx(committed['p_xuv'], rel=1e-12)
+    assert hf_row['T_xuv'] == pytest.approx(committed['T_xuv'], rel=1e-12)
+    assert math.isfinite(hf_row['p_xuv'])
+    assert math.isfinite(hf_row['T_xuv'])
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('hill_clamp', [False, True])
+def test_run_atmosphere_does_not_place_gravity_from_a_radius_that_is_not_a_number(
+    hill_clamp,
+):
+    """A radius that is not a number is answered by the bound, and the gravity
+    follows whatever radius the row ends up with.
+
+    The two arms are different states, not one state tested twice. With the
+    bound off the radius stays unmeasured and nothing is placed from it. With
+    the bound on the radius becomes the Hill limit, which is a real height, so
+    the gravity must be placed there: leaving it behind would pair a radius and
+    a gravity describing heights a factor apart.
+
+    This is the first solve of a run and it is rejected, so there is no earlier
+    level to fall back on and the rejected one is kept as it stands. That is the
+    one path on which a radius of NaN survives to the bound, since the fallback
+    otherwise drops a level it cannot read.
+    """
+    atmos_o = Atmos_t()
+    atmos_o._atm = object()
+
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            module='agni',
+            albedo_pl=0.0,
+            rayleigh=False,
+            cloud_enabled=False,
+            surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
+        ),
+        interior_energetics=SimpleNamespace(module='aragog'),
+        escape=SimpleNamespace(hill_clamp=hill_clamp, hill_clamp_frac=1.0),
+    )
+    hf_row = {
+        'T_magma': 1800.0,
+        'M_planet': 6.0e24,
+        'F_int': 120.0,
+        'F_atm': 100.0,
+        'axial_period': 86400.0,
+        'atm_kg_per_mol': 0.029,
+        'T_surf': 0.0,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'R_star': 6.96e8,
+        'F_olr': 200.0,
+        'F_sct': 100.0,
+        'F_ins': 1361.0,
+        'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
+        'hill_radius': 1.0e8,
+        **{key: 0.0 for key in _levels(1.0, 1.0)},
+    }
+
+    # No committed row, so a rejected first solve has nothing to fall back on
+    # and its own level is what the bound then meets.
+    hf_all = None
+
+    # The rejected structure reports a radius it could not measure, alongside a
+    # pressure, temperature and gravity it did.
+    rejected = _levels(2.4e7, 2.88e7, 0.9)
+    rejected['R_xuv'] = float('nan')
+    out = dict(rejected)
+    out.update({'albedo': 0.2, 'F_atm': 100.0, 'agni_converged': False})
+    vmr = out.pop('H2O_vmr_xuv')
+
+    def _run_agni(atm, *args, **kwargs):
+        hf_row['H2O_vmr_xuv'] = vmr
+        return atm, out
+
+    with (
+        patch('proteus.atmos_clim.agni.update_agni_atmos', side_effect=lambda a, *_, **__: a),
+        patch('proteus.atmos_clim.agni.run_agni', side_effect=_run_agni),
+    ):
+        atmos_wrapper.run_atmosphere(
+            atmos_o,
+            config,
+            {'output': '/tmp/x'},
+            {'total': 5},
+            [1.0],
+            [1.0],
+            False,
+            hf_all,
+            hf_row,
+        )
+
+    # The pressure and temperature the solve did measure survive in both arms.
+    assert hf_row['p_xuv'] == pytest.approx(rejected['p_xuv'], rel=1e-12)
+    assert hf_row['T_xuv'] == pytest.approx(rejected['T_xuv'], rel=1e-12)
+    assert math.isfinite(hf_row['p_xuv'])
+    assert math.isfinite(hf_row['T_xuv'])
+
+    at_hill = 9.81 * (6.371e6 / 1.0e8) ** 2
+    if hill_clamp:
+        # The bound supplied a real radius, so the gravity is placed on it and
+        # the two describe the same height.
+        assert hf_row['R_xuv'] == pytest.approx(1.0e8, rel=1e-12)
+        assert hf_row['g_xuv'] == pytest.approx(at_hill, rel=1e-12)
+        # Keeping the rejected structure's gravity instead would be wrong by
+        # more than two orders of magnitude, so this pin separates the two.
+        assert hf_row['g_xuv'] != pytest.approx(rejected['g_xuv'], rel=1e-1)
+        assert rejected['g_xuv'] / hf_row['g_xuv'] > 100.0
+    else:
+        # Nothing bounded the radius, so it stays unmeasured and no height
+        # exists to place a gravity on.
+        assert math.isnan(hf_row['R_xuv'])
+        assert hf_row['g_xuv'] == pytest.approx(rejected['g_xuv'], rel=1e-12)
+        assert math.isfinite(hf_row['g_xuv'])
+
+
+def test_run_atmosphere_keeps_a_level_the_bound_does_not_move():
+    """A solved level sitting inside the Hill radius is written as the module
+    measured it. The bound changes nothing there, so nothing is realigned.
+
+    This is the other side of the check above: a realignment that ran on every
+    row rather than only where the radius moved would mark the pressure and
+    temperature of every converged row unmeasured, which is a loss of exactly
+    the data the level exists to record.
+    """
+    atmos_o = Atmos_t()
+    atmos_o._atm = object()
+
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            module='agni',
+            albedo_pl=0.0,
+            rayleigh=False,
+            cloud_enabled=False,
+            surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
+        ),
+        interior_energetics=SimpleNamespace(module='aragog'),
+        escape=SimpleNamespace(hill_clamp=True, hill_clamp_frac=1.0),
+    )
+    hf_row = {
+        'T_magma': 1800.0,
+        'M_planet': 6.0e24,
+        'F_int': 120.0,
+        'F_atm': 100.0,
+        'axial_period': 86400.0,
+        'atm_kg_per_mol': 0.029,
+        'T_surf': 0.0,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'R_star': 6.96e8,
+        'F_olr': 200.0,
+        'F_sct': 100.0,
+        'F_ins': 1361.0,
+        'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
+        'hill_radius': 1.0e8,
+        **{key: 0.0 for key in _levels(1.0, 1.0)},
+    }
+
+    # A converged solve whose XUV level sits well inside the Hill radius.
+    solved = _levels(2.0e7, 2.4e7, 0.4)
+    out = dict(solved)
+    out.update({'albedo': 0.2, 'F_atm': 100.0, 'agni_converged': True})
+    vmr = out.pop('H2O_vmr_xuv')
+
+    def _run_agni(atm, *args, **kwargs):
+        hf_row['H2O_vmr_xuv'] = vmr
+        return atm, out
+
+    with (
+        patch('proteus.atmos_clim.agni.update_agni_atmos', side_effect=lambda a, *_, **__: a),
+        patch('proteus.atmos_clim.agni.run_agni', side_effect=_run_agni),
+    ):
+        atmos_wrapper.run_atmosphere(
+            atmos_o,
+            config,
+            {'output': '/tmp/x'},
+            {'total': 5},
+            [1.0],
+            [1.0],
+            False,
+            None,
+            hf_row,
+        )
+
+    # The radius is inside the bound, so it is written unchanged.
+    assert hf_row['R_xuv'] == pytest.approx(2.4e7, rel=1e-12)
+    assert hf_row['R_xuv'] < hf_row['hill_radius']
+    # The level the solve measured survives, rather than being marked unmeasured.
+    assert hf_row['p_xuv'] == pytest.approx(solved['p_xuv'], rel=1e-12)
+    assert hf_row['T_xuv'] == pytest.approx(solved['T_xuv'], rel=1e-12)
+    assert hf_row['g_xuv'] == pytest.approx(solved['g_xuv'], rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_realign_xuv_gravity_puts_gravity_at_the_moved_radius():
+    """A level whose radius has been moved takes the gravity of the height it
+    now sits at, and keeps the pressure and temperature of the one it left.
+
+    Gravity falls as the inverse square of the radius, so the square is what
+    discriminates: at twice the interior radius the surface value is quartered.
+    A placement carrying the ratio rather than its square lands at half the
+    surface value, and one inverting the ratio lands at sixteen times it, both
+    far outside the tolerance on a quarter.
+    """
+    hf_row = {
+        'gravity': 9.8,
+        'R_int': 6.0e6,
+        'g_xuv': 6.8,
+        'p_xuv': 1.0e-6,
+        'T_xuv': 400.0,
+    }
+
+    atmos_wrapper.realign_xuv_gravity(hf_row, 1.2e7)
+
+    assert hf_row['g_xuv'] == pytest.approx(2.45, rel=1e-12)
+    # The three wrong forms this could take, each far enough from the right one
+    # that the pin above separates them rather than merely admitting them.
+    unsquared = 9.8 * (6.0e6 / 1.2e7)
+    inverted = 9.8 * (1.2e7 / 6.0e6) ** 2
+    cubed = 9.8 * (6.0e6 / 1.2e7) ** 3
+    assert abs(hf_row['g_xuv'] - unsquared) > 2.0
+    assert abs(hf_row['g_xuv'] - inverted) > 2.0
+    assert abs(hf_row['g_xuv'] - cubed) > 1.0
+    # Reading these off a nearby height beats having no reading at all, and the
+    # helpfile requires them to stay finite.
+    assert hf_row['p_xuv'] == pytest.approx(1.0e-6, rel=1e-12)
+    assert hf_row['T_xuv'] == pytest.approx(400.0, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_realign_xuv_gravity_leaves_the_level_alone_where_it_cannot_be_placed():
+    """A radius of zero places no gravity, and a row without the interior radius
+    or the surface gravity gives nothing to place one from. A degenerate value
+    that is merely present counts as absent, since a zero interior radius would
+    otherwise yield a gravity of zero that reads as a measurement.
+
+    Nothing is invalidated in these cases. A stale gravity is readable and a
+    missing one is not, and every helpfile column is required to stay finite.
+    """
+    at_zero = {'gravity': 9.8, 'R_int': 6.0e6, 'g_xuv': 6.8, 'p_xuv': 1.0e-6, 'T_xuv': 400.0}
+    atmos_wrapper.realign_xuv_gravity(at_zero, 0.0)
+    assert at_zero['g_xuv'] == pytest.approx(6.8, rel=1e-12)
+    assert at_zero['p_xuv'] == pytest.approx(1.0e-6, rel=1e-12)
+    assert at_zero['T_xuv'] == pytest.approx(400.0, rel=1e-12)
+
+    without_planet = {'g_xuv': 6.8, 'p_xuv': 1.0e-6, 'T_xuv': 400.0}
+    atmos_wrapper.realign_xuv_gravity(without_planet, 1.2e7)
+    assert without_planet['g_xuv'] == pytest.approx(6.8, rel=1e-12)
+    assert without_planet['T_xuv'] == pytest.approx(400.0, rel=1e-12)
+
+    # A present but degenerate planet is not a planet: a zero interior radius
+    # would place the gravity at exactly zero, and a non-finite surface gravity
+    # would carry its own non-finiteness into the level.
+    no_body = {'gravity': 9.8, 'R_int': 0.0, 'g_xuv': 6.8}
+    atmos_wrapper.realign_xuv_gravity(no_body, 1.2e7)
+    assert no_body['g_xuv'] == pytest.approx(6.8, rel=1e-12)
+
+    no_gravity = {'gravity': float('nan'), 'R_int': 6.0e6, 'g_xuv': 6.8}
+    atmos_wrapper.realign_xuv_gravity(no_gravity, 1.2e7)
+    assert no_gravity['g_xuv'] == pytest.approx(6.8, rel=1e-12)
+
+    # An unbounded radius is not a height either, and would place gravity at zero.
+    unbounded = {'gravity': 9.8, 'R_int': 6.0e6, 'g_xuv': 6.8}
+    atmos_wrapper.realign_xuv_gravity(unbounded, float('inf'))
+    assert unbounded['g_xuv'] == pytest.approx(6.8, rel=1e-12)
+
+    # A row carrying no XUV level at all is left as it is rather than given one.
+    empty: dict = {'gravity': 9.8, 'R_int': 6.0e6}
+    atmos_wrapper.realign_xuv_gravity(empty, 1.2e7)
+    assert 'g_xuv' not in empty
+    assert 'p_xuv' not in empty
+    assert 'T_xuv' not in empty
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('thickness', 'T_surf_seen'),
+    [(0.0, 1800.0), (5.9, 1500.0)],
+    ids=['no-layer-surface-fixed-at-magma', 'graphite-layer-surface-left-to-the-skin'],
+)
+def test_run_atmosphere_fixes_the_surface_until_a_saturation_skin_forms(thickness, T_surf_seen):
+    """With surface_d = surface_k = 'saturation' and surf_state = 'skin', the
+    wrapper sets T_surf = T_magma (1800 K) before the solve while no layer has
+    formed, as for the fixed state, and leaves T_surf (1500 K) to the skin solve
+    once the skin step has written a thickness."""
+    from proteus.atmos_clim.common import Atmos_t
+
+    atmos_o = Atmos_t()
+    atmos_o._atm = object()
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            module='janus',
+            albedo_pl=0.0,
+            rayleigh=False,
+            cloud_enabled=False,
+            surf_state='skin',
+            surface_d='saturation',
+            surface_k='saturation',
+        ),
+        interior_energetics=SimpleNamespace(module='aragog'),
+    )
+    hf_row = {
+        'T_magma': 1800.0,  # K
+        'T_surf': 1500.0,  # K, below the magma as under a skin
+        'boundary_layer_thickness': thickness,  # m
+        'boundary_layer_conductivity': 2.89 if thickness > 0 else 0.0,  # W m-1 K-1
+        'M_planet': 3.3e23,
+        'R_obs': 2.45e6,
+        'F_int': 120.0,
+        'F_atm': 100.0,
+        'axial_period': 5.07e6,
+        'atm_kg_per_mol': 0.044,
+        'R_int': 2.4397e6,
+        'R_star': 6.96e8,
+        'F_olr': 200.0,
+        'F_sct': 100.0,
+        'F_ins': 9000.0,
+        'separation': 5.8e10,
+        'semimajorax': 5.8e10,
+        'eccentricity': 0.0,
+    }
+    seen = {}
+
+    def _fake_run_janus(atm, dirs, config_in, row, hf_all, write_data=True):
+        seen['T_surf'] = row['T_surf']
+        return object(), {'albedo': 0.2, 'F_atm': 100.0}
+
+    with patch('proteus.atmos_clim.janus.RunJANUS', side_effect=_fake_run_janus):
+        atmos_wrapper.run_atmosphere(
+            atmos_o,
+            config,
+            {'output': '/tmp/x'},
+            {'total': 5},
+            [1.0],
+            [1.0],
+            False,
+            None,
+            hf_row,
+        )
+
+    assert seen['T_surf'] == pytest.approx(T_surf_seen, rel=1e-12)
+    assert 0.0 < seen['T_surf'] <= hf_row['T_magma']

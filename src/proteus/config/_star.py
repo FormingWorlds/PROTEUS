@@ -7,6 +7,8 @@ from ._converters import none_if_none
 
 
 def valid_mors(instance, attribute, value):
+    """Validate MORS settings: positive age, spectrum-source requirements, and rotation
+    set by exactly one of percentile or period."""
     if instance.module != 'mors':
         return
 
@@ -110,6 +112,7 @@ class Mors:
 
 
 def valid_bol_scale_start(instance, attribute, value):
+    """A bolometric scaling other than 1 requires bol_scale_start and a positive duration."""
     if instance.bol_scale == 1.0:
         return
     if value is None:
@@ -119,6 +122,7 @@ def valid_bol_scale_start(instance, attribute, value):
 
 
 def valid_stardummy(instance, attribute, value):
+    """Dummy star requires a consistent radius specification and a valid Teff."""
     if instance.module != 'dummy':
         return
 

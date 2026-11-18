@@ -242,7 +242,7 @@ def test_atmodeller_solver_step_and_multistart_under_zephyrus_pair():
     Edge: pin BOTH boundaries of the documented accepted range.
     ``=0`` rejects (catches a ``ge(0)`` regression); ``=1`` round-
     trips (catches a ``gt(1)`` regression). Documented defaults
-    (1024, 10) round-trip.
+    (1024, 50) round-trip.
     """
     from proteus.config._outgas import Atmodeller
 
@@ -257,7 +257,7 @@ def test_atmodeller_solver_step_and_multistart_under_zephyrus_pair():
     assert Atmodeller(solver_multistart=1).solver_multistart == 1
     default = Atmodeller()
     assert default.solver_max_steps == 1024
-    assert default.solver_multistart == 10
+    assert default.solver_multistart == 50
 
 
 def test_atmodeller_none_sentinel_case_sensitive_on_eos_and_solubility_families():

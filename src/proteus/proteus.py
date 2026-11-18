@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import functools
 import logging
 import os
+import sys
 import time
+from collections.abc import Mapping
 from datetime import datetime
+from operator import attrgetter
 from pathlib import Path
 
 import numpy as np
@@ -23,9 +27,11 @@ from proteus.config import (
     read_config_object,
     structure_config,
 )
+from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import noble_gases, vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
+    MissingReferenceData,
     PrintHalfSeparator,
     PrintSeparator,
     UpdateStatusfile,
@@ -38,12 +44,81 @@ from proteus.utils.logs import (
     setup_logger,
 )
 
-# Opt-in per-iter module wall-time breakdown. Emits one `[IT_TIMING]` log
-# line per main-loop iter with wall-time shares per module. Enable by
-# exporting `PROTEUS_TIMING=1` before launching `proteus start`.
-# Overhead when disabled: one os.environ lookup at import time, nothing
-# in the loop body.
-_IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
+
+def _timing_enabled(environ: Mapping[str, str]) -> bool:
+    """Whether an environment asks for the [INIT_TIMING] and [IT_TIMING] log lines.
+
+    Parameters
+    ----------
+    environ : Mapping[str, str]
+        Environment variables, such as ``os.environ``.
+
+    Returns
+    -------
+    bool
+        True when ``PROTEUS_TIMING`` is 1, true, yes or on, in any case.
+    """
+    return environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
+
+
+# Read once, when this module is imported; a test re-executes this file to check it
+_IT_TIMING_ENABLED = _timing_enabled(os.environ)
+
+# Consecutive iterations without a converged atmosphere after which a run ends,
+# whatever the interior is doing, and always above the streak the atmosphere
+# wrapper reports at error level. Sized on 27 stalled GJ 9827 d cases as they
+# stood on 2026-08-08: deepest recovered streak 126, deepest open streak 233,
+# which never converged. This clears the recovery and stays under the open one.
+ATMOS_STALL_MAX = 150
+
+# Consecutive iterations of a failed atmosphere solve on an interior that has
+# not moved, after which a run ends. Much shorter than the cap above, because
+# neither side of the coupling can leave that state on its own.
+AGNI_DEADLOCK_MAX = 3
+
+
+def _status_on_missing_eos(start):
+    """Write status 20 when missing reference data or a refused resume stops ``start``,
+    wherever it is raised (the mesh check of a resume runs in the first interior step)."""
+    from proteus.interior_energetics.resume_laws import ResumeSeparationLawError
+
+    @functools.wraps(start)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return start(self, *args, **kwargs)
+        except (MissingReferenceData, ResumeSeparationLawError):
+            UpdateStatusfile(self.directories, 20)
+            raise
+
+    return wrapper
+
+
+def _restored_crystallization(hf_all, phi_crit: float, remelt_mode: str) -> bool:
+    """Crystallization latch of a resumed run, rebuilt from its helpfile rows.
+
+    A row with Phi_global <= phi_crit sets the latch. An impact row (accreted rock
+    rises) holds the state after the re-melt and never sets it; it keeps a latch set
+    before it only as ``accretion.wrapper.remelt_keeps_latch`` decides for its
+    f_remelt under ``remelt = 'computed'``. A 'full' run clears it at every impact.
+    A row holds the largest f of its impacts and Phi_global after the last one, so the
+    rebuilt latch agrees with the live run when Phi_global does not drop between them.
+    """
+    from proteus.accretion.wrapper import remelt_keeps_latch
+
+    phi = hf_all.get('Phi_global')
+    if phi is None:
+        return False
+    accreted = hf_all.get('M_accreted_rock')
+    impact = (accreted.diff() > 0.0).to_numpy() if accreted is not None else [False] * len(phi)
+    f_col = hf_all.get('f_remelt') if remelt_mode == 'computed' else None
+    latched = False
+    for i, p in enumerate(phi.to_numpy()):
+        if impact[i]:
+            f = 1.0 if f_col is None else float(f_col.iloc[i])
+            latched = bool(latched and remelt_keeps_latch(f, p, phi_crit))
+        elif p <= phi_crit:
+            latched = True
+    return latched
 
 
 class Proteus:
@@ -121,6 +196,15 @@ class Proteus:
         # Helpfile variables from all previous iterations
         self.hf_all = None
 
+        # Caps on the two abort paths. Fixed for the run rather than reset per
+        # start, unlike the counters they are compared with. The stall cap is a
+        # stop criterion like the seven beside it, so the config carries it and
+        # the constant is only the default that config field already holds.
+        stall_cfg = getattr(self.config.params.stop, 'stall', None)
+        self.atmos_stall_enabled = True if stall_cfg is None else bool(stall_cfg.enabled)
+        self.atmos_stall_max = ATMOS_STALL_MAX if stall_cfg is None else int(stall_cfg.maximum)
+        self.agni_deadlock_max = AGNI_DEADLOCK_MAX
+
         # Loop counters
         self.init_stage = False
         self.loops = None
@@ -135,6 +219,9 @@ class Proteus:
         # Atmosphere
         self.atmos_o = None  # Atmosphere object from atmos_clim/common.py
 
+        # Orbit and tides
+        self.tides_o = None  # Orbit/tides object from orbit/common.py
+
         # Model has finished?
         self.finished_prev = False  # Satisfied termination in prev iteration
         self.finished_both = False  # Satisfied termination in current and previous
@@ -142,11 +229,8 @@ class Proteus:
         self.crystallized = (
             False  # Mantle solidified, outgassing stopped but evolution continues
         )
+        self.lid_sealed = False  # A crust holds the melt inventory (outgas.lid_seal)
         self.lockfile = '/tmp/none'  # Path to keepalive file
-
-        # Resume skin-layer anchor (set during resume setup, cleared when
-        # the AGNI skin layer reconverges). None on non-resume runs.
-        self._resume_T_surf: float | None = None
 
         # Default values for mors.spada cases
         self.star_props = None
@@ -160,6 +244,9 @@ class Proteus:
         # Stellar spectrum (wavelengths, fluxes)
         self.star_wl = None
         self.star_fl = None
+
+        # Giant impacts scheduled for this run, empty when accretion is off
+        self.impact_events: list = []
 
         # Time at which star was last updated
         self.sspec_prev = -np.inf  # spectrum
@@ -196,6 +283,12 @@ class Proteus:
           deadlock).
         - When the counter reaches ``agni_deadlock_max``, write
           status code 22 and raise ``RuntimeError`` to abort the run.
+        - Independently of the interior, abort once the atmosphere has
+          gone ``atmos_stall_max`` consecutive iterations without a
+          converged solve. An interior that keeps cooling on carried
+          levels holds the deadlock counter at 0 forever, so without
+          this the run spends its whole budget on an atmosphere it
+          never resolved.
 
         On the first iteration ``hf_all`` is None: no previous row
         exists, so the deadlock cannot fire. The counter stays at 0.
@@ -204,6 +297,22 @@ class Proteus:
         if self.atmos_o.converged:
             self.agni_deadlock_count = 0
             return
+
+        stalled = int(self.atmos_o.levels_stale_iters)
+        if self.atmos_stall_enabled and stalled >= self.atmos_stall_max:
+            log.error(
+                'Atmosphere has not converged for %d consecutive iterations, so escape '
+                'and the observables are running on a structure this run never resolved. '
+                'Aborting rather than spending the remaining budget on it. Try (a) a '
+                'shorter interior dt, (b) a more robust AGNI solver mode, or (c) '
+                'checking whether the surface boundary condition has left the regime '
+                'AGNI can represent.',
+                stalled,
+            )
+            UpdateStatusfile(self.directories, 22)
+            raise RuntimeError(
+                f'Atmosphere stalled: {stalled} consecutive solves without convergence.'
+            )
 
         if self.hf_all is not None and len(self.hf_all) >= 1:
             prev = self.hf_all.iloc[-1]
@@ -258,6 +367,14 @@ class Proteus:
         from proteus.utils.coupler import set_directories
 
         self.directories = set_directories(self.config)
+
+    def _end_init_stage_if_due(self):
+        """Leave the init stage once its loops are done, setting the core target of the row."""
+        if self.init_stage and self.loops['total'] > self.loops['init_loops']:
+            from proteus.interior_struct.zalmoxis import set_core_target_at_init_end
+
+            set_core_target_at_init_end(self.config, self.hf_row)
+            self.init_stage = False
 
     def _solve_structure_baseline_if_needed(self):
         """Solve the one-time callable-representation structure baseline.
@@ -319,6 +436,176 @@ class Proteus:
         self.last_struct_Phi = new_Phi
         self._baseline_structure_done = True
 
+    def _match_ps_tables_to_mass(self):
+        """Point a resumed run at the P-S tables of its restored planet mass.
+
+        The resume restores ``spider_eos_dir`` before the accreted mass is
+        restored; tables built for another mass (a walk-back past an impact) are
+        replaced by the tables of the current one.
+        """
+        dirs = self.directories
+        struct = self.config.interior_struct.module
+        energetics = self.config.interior_energetics.module
+        # The SPIDER structure keeps the static tables, which do not depend on mass.
+        if (
+            struct == 'spider'
+            or energetics not in ('spider', 'aragog')
+            or 'spider_eos_dir' not in dirs
+        ):
+            return
+        from proteus.interior_struct.zalmoxis import generate_spider_tables
+
+        tables = generate_spider_tables(self.config, dirs['output'])
+        if tables is not None:
+            dirs['spider_eos_dir'] = tables['eos_dir']
+            dirs['spider_solidus_ps'] = tables['solidus_path']
+            dirs['spider_liquidus_ps'] = tables['liquidus_path']
+
+    def _advance_to_step_end(self, t_next_impact: float) -> None:
+        """Advance the run and star age by the interior step [yr].
+
+        A step aimed at the pending impact at ``t_next_impact`` (infinite when
+        none) ends on the impact time even when rounding leaves it a few ulp
+        short; the correction is exactly 0 otherwise.
+        """
+        from proteus.accretion.common import snap_to_impact
+
+        self.hf_row['Time'] += self.interior_o.dt
+        self.hf_row['age_star'] += self.interior_o.dt
+        t_end = snap_to_impact(self.hf_row['Time'], t_next_impact)
+        self.hf_row['age_star'] += t_end - self.hf_row['Time']
+        self.hf_row['Time'] = t_end
+
+    def _run_escape_step(self) -> bool:
+        """Run escape and record the element mass it removed for the Zalmoxis target.
+
+        Escape draws on the atmosphere alone from the iteration the mantle
+        freezes, read here because the check that records it runs later in the
+        loop. On a loop without escape the per-step limit and records are reset,
+        so last step's request does not carry forward. Returns whether escape ran.
+        """
+        from proteus.escape.wrapper import readable_total, run_escape
+        from proteus.interior_struct.common import debit_escaped_mass
+
+        if self.loops['total'] <= self.loops['init_loops'] + 2 or self.desiccated:
+            self.interior_o.escape_dt_limit = np.inf
+            self.hf_row['esc_clamp_frac'] = 0.0
+            self.hf_row['esc_step_kg'] = 0.0
+            return False
+        PrintHalfSeparator()
+        stop = self.config.params.stop.solid
+        frozen = (
+            self.crystallized
+            or self.lid_sealed
+            or (
+                stop.freeze_volatiles
+                and float(self.hf_row.get('Phi_global', 1.0)) <= float(stop.phi_crit)
+            )
+        )
+        kg_before = readable_total(self.hf_row)
+        run_escape(
+            self.config,
+            self.hf_row,
+            self.directories,
+            self.interior_o.dt,
+            atmosphere_only=frozen,
+            interior_o=self.interior_o,
+        )
+        debit_escaped_mass(self.config, self.hf_row, kg_before - readable_total(self.hf_row))
+        return True
+
+    def _save_zalmoxis_output(self):
+        """Copy ``zalmoxis_output.dat`` next to the snapshot of the row being written."""
+        if (
+            self.config.interior_struct.module == 'zalmoxis'
+            and self.config.interior_energetics.module == 'aragog'
+        ):
+            from proteus.interior_struct.zalmoxis import save_zalmoxis_output_snapshot
+
+            save_zalmoxis_output_snapshot(self.directories['output'], self.hf_row['Time'])
+
+    def _resync_zalmoxis_mesh(self):
+        """Make ``zalmoxis_output.dat`` match the resumed row before Aragog reads it.
+
+        A structure re-solve rewrites the file at once, while the helpfile
+        reaches disk only on snapshot iterations. The first match of the copy
+        saved with the row, the live file and its ``.prev`` backup is used.
+
+        Raises
+        ------
+        RuntimeError
+            When no candidate exists or none matches the row within Aragog's
+            ``reset()`` tolerance.
+        OSError
+            When restoring a matching candidate fails.
+        """
+        from proteus.interior_struct.zalmoxis import (
+            copy_zalmoxis_output,
+            get_zalmoxis_output_filepath,
+            zalmoxis_mesh_gaps,
+        )
+        from proteus.utils.helper import snapshot_path_for_time
+
+        log = logging.getLogger('fwl.' + __name__)
+        path = get_zalmoxis_output_filepath(self.directories['output'])
+        time = float(self.hf_row['Time'])
+        saved = snapshot_path_for_time(os.path.dirname(path), time, '_zalmoxis.dat')
+        tried = []
+        for file in (saved, path, path + '.prev'):
+            if not os.path.isfile(file):
+                continue
+            gaps = zalmoxis_mesh_gaps(file, self.hf_row)
+            if gaps is not None and abs(gaps[0]) <= gaps[2] and abs(gaps[1]) <= gaps[2]:
+                if tried:
+                    log.warning('Resume: skipped %s.', '; '.join(tried))
+                if file != path:
+                    copy_zalmoxis_output(file, path)
+                    log.log(
+                        logging.INFO if file == saved else logging.WARNING,
+                        'Resume: restored %s from %s for the row at t = %.6e yr.',
+                        path,
+                        file,
+                        time,
+                    )
+                return
+            tried.append(
+                f'{os.path.basename(file)}: '
+                + ('invalid' if gaps is None else 'R_core %+.3e m, R_int %+.3e m' % gaps[:2])
+            )
+        stop = (
+            f'Resume: no Zalmoxis structure file matches the helpfile row at t = {time:.6e} yr'
+        )
+        rerun = 'Run the configuration again from t = 0.'
+        if not tried:
+            raise RuntimeError(
+                f'{stop}: none of {saved}, {path} and {path}.prev exists. {rerun}'
+            )
+        raise RuntimeError(
+            f'{stop} within max(1 m, 1e-9 of the mantle thickness); {"; ".join(tried)}. '
+            'A resume needs one of these files to match the row; otherwise Aragog would '
+            f'reject {path} at a reset() or run on a structure off by these gaps.'
+            + ('' if os.path.isfile(saved) else f' {saved} does not exist.')
+            + f' {rerun}'
+        )
+
+    def _check_crystallization(self) -> None:
+        """Check mantle crystallization and lock outgassing when threshold is crossed."""
+        log = logging.getLogger('fwl.' + __name__)
+        impact_this_iter = getattr(self.interior_o, 'impact_reset', False)
+        if (
+            self.config.params.stop.solid.freeze_volatiles
+            and not self.crystallized
+            and not impact_this_iter
+        ):
+            if self.hf_row.get('Phi_global', 1.0) <= self.config.params.stop.solid.phi_crit:
+                self.crystallized = True
+                log.info(
+                    'Mantle crystallized (Phi_global <= %.3f). '
+                    'Outgassing stopped. Dissolved volatiles trapped in solid mantle.',
+                    self.config.params.stop.solid.phi_crit,
+                )
+
+    @_status_on_missing_eos
     def start(self, *, resume: bool = False, offline: bool = False):
         """Start PROTEUS simulation.
 
@@ -329,18 +616,25 @@ class Proteus:
         offline : bool
             Run in offline mode; do not try to connect to the internet.
         """
+        # Init wall time per step, logged as one [INIT_TIMING] line under PROTEUS_TIMING
+        _t_start = time.perf_counter()
+        _t_init = {}
+
+        # Anchor solves memoised by an earlier run in this process do not carry over.
+        zalmoxis_module = sys.modules.get('proteus.interior_struct.zalmoxis')
+        if zalmoxis_module is not None:
+            zalmoxis_module._clear_superliquidus_cache()
 
         # Import things needed to run PROTEUS
-        #    atmospheric chemistry
-        from proteus.atmos_chem.wrapper import run_chemistry
+        #    giant-impact accretion
+        from proteus.accretion.common import landing_time
+        from proteus.accretion.wrapper import init_accretion, restore_accretion_state
 
         #    atmosphere solver
         from proteus.atmos_clim import run_atmosphere
         from proteus.atmos_clim.common import Atmos_t
+        from proteus.atmos_clim.surface_skin import update_surface_skin
         from proteus.atmos_clim.wrapper import write_atmosphere_snapshot
-
-        #    escape and outgas
-        from proteus.escape.wrapper import run_escape
 
         #    interior
         from proteus.interior_energetics.common import Interior_t
@@ -350,17 +644,24 @@ class Proteus:
             solve_structure,
             update_planet_mass,
         )
+        from proteus.interior_struct.common import tracks_volatile_mass, volatile_mass_change
 
         #    synthetic observations
         from proteus.observe.wrapper import run_observe
 
         #    orbit
+        from proteus.orbit.common import Tides_t
         from proteus.orbit.wrapper import init_orbit, run_orbit
+
+        #   solid-phase volatile trapping, and the melt held under a closed crust
+        from proteus.outgas.lid_seal import restore_seal_state, run_lid_seal_step, seal_enabled
+        from proteus.outgas.trapping import run_trapping
 
         #    outgassing
         from proteus.outgas.wrapper import (
             calc_target_elemental_inventories,
             check_desiccation,
+            desiccated_after_trapping,
             run_crystallized,
             run_desiccated,
             run_outgassing_and_vapourisation,
@@ -368,6 +669,7 @@ class Proteus:
 
         #   stellar spectrum and evolution
         from proteus.star.wrapper import (
+            flux_weighted_distance,
             get_new_spectrum,
             init_star,
             scale_spectrum_to_toa,
@@ -381,6 +683,7 @@ class Proteus:
             CreateHelpfileFromDict,
             CreateLockFile,
             ExtendHelpfile,
+            GetHelpfileKeys,
             PrintCurrentState,
             ReadHelpfileFromCSV,
             UpdatePlots,
@@ -406,6 +709,12 @@ class Proteus:
 
         # termination criteria
         from proteus.utils.terminate import check_termination, print_termination_criteria
+
+        # Stop before any output is touched when Aragog needs CVODE and it is missing
+        if self.config.interior_energetics.module == 'aragog':
+            from proteus.interior_energetics.aragog import require_cvode
+
+            require_cvode(self.config)
 
         # First things
         start_time = datetime.now()
@@ -455,14 +764,72 @@ class Proteus:
         self.init_stage = True
         self._baseline_structure_done = False
 
-        # Write config to output directory, for future reference
-        self.config.write(os.path.join(self.directories['output'], 'init_coupler.toml'))
+        # A resume keeps the separation laws the run was written with; the check reads
+        # the old init_coupler.toml, so it runs before any write replaces it.
+        from proteus.interior_energetics import resume_laws
+
+        if self.config.params.resume:
+            try:
+                resume_laws.check_resume_separation_laws(
+                    self.config, self.config_path, self.directories['output']
+                )
+            except resume_laws.ResumeSeparationLawError:
+                UpdateStatusfile(self.directories, 20)
+                raise
+
+        # Write config to output directory, for future reference. Record the
+        # resolved (not raw) step caps. A resolved 0.0 means the cap is off,
+        # but a literal 0.0 in a config is rejected at load, so an off cap is
+        # written back as the -1.0 sentinel; a positive cap is written as is.
+        step_cap_overrides = {}
+        if self.config.interior_energetics.module == 'aragog':
+            from proteus.config._interior import _STEP_CAP_OFF
+            from proteus.interior_energetics.aragog import (
+                _effective_entropy_step_cap,
+                _effective_phi_step_cap,
+                _effective_temperature_step_cap,
+                _unsupported_energy_fields,
+            )
+
+            # An older Aragog drops the temperature/entropy caps before they
+            # reach the solver; record the disabled sentinel for a dropped
+            # cap so the snapshot does not claim a cap the run never used.
+            unsupported = _unsupported_energy_fields()
+            for field, resolve in (
+                ('phi_step_cap', _effective_phi_step_cap),
+                ('temperature_step_cap', _effective_temperature_step_cap),
+                ('entropy_step_cap', _effective_entropy_step_cap),
+            ):
+                key = f'interior_energetics.aragog.{field}'
+                resolved = resolve(self.config)
+                if field in unsupported or resolved == 0.0:
+                    step_cap_overrides[key] = _STEP_CAP_OFF
+                else:
+                    step_cap_overrides[key] = resolved
+            if 'phase_boundary_cap' in unsupported:
+                # The dropped cap falls back to Aragog's fixed 1 yr policy.
+                step_cap_overrides['interior_energetics.aragog.phase_boundary_cap'] = 'fixed'
+        from proteus.accretion.wrapper import IMPACT_CONFIG_FIELDS
+
+        # The record keeps the loaded values of the fields a giant impact changes; a resume
+        # writes it after its first interior step, once the solver has passed the mesh check of
+        # the snapshot, so an attempt that stops earlier keeps the record of the run.
+        loaded = {key: attrgetter(key)(self.config) for key in IMPACT_CONFIG_FIELDS}
+        record = functools.partial(
+            self.config.write,
+            os.path.join(self.directories['output'], 'init_coupler.toml'),
+            overrides={**step_cap_overrides, **resume_laws.RECORD_OVERRIDES, **loaded},
+        )
+        if not self.config.params.resume:
+            record()
 
         # Create lockfile for keeping simulation running
         self.lockfile = CreateLockFile(self.directories['output'])
 
         # Download basic data
+        _t0 = time.perf_counter()
         download_sufficient_data(self.config)
+        _t_init['data'] = time.perf_counter() - _t0
 
         # Initialise interior object
         if self.config.interior_energetics.module == 'spider':
@@ -478,9 +845,13 @@ class Proteus:
         # Initialise atmosphere object
         self.atmos_o = Atmos_t()
 
+        # Initialise tides object
+        self.tides_o = Tides_t()
+
         # Is the model resuming from a previous state?
         if not self.config.params.resume:
             # New simulation
+            self._require_paleos_tables()
 
             # SPIDER initial condition
             self.interior_o.ic = 1
@@ -527,6 +898,7 @@ class Proteus:
                 )
 
             # Solve interior structure
+            _t0 = time.perf_counter()
             solve_structure(
                 self.directories,
                 self.config,
@@ -534,6 +906,7 @@ class Proteus:
                 self.hf_row,
                 self.directories['output'],
             )
+            _t_init['structure'] = time.perf_counter() - _t0
 
             # Initialize structure-update sentinels so the first dynamic
             # update uses the post-init state as its baseline
@@ -593,12 +966,14 @@ class Proteus:
             ):
                 from proteus.interior_energetics.wrapper import equilibrate_initial_state
 
+                _t0 = time.perf_counter()
                 equilibrate_initial_state(
                     self.directories,
                     self.config,
                     self.hf_row,
                     self.directories['output'],
                 )
+                _t_init['equilibrate'] = time.perf_counter() - _t0
                 # Update sentinels with post-equilibration state
                 self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
                 self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
@@ -607,8 +982,27 @@ class Proteus:
             # Resuming from disk
             log.info('Resuming the simulation from the disk')
 
-            # Read helpfile from disk
-            self.hf_all = ReadHelpfileFromCSV(self.directories['output'])
+            # Read helpfile from disk. A run written before the output schema
+            # gained columns stops here, rather than continuing from a row that
+            # is missing those keys. A helpfile that cannot be loaded at all
+            # stops the same way: either leaves the run dead, and a run that
+            # dies without recording it reads as still running to anything
+            # polling the output directory.
+            try:
+                self.hf_all = ReadHelpfileFromCSV(self.directories['output'])
+            except Exception:
+                UpdateStatusfile(self.directories, 20)
+                raise
+
+            # Drop any column the stored helpfile carries that the current
+            # schema no longer defines. Without this, a row from a retired
+            # column rides along in self.hf_all and every row appended after
+            # resume gets NaN there instead, since ExtendHelpfile only ever
+            # builds new rows from GetHelpfileKeys().
+            retired = set(self.hf_all.columns) - set(GetHelpfileKeys())
+            if retired:
+                log.info('Resume: dropping retired helpfile column(s) %s', sorted(retired))
+                self.hf_all = self.hf_all.drop(columns=sorted(retired))
 
             # Check length
             if len(self.hf_all) <= self.loops['init_loops'] + 1:
@@ -619,12 +1013,13 @@ class Proteus:
             # the loose per-iteration snapshots are present on disk.
             log.debug('Extracting archived data files')
             self.extract_archives()
+            self._require_paleos_tables()
 
-            # Resume from the latest fully written snapshot pair. A crash
-            # mid-write can truncate the most recent _int.nc or _atm.nc
-            # independently of the (atomic) helpfile; drop any such
-            # incomplete trailing rows so the interior and atmosphere both
-            # load a complete state instead of aborting on the corrupt file.
+            # Resume from the latest snapshot pair that is complete and belongs
+            # to its helpfile row. This drops rows whose _int.nc or _atm.nc a
+            # crash left truncated, and rejects a stale file a colliding run
+            # wrote at the same rounded time, so the interior and atmosphere
+            # both load the matched state instead of the wrong or corrupt one.
             require_atm = self.config.atmos_clim.module != 'dummy'
             self.hf_all, dropped_snapshots = select_resumable_snapshot(
                 self.directories['output'],
@@ -663,26 +1058,13 @@ class Proteus:
             # Check if the planet is desiccated
             self.desiccated = check_desiccation(self.config, self.hf_row)
 
-            # Restore the crystallization flag. Without this it returns as
-            # False on every restart, so the first resumed iteration runs
-            # escape over the whole volatile inventory of a mantle that has
-            # already crystallized, drawing from dissolved reservoirs that are
-            # meant to be trapped. The main loop only re-derives the flag
-            # after escape has run, so the error lands on the first step of
-            # every restart.
-            #
-            # The flag latches: the loop sets it once the melt fraction drops
-            # to the threshold and never clears it, so a mantle that
-            # crystallized and later remelted stays frozen. Reading only the
-            # resumed row would clear it in exactly that case and diverge from
-            # an uninterrupted run, so the whole stored history is searched
-            # instead. Rows with no melt fraction recorded compare False and
-            # so leave the flag clear, which is the behaviour a helpfile
-            # written before the column existed had already.
+            # Restore the crystallization latch as the run set it: a row at or below
+            # phi_crit sets it; an impact row clears it unless a partial re-melt left it solid.
             if self.config.params.stop.solid.freeze_volatiles:
-                phi_history = self.hf_all.get('Phi_global')
-                self.crystallized = phi_history is not None and bool(
-                    (phi_history <= self.config.params.stop.solid.phi_crit).any()
+                self.crystallized = _restored_crystallization(
+                    self.hf_all,
+                    self.config.params.stop.solid.phi_crit,
+                    self.config.accretion.remelt_mode,
                 )
                 if self.crystallized:
                     log.info(
@@ -690,6 +1072,21 @@ class Proteus:
                         'outgassing stays stopped.',
                         self.config.params.stop.solid.phi_crit,
                     )
+
+            # The seal state is in the row; a held remelt reads the rows since closure.
+            self.lid_sealed = restore_seal_state(self.config, self.hf_row)
+            if self.lid_sealed:
+                log.info(
+                    'Resuming with the lid seal closed since t = %.3e yr',
+                    self.hf_row['seal_t_close'],
+                )
+
+            # Restore the count of consecutive unresolved atmosphere solves, so
+            # a run that stalls is not handed a fresh allowance by every
+            # resume. Absent in helpfiles written before the column existed,
+            # which read as a run that has not stalled.
+            stale = self.hf_row.get('atm_levels_stale', 0.0)
+            self.atmos_o.levels_stale_iters = int(stale) if np.isfinite(stale) else 0
 
             # Interior initial condition
             self.interior_o.ic = 2
@@ -762,6 +1159,16 @@ class Proteus:
             self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
             self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
 
+            if (
+                self.config.interior_struct.module == 'zalmoxis'
+                and self.config.interior_energetics.module == 'aragog'
+            ):
+                try:
+                    self._resync_zalmoxis_mesh()
+                except Exception:
+                    UpdateStatusfile(self.directories, 20)
+                    raise
+
             # Arm the resume-settling structure-re-solve guard. The resumed
             # interior relaxes thermally over the first loops and would
             # otherwise fire repeated dynamic structure re-solves that recompute
@@ -775,20 +1182,41 @@ class Proteus:
 
             self.directories['_resume_struct_settle_loops'] = _RESUME_STRUCT_SETTLE_LOOPS
 
-            # Save the coupled T_surf for the first resumed atmosphere solve.
-            # Aragog's first step outputs an adiabatic T_magma ~30-50 K above
-            # the coupled T_surf because the conductive skin layer is an AGNI
-            # construct that Aragog does not model. Anchoring AGNI's first
-            # solve at the coupled T_surf prevents the skin-layer transient.
-            self._resume_T_surf = self.hf_row.get('T_surf')
-
         log.info(' ')
 
         # Prepare star stuff
+        _t0 = time.perf_counter()
         init_star(self)
+        _t_init['stellar'] = time.perf_counter() - _t0
 
         # Prepare orbit stuff
+        _t0 = time.perf_counter()
         init_orbit(self)
+        _t_init['orbit'] = time.perf_counter() - _t0
+
+        # Prepare the giant-impact timeline. Fixed at initialisation and
+        # consulted on every step, like the stellar evolution track.
+        self.impact_events = init_accretion(self)
+
+        # Rebuild the mass and orbit that impacts before a resume point already
+        # applied. Runs after the timeline is resolved, so a re-run dynamical
+        # model still selects its body against the configured planet.
+        try:
+            restore_accretion_state(self)
+            change = volatile_mass_change(self.hf_row) if resume else 0.0
+        except Exception:
+            # A refused resume records its stop, so the run does not read as running.
+            UpdateStatusfile(self.directories, 20)
+            raise
+        if change != 0.0 and not tracks_volatile_mass(self.config):
+            log.info(
+                'M_volatile_change = %.3e kg is carried over but only the Zalmoxis '
+                'structure reads or updates it; it stays stale under %s',
+                change,
+                self.config.interior_struct.module,
+            )
+        if resume and self.config.accretion.module is not None:
+            self._match_ps_tables_to_mass()
 
         # Track the last simulation time at which data was written to disk.
         # Initialised to -inf so the first eligible iteration always writes.
@@ -803,12 +1231,17 @@ class Proteus:
         # and PROTEUS would otherwise silently accept a frozen state and
         # advance Time indefinitely.
         self.agni_deadlock_count = 0
-        self.agni_deadlock_max = 3
+
+        pending_record = record if self.config.params.resume else None
 
         # Main loop
-        # Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:
-        vulcan_completed_loops = set()
         UpdateStatusfile(self.directories, 1)
+        if _IT_TIMING_ENABLED:
+            _init_wall = time.perf_counter() - _t_start
+            _t_init['other'] = max(0.0, _init_wall - sum(_t_init.values()))
+            _t_init['total'] = _init_wall
+            _initstr = ' '.join(f'{k}={v:.3f}' for k, v in _t_init.items())
+            log.info('[INIT_TIMING] %s', _initstr)
         while not self.finished_both:
             # Determine whether this iteration is a data-write snapshot.
             # Conditions that are individually sufficient:
@@ -826,6 +1259,13 @@ class Proteus:
                 # Create new row to hold the updated variables. This will be
                 #    overwritten by the routines below.
                 self.hf_row = self.hf_all.iloc[-1].to_dict()
+
+                # Reset the per-step impact heat and re-melt fraction at each row, so a
+                # row does not carry the previous step's impact terms.
+                self.hf_row['step_dE_impact_J'] = 0.0
+                self.hf_row['step_dE_impact_core_J'] = 0.0
+                self.hf_row['step_dE_impact_core_refit_J'] = 0.0
+                self.hf_row['f_remelt'] = 0.0
             log.info(' ')
             PrintSeparator()
             log.info('Loop counters')
@@ -843,10 +1283,17 @@ class Proteus:
             # at module top). Populated as modules run; emitted as one
             # `[IT_TIMING]` log line at the end of the iter.
             _t_iter_start = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+            # PROTEUS clears init_stage at the end of the last init iteration, before logging
+            _iter_init_stage = self.init_stage
             _t_mod: dict[str, float] = {}
 
             ############### INTERIOR
             PrintHalfSeparator()
+
+            # Tell the time-stepper the landing time of the next giant impact (the
+            # end of its chain), so it can shorten the step to land on it.
+            t_next_impact = landing_time(self.impact_events, self.hf_row['Time'])
+            self.interior_o.t_next_impact = t_next_impact
 
             # Evolve interior
             _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
@@ -859,54 +1306,21 @@ class Proteus:
                 atmos_o=self.atmos_o,
                 write_data=is_snapshot,
             )
+            if pending_record is not None:
+                pending_record()
+                pending_record = None
             if _IT_TIMING_ENABLED:
                 _t_mod['interior'] = time.perf_counter() - _t0
 
-            # After resume, adiabat-based interior solvers (Aragog, SPIDER)
-            # output T_magma ~30-50 K above the coupled T_surf because the
-            # conductive skin layer is an atmosphere-side construct. Override
-            # T_magma for the atmosphere call only (not the helpfile) until
-            # AGNI's skin layer reconverges. The override introduces a
-            # bounded energy inconsistency (~1-4% of F_atm per step) that
-            # decays as the anchor releases.
-            _SKIN_DELTA_THRESHOLD = 5.0  # K; release anchor below this
-            if self._resume_T_surf is not None and self.config.interior_energetics.module in (
-                'aragog',
-                'spider',
-            ):
-                T_adiab = self.hf_row.get('T_magma', 0.0)
-                skin_delta = T_adiab - self._resume_T_surf
-                if abs(skin_delta) > _SKIN_DELTA_THRESHOLD:
-                    if skin_delta < 0:
-                        log.warning(
-                            'Resume: anomalous negative skin delta %.1f K '
-                            '(T_magma=%.1f < anchor=%.1f), releasing anchor',
-                            skin_delta,
-                            T_adiab,
-                            self._resume_T_surf,
-                        )
-                        self._resume_T_surf = None
-                    else:
-                        # Override for atmosphere only; preserve raw value
-                        self.hf_row['_T_magma_raw'] = T_adiab
-                        self.hf_row['T_magma'] = self._resume_T_surf
-                        log.info(
-                            'Resume: anchoring T_magma for atmosphere '
-                            '(%.1f K -> %.1f K, skin delta %.1f K)',
-                            T_adiab,
-                            self._resume_T_surf,
-                            skin_delta,
-                        )
-                else:
-                    log.info(
-                        'Resume: skin layer converged (delta %.1f K), releasing anchor',
-                        skin_delta,
-                    )
-                    self._resume_T_surf = None
-
             # Advance current time in main loop according to interior step
-            self.hf_row['Time'] += self.interior_o.dt  # in years
-            self.hf_row['age_star'] += self.interior_o.dt  # in years
+            self._advance_to_step_end(t_next_impact)
+
+            # Apply giant impacts due in this step. Remove applied events
+            # so each fires exactly once, including across init iterations.
+            if self.impact_events:
+                from proteus.accretion.wrapper import apply_due_impacts
+
+                apply_due_impacts(self, is_snapshot)
 
             # One-time structure baseline in the interior-fed callable
             # representation (dynamic and static runs share an identical start).
@@ -949,10 +1363,30 @@ class Proteus:
 
             ############### / INTERIOR AND STRUCTURE
 
+            ############### VOLATILE TRAPPING
+            # The front has moved and any structure re-solve is done, and escape and
+            # outgassing have not read the inventories yet, so all of them see the burial.
+            _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+            trapping_step = run_trapping(
+                self.config,
+                self.hf_row,
+                self.hf_all,
+                self.interior_o,
+                init_stage=self.init_stage,
+            )
+            # Mass a remelt returns to a desiccated planet must reach escape and outgassing.
+            self.desiccated = desiccated_after_trapping(
+                self.config, self.hf_row, self.desiccated, trapping_step
+            )
+            if _IT_TIMING_ENABLED:
+                _t_mod['trapping'] = time.perf_counter() - _t0
+
+            ############### / VOLATILE TRAPPING
+
             ############### ORBIT AND TIDES
             PrintHalfSeparator()
             _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-            run_orbit(self.hf_row, self.config, self.directories, self.interior_o)
+            run_orbit(self.hf_row, self.config, self.directories, self.tides_o, self.interior_o)
             if _IT_TIMING_ENABLED:
                 _t_mod['orbit'] = time.perf_counter() - _t0
 
@@ -999,8 +1433,12 @@ class Proteus:
                     modern_fl=self.star_modern_fl,
                 )
 
-                # Scale fluxes from 1 AU to TOA
-                self.star_fl = scale_spectrum_to_toa(self.star_fl, self.hf_row['separation'])
+                # Scale fluxes from 1 AU to TOA. This uses the same orbital
+                # average as F_ins and F_xuv, so the spectrum and the scalar
+                # fluxes derived from the same star agree on an eccentric orbit.
+                self.star_fl = scale_spectrum_to_toa(
+                    self.star_fl, flux_weighted_distance(self.hf_row)
+                )
 
                 # Save spectrum to file
                 write_spectrum(
@@ -1016,18 +1454,9 @@ class Proteus:
             ############### / STELLAR FLUX MANAGEMENT
 
             ############### ESCAPE
-            if (self.loops['total'] > self.loops['init_loops'] + 2) and (not self.desiccated):
-                PrintHalfSeparator()
-                _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                run_escape(
-                    self.config,
-                    self.hf_row,
-                    self.directories,
-                    self.interior_o.dt,
-                    atmosphere_only=self.crystallized,
-                )
-                if _IT_TIMING_ENABLED:
-                    _t_mod['escape'] = time.perf_counter() - _t0
+            _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+            if self._run_escape_step() and _IT_TIMING_ENABLED:
+                _t_mod['escape'] = time.perf_counter() - _t0
 
             ############### / ESCAPE
 
@@ -1041,24 +1470,9 @@ class Proteus:
                 calc_target_elemental_inventories(self.directories, self.config, self.hf_row)
 
             else:
-                # Check crystallization: outgassing stops but simulation continues
-                # TODO (future development): Disequilibrium crystallization.
-                # The current framework assumes local thermodynamic equilibrium: melt
-                # fraction is determined by the local P-T via the melting curves.
-                # Fractional crystallization with compositional zonation requires
-                # explicit tracking of the solid composition field, which is beyond
-                # the current solver capabilities. See Boujibar+2020 for discussion.
-                if self.config.params.stop.solid.freeze_volatiles and not self.crystallized:
-                    if (
-                        self.hf_row.get('Phi_global', 1.0)
-                        <= self.config.params.stop.solid.phi_crit
-                    ):
-                        self.crystallized = True
-                        log.info(
-                            'Mantle crystallized (Phi_global <= %.3f). '
-                            'Outgassing stopped. Dissolved volatiles trapped in solid mantle.',
-                            self.config.params.stop.solid.phi_crit,
-                        )
+                # Check crystallization under equilibrium melting curves.
+                # Defer evaluation on an impact step while the mantle relaxes.
+                self._check_crystallization()
 
                 # Check desiccation (can happen even if crystallized, via escape)
                 if not self.desiccated:
@@ -1066,14 +1480,28 @@ class Proteus:
 
             # Handle volatile exchange
             log.info('Solving for atmosphere composition...')
-            first_iter = bool(self.loops['total'] <= self.loops['init_loops'])
+            first_iter = self.init_stage
             if self.desiccated:
                 # no volatiles
                 run_desiccated(self.directories, self.config, self.hf_row, first_iter)
+                self.lid_sealed = False
 
             elif self.crystallized:
                 # post solidification
                 run_crystallized(self.config, self.hf_row, self.interior_o.dt)
+
+            elif seal_enabled(self.config):
+                self.lid_sealed = run_lid_seal_step(
+                    self.directories,
+                    self.config,
+                    self.hf_row,
+                    self.interior_o,
+                    self.lid_sealed,
+                    hf_all=self.hf_all,
+                    first_iter=first_iter,
+                    init_stage=self.init_stage,
+                    dt=self.interior_o.dt,
+                )
 
             else:
                 run_outgassing_and_vapourisation(
@@ -1100,9 +1528,15 @@ class Proteus:
             # that mode. An excess larger than the vapour column explains still
             # warns, and PrintCurrentState reports the vapour budget every
             # iteration. Non-conservation is a simplification of vapourisation.
+            from proteus.outgas.trapping import derived_total_elements, trapping_active
+
             assert_mass_conservation(
                 self.hf_row,
                 require_atm_le_planet=not self.config.outgas.vapourise,
+                check_element_closure=trapping_active(self.config)
+                or (seal_enabled(self.config) and not self.desiccated),
+                derived_elements=derived_total_elements(self.config),
+                closure_rtol=self.config.outgas.solver_rtol,
             )
 
             # P_surf = P_vol + P_vap, and P_vap == 0 when rock
@@ -1110,6 +1544,9 @@ class Proteus:
             # a code path updating P_surf without keeping the partial
             # pressures in sync.
             assert_surface_pressure_consistency(self.config, self.hf_row)
+
+            # Conductive skin for the atmosphere step, from the condensates just solved for
+            update_surface_skin(self.config, self.hf_row)
 
             if _IT_TIMING_ENABLED:
                 _t_mod['outgas'] = time.perf_counter() - _t0_outgas
@@ -1126,22 +1563,23 @@ class Proteus:
             # so the atmosphere is computed from the solvus outward.
             # Save originals to restore after the atmosphere step.
             _saved_atm_bc = {}
-            if (
-                self.config.interior_struct.zalmoxis.global_miscibility
-                and 'R_solvus' in self.hf_row
-            ):
-                R_sol = self.hf_row.get('R_solvus')
-                if R_sol is not None and R_sol < self.hf_row['R_int']:
-                    _saved_atm_bc = {
-                        'T_surf': self.hf_row['T_surf'],
-                        'P_surf': self.hf_row['P_surf'],
-                        'R_int': self.hf_row['R_int'],
-                        'T_magma': self.hf_row['T_magma'],
-                    }
-                    self.hf_row['T_surf'] = self.hf_row['T_solvus']
-                    self.hf_row['T_magma'] = self.hf_row['T_solvus']
-                    self.hf_row['P_surf'] = self.hf_row['P_solvus'] * 1e-5  # Pa -> bar
-                    self.hf_row['R_int'] = R_sol
+            R_sol = solvus_radius(
+                self.config,
+                self.hf_row.get('R_solvus'),
+                self.hf_row['R_int'],
+                R_inner=self.hf_row.get('R_core') or 0.0,
+            )
+            if R_sol is not None:
+                _saved_atm_bc = {
+                    'T_surf': self.hf_row['T_surf'],
+                    'P_surf': self.hf_row['P_surf'],
+                    'R_int': self.hf_row['R_int'],
+                    'T_magma': self.hf_row['T_magma'],
+                }
+                self.hf_row['T_surf'] = self.hf_row['T_solvus']
+                self.hf_row['T_magma'] = self.hf_row['T_solvus']
+                self.hf_row['P_surf'] = self.hf_row['P_solvus'] * 1e-5  # Pa -> bar
+                self.hf_row['R_int'] = R_sol
 
             try:
                 run_atmosphere(
@@ -1163,17 +1601,6 @@ class Proteus:
                 if _saved_atm_bc:
                     for key, val in _saved_atm_bc.items():
                         self.hf_row[key] = val
-
-                # Restore raw T_magma if it was overridden for the atmosphere
-                T_raw = self.hf_row.pop('_T_magma_raw', None)
-                if T_raw is not None:
-                    self.hf_row['T_magma'] = T_raw
-
-            # Update the resume T_surf anchor with the new coupled value,
-            # unless the solvus override was active (in which case T_surf
-            # reflects the pre-solvus value, not what the atmosphere saw).
-            if self._resume_T_surf is not None and not _saved_atm_bc:
-                self._resume_T_surf = self.hf_row.get('T_surf', self._resume_T_surf)
 
             # Atmosphere-interior coupling deadlock detection.
             # If the atmosphere solver failed AND the interior state has
@@ -1204,23 +1631,6 @@ class Proteus:
 
             ############### / ATMOSPHERE CLIMATE
 
-            ############### ONLINE ATMOSPHERIC CHEMISTRY
-            if (
-                self.config.atmos_chem.when == 'online'
-            ):  # checking if the toml file says online at atmos_chem and then when
-                if (
-                    is_snapshot and not self.desiccated
-                ):  # checking if the loop is a snapshot and runs VULCAN
-                    if self.loops['total'] not in vulcan_completed_loops:
-                        _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                        run_chemistry(self.directories, self.config, self.hf_row)
-                        if _IT_TIMING_ENABLED:
-                            _t_mod['chem'] = time.perf_counter() - _t0
-                        vulcan_completed_loops.add(
-                            self.loops['total']
-                        )  # adds it to the completed loops/snapshots
-            ############### / ONLINE ATMOSPHERIC CHEMISTRY
-
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 
             PrintHalfSeparator()
@@ -1232,9 +1642,7 @@ class Proteus:
             # Adjust total iteration counters
             self.loops['total'] += 1
 
-            # Init stage?
-            if self.loops['total'] > self.loops['init_loops']:
-                self.init_stage = False
+            self._end_init_stage_if_due()
 
             # Keep time at zero during init stage
             if self.init_stage:
@@ -1254,10 +1662,13 @@ class Proteus:
             # combines write_mod iteration check and dt_write time check)
             if is_snapshot:
                 _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+                self._save_zalmoxis_output()
                 WriteHelpfileToCSV(self.directories['output'], self.hf_all)
                 if _IT_TIMING_ENABLED:
                     _t_mod['write'] = time.perf_counter() - _t0
                 self.last_write_time = self.hf_row.get('Time', 0.0)
+            else:
+                self._write_chemistry_target_snapshot()
 
             # Print info to terminal and log file
             PrintCurrentState(self.hf_row)
@@ -1306,7 +1717,12 @@ class Proteus:
                 _t_mod['other'] = max(0.0, _iter_wall - _accounted)
                 _t_mod['total'] = _iter_wall
                 _modstr = ' '.join(f'{k}={v:.3f}' for k, v in _t_mod.items())
-                log.info('[IT_TIMING] iter=%d %s', self.loops['total'], _modstr)
+                log.info(
+                    '[IT_TIMING] iter=%d init_stage=%d %s',
+                    self.loops['total'],
+                    _iter_init_stage,
+                    _modstr,
+                )
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
@@ -1315,32 +1731,28 @@ class Proteus:
         WriteHelpfileToCSV(self.directories['output'], self.hf_all)
 
         # Ensure the final interior state is on disk so resume can find it.
+        # A giant-impact re-melt on the last iteration clears the solver's
+        # solution object, so guard on it: get_state() dereferences it.
         if (
             self.config.interior_energetics.module == 'aragog'
             and self.interior_o.aragog_solver is not None
+            and self.interior_o.aragog_solver.solution is not None
         ):
-            from proteus.interior_energetics.aragog import AragogRunner
+            from proteus.interior_energetics.aragog import write_final_snapshot
 
-            out = self.interior_o.aragog_solver.get_state()
-            AragogRunner._write_output_ncdf(
-                self.directories['output'],
-                self.hf_row['Time'],
-                out,
-                T_surf_coupled=self.hf_row.get('T_surf'),
-            )
+            write_final_snapshot(self.config, self.interior_o, self.directories, self.hf_row)
+            self._save_zalmoxis_output()
 
         # Ensure the final atmosphere state is on disk, since it won't always happen to
         # be written on the last iteration of the model.
         write_atmosphere_snapshot(self.atmos_o, self.config, self.directories, self.hf_row)
 
         # Run offline chemistry
-        if self.config.atmos_chem.when == 'offline':
+        # at the snapshots set by atmos_chem.times
+        if self.config.atmos_chem.mode == 'offline':
             log.info(' ')
             PrintSeparator()
-            if self.desiccated:
-                log.warning('Cannot calculate atmospheric chemistry after desiccation')
-            else:
-                run_chemistry(self.directories, self.config, self.hf_row)
+            self._postprocess_chemistry(self.hf_all)
 
         # Synthetic observations
         if self.config.observe.module is not None:
@@ -1380,6 +1792,13 @@ class Proteus:
         print_citation(self.config)
         safe_rm(self.directories['temp'])
 
+    def _require_paleos_tables(self):
+        """Stop before any solve when a table of the Zalmoxis EOS set is missing."""
+        if self.config.interior_struct.module == 'zalmoxis':
+            from proteus.interior_struct.zalmoxis import require_paleos_tables
+
+            require_paleos_tables(self.config, self.directories['output'])
+
     def extract_archives(self):
         """
         Extract archived data files in subfolders of the output directory
@@ -1393,46 +1812,96 @@ class Proteus:
         archive.create(self.directories['output/data'], remove_files=True)
 
     def observe(self):
-        # Extract archived data
-        self.extract_archives()
+        # Load data from helpfile. Read it before unpacking the archive, so a
+        # run this cannot postprocess is left archived as it was found.
+        from proteus.utils.coupler import (
+            GetPostprocessingKeys,
+            HelpfileRow,
+            ReadHelpfileFromCSV,
+            helpfile_path,
+        )
 
-        # Load data from helpfile
-        from proteus.utils.coupler import ReadHelpfileFromCSV
-
-        hf_all = ReadHelpfileFromCSV(self.directories['output'])
+        hf_all = ReadHelpfileFromCSV(
+            self.directories['output'], required_columns=GetPostprocessingKeys()
+        )
 
         # Check length
         if len(hf_all) < 1:
             raise Exception('Simulation is too short to be postprocessed')
 
-        # Get last row
-        hf_row = hf_all.iloc[-1].to_dict()
+        # Extract archived data
+        self.extract_archives()
+
+        # Get last row. Wrapped so a column outside the postprocessing set,
+        # which the check above does not cover, still reports itself.
+        hf_row = HelpfileRow(
+            hf_all.iloc[-1].to_dict(), helpfile_path(self.directories['output'])
+        )
 
         # Run observations pipeline, typically invoked via CLI
         from proteus.observe.wrapper import run_observe
 
         run_observe(hf_row, self.config, self.directories)
 
+    def _write_chemistry_target_snapshot(self) -> bool:
+        """Write the atmosphere snapshot of a step that reaches a target of `atmos_chem.times`.
+
+        With a list or a table of targets, offline chemistry then finds a snapshot at each
+        target row, not only the snapshots written every `params.out.write_mod` steps. The
+        init stage, whose rows all hold t = 0, writes none. The helpfile is written with it,
+        so a resume sees the row of the snapshot and treats it like any other row without
+        an interior snapshot. Returns whether one was written.
+        """
+        from proteus.atmos_chem.common import chem_targets_crossed
+        from proteus.atmos_clim.wrapper import write_atmosphere_snapshot
+        from proteus.utils.coupler import WriteHelpfileToCSV
+
+        if self.init_stage or not self.config.atmos_chem.module:
+            return False
+        if not chem_targets_crossed(self.hf_all, self.config.atmos_chem.times):
+            return False
+        logging.getLogger('fwl.' + __name__).info(
+            'Writing the atmosphere snapshot for a chemistry target'
+        )
+        write_atmosphere_snapshot(self.atmos_o, self.config, self.directories, self.hf_row)
+        WriteHelpfileToCSV(self.directories['output'], self.hf_all)
+        return True
+
+    def _postprocess_chemistry(self, hf_all):
+        """Run atmospheric chemistry at the snapshots set by `atmos_chem.times`.
+
+        The one chemistry stage for the end of a run and for `proteus offchem`.
+        Snapshots in the data archive are unpacked first, and snapshots without
+        an atmosphere (after desiccation) are left out by `run_chemistry`.
+        """
+        from proteus.atmos_chem.wrapper import run_chemistry
+
+        if archive.archive_exists(self.directories['output/data'], ignore_warnings=True):
+            self.extract_archives()
+        return run_chemistry(self.directories, self.config, hf_all)
+
     def offline_chemistry(self):
-        # Extract archived data
-        self.extract_archives()
+        # Load data from helpfile. Read it before unpacking the archive, so a
+        # run this cannot postprocess is left archived as it was found.
+        from proteus.utils.coupler import (
+            GetPostprocessingKeys,
+            ReadHelpfileFromCSV,
+            vulcan_problem,
+        )
 
-        # Load data from helpfile
-        from proteus.utils.coupler import ReadHelpfileFromCSV
+        if problem := vulcan_problem(self.config):
+            raise EnvironmentError(problem)
 
-        hf_all = ReadHelpfileFromCSV(self.directories['output'])
+        hf_all = ReadHelpfileFromCSV(
+            self.directories['output'], required_columns=GetPostprocessingKeys()
+        )
 
         # Check length
         if len(hf_all) < 1:
             raise Exception('Simulation is too short to be postprocessed')
 
-        # Get last row
-        hf_row = hf_all.iloc[-1].to_dict()
-
-        # Run offline chemistry, typically invoked via CLI
-        from proteus.atmos_chem.wrapper import run_chemistry
-
-        result = run_chemistry(self.directories, self.config, hf_row)
+        # Run offline chemistry at atmos_chem.times, whatever atmos_chem.mode is
+        result = self._postprocess_chemistry(hf_all)
 
         # Refresh the chemistry plot
         if result is not None:

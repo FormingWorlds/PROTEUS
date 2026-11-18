@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import math
+import sys
+
 from attrs import define, field, validators
 
 from ._converters import none_if_none
@@ -52,11 +55,23 @@ class Calliope:
         If True, include CH4.
     include_CO: bool
         If True, include CO.
+    include_He: bool
+        If True, include He (noble gas; budget set in planet.elements).
+    include_Ne: bool
+        If True, include Ne (noble gas; budget set in planet.elements).
+    include_Ar: bool
+        If True, include Ar (noble gas; budget set in planet.elements).
+    include_Kr: bool
+        If True, include Kr (noble gas; budget set in planet.elements).
+    include_Xe: bool
+        If True, include Xe (noble gas; budget set in planet.elements).
     solubility: bool
         Enable solubility of volatiles into melt.
     nguess: int
         Maximum number of initial-guess samples for the CALLIOPE
-        equilibrium solver. Default 1000.
+        equilibrium solver. The samples come from a fixed seed, so identical
+        inputs draw the same guesses, and an input that exhausts the samples
+        fails the same way on a rerun. Default 1000.
     nsolve: int
         Maximum number of iterations of the CALLIOPE equilibrium
         solver per call. Default 3000.
@@ -118,9 +133,15 @@ class Atmodeller:
     solver_max_steps : int
         Maximum iterations for the root-finder.
     solver_multistart : int
-        Number of random restarts for the root-finder.
+        Maximum number of attempts per solve. atmodeller perturbs a start that
+        fails and tries again, up to this many times, so a larger value costs time
+        only on a solve that does not converge at once. A solve that still fails
+        raises.
     include_condensates : bool
-        Enable condensate phases (graphite, etc.) in the equilibrium.
+        Enable condensed phases in the equilibrium: every condensate atmodeller
+        provides for the outgassing elements, which are graphite (C), sulfur (S),
+        water (H2O) and sulfuric acid (H2O4S). Each joins a solve when its elements
+        have budgets and T_magma lies inside its thermodynamic data range.
     solubility_H2O : str
         Solubility law for H2O. See atmodeller.solubility.library.
     solubility_CO2 : str
@@ -152,7 +173,7 @@ class Atmodeller:
         validator=validators.in_(('robust', 'basic')),
     )
     solver_max_steps: int = field(default=1024, validator=validators.gt(0))
-    solver_multistart: int = field(default=10, validator=validators.gt(0))
+    solver_multistart: int = field(default=50, validator=validators.gt(0))
     include_condensates: bool = field(default=True)
     solubility_H2O: str | None = field(default='H2O_peridotite_sossi23', converter=none_if_none)
     solubility_CO2: str | None = field(default='CO2_basalt_dixon95', converter=none_if_none)
@@ -177,13 +198,16 @@ class Lavatmos:
     Attributes
     ----------
     T_min: float
-        Minimum surface temperature [K] used by LavAtmos.
+        Lower bound [K] on the surface temperature that LavAtmos uses: the
+        vapourisation runs at max(T_min, T_magma).
     melt_comp_name: str
-        Name of the melt composition file (without extension).
+        Name of the melt composition file, a CSV file without its extension
+        in the `input/lava_compositions` folder of `LAVA_DIR`.
     P_melt: float
         Pressure used for melt activities [bar].
     xatol: float
-        Absolute tolerance for LavAtmos fO2 solve.
+        Absolute tolerance of the LavAtmos fO2 solve, passed to LavAtmos as
+        its `xatol` argument.
     fO2_buffer_model: str
         IW buffer model used for LavAtmos fO2 solve. One of 'oneill', 'fischer'.
     """
@@ -197,6 +221,137 @@ class Lavatmos:
     )
 
 
+def _real(value) -> bool:
+    """Whether ``value`` is an int or float in the float range, not a bool (TOML ``true``)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return isinstance(value, float) or abs(value) <= sys.float_info.max
+
+
+def _finite_positive(instance, attribute, value):
+    """A finite real number above 0."""
+    if not (_real(value) and math.isfinite(value) and value > 0):
+        raise ValueError(f'{attribute.name} must be a finite number > 0, got {value!r}')
+
+
+def _fraction_open(instance, attribute, value):
+    """A real number in (0, 1)."""
+    if not (_real(value) and 0 < value < 1):
+        raise ValueError(f'{attribute.name} must be a number in (0, 1), got {value!r}')
+
+
+def _delta_open(instance, attribute, value):
+    """outgas.lid_seal.delta_open [m]: None, or a thickness in (0, delta_close]."""
+    if value is None:
+        return
+    if not (_real(value) and 0 < value <= instance.delta_close):
+        raise ValueError(
+            f'delta_open must be None or a number in (0, delta_close = '
+            f'{instance.delta_close}], got {value!r}'
+        )
+
+
+def _phi_open(instance, attribute, value):
+    """outgas.lid_seal.phi_open [1]: None (then phi_close + 0.05 must be below 1), or a number in [phi_close, 1)."""
+    if value is None:
+        if instance.phi_close + PHI_OPEN_BAND >= 1:
+            raise ValueError(
+                f'phi_open = None gives phi_close + {PHI_OPEN_BAND} = '
+                f'{instance.phi_close + PHI_OPEN_BAND}, which must be below 1'
+            )
+        return
+    if not (_real(value) and instance.phi_close <= value < 1):
+        raise ValueError(
+            f'phi_open must be None or a number in [phi_close = {instance.phi_close}, 1), '
+            f'got {value!r}'
+        )
+
+
+def _tau_leak(instance, attribute, value):
+    """A real number > 0 with a finite rate 1/tau_leak; inf allowed, NaN refused."""
+    if not (_real(value) and value > 0 and math.isfinite(1.0 / value)):
+        raise ValueError(
+            f'tau_leak must be a number > 0 with a finite 1/tau_leak (inf allowed), got {value!r}'
+        )
+
+
+def _unit_interval(instance, attribute, value):
+    """A real number in [0, 1]."""
+    if not (_real(value) and 0 <= value <= 1):
+        raise ValueError(f'{attribute.name} must be a number in [0, 1], got {value!r}')
+
+
+def _finite_nonnegative(instance, attribute, value):
+    """A finite real number >= 0."""
+    if not (_real(value) and math.isfinite(value) and value >= 0):
+        raise ValueError(f'{attribute.name} must be a finite number >= 0, got {value!r}')
+
+
+def _phi_solid(instance, attribute, value):
+    """outgas.lid_seal.phi_solid [1]: a real number in (0, phi_close)."""
+    if not (_real(value) and 0 < value < instance.phi_close):
+        raise ValueError(
+            f'phi_solid must be a number in (0, phi_close = {instance.phi_close}), got {value!r}'
+        )
+
+
+PHI_OPEN_BAND = 0.05
+
+
+@define
+class LidSeal:
+    """Volatiles held in the melt under a closed crust (``proteus.outgas.lid_seal``).
+
+    Attributes
+    ----------
+    enabled: bool
+        Whether a crust can seal the melt inventory from the atmosphere.
+    delta_close: float
+        Crust thickness [m] at or above which the seal can close.
+    phi_close: float
+        Melt fraction [1] of the top mesh cell below which the seal can close.
+    delta_open: float or None
+        Crust thickness [m] below which a closed seal opens; `none` means
+        `0.5 delta_close`.
+    phi_open: float or None
+        Top-cell melt fraction [1] at or above which a closed seal opens; `none`
+        means `phi_close + 0.05`.
+    tau_leak: float
+        Relaxation time [yr] of the sealed inventory toward its dissolved
+        equilibrium with the atmosphere, > 0 with a finite rate 1/tau_leak; inf
+        holds it.
+    chi_d: float
+        Degassing efficiency [1] of the melt that reaches the crust (Schaefer &
+        Sasselov (2015)[^cite-schaefer2015], Table 3).
+    crust_rate: float
+        Mass of melt that reaches the crust per year [kg yr-1].
+    phi_solid: float
+        Melt fraction [1] below which a mesh cell counts as crust, and below which
+        the mantle makes no crust.
+    """
+
+    enabled: bool = field(default=False)
+    # Untyped, as orbit.parameterized.sma_final: cattrs would turn a TOML true into 1.0.
+    delta_close = field(default=1e4, validator=_finite_positive)
+    phi_close = field(default=0.3, validator=_fraction_open)
+    delta_open = field(default=None, validator=_delta_open, converter=none_if_none)
+    phi_open = field(default=None, validator=_phi_open, converter=none_if_none)
+    tau_leak = field(default=math.inf, validator=_tau_leak)
+    chi_d = field(default=0.02, validator=_unit_interval)
+    crust_rate = field(default=0.0, validator=_finite_nonnegative)
+    phi_solid = field(default=1e-3, validator=_phi_solid)
+
+    @property
+    def delta_open_value(self) -> float:
+        """Crust thickness [m] below which a closed seal opens."""
+        return 0.5 * self.delta_close if self.delta_open is None else float(self.delta_open)
+
+    @property
+    def phi_open_value(self) -> float:
+        """Top-cell melt fraction [1] at or above which a closed seal opens."""
+        return self.phi_close + PHI_OPEN_BAND if self.phi_open is None else float(self.phi_open)
+
+
 @define
 class Outgas:
     """Outgassing parameters (fO2) and included volatiles.
@@ -208,17 +363,87 @@ class Outgas:
     fO2_shift_IW: float
         Oxygen fugacity relative to Iron-Wustite [log10 units].
     mass_thresh: float
-        Minimum threshold for element mass [kg]. Inventories below this are set to zero.
+        Minimum threshold for element mass [kg]. Outgassing treats H, C, N or S below it
+        as absent; escape empties a non-noble element whose reachable mass (its total
+        less the mass trapped in the solid) is below it, down to the trapped mass,
+        except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases
+        are exempt. CALLIOPE also uses it as the absolute mass tolerance [kg] of its
+        equilibrium solve.
     h2_binodal: bool
         Enable binodal-controlled H2 partitioning between atmosphere and
         magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model.
+        Not available yet: `true` is rejected when the config loads.
     T_floor: float
         Temperature floor [K]. The outgassing temperature is clamped to
-        this value from below before the chemistry solve.
+        this value from below for the chemistry solve and the target masses.
+    prevent_desaturation: bool
+        Whether condensed mass leaves the outgassing system for good. With
+        `false`, each solve re-equilibrates the whole inventory, so a condensate can
+        re-vapourise as conditions change. With `true`, the mass held in each
+        `{e}_kg_condensed` reservoir is withheld from the chemistry, from escape and
+        from the desiccation gate, and the reservoir can only grow: a condensed
+        layer can only get thicker. Each condensate's `{X}_cd_activity` is then the
+        saturation of the inventory left in the solve, so it can fall below 1 while
+        its layer is held. Only atmodeller with `outgas.atmodeller.include_condensates`
+        forms condensates: with another backend, or with atmodeller and its
+        condensates off, the flag holds nothing, and a warning at config load says
+        so.
     solver_rtol: float
-        Relative tolerance for the volatile equilibrium solver.
+        Relative tolerance [1] of the CALLIOPE and atmodeller equilibrium
+        solvers. It is also the relative tolerance of the per-element mass
+        closure check that runs after each outgassing step while trapping is on.
     solver_atol: float
-        Absolute tolerance for the volatile equilibrium solver.
+        Absolute tolerance of the equilibrium solvers: CALLIOPE takes it as
+        `xtol` of its root solve, atmodeller as `atol`. Unused by the dummy
+        module.
+    trap_mode: str
+        Solid-phase volatile trapping during mantle crystallisation.
+        Choices: 'none' (off) and 'front' (F_tl from the drainage of melt
+        across the freezing front the interior solver resolves; needs
+        `interior_energetics.module = 'aragog'`). The disaggregation melt
+        fraction that tops the front is `interior_energetics.rfront_loc`,
+        the melt fraction of the solver's own rheological transition, not a
+        separate field.
+    trap_phi_min: float
+        Porosity below which a node counts as solid [1]. Needed because
+        the density-derived porosity never reaches exactly zero.
+    trap_mush_log10visc: float
+        Log10 viscosity of the mush near the solidus [log10(Pa s)],
+        entering the matrix deformation time. A value of zero or below
+        selects the default of 20, mid-range of the 18 to 22 the
+        literature allows.
+    trap_n_front_min: int
+        Fewest nodes a freezing front must span before its drainage is
+        integrated rather than bounded above.
+    trap_max_front_fraction: float
+        Largest fraction of the mantle thickness the front may occupy
+        before its drainage is bounded above instead of integrated [1].
+        The default of 1 sets no limit: where percolation controls the
+        drainage, the retained fraction depends on the ratio of drainage
+        speed to front speed and not on the front thickness, and a thicker
+        front only lengthens the residence time.
+    D_const_H2O: float
+        Crystal/melt partition coefficient of H2O [1], D = w_solid / w_liquid.
+    D_const_CO2: float
+        Crystal/melt partition coefficient of CO2 [1], D = w_solid / w_liquid.
+    D_const_O2: float
+        Crystal/melt partition coefficient of O2 [1], D = w_solid / w_liquid.
+    D_const_H2: float
+        Crystal/melt partition coefficient of H2 [1], D = w_solid / w_liquid.
+    D_const_CH4: float
+        Crystal/melt partition coefficient of CH4 [1], D = w_solid / w_liquid.
+    D_const_CO: float
+        Crystal/melt partition coefficient of CO [1], D = w_solid / w_liquid.
+    D_const_N2: float
+        Crystal/melt partition coefficient of N2 [1], D = w_solid / w_liquid.
+    D_const_NH3: float
+        Crystal/melt partition coefficient of NH3 [1], D = w_solid / w_liquid.
+    D_const_S2: float
+        Crystal/melt partition coefficient of S2 [1], D = w_solid / w_liquid.
+    D_const_SO2: float
+        Crystal/melt partition coefficient of SO2 [1], D = w_solid / w_liquid.
+    D_const_H2S: float
+        Crystal/melt partition coefficient of H2S [1], D = w_solid / w_liquid.
     calliope: Calliope
         Parameters for CALLIOPE module.
     atmodeller: Atmodeller
@@ -229,13 +454,15 @@ class Outgas:
         installation guide. LavAtmos parameters are set in `outgas.lavatmos`.
     lavatmos: Lavatmos
         Parameters for the LavAtmos rock-vapour module.
+    lid_seal: LidSeal
+        Volatiles held in the melt under a closed crust, and their leak.
     """
 
     module: str = field(
         default='calliope', validator=validators.in_(('calliope', 'atmodeller', 'dummy'))
     )
     fO2_shift_IW: float = field(
-        default=4.0, validator=[validators.ge(-12.0), validators.le(12.0)]
+        default=2.0, validator=[validators.ge(-12.0), validators.le(12.0)]
     )
 
     mass_thresh: float = field(default=1e16, validator=validators.gt(0.0))
@@ -253,9 +480,107 @@ class Outgas:
     solver_rtol: float = field(default=1e-4, validator=validators.gt(0.0))
     solver_atol: float = field(default=1e-6, validator=validators.gt(0.0))
 
+    # Condensed mass removed from the chemistry once formed, so it cannot re-vapourise
+    prevent_desaturation: bool = field(default=False)
+
+    # Solid-phase volatile trapping, run before and apart from the chemistry solve,
+    # so it sits beside T_floor rather than under [outgas.calliope]. The default
+    # 'none' leaves a run as it was without trapping.
+    trap_mode: str = field(default='none', validator=validators.in_(('none', 'front')))
+
+    # Drainage-integral parameters of the front scheme, which computes the
+    # trapped melt fraction from the front the interior solver resolves.
+    trap_phi_min: float = field(
+        default=0.01, validator=[validators.gt(0.0), validators.lt(1.0)]
+    )
+    trap_mush_log10visc: float = field(default=-1.0)
+    trap_n_front_min: int = field(default=3, validator=validators.ge(2))
+    trap_max_front_fraction: float = field(
+        default=1.0, validator=[validators.gt(0.0), validators.le(1.0)]
+    )
+
+    # Crystal/melt partition coefficients D = w_solid / w_liquid. Only water enters
+    # the lattice appreciably (Hauri, Gaetani & Green 2006; Hirschmann et al.
+    # 2016); the other species are buried with the interstitial melt alone.
+    D_const_H2O: float = field(default=0.0017, validator=validators.ge(0.0))
+    D_const_CO2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_O2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_H2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_CH4: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_CO: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_N2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_NH3: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_S2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_SO2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_H2S: float = field(default=0.0, validator=validators.ge(0.0))
+
     calliope: Calliope = field(factory=Calliope)
     atmodeller: Atmodeller = field(factory=Atmodeller)
     lavatmos: Lavatmos = field(factory=Lavatmos)
+    lid_seal: LidSeal = field(factory=LidSeal)
 
     # LavAtmos / silicate coupling is opt-in: default to disabled.
     vapourise: bool = field(default=False)
+
+
+# Thematic grouping for the generated configuration reference. Each entry is
+# ``(heading, qualifier, option names)``; a heading of ``None`` renders the
+# section's opening table with no heading of its own. Order here is the order
+# on the page, and is independent of the order the fields are declared in.
+DOC_GROUPS = {
+    'Calliope': (
+        (
+            'Species switches',
+            'set to `false` to exclude a species from the equilibrium',
+            (
+                'include_H2O',
+                'include_CO2',
+                'include_N2',
+                'include_S2',
+                'include_SO2',
+                'include_H2S',
+                'include_NH3',
+                'include_H2',
+                'include_CH4',
+                'include_CO',
+                'include_He',
+                'include_Ne',
+                'include_Ar',
+                'include_Kr',
+                'include_Xe',
+                'solubility',
+            ),
+        ),
+        ('Solver', None, ('nguess', 'nsolve', 'p_guess_max')),
+    ),
+    'Atmodeller': (
+        (
+            None,
+            None,
+            (
+                'solver_mode',
+                'solver_max_steps',
+                'solver_multistart',
+                'include_condensates',
+            ),
+        ),
+        (
+            'Solubility laws',
+            'set to `"none"` to disable dissolution for a species',
+            (
+                'solubility_H2O',
+                'solubility_CO2',
+                'solubility_H2',
+                'solubility_N2',
+                'solubility_S2',
+                'solubility_CO',
+                'solubility_CH4',
+            ),
+        ),
+        (
+            'Real gas EOS',
+            'set to `"none"` for ideal gas',
+            ('eos_H2O', 'eos_CO2', 'eos_H2', 'eos_CH4', 'eos_CO'),
+        ),
+    ),
+}

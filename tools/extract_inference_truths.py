@@ -11,6 +11,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from proteus.utils.coupler import read_helpfile_table
+
 
 def parse_args() -> argparse.Namespace:
     """Parse CLI args"""
@@ -119,7 +121,7 @@ def main() -> int:
         raise KeyError('Reference config is missing `params.out.path`')
     helpfile_path = resolve_helpfile(out_path, repo_root)
 
-    helpfile = pd.read_csv(helpfile_path, sep=r'\s+')
+    helpfile = read_helpfile_table(helpfile_path)
     if helpfile.empty:
         raise ValueError(f'Helpfile has no rows: {helpfile_path}')
 

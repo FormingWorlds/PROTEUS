@@ -9,6 +9,7 @@ will be ignored if not mapped by the parser.
 
 from __future__ import annotations
 
+import functools
 import logging
 import types
 import typing
@@ -29,6 +30,43 @@ class UnknownConfigKeyError(ValueError):
     from ValueError, which is what every other config rejection raises, so a
     caller that does not care about the distinction needs no change.
     """
+
+
+@functools.lru_cache(maxsize=256)
+def _type_hints_for(cls: type) -> types.MappingProxyType[str, typing.Any]:
+    """Resolve the type hints of a schema class, once per class.
+
+    The config modules postpone annotation evaluation, so each annotation is
+    a string that `typing.get_type_hints` recompiles on every call. The walk
+    below asks for the hints of every nested class on every config load, and
+    the schema classes do not change once imported, so one resolution per
+    class gives the same answer for a fraction of the work. The cache holds
+    the schema comfortably; 46 classes declare the config today.
+
+    Parameters
+    ----------
+    cls:
+        attrs-decorated class whose annotations are to be resolved.
+
+    Returns
+    -------
+    types.MappingProxyType[str, typing.Any]
+        Field name to resolved type hint. Every caller receives the same
+        object, so it is a read-only view: a write raises rather than
+        corrupting the schema view held by every later config load.
+
+    Raises
+    ------
+    NameError
+        If an annotation names something the defining module cannot resolve.
+        Failures are not cached, so a repeat call raises again.
+
+    Notes
+    -----
+    A class whose annotations are rewritten after its first resolution keeps
+    the first result.
+    """
+    return types.MappingProxyType(typing.get_type_hints(cls))
 
 
 def _extract_attrs_class(hint: type) -> type | None:
@@ -123,7 +161,7 @@ def find_key_problems(
     # Get the type hints of the attrs class, if possible.
     # If not, log a warning but attempt to continue.
     try:
-        hints = typing.get_type_hints(cls)
+        hints = _type_hints_for(cls)
     except Exception:
         log.warning(f'Config validator failed to get type hints for {cls}.')
         hints = {}
@@ -160,6 +198,30 @@ def find_key_problems(
             mistyped.append(full_path)
 
     return orphans, mistyped
+
+
+def field_path_kind(path: str, cls: type = Config) -> str:
+    """Classify a key path, dotted or not, against the schema.
+
+    Parameters
+    ----------
+    path:
+        Key path as written by the user, for example ``planet.mass_tot``.
+    cls:
+        attrs class the path starts from. Defaults to the whole Config schema.
+
+    Returns
+    -------
+    str
+        ``'field'`` when the path ends at a single configuration field,
+        ``'section'`` when it ends at a nested section, ``'unknown'`` when a part
+        of it names nothing in the schema or follows a field that is not a section.
+    """
+    for part in path.split('.'):
+        if cls is None or part not in attrs.fields_dict(cls):
+            return 'unknown'
+        cls = _extract_attrs_class(_type_hints_for(cls).get(part))
+    return 'section' if cls is not None else 'field'
 
 
 def format_orphan_message(

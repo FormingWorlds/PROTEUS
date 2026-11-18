@@ -32,7 +32,7 @@ class TestNoackScalingLaws:
         # above; the 5% bracket above is 320 km, but this explicit
         # range pins the linear coefficient too.
         assert 6200.0 < R_p_km < 6500.0
-        # Sign / positivity invariant (Section 3): planetary radius is
+        # Sign / positivity invariant (tests/AGENTS.md, Physics modules): planetary radius is
         # a physical length, strictly positive.
         assert R_p_km > 0.0
 
@@ -41,12 +41,9 @@ class TestNoackScalingLaws:
         # Eq. 9: R_c = 4850 * X_CMF^0.328 * (M/M_E)^0.266
         R_c_km = 4850 * 0.325**0.328 * 1.0**0.266
         assert abs(R_c_km - 3480) / 3480 < 0.10, f'R_c={R_c_km:.0f} km'
-        # Boundedness invariant (Section 3): the core must sit strictly
-        # inside Earth (R_int ~ 6371 km) and well above zero. A regression
-        # that swapped the X_CMF and (M/M_E) exponents would still pass a
-        # 10% relative bracket at this fiducial point (both exponents
-        # apply to factors close to unity), but only an unphysical core
-        # radius would escape this bracketed bound.
+        # Boundedness (tests/AGENTS.md, Physics modules): the core sits inside Earth (R_int
+        # ~ 6371 km) and well above zero; swapped X_CMF and (M/M_E) exponents pass the 10 %
+        # bracket at this point (both factors near unity), an unphysical radius does not.
         assert 1000.0 < R_c_km < 6371.0
 
     def test_surface_gravity_earth_like(self):
@@ -62,7 +59,7 @@ class TestNoackScalingLaws:
         # regression to R**3 would land at ~ 9.8e-21 m/s^2 (G*M/R^3,
         # vanishing). The bracket below discriminates both.
         assert 5.0 < g < 20.0
-        # Sign / positivity invariant (Section 3): surface gravity from
+        # Sign / positivity invariant (tests/AGENTS.md, Physics modules): surface gravity from
         # G * M / R^2 is strictly positive for any positive M and R.
         assert g > 0.0
 

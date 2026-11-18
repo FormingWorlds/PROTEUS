@@ -8,11 +8,13 @@ All knobs documented in the [Zalmoxis coupling how-to](https://proteus-framework
       show_source: true
       show_root_heading: true
       members_order: source
-      filters: ["!^_"]
+      filters:
+        - "!^_"
 
 ::: proteus.config._struct.Zalmoxis
     options:
       show_source: true
       show_root_heading: true
       members_order: source
-      filters: ["!^_"]
+      filters:
+        - "!^_"

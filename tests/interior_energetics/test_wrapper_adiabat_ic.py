@@ -254,6 +254,7 @@ def _linear_hf_row():
         'gravity': 18.0,
         'core_density': 1.1e4,
         'rho_avg': 8.0e3,
+        'M_core_solve': 1.89e25,
     }
 
 
@@ -339,6 +340,7 @@ def test_adiabat_resolve_rolls_back_on_mass_anchor_violation(tmp_path):
         )
         row['R_int'] = 1.40e7  # would-be relaxed radius, discarded on rollback
         row['M_int'] = M_target * 1.10  # 10% off: violates the 0.3% anchor
+        row['M_core_solve'] = 2.0e25
         return 6.0e6, str(tmp_path / 'bad_mesh.dat')
 
     with (
@@ -362,6 +364,7 @@ def test_adiabat_resolve_rolls_back_on_mass_anchor_violation(tmp_path):
     # The off-anchor radius (14000 km) must NOT survive: pin against it
     # explicitly so a regression that skipped the rollback fails here.
     assert abs(hf_row['R_int'] - 1.40e7) > 1.0e6
+    assert hf_row['M_core_solve'] == _linear_hf_row()['M_core_solve']  # restored exactly
     # On-disk contract: the file holds the LINEAR content again, not the adiabat
     # geometry the failed solver wrote. This is the discriminating check that the
     # hf_row-only rollback (the bug) would fail.
@@ -1500,3 +1503,95 @@ def test_monotonic_radius_tolerance_is_tiny_and_positive():
     # Discrimination: the band is well below the ~1e-4 representation up-step the
     # guard must catch, and not, e.g., a 1e-2 typo that would absorb real rises.
     assert _MONOTONIC_RINT_REL_TOL < 1.0e-6
+
+
+def test_builder_falls_back_on_an_anchor_raise_and_names_it(caplog):
+    """An anchor raise inside the IC builder falls back to the linear guess
+    with a warning that names the error and the P_cmb it was solved at.
+    """
+    from proteus.interior_energetics.common import InitialConditionError
+
+    def _anchor(config, hf_row):
+        raise InitialConditionError('liquidus_super: no valid molten adiabat found')
+
+    config = _config()
+    with patch('proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat', _anchor):
+        with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'):
+            built = _build_superliquidus_adiabat_tp(
+                config, {'P_cmb': 1.3e12}, P_cmb_target=1.4e12
+            )
+    assert built is None
+    msgs = [r.getMessage() for r in caplog.records if 'no P-T anchor' in r.getMessage()]
+    assert len(msgs) == 1
+    assert 'P_cmb=1300 GPa' in msgs[0]
+    assert 'no valid molten adiabat found' in msgs[0]
+
+    with patch(
+        'proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat',
+        side_effect=RuntimeError('transient EOS failure'),
+    ):
+        assert _build_superliquidus_adiabat_tp(config, {}, P_cmb_target=1.4e12) is None
+
+
+@pytest.mark.parametrize('energetics', ['dummy', 'boundary'])
+def test_builder_raises_an_anchor_failure_nothing_re_solves(energetics, caplog):
+    """With dummy or boundary energetics no initial entropy re-solves the
+    anchor, so the builder raises the anchor's error instead of falling back.
+    """
+    from proteus.interior_energetics.common import InitialConditionError
+
+    def _anchor(config, hf_row):
+        raise InitialConditionError('liquidus_super: no valid molten adiabat found')
+
+    config = _config(module=energetics)
+    with patch('proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat', _anchor):
+        with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'):
+            with pytest.raises(InitialConditionError, match='no valid molten adiabat'):
+                _build_superliquidus_adiabat_tp(config, {'P_cmb': 1.3e12}, P_cmb_target=1.4e12)
+    assert not [r for r in caplog.records if 'no P-T anchor' in r.getMessage()]
+
+
+def test_adiabat_tp_stops_on_a_missing_pair_for_any_mantle():
+    """The liquidus_super IC adiabat is built on the MgSiO3 2-phase pair, so a missing
+    pair stops it, also for a Wolf and Bower mantle, instead of the linear-guess fallback."""
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    config = _config()
+    config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
+    registry = {
+        'WolfBower2018:MgSiO3': {'eos_file': '/fake/wb.dat'},
+        'PALEOS-2phase:MgSiO3': {},
+    }
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat',
+            return_value={'surface_T': 4000.0},
+        ),
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value=registry,
+        ),
+        pytest.raises(ZalmoxisMissingEOSFilesError, match='PALEOS-2phase:MgSiO3'),
+    ):
+        _build_superliquidus_adiabat_tp(config, {}, P_cmb_target=1.4e12)
+
+
+def test_adiabat_tp_passes_a_missing_table_stop_through():
+    """A missing-table stop in the anchor stops the run instead of the linear-guess
+    fallback that other construction failures take."""
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat',
+            side_effect=ZalmoxisMissingEOSFilesError('pair not available'),
+        ),
+        pytest.raises(ZalmoxisMissingEOSFilesError, match='pair not available'),
+    ):
+        _build_superliquidus_adiabat_tp(_config(), {}, P_cmb_target=1.4e12)
+    # Discrimination: another RuntimeError still falls back to the linear guess.
+    with patch(
+        'proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat',
+        side_effect=RuntimeError('numerical'),
+    ):
+        assert _build_superliquidus_adiabat_tp(_config(), {}, P_cmb_target=1.4e12) is None

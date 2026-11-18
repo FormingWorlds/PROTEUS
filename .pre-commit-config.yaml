@@ -30,11 +30,11 @@ repos:
       - id: validate-cff
   - repo: local
     hooks:
-      - id: check-file-sizes
-        name: Check copilot-instructions.md line limit
-        entry: bash tools/check_file_sizes.sh
+      - id: check-agents-md
+        name: Check agent instruction files
+        entry: python tools/agents/check_agents_md.py
         language: system
-        files: \.github/copilot-instructions\.md$
+        files: (AGENTS\.md|CLAUDE\.md|copilot-instructions\.md)$
         pass_filenames: false
 
 exclude: 'examples/.*'

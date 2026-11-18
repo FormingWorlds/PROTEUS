@@ -55,7 +55,7 @@ Integration-tier scope:
   Zalmoxis generates from PALEOS. Edges pinned both ways.
 - The wrapper merge contract registers the Zalmoxis -> SPIDER
   hand-off columns (``R_int``, ``M_int``, ``R_core``, ``P_cmb``,
-  ``core_density``, ``core_heatcap``, ``T_cmb_initial``, ``F_cmb``).
+  ``core_density``, ``core_heatcap``, ``F_cmb``).
 
 See also:
 - docs/How-to/testing.md
@@ -448,7 +448,7 @@ def test_zalmoxis_spider_helpfile_keys_register_structure_and_cmb_handoff():
     ``R_core``, ``M_core``, ``M_mantle``, ``M_planet``, ``P_center``,
     ``P_cmb``, ``core_density``, ``core_heatcap``.
     Required CMB-side columns (SPIDER writes / loop reads back):
-    ``T_cmb``, ``T_cmb_initial``, ``T_magma``, ``F_cmb``, ``F_int``.
+    ``T_cmb``, ``T_magma``, ``F_cmb``, ``F_int``.
     Required melt-state columns: ``Phi_global``, ``Phi_global_vol``,
     ``M_mantle_solid``, ``M_mantle_liquid``, ``RF_depth``.
 
@@ -471,7 +471,7 @@ def test_zalmoxis_spider_helpfile_keys_register_structure_and_cmb_handoff():
         'core_density',
         'core_heatcap',
     )
-    cmb_keys = ('T_cmb', 'T_cmb_initial', 'T_magma', 'F_cmb', 'F_int')
+    cmb_keys = ('T_cmb', 'T_magma', 'F_cmb', 'F_int')
     melt_keys = (
         'Phi_global',
         'Phi_global_vol',

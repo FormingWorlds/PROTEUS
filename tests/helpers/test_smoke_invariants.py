@@ -234,7 +234,6 @@ def test_assert_temperatures_positive_skips_module_specific_zeros():
     row = _good_row()
     row['T_solvus'] = 0.0
     row['T_cmb'] = 0.0
-    row['T_cmb_initial'] = 0.0
     result = assert_temperatures_positive(row)
     assert result is None  # contract: optional-zero T columns must not trip the check
     # Discriminating check: the required T columns are still positive (so we know

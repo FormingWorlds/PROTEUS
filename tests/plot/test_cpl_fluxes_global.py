@@ -13,9 +13,11 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.colors import to_rgb
 
 import proteus.plot.cpl_fluxes_global as fluxes_mod
 
@@ -136,3 +138,61 @@ def test_plot_fluxes_global_entry_forwards_handler_attributes(monkeypatch, tmp_p
     assert captured['output_dir'] == str(tmp_path)
     assert captured['config'] is handler.config
     assert captured['rows'] == 5
+
+
+def test_plot_fluxes_global_takes_its_neutral_colours_from_the_style(
+    draw_real, tmp_path, style
+):
+    """On real axes the runaway limit line and the grid have the text colour of
+    the style and the net atmosphere flux its dark grey: black and '#444444' in
+    the default style."""
+    (tmp_path / 'plots').mkdir()
+
+    (fig,) = draw_real(
+        fluxes_mod.plot_fluxes_global,
+        _make_hf_all(),
+        str(tmp_path),
+        config=_make_config(),
+        rc=style.rc,
+    )
+
+    (ax,) = fig.axes
+    line = {ln.get_label(): ln for ln in ax.lines}
+    assert to_rgb(line['S-N limit'].get_color()) == pytest.approx(to_rgb(style.text))
+    assert to_rgb(line['Net (atm.)'].get_color()) == pytest.approx(to_rgb(style.dark_grey))
+    grid = ax.xaxis.get_gridlines()[0]
+    assert to_rgb(grid.get_color()) == pytest.approx(to_rgb(style.text))
+    assert grid.get_alpha() == pytest.approx(0.05)
+    assert to_rgb(line['Net (int.)'].get_color()) == pytest.approx(to_rgb('#ff7f0e'))
+
+
+# Font sizes of a presentation style, larger than the matplotlib defaults.
+_LARGE_FONTS = {'font.size': 14.5, 'axes.labelsize': 18, 'legend.fontsize': 14.5}
+
+
+@pytest.mark.parametrize('rc', [None, _LARGE_FONTS], ids=['default_fonts', 'large_fonts'])
+def test_plot_fluxes_global_legend_is_above_the_data_area(draw_real, tmp_path, rc):
+    """The legend with its 8 entries lies above the panel at both font sizes,
+    centred on it, and the saved image holds all of it."""
+    (tmp_path / 'plots').mkdir()
+
+    (fig,) = draw_real(
+        fluxes_mod.plot_fluxes_global,
+        _make_hf_all(),
+        str(tmp_path),
+        config=_make_config(plot_fmt='png'),
+        rc=rc,
+    )
+    fig.set_dpi(200)
+    fig.canvas.draw()
+    (ax,) = fig.axes
+    legend = ax.get_legend()
+    box = legend.get_window_extent(fig.canvas.get_renderer())
+
+    assert (len(legend.get_texts()), legend._ncols) == (8, 3)
+    assert box.y0 >= ax.bbox.y1
+    assert (box.x0 + box.x1) / 2 == pytest.approx((ax.bbox.x0 + ax.bbox.x1) / 2, abs=1.0)
+    # The legend is outside the canvas at large fonts: only a tight save, 0.1 in of pad, keeps it.
+    image = plt.imread(tmp_path / 'plots' / 'plot_fluxes_global.png')
+    tight = fig.get_tightbbox(fig.canvas.get_renderer())
+    assert image.shape[0] == pytest.approx((tight.height + 0.2) * 200, abs=2)

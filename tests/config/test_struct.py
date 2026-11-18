@@ -13,6 +13,8 @@ Testing standards:
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from proteus.config._struct import Struct, Zalmoxis
@@ -143,16 +145,29 @@ class TestZalmoxisVolatileGates:
         # Retro-compat: the default remains dry, byte-identical to baseline.
         assert Struct(module='zalmoxis').zalmoxis.dry_mantle is True
 
-    def test_spider_module_skips_the_gate(self):
-        """The miscibility gate only constrains the zalmoxis structure path:
-        a spider config carrying the same value is not validated against it
-        (the zalmoxis sub-config is inert under spider)."""
-        s = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(global_miscibility=True)))
-        assert s.zalmoxis.global_miscibility is True
-        # The skip covers the whole sub-config, not the miscibility flag alone:
-        # an EOS string that fails the zalmoxis format check is equally inert
-        # under spider. Narrowing the skip to the flag, and validating EOS
-        # strings for every module, would reject this spider config.
+    def test_use_anderson_defaults_to_true(self):
+        """Verify that Zalmoxis.use_anderson defaults to True."""
+        assert Zalmoxis().use_anderson is True
+        assert Struct(module='zalmoxis').zalmoxis.use_anderson is True
+
+    @pytest.mark.parametrize('module', ['spider', 'dummy', 'zalmoxis'])
+    def test_global_miscibility_is_rejected_for_every_structure(self, module):
+        """`global_miscibility = true` is rejected for every structure module:
+        only the zalmoxis structure writes the solvus that the main loop and
+        SPIDER read, so under any other module the solvus frame would start
+        from the zero-initialised helpfile values."""
+        kwargs = _spider_kwargs() if module == 'spider' else {'module': module}
+        with pytest.raises(ValueError, match='global_miscibility'):
+            Struct(**kwargs, zalmoxis=Zalmoxis(global_miscibility=True))
+        # Discrimination: the same structure with the flag off constructs.
+        s = Struct(**kwargs, zalmoxis=Zalmoxis(global_miscibility=False))
+        assert s.module == module
+        assert s.zalmoxis.global_miscibility is False
+
+    def test_spider_module_skips_the_eos_format_check(self):
+        """Under spider the zalmoxis EOS strings are inert: an EOS string that
+        fails the zalmoxis format check still constructs. The miscibility
+        rejection is the one check that applies to every module."""
         s = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(core_eos='no_colon')))
         assert s.zalmoxis.core_eos == 'no_colon'
         # The paired negative: zalmoxis does enforce the format, so acceptance
@@ -160,3 +175,239 @@ class TestZalmoxisVolatileGates:
         # absent.
         with pytest.raises(ValueError, match='core_eos'):
             Struct(module='zalmoxis', zalmoxis=Zalmoxis(core_eos='no_colon'))
+
+
+class TestZalmoxisMushyZoneWarning:
+    """The mushy_zone_factor no-effect warning must fire only for the EOS
+    families that actually ignore the factor.
+
+    mushy_zone_factor scales the derived solidus ``T_sol = T_liq * mzf`` for
+    the PALEOS family (unified, 2-phase, and the API variants) through
+    ``load_zalmoxis_solidus_liquidus_functions``. For WolfBower2018 and
+    RTPress100TPa the melting curves come from file and the factor is inert,
+    so there the warning is correct and must still fire.
+    """
+
+    @staticmethod
+    def _warns(caplog, mantle_eos, mzf=0.8, core_eos='Seager2007:iron', ice_layer_eos=None):
+        """Construct a zalmoxis Struct and report whether the no-effect
+        warning fired for the given layer EOS at the given factor.
+
+        The core defaults to a file-curve EOS so that ``mantle_eos`` alone
+        decides the outcome."""
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.config._struct'):
+            Struct(
+                module='zalmoxis',
+                zalmoxis=Zalmoxis(
+                    core_eos=core_eos,
+                    mantle_eos=mantle_eos,
+                    ice_layer_eos=ice_layer_eos,
+                    mushy_zone_factor=mzf,
+                ),
+            )
+        return any('has no effect' in r.getMessage() for r in caplog.records)
+
+    def test_warning_silent_for_the_paleos_family(self, caplog):
+        """Each PALEOS-family EOS feeds the factor into the derived solidus, so
+        the no-effect warning must stay silent for all four."""
+        for eos in (
+            'PALEOS:MgSiO3',
+            'PALEOS-2phase:MgSiO3',
+            'PALEOS-API:MgSiO3',
+            'PALEOS-API-2phase:MgSiO3',
+        ):
+            assert not self._warns(caplog, eos), eos
+
+    def test_warning_fires_for_file_curve_eos(self, caplog):
+        """WolfBower2018 and RTPress100TPa read melting curves from file, so the
+        factor has no effect and the warning must fire."""
+        for eos in ('WolfBower2018:MgSiO3', 'RTPress100TPa:MgSiO3'):
+            assert self._warns(caplog, eos), eos
+
+    def test_warning_silent_when_only_the_core_is_paleos(self, caplog):
+        """A unified PALEOS core density depends on the factor, so a
+        WolfBower2018 mantle above it does not make the setting inert."""
+        assert not self._warns(caplog, 'WolfBower2018:MgSiO3', core_eos='PALEOS:iron')
+
+    def test_warning_silent_when_only_the_ice_layer_is_paleos(self, caplog):
+        """A PALEOS ice layer also honors the factor."""
+        assert not self._warns(
+            caplog,
+            'WolfBower2018:MgSiO3',
+            ice_layer_eos='PALEOS:H2O',
+        )
+
+    def test_warning_fires_when_no_layer_is_paleos(self, caplog):
+        """Paired negative: with no PALEOS layer anywhere, the warning fires."""
+        assert self._warns(
+            caplog,
+            'WolfBower2018:MgSiO3',
+            core_eos='Seager2007:iron',
+            ice_layer_eos='Seager2007:H2O',
+        )
+
+    def test_warning_tracks_the_factor_not_only_the_eos(self, caplog):
+        """The warning depends on mushy_zone_factor < 1: at the sharp-boundary
+        value 1.0 an ignored setting is not misreported."""
+        assert not self._warns(caplog, 'WolfBower2018:MgSiO3', mzf=1.0)
+        # Paired positive: the same EOS at 0.8 fires, so silence at 1.0 is the
+        # factor guard rather than the EOS being exempt.
+        assert self._warns(caplog, 'WolfBower2018:MgSiO3', mzf=0.8)
+
+
+class TestMeltingDirWithPaleos:
+    """melting_dir is not read with Zalmoxis and a PALEOS mantle EOS."""
+
+    @staticmethod
+    def _warned(caplog, **kwargs):
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.config._struct'):
+            Struct(**kwargs)
+        return any('is not read' in r.getMessage() for r in caplog.records)
+
+    def test_warning_for_melting_dir_with_paleos_mantle(self, caplog):
+        """The PALEOS curves are used, so a configured melting_dir gives one warning."""
+        assert self._warned(caplog, module='zalmoxis', melting_dir='Monteux-600')
+        assert sum('is not read' in r.getMessage() for r in caplog.records) == 1
+
+    def test_no_warning_where_melting_dir_is_read(self, caplog):
+        """Discrimination: a file-curve mantle EOS or an unset melting_dir stays silent."""
+        wb = Zalmoxis(mantle_eos='WolfBower2018:MgSiO3')
+        assert not self._warned(
+            caplog, module='zalmoxis', zalmoxis=wb, melting_dir='Monteux-600'
+        )
+        assert not self._warned(caplog, module='zalmoxis', melting_dir=None)
+
+    def test_warning_follows_the_mgsio3_component_of_a_mixture(self, caplog):
+        """A PALEOS mixture gets the generated set, so melting_dir is not read; a
+        mixture with a Wolf and Bower MgSiO3 component reads it."""
+        mix = Zalmoxis(mantle_eos='PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1')
+        assert self._warned(caplog, module='zalmoxis', zalmoxis=mix, melting_dir='Monteux-600')
+        wb = Zalmoxis(mantle_eos='WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1')
+        assert not self._warned(
+            caplog, module='zalmoxis', zalmoxis=wb, melting_dir='Monteux-600'
+        )
+        single = Zalmoxis(mantle_eos='PALEOS-2phase:MgSiO3')
+        assert self._warned(
+            caplog, module='zalmoxis', zalmoxis=single, melting_dir='Monteux-600'
+        )
+
+
+@pytest.mark.parametrize(
+    'mantle, rejected',
+    [
+        ('PALEOS:MgSiO3:0.5+WolfBower2018:MgSiO3:0.5', True),
+        ('PALEOS:MgSiO3:0.5+PALEOS-2phase:MgSiO3:0.5', True),
+        ('PALEOS:MgSiO3:0.5+PALEOS:MgSiO3:0.5', False),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
+    ],
+)
+@pytest.mark.parametrize('module', ['zalmoxis', 'dummy'])
+def test_two_mgsio3_sources_are_rejected_at_load(mantle, rejected, module):
+    """A mixture with MgSiO3 components of different keys has no single melting curve,
+    so the Zalmoxis structure rejects it, naming both; one key repeated is one material.
+    The dummy structure leaves the check to the energetics (Config validator)."""
+    kwargs = dict(
+        module=module, zalmoxis=Zalmoxis(mantle_eos=mantle), melting_dir='Monteux-600'
+    )
+    if rejected and module == 'zalmoxis':
+        with pytest.raises(ValueError, match='MgSiO3 components from different sources') as exc:
+            Struct(**kwargs)
+        for key in mantle.replace(':0.5', '').split('+'):
+            assert key in str(exc.value)
+    else:
+        Struct(**kwargs)
+
+
+@pytest.mark.parametrize(
+    'mantle, rejected',
+    [
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:inf', True),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:-Infinity', True),
+        ('PALEOS:MgSiO3:0.9+PALEOS: H2O', True),
+        ('PALEOS:MgSiO3:0.9+H2O:0.1', True),
+        ('PALEOS:MgSiO3:0.9+:H2O:0.1', True),
+        ('PALEOS:MgSiO3:0.9+PALEOS::0.1', True),
+        ('PALEOS:MgSiO3:1.1+PALEOS:H2O:-0.1', True),
+        ('PALEOS:MgSiO3:', True),
+        ('PALEOS::MgSiO3', True),
+        ('PALEOS:MgSiO3:foo', True),
+        ('PALEOS:MgSiO3:bar:0.5', True),
+        ('PALEOS:MgSiO3:0.5:0.5', True),
+        ('PALEOS:MgSiO3: 0.9', True),
+        ('PALEOS:nan', True),
+        ('PALEOS:MgSiO3:nan', True),
+        ('0.5:MgSiO3', True),
+        ('PALEOS:MgSiO3:0.9+', True),
+        ('PALEOS:MgSiO3:0.9++PALEOS:H2O:0.1', True),
+        ('PALEOS:MgSiO3:0.9 + PALEOS:H2O:0.1', False),
+        ('PALEOS:MgSiO3:0', True),
+        ('PALEOS:MgSiO3:0+PALEOS:H2O:0.1', True),
+        ('PALEOS:MgSiO3', False),
+    ],
+)
+def test_an_eos_component_with_a_space_or_a_non_finite_fraction_is_rejected(mantle, rejected):
+    """A component that is not '<source>:<material>' with at most one positive finite
+    fraction, or that has an inner space, names no registry key or no valid mass fraction for
+    Zalmoxis, so it is rejected at load; a zero fraction would leave a mixture member out of
+    the structure while the energetics still follow it. Spaces around '+' are fine."""
+    kwargs = dict(module='zalmoxis', zalmoxis=Zalmoxis(mantle_eos=mantle))
+    if rejected:
+        with pytest.raises(ValueError, match='with a positive finite fraction and no spaces'):
+            Struct(**kwargs)
+    else:
+        assert Struct(**kwargs).zalmoxis.mantle_eos == mantle
+
+
+@pytest.mark.parametrize('layer', ['core_eos', 'ice_layer_eos'])
+def test_a_core_or_ice_component_is_checked_like_a_mantle_component(layer):
+    """The core and ice layer EOS components follow the same format rule as the mantle."""
+    with pytest.raises(ValueError, match=f'`interior_struct.zalmoxis.{layer}` component'):
+        Struct(module='zalmoxis', zalmoxis=Zalmoxis(**{layer: 'PALEOS:H2O:foo'}))
+
+
+def test_zalmoxis_structure_without_its_section_loads():
+    """The MgSiO3-source check needs the Zalmoxis section and skips when it is absent."""
+    assert Struct(module='zalmoxis', zalmoxis=None).zalmoxis is None
+
+
+def test_lowt_extension_is_off_by_default_and_takes_a_bool():
+    """``lowt_extension`` defaults to False and stores True as given."""
+    assert Zalmoxis().lowt_extension is False
+    assert Zalmoxis(lowt_extension=True).lowt_extension is True
+    assert Zalmoxis(lowt_extension=False).lowt_extension is False
+
+
+@pytest.mark.parametrize(
+    'value', [1, 0, 1.0, float('nan'), float('inf'), 'true', 'false', None]
+)
+def test_lowt_extension_refuses_a_value_that_is_not_a_bool(value):
+    """A TOML number, string or missing value for the switch is refused, not cast."""
+    with pytest.raises(TypeError, match='lowt_extension'):
+        Zalmoxis(lowt_extension=value)
+    assert Zalmoxis(lowt_extension=True).lowt_extension is True
+
+
+def test_lowt_extension_property_only_bools_pass():
+    """Every value of the common TOML types except a bool is refused."""
+    hypothesis = pytest.importorskip('hypothesis')
+    given, settings = hypothesis.given, hypothesis.settings
+    st = pytest.importorskip('hypothesis.strategies')
+
+    @settings(max_examples=200, deadline=None)
+    @given(
+        st.one_of(
+            st.integers(),
+            st.floats(allow_nan=True, allow_infinity=True),
+            st.text(),
+            st.none(),
+            st.lists(st.booleans()),
+        )
+    )
+    def _check(value):
+        with pytest.raises(TypeError, match='lowt_extension'):
+            Zalmoxis(lowt_extension=value)
+
+    _check()
+    assert Zalmoxis(lowt_extension=False).lowt_extension is False

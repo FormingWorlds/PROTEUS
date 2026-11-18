@@ -14,10 +14,12 @@ invariants.
 Invariants asserted:
 
 - Helpfile has at least 2 rows.
-- ``R_int`` is consistent with the Earth-like scale (5.5e6-6.5e6 m
-  for 1 M_Earth at a typical mantle density).
+- ``R_int`` is consistent with the Earth-like scale (5.5e6-6.7e6 m
+  for 1 M_Earth: the initial structure follows the T_cmb = 6000 K
+  adiabat of a molten mantle, 6.61e6 m, and later rows contract to
+  about 6.22e6 m).
 - ``M_int`` mass closure: ``M_int + M_atm`` matches ``M_planet``
-  within rel=1e-3 (conservation invariant, §2 carve-out).
+  within rel=1e-3 (conservation invariant; tests/AGENTS.md, Discriminating values).
 - ``R_core / R_int`` lands in [0.55, 0.75] for cmf=0.55 under
   PALEOS:MgSiO3 mantle + PALEOS:iron core. Zalmoxis treats the
   configured ``core_frac`` as mass fraction regardless of
@@ -29,6 +31,9 @@ Invariants asserted:
   physical values when the ``'self'`` sentinel resolves through
   the EOS.
 - ``gravity`` positive and bounded (5-15 m/s^2 for 1 M_Earth).
+- ``M_core_solve`` equals the core target, ``M_core`` is at least ``M_core_solve``, and
+  ``R_core`` is a whole number of radial steps; the CMB node itself is checked by
+  ``test_a_thin_mantle_keeps_the_mass_inside_r_core_and_the_core_of_the_solve``.
 - Cross-step structure stability: with ``update_interval = 0`` the
   per-iteration refresh triggers are off, so the only structure
   change is the one-time baseline hand-off on the first non-init
@@ -110,7 +115,7 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
     - Helpfile has at least 2 rows.
     - The interior structure module is the real Zalmoxis wrapper,
       not the dummy scaling-law fallback (discrimination guard).
-    - Earth-scale R_int: 5.5e6 < R_int < 6.5e6 m at every row.
+    - Earth-scale R_int: 5.5e6 < R_int < 6.7e6 m at every row.
     - Mass closure: M_int + M_atm = M_planet within rel=1e-3.
     - Core-radius ratio: 0.50 < R_core/R_int < 0.60 (input
       ``core_frac = 0.55`` in dummy.toml, radius mode).
@@ -148,15 +153,13 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
         'structure module silently swapped away from zalmoxis'
     )
 
-    # Earth-scale R_int at every row. The Earth radius is 6.371e6 m;
-    # a self-consistent PALEOS solve on 1 M_Earth lands within a few
-    # percent of that. The window 5.5e6 - 6.5e6 m discriminates a
-    # mass-vs-radius confusion (where R_int would land at M_Earth in
-    # kg, ~6e24, off by 18 orders of magnitude).
+    # Earth-scale R_int (Earth 6.371e6 m): the start is the T_cmb = 6000 K adiabat of a molten
+    # mantle (6.61e6 m), later rows contract to about 6.22e6 m; the window also catches a
+    # mass-radius mix-up (M_Earth in kg, ~6e24).
     r_int = hf['R_int'].to_numpy()
     assert np.all(np.isfinite(r_int)), 'R_int contains NaN or Inf'
     assert np.all(r_int > 5.5e6), f'R_int below Earth scale: min={r_int.min():.3e} m'
-    assert np.all(r_int < 6.5e6), f'R_int above Earth scale: max={r_int.max():.3e} m'
+    assert np.all(r_int < 6.7e6), f'R_int above Earth scale: max={r_int.max():.3e} m'
 
     # R_int follows the branch's one-time baseline hand-off, then settles.
     # The IC solve sets the maximal-radius structure; on the first non-init
@@ -249,6 +252,30 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
         f'R_core/R_int = {ratio:.3f} outside the [0.55, 0.75] band '
         f'expected for cmf = 0.55 (PROTEUS interprets core_frac as '
         f'mass fraction regardless of core_frac_mode)'
+    )
+
+    # The core target is core_frac of the planet without its kept volatiles. With the dummy
+    # outgassing every volatile inventory is an input, oxygen too, so all of them are kept.
+    from proteus.utils.constants import M_earth, noble_gases, vol_element_list
+
+    cfg = runner.config
+    kept = sum(float(final.get(f'{e}_kg_total', 0.0)) for e in vol_element_list + noble_gases)
+    planet = cfg.planet.mass_tot * M_earth + float(final['M_volatile_change'])
+    core_target = float(final['M_core_target'])
+    assert kept > 1.0e-3 * planet, f'kept volatiles too small to test the rule: {kept:.3e} kg'
+    assert core_target == pytest.approx(
+        cfg.interior_struct.core_frac * (planet - kept), rel=1e-9
+    )
+    # M_core is the mass inside the CMB node; the unit test checks the node (docstring).
+    m_core, m_solve = float(final['M_core']), float(final['M_core_solve'])
+    r_core = float(final['R_core'])
+    assert m_solve == pytest.approx(core_target, rel=1e-12)
+    assert m_core >= m_solve * (1.0 - 1e-12)
+    # Zalmoxis radii are linspace(0, R_int, num_levels), so R_core is a whole number of steps.
+    dr = float(final['R_int']) / (cfg.interior_struct.zalmoxis.num_levels - 1)
+    assert r_core / dr == pytest.approx(round(r_core / dr), abs=1e-9)
+    assert float(final['core_density']) * 4.0 / 3.0 * np.pi * r_core**3 == pytest.approx(
+        m_core, rel=1e-12
     )
 
     # P_center, P_cmb positive and bounded. Earth: P_center ~ 3.6e11

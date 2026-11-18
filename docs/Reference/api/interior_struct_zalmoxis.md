@@ -12,4 +12,5 @@ For the practical TOML recipe, see the [Zalmoxis coupling how-to](https://proteu
       show_root_heading: false
       show_root_toc_entry: false
       members_order: source
-      filters: ["!^_"]
+      filters:
+        - "!^_"

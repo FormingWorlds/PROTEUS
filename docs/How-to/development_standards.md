@@ -62,6 +62,42 @@ field sets) are written one entry per line with a trailing comma, grouped by
 module under a header comment, and ordered alphabetically within each group.
 This keeps two independent additions on different lines so they merge cleanly.
 
+**Module install scripts**
+
+The `tools/get_*.sh` scripts share one sourced library, `tools/_get_common.sh`.
+It provides `portable_realpath`, the checkout root (`proteus_root`) and tools
+directory (`proteus_tools_dir`), the `--force` and install-path argument split
+(`get_parse_args`), the dirty-checkout guard (`guard_dirty_checkout`), the
+GitHub SSH probe (`github_use_ssh`), the https-to-SSH URL rewrite
+(`github_ssh_url`), the pin reader (`resolve_module_pin`), the release-tag
+checkout of a new clone (`checkout_floor_tag`), the path of a module script
+for a folder that is already there (`install_existing_clone`, which prints the
+state that `report_clone_state` reads with read-only git calls, after
+`is_own_clone` proves that the folder is the top level of its own clone, and
+installs the folder as it is), the summary entry for install.sh
+(`record_clone_stays`), the error suffix for a path that a failure leaves
+unchanged (`unchanged_note`), and `swap_in_checkout`, which puts a finished
+new checkout in the place of the old one. A script that replaces a checkout
+clones into a temporary sibling and calls `swap_in_checkout` last, so a failed
+clone or checkout, or a signal between its two moves, leaves the old one as it
+was.
+
+A new install script starts with the same bootstrap the existing ones use:
+
+```bash
+source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
+```
+
+The `|| exit 1` is load-bearing: half the scripts set no `-e`, and one that
+carried on past a failed `source` would run with `proteus_root` empty, putting
+its work path at the filesystem root.
+
+Add a helper to the library rather than copying one into a script, and give it
+a parameter for the variation a caller needs: `get_socrates.sh` passes a git
+pathspec to `guard_dirty_checkout` so its regenerable `make/Mk_cmd` does not
+count as local work. The helpers target bash 3.2 and run the same with or
+without `set -euo pipefail`, because the scripts differ on that.
+
 **Editing shared files**
 
 - When adding to the main coupling loop, add a stage function and call it rather

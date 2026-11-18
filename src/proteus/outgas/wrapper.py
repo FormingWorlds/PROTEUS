@@ -3,14 +3,25 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
-from proteus.outgas.common import expected_keys
+from proteus.escape.wrapper import readable_total
+from proteus.interior_struct.common import record_volatile_change
+from proteus.outgas.common import EMPTY_ATMOSPHERE_KEPT_KEYS, expected_keys, set_element_ratios
 from proteus.outgas.lavatmos import run_vapourisation
+from proteus.outgas.lid_seal import clear_seal, seal_enabled, sealed_mass
+from proteus.outgas.trapping import (
+    escapable_inventory,
+    locked_condensed_mass,
+    trapped_mass_withheld,
+    trapping_active,
+)
 from proteus.utils.constants import (
+    condensate_density,
     element_list,
     element_mmw,
     gas_list,
@@ -235,15 +246,15 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
 
     Parameters
     ----------
-        config : Config
-            Configuration object
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
 
     Returns
     -------
-        bool
-            True if desiccation occurred, False otherwise
+    bool
+        True if desiccation occurred, False otherwise
 
     Notes
     -----
@@ -262,7 +273,9 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     from firing on pathologically tiny inventories. If the gate is
     inactive (no baseline tracked yet, e.g. resuming an old CSV without
     `M_vol_initial`), the function falls back to the old threshold-only
-    behaviour.
+    behaviour. The current total skips a non-finite element, as run_desiccated
+    does, and mass an earlier desiccation removed, ``M_desiccated``, is left out
+    of the loss the gate compares, so a desiccated row passes again on resume.
 
     Scope of "desiccated": the threshold loop below considers the volatile
     elements (`vol_element_list`: H, O, C, N, S) together with the noble gases,
@@ -277,11 +290,23 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     # CALLIOPE drives O_kg_total to near-zero once H/C/N/S vanish, so this
     # change rarely affects the desiccation timing, but it keeps the
     # semantics honest under whole-planet O accounting.
+    unreadable = [
+        e for e in element_list if not np.isfinite(float(hf_row.get(f'{e}_kg_total', 0.0)))
+    ]
+    if unreadable:
+        log.error(
+            'Desiccation check refused: the total of %s is not finite; an upstream '
+            'step left it unreadable and needs checking.',
+            ', '.join(unreadable),
+        )
+        return False
     for e in vol_element_list + noble_gases:
-        if float(hf_row.get(e + '_kg_total', 0.0)) > config.outgas.mass_thresh:
-            log.info(
-                'Not desiccated, %s = %.2e kg' % (e, float(hf_row.get(e + '_kg_total', 0.0)))
-            )
+        # Mass trapped in the solid, or held in condensates kept from re-vapourising,
+        # can neither escape nor outgas, so only the escapable inventory counts;
+        # otherwise it would block desiccation forever.
+        reachable = escapable_inventory(hf_row, e, config) + sealed_mass(hf_row, e)
+        if reachable > config.outgas.mass_thresh:
+            log.info('Not desiccated, %s = %.2e kg reachable' % (e, reachable))
             return False  # return, and allow run_outgassing to proceed
 
     # Escape-balance gate. Only enforced when a baseline has been
@@ -300,8 +325,11 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     # or the (m_init - cur_m_ele) comparison mixes element sets and
     # overstates "lost" mass by any noble-gas/rock-vapour inventory present
     # at baseline time.
-    cur_m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
-    lost = m_init - cur_m_ele
+    removed = float(hf_row.get('M_desiccated', 0.0))
+    if not np.isfinite(removed):
+        removed = 0.0
+    cur_m_ele = readable_total(hf_row)
+    lost = m_init - cur_m_ele - removed
     esc_cum = float(hf_row.get('esc_kg_cumulative', 0.0))
 
     # Allow 1.5x scaling slack plus a 1 t absolute floor for noise.
@@ -322,18 +350,147 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     return True
 
 
-def run_outgassing(dirs: dict, config: Config, hf_row: dict):
+def desiccated_after_trapping(config: Config, hf_row: dict, desiccated: bool, step) -> bool:
+    """Whether a desiccated planet is still desiccated after this step's trapping.
+
+    A remelting step returns buried mass to the melt, where :func:`run_desiccated`
+    keeps it while trapping is on. Once the mass the melt holds brings an element
+    above ``mass_thresh`` the planet holds volatiles again, and the flag clears so
+    that escape and outgassing take that mass from there.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
+    desiccated : bool
+        Whether the planet was desiccated before this step
+    step : TrappingStep or None
+        What this step's trapping did, as returned by ``run_trapping``
+
+    Returns
+    -------
+    bool
+        Whether the planet is desiccated now.
+    """
+    if not desiccated or step is None or not step.remelted or step.total_trapped >= 0.0:
+        return desiccated
+    still = check_desiccation(config, hf_row)
+    if not still:
+        log.info(
+            'Remelting returned %.3e kg to the melt; no longer desiccated', -step.total_trapped
+        )
+    return still
+
+
+def _solve_chemistry(dirs: dict, config: Config, hf_row: dict, *, initial: bool) -> None:
+    """Partition the volatile inventory between melt and atmosphere.
+
+    Dispatches to the configured chemistry backend, then applies the bulk H2
+    binodal override where it is enabled.
+    """
+    if config.outgas.module == 'calliope':
+        from proteus.outgas.calliope import calc_surface_pressures
+
+        calc_surface_pressures(dirs, config, hf_row)
+    elif config.outgas.module == 'atmodeller':
+        from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+        calc_surface_pressures_atmodeller(dirs, config, hf_row)
+    elif config.outgas.module == 'dummy':
+        from proteus.outgas.dummy import calc_surface_pressures_dummy
+
+        calc_surface_pressures_dummy(dirs, config, hf_row, initial=initial)
+
+    # Binodal H2 partitioning: with global_miscibility Zalmoxis has already set it
+    # radially during the structure update; otherwise, with h2_binodal on, apply
+    # the bulk binodal override of Rogers+2025.
+    if config.interior_struct.zalmoxis.global_miscibility:
+        log.debug('Skipping apply_binodal_h2: handled by Zalmoxis (global_miscibility)')
+    elif config.outgas.h2_binodal:
+        from proteus.outgas.binodal import apply_binodal_h2
+
+        apply_binodal_h2(hf_row, config)
+
+
+@contextmanager
+def condensed_mass_withheld(config: Config, hf_row: dict, *, initial: bool):
+    """Start the chemistry from no condensed mass, keeping held condensates out of it.
+
+    Every backend starts from empty ``{e}_kg_condensed`` and ``{X}_cd_kg``
+    columns; only atmodeller with condensates enabled fills them, so they stay 0
+    otherwise. With ``outgas.prevent_desaturation`` on, the condensed mass so far
+    is also taken out of each element total for the solve, so the chemistry cannot
+    re-vapourise it, and on exit it is added back to the totals, to
+    ``{e}_kg_condensed`` and to each condensate's ``{X}_cd_kg``, on top of what the
+    solve newly condensed. The reservoirs then only grow. The exit runs also when
+    the solve raises, so the row then holds the held mass, no more and no less.
+    ``{X}_cd_activity`` stays the solver's value: it is the saturation of the
+    inventory left in the solve, not of the held layer, so it can be below 1 while
+    a layer is held.
+
+    In the init stage (``initial``) nothing is held back: each init iteration
+    resets the element totals to the delivered budget and solves the same starting
+    state again, so condensate from an earlier trial solve is not kept.
+    """
+    held = {e: 0.0 for e in vol_element_list}
+    if not initial:
+        held = {e: locked_condensed_mass(hf_row, e, config) for e in vol_element_list}
+    held_cd = {}
+    if any(held.values()):
+        for c in condensate_density.keys():
+            mass = float(hf_row.get(f'{c}_cd_kg', 0.0))
+            held_cd[c] = max(0.0, mass) if np.isfinite(mass) else 0.0
+    for c in condensate_density.keys():
+        hf_row[f'{c}_cd_kg'] = 0.0
+    for e in vol_element_list:
+        hf_row[f'{e}_kg_condensed'] = 0.0
+        if held[e] > 0.0:
+            hf_row[f'{e}_kg_total'] = float(hf_row.get(f'{e}_kg_total', 0.0)) - held[e]
+    try:
+        yield
+    finally:
+        for e in vol_element_list:
+            if held[e] > 0.0:
+                hf_row[f'{e}_kg_total'] = float(hf_row.get(f'{e}_kg_total', 0.0)) + held[e]
+                hf_row[f'{e}_kg_condensed'] = (
+                    float(hf_row.get(f'{e}_kg_condensed', 0.0)) + held[e]
+                )
+        for c, mass in held_cd.items():
+            hf_row[f'{c}_cd_kg'] = float(hf_row.get(f'{c}_cd_kg', 0.0)) + mass
+
+
+def outgassing_derives_o_kg_total(config: Config) -> bool:
+    """Whether each outgassing call derives ``O_kg_total`` from the melt fO2.
+
+    CALLIOPE and atmodeller derive the O budget from the fixed fO2 under
+    ``planet.fO2_source = 'user_constant'``; ``O_mode = 'ic_chemistry'``
+    requires that source at config load. The dummy outgassing derives an empty
+    ``O_kg_total`` only in the init stage and otherwise keeps it as given, and
+    ``from_O_budget`` takes the O budget as input.
+    """
+    return (
+        config.outgas.module in ('calliope', 'atmodeller')
+        and config.planet.fO2_source == 'user_constant'
+    )
+
+
+def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
     """
     Run outgassing model to get new volatile surface pressures
 
     Parameters
     ----------
-        dirs : dict
-            Dictionary of directory paths
-        config : Config
-            Configuration object
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
+    dirs : dict
+        Dictionary of directory paths
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
+    initial : bool
+        Whether this is an init-stage iteration, where the dummy outgassing
+        derives an empty O budget from the outgassed species.
     """
 
     log.info('Calculating volatile outgassing at surface')
@@ -377,32 +534,16 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     hf_row['fO2_shift_IW_derived'] = float(config.outgas.fO2_shift_IW)
     hf_row['O_res'] = 0.0
 
-    # Run outgassing calculation
-    if config.outgas.module == 'calliope':
-        from proteus.outgas.calliope import calc_surface_pressures
-
-        calc_surface_pressures(dirs, config, hf_row)
-    elif config.outgas.module == 'atmodeller':
-        from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
-
-        calc_surface_pressures_atmodeller(dirs, config, hf_row)
-    elif config.outgas.module == 'dummy':
-        from proteus.outgas.dummy import calc_surface_pressures_dummy
-
-        calc_surface_pressures_dummy(dirs, config, hf_row)
-
-    # Apply binodal-controlled H2 partitioning.
-    # When global_miscibility is enabled, the binodal is handled radially
-    # by Zalmoxis (solve_miscible_interior), and the H2 partition was
-    # already set during the structure update. Skip the bulk binodal here.
-    # When global_miscibility is disabled but h2_binodal is on, use the
-    # original bulk binodal override from Rogers+2025.
-    if config.interior_struct.zalmoxis.global_miscibility:
-        log.debug('Skipping apply_binodal_h2: handled by Zalmoxis (global_miscibility)')
-    elif config.outgas.h2_binodal:
-        from proteus.outgas.binodal import apply_binodal_h2
-
-        apply_binodal_h2(hf_row, config)
+    # The chemistry partitions a whole-planet inventory and rewrites every
+    # `_kg_solid` column (0.0 in CALLIOPE and atmodeller; atmodeller writes its
+    # condensates to `_kg_condensed`), so the trapped mass is hidden for the solve
+    # and put back after it. Condensed mass is handled the same way when it is kept
+    # from re-vapourising.
+    with (
+        condensed_mass_withheld(config, hf_row, initial=initial),
+        trapped_mass_withheld(hf_row),
+    ):
+        _solve_chemistry(dirs, config, hf_row, initial=initial)
 
     # P_surf here is the volatile+noble gas total
     hf_row['P_vol'] = hf_row['P_surf']
@@ -419,16 +560,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     # iteration rather than only after the mantle crystallises.
     hf_row['M_vol_atm'] = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_gas_list)
 
-    # Derive element mass ratios in atmosphere
-    for e1 in element_list:
-        for e2 in element_list:
-            key = f'{e2}/{e1}_atm'  # key to be set in helpfile
-            if key not in hf_row:
-                continue
-            if min(hf_row[f'{e1}_kg_atm'], hf_row[f'{e2}_kg_atm']) < 1e-30:
-                hf_row[key] = 0.0
-            else:
-                hf_row[key] = hf_row[f'{e2}_kg_atm'] / hf_row[f'{e1}_kg_atm']
+    set_element_ratios(hf_row)
 
     # print outgassed partial pressures (in order of descending abundance)
     species = [s for s in gas_list if s not in vap_list]
@@ -460,15 +592,17 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     trapped in the solid and outgassing no longer replenishes the atmosphere.
 
     Escape, however, continues. ``run_escape`` runs earlier in the main loop
-    with ``atmosphere_only=True`` in this regime, so it debits the whole-planet
-    element totals (``*_kg_total``) proportional to atmospheric abundance. The
-    same escaped mass is removed from the atmospheric reservoirs here by scaling
-    them with the retained fraction. Because the chemistry is frozen and the
-    escape is unfractionated, the scaling is composition-preserving: partial-
-    pressure ratios, VMRs, and the mean molecular weight are unchanged. Sizing
-    the loss from the atmosphere in both places keeps the per-element
-    ``*_kg_total`` and the atmospheric reservoirs mutually consistent for every
-    ``escape.reservoir`` setting.
+    with ``atmosphere_only=True`` in this regime, so it debits each element
+    total (``*_kg_total``) by its share of the escaping mass, its atmospheric
+    mass over the sum of the element masses in the atmosphere. The atmospheric
+    reservoirs are scaled here by the fraction of that same sum that remains,
+    so each element's atmosphere loses exactly what escape took from its total
+    and the per-element totals and reservoirs stay consistent. ``M_atm``, the
+    sum of the species masses, can differ from the element sum where the
+    chemistry's molar masses do (by 1.8e-5 with CALLIOPE); scaling it by
+    ``(M_atm - esc) / M_atm`` instead would leave that fraction of every step's
+    loss in the atmosphere. The scaling is uniform, so partial-pressure ratios,
+    VMRs and the mean molecular weight are unchanged.
 
     Parameters
     ----------
@@ -493,6 +627,9 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
 
     m_atm = float(hf_row.get('M_atm', 0.0))
     esc_rate = float(hf_row.get('esc_rate_total', 0.0))
+    # The element masses in the atmosphere, the reservoir escape shared its loss over;
+    # a row that records none has only the species sum.
+    m_elements = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list) or m_atm
 
     if dt <= 0.0:
         # A non-positive step is a coupling error, not a benign no-op: surface it
@@ -505,15 +642,34 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
         )
         return
 
-    if m_atm <= 0.0 or esc_rate <= 0.0:
-        # No atmosphere or no active escape: reservoirs stay as-is.
+    if m_atm <= 0.0 or esc_rate <= 0.0 or not m_elements > 0.0:
+        # No atmosphere, no active escape, or an unreadable element atmosphere:
+        # reservoirs stay as-is.
         log.info('Crystallized mantle: volatile exchange frozen, reservoirs preserved')
         return
 
-    # Mass lost to escape over this step (esc_rate is kg s-1, dt is yr). With
-    # the mantle frozen it comes entirely out of the atmosphere.
-    esc_step_kg = esc_rate * secs_per_year * dt
-    retained = max(0.0, (m_atm - esc_step_kg) / m_atm)
+    # Mass lost to escape over this step. With the mantle frozen it comes
+    # entirely out of the atmosphere. Prefer the loss the escape step actually
+    # applied: sizing this from the raw rate instead would empty the atmosphere
+    # on an overshoot while the elemental totals kept all but the capped share.
+    esc_step_kg = hf_row.get('esc_step_kg')
+    if esc_step_kg is None or not np.isfinite(float(esc_step_kg)):
+        esc_step_kg = esc_rate * secs_per_year * dt
+    esc_step_kg = float(esc_step_kg)
+
+    if esc_step_kg > m_elements:
+        # Escape took more from the elemental totals than the column holds, so
+        # the loss was sized from a reservoir the frozen mantle no longer
+        # supplies and the two records of this step disagree by the excess.
+        log.warning(
+            'Escape removed %.3e kg from the elemental totals while the '
+            'atmosphere holds only %.3e kg; the column empties and the excess '
+            '%.3e kg leaves no reservoir that tracks it.',
+            esc_step_kg,
+            m_elements,
+            esc_step_kg - m_elements,
+        )
+    retained = max(0.0, (m_elements - esc_step_kg) / m_elements)
 
     # Scale the atmospheric reservoirs by the retained fraction. Uniform
     # scaling preserves composition, so `*_vmr` and `atm_kg_per_mol` (mmw)
@@ -523,9 +679,28 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     # atmospheric mass shrinks with the reactive volatiles; otherwise a later
     # escape step that debits the noble total would leave the noble
     # atmospheric mass stale and larger than the total.
+    held = seal_enabled(config)  # the seal refuses freeze_volatiles: only a held step
     for s in gas_list:
-        hf_row[f'{s}_kg_atm'] = hf_row.get(f'{s}_kg_atm', 0.0) * retained
+        kg, mol = hf_row.get(f'{s}_kg_atm', 0.0), hf_row.get(f'{s}_mol_atm', 0.0)
+        hf_row[f'{s}_kg_atm'] = kg * retained
         hf_row[f'{s}_bar'] = hf_row.get(f'{s}_bar', 0.0) * retained
+        if not held:
+            continue
+        # A held step leaks moles into this atmosphere, so they and the species totals follow.
+        hf_row[f'{s}_mol_atm'] = mol * retained
+        if f'{s}_mol_total' in hf_row:
+            hf_row[f'{s}_mol_total'] -= mol * (1.0 - retained)
+        if s not in element_list and f'{s}_kg_total' in hf_row:
+            hf_row[f'{s}_kg_total'] -= kg * (1.0 - retained)
+    # Element reservoirs whose symbol is not also a species name. The loop above
+    # already scales the rock formers and noble gases through the species they
+    # share a symbol with; H, O, C, N and S have no such twin, and escape sizes
+    # the next step's loss from these keys, so leaving them would hold the
+    # escapable reservoir at its pre-solidification value as the column empties.
+    for e in element_list:
+        if e in gas_list:
+            continue
+        hf_row[f'{e}_kg_atm'] = hf_row.get(f'{e}_kg_atm', 0.0) * retained
     hf_row['P_surf'] = hf_row.get('P_surf', 0.0) * retained
     # Keep the volatile/vapour partial-pressure split consistent with the
     # rescaled total (same uniform, composition-preserving scaling as above).
@@ -551,21 +726,44 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     )
 
 
+def _kept_column(value: float, name: str, reservoir: str) -> float:
+    """A reservoir column desiccation keeps: non-negative, and zero if unreadable."""
+    if not np.isfinite(value):
+        log.warning(
+            'Desiccation: the %s %s column is not finite; none is kept', reservoir, name
+        )
+        return 0.0
+    return max(value, 0.0)
+
+
 def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     """
     Handle desiccation of the planet. This substitutes for run_outgassing when the planet
-    has lost its entire volatile inventory.
+    has lost its entire volatile inventory. The atmosphere and the melt are emptied,
+    noble gases included; the solid mantle keeps its share, which becomes each
+    species and element total. With solid-phase trapping on, the melt is kept as
+    well: a remelt returns buried mass to it, and emptying it every step would make
+    what the planet keeps depend on how many steps the remelt takes. The mass
+    removed is booked in ``M_desiccated`` and the Zalmoxis target.
+
+    The kept share is the sum of the kept columns limited to [0, total before the
+    call], each column scaled alike; a non-finite column keeps nothing and is
+    logged. The kept columns, kg and mol, are set to their share. No total rises,
+    so the mass removed is not negative and a row that passed
+    ``check_desiccation`` passes it again. A non-finite total stays as it is, with
+    its mol total set to NaN. A non-finite ``M_desiccated`` reads as 0, as in the
+    check.
 
     Parameters
     ----------
-        dirs : dict
-            Dictionary of directory paths
-        config : Config
-            Configuration object
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
-        first_iter : bool
-            True if this is the first iteration of the simulation, False otherwise
+    dirs : dict
+        Dictionary of directory paths
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
+    first_iter : bool
+        Whether the run is in its init stage.
     """
 
     # if desiccated, set all gas masses to zero
@@ -585,22 +783,71 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
             hf_row[g + '_kg_total'] = 0.0
 
     # Set most values to zero now also for volatile species
+    # With trapping on the melt is kept as well, so mass a remelt returns stays in it.
+    keep_melt = trapping_active(config)
+    held = ('_solid', '_liquid') if keep_melt else ('_solid',)
+    totals = {
+        n: float(hf_row.get(f'{n}_kg_total', 0.0))
+        for n in dict.fromkeys(element_list + gas_list)
+    }
+    removed = readable_total(hf_row)
     for k in expected_keys():
-        if k not in excepted_keys:
+        if k not in EMPTY_ATMOSPHERE_KEPT_KEYS and not k.endswith(held):
             hf_row[k] = 0.0
 
     # reset all rock-vapour elements to zero as well before vapourisation occures again - otherwise atmosphere will keep building up!
     # Only the rock-forming elements are reset: the volatile and noble totals are
-    # owned by the outgassing and escape steps respectively.
-    for e in element_list:
-        if e in vol_element_list or e in noble_gases:
+    # owned by the outgassing and escape steps respectively
+
+    clear_seal(hf_row)  # a sealed rest below mass_thresh leaves with the atmosphere
+    for n, total in totals.items():
+        if not np.isfinite(total):
+            hf_row[f'{n}_kg_total'] = total
+            if n in gas_list:
+                hf_row[f'{n}_mol_total'] = np.nan
             continue
-        hf_row[e + '_kg_atm'] = 0.0
-        hf_row[e + '_kg_total'] = 0.0
+        solid = _kept_column(float(hf_row.get(f'{n}_kg_solid', 0.0)), n, 'solid')
+        liquid = 0.0
+        if keep_melt:
+            liquid = _kept_column(float(hf_row.get(f'{n}_kg_liquid', 0.0)), n, 'melt')
+        # Condensates (e.g. graphite) stay on the surface when the atmosphere goes.
+        condensed = 0.0
+        if n in vol_element_list:
+            condensed = _kept_column(
+                float(hf_row.get(f'{n}_kg_condensed', 0.0)), n, 'condensed'
+            )
+        mantle = solid + liquid
+        held_mass = mantle + condensed
+        kept = min(held_mass, total)
+        share = kept / held_mass if held_mass > 0.0 else 0.0
+        # A negative total keeps its value, in the solid column.
+        hf_row[f'{n}_kg_solid'] = solid * share if held_mass > 0.0 else kept
+        if keep_melt:
+            hf_row[f'{n}_kg_liquid'] = liquid * share
+        if n in vol_element_list:
+            hf_row[f'{n}_kg_condensed'] = condensed * share
+        hf_row[f'{n}_kg_total'] = kept
+        if n in gas_list:
+            mol = _kept_column(float(hf_row.get(f'{n}_mol_solid', 0.0)) * share, n, 'solid')
+            hf_row[f'{n}_mol_solid'] = mol
+            if keep_melt:
+                mol_melt = float(hf_row.get(f'{n}_mol_liquid', 0.0)) * share
+                hf_row[f'{n}_mol_liquid'] = _kept_column(mol_melt, n, 'melt')
+                mol += hf_row[f'{n}_mol_liquid']
+            hf_row[f'{n}_mol_total'] = mol
+    removed -= readable_total(hf_row)
+    booked = float(hf_row.get('M_desiccated', 0.0))
+    hf_row['M_desiccated'] = (booked if np.isfinite(booked) else 0.0) + removed
+    record_volatile_change(config, hf_row, -removed)
 
     # Vapourisation of refractories, under the same crystallised gate as
     # volatile outgassing path.
     if config.outgas.vapourise:
+        for e in element_list:
+            if e in vol_element_list or e in noble_gases:
+                continue
+            hf_row[e + '_kg_atm'] = 0.0
+            hf_row[e + '_kg_total'] = 0.0
         if hf_row['Phi_global'] <= config.params.stop.solid.phi_crit:
             log.info('Skipping rock vapourisation for crystallised mantle')
         else:
@@ -622,14 +869,15 @@ def run_outgassing_and_vapourisation(
 
     Parameters
     ----------
-        dirs : dict
-            Dictionary of directory paths
-        config : Config
-            Configuration object
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
-        first_iter : bool
-            True if this is the first iteration of the simulation, False otherwise
+    dirs : dict
+        Dictionary of directory paths
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
+    first_iter : bool
+        Whether the run is in its init stage; the dummy outgassing derives an
+        empty O budget only then.
     """
 
     # reset all rock-vapour masses to zero:

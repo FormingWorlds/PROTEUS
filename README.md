@@ -28,26 +28,13 @@
   </a>
 </p>
 
-**Coupled atmosphere-interior evolution of rocky planets and exoplanets.**
+<p align="center"><strong>Simulate the coupled interior-atmosphere evolution of rocky planets and exoplanets through deep time.</strong></p>
 
-PROTEUS (/ˈproʊtiəs, PROH-tee-əs) is a modular Python framework that connects interior thermal evolution, volatile outgassing, atmospheric radiative transfer, atmospheric escape, and stellar evolution into a self-consistent time-stepping loop, following a planet from a molten magma ocean to a solidified surface over billions of years. Inspired by the Greek god of elusive sea change, who could change his form at will, PROTEUS is designed to be flexible and adaptable to a wide range of planetary environments. It can foretell the future, but answers only to those who are capable of asking the right questions.
-
-## Features
-
-- **Modular backends**: interior, atmosphere, escape, outgassing, stellar, and orbit domains each expose multiple interchangeable solvers behind a common interface.
-- **Coupled, conservative loop**: modules exchange boundary conditions every timestep, enforcing mass and energy conservation across the whole planet system.
-- **Adaptive time-stepping**: resolves fast transitions (solidification, escape episodes) and steps efficiently through quasi-steady phases.
-- **Parameter sweeps and observations**: built-in Cartesian grid sweeps over configuration parameters, plus forward models for synthetic transit and eclipse spectra.
+PROTEUS (/ˈproʊtiəs/, PROH-tee-əs) is a modular Python framework that follows a rocky planet from a molten magma ocean to a solid surface. It couples the interior, the atmosphere, the star and the orbit of the planet in one time-stepping loop.
 
 ## Get started
 
-Follow the [installation guide](https://proteus-framework.org/PROTEUS/How-to/installation.html), then run the all-dummy quick start (no external solvers, under a minute):
-
-```console
-proteus start -c input/dummy.toml
-```
-
-The [quick-start tutorial](https://proteus-framework.org/PROTEUS/Tutorials/quick_start_dummy.html) explains the output; the [Earth analogue tutorial](https://proteus-framework.org/PROTEUS/Tutorials/earth_analogue.html) is a full production run.
+Follow the [installation guide](https://proteus-framework.org/PROTEUS/How-to/installation.html), then run the [quick start](https://proteus-framework.org/PROTEUS/Tutorials/quick_start_dummy.html): a run with dummy modules that takes less than a minute. The [Earth analogue tutorial](https://proteus-framework.org/PROTEUS/Tutorials/earth_analogue.html) is a full run with Aragog, Zalmoxis, CALLIOPE and AGNI.
 
 ## Documentation
 
@@ -60,4 +47,4 @@ Full documentation: **[proteus-framework.org/PROTEUS](https://proteus-framework.
 
 ## Community and citation
 
-Ask questions on the [discussions page](https://github.com/orgs/FormingWorlds/discussions) or [contact the developers](https://proteus-framework.org/PROTEUS/Community/contact.html). If you use PROTEUS, please cite the papers listed in the [bibliography](https://proteus-framework.org/PROTEUS/Reference/bibliography.html). To cite the software itself, use the Zenodo concept DOI [10.5281/zenodo.21358380](https://doi.org/10.5281/zenodo.21358380), which always resolves to the latest archived release.
+Ask questions on the [discussions page](https://github.com/orgs/FormingWorlds/discussions) or [contact the developers](https://proteus-framework.org/PROTEUS/Community/contact.html). If you use PROTEUS, cite the papers in the [bibliography](https://proteus-framework.org/PROTEUS/Reference/bibliography.html). To cite the software, use the Zenodo concept DOI [10.5281/zenodo.21358380](https://doi.org/10.5281/zenodo.21358380), which resolves to the latest archived release.

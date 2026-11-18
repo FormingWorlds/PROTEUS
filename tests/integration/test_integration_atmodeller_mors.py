@@ -126,7 +126,7 @@ def test_atmodeller_solver_mode_enum_pinned_as_set_under_mors_pair():
 
 def test_atmodeller_solver_step_and_multistart_must_be_positive_under_mors_pair():
     """``Atmodeller.solver_max_steps`` and ``solver_multistart`` use
-    ``gt(0)`` at ``_outgas.py:112-113``. Defaults round-trip; zero
+    ``gt(0)`` in ``Atmodeller``. Defaults round-trip; zero
     and negative reject. A regression that swapped ``gt(0)`` for
     ``ge(0)`` would accept zero, so the explicit zero-raise
     discriminates.
@@ -153,7 +153,7 @@ def test_atmodeller_solver_step_and_multistart_must_be_positive_under_mors_pair(
     default = Atmodeller()
     # Pin the documented defaults so a silent shift surfaces here.
     assert default.solver_max_steps == 1024
-    assert default.solver_multistart == 10
+    assert default.solver_multistart == 50
 
 
 def test_atmodeller_none_sentinel_coerced_case_sensitively_under_mors_pair():
