@@ -284,7 +284,7 @@ def test_clean_text_hides_at_least_what_a_renderer_can_hide():
 
 def test_clean_text_cuts_the_raw_text_first():
     """Only the first 20000 raw characters are read; a cut inside markup leaks nothing."""
-    assert collect.clean_text('a' * 20000 + ' tail', 20100) == 'a' * 20000
+    assert collect.clean_text('a' * 20000 + 'tail', 20100) == 'a' * 20000
     for tail in ['<!-- hidden -->', '[t](https://evil.example/x)', '<b>x</b>', '@alice']:
         out = collect.clean_text('x' * 19994 + ' ' + tail, 20000)
         assert out.startswith('x' * 19994) and len(out) <= 20000
