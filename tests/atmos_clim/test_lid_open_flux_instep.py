@@ -180,3 +180,20 @@ def test_no_response_without_a_live_lid():
 @pytest.mark.physics_invariant
 def test_the_guard_codes_are_distinct():
     assert len({0, LID_SLOPE_GUARD_SIGN, LID_SLOPE_GUARD_SIZE}) == 3
+
+
+@pytest.mark.unit
+def test_the_scale_stop_writes_the_atmosphere_status():
+    """The stop for a scale at or below 0 records status 22 before it ends the run; a usable row
+    passes its start value through."""
+    from unittest.mock import patch
+
+    from proteus.atmos_clim.wrapper import lid_open_flux_or_stop
+
+    with patch('proteus.atmos_clim.wrapper.UpdateStatusfile') as status:
+        with pytest.raises(RuntimeError, match='scale'):
+            lid_open_flux_or_stop({}, _row(0.3, T_surf=900.0, F_atm=-5.0))
+        assert [c.args[1] for c in status.call_args_list] == [22]
+        row = _balanced(_row(0.3, T_surf=900.0))
+        assert lid_open_flux_or_stop({}, row) == lid_open_flux(row)
+        assert status.call_count == 1
