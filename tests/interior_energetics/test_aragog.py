@@ -4359,7 +4359,7 @@ def test_setup_solver_threads_core_module_params(tmp_path):
     assert params['stratification'] is False
     assert params['m_core'] == pytest.approx(1.93e24)
     assert params['p_cen'] == pytest.approx(3.6e11)
-    assert params['ra_crit_cmb'] is None  # 'eq16' reaches aragog as None, its eq. 16
+    assert params['ra_crit_cmb'] == 'phase'  # the default law by phase reaches aragog as is
 
 
 @pytest.mark.unit

@@ -886,7 +886,7 @@ def _core_run(folder, ra=None, core_bc='core_module', drop=False):
 @pytest.mark.parametrize('drop', [False, True], ids=['recorded 450', 'not recorded'])
 def test_a_run_written_with_450_refuses_an_eq16_resume(tmp_path, drop):
     """A core_module run written with Ra_crit 450, or before the setting was recorded (when
-    450 was the only law), keeps it at a resume: the eq. 16 default would change the CMB flux."""
+    450 was the only law), keeps it at a resume: the default law would change the CMB flux."""
     out = _core_run(tmp_path, ra=450.0, drop=drop)
     config, path = _core_config(tmp_path)
     with pytest.raises(ResumeSeparationLawError, match='ra_crit_cmb') as err:
@@ -905,22 +905,35 @@ def test_a_run_written_with_450_resumes_with_450(tmp_path, caplog):
 
 
 def test_an_eq16_run_refuses_a_fixed_number_and_keeps_eq16(tmp_path):
-    """An eq. 16 run refuses a fixed number at a resume and resumes under eq. 16."""
-    out = _core_run(tmp_path)
-    config, path = _core_config(tmp_path, ra=450.0)
-    with pytest.raises(ResumeSeparationLawError, match="written with 'eq16'"):
-        check_resume_separation_laws(config, path, out)
-    config, path = _core_config(tmp_path, name='same.toml')
+    """An eq. 16 run refuses a fixed number and the default law by phase at a resume, and
+    resumes under eq. 16."""
+    out = _core_run(tmp_path, ra='eq16')
+    for name, ra in (('fixed.toml', 450.0), ('default.toml', None)):
+        config, path = _core_config(tmp_path, ra=ra, name=name)
+        with pytest.raises(ResumeSeparationLawError, match="written with 'eq16'"):
+            check_resume_separation_laws(config, path, out)
+    config, path = _core_config(tmp_path, ra='eq16', name='same.toml')
     assert check_resume_separation_laws(config, path, out) == []
 
 
+def test_a_run_by_phase_resumes_by_phase_and_refuses_another_law(tmp_path):
+    """A run under the law by phase (the default) keeps it at a resume."""
+    out = _core_run(tmp_path)
+    config, path = _core_config(tmp_path, name='same.toml')
+    assert check_resume_separation_laws(config, path, out) == []
+    config, path = _core_config(tmp_path, ra='eq16')
+    with pytest.raises(ResumeSeparationLawError, match="written with 'phase'"):
+        check_resume_separation_laws(config, path, out)
+
+
 def test_the_allow_switch_lets_the_critical_rayleigh_number_change(tmp_path, caplog):
-    """With allow_resume_law_change the resume switches to eq. 16 and warns once."""
+    """With allow_resume_law_change the resume switches to the default law by phase and warns
+    once."""
     out = _core_run(tmp_path, ra=450.0)
     config, path = _core_config(tmp_path, allow=True)
     with caplog.at_level(logging.WARNING, logger=LOGGER):
         switches = check_resume_separation_laws(config, path, out)
-    assert switches == [('core_module.ra_crit_cmb', 450.0, 'eq16')]
+    assert switches == [('core_module.ra_crit_cmb', 450.0, 'phase')]
     assert sum('ra_crit_cmb' in r.getMessage() for r in caplog.records) == 1
 
 
