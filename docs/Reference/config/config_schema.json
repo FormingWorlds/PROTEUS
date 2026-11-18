@@ -5711,7 +5711,7 @@
           "value": 0
         }
       ],
-      "description": "Core thermal expansion coefficient [K-1].",
+      "description": "Core thermal expansion coefficient [K-1]. Without a running core module (any other core_bc, or SPIDER) also the expansion coefficient of the Gaussian core fitted to the Zalmoxis structure, whose adiabat sets the core temperature of the next structure solve.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5732,7 +5732,7 @@
           "value": 0
         }
       ],
-      "description": "Core specific heat capacity [J kg-1 K-1].",
+      "description": "Core specific heat capacity [J kg-1 K-1]. Used for that Gaussian core in the same way.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

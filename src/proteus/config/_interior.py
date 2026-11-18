@@ -327,9 +327,11 @@ class AragogCoreModule:
     Attributes
     ----------
     alpha: float
-        Core thermal expansion coefficient [K-1].
+        Core thermal expansion coefficient [K-1]. Without a running core module (any other
+        core_bc, or SPIDER) also the expansion coefficient of the Gaussian core fitted to the
+        Zalmoxis structure, whose adiabat sets the core temperature of the next structure solve.
     c_p: float
-        Core specific heat capacity [J kg-1 K-1].
+        Core specific heat capacity [J kg-1 K-1]. Used for that Gaussian core in the same way.
     melting_curve: str
         'iron' (Anzellini et al. (2013)[^cite-anzellini2013] via PALEOS, with light-element
         depression) or 'quadratic' (Nimmo (2015)[^cite-nimmo2015] Eq. 6 parameterisation).
