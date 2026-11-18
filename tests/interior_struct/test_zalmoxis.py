@@ -2266,7 +2266,8 @@ def _plausible_model_results(n: int = 60) -> dict:
     Density decreases outward (iron core to silicate surface), pressure
     decreases outward, the enclosed mass is the cumulative shell
     integral of that density, and ``cmb_mass`` sits exactly on a grid
-    node so the core-mantle split is self-consistent.
+    node so the core-mantle split is self-consistent; the core arrays
+    end at that node.
     """
     r_surf = 6.371e6
     radii = np.linspace(1.0e3, r_surf, n)
@@ -2277,7 +2278,14 @@ def _plausible_model_results(n: int = 60) -> dict:
     gravity = np.linspace(0.5, 9.8, n)  # m/s^2, ~0 at centre to surface g
     shell_mass = 4.0 * np.pi * radii**2 * density * np.gradient(radii)
     mass_enclosed = np.cumsum(shell_mass)
+    core = slice(cmb_index + 1)  # the core arrays end at the CMB node
     return {
+        'core': {
+            'r': radii[core],
+            'm': mass_enclosed[core],
+            'P': pressure[core],
+            'g': gravity[core],
+        },
         'radii': radii,
         'density': density,
         'gravity': gravity,
@@ -2593,6 +2601,125 @@ def test_a_core_mass_above_every_node_stops_the_structure_solve(tmp_path, monkey
             tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
         )
     assert f'{top:.4e}' in str(err.value)
+
+
+def _with_core_arrays(model, frac):
+    """Put the core mass of ``model`` at ``frac`` of the mass of the cell below node 55 and give
+    it core arrays as Zalmoxis returns them: the nodes below the core mass, then the CMB point
+    at ``frac`` of that cell in radius, pressure and gravity. Returns the CMB point (r, P, g)."""
+    r, m, P, g = (model[k] for k in ('radii', 'mass_enclosed', 'pressure', 'gravity'))
+    cmb_mass = float(m[54] + frac * (m[55] - m[54]))
+    model['cmb_mass'] = model['core_mantle_mass'] = cmb_mass
+    point = tuple(float(a[54] + frac * (a[55] - a[54])) for a in (r, P, g))
+    model['core'] = {
+        'r': np.r_[r[:55], point[0]],
+        'm': np.r_[m[:55], cmb_mass],
+        'P': np.r_[P[:55], point[1]],
+        'g': np.r_[g[:55], point[2]],
+    }
+    return point
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_r_core_is_the_cmb_point_of_the_core_arrays(tmp_path, monkeypatch):
+    """A core mass at 0.3 of the cell below node 55 puts the CMB 0.3 of that cell above node 54,
+    not on node 55: R_core, P_cmb and the core mass come from the CMB point of the core arrays,
+    the core density is the core mass over the volume inside that radius, and the file Aragog
+    reads starts at that point, with the density and temperature of the mantle side taken
+    linear in r from nodes 55 and 56."""
+    model = _plausible_model_results()
+    r_c, p_c, g_c = _with_core_arrays(model, 0.3)
+    r, m, rho, temp = (model[k] for k in ('radii', 'mass_enclosed', 'density', 'temperature'))
+    cmb_mass = model['cmb_mass']
+    assert r[55] - r_c > 0.5 * (r[55] - r[54])
+
+    _, _, _, hf_row, _, cmb_radius, _ = _run_gate_solver(
+        tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
+    )
+    assert cmb_radius == hf_row['R_core'] == r_c
+    assert hf_row['P_cmb'] == p_c
+    assert hf_row['M_core'] == cmb_mass
+    assert hf_row['M_int'] - hf_row['M_core'] == pytest.approx(
+        float(m[-1]) - cmb_mass, rel=1e-12
+    )
+    assert hf_row['core_density'] * 4.0 / 3.0 * np.pi * r_c**3 == pytest.approx(
+        cmb_mass, rel=1e-12
+    )
+
+    rows = np.loadtxt(tmp_path / 'data' / 'zalmoxis_output.dat')
+    w = (r_c - r[55]) / (r[56] - r[55])
+    assert len(rows) == len(r) - 55 + 1
+    assert rows[0, :2].tolist() == [r_c, p_c]
+    assert rows[0, 3] == g_c
+    assert rows[0, 2] == pytest.approx(rho[55] + w * (rho[56] - rho[55]), rel=1e-12)
+    assert rows[0, 4] == pytest.approx(temp[55] + w * (temp[56] - temp[55]), rel=1e-12)
+    assert np.array_equal(rows[1:, 0], r[55:])
+
+
+@pytest.mark.unit
+def test_a_node_within_the_mesh_tolerance_of_the_cmb_is_the_first_mantle_row(
+    tmp_path, monkeypatch
+):
+    """With the CMB point 0.5 m below node 55 (Aragog's mesh tolerance is 1 m here), the file
+    starts with node 55 moved to the CMB point: its density and temperature, the radius,
+    pressure and gravity of the CMB point, and no extra row."""
+    model = _plausible_model_results()
+    r = model['radii']
+    _with_core_arrays(model, 1.0 - 0.5 / (r[55] - r[54]))
+    r_c, p_c, g_c = (float(model['core'][k][-1]) for k in ('r', 'P', 'g'))
+    assert r[55] - r_c == pytest.approx(0.5, rel=1e-6)
+
+    _, _, _, hf_row, _, _, _ = _run_gate_solver(
+        tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
+    )
+    rows = np.loadtxt(tmp_path / 'data' / 'zalmoxis_output.dat')
+    assert len(rows) == len(r) - 55
+    assert rows[0].tolist() == [r_c, p_c, model['density'][55], g_c, model['temperature'][55]]
+    assert np.array_equal(rows[1:, 0], r[56:])
+    assert hf_row['R_core'] == r_c
+
+
+@pytest.mark.unit
+def test_a_structure_without_core_arrays_stops_the_solve(tmp_path, monkeypatch):
+    """A Zalmoxis result without core arrays (``core`` missing or None) has no CMB point, so
+    the structure solve raises instead of placing R_core on a node."""
+    for core in ('missing', None):
+        model = _plausible_model_results()
+        model.pop('core')
+        if core is None:
+            model['core'] = None
+        with pytest.raises(RuntimeError, match='no core arrays'):
+            _run_gate_solver(
+                tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
+            )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_mantle_file_starts_at_the_cmb_point_for_any_cmb_in_the_cell(tmp_path, monkeypatch):
+    """For a CMB anywhere in the cell below node 55 (fraction 1e-6 to 1 of its mass), the file
+    starts at the CMB point, its radii rise strictly, and it holds node 55 unless that node
+    lies within the 1 m mesh tolerance of the CMB."""
+    hypothesis = pytest.importorskip('hypothesis')
+    st = pytest.importorskip('hypothesis.strategies')
+
+    @hypothesis.settings(max_examples=40, deadline=None)
+    @hypothesis.given(st.floats(1e-6, 1.0))
+    def _check(frac):
+        model = _plausible_model_results()
+        r = model['radii']
+        r_c, p_c, _ = _with_core_arrays(model, frac)
+        _, _, _, hf_row, _, _, _ = _run_gate_solver(
+            tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
+        )
+        rows = np.loadtxt(tmp_path / 'data' / 'zalmoxis_output.dat')
+        assert rows[0, :2].tolist() == [r_c, p_c] and hf_row['R_core'] == r_c
+        assert np.all(np.diff(rows[:, 0]) > 0)
+        assert (rows[1, 0] == r[55]) == (r[55] - r_c > 1.0)
+        assert np.all(np.isfinite(rows)) and np.all(rows[:, 2] > 0)
+
+    _check()
 
 
 def test_zalmoxis_solver_passes_callable_when_jax_path_not_viable(tmp_path, monkeypatch):
