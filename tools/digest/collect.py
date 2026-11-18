@@ -75,7 +75,7 @@ def clean_text(text: str | None, limit: int) -> str:
     Only the first ``RAW_CHARS`` characters are read, without a tag that the cut leaves
     open. An HTML comment ends only at ``-->`` and an unclosed one hides the rest, so the
     result hides at least what a markdown or HTML renderer can hide. Every token with
-    ``://`` goes; a ``<`` that opens no tag stays, as in ``T < 300 K``.
+    ``://`` goes; a ``<`` with no ``>`` after it stays, as in ``T < 300 K``.
 
     Parameters
     ----------
