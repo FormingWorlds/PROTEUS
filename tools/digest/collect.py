@@ -23,6 +23,7 @@ from datetime import datetime, timedelta, timezone
 from common import DigestError, GitHub, find_category, iso, load_settings, parse_time
 
 MEMBERS = ('OWNER', 'MEMBER', 'COLLABORATOR', 'CONTRIBUTOR')
+RAW_CHARS = 20000  # raw text read per title or body; the largest body_chars allowed
 STATE_RE = re.compile(r'<!-- weekly-digest-state (\{.*?\}) -->', re.S)
 
 PR_QUERY = """
@@ -71,6 +72,10 @@ query($owner: String!, $name: String!, $number: Int!) {
 def clean_text(text: str | None, limit: int) -> str:
     """Remove links, images, HTML and mentions from untrusted text and cut it to ``limit``.
 
+    Only the first ``RAW_CHARS`` characters are read. An HTML comment ends only at
+    ``-->`` and an unclosed one hides the rest, so the result hides at least what a
+    markdown or HTML renderer can hide.
+
     Parameters
     ----------
     text : str or None
@@ -85,7 +90,7 @@ def clean_text(text: str | None, limit: int) -> str:
     """
     if not text or limit <= 0:
         return ''
-    text = re.sub(r'<!--(?:-?>|.*?--!?>|.*)', ' ', text, flags=re.S)
+    text = re.sub(r'<!--(?:-?>|.*?-->|.*)', ' ', text[:RAW_CHARS], flags=re.S)
     text = re.sub(r'!\[[^\]]*\]\([^)]*\)', ' ', text)
     text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
     text = re.sub(r'<[^>]*>', ' ', text)
