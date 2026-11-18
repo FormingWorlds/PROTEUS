@@ -1694,8 +1694,6 @@ class Proteus:
             ):
                 log.info('Updating archive of model output data')
                 _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                # move older snapshots into data.tar; recent snapshots and the
-                # fixed-name runtime files stay loose until the final archive
                 archive.archive_old(self.directories['output/data'], self.hf_row['Time'] * 0.99)
                 if _IT_TIMING_ENABLED:
                     _t_mod['archive'] = time.perf_counter() - _t0
@@ -1775,7 +1773,7 @@ class Proteus:
         # Archive the folder ./output/data/, and remove files
         if self.config.params.out.archive_mod is not None:
             log.info('Archiving output data into tar files')
-            archive.update(self.directories['output/data'], remove_files=True)
+            archive.update(self.directories['output/data'])
 
         # Stop time and model duration
         print_stoptime(start_time)
@@ -1800,7 +1798,7 @@ class Proteus:
         """
         Pack data files in subfolders of the output directory into archival tar files
         """
-        archive.create(self.directories['output/data'], remove_files=True)
+        archive.create(self.directories['output/data'])
 
     def observe(self):
         # Load data from helpfile. Read it before unpacking the archive, so a

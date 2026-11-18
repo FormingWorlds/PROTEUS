@@ -81,18 +81,16 @@ def archive_exists(dir: str, ignore_warnings: bool = False) -> bool:
     return exists
 
 
-def create(dir: str, remove_files: bool = True) -> str:
+def create(dir: str) -> str:
     """
     Create a new tar archive from a directory of files, placing the tar inside that directory.
 
-    Optionally removes all files in that directory (other than the tar file).
+    Removes the archived files from the directory.
 
     Arguments
     ---------
     dir : str
         The directory to archive.
-    remove_files:bool
-        Whether to remove the appended files from the directory.
 
     Returns
     -------
@@ -125,19 +123,17 @@ def create(dir: str, remove_files: bool = True) -> str:
             tar_file.add(f, arcname=os.path.basename(f))
 
     # Remove the files that were archived (never the tar file itself)
-    if remove_files:
-        for f in files:
-            if f == tar:
-                continue
+    for f in files:
+        if f != tar:
             safe_rm(f)
 
     # Return path to the tar file
     return tar
 
 
-def append(dir: str, remove_files: bool = True) -> str:
+def append(dir: str) -> str:
     """
-    Add files within `dir` into `dir/dir.tar`.
+    Move the files within `dir` into `dir/dir.tar`.
 
     The tar file must already exist.
 
@@ -145,8 +141,6 @@ def append(dir: str, remove_files: bool = True) -> str:
     ---------
     dir:str
         Path to the archived directory.
-    remove_files:bool
-        Whether to remove the appended files from the directory.
 
     Returns
     -------
@@ -174,10 +168,8 @@ def append(dir: str, remove_files: bool = True) -> str:
             tar_file.add(f, arcname=os.path.basename(f))
 
     # Remove the files that were appended (never the tar file itself)
-    if remove_files:
-        for f in files:
-            if f == tar:
-                continue
+    for f in files:
+        if f != tar:
             safe_rm(f)
 
     return tar
@@ -229,14 +221,13 @@ def extract(dir: str, remove_tar: bool = False, ignore_warnings: bool = False) -
         safe_rm(tar)
 
 
-def update(dir: str, remove_files: bool = True) -> None:
+def update(dir: str) -> None:
     """
     Create and/or update a data file archive.
 
-    This function archives the folder located at `dir/`. The files inside `dir/`
-    are stored inside a tar file called `dir.tar` located in `dir/`.
-    The tar file is created if it does not already exist, otherwise it is
-    updated with the contents of `dir/`.
+    This function moves the files inside `dir/` into a tar file called
+    `dir.tar` located in `dir/`. The tar file is created if it does not
+    already exist, otherwise it is updated with the contents of `dir/`.
 
     All paths should be absolute.
 
@@ -244,8 +235,6 @@ def update(dir: str, remove_files: bool = True) -> None:
     ---------
     dir : str
         The directory to archive.
-    remove_files : bool
-        Whether to remove the archived files from the directory.
     """
 
     # Paths
@@ -253,25 +242,17 @@ def update(dir: str, remove_files: bool = True) -> None:
 
     # Update archive
     if archive_exists(dir, ignore_warnings=True):
-        append(dir, remove_files=remove_files)
+        append(dir)
 
     # Create new archive
     else:
-        create(dir, remove_files=remove_files)
+        create(dir)
 
 
 def archive_old(dir: str, before: float) -> None:
     """
-    Move timestamped snapshots older than a cutoff time into the archive.
-
-    Only snapshots recognised by :func:`_snapshot_time` whose time is below
-    `before` are appended to the tar file (created if missing) and then
-    removed from `dir`. Each snapshot therefore enters the tar once, when
-    it leaves the disk. Every other entry stays in place, notably the
-    fixed-name runtime files that the interior modules re-read between
-    structure re-solves (``zalmoxis_output.dat`` and its ``.prev`` backup,
-    ``zalmoxis_output_temp.txt``, ``spider_mesh.dat``, and the EOS table
-    directories); the end-of-run :func:`update` archives those once.
+    Move the snapshots (see :func:`_snapshot_time`) older than `before` into
+    the tar file, creating it if missing. Every other entry stays in `dir`.
 
     Arguments
     ---------
