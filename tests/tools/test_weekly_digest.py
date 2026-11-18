@@ -286,12 +286,14 @@ def test_clean_text_removes_every_url_scheme():
     """A scheme with nothing after it, or one other than http and ftp, is removed too."""
     assert collect.clean_text('see https:// and foo://y z', 100) == 'see and z'
     assert collect.clean_text('https:/@/evil.example/x', 100) == ''
-    assert collect.clean_text('ht​tps://evil.example tail', 100) == 'tail'
+    assert collect.clean_text('ht\u200btps://evil.example tail', 100) == 'tail'
 
 
 def test_clean_text_keeps_text_after_a_less_than_sign():
     """A < or > that is not part of a tag goes, and the text around it stays."""
     assert collect.clean_text('T < 300 K and a -> b', 100) == 'T 300 K and a - b'
+    assert collect.clean_text('<!DOCTYPE html><?xml v?><B>x</B>', 100) == 'x'
+    assert collect.clean_text('<a <b>x', 100) == 'a x'
     out = collect.clean_text('T < 300 K ' + 'word ' * 5000 + 'tail', 20000)
     assert out == 'T 300 K ' + ' '.join(['word'] * 3998)
 
@@ -314,8 +316,8 @@ def test_clean_text_cuts_the_raw_text_first():
             assert 'evil' not in out and 'hidden' not in out, (tail, k, out[-20:])
 
 
-HOSTILE = '@<>:/.w[]()!- a\n\t\x00​\U000e0041'
-PLAIN = 'aT3K .-'
+HOSTILE = '@<>:/.w[]()!- a\n\t\x00\u200b\U000e0041\U000e0002'
+PLAIN = 'aT3K .-\n\r'
 
 
 @given(

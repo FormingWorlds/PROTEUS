@@ -79,7 +79,7 @@ def clean_text(text: str | None, limit: int) -> str:
     """Remove links, images, HTML and mentions from untrusted text and cut it to ``limit``.
 
     Only the first ``RAW_CHARS`` characters are read. Format and control characters and
-    U+E0000 to U+E007F go first (control characters become spaces). An HTML comment ends
+    U+E0000 to U+E007F go first; white space stays. An HTML comment ends
     only at ``-->`` and an unclosed one removes the rest. A tag starts with ``<`` and a
     letter, ``/``, ``!`` or ``?``; every other ``<`` or ``>`` goes, and the text around it
     stays, as in ``T < 300 K``. ``@`` goes, then every token with ``://`` or ``www.``.
@@ -100,9 +100,7 @@ def clean_text(text: str | None, limit: int) -> str:
     """
     if not text or limit <= 0:
         return ''
-    text = ''.join(
-        ' ' if c < ' ' else c for c in text[:RAW_CHARS] if not dropped_char(c) or c in '\t\n\r'
-    )
+    text = ''.join(c for c in text[:RAW_CHARS] if c.isspace() or not dropped_char(c))
     text = re.sub(r'<!--(?:-?>|.*?-->|.*)', ' ', text, flags=re.S)
     text = re.sub(r'!\[[^\]]*\]\([^)]*\)', ' ', text)
     text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
