@@ -83,7 +83,7 @@ def test_a_live_lid_without_a_usable_slope_holds_the_start_value():
     ],
 )
 def test_a_t_magma_clip_stops_only_with_a_live_lid_in_the_step(prev_w, w, w_max, stops):
-    """G2: a clip in a step where a lid acts (weight above 0 at the start, the end or an accepted
+    """A clip in a step where a lid acts (weight above 0 at the start, the end or an accepted
     state) stops the run with the clipped value; elsewhere it is counted."""
     row = {'Time': 9.7e6, 'T_magma': 1600.0, 'lid_weight': w, 'lid_weight_max': w_max}
     with patch('proteus.interior_energetics.wrapper.UpdateStatusfile') as status:
@@ -104,7 +104,7 @@ def test_a_row_without_lid_columns_counts_the_clip():
 
 
 def test_an_accepted_state_out_of_the_tables_ends_the_run():
-    """G1: the Aragog error for an accepted state outside the EOS tables is passed up with
+    """The Aragog error for an accepted state outside the EOS tables is passed up with
     status 21; it is not absorbed as a failed step that keeps the previous state."""
     from aragog.solver.entropy_solver import AcceptedStateRangeError
 

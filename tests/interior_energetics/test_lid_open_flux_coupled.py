@@ -20,7 +20,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(60)]
 
 DATA = Path(__file__).parents[1] / 'data' / 'lid_open_flux' / 'coupled_rows.json'
 RUNS = json.loads(DATA.read_text())
-# Energy residual of the uniform-mesh run of the same release (the bound of the plan).
+# Energy residual of the uniform-mesh run of the same code version, the bound of the check.
 E_RES_BOUND = 2.5e-5
 
 
@@ -31,7 +31,8 @@ def _swing(run):
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_the_open_part_keeps_the_coupled_runs_from_swinging(validation_plot):
-    """V1 and V2: the fixed runs swing less than the runs before the change, the lid-off run
+    """Both segments: the runs with the response swing less than the runs with the fixed open
+    flux, the lid-off run
     included for V1, take up at most 1 W/m2 at the surface, keep T_magma below 1600 K, clip
     nothing and close the energy to the bound."""
     for fixed, before in (('V1', 'R1_before'), ('V2', 'probe_before')):
@@ -48,8 +49,8 @@ def test_the_open_part_keeps_the_coupled_runs_from_swinging(validation_plot):
 
         fig, axes = plt.subplots(2, 1, figsize=(6.4, 5.6))
         role = {
-            'R1_before': ('before', ':', 'C0'),
-            'probe_before': ('before', ':', 'C0'),
+            'R1_before': ('fixed open flux', ':', 'C0'),
+            'probe_before': ('fixed open flux', ':', 'C0'),
             'R2_lid_off': ('lid off', '--', 'C1'),
             'V1': ('in-step open part', '-', 'C2'),
             'V2': ('in-step open part', '-', 'C2'),

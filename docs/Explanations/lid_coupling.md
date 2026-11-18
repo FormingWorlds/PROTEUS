@@ -1,5 +1,9 @@
 # Sub-grid lid and the surface skin
 
+How does a thin solid crust on the magma ocean change the heat that the interior loses to the atmosphere?
+
+**Short answer.** Aragog carries the crust as a sub-grid lid with a weight $w$ from 0 (no lid) to 1 (a full lid). The surface then has 2 parts at one surface temperature: the lid part conducts through the crust, and the open part conducts through a thin skin over the melt. PROTEUS gives the atmosphere both parts as one skin and gives the interior the flux of each part, so that 3 energy rules hold and the lid creates or loses no energy at the surface.
+
 A thin solid crust at the top of the Aragog mantle changes the heat path from the melt to the atmosphere. The lid enters the surface balance of the atmosphere, and the coupling keeps three energy rules between the melt, the lid and the atmosphere.
 
 This page assumes you know the [coupling loop](coupling_loop.md): the interior runs first in each iteration with the flux `F_atm` of the last atmosphere call, and the atmosphere then solves for the surface temperature `T_surf`. The lid itself, its profile, its growth and its hand-over to the mesh, is described on the [Surface lid page](https://proteus-framework.org/aragog/Explanations/surface_lid.html) of the Aragog documentation. This page covers the PROTEUS side: what the atmosphere sees and what the interior takes. It applies to `interior_energetics.module = "aragog"` with the default `interior_energetics.surface_bc_mode = "flux"`. The lid seal of the melt volatiles reads the thickness of this lid; see [Volatiles held under a closed crust](lid_seal.md).
@@ -109,7 +113,7 @@ the call takes the skin thickness $d_\mathrm{call} = k / G$ (with the same $k$) 
 
 $$T_\mathrm{magma,call} = \frac{w\,G_\mathrm{lid}'\,T_b + (1 - w)\,G_\mathrm{skin}\,T_m}{G}.$$
 
-Then $\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})$ equals $F$ above for every $T_\mathrm{surf}$, so the atmosphere solves the parallel balance with the skin balance it already has. These values hold for the call only: `lid_boundary` writes nothing to the row. The row keeps the `T_magma` that Aragog writes under a lid, $w T_b + (1 - w) T_m$, the melt temperature that outgassing reads. The large-increase clip of `tmagma_atol` and `tmagma_rtol` in the interior wrapper acts on this row value, not on the lid branch of the call. A clip in a step where a lid acts (weight above 0 at the start or the end of the step, or at an accepted state of the solver, column `lid_weight_max`) stops the run with an error that names the clipped value: a clipped lid step does not keep the energy rules. Without a lid the clip acts as before and the column `T_magma_clipped` counts it. `planet.prevent_warming` is refused with the lid (see Limits).
+Then $\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})$ equals $F$ above for every $T_\mathrm{surf}$, so the atmosphere solves the parallel balance with the skin balance it already has. These values hold for the call only: `lid_boundary` writes nothing to the row. The row keeps the `T_magma` that Aragog writes under a lid, $w T_b + (1 - w) T_m$, the melt temperature that outgassing reads. The large-increase clip of `tmagma_atol` and `tmagma_rtol` in the interior wrapper acts on this row value, not on the lid branch of the call. A clip in a step where a lid acts (weight above 0 at the start or the end of the step, or at an accepted state of the solver, column `lid_weight_max`) stops the run with an error that names the clipped value: a clipped lid step does not keep the energy rules. Without a lid the run goes on with the clipped value, and the column `T_magma_clipped` counts each clip. `planet.prevent_warming` is refused with the lid (see Limits).
 
 **Why the 10 mm skin is not added on top of the lid.** The skin stands for the boundary layer at the top of a molten surface. Under a solid lid no melt reaches the surface, so that boundary layer does not exist: the lid is the conductive layer, and $T_\mathrm{surf}$ is the temperature at its top. Adding the skin in series, $1/G = 1/G_\mathrm{lid} + 1/G_\mathrm{skin}$, would count one layer twice; at $G_\mathrm{lid} = G_\mathrm{skin}$ it would halve the conductance of the lid part.
 
@@ -123,25 +127,37 @@ and `F_atm` where no lid acts. The ratio $r$ compares the flux of the atmosphere
 
 ### The open part within a step
 
-**Why.** The start flux $F_\mathrm{open,0}$ comes from the atmosphere at the start of the step. If the open part kept it for the whole step, the top cell would gain or lose that flux whatever its temperature does. At a lid onset with `F_atm` below 0 this heated the top cell by about $1.7 \times 10^3$ W m$^{-2}$ for a whole step in a coupled run, and that step clipped `T_magma` from 4710 K.
+How does the flux of the open part change while the interior step runs?
 
-**What.** Within the step the open part follows its melt:
+**Short answer.** The open part starts the step at $F_\mathrm{open,0}$ and then follows its melt: when the melt under it warms by 1 K, its loss rises by $G_\mathrm{eff}$ per open area. A fixed start flux would let a warming melt lose no more heat, and an inward start flux would heat the top cell for the whole step.
+
+Within the step
 
 $$F_\mathrm{open} = F_\mathrm{open,0} + G_\mathrm{eff}\,(T_m - T_{m,0}),$$
 
-with $T_{m,0}$ the value of $T_m$ at the start of the step, which Aragog takes from its start state. At the start the open part therefore carries $F_\mathrm{open,0}$ exactly, and while the node stays below $T_b$ it keeps it.
+with $T_{m,0}$ the value of $T_m$ at the start of the step, which Aragog takes from its start state. At the start the open part carries $F_\mathrm{open,0}$ exactly, and while the node stays below $T_b$ it keeps it.
 
-**The response.** A change $dT_m$ of the open melt moves the surface of the call balance by
+**Where $G_\mathrm{eff}$ comes from.** A change $dT_m$ of the open melt moves the surface of the call balance by
 
 $$dT_\mathrm{surf} = \frac{(1 - w)\,G_\mathrm{skin}\,dT_m}{F' + w\,G_\mathrm{lid}' + (1 - w)\,G_\mathrm{skin}},$$
 
-with $F'$ the slope of `F_atm` with the surface temperature, and the atmosphere then takes $F'\,dT_\mathrm{surf}$ more. Aragog holds the lid surface through the step, so the lid part does not follow that surface. The open part alone carries the change, per open area
+with $F'$ the slope of `F_atm` with the surface temperature, and the atmosphere then takes $F'\,dT_\mathrm{surf}$ more. Aragog holds the lid surface through the step, so the open part alone carries the change:
 
-$$G_\mathrm{eff} = \frac{G_\mathrm{skin}\,F'}{F' + w\,G_\mathrm{lid}' + (1 - w)\,G_\mathrm{skin}},$$
+$$G_\mathrm{eff} = \frac{G_\mathrm{skin}\,F'}{F' + w\,G_\mathrm{lid}' + (1 - w)\,G_\mathrm{skin}}, \qquad (1 - w)\,G_\mathrm{eff}\,dT_m = F'\,dT_\mathrm{surf}.$$
 
-so that $(1 - w)\,G_\mathrm{eff}\,dT_m = F'\,dT_\mathrm{surf}$. At $w = 0$ this is the skin and the atmosphere in series, $G_\mathrm{skin} F' / (G_\mathrm{skin} + F')$; as $w$ goes to 1 it is $G_\mathrm{skin} F' / (F' + G_\mathrm{lid}')$ per open area and 0 per total area. $G_\mathrm{eff}$ is at most $G_\mathrm{skin}$. On a stored lid-onset row of a coupled run ($w = 0.703$, $G_\mathrm{lid}' = 7.27$, $F' = 0.306$ W m$^{-2}$ K$^{-1}$) it is 0.944 W m$^{-2}$ K$^{-1}$ per open area, 0.280 per total area. Had the open part followed the shared surface on its own, it would have carried 4.96 W m$^{-2}$ K$^{-1}$ per total area, 17.7 times the change of the atmosphere.
+- At $w = 0$ it is the skin and the atmosphere in series, $G_\mathrm{skin} F' / (G_\mathrm{skin} + F')$.
+- As $w$ goes to 1 it is $G_\mathrm{skin} F' / (F' + G_\mathrm{lid}')$ per open area and 0 per total area.
+- It is at most $G_\mathrm{skin}$.
 
-**The slope guard.** `lid_flux_slope` gives $F'$ from the last 2 rows. A slope of 0 or below, a non-finite one or one from a surface step below 0.01 K gives $G_\mathrm{eff} = 0$: the open part keeps $F_\mathrm{open,0}$ for the step. A slope above $4 \sigma T_\mathrm{surf}^3$, the slope of a bare grey surface, is cut to it. The column `lid_slope_guard` records 0 (none), 1 (slope set to 0) or 2 (slope cut) on rows with a live lid. PROTEUS passes $G_\mathrm{eff}$ to Aragog as `open_surface_conductance` only under a live lid in flux mode with the mush base.
+**Example.** On a stored lid-onset row of a coupled run ($w = 0.703$, $G_\mathrm{lid}' = 7.27$, $F' = 0.306$ W m$^{-2}$ K$^{-1}$), $G_\mathrm{eff}$ is 0.944 W m$^{-2}$ K$^{-1}$ per open area and 0.280 per total area. An open part that followed the shared surface on its own, with the lid part held, would carry 4.96 W m$^{-2}$ K$^{-1}$ per total area, 17.7 times the change of the atmosphere.
+
+**The slope guard.** `lid_flux_slope` gives $F'$ from the last 2 rows; the column `lid_slope_guard` records what the guard did on rows with a live lid:
+
+- 1: a slope of 0 or below, a non-finite slope, or one from a surface step below 0.01 K gives $G_\mathrm{eff} = 0$, and the open part keeps $F_\mathrm{open,0}$ for the step.
+- 2: a slope above $4 \sigma T_\mathrm{surf}^3$, the slope of a bare grey surface, is cut to it.
+- 0: no guard acted.
+
+PROTEUS passes $G_\mathrm{eff}$ to Aragog as `open_surface_conductance` only under a live lid in flux mode with the mush base.
 
 **Where this is checked.** [The open part follows the melt within the interior step](../Validation/atmos_clim/common.md#the-open-part-follows-the-melt-within-the-interior-step) checks $G_\mathrm{eff}$ against the derivative of the surface balance, and [Coupled runs through the lid onset](../Validation/atmos_clim/common.md#coupled-runs-through-the-lid-onset) the surface temperature of 2 stored run segments.
 

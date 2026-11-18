@@ -70,7 +70,7 @@ def test_the_start_value_takes_the_floored_skin():
 @pytest.mark.parametrize('T_node', [1350.0, 1500.0])
 @pytest.mark.parametrize('w', [1e-12, 1e-11])
 def test_the_floored_start_value_goes_to_f_atm_at_the_onset(w, T_node):
-    """D2: the start value tends to ``F_atm`` as the weight goes to 0, floored or not."""
+    """The start value tends to ``F_atm`` as the weight goes to 0, floored or not."""
     row = _balanced(_row(w, T_node=T_node, T_surf=1300.0), gap=0.97)
     assert lid_open_flux(row) == pytest.approx(row['F_atm'], rel=1e-10)
 
@@ -94,7 +94,7 @@ def test_the_unscaled_branch_takes_the_flux_of_the_atmosphere(caplog, monkeypatc
 
 @pytest.mark.physics_invariant
 def test_a_scale_of_zero_or_below_stops_the_run():
-    """G3: a positive skin balance with ``F_atm`` at or below 0 gives ``c <= 0``: the run stops."""
+    """A positive skin balance with ``F_atm`` at or below 0 gives ``c <= 0``: the run stops."""
     for F_atm in (0.0, -5.0):
         row = _row(0.3, T_surf=900.0, F_atm=F_atm)
         with pytest.raises(RuntimeError, match='scale'):
@@ -112,7 +112,7 @@ def _shared_surface(row, F_prime, T_m, F0=10.0, T_s0=900.0):
 
 @pytest.mark.physics_invariant
 def test_the_response_keeps_the_step_change_at_the_change_of_the_atmosphere():
-    """Form B on the probe onset row: the open part's own response (form A) plus the lid part's
+    """On a stored lid-onset row: the open part's own response plus the lid part's
     change per total area is ``F' dT_s/dT_m``, which equals ``(1 - w) G_eff``."""
     w, G_l, F_p = 0.703, 7.27, 0.306
     row = _row(w, G=G_l, T_node=1600.0, T_surf=900.0, d=0.01, k=2.0, F_atm=1.0)
@@ -153,7 +153,7 @@ def test_the_response_limits():
     T_s=st.floats(200.0, 3000.0),
 )
 def test_the_response_is_positive_and_at_most_the_skin(w, G_lid, k_over_d, F_p, T_s):
-    """D3: ``0 < G_eff <= G``, and the size guard never raises the response."""
+    """``0 < G_eff <= G``, and the size guard never raises the response."""
     row = _row(w, G=G_lid, d=1.0 / k_over_d, k=1.0, T_surf=T_s, F_atm=1.0)
     G_eff, code = lid_open_conductance(row, F_p)
     assert 0.0 < G_eff <= k_over_d * (1.0 + 1e-12)

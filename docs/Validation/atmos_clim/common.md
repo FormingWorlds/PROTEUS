@@ -5,7 +5,7 @@
 This page checks how the atmosphere sees a thin solid crust, the sub-grid lid of Aragog, at the surface (`src/proteus/atmos_clim/common.py`).
 Under a lid the surface has two parts at one surface temperature: the part covered by the lid and the open part, where the melt conducts through the skin.
 Validation here means that we run the code on a case where another source gives the right answer, and the test checks that the code gives that answer within a stated tolerance.
-Here the right answer comes from algebra: two conductors in parallel, and a sum of two fluxes, have closed forms.
+The right answer comes from algebra for the first 2 cases (two conductors in parallel, and a sum of two fluxes, have closed forms), from a numerical derivative of the surface balance for the third, and from stored coupled runs with a fixed open flux and with the lid off for the fourth.
 If this part of the code were wrong, the atmosphere would solve for the wrong surface temperature, or the interior would lose more or less heat than the atmosphere takes.
 Each case below says why the check exists, what it tests, how we know the right answer and why it matters; the box "Test details" at the end of each case gives the reference, the tolerance, the test id and the command.
 
@@ -23,7 +23,7 @@ The physics of the lid in the coupling is on the page [Sub-grid lid and the surf
 | `tests/atmos_clim/test_common.py::test_the_call_flux_is_the_parallel_sum_of_the_lid_and_the_open_surface` | Analytical limit: two conductors in parallel at one surface temperature | `lid_boundary` at 110 surface temperatures, 4 weights, 3 lid conductances | 2026-11-08 |
 | `tests/atmos_clim/test_common.py::test_the_weighted_parts_sum_to_f_atm_less_the_unscaled_cap` | Analytical limit: the sum of the two weighted parts | `lid_flux_cap` and `lid_open_flux` at 21 weights, 3 ratios $r$ and 2 lid conductances | 2026-11-08 |
 | `tests/atmos_clim/test_lid_open_flux_instep.py::test_the_response_is_the_change_of_the_shared_surface` | Derivative of the shared surface balance (central difference) | `lid_open_conductance` at 19 weights and 3 slopes $F'$ | 2026-11-18 |
-| `tests/interior_energetics/test_lid_open_flux_coupled.py::test_the_open_part_keeps_the_coupled_runs_from_swinging` | Stored coupled runs before the change and with the lid off | 2 segments of 1 Earth-mass runs through the lid onset | 2026-11-18 |
+| `tests/interior_energetics/test_lid_open_flux_coupled.py::test_the_open_part_keeps_the_coupled_runs_from_swinging` | Stored coupled runs with the fixed open flux and with the lid off | 2 segments of 1 Earth-mass runs through the lid onset | 2026-11-18 |
 
 ## The atmosphere call sees the lid and the open surface in parallel
 
@@ -77,11 +77,11 @@ $$w C + (1 - w) F_\mathrm{open} = F_\mathrm{atm} - w C (r - 1).$$
 
 ## The open part follows the melt within the interior step
 
-**Why this check exists.** The open part of the surface starts each interior step at the flux of the atmosphere call. Within the step the melt under it warms or cools, and a fixed start value would let the surface temperature swing from one coupled step to the next. The code gives the open part the response $G_\mathrm{eff}$: its loss changes by $G_\mathrm{eff} (T_m - T_{m0})$ per open area. A response of the open part alone, which leaves out that the lid part shares the surface, gives too small a response; the test sees it.
+**Why this check exists.** The open part of the surface starts each interior step at the flux of the atmosphere call. Within the step the melt under it warms or cools, and a fixed start value would let the surface temperature swing from one coupled step to the next. The code gives the open part the response $G_\mathrm{eff}$: its loss changes by $G_\mathrm{eff} (T_m - T_{m0})$ per open area. A response that treats the open part as a skin in series with the atmosphere, $G_\mathrm{skin} F' / (G_\mathrm{skin} + F')$, and leaves out the lid part that shares the surface, is too small; the test sees it.
 
 **What it tests.** In the call the lid part and the open part share one surface temperature $T_\mathrm{surf}$. Near the call state the atmosphere flux changes with the surface as $F'$, the slope from the last 2 coupled steps. When the open node warms by $\mathrm{d}T_m$, the shared surface warms by $\mathrm{d}T_\mathrm{surf}$, and the atmosphere takes $F'\, \mathrm{d}T_\mathrm{surf}$ more. With the lid part held, the open part must carry all of it: $(1 - w)\, G_\mathrm{eff} = F'\, \mathrm{d}T_\mathrm{surf} / \mathrm{d}T_m$. The test solves the surface balance at $T_m \pm 10^{-3}$ K and takes the central difference. It compares $(1 - w)\, G_\mathrm{eff}$ of `lid_open_conductance` with $F'\, \mathrm{d}T_\mathrm{surf}/\mathrm{d}T_m$ at 19 weights from 0.05 to 0.95 and the slopes 0.05, 0.306 and 3 W m$^{-2}$ K$^{-1}$, with $G_\mathrm{lid}$ = 7.27 W m$^{-2}$ K$^{-1}$ and the skin of the first case.
 
-**How we know the right answer.** The derivative of the surface balance gives the closed form $G_\mathrm{eff} = G_\mathrm{skin} F' / (F' + w\, G_\mathrm{lid} + (1 - w)\, G_\mathrm{skin})$. The test does not use it: it differentiates the balance itself. At the lid onset of the probe run ($w$ = 0.703, $F'$ = 0.306 W m$^{-2}$ K$^{-1}$) the response is $G_\mathrm{eff}$ = 0.944 W m$^{-2}$ K$^{-1}$, and $(1 - w)\, G_\mathrm{eff}$ = 0.280.
+**How we know the right answer.** The derivative of the surface balance gives the closed form $G_\mathrm{eff} = G_\mathrm{skin} F' / (F' + w \min(G_\mathrm{lid}, G_\mathrm{skin}) + (1 - w)\, G_\mathrm{skin})$. The test does not use it: it differentiates the balance itself. On a stored lid-onset row of a coupled run ($w$ = 0.703, $F'$ = 0.306 W m$^{-2}$ K$^{-1}$) the response is $G_\mathrm{eff}$ = 0.944 W m$^{-2}$ K$^{-1}$, and $(1 - w)\, G_\mathrm{eff}$ = 0.280.
 
 **Why it matters.** This response sets how fast the open surface sheds the heat of a warming melt while a lid forms. The next case shows its effect on coupled runs.
 
@@ -93,36 +93,36 @@ $$w C + (1 - w) F_\mathrm{open} = F_\mathrm{atm} - w C (r - 1).$$
 ??? info "Test details"
     - Reference: the derivative of the shared surface balance, by central difference at $\pm 10^{-3}$ K.
     - Tolerance: relative $10^{-7}$ at each weight and slope.
-    - Discrimination: the response of the open part alone, $(1 - w)\, G_\mathrm{skin} F' / (G_\mathrm{skin} + F')$, is 47 % below the reference at $w$ = 0.5 and $F'$ = 3 W m$^{-2}$ K$^{-1}$; the test asserts a miss of more than 10 %, and the code with that form fails the main comparison.
+    - Discrimination: the series response without the lid part, $(1 - w)\, G_\mathrm{skin} F' / (G_\mathrm{skin} + F')$, is 47 % below the reference at $w$ = 0.5 and $F'$ = 3 W m$^{-2}$ K$^{-1}$; the test asserts a miss of more than 10 %, and the code with that form fails the main comparison.
     - Test id: `tests/atmos_clim/test_lid_open_flux_instep.py::test_the_response_is_the_change_of_the_shared_surface`
     - Command: `pytest tests/atmos_clim/test_lid_open_flux_instep.py -k shared_surface` (add `--validation-plots` to write the plot pair)
 
 ## Coupled runs through the lid onset
 
-**Why this check exists.** The response of the previous case must also work in a coupled run. In runs before it, the surface temperature of a 1 Earth-mass planet swung by up to 54 K between coupled steps after the lid formed. The interior then took up 1655 W m$^{-2}$ at the surface in one step, and the magma temperature reached 4378 K. The test fails if the stored runs with the response lose these improvements.
+**Why this check exists.** The response of the previous case must also work in a coupled run. Two stored runs of a 1 Earth-mass planet keep the open flux fixed through each interior step. In the first segment the surface temperature changes by up to 53.7 K between coupled steps after the lid forms, and in one step the interior takes up 1655 W m$^{-2}$ at the surface. In the second segment the surface temperature changes by up to 330.6 K between steps, and the magma temperature reaches 4378 K. The test fails if the stored runs with the response lose these improvements.
 
-**What it tests.** Two segments of 1 Earth-mass runs, each from a stored state shortly before the lid forms. The first segment runs from 9.226 to 10 Myr on a mesh with a 1500 m cell at the core. It is run 3 times from the same state on the same release: before the change, with the response and the solidus floor, and with the lid off. The second segment runs from 7.897 to 9 Myr on a mesh with a 3000 m cell. It compares the wave-1 probe run itself, made with an earlier build, with a restart from its state at 7.897 Myr with the change. The test reads the rows of these runs from `tests/data/lid_open_flux/coupled_rows.json`; it does not run PROTEUS. For each segment it asserts:
+**What it tests.** Two segments of 1 Earth-mass runs, each from a stored state shortly before the lid forms. The first segment runs from 9.226 to 10 Myr on a mesh with a 1500 m cell at the core. It is run 3 times from the same state with the same code version: with the open flux fixed through each step, with the response and the solidus floor, and with the lid off. The second segment runs from 7.897 to 9 Myr on a mesh with a 3000 m cell. It compares a run with the fixed open flux, made with an older code version, with a restart from its state at 7.897 Myr with the response and the floor. The `provenance` entry of `tests/data/lid_open_flux/coupled_rows.json` gives the code version, the mesh and the settings of each run. The test reads the rows of these runs from `tests/data/lid_open_flux/coupled_rows.json`; it does not run PROTEUS. For each segment it asserts:
 
-- the largest step of $T_\mathrm{surf}$ between rows is below half that of the run before the change;
-- the interior takes up at most 1 W m$^{-2}$ at the surface ($F_\mathrm{int} > -1$ W m$^{-2}$), where the run before took up more;
-- the magma temperature stays below 1600 K, where the run before went above it;
+- the largest step of $T_\mathrm{surf}$ between rows is below half that of the run with the fixed open flux;
+- the interior takes up at most 1 W m$^{-2}$ at the surface ($F_\mathrm{int} > -1$ W m$^{-2}$), where the run with the fixed open flux took up more;
+- the magma temperature stays below 1600 K, where the run with the fixed open flux went above it;
 - no clip of $T_\mathrm{magma}$, and an energy residual of at most $2.5 \times 10^{-5}$ of the content.
 
 For the first segment the largest step is also below that of the run without a lid.
 
-**How we know the right answer.** A surface under a thin crust over a convecting magma ocean should change smoothly from step to step; the run without a lid, which has no lid onset, gives the scale of the steps of the atmosphere alone. The largest steps are 22.0 K with the response, 43.4 K without a lid and 53.7 K before the change in the first segment, and 31.8 K against 330.6 K in the second.
+**How we know the right answer.** A surface under a thin crust over a convecting magma ocean should change smoothly from step to step; the run without a lid, which has no lid onset, gives the scale of the steps of the atmosphere alone. The largest steps are 22.0 K with the response, 43.4 K without a lid and 53.7 K with the fixed open flux in the first segment, and 31.8 K against 330.6 K in the second.
 
 **Why it matters.** The surface temperature sets the outgassing and the next atmosphere step. Swings and a magma temperature far above the liquidus give wrong outgassing and can stop a run.
 
-![Surface temperature against time in 2 coupled segments, before the change, with the lid off and with the in-step open part](../../assets/validation/atmos_clim_lid_open_coupled.svg#only-light){ width="80%" }
-![Surface temperature against time in 2 coupled segments, before the change, with the lid off and with the in-step open part](../../assets/validation/atmos_clim_lid_open_coupled_dark.svg#only-dark){ width="80%" }
+![Surface temperature against time in 2 coupled segments, with the fixed open flux, with the lid off and with the in-step open part](../../assets/validation/atmos_clim_lid_open_coupled.svg#only-light){ width="80%" }
+![Surface temperature against time in 2 coupled segments, with the fixed open flux, with the lid off and with the in-step open part](../../assets/validation/atmos_clim_lid_open_coupled_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** Both panels show the surface temperature in K against time in Myr, one mark per coupled step. The top panel is the first segment, with the run before the change (dotted), the run with the lid off (dashed) and the run with the response (solid). The bottom panel is the second segment; its vertical axis stops at 1650 K, so the run before the change leaves the panel between 8.4 and 8.8 Myr. A pass is a solid line that stays close to the lid-off line and far below the swings of the dotted one.
+**How to read the plot.** Both panels show the surface temperature in K against time in Myr, one mark per coupled step. The top panel is the first segment, with the run with the fixed open flux (dotted), the run with the lid off (dashed) and the run with the response (solid). The bottom panel is the second segment; its vertical axis stops at 1650 K, so the run with the fixed open flux leaves the panel between 8.4 and 8.8 Myr. A pass is a solid line that stays close to the lid-off line and far below the swings of the dotted one.
 
 **Known limit.** The test checks stored rows of 2 segments. It does not run PROTEUS, so a later change of the code is not seen here; the response itself is checked by the case above and by the Aragog tests of the open part.
 
 ??? info "Test details"
-    - Reference: the stored runs before the change and with the lid off (same release, same restart states).
+    - Reference: the stored runs with the fixed open flux and with the lid off.
     - Tolerance: the bounds in the list above.
     - Test id: `tests/interior_energetics/test_lid_open_flux_coupled.py::test_the_open_part_keeps_the_coupled_runs_from_swinging`
     - Command: `pytest tests/interior_energetics/test_lid_open_flux_coupled.py` (add `--validation-plots` to write the plot pair)

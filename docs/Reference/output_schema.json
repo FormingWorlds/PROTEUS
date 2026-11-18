@@ -1220,7 +1220,7 @@
     {
       "name": "lid_slope_guard",
       "unit": "1",
-      "description": "slope guard of the open lid part: 0 none, 1 slope 0 or below, 2 slope cut",
+      "description": "slope guard of the open lid part: 0 none, 1 slope set to 0 (0 or below, not finite or from a short step), 2 slope cut",
       "group": "Temperatures",
       "origin": "literal",
       "producers": [
