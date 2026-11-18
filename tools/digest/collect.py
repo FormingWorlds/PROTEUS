@@ -85,7 +85,7 @@ def clean_text(text: str | None, limit: int) -> str:
     """
     if not text or limit <= 0:
         return ''
-    text = re.sub(r'<!--.*?-->', ' ', text, flags=re.S)
+    text = re.sub(r'<!--(?:-?>|.*?--!?>|.*)', ' ', text, flags=re.S)
     text = re.sub(r'!\[[^\]]*\]\([^)]*\)', ' ', text)
     text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
     text = re.sub(r'<[^>]*>', ' ', text)

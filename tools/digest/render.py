@@ -91,7 +91,7 @@ def value(item: object) -> str:
         return '(none)'
     if not str(item).strip():
         return '(empty)'
-    text = re.sub(r'<!--|-->|[`|\s]', ' ', str(item))[:VALUE_CHARS]
+    text = re.sub(r'<!--|--!?>|[`|\s]', ' ', str(item))[:VALUE_CHARS]
     return f'`{text}`' if text.strip() else '(not shown)'
 
 
