@@ -405,7 +405,7 @@ class AragogCoreModule:
         Critical Rayleigh number of the mantle-side boundary layer that sets
         the CMB heat flux from the core-mantle temperature contrast. 'phase' (the default)
         takes 450 while the bottom cell is liquid and eq. 16 while it is solid (the switch of
-        Miyazaki and Korenaga (2019)[^cite-miyazaki2019b] at the critical melt fraction),
+        Miyazaki & Korenaga (2019b)[^cite-miyazaki2019b] at the critical melt fraction),
         blended in the logarithm with the weight (1 + tanh((phi - rfront_loc)/rfront_wid))/2 of
         the viscosity blend at the bottom-cell melt fraction phi; the band
         [rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2] must lie inside [0, 1]. 'eq16'
