@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -85,15 +86,48 @@ def test_a_t_magma_clip_stops_only_with_a_live_lid_in_the_step(prev_w, w, w_max,
     """G2: a clip in a step where a lid acts (weight above 0 at the start, the end or an accepted
     state) stops the run with the clipped value; elsewhere it is counted."""
     row = {'Time': 9.7e6, 'T_magma': 1600.0, 'lid_weight': w, 'lid_weight_max': w_max}
-    if stops:
-        with pytest.raises(RuntimeError, match=r'T_magma clip from 4709\.61 K'):
-            guard_t_magma_clip(row, prev_w, 4709.61)
-    else:
-        guard_t_magma_clip(row, prev_w, 4709.61)
-        assert row['T_magma_clipped'] == 1
+    with patch('proteus.interior_energetics.wrapper.UpdateStatusfile') as status:
+        if stops:
+            with pytest.raises(RuntimeError, match=r'T_magma clip from 4709\.61 K'):
+                guard_t_magma_clip({}, row, prev_w, 4709.61)
+            assert [c.args[1] for c in status.call_args_list] == [21]
+        else:
+            guard_t_magma_clip({}, row, prev_w, 4709.61)
+            assert row['T_magma_clipped'] == 1
+            status.assert_not_called()
 
 
 def test_a_row_without_lid_columns_counts_the_clip():
     row = {'Time': 1.0, 'T_magma': 3000.0}
-    guard_t_magma_clip(row, float('nan'), 3100.0)
+    guard_t_magma_clip({}, row, float('nan'), 3100.0)
     assert row['T_magma_clipped'] == 1
+
+
+def test_an_accepted_state_out_of_the_tables_ends_the_run():
+    """G1: the Aragog error for an accepted state outside the EOS tables is passed up with
+    status 21; it is not absorbed as a failed step that keeps the previous state."""
+    from aragog.solver.entropy_solver import AcceptedStateRangeError
+
+    from proteus.interior_energetics.wrapper import run_interior
+    from tests.interior_energetics.test_wrapper import (
+        _make_run_interior_config,
+        _make_run_interior_state,
+        _mock_interior_o,
+    )
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state()
+    interior_o = _mock_interior_o()
+    interior_o.ic = 2
+    runner = MagicMock()
+    runner.run_solver.side_effect = AcceptedStateRangeError('cell 48 entropy 1e5 at t=1 yr')
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner),
+        patch('proteus.interior_energetics.wrapper.UpdateStatusfile') as status,
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+        patch('proteus.interior_energetics.timestep.next_step', return_value=10.0),
+        pytest.raises(AcceptedStateRangeError, match='cell 48'),
+    ):
+        run_interior({}, config, hf_all, dict(hf_row), interior_o, MagicMock())
+    assert interior_o.aragog_fail_count == 0
+    assert 21 in [c.args[1] for c in status.call_args_list]
