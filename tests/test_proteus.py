@@ -837,11 +837,14 @@ def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(
     assert status == '20'
 
 
-def _stop_with(exc, code_first, seen):
+_MODULE_CONFIG = 'proteus.utils.coupler.print_module_configuration'
+
+
+def _stop_with(exc, code_first, seen, dirs):
     """A start-up step that records the status it finds and raises `exc`, after writing
     its own stop code if given."""
 
-    def step(dirs, *_args, **_kwargs):
+    def step(*_args, **_kwargs):
         from proteus.utils.helper import ReadStatus
 
         seen.append(ReadStatus(dirs['output']))
@@ -856,24 +859,39 @@ def _stop_with(exc, code_first, seen):
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'exc, code_first, expected',
+    'site, exc, code_first, expected',
     [
-        (FileNotFoundError(2, 'cwd is gone'), None, '20'),
-        (KeyboardInterrupt(), None, '25'),
-        (SystemExit(143), None, '25'),
-        (RuntimeError('AGNI deadlock'), 22, '22'),
+        (_MODULE_CONFIG, FileNotFoundError(2, 'cwd is gone'), None, '20'),
+        (_MODULE_CONFIG, KeyboardInterrupt(), None, '25'),
+        (_MODULE_CONFIG, SystemExit(143), None, '25'),
+        (_MODULE_CONFIG, RuntimeError('AGNI deadlock'), 22, '22'),
+        ('proteus.proteus.setup_logger', OSError(28, 'disk full'), None, '20'),
+        (
+            'proteus.utils.coupler.validate_module_versions',
+            RuntimeError('old AGNI'),
+            None,
+            '20',
+        ),
     ],
-    ids=['startup-error', 'ctrl-c', 'system-exit', 'own-stop-code-kept'],
+    ids=[
+        'startup-error',
+        'ctrl-c',
+        'system-exit',
+        'own-stop-code-kept',
+        'logger-setup-error',
+        'module-version-error',
+    ],
 )
 def test_a_run_stopped_after_the_output_is_cleaned_records_why(
-    tmp_path, exc, code_first, expected
+    tmp_path, site, exc, code_first, expected
 ):
     """A fresh run that stops between cleaning its output folder and the main loop leaves
-    a stop code, not a missing status file (#778): 20 for an error, 25 for an interrupt or
-    a requested exit, and the code the raise site wrote itself when it wrote one. While it
-    initialises the run reads 0 (Started), so a run killed there without a handler (SIGKILL,
-    out of memory) does not read as a stale code or no file. The output folder is cleaned
-    for real, so a status written before the clean would be gone."""
+    a stop code, not a missing status file (#778, #744): 20 for an error, 25 for an interrupt
+    or a requested exit, and the code the raise site wrote itself when it wrote one. The
+    sites include the logger setup and the module version check, the first steps after the
+    clean. While it initialises the run reads 0 (Started), so a run killed there without a
+    handler (SIGKILL, out of memory) does not read as a stale code or no file. The output
+    folder is cleaned for real, so a status written before the clean would be gone."""
     p = _make_proteus_instance(tmp_path)
     p.directories.update(
         {k: str(tmp_path / k) for k in ('output/observe', 'output/offchem', 'output/plots')}
@@ -885,8 +903,8 @@ def test_a_run_stopped_after_the_output_is_cleaned_records_why(
             stack.enter_context(patch(target))
         stack.enter_context(
             patch(
-                'proteus.utils.coupler.print_module_configuration',
-                side_effect=_stop_with(exc, code_first, seen),
+                site,
+                side_effect=_stop_with(exc, code_first, seen, p.directories),
             )
         )
         with pytest.raises(type(exc)):
