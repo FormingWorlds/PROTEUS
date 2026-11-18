@@ -202,3 +202,189 @@ def test_no_column_is_kept_without_the_dispatcher_or_for_a_transparent_agni():
     store_escape_profile(atmos_o, _config('agni'), {})
     assert atmos_o.escape_profile_current is True
     np.testing.assert_allclose(atmos_o.escape_profile['p'], p[::-1], rtol=1e-15)
+
+
+def _write_snapshot(data_dir, time, p, r_or_z, T, vmr, janus=False, transparent=False):
+    """Write an atmosphere snapshot with the variables PROTEUS reads, cell centres top first."""
+    import netCDF4 as nc
+
+    from proteus.utils.helper import snapshot_path_for_time
+
+    path = snapshot_path_for_time(str(data_dir), time, '_atm.nc')
+    n, gases = len(p), list(vmr)
+    with nc.Dataset(path, 'w') as ds:
+        ds.createDimension('nlev_c', n)
+        ds.createDimension('nlev_l', n + 1)
+        ds.createDimension('ngases', len(gases))
+        ds.createDimension('nchars', 16)
+        ds.createDimension('one', 1)
+        edges = np.concatenate([[p[0] / 2.0], np.sqrt(p[:-1] * p[1:]), [p[-1] * 2.0]])
+        for name, dim, val in (
+            ('p', 'nlev_c', p),
+            ('pl', 'nlev_l', edges),
+            ('tmp', 'nlev_c', T),
+            ('tmpl', 'nlev_l', np.interp(np.arange(n + 1) - 0.5, np.arange(n), T)),
+        ):
+            ds.createVariable(name, 'f8', (dim,))[:] = val
+        height = 'z' if janus else 'r'
+        ds.createVariable(height, 'f8', ('nlev_c',))[:] = r_or_z
+        ds.createVariable(height + 'l', 'f8', ('nlev_l',))[:] = np.interp(
+            np.arange(n + 1) - 0.5, np.arange(n), r_or_z
+        )
+        ds.createVariable('planet_radius', 'f8', ('one',))[:] = 1.0
+        ds.createVariable('gravity', 'f8', ('nlev_c',))[:] = np.full(n, 9.8)
+        ds.createVariable('transparent', 'S1', ('one',))[:] = np.array(
+            [b'y' if transparent else b'n']
+        )
+        names = ds.createVariable('gases', 'S1', ('ngases', 'nchars'))
+        names[:] = np.array([list(g.ljust(16)) for g in gases], dtype='S1')
+        ds.createVariable('x_gas', 'f8', ('nlev_c', 'ngases'))[:] = np.column_stack(
+            [vmr[g] for g in gases]
+        )
+    return path
+
+
+def _resume_case(tmp_path, stale, times=(10.0, 20.0, 30.0)):
+    """Helpfile of a resumed run whose last row carries ``atm_levels_stale = stale``."""
+    import pandas as pd
+
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    rows = [{'Time': t, 'R_int': 6.4e6, 'atm_levels_stale': 0.0} for t in times]
+    rows[-1]['atm_levels_stale'] = float(stale)
+    return pd.DataFrame(rows)
+
+
+def _fresh_atmos():
+    return SimpleNamespace(escape_profile=None, escape_profile_current=False)
+
+
+@pytest.mark.physics_invariant
+def test_a_resume_restores_the_column_the_continuous_run_holds(tmp_path):
+    """A resumed AGNI run hands escape the column of its last converged solve.
+
+    Physical scenario: an N2-H2O column of five levels from 1e-6 to 1e2 Pa
+    written at the resumed row. Stored from the live struct and restored from
+    the snapshot, the two columns agree level by level, and the restored one
+    is current, as after an accepted solve. Without the restore the first
+    escape step of a resumed run read the isothermal stand-in instead.
+    """
+    from proteus.atmos_clim.escape_profile import restore_escape_profile
+
+    p = np.array([1e-6, 1e-4, 1e-2, 1e0, 1e2])
+    r = np.array([7.0e6, 6.9e6, 6.8e6, 6.7e6, 6.6e6])
+    T = np.array([900.0, 700.0, 500.0, 400.0, 350.0])
+    vmr = {
+        'H2O': np.array([0.1, 0.2, 0.3, 0.4, 0.5]),
+        'N2': np.array([0.9, 0.8, 0.7, 0.6, 0.5]),
+    }
+    live = SimpleNamespace(
+        _atm=_agni_atm(p, r, T, vmr),
+        converged=True,
+        escape_profile=None,
+        escape_profile_current=False,
+    )
+    store_escape_profile(live, _config('agni'), {})
+
+    hf_all = _resume_case(tmp_path, stale=0)
+    _write_snapshot(tmp_path / 'data', 30.0, p, r, T, vmr)
+    resumed = _fresh_atmos()
+    restore_escape_profile(resumed, _config('agni'), hf_all, str(tmp_path))
+    assert resumed.escape_profile_current is True
+    for key in ('p', 'r', 'T'):
+        np.testing.assert_allclose(
+            resumed.escape_profile[key], live.escape_profile[key], rtol=1e-15
+        )
+    assert set(resumed.escape_profile['vmr']) == set(live.escape_profile['vmr'])
+    for gas, x in live.escape_profile['vmr'].items():
+        np.testing.assert_allclose(resumed.escape_profile['vmr'][gas], x, rtol=1e-15)
+
+
+def test_a_resume_after_rejected_solves_restores_the_last_accepted_column(tmp_path):
+    """After a streak of rejected solves the restored column is the last accepted one.
+
+    The resumed row carries ``atm_levels_stale = 1``, so the continuous run
+    held the column of the row before it, marked as not current. The rejected
+    snapshot of the resumed row is not read.
+    """
+    from proteus.atmos_clim.escape_profile import restore_escape_profile
+
+    p = np.array([1e-4, 1e0, 1e4])
+    r = np.array([6.6e6, 6.5e6, 6.4e6])
+    T = np.array([200.0, 250.0, 300.0])
+    hf_all = _resume_case(tmp_path, stale=1)
+    _write_snapshot(tmp_path / 'data', 20.0, p, r, T, {'N2': np.ones(3)})
+    _write_snapshot(tmp_path / 'data', 30.0, p * 3.0, r, T * 2.0, {'N2': np.ones(3)})
+    resumed = _fresh_atmos()
+    restore_escape_profile(resumed, _config('agni'), hf_all, str(tmp_path))
+    assert resumed.escape_profile_current is False
+    np.testing.assert_allclose(resumed.escape_profile['p'], p[::-1], rtol=1e-15)
+    np.testing.assert_allclose(resumed.escape_profile['T'], T[::-1], rtol=1e-15)
+
+
+def test_a_resumed_janus_column_starts_at_the_interior_radius(tmp_path):
+    """JANUS snapshots hold heights, so the restored radii add the row's interior radius."""
+    from proteus.atmos_clim.escape_profile import restore_escape_profile
+
+    hf_all = _resume_case(tmp_path, stale=0)
+    _write_snapshot(
+        tmp_path / 'data',
+        30.0,
+        np.array([1e1, 1e3, 1e5]),
+        np.array([1.0e5, 5.0e4, 0.0]),
+        np.array([200.0, 250.0, 300.0]),
+        {'H2O': np.full(3, 0.5)},
+        janus=True,
+    )
+    resumed = _fresh_atmos()
+    restore_escape_profile(resumed, _config('janus'), hf_all, str(tmp_path))
+    np.testing.assert_allclose(resumed.escape_profile['r'], [6.4e6, 6.45e6, 6.5e6], rtol=1e-15)
+    assert resumed.escape_profile_current is True
+
+
+def test_a_resume_without_a_usable_snapshot_leaves_the_stand_in(tmp_path, caplog):
+    """No column is restored from a missing, corrupt, or transparent snapshot, or past the record.
+
+    Escape then builds its isothermal stand-in, as it did before, and the resume
+    goes on. Without the dispatcher, or with the dummy atmosphere, nothing is
+    read at all.
+    """
+    from proteus.atmos_clim.escape_profile import restore_escape_profile
+
+    p = np.array([1e-4, 1e0, 1e4])
+    r = np.array([6.6e6, 6.5e6, 6.4e6])
+    T = np.array([200.0, 250.0, 300.0])
+
+    hf_all = _resume_case(tmp_path, stale=0)
+    resumed = _fresh_atmos()
+    with caplog.at_level(logging.WARNING):
+        restore_escape_profile(resumed, _config('agni'), hf_all, str(tmp_path))
+    assert resumed.escape_profile is None and resumed.escape_profile_current is False
+    assert 'no atmosphere snapshot of the last converged solve' in caplog.text
+
+    # A snapshot cut short by a crash is passed over, not raised.
+    from proteus.utils.helper import snapshot_path_for_time
+
+    cut = snapshot_path_for_time(str(tmp_path / 'data'), 30.0, '_atm.nc')
+    _write_snapshot(tmp_path / 'data', 30.0, p, r, T, {'N2': np.ones(3)})
+    whole = open(cut, 'rb').read()
+    with open(cut, 'wb') as hdl:
+        hdl.write(whole[: len(whole) // 3])
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        restore_escape_profile(resumed, _config('agni'), hf_all, str(tmp_path))
+    assert resumed.escape_profile is None
+    assert 'escape column not restored' in caplog.text
+
+    _write_snapshot(tmp_path / 'data', 30.0, p, r, T, {'N2': np.ones(3)}, transparent=True)
+    restore_escape_profile(resumed, _config('agni'), hf_all, str(tmp_path))
+    assert resumed.escape_profile is None and resumed.escape_profile_current is False
+
+    restore_escape_profile(
+        resumed, _config('agni'), _resume_case(tmp_path, stale=3), str(tmp_path)
+    )
+    assert resumed.escape_profile is None
+
+    _write_snapshot(tmp_path / 'data', 30.0, p, r, T, {'N2': np.ones(3)})
+    for config in (_config('agni', dispatcher=False), _config('dummy')):
+        restore_escape_profile(resumed, config, hf_all, str(tmp_path))
+        assert resumed.escape_profile is None

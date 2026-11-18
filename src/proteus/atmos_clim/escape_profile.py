@@ -143,3 +143,79 @@ def store_escape_profile(atmos_o: Atmos_t, config: Config, hf_row: dict) -> None
         return
     atmos_o.escape_profile = column
     atmos_o.escape_profile_current = True
+
+
+def _snapshot_column(nc_path: str, module: str, r_int: float) -> dict | None:
+    """Column of an atmosphere snapshot, or None for a transparent AGNI column."""
+    from proteus.atmos_clim.common import read_ncdf_profile
+
+    data = read_ncdf_profile(nc_path, extra_keys=['x_gas'], combine_edges=False)
+    if data is None:
+        raise ValueError(f'no snapshot at {nc_path}')
+    if module == 'agni' and data['transparent']:
+        return None
+    vmr = {k[: -len('_vmr')]: v for k, v in data.items() if k.endswith('_vmr')}
+    # JANUS heights start at the surface, as in _janus_column. AGNI stores radii.
+    r = np.asarray(data['z'], dtype=float) + r_int if module == 'janus' else data['r']
+    return column_from_arrays(data['p'], r, data['t'], vmr)
+
+
+def restore_escape_profile(atmos_o: Atmos_t, config: Config, hf_all, output_dir: str) -> None:
+    """Rebuild the escape column of a resumed run from its atmosphere snapshots.
+
+    Escape runs before the climate solve, so without this the first step of a
+    resumed run reads the isothermal stand-in. The column restored is the one
+    the uninterrupted run holds at that point: the solve of the resumed row
+    when it converged, otherwise the last converged solve before it, found
+    ``atm_levels_stale`` rows back and marked as not current. Nothing is
+    restored when that snapshot is missing, unreadable, or transparent, and
+    escape then builds its stand-in as before. With ``params.out.write_mod``
+    above 1, the snapshot of an earlier converged solve is often missing.
+
+    Parameters
+    ----------
+    atmos_o : Atmos_t
+        Atmosphere state, updated in place.
+    config : Config
+        Run configuration.
+    hf_all : pandas.DataFrame
+        Helpfile of the resumed run, ending at the resumed row.
+    output_dir : str
+        Output folder of the run.
+    """
+    import os
+
+    from proteus.utils.helper import snapshot_path_for_time
+
+    module = config.atmos_clim.module
+    dispatcher = bool(getattr(getattr(config, 'escape', None), 'uses_dispatcher', False))
+    if module not in ('agni', 'janus') or not dispatcher or len(hf_all) == 0:
+        return
+
+    stale = float(hf_all.iloc[-1].get('atm_levels_stale', 0.0))
+    stale = int(stale) if np.isfinite(stale) and stale > 0 else 0
+    if stale >= len(hf_all):
+        log.info(
+            'Resume: no converged atmosphere solve on record; escape starts on its stand-in'
+        )
+        return
+    row = hf_all.iloc[-1 - stale]
+    nc_path = snapshot_path_for_time(os.path.join(output_dir, 'data'), row['Time'], '_atm.nc')
+    if not os.path.isfile(nc_path):
+        # Snapshots are written every params.out.write_mod iterations, so the last
+        # converged solve before a rejected one may have none.
+        log.warning(
+            'Resume: no atmosphere snapshot of the last converged solve (%s). '
+            'Escape starts on its stand-in.',
+            os.path.basename(nc_path),
+        )
+        return
+    try:
+        column = _snapshot_column(nc_path, module, float(row['R_int']))
+    except (KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        log.warning('Resume: escape column not restored from %s: %s', nc_path, exc)
+        return
+    atmos_o.escape_profile = column
+    atmos_o.escape_profile_current = column is not None and stale == 0
+    if column is not None:
+        log.info('Resume: escape column restored from %s', os.path.basename(nc_path))

@@ -1086,6 +1086,14 @@ class Proteus:
             stale = self.hf_row.get('atm_levels_stale', 0.0)
             self.atmos_o.levels_stale_iters = int(stale) if np.isfinite(stale) else 0
 
+            # Escape runs before the first climate solve, so give it the column
+            # the uninterrupted run would hold, not the isothermal stand-in.
+            from proteus.atmos_clim.escape_profile import restore_escape_profile
+
+            restore_escape_profile(
+                self.atmos_o, self.config, self.hf_all, self.directories['output']
+            )
+
             # Interior initial condition
             self.interior_o.ic = 2
 
