@@ -72,9 +72,10 @@ query($owner: String!, $name: String!, $number: Int!) {
 def clean_text(text: str | None, limit: int) -> str:
     """Remove links, images, HTML and mentions from untrusted text and cut it to ``limit``.
 
-    Only the first ``RAW_CHARS`` characters are read. An HTML comment ends only at
-    ``-->`` and an unclosed one hides the rest, so the result hides at least what a
-    markdown or HTML renderer can hide.
+    Only the first ``RAW_CHARS`` characters are read, without a tag that the cut leaves
+    open. An HTML comment ends only at ``-->`` and an unclosed one hides the rest, so the
+    result hides at least what a markdown or HTML renderer can hide. Every token with
+    ``://`` goes; a ``<`` that opens no tag stays, as in ``T < 300 K``.
 
     Parameters
     ----------
@@ -90,11 +91,15 @@ def clean_text(text: str | None, limit: int) -> str:
     """
     if not text or limit <= 0:
         return ''
-    text = re.sub(r'<!--(?:-?>|.*?-->|.*)', ' ', text[:RAW_CHARS], flags=re.S)
+    if len(text) > RAW_CHARS:
+        text = text[:RAW_CHARS]
+        open_tag = text.find('<', text.rfind('>') + 1)
+        text = text[:open_tag] if open_tag >= 0 else text
+    text = re.sub(r'<!--(?:-?>|.*?-->|.*)', ' ', text, flags=re.S)
     text = re.sub(r'!\[[^\]]*\]\([^)]*\)', ' ', text)
     text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
     text = re.sub(r'<[^>]*>', ' ', text)
-    text = re.sub(r'(?:https?|ftp)://\S+|www\.\S+', ' ', text)
+    text = re.sub(r'www\.\S+', ' ', ' '.join(w for w in text.split() if '://' not in w))
     text = text.replace('@', '')
     text = re.sub(r'\s+', ' ', text).strip()
     return text[:limit]
