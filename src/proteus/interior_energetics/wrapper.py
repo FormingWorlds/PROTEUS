@@ -2015,11 +2015,15 @@ def _partial_remelt_profile(solver, S_end: np.ndarray, S_molten: np.ndarray, f: 
     return remelt_entropy(S_end, S_molten, w)
 
 
-def guard_t_magma_clip(hf_row: dict, prev_weight: float, clipped_from: float) -> None:
+def guard_t_magma_clip(
+    dirs: dict, hf_row: dict, prev_weight: float, clipped_from: float
+) -> None:
     """Stop a run whose step clipped a rise of ``T_magma`` while a lid acted, else count it.
 
     Parameters
     ----------
+    dirs : dict
+        Run directories; the stop writes status 21.
     hf_row : dict
         Current helpfile row, with ``Time`` and, from the interior, ``lid_weight`` and
         ``lid_weight_max``; ``T_magma_clipped`` is set to 1 on it.
@@ -2037,6 +2041,7 @@ def guard_t_magma_clip(hf_row: dict, prev_weight: float, clipped_from: float) ->
     weights = (prev_weight, hf_row.get('lid_weight', 0.0), hf_row.get('lid_weight_max', 0.0))
     w = max(float(np.nan_to_num(float(x))) for x in weights)
     if w > 0.0:
+        UpdateStatusfile(dirs, 21)
         raise RuntimeError(
             f'T_magma clip from {float(clipped_from):.2f} K at t = {float(hf_row["Time"]):.6e} yr '
             f'in a step with a live lid (largest lid weight {w:.4g})'
@@ -2612,6 +2617,8 @@ def run_interior(
         )
 
     elif config.interior_energetics.module == 'aragog':
+        from aragog.solver.entropy_solver import AcceptedStateRangeError
+
         from proteus.interior_energetics.aragog import AragogRunner, InteriorStalledError
 
         with _core_module_status(config, dirs):
@@ -2629,6 +2636,10 @@ def run_interior(
         except InteriorStalledError:
             # InteriorStalledError indicates zero progress across successful steps.
             # Do not absorb it under the consecutive retry failure counter.
+            UpdateStatusfile(dirs, 21)
+            raise
+        except AcceptedStateRangeError:
+            # an accepted state outside the EOS tables: the step is not usable, stop the run
             UpdateStatusfile(dirs, 21)
             raise
         except RuntimeError as e:
@@ -2767,7 +2778,10 @@ def run_interior(
                 log.warning('Prevented large increase to T_magma!')
                 log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
                 guard_t_magma_clip(
-                    hf_row, float(hf_all.iloc[-1].get('lid_weight', 0.0)), hf_row['T_magma']
+                    dirs,
+                    hf_row,
+                    float(hf_all.iloc[-1].get('lid_weight', 0.0)),
+                    hf_row['T_magma'],
                 )
                 hf_row['T_magma'] = T_magma_prev + dT_delta_magma
                 hf_row['Phi_global'] = Phi_global_prev

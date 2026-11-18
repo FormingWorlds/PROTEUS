@@ -1137,6 +1137,8 @@ class AragogRunner:
             # typical magma-ocean cooling rates).
             atol=float(config.interior_energetics.aragog.atol_temperature_equivalent),
             rtol=float(config.interior_energetics.rtol),
+            # an accepted state outside the EOS tables stops the run (status 21)
+            strict_accepted_range=True,
         )
 
         # Surface boundary condition mode (matches SPIDER wrapper):
