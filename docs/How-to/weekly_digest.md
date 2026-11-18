@@ -8,9 +8,9 @@ A language model drafts the text from the collected data. A script checks every 
 
 ## What the workflow does
 
-The workflow is `.github/workflows/weekly-digest.yml`, with its scripts in `tools/digest/`. It runs every Monday at 22:23 UTC (23:23 in Amsterdam in winter, 00:23 on Tuesday in summer). You can also start it by hand. It has 3 jobs, shown in the Actions tab as `Collect pull requests, releases and facts`, `Draft the entries` and `Check, render and post`. This page calls them the collect job, the draft job and the check job (its job id in the workflow is `publish`). The check job checks the draft, renders it, and posts it only in a live run. It uploads its files as the artifact `digest`, a file set that you can download from the run page. Live runs wait for each other; each dry run runs on its own, so it cannot cancel a waiting scheduled run.
+The workflow is `.github/workflows/weekly-digest.yml`, with its scripts in `tools/digest/`. It runs every Monday at 22:23 UTC (23:23 in Amsterdam in winter, 00:23 on Tuesday in summer). You can also start it by hand. It has 3 jobs, shown in the Actions tab as `Collect pull requests, releases and facts`, `Draft the entries` and `Check, render and post`. This page calls them the collect job, the draft job and the check job (its job id in the workflow is `publish`). The check job checks the draft, renders it, and posts it only in a live run. It uploads its files as the artifact `digest`, a file set that you can download from the run page. A scheduled run and a manual run with the box **Post the digest** ticked and no window share one queue: a run waits while another runs, and a new run cancels a run that waits. Every other manual run runs on its own and cannot cancel a waiting scheduled run.
 
-A digest covers a window of time. The window starts where the window of the last digest post ended. `collect.py` reads that time from a hidden marker (an HTML comment) at the end of the post. The marker holds the window end, the run id and the open pull requests that the digest announced. `collect.py` trusts only a marker in a post by the login (GitHub user name) `github-actions`, the account the workflow posts as. The window ends at the time of the run. With no earlier post, the window is the last 7 days. A window that you set by hand, with a start or an end, is back-dated, and a back-dated run never posts.
+A digest covers a window of time. The window starts where the window of the last digest post ended. `collect.py` reads that time from a hidden state marker (an HTML comment) at the end of the post. The state marker holds the window end, the run id and the open pull requests that the digest announced. `collect.py` trusts only a state marker in a post by the login (GitHub user name) `github-actions`, the account the workflow posts as. The window ends at the time of the run. With no earlier post, the window is the last 7 days. A window that you set by hand, with a start or an end, is back-dated, and a back-dated run never posts.
 
 ### Collect the data
 
@@ -29,13 +29,13 @@ For each merged pull request that changes a tracked file, `facts.py` compares th
 
 A file that gains more than 8 keys in one pull request gives one fact for the added keys. A file that loses more than 8 keys gives one fact for the removed keys. Each of these facts holds the number of keys and their names, cut at 600 characters. A date in a TOML file becomes text, and a longer array or table is cut at 600 characters.
 
-A tracked file that does not parse gives no facts for that pull request. `facts.py` names the pull request, the file and the error in the run log and the job summary, and the run goes on. Without a fact, an entry about that pull request cannot go into the section "Changes that affect your results" unless it cites a release.
+A tracked file that does not parse, or is not valid UTF-8, gives no facts. The other tracked files of the same pull request still give their facts. `facts.py` names the pull request, the file and the error in the run log and the job summary, and the run goes on. A pull request with no fact cannot go into the section "Changes that affect your results" unless it cites a release. A tracked file that does not parse on the default branch gives no keys for the key check and is named the same way.
 
 ### Draft the entries
 
 `draft.py` gives the collected data and `prompt.md` to the model, which returns entries in a fixed form (`entry_schema.json`). The model runs with no tools, no GitHub token and in an empty folder. If the checks below fail, the model gets the failures once and returns a corrected draft.
 
-Each entry has an action marker, a flag that the model sets when every user must act on the entry. The script then adds the words **Action for everyone:** in front of its text.
+Each entry has an action flag, which the model sets when every user must act on the entry. The script then adds the words **Action for everyone:** in front of its text.
 
 ### Check the draft
 
@@ -52,18 +52,22 @@ Each entry has an action marker, a flag that the model sets when every user must
 - an entry names a login that is not an author of a cited item;
 - an entry cites an open pull request outside the section "In review, coming soon", or a merged pull request inside it;
 - an entry in the section "Changes that affect your results" cites no fact and no release;
-- an entry outside the section "Installing and running" carries the action marker;
+- an entry outside the section "Installing and running" carries the action flag;
 - the title of an entry is longer than 80 characters, or its text is longer than 400 characters.
 
 #### Checks on the words of an entry
 
-The check reads the title and text of an entry twice: as the model wrote them, and as the post shows them (a `|` shows as `/`, a dash as a comma). The run fails when either form has one of these:
+The check reads the title and text of an entry as the model wrote them, and as the post shows them (a `|` shows as `/`, a dash as a comma). The run fails when either form has:
 
 - a link or a mention: a URL, an `@` or square brackets;
 - markup: HTML, an HTML entity or a backtick;
-- a reference: a `#` or `GH-` reference or a commit id;
-- a hidden or special character: an invisible character, a superscript, a fraction or a letter number such as a Roman numeral;
-- the words "Action for everyone", which only the script adds;
+- a reference: a `#` or `GH-` reference, or a word of 7 or more hex characters that can read as a commit id (`deadbeef`, `1234567`);
+- a superscript;
+- the words "Action for everyone", which only the script adds.
+
+The run also fails when the text as the model wrote it has:
+
+- an invisible character, a fraction or a letter number such as a Roman numeral;
 - a number that is not in a cited pull request or release (cited fact values do not count);
 - a config key or helpfile column that is not in a cited fact.
 
@@ -88,7 +92,7 @@ The check prints each failure as one line, `FAIL` and a quoted JSON string, so e
 
 - The config keys, their values, the links, the dates and the mentions come from the collected data, not from the model text.
 - The model text is escaped, so any markdown in it shows as plain text.
-- An empty fact value shows as (empty), and a missing one as (none).
+- An empty fact value shows as (empty), a null or missing one as (none), and a value of only `|` or backtick characters as (not shown).
 - The title is the date of the Tuesday of the week (Monday to Sunday, Amsterdam time) in which the window ends. The scheduled Monday run takes the next day. A run from Tuesday to Sunday takes the Tuesday that is already past, the meeting of its own week.
 - A body longer than 65,536 characters stops the run.
 
@@ -126,7 +130,7 @@ A manual run with all inputs empty and the box **Post the digest** unticked is a
 
 The artifact `digest` holds `collected.json`, `draft.json` and `check.txt`. If the check passes, it also holds `out/digest.md`, and the digest also appears in the job summary. If the check fails, there is no `out/digest.md`: read `check.txt` or the job summary instead.
 
-A run with a window start or end never posts. You can run the same scripts locally with a token that can read public repositories:
+A run with a window start or end never posts. A dry run does not scan the final body for links: the scan runs only in the post step, on the live body. You can run the same scripts locally with a token that can read public repositories:
 
 ```bash
 export GITHUB_TOKEN=$(gh auth token)
@@ -160,6 +164,8 @@ If the collect job or the draft job is red, the check job does not run and there
 
 If the check job is red before the post step, nothing is posted. Read the check lines in the job summary, or open `check.txt` in the artifact `digest` (see [Make a dry run](#make-a-dry-run)).
 
+If the post step is red with `not posted:`, nothing is posted, and the message names each failed guard. For link problems, the log has one `Link problem:` line for each link or mention in the final body that the collected data does not allow. The check stops such text earlier, so a link problem means a gap in `check.py`: read `out/digest.md` in the artifact `digest`.
+
 A run that fails in the post step after GitHub created the post is red, and the post stays. A run is also red when the author of the post is not `github-actions`: the next run would not find that post, and a rerun of this run posts again. Look at the category before you start the run again.
 
 ## Sections of a digest
@@ -179,7 +185,7 @@ The sections appear in the order of the table below, and a section without entri
 
 The post names each author as `@login`, which notifies that person. The rules:
 
-- Each person is mentioned once per post; later names are plain text.
+- Each person is mentioned once per post; later names are code spans, so a login cannot form a reference.
 - Bots and organisations are never mentioned: the logins in the list `bots` in `repos.toml`, every login that ends in `[bot]`, and every account that GitHub does not mark as a user.
 - The author of an open pull request that an earlier digest announced is not mentioned again for it while it stays open. Before each run, `collect.py` asks GitHub which announced pull requests are still open. A pull request leaves the list when GitHub answers that it does not exist, or when its repository is no longer in `repos.toml`; on any other error it stays.
 - A dry run shows the mentions in code spans, so nobody is notified.

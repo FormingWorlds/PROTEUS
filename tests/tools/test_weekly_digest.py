@@ -949,7 +949,7 @@ def test_render_open_pr_announced_before_is_not_mentioned_again():
         ),
     ]
     body, state = _render(_draft(*entries), data, live=True)
-    assert 'by carol, @dan' in body
+    assert 'by `carol`, @dan' in body
     assert state['announced_open'] == ['PROTEUS#900', 'PROTEUS#901', 'PROTEUS#902']
 
 
@@ -1225,7 +1225,7 @@ def test_known_keys_cover_every_tracked_file_kind():
         }
     )
     keys = facts.known_keys(
-        gh, {'tracked': {'a/P': [facts.OUTPUT_SCHEMA], 'a/Z': ['input/default.toml']}}
+        gh, {'tracked': {'a/P': [facts.OUTPUT_SCHEMA], 'a/Z': ['input/default.toml']}}, []
     )
     assert keys == {'T_surf', 'eos.mushy'}
 
@@ -1388,7 +1388,7 @@ def test_github_retries_a_network_error_and_rejects_a_missing_graphql_answer(mon
 def test_known_keys_fail_when_a_tracked_file_is_missing():
     """A schema that cannot be read stops the run instead of turning the key check off."""
     with pytest.raises(common.DigestError, match='cannot read'):
-        facts.known_keys(_FakeGH(), {'tracked': {'a/P': [facts.CONFIG_SCHEMA]}})
+        facts.known_keys(_FakeGH(), {'tracked': {'a/P': [facts.CONFIG_SCHEMA]}}, [])
 
 
 def test_model_runs_outside_the_repository(tmp_path, monkeypatch):
@@ -2124,10 +2124,11 @@ def test_post_step_alone_carries_the_live_inputs():
     assert (
         'EVENT: ${{ github.event_name }}' in step
         and 'POST: ${{ inputs.post || false }}' in step
+        and 'RUN_URL: ${{ github.server_url }}' in step
     )
     assert (
         'post.py publish collected.json draft.json out --event "$EVENT" --post-input "$POST"'
-        in step
+        ' --run-url "$RUN_URL"' in step
     )
 
 
@@ -2297,43 +2298,8 @@ def test_publish_refuses_a_body_with_a_foreign_link(tmp_path, monkeypatch):
         )
 
 
-_TOKENS = st.sampled_from(
-    [
-        'https',
-        'http',
-        'ftp',
-        'www',
-        ':',
-        '|',
-        '/',
-        '.',
-        '@',
-        '#',
-        '1',
-        '<',
-        'a',
-        '[',
-        ']',
-        '(',
-        ')',
-        '`',
-        '\\',
-        ' ',
-        '-',
-        '\u2013',
-        '!',
-        '&',
-        ';',
-        '_',
-        '*',
-        'x',
-        'alice',
-        'GH-',
-        '<!--',
-        '-->',
-        'mailto',
-    ]
-)
+_WORDS = ['https', 'http', 'ftp', 'www', 'alice', 'GH-', '<!--', '-->', 'mailto']
+_TOKENS = st.sampled_from([*_WORDS, *':|/.@#1<a[]()`\\-\u2013!&;_*x '])
 
 
 _FRAGMENTS = st.lists(
@@ -2347,7 +2313,7 @@ _FRAGMENTS = st.lists(
 ).map(lambda pairs: ''.join(w + s for w, s in pairs))
 
 
-@settings(max_examples=1000, deadline=None)
+@settings(max_examples=1000, deadline=None, derandomize=True)
 @given(
     st.one_of(_FRAGMENTS, st.lists(_TOKENS, max_size=12).map(''.join)),
     st.lists(_TOKENS, max_size=8).map(''.join),
@@ -2485,8 +2451,6 @@ def test_workflow_overwrites_artifacts_and_reports_unreadable_files():
         'python tools/digest/facts.py collected.json --summary "$GITHUB_STEP_SUMMARY"'
         in jobs['collect']
     )
-    step = jobs['publish'].split('- name: Post\n', 1)[1]
-    assert '--run-url "$RUN_URL"' in step and 'RUN_URL: ${{ github.server_url }}' in step
 
 
 def test_names_that_are_not_mentions_are_code_spans():

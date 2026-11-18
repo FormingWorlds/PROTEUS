@@ -27,7 +27,7 @@ defaults:
     shell: bash
 
 concurrency:
-  group: weekly-digest-${{ (github.event_name == 'schedule' || inputs.post) && 'live' || github.run_id }}
+  group: weekly-digest-${{ (github.event_name == 'schedule' || (inputs.post && !inputs.since && !inputs.until)) && 'live' || github.run_id }}
   cancel-in-progress: false
 
 jobs:

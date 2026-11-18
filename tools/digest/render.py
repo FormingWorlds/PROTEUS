@@ -34,6 +34,7 @@ LITERAL = {
     'a URL': re.compile(r'://|www\.|mailto:|xmpp:|javascript:', re.I),
     'an @': re.compile('[@\uff20\ufe6b]'),
     'a # reference': re.compile(r'(?<!#)#\d|\bGH-\d', re.I),
+    'a commit id': re.compile(r'(?<![\w.-])[0-9a-f]{7,40}(?![\w-])', re.I),
 }
 RAW = {
     'HTML': re.compile(r'<\s*[A-Za-z/!?]'),
@@ -88,8 +89,10 @@ def value(item: object) -> str:
     """A fact value as a short code span with no line break, pipe, backtick or comment delimiter."""
     if item is None:
         return '(none)'
+    if not str(item).strip():
+        return '(empty)'
     text = re.sub(r'<!--|-->|[`|\s]', ' ', str(item))[:VALUE_CHARS]
-    return f'`{text}`' if text.strip() else '(empty)'
+    return f'`{text}`' if text.strip() else '(not shown)'
 
 
 def fact_line(fact: dict) -> str:
@@ -101,7 +104,7 @@ def fact_line(fact: dict) -> str:
         )
     if change == 'added':
         return f'{key} added' + (
-            f', default {value(fact["new"])}' if fact['new'] is not None else ''
+            f', default {value(fact["new"])}' if fact['new'] not in (None, '') else ''
         )
     if change == 'removed':
         return f'{key} removed'
@@ -127,14 +130,16 @@ class Mentions:
         self.live, self.bots, self.announced, self.done = live, bots, announced, set()
 
     def name(self, item: dict) -> str:
-        """Render the author of a cited pull request or release."""
+        """Render the author of a cited pull request or release; a name that is not a mention is a code span."""
         login = item['author']
-        if is_bot(login, item['author_kind'], self.bots):
-            return escape(login) if login else 'unknown'
-        if login in self.done or (
-            item.get('status') == 'open' and item['ref'] in self.announced
+        if not login:
+            return 'unknown'
+        if (
+            is_bot(login, item['author_kind'], self.bots)
+            or login in self.done
+            or (item.get('status') == 'open' and item['ref'] in self.announced)
         ):
-            return login
+            return f'`{login}`'
         self.done.add(login)
         return f'@{login}' if self.live else f'`@{login}`'
 

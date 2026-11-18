@@ -27,8 +27,13 @@ OUTPUT_SCHEMA = 'docs/Reference/output_schema.json'
 DESCRIPTION_CHARS = 600
 GROUP_LIMIT = 8
 CONFIG_FIELDS = ('default', 'choices', 'bounds', 'description')
-UNREADABLE = (ValueError, KeyError, TypeError, AttributeError)
+UNREADABLE = (ValueError, KeyError, TypeError, AttributeError, RecursionError)
 REQ_RE = re.compile(r'^\s*([A-Za-z0-9][A-Za-z0-9._-]*)(\[[^\]]*\])?\s*(.*)$')
+
+
+def _same(value: object) -> str:
+    """A comparable form of a value, so that an unchanged nan is equal to itself."""
+    return json.dumps(value, default=str, sort_keys=True)
 
 
 def _changes(
@@ -43,7 +48,7 @@ def _changes(
             out.append(('removed', key, old[key].get('default', old[key].get('value')), None))
         else:
             for field in fields:
-                if old[key].get(field) != new[key].get(field):
+                if _same(old[key].get(field)) != _same(new[key].get(field)):
                     out.append((field, key, old[key].get(field), new[key].get(field)))
     return out
 
@@ -105,11 +110,9 @@ def project_toml_map(text: str | None) -> dict:
 
 def _short(value: object) -> object:
     """A JSON value of at most ``DESCRIPTION_CHARS`` characters; a date becomes text."""
-    if isinstance(value, (list, dict)):
+    if not isinstance(value, (str, int, float, bool, type(None))):
         text = json.dumps(value, default=str)
         value = json.loads(text) if len(text) <= DESCRIPTION_CHARS else text
-    elif not isinstance(value, (str, int, float, bool, type(None))):
-        value = str(value)
     if isinstance(value, str) and len(value) > DESCRIPTION_CHARS:
         return value[:DESCRIPTION_CHARS] + ' [cut]'
     return value
@@ -188,34 +191,38 @@ def attach_facts(gh: GitHub, data: dict, settings: dict) -> None:
         for path in [*settings.get('tracked', {}).get(pr['repo'], []), *TRACKED_ALWAYS]:
             if path not in pr['files'] and not pr.get('files_truncated'):
                 continue
-            old = gh.raw_file(pr['repo'], path, pr['parent_oid'])
-            new = gh.raw_file(pr['repo'], path, pr['merge_oid'])
             try:
-                found = diff_file(path, old, new)
+                old = gh.raw_file(pr['repo'], path, pr['parent_oid'])
+                found = diff_file(path, old, gh.raw_file(pr['repo'], path, pr['merge_oid']))
             except UNREADABLE as err:
-                error = f'{type(err).__name__}: {err}'[:200]
-                unreadable.append({'pr': pr['ref'], 'file': path, 'error': error})
+                unreadable.append(_unreadable(pr['ref'], path, err))
                 continue
             for fact in group_facts(found):
                 facts.append({'id': f'F{len(facts) + 1}', 'pr': pr['ref'], **fact})
     data['facts'], data['facts_unreadable'] = facts, unreadable
-    data['known_keys'] = sorted(known_keys(gh, settings))
+    data['known_keys'] = sorted(known_keys(gh, settings, unreadable))
 
 
-def known_keys(gh: GitHub, settings: dict) -> set[str]:
-    """Config paths, helpfile columns and default-file keys that hold ``_`` or ``.``."""
+def _unreadable(where: str, path: str, err: Exception) -> dict:
+    return {'pr': where, 'file': path, 'error': f'{type(err).__name__}: {err}'[:200]}
+
+
+def known_keys(gh: GitHub, settings: dict, unreadable: list[dict]) -> set[str]:
+    """Config paths, helpfile columns and default-file keys that hold ``_`` or ``.``.
+
+    A tracked file on the default branch that does not parse is added to ``unreadable``.
+    """
     keys = set()
+    parse = {CONFIG_SCHEMA: config_schema_map, OUTPUT_SCHEMA: output_schema_map}
     for repo, paths in settings.get('tracked', {}).items():
         for path in paths:
-            text = gh.raw_file(repo, path, None)
-            if text is None:
-                raise DigestError(f'cannot read {path} of {repo} for the key check')
-            if path == CONFIG_SCHEMA:
-                keys |= set(config_schema_map(text))
-            elif path == OUTPUT_SCHEMA:
-                keys |= set(output_schema_map(text))
-            else:
-                keys |= set(toml_map(text))
+            try:
+                text = gh.raw_file(repo, path, None)
+                if text is None:
+                    raise DigestError(f'cannot read {path} of {repo} for the key check')
+                keys |= set(parse.get(path, toml_map)(text))
+            except UNREADABLE as err:
+                unreadable.append(_unreadable(f'{repo} default branch', path, err))
     return {k for k in keys if '_' in k or '.' in k}
 
 

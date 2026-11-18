@@ -132,12 +132,12 @@ def is_bot(login: str | None, kind: str | None, bots: list[str]) -> bool:
 
 
 class SameHostAuth(urllib.request.HTTPRedirectHandler):
-    """Follow a redirect, and drop the token when it leaves the host."""
+    """Follow a redirect, and drop the token when it leaves the scheme and host."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         new = super().redirect_request(req, fp, code, msg, headers, newurl)
-        host = urllib.parse.urlsplit(req.full_url).netloc
-        if new is not None and urllib.parse.urlsplit(newurl).netloc != host:
+        host = urllib.parse.urlsplit(req.full_url)[:2]
+        if new is not None and urllib.parse.urlsplit(newurl)[:2] != host:
             new.remove_header('Authorization')
         return new
 

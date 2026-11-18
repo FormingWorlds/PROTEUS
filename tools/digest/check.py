@@ -38,7 +38,7 @@ FORBIDDEN = {
     'a markdown link or image': re.compile(r'[\[\]]'),
     'a # reference': re.compile(r'#\s*\d|\bGH-\d', re.I),
     'a backtick': re.compile(r'`'),
-    'a commit id': re.compile(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', re.I),
+    'a commit id': re.compile(r'(?<![\w.-])[0-9a-f]{7,40}(?![\w-])', re.I),
     'a superscript': re.compile('[\u00b2\u00b3\u00b9\u2070-\u207f]'),
     'the action marker': re.compile(r'action\W+for\W+everyone', re.I),
 }
