@@ -282,14 +282,28 @@ def test_clean_text_hides_at_least_what_a_renderer_can_hide():
     assert collect.clean_text('a <!--\nhidden\n--> b <!--\nrest\nmore', 100) == 'a b'
 
 
+def test_clean_text_removes_every_url_scheme():
+    """A scheme with nothing after it, or one other than http and ftp, is removed too."""
+    assert collect.clean_text('see https:// and foo://y z', 100) == 'see and z'
+    assert collect.clean_text('T < 300 K', 100) == 'T < 300 K'
+
+
 def test_clean_text_cuts_the_raw_text_first():
-    """Only the first 20000 raw characters are read; a cut inside markup leaks nothing."""
+    """Only the first 20000 raw characters are read; a cut at any place in markup leaks nothing."""
     assert collect.clean_text('a' * 20000 + 'tail', 20100) == 'a' * 20000
-    for tail in ['<!-- hidden -->', '[t](https://evil.example/x)', '<b>x</b>', '@alice']:
-        out = collect.clean_text('x' * 19994 + ' ' + tail, 20000)
-        assert out.startswith('x' * 19994) and len(out) <= 20000
-        assert '@' not in out and '://' not in out and 'hidden' not in out
-        assert not re.search(r'<[^>]*>', out)
+    tails = [
+        '[click](https://evil.example/x)',
+        'https://evil.example/x',
+        '<img src=x>',
+        '@alice',
+        '<!-- hidden -->',
+    ]
+    for tail in tails:
+        for k in range(len(tail) + 2):
+            out = collect.clean_text('a' * (20000 - k) + ' ' + tail, 20000)
+            assert out.startswith('a' * (20000 - k)), (tail, k)
+            assert '://' not in out and '@' not in out and '<' not in out, (tail, k, out[-20:])
+            assert 'evil' not in out and 'hidden' not in out, (tail, k, out[-20:])
 
 
 @given(st.text(max_size=400), st.integers(min_value=0, max_value=300))
