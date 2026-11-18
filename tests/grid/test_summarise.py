@@ -4,7 +4,7 @@ Covers the ``summarise`` entrypoint: invalid-path error, status
 aggregation, general-category dispatch (Running / Completed / Error /
 Unknown / All / named statuses), code-status dispatch, unmatched input,
 non-contiguous case folders, and cases without a readable status file or
-without a folder (not started), which count as unknown.
+without a folder (not started yet), which count as unknown.
 
 Testing standards:
   - docs/How-to/testing.md
@@ -275,10 +275,10 @@ def test_summarise_counts_a_case_without_a_readable_status_as_unknown(
 
 
 def test_summarise_counts_a_case_with_a_config_but_no_folder_as_not_started(tmp_path, caplog):
-    """A packed SLURM job can end before it starts every case, which leaves a config
-    in cfgs/ without a case folder. Such a case counts as unknown (code -1) under its
-    own index, and one warning gives how many there are; a config whose folder exists
-    and a gap with neither are not counted.
+    """A case that has not started yet (still queued, or its job ended before it
+    started) has a config in cfgs/ but no case folder. It counts as unknown (code -1)
+    under its own index, and one log line gives how many there are; a config whose
+    folder exists and a gap with neither are not counted.
     """
     grid = _make_grid(tmp_path, statuses=[10, 20])
     (grid / 'cfgs').mkdir()
@@ -289,8 +289,8 @@ def test_summarise_counts_a_case_with_a_config_but_no_folder_as_not_started(tmp_
         assert summarise_mod.summarise(str(grid), tgt_status='code=-1') is True
 
     assert 'Found 4 cases' in caplog.text
-    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-    assert warnings == ['2 cases have a config in cfgs/ but no folder: not started']
+    not_started = [r.getMessage() for r in caplog.records if 'not started' in r.getMessage()]
+    assert not_started == ['2 cases have a config in cfgs/ but no folder: not started']
     # Two of the four cases are unknown: 50 %, where counting only started cases gives none.
     assert '2     (50%) Unknown (no readable status file)' in caplog.text
     assert '1     (25%) Completed (solidified)' in caplog.text

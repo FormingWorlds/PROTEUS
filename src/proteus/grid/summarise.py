@@ -52,16 +52,14 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
     if (not os.path.exists(pgrid_dir)) or (not os.path.isdir(pgrid_dir)):
         raise FileNotFoundError("Invalid path '%s'" % pgrid_dir)
 
-    # Find the case folders, and the cases with a config but no folder (never started)
+    # Find the case folders, and the cases with a config but no folder (not started yet)
     grid = Path(pgrid_dir).resolve()
     names = {p.name for p in grid.glob('case_*')}
     not_started = {p.stem for p in grid.glob('cfgs/case_*.toml')} - names
     case_dirs = [grid / name for name in sorted(names | not_started)]
     log.info("Found %d cases in '%s'", len(case_dirs), grid)
     if not_started:
-        log.warning(
-            '%d cases have a config in cfgs/ but no folder: not started', len(not_started)
-        )
+        log.info('%d cases have a config in cfgs/ but no folder: not started', len(not_started))
 
     # Read each case's status code, keyed by the folder index parsed from
     # its name. Keying by the real index means a non-contiguous set of case
@@ -122,12 +120,11 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
             matched = True
             log.info('%s cases:', g)
             e_any = False
-            for idx in indices:  # for each grid point
-                for s in gen_cases[g]:  # for each case within this general case
-                    if case_status[idx] == s:
-                        e_any = True
-                        log.info('  Case %-5d : Code %-2d - %s', idx, s, CommentFromStatus(s))
-                        break
+            for idx in indices:
+                s = case_status[idx]
+                if s in gen_cases[g]:
+                    e_any = True
+                    log.info('  Case %-5d : Code %-2d - %s', idx, s, CommentFromStatus(s))
             if not e_any:
                 log.info('  (None)')
 
