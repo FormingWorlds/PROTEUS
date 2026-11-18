@@ -291,6 +291,8 @@ def test_clean_text_removes_every_url_scheme():
 def test_clean_text_cuts_the_raw_text_first():
     """Only the first 20000 raw characters are read; a cut at any place in markup leaks nothing."""
     assert collect.clean_text('a' * 20000 + 'tail', 20100) == 'a' * 20000
+    assert collect.clean_text('a' * 19996 + ' <3x', 20000).endswith(' <3x')
+    assert collect.clean_text('<' + 'a' * 20000, 20000) == ''
     tails = [
         '[click](https://evil.example/x)',
         'https://evil.example/x',
