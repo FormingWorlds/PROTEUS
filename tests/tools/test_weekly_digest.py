@@ -274,6 +274,13 @@ def test_clean_text_removes_links_html_mentions_and_cuts():
     assert collect.clean_text(None, 10) == '' and collect.clean_text('abc', 0) == ''
 
 
+def test_clean_text_drops_comments_as_github_ends_them():
+    """A comment ends at --> or --!>, an unclosed one hides the rest, and <!--> is empty."""
+    assert collect.clean_text('<!-- a --!> shown <!-- b -->', 100) == 'shown'
+    assert collect.clean_text('shown <!-- hidden rest', 100) == 'shown'
+    assert collect.clean_text('<!-->shown<!--->too', 100) == 'shown too'
+
+
 @given(st.text(max_size=400), st.integers(min_value=0, max_value=300))
 @settings(max_examples=200, deadline=None)
 def test_clean_text_never_leaks_a_mention_link_or_tag(text, limit):
@@ -1332,6 +1339,7 @@ def test_fact_values_cannot_break_a_row_or_spoof_the_state():
     assert render.value('3000.0\r| injected') == '`3000.0   injected`'
     spoof = render.value('<!-- weekly-digest-state {"until":"2099-01-01"} -->')
     assert '<!--' not in spoof and '-->' not in spoof
+    assert render.value('a --!> b <!-- c') == '`a   b   c`'
     assert render.value('>=26.11.8') == '`>=26.11.8`' and render.value('<2') == '`<2`'
 
 
