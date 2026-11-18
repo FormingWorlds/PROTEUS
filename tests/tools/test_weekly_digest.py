@@ -1961,6 +1961,7 @@ def test_previous_state_pages_until_a_bot_post():
     }
     gh = _FakeGH([_CATS, first, second])
     state = collect.previous_state(gh, 'FormingWorlds/PROTEUS', 'weekly-digest')
+    assert state is not None, 'the bot post on page 2 was not found'
     assert state['until'] == '2026-11-16T22:30:00Z' and gh.queries[2]['cursor'] == 'c1'
 
 
@@ -2117,7 +2118,10 @@ def test_body_limit_boundary(tmp_path, monkeypatch):
     dft.write_text(json.dumps(_draft(_entry())))
     body, _ = render.render_body(_data(), _draft(_entry()), False, '', [])
     monkeypatch.setattr(render, 'BODY_LIMIT', len(body))
-    assert render.main([str(src), str(dft), str(tmp_path / 'out')]) == 0
+    try:
+        assert render.main([str(src), str(dft), str(tmp_path / 'out')]) == 0
+    except common.DigestError as err:
+        pytest.fail(f'a body of exactly the limit was refused: {err}')
     monkeypatch.setattr(render, 'BODY_LIMIT', len(body) - 1)
     with pytest.raises(common.DigestError):
         render.main([str(src), str(dft), str(tmp_path / 'out')])
