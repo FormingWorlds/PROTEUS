@@ -2310,7 +2310,7 @@ def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch, r
         surface['T'] = 1601.5  # the surface of the next step
         installed['factory'](MagicMock(), 'core_module')
     kwargs = build.call_args.kwargs
-    assert kwargs['core_module_surface_temperature'] == 1601.5
+    assert kwargs['core_module_surface_temperature'] == pytest.approx(1601.5, abs=0.0)
     assert kwargs['core_bc_mode'] == 'core_module'
     assert kwargs['core_module_budget'] == 'refit-sentinel'
     assert kwargs['core_module_q_radio'] == pytest.approx(3.0e12)
@@ -4538,6 +4538,7 @@ def test_setup_solver_passes_the_surface_temperature_of_the_row(tmp_path, T_surf
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
 
+    assert mock_bc_cls.call_count == 1
     assert mock_bc_cls.call_args.kwargs['surface_temperature'] == want
 
 

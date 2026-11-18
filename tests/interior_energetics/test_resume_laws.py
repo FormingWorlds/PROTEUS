@@ -950,3 +950,5 @@ def test_the_critical_rayleigh_number_is_a_law_of_core_module_runs_only(
     config, path = _core_config(tmp_path, core_bc=new_bc)
     switches = check_resume_separation_laws(config, path, out)
     assert all(field != 'core_module.ra_crit_cmb' for field, _, _ in switches)
+    # the setting differs from the record, so a core_module pair would compare it
+    assert config.interior_energetics.aragog.core_module.ra_crit_cmb != 450.0
