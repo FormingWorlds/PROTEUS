@@ -31,7 +31,12 @@ from aragog.parser import (
     _SolverParameters,
 )
 from proteus.accretion.common import snap_to_impact
-from proteus.atmos_clim.common import lid_acts, lid_flux_cap, lid_flux_slope
+from proteus.atmos_clim.common import (
+    lid_acts,
+    lid_flux_cap,
+    lid_flux_slope,
+    lid_open_conductance,
+)
 from proteus.interior_energetics import aragog_core, aragog_resume
 from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
 from proteus.interior_energetics.aragog_phase import (
@@ -624,27 +629,28 @@ def _surface_temperature_of_row(hf_row: dict) -> float | None:
 
 
 def _set_lid_surface(bc, hf_row: dict, slope: float | None = None) -> None:
-    """Hold the lid surface of the next interior step at the atmosphere surface, with its cap.
+    """Set the cap of the lid surface of the next interior step, held at the atmosphere surface.
+
+    The held surface itself is ``surface_temperature`` (:func:`_surface_temperature_of_row`),
+    which Aragog takes for the lid in flux mode with the mush base.
 
     Parameters
     ----------
     bc : object
-        Boundary parameters of the Aragog solver; ``lid_surface_temperature``,
-        ``lid_surface_flux_cap`` and ``lid_surface_flux_slope`` are set on it.
+        Boundary parameters of the Aragog solver; ``lid_surface_flux_cap`` and
+        ``lid_surface_flux_slope`` are set on it.
     hf_row : dict
         Current helpfile row after the atmosphere step.
     slope : float or None
         Slope ``F'`` of the atmosphere flux with the surface [W m-2 K-1] for the cap; it is
         set only with a cap.
     """
-    bc.lid_surface_temperature = _lid_surface_of_row(
+    T_held = _lid_surface_of_row(
         hf_row,
         'flux' if getattr(bc, 'outer_boundary_condition', None) == 4 else 'grey_body',
         getattr(bc, 'lid_mush_base', False),
     )
-    bc.lid_surface_flux_cap = (
-        lid_flux_cap(hf_row) if bc.lid_surface_temperature is not None else None
-    )
+    bc.lid_surface_flux_cap = lid_flux_cap(hf_row) if T_held is not None else None
     bc.lid_surface_flux_slope = slope if bc.lid_surface_flux_cap is not None else None
 
 
@@ -2327,8 +2333,17 @@ class AragogRunner:
         bc = solver.parameters.boundary_conditions
         live = getattr(bc, 'subgrid_lid', False) and lid_acts(hf_row)
         bc.outer_boundary_value = hf_row['lid_F_open'] if live else hf_row['F_atm']
-        _set_lid_surface(bc, hf_row, lid_flux_slope(hf_all, hf_row))
+        slope = lid_flux_slope(hf_all, hf_row)
+        _set_lid_surface(bc, hf_row, slope)
         bc.surface_temperature = _surface_temperature_of_row(hf_row)
+        # in flux mode with the mush base the open part of a live lid follows its node in the step
+        G_eff, code = (
+            lid_open_conductance(hf_row, slope)
+            if live and bc.outer_boundary_condition == 4 and getattr(bc, 'lid_mush_base', False)
+            else (None, 0)
+        )
+        bc.open_surface_conductance = G_eff
+        hf_row['lid_slope_guard'] = code
 
         # Update equilibrium temperature (tracks stellar luminosity evolution).
         # SPIDER receives fresh T_eqm at every call via -teqm (spider.py:748).
@@ -2575,8 +2590,8 @@ class AragogRunner:
             return out
         solver = interior_o.aragog_solver
         bc = solver.parameters.boundary_conditions
-        T_held = getattr(bc, 'lid_surface_temperature', None)
         cap = getattr(bc, 'lid_surface_flux_cap', None)
+        T_held = getattr(bc, 'surface_temperature', None) if cap is not None else None
         T_end = float(getattr(out, 'lid_T_surface', float('nan')))
         if T_held is None or cap is None or not T_end > T_held + LID_CAP_DT_ACT:
             return out
@@ -3165,6 +3180,7 @@ class AragogRunner:
             'lid_T_surface': _lid_out(out, 'lid_T_surface'),
             'lid_T_base': _lid_out(out, 'lid_T_base'),
             'lid_T_node': float(out.T_basic[-1]),
+            'lid_weight_max': _lid_out(out, 'lid_weight_max'),
             # the lid booking exists only in flux mode; grey_body books the surface node
             'lid_F_diff': F_int - hf_row['F_atm'] if surface_bc_mode == 'flux' else 0.0,
             'Phi_global': out.Phi_global,

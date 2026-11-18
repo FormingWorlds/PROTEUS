@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
 import numpy as np
 
+from proteus.utils.constants import const_sigma
 from proteus.utils.helper import (
     UpdateStatusfile,
     find_nearest,
@@ -429,13 +431,22 @@ def lid_acts(hf_row: dict) -> bool:
     )
 
 
+def lid_open_node(hf_row: dict) -> float:
+    """Temperature [K] of the melt under the open skin, ``T_m = max(T_node, T_b)``.
+
+    The open part of a lid surface is melt, so its node is held at least at the lid base (a
+    model construct of the coupling; the solver mesh keeps its own top node).
+    """
+    return max(float(hf_row['lid_T_node']), float(hf_row['lid_T_base']))
+
+
 def lid_boundary(hf_row: dict) -> tuple[float, float, float]:
     """Skin and melt temperature for the surface balance of the atmosphere.
 
     The lid and the open surface act in parallel on one surface temperature:
-    ``F = w G_lid (T_b - T) + (1 - w) G_skin (T_node - T) = k / d (T_melt - T)``, with
-    ``G_lid`` at most ``G_skin``, so that a lid never conducts more than the open surface.
-    Without a lid the columns and ``T_magma`` pass unchanged.
+    ``F = w G_lid (T_b - T) + (1 - w) G_skin (T_m - T) = k / d (T_melt - T)``, with
+    ``G_lid`` at most ``G_skin`` so that a lid never conducts more than the open surface, and
+    ``T_m`` from :func:`lid_open_node`. Without a lid the columns and ``T_magma`` pass unchanged.
 
     Parameters
     ----------
@@ -458,8 +469,8 @@ def lid_boundary(hf_row: dict) -> tuple[float, float, float]:
     G_skin = _lid_skin_conductance(hf_row)
     G_lid = min(G_lid, G_skin)
     G = w * G_lid + (1.0 - w) * G_skin
-    T_melt = w * G_lid * float(hf_row['lid_T_base']) + (1.0 - w) * G_skin * float(
-        hf_row['lid_T_node']
+    T_melt = w * G_lid * float(hf_row['lid_T_base']) + (1.0 - w) * G_skin * lid_open_node(
+        hf_row
     )
     return k / G, k, T_melt / G
 
@@ -538,35 +549,95 @@ def lid_open_flux(hf_row: dict) -> float:
     Returns
     -------
     float
-        ``F_atm`` without a lid. Where a lid acts, the skin flux ``G_skin (T_node - T_surf)``
-        scaled by ``F_atm / (G (T_melt - T_surf))``, the ratio of the atmosphere flux to the
-        parallel balance of :func:`lid_boundary`; the skin flux alone where that balance is not
-        positive.
+        ``F_atm`` without a lid. Where a lid acts, the skin flux ``G_skin (T_m - T_surf)``
+        (``T_m`` of :func:`lid_open_node`) scaled by ``c = F_atm / (G (T_melt - T_surf))``, the
+        ratio of the atmosphere flux to the parallel balance of :func:`lid_boundary`; ``F_atm``
+        where that balance or the skin flux is not positive.
+
+    Raises
+    ------
+    RuntimeError
+        For a scale ``c`` of 0 or below: a positive balance with ``F_atm`` at or below 0.
 
     Notes
     -----
     The scale makes the boundary continuous at the onset: it tends to ``F_atm`` as the lid
     weight goes to 0. Where the atmosphere closes the skin balance it is 1, and the weighted
-    lid and open parts sum to ``F_atm``.
+    lid and open parts sum to ``F_atm``. The value is the start of the step; inside it the
+    open part follows its node with :func:`lid_open_conductance`.
     """
     if not lid_acts(hf_row):
         return float(hf_row['F_atm'])
     T_surf = float(hf_row['T_surf'])
-    skin = _lid_skin_conductance(hf_row) * (float(hf_row['lid_T_node']) - T_surf)
+    skin = _lid_skin_conductance(hf_row) * (lid_open_node(hf_row) - T_surf)
     d, k, T_melt = lid_boundary(hf_row)
     balance = k / d * (T_melt - T_surf)
+    F_atm = float(hf_row['F_atm'])
     if not (balance > 0.0 and skin > 0.0):
         if not _OPEN_FLUX_WARNED[0]:
             log.warning(
                 'Lid open part: the skin balance of the call is %.4g W m-2 and the skin flux %.4g '
-                'W m-2 at T_surf %.2f K; the open part takes the skin flux unscaled',
+                'W m-2 at T_surf %.2f K; the open part starts at F_atm %.4g W m-2',
                 balance,
                 skin,
                 T_surf,
+                F_atm,
             )
             _OPEN_FLUX_WARNED[0] = True
-        return skin
-    return float(hf_row['F_atm']) / balance * skin
+        return F_atm
+    c = F_atm / balance
+    if not c > 0.0:
+        raise RuntimeError(
+            f'Lid open part: scale c = F_atm / balance = {c:.4g} at or below 0 (F_atm {F_atm:.4g}, '
+            f'balance {balance:.4g} W m-2, T_surf {T_surf:.2f} K, lid weight '
+            f'{float(hf_row["lid_weight"]):.4g})'
+        )
+    return c * skin
+
+
+# lid_slope_guard codes: the slope was 0 or below, not finite or from a short step; it was cut
+LID_SLOPE_GUARD_SIGN = 1
+LID_SLOPE_GUARD_SIZE = 2
+
+
+def lid_open_conductance(hf_row: dict, slope: float) -> tuple[float | None, int]:
+    """In-step response ``G_eff`` [W m-2 K-1] of the open part of a lid surface, per open area.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row after the atmosphere step, with ``T_surf`` and the lid columns.
+    slope : float
+        Slope ``F'`` of ``F_atm`` with ``T_surf`` [W m-2 K-1], as :func:`lid_flux_slope`.
+
+    Returns
+    -------
+    tuple
+        ``(G_eff, code)``: ``G F' / (F' + w G_l' + (1 - w) G)`` with ``G`` the skin and
+        ``G_l'`` the lid conductance of the call; ``(None, 0)`` without a live lid. A slope
+        that is not finite and above 0 gives ``(0.0, LID_SLOPE_GUARD_SIGN)``; one above
+        ``4 sigma T_surf^3``, the slope of a bare grey surface, is cut to it with
+        ``LID_SLOPE_GUARD_SIZE``.
+
+    Notes
+    -----
+    With the lid part held through the step, this response makes the in-step change of the
+    total surface flux ``(1 - w) G_eff dT_m`` equal to the change ``F' dT_s`` of the
+    atmosphere at the surface the call balance would move to.
+    """
+    if not lid_acts(hf_row):
+        return None, 0
+    F_p = float(slope)
+    if not (math.isfinite(F_p) and F_p > 0.0):
+        return 0.0, LID_SLOPE_GUARD_SIGN
+    code = 0
+    F_grey = 4.0 * const_sigma * float(hf_row['T_surf']) ** 3
+    if F_p > F_grey:
+        F_p, code = F_grey, LID_SLOPE_GUARD_SIZE
+    w = float(hf_row['lid_weight'])
+    G = _lid_skin_conductance(hf_row)
+    G_l = min(float(hf_row['lid_conductance']), G)
+    return G * F_p / (F_p + w * G_l + (1.0 - w) * G), code
 
 
 def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:

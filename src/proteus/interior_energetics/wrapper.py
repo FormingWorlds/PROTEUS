@@ -2015,6 +2015,35 @@ def _partial_remelt_profile(solver, S_end: np.ndarray, S_molten: np.ndarray, f: 
     return remelt_entropy(S_end, S_molten, w)
 
 
+def guard_t_magma_clip(hf_row: dict, prev_weight: float, clipped_from: float) -> None:
+    """Stop a run whose step clipped a rise of ``T_magma`` while a lid acted, else count it.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row, with ``Time`` and, from the interior, ``lid_weight`` and
+        ``lid_weight_max``; ``T_magma_clipped`` is set to 1 on it.
+    prev_weight : float
+        Lid weight of the row before, the start of the step.
+    clipped_from : float
+        ``T_magma`` [K] of the step before the clip.
+
+    Raises
+    ------
+    RuntimeError
+        Where the lid weight is above 0 at the start or the end of the step, or at an accepted
+        state (``lid_weight_max``): a clipped lid step does not conserve energy.
+    """
+    weights = (prev_weight, hf_row.get('lid_weight', 0.0), hf_row.get('lid_weight_max', 0.0))
+    w = max(float(np.nan_to_num(float(x))) for x in weights)
+    if w > 0.0:
+        raise RuntimeError(
+            f'T_magma clip from {float(clipped_from):.2f} K at t = {float(hf_row["Time"]):.6e} yr '
+            f'in a step with a live lid (largest lid weight {w:.4g})'
+        )
+    hf_row['T_magma_clipped'] = 1
+
+
 # Lid columns of the helpfile that a re-melt takes from the re-melted state.
 LID_COLUMNS = (
     'lid_weight',
@@ -2717,6 +2746,7 @@ def run_interior(
 
         # Limit large increases to T_magma and T_surf. Skipped on impact steps and
         # when Aragog's pre-step top_cell_dt_limit produced a finite tau_drain.
+        hf_row['T_magma_clipped'] = 0
         aragog_top_dt_limit = (
             config.interior_energetics.module == 'aragog'
             and getattr(
@@ -2736,6 +2766,9 @@ def run_interior(
             if (not impact_reset) and hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
                 log.warning('Prevented large increase to T_magma!')
                 log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
+                guard_t_magma_clip(
+                    hf_row, float(hf_all.iloc[-1].get('lid_weight', 0.0)), hf_row['T_magma']
+                )
                 hf_row['T_magma'] = T_magma_prev + dT_delta_magma
                 hf_row['Phi_global'] = Phi_global_prev
 
