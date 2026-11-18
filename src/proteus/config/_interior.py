@@ -406,8 +406,10 @@ class AragogCoreModule:
         the CMB heat flux from the core-mantle temperature contrast. 'phase' (the default)
         takes 450 while the bottom cell is liquid and eq. 16 while it is solid (the switch of
         Miyazaki and Korenaga (2019)[^cite-miyazaki2019b] at the critical melt fraction),
-        blended in the logarithm across [rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2]
-        of the bottom-cell melt fraction. 'eq16' takes the lower-layer law of Thiriet et al.
+        blended in the logarithm with the weight (1 + tanh((phi - rfront_loc)/rfront_wid))/2 of
+        the viscosity blend at the bottom-cell melt fraction phi; the band
+        [rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2] must lie inside [0, 1]. 'eq16'
+        takes the lower-layer law of Thiriet et al.
         (2019)[^cite-thiriet2019], eq. 16, from the internal Rayleigh number of the mantle; a
         positive, finite number fixes it, for example 450, their Table 2 value for the upper
         boundary layer.
