@@ -79,12 +79,12 @@ def clean_text(text: str | None, limit: int) -> str:
     """Remove links, images, HTML and mentions from untrusted text and cut it to ``limit``.
 
     Only the first ``RAW_CHARS`` characters are read. Format and control characters and
-    U+E0000 to U+E007F go first; white space stays. An HTML comment ends
-    only at ``-->`` and an unclosed one removes the rest. A tag starts with ``<`` and a
-    letter, ``/``, ``!`` or ``?``; every other ``<`` or ``>`` goes, and the text around it
-    stays, as in ``T < 300 K``. ``@`` goes, then every token with ``://`` or ``www.``.
-    The result has no ``<``, ``>``, ``@``, ``://`` or ``www.``. Text inside markup, such
-    as attribute values or script content, can stay.
+    U+E0000 to U+E007F go first; white space stays. An HTML comment ends only at ``-->``
+    and an unclosed one removes the rest. A tag starts with ``<`` and an ASCII letter,
+    ``/``, ``!`` or ``?``; every other ``<`` or ``>`` goes, and the text around it stays,
+    as in ``T < 300 K``. ``@`` goes, then every word that holds ``://`` or ``www.`` in
+    any case. The result has no ``<``, ``>``, ``@``, ``://`` or ``www.``. Text inside
+    markup, such as attribute values or script content, can stay.
 
     Parameters
     ----------
@@ -104,10 +104,9 @@ def clean_text(text: str | None, limit: int) -> str:
     text = re.sub(r'<!--(?:-?>|.*?-->|.*)', ' ', text, flags=re.S)
     text = re.sub(r'!\[[^\]]*\]\([^)]*\)', ' ', text)
     text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
-    text = re.sub(r'<[A-Za-z/!?][^<>]*>', ' ', text)
-    text = re.sub(r'[<>]', ' ', text).replace('@', '')
-    text = re.sub(r'www\.\S*', ' ', ' '.join(w for w in text.split() if '://' not in w))
-    return ' '.join(text.split())[:limit]
+    text = re.sub(r'<[A-Za-z/!?][^<>]*>|[<>]', ' ', text).replace('@', '')
+    text = ' '.join(w for w in text.split() if '://' not in w and 'www.' not in w.lower())
+    return text[:limit]
 
 
 def short_name(repo: str) -> str:

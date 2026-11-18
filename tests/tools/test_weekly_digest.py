@@ -1537,9 +1537,9 @@ def test_render_escapes_dollar_and_release_url():
 @pytest.mark.parametrize(
     ('text', 'message'),
     [
-        ('Runs take 1​000 steps.', 'an invisible character'),
-        ('Also rfront​_loc changed.', 'an invisible character'),
-        ('Shown as ‮1.0‬ now.', 'an invisible character'),
+        ('Runs take 1\u200b000 steps.', 'an invisible character'),
+        ('Also rfront\u200b_loc changed.', 'an invisible character'),
+        ('Shown as \u202e1.0\u202c now.', 'an invisible character'),
         ('Half is ½ now.', 'a special number character'),
         ('Now ‐0.001 m.', 'number -0.001 is in no cited source'),
         ('Now ˗0.001 m.', 'number -0.001 is in no cited source'),
