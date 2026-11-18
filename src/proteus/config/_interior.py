@@ -387,7 +387,8 @@ class AragogCoreModule:
     profile_source: str
         Core profile: 'gaussian' (the density profile fitted to the core mass and the central
         pressure of the structure) or 'paleos' (the core arrays of the Zalmoxis structure on
-        an isentrope of the PALEOS liquid iron table).
+        an isentrope of the PALEOS liquid iron table). The configuration check refuses
+        'paleos': it needs a 2-phase iron core in the Zalmoxis structure.
     core_cp_override: float or str
         Secular specific heat capacity [J kg-1 K-1] of the 'paleos' profile, a positive
         number, or 'table' for the table value at the CMB; the PALEOS liquid has no electronic

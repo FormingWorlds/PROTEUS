@@ -45,8 +45,9 @@ The core profile is a Gaussian density fitted to the structure by default.
 table on the core arrays of the structure instead, with its secular heat
 capacity `core_cp_override` and its temperature step `core_t_cmb_step`
 ([how it works](../Explanations/model.md#the-core-profile-from-the-paleos-liquid-iron-table)).
-PROTEUS does not write the core arrays of a structure solve, so a run with this
-profile stops at the start with the Aragog error that names the missing files.
+The profile needs a 2-phase iron core in the Zalmoxis structure (a liquid outer
+core over a solid inner core), which PROTEUS does not build, so PROTEUS refuses
+`profile_source = "paleos"` when it reads the config.
 
 ## What it needs
 
