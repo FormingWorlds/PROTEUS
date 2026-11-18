@@ -1720,6 +1720,7 @@ def _publish(
     live=True,
     event='schedule',
     post_input='false',
+    tamper=None,
     **window,
 ):
     """Render a digest for ``until`` and run publish against a newest post ``last``.
@@ -1736,6 +1737,11 @@ def _publish(
     )
     if entry:
         dft.write_text(json.dumps(_draft(entry)))
+    if tamper:
+        doc = json.loads((out / 'digest.json').read_text())
+        (out / 'digest.json').write_text(
+            json.dumps(dict(doc, body=doc['body'].replace(*tamper)))
+        )
     posted = []
     monkeypatch.setattr(post, 'load_settings', lambda: {**_VALID, 'publish': True})
     monkeypatch.setattr(post, 'GitHub', lambda: 'gh')
@@ -2245,3 +2251,249 @@ def test_publish_notice_names_each_reason(tmp_path, monkeypatch, capsys):
     assert 'has a window end that is not earlier' in capsys.readouterr().out
     _publish(tmp_path, monkeypatch, _last('2026-11-20T10:00:00Z', '9', 'x'), _MON, '9')
     assert 'has the same run id' in capsys.readouterr().out
+
+
+# return 2: rendered body, Unicode numbers, unreadable files, redirects, fixtures
+
+_GOOD = 'https://github.com/FormingWorlds/PROTEUS/pull/849'
+
+
+@pytest.mark.parametrize(
+    'text',
+    [
+        'See https:|/evil.example/login.',
+        'See http:|/x.',
+        'See ftp:|/x.',
+        'See www.|x.',
+        'Runs a||b.',
+    ],
+)
+def test_check_reads_the_text_as_rendered(text):
+    """A pipe that the render turns into a slash cannot hide a URL from the check."""
+    fails = check.check(_data(), _draft(_entry(text=text)))
+    assert any('a URL' in f for f in fails), fails
+
+
+@pytest.mark.parametrize(
+    'bad',
+    [
+        'See https://evil.example/x.',
+        'See https\\://evil.example.',
+        'See www.evil.example now.',
+        'See [x](https://evil.example).',
+        'See <a href="x">.',
+        'Ask @mallory.',
+        'Mail bob@evil.example.',
+        'See PROTEUS #12 and #12.',
+        'See PROTEUS\\#12.',
+        'See GH-12.',
+        'Use &#64; here.',
+        '\n[y]: /evil\n',
+    ],
+)
+def test_scan_body_allows_only_collected_links_and_authors(bad):
+    """The rendered body links only to collected items and the run, and mentions only authors."""
+    body, _ = _render(_draft(_entry()), live=True)
+    allowed = ([_GOOD, 'https://run'], ['alice'])
+    assert '@alice' in body and render.scan_body(body, *allowed) == []
+    assert render.scan_body(body.replace('The default grain size', bad, 1), *allowed), bad
+
+
+def test_publish_refuses_a_body_with_a_foreign_link(tmp_path, monkeypatch):
+    """Publish scans the final body, so a link that the check missed is never posted."""
+    with pytest.raises(common.DigestError, match=r'^not posted: \d+ link problems$'):
+        _publish(
+            tmp_path,
+            monkeypatch,
+            None,
+            _MON,
+            tamper=('The default', 'See https://e.x. The default'),
+        )
+
+
+_TOKENS = st.sampled_from(
+    [
+        'https',
+        'http',
+        'ftp',
+        'www',
+        ':',
+        '|',
+        '/',
+        '.',
+        '@',
+        '#',
+        '1',
+        '<',
+        'a',
+        '[',
+        ']',
+        '(',
+        ')',
+        '`',
+        '\\',
+        ' ',
+        '-',
+        '\u2013',
+        '!',
+        '&',
+        ';',
+        '_',
+        '*',
+        'x',
+        'alice',
+        'GH-',
+        '<!--',
+        '-->',
+        'mailto',
+    ]
+)
+
+
+@settings(max_examples=300, deadline=None)
+@given(st.lists(_TOKENS, max_size=12).map(''.join), st.lists(_TOKENS, max_size=8).map(''.join))
+def test_checked_text_renders_without_foreign_links(text, value):
+    """For any model text and fact value, either the check fails or the body passes the scan."""
+    data = _data(fact_list=[_fact(new=value)])
+    dft = _draft(_entry(text=text or 'x'))
+    if check.check(data, dft):
+        return
+    body, _ = render.render_body(data, dft, True, 'https://run', [])
+    assert render.scan_body(body, [_GOOD, 'https://run'], ['alice']) == []
+
+
+@pytest.mark.parametrize(
+    ('text', 'found'),
+    [
+        ('The surface warms by \u039450 K.', {'50'}),
+        ('Now \u00e9100 m.', {'100'}),
+        ('Now \u00b5100 m.', {'100'}),
+        ('Now \u03940.5 K.', {'0.5'}),
+        ('Water as H2O.', set()),
+    ],
+)
+def test_numbers_after_a_non_ascii_letter(text, found):
+    """Digits after one non-ASCII letter are a number, as after an ASCII letter."""
+    assert check.numbers(text) == found
+
+
+def test_workflow_dry_runs_cannot_cancel_a_live_run():
+    """Only live runs share a concurrency group; each dry run has its own."""
+    text, _ = _jobs()
+    assert (
+        "group: weekly-digest-${{ (github.event_name == 'schedule' || inputs.post) "
+        "&& 'live' || github.run_id }}" in text
+    )
+
+
+def test_empty_and_missing_fact_values_render_as_words():
+    """An empty value or a missing one is a word, not an empty code span."""
+    assert (
+        render.value('') == render.value('  ') == '(empty)' and render.value(None) == '(none)'
+    )
+    line = render.fact_line(_fact(old='', new=None))
+    assert line == '`interior_energetics.grain_size`: (empty) \u2192 (none)'
+
+
+def test_token_is_dropped_on_a_redirect_to_another_host():
+    """A redirect keeps the token on the same host and drops it on another host."""
+    handler = common.SameHostAuth()
+    req = common.urllib.request.Request(
+        'https://api.github.com/repos/a/b', headers={'Authorization': 'Bearer S'}
+    )
+    other = handler.redirect_request(req, None, 302, 'Found', {}, 'https://evil.example/y')
+    same = handler.redirect_request(req, None, 302, 'Found', {}, 'https://api.github.com/r/1')
+    assert not other.has_header('Authorization')
+    assert same.get_header('Authorization') == 'Bearer S'
+    assert any(isinstance(h, common.SameHostAuth) for h in common.OPENER.handlers)
+
+
+@pytest.mark.parametrize(
+    ('path', 'old', 'new', 'error'),
+    [
+        ('Project.toml', '[compat]\nJulia = "1"\n', '[compat\nbroken', 'TOMLDecodeError'),
+        (facts.CONFIG_SCHEMA, _schema(a={}), '{broken', 'JSONDecodeError'),
+        (
+            facts.CONFIG_SCHEMA,
+            _schema(a={}),
+            json.dumps({'fields': [{'default': 1}]}),
+            'KeyError',
+        ),
+        (
+            'pyproject.toml',
+            '[project]\ndependencies = ["a>=1"]\n',
+            '[project]\ndependencies = [1]\n',
+            'TypeError',
+        ),
+    ],
+)
+def test_an_unreadable_file_skips_only_its_facts(path, old, new, error):
+    """A file that does not parse is recorded and skipped; other pull requests keep their facts."""
+    repo = 'FormingWorlds/PROTEUS'
+    bad = _pr('PROTEUS#1', files=[path], merge_oid='m', parent_oid='p')
+    good = _pr('PROTEUS#2', files=['pyproject.toml'], merge_oid='m2', parent_oid='p2')
+    files = {
+        (repo, path, 'p'): old,
+        (repo, path, 'm'): new,
+        (repo, 'pyproject.toml', 'p2'): '[project]\ndependencies = ["a>=1"]\n',
+        (repo, 'pyproject.toml', 'm2'): '[project]\ndependencies = ["a>=2"]\n',
+        (repo, facts.CONFIG_SCHEMA, None): _schema(a={}),
+    }
+    data = {'prs': [bad, good]}
+    facts.attach_facts(_FakeGH(files=files), data, {'tracked': {repo: [facts.CONFIG_SCHEMA]}})
+    assert [f['pr'] for f in data['facts']] == ['PROTEUS#2']
+    (row,) = data['facts_unreadable']
+    assert row['pr'] == 'PROTEUS#1' and row['file'] == path and row['error'].startswith(error)
+
+
+def test_facts_main_writes_unreadable_files_to_the_summary(tmp_path, monkeypatch, capsys):
+    """An unreadable file is named in the log and, escaped, in the job summary."""
+    src, summary = tmp_path / 'c.json', tmp_path / 's.md'
+    src.write_text(json.dumps({'prs': [_pr('PROTEUS#1', files=['Project.toml'])]}))
+    files = {('FormingWorlds/PROTEUS', 'Project.toml', 'm1'): '[compat\n<b>'}
+    monkeypatch.setattr(facts, 'GitHub', lambda: _FakeGH(files=files))
+    monkeypatch.setattr(facts, 'load_settings', lambda: {'tracked': {}})
+    assert facts.main([str(src), '--summary', str(summary)]) == 0
+    assert 'PROTEUS#1 Project.toml' in capsys.readouterr().out
+    text = summary.read_text()
+    assert text.startswith('<pre>') and 'PROTEUS#1 Project.toml' in text and '<b>' not in text
+    assert json.loads(src.read_text())['facts_unreadable'][0]['pr'] == 'PROTEUS#1'
+
+
+def test_toml_dates_and_long_arrays_become_short_json_values():
+    """A TOML date becomes text and a long array is cut, so the facts file is valid JSON."""
+    out = facts.diff_file(
+        'input/default.toml',
+        'a = 2026-01-01\nb = [1]\nc = [2026-01-01]\n',
+        f'a = 2026-01-02\nb = {list(range(10000))}\nc = [2026-01-02]\n',
+    )
+    json.dumps(out)
+    by = {f['key']: f for f in out}
+    assert by['a']['old'] == '2026-01-01' and by['a']['new'] == '2026-01-02'
+    assert by['c']['new'] == ['2026-01-02'] and by['b']['old'] == [1]
+    assert isinstance(by['b']['new'], str) and by['b']['new'].endswith(' [cut]')
+    assert len(by['b']['new']) == facts.DESCRIPTION_CHARS + len(' [cut]')
+
+
+@pytest.mark.parametrize('name', ['sep', 'nov03', 'nov10'])
+def test_real_windows_pass_the_check_and_the_link_scan(name):
+    """Drafts of 3 real windows, cut to their cited items, give no failure and no warning."""
+    blob = json.loads((_DATA / f'window_{name}.json').read_text())
+    data, dft = blob['collected'], blob['draft']
+    assert check.check(data, dft) == [] and check.warnings(data, dft) == []
+    items = data['prs'] + data['releases']
+    body, _ = render.render_body(data, dft, True, 'https://run', _VALID['bots'])
+    urls = [x['url'] for x in items] + ['https://run']
+    assert render.scan_body(body, urls, [x['author'] for x in items]) == []
+
+
+def test_workflow_overwrites_artifacts_and_reports_unreadable_files():
+    """Each upload overwrites an artifact of a re-run, and facts.py writes the summary."""
+    text, jobs = _jobs()
+    assert text.count('actions/upload-artifact@v6') == text.count('overwrite: true') == 3
+    assert (
+        'python tools/digest/facts.py collected.json --summary "$GITHUB_STEP_SUMMARY"'
+        in jobs['collect']
+    )
+    step = jobs['publish'].split('- name: Post\n', 1)[1]
+    assert '--run-url "$RUN_URL"' in step and 'RUN_URL: ${{ github.server_url }}' in step
