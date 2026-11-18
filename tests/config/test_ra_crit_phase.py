@@ -6,6 +6,8 @@ import pytest
 
 from proteus.config._interior import Aragog, AragogCoreModule, Interior
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _interior(ra='phase', loc=0.4, wid=0.2, core_bc='core_module', module='aragog'):
     return Interior(
@@ -18,6 +20,7 @@ def _interior(ra='phase', loc=0.4, wid=0.2, core_bc='core_module', module='arago
 
 @pytest.mark.unit
 def test_the_default_law_is_the_law_by_phase():
+    """'phase' is the default; 'phase' and 'eq16' are kept; other strings are refused."""
     assert AragogCoreModule().ra_crit_cmb == 'phase'
     for value in ('phase', 'eq16'):
         assert AragogCoreModule(ra_crit_cmb=value).ra_crit_cmb == value
@@ -29,6 +32,7 @@ def test_the_default_law_is_the_law_by_phase():
 @pytest.mark.unit
 @pytest.mark.parametrize(('loc', 'wid'), [(0.4, 0.2), (0.5, 0.1), (0.1, 0.2), (0.9, 0.2)])
 def test_a_band_inside_zero_to_one_is_accepted(loc, wid):
+    """A band inside [0, 1], its edges included, is accepted."""
     ie = _interior(loc=loc, wid=wid)
     assert ie.aragog.core_module.ra_crit_cmb == 'phase'
 
@@ -53,11 +57,14 @@ def test_a_band_that_leaves_zero_to_one_is_refused(loc, wid):
     ],
 )
 def test_the_band_is_checked_only_where_the_law_by_phase_acts(kw):
-    _interior(loc=0.05, wid=0.2, **kw)
+    """A band outside [0, 1] passes where the law by phase does not act."""
+    ie = _interior(loc=0.05, wid=0.2, **kw)
+    assert ie.rfront_loc - 0.5 * ie.rfront_wid < 0.0
 
 
 @pytest.mark.unit
 def test_the_law_by_phase_reaches_aragog_as_phase():
+    """'phase' reaches the aragog core parameters unchanged."""
     from types import SimpleNamespace
 
     from proteus.interior_energetics.aragog_core import core_module_params
