@@ -889,6 +889,16 @@ def test_setup_solver_passes_the_interior_rtol_to_aragog(tmp_path, rtol):
 
 
 @pytest.mark.unit
+def test_setup_solver_asks_aragog_to_raise_on_an_accepted_state_out_of_the_tables(tmp_path):
+    """A coupled run stops on an accepted state outside the EOS tables, with the rheology off
+    as with it on, instead of a failed call."""
+    config = _make_aragog_config(struct_module='spider')
+    with patch('proteus.interior_energetics.aragog._SolverParameters') as sp:
+        _run_setup_solver(tmp_path, config, lambda **rest: MagicMock())
+    assert sp.call_args.kwargs['strict_accepted_range'] is True
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_setup_solver_passes_the_configured_radionuclides(tmp_path):
     """The Mercury inputs at Solar System formation, 8 Myr before the model start,
