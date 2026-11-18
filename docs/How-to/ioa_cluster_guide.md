@@ -18,18 +18,19 @@ The VSCode server takes up a lot of space.
 
 If you have already installed Julia in your home folder, remove it and any bashrc entries.
 
-Then set the variables in your bashrc file:
+Then set this variable in your bashrc file:
 ```bash
 export JULIAUP_DEPOT_PATH=/data/$USER/.juliaup/
-export JULIA_DEPOT_PATH=/data/$USER/.julia/
 ```
+
+Do not set `JULIA_DEPOT_PATH` there for PROTEUS: `bash install.sh` keeps the Julia packages of each install in its conda environment, which the steps below place in `/data`. With a value in your bashrc, the installer keeps it for each environment with no value of its own, and these installs share that one folder. A job must run through an activated environment or `conda run`, or it does not get the depot, as for `FWL_DATA`.
 
 Set your module config in your bashrc too:
 ```bash
 module load netcdf openmpi mpich cuda
 ```
 
-Then load them in this terminal and run the official installer. Choose `Customize installation`, and at `Enter the folder where you want to install Juliaup` enter `/data/<username>/.julia`, a folder that does not exist yet. That folder holds the juliaup program. The installer downloads a first Julia into the folder of `JULIAUP_DEPOT_PATH`.
+Then load it in this terminal and run the official installer. Choose `Customize installation`, and at `Enter the folder where you want to install Juliaup` enter `/data/<username>/.julia`, a folder that does not exist yet. That folder holds the juliaup program. The installer downloads a first Julia into the folder of `JULIAUP_DEPOT_PATH`.
 
 ```bash
 source ~/.bashrc

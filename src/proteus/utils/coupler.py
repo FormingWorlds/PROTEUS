@@ -29,6 +29,7 @@ from proteus.utils.constants import (
     noble_gases,
     secs_per_hour,
     secs_per_minute,
+    soluble_gases,
     vol_element_list,
     vol_gas_list,
     vol_list,
@@ -228,7 +229,8 @@ def vulcan_problem(config: Config) -> str | None:
     """Return what is wrong with VULCAN and its fix, when the config uses VULCAN.
 
     The check is the doctor's: VULCAN missing, or below the ``fwl-vulcan`` floor in
-    ``pyproject.toml``. It holds in every ``atmos_chem.mode``, since ``proteus offchem`` runs
+    ``pyproject.toml``. A VULCAN without the network files of its git clone (the PyPI
+    wheel) fails too. It holds in every ``atmos_chem.mode``, since ``proteus offchem`` runs
     VULCAN whatever the mode is; ``validate_module_versions`` calls it only when the run does.
     """
     if config.atmos_chem.module != 'vulcan':
@@ -236,9 +238,19 @@ def vulcan_problem(config: Config) -> str | None:
     from proteus.doctor import PASS, _dependency_specs, check_python_package
 
     vulcan = check_python_package('fwl-vulcan', _dependency_specs().get('fwl-vulcan'))
-    if vulcan.status == PASS:
-        return None
-    return f'VULCAN module is missing or out of date: {vulcan.message}. Fix: {vulcan.fix_cmd}'
+    if vulcan.status != PASS:
+        return (
+            f'VULCAN module is missing or out of date: {vulcan.message}. Fix: {vulcan.fix_cmd}'
+        )
+    from vulcan.paths import THERMO_DIR
+
+    network = os.path.join(THERMO_DIR, 'CHO_photo_network.txt')
+    if not os.path.isfile(network):
+        return (
+            f'VULCAN network file not found: {network}. VULCAN reads its data from its git '
+            'clone. Fix: bash tools/get_vulcan.sh'
+        )
+    return None
 
 
 def fwl_io_problem() -> str | None:
@@ -870,7 +882,7 @@ def assert_mass_conservation(
             continue
         parts = sum(
             float(hf_row.get(f'{e}_kg_{r}', 0.0))
-            for r in ('atm', 'liquid', 'solid', 'condensed')
+            for r in ('atm', 'liquid', 'solid', 'condensed', 'sealed')
         )
         if not np.isfinite(parts):
             continue
@@ -878,12 +890,13 @@ def assert_mass_conservation(
         if abs(parts - total) > max(closure_atol_kg, closure_tol * total):
             raise RuntimeError(
                 f'Per-element reservoir closure failed for {e}: '
-                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid+condensed='
+                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid+condensed+sealed='
                 f'{parts:.6e} kg (relative difference {rel * 100:.4f}%). '
                 f'atm={float(hf_row.get(f"{e}_kg_atm", 0.0)):.3e}, '
                 f'liquid={float(hf_row.get(f"{e}_kg_liquid", 0.0)):.3e}, '
                 f'solid={float(hf_row.get(f"{e}_kg_solid", 0.0)):.3e}, '
-                f'condensed={float(hf_row.get(f"{e}_kg_condensed", 0.0)):.3e} kg. '
+                f'condensed={float(hf_row.get(f"{e}_kg_condensed", 0.0)):.3e}, '
+                f'sealed={float(hf_row.get(f"{e}_kg_sealed", 0.0)):.3e} kg. '
                 f'A reservoir was debited without the matching credit.'
             )
 
@@ -991,7 +1004,18 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'boundary_layer_conductivity',
         'esc_kg_cumulative',
         'f_remelt',
+        # the Aragog lid: zero is no lid, and the interior writes them at every step
+        'lid_conductance',
+        'lid_delta',
+        'lid_delta_on',
+        'lid_F_diff',
+        'lid_F_open',
+        'lid_T_base',
+        'lid_T_node',
+        'lid_T_surface',
+        'lid_weight',
         'M_accreted_rock',
+        'M_core_solve',
         'M_core_target',
         'M_desiccated',
         'M_volatile_change',
@@ -1073,6 +1097,15 @@ def GetHelpfileKeys():
         # Temperatures
         'T_surf',           # global surface temperature [K]
         'T_magma',          # global outgassing temperature [K]
+        'lid_weight',       # weight of the Aragog sub-grid lid [1]
+        'lid_conductance',  # conductance of the Aragog sub-grid lid [W m-2 K-1]
+        'lid_delta',        # thickness of the Aragog sub-grid lid; 0 without the lid, read with lid_weight [m]
+        'lid_delta_on',     # onset thickness of the Aragog sub-grid lid; 0 without the lid [m]
+        'lid_T_surface',    # surface temperature of the Aragog sub-grid lid [K]
+        'lid_T_base',       # base temperature of the Aragog sub-grid lid [K]
+        'lid_T_node',       # top basic node of the Aragog mesh [K]
+        'lid_F_open',       # flux of the open part 1 - w of the surface [W m-2]
+        'lid_F_diff',       # F_int of the step minus the F_atm it started from; 0 in grey_body mode [W m-2]
         'T_cmb',           # core temperature: the bottom mantle cell, or the core state with core_bc = core_module or bower2018 [K]
         'T_cmb_node',      # mantle temperature at the core-mantle boundary basic node; with core_bc = core_module the temperature of the bottom-cell entropy at P_cmb, so the CMB contrast is T_cmb - T_cmb_node, or core_T_top - T_cmb_node with stratification [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]
@@ -1109,9 +1142,10 @@ def GetHelpfileKeys():
         'Phi_global',       # mantle melt mass-fraction [1]
         'Phi_global_vol',   # mantle melt volume-fraction [1]
         'RF_depth',         # depth of rheological front [1]
-        'M_core',           # dry mass of core [kg]
+        'M_core',           # dry mass of core; with Zalmoxis the mass inside R_core, with the mantle silicate between M_core_solve and R_core [kg]
         'M_mantle',         # dry mass of mantle [kg]
         'M_core_target',    # core mass target of the Zalmoxis structure; 0 with another structure module [kg]
+        'M_core_solve',     # core mass of the last accepted Zalmoxis solve; 0 with another structure module [kg]
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
@@ -1290,6 +1324,36 @@ def GetHelpfileKeys():
     # Element mass held in outgassing condensates (e.g. graphite), apart from the mantle
     for e in vol_element_list:
         keys.append(e + '_kg_condensed')  # mass in condensed phases at the surface [kg]
+
+    # Melt inventory held under a closed crust (outgas.lid_seal), and its leak
+    keys.append('seal_active')       # whether the lid seal holds the melt inventory [1]
+    keys.append('seal_path')         # crust a closed seal reads: 0 open, 1 mesh crust, 2 sub-grid lid [1]
+    keys.append('seal_t_close')      # time the seal last closed [yr]
+    keys.append('seal_Tmagma_close')  # T_magma of the closing chemistry solve [K]
+    keys.append('seal_phi_close')  # global melt fraction of the closing step [1]
+    keys.append('seal_xtal_kg')  # crystals formed since closure, under front trapping [kg]
+    keys.append('seal_tl_kg')    # melt trapped in those crystals [kg]
+    keys.append('seal_delta')        # crust thickness the seal reads [m]
+    keys.append('seal_phi_top')      # melt fraction of the top mesh cell [1]
+    keys.append('seal_crust_rate')   # melt mass reaching the crust over the step [kg yr-1]
+    keys.append('seal_volc_capped')  # whether crust_rate dt was cut to the melt mass [1]
+    keys.append('seal_open_kg')      # sealed mass returned to the melt on an opening step [kg]
+    keys.append('seal_leak_kg_cum')  # mass leaked to the atmosphere since the run began [kg]
+    for s in vol_list:
+        keys.append(s + '_kg_sealed')   # mass held under the closed crust [kg]
+        keys.append(s + '_mol_sealed')  # number held under the closed crust [mol]
+    for s in noble_gases:
+        keys.append(s + '_kg_sealed')   # mass held under the closed crust [kg]
+        keys.append(s + '_mol_sealed')  # number held under the closed crust [mol]
+    for s in soluble_gases:
+        keys.append(s + '_kg_eq')  # dissolved equilibrium of the sealed reservoir [kg]
+    for e in vol_element_list:
+        keys.append(e + '_kg_sealed')     # mass held under the closed crust [kg]
+        keys.append(e + '_kg_leak_tau')   # sealed mass leaked by relaxation over the step [kg]
+        keys.append(e + '_kg_leak_volc')  # sealed mass leaked by volcanism over the step [kg]
+    for s in noble_gases:
+        keys.append(s + '_kg_leak_tau')   # sealed mass leaked by relaxation over the step [kg]
+        keys.append(s + '_kg_leak_volc')  # sealed mass leaked by volcanism over the step [kg]
 
     # element mass ratios in atmosphere
     for e1 in element_list:
@@ -1862,6 +1926,27 @@ def GetHelpfileTrappingKeys():
     return [k for k in GetHelpfileKeys() if k.startswith('trap_') or k.endswith('_kg_trapped')]
 
 
+def GetHelpfileLidSealKeys():
+    """
+    Helpfile columns written by the lid seal (``outgas.lid_seal``).
+
+    A run without the seal holds zero in each, which is also the state of a run
+    written before they existed: open, nothing sealed. `ReadHelpfileFromCSV`
+    therefore reads them as zero.
+
+    Returns
+    -------
+    list of str
+        Column names, all of which are also in `GetHelpfileKeys()`.
+    """
+    return [
+        k
+        for k in GetHelpfileKeys()
+        if k.startswith('seal_')
+        or k.endswith(('_sealed', '_kg_eq', '_kg_leak_tau', '_kg_leak_volc'))
+    ]
+
+
 def GetHelpfileCoreKeys():
     """
     Helpfile columns that a stored run must carry to be resumed.
@@ -1978,7 +2063,12 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     # per-condensate mass is zero with them, so no layer is held on resume.
     condensed_keys = {e + '_kg_condensed' for e in vol_element_list}
     condensed_keys |= {c + '_cd_kg' for c in condensate_density.keys()}
-    zero_fill = RESUMABLE_ZERO_FILL_KEYS | set(GetHelpfileTrappingKeys()) | condensed_keys
+    zero_fill = (
+        RESUMABLE_ZERO_FILL_KEYS
+        | set(GetHelpfileTrappingKeys())
+        | set(GetHelpfileLidSealKeys())
+        | condensed_keys
+    )
     fillable = [key for key in missing if key in zero_fill]
     unfillable = sorted(set(missing) - set(fillable))
 

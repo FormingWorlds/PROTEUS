@@ -24,6 +24,7 @@ import logging
 import os
 import pathlib
 import shutil
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -902,6 +903,8 @@ def _setup_cached_spectral_run(monkeypatch, tmp_path, cache_dir, verbosity=1, lo
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
     monkeypatch.setattr(agni_mod, 'require_spfile_path', lambda *_a, **_k: str(base_sf))
     monkeypatch.setattr(agni_mod, 'create_tmp_folder', _fake_tmp_folder)
+    # The fake AGNI runs no SOCRATES tool, and tmp_path can be longer than they read
+    monkeypatch.setattr(agni_mod, 'SOCRATES_MAX_PATH', 10**4)
 
     return SimpleNamespace(
         fake_agni=fake_agni,
@@ -1420,6 +1423,68 @@ def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
     assert atmos is not None
     assert fake_agni.last_setup_args[2] == 'greygas'
     assert fake_agni.last_allocate_input_star == ''
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'length, filler, star',
+    [(132, 'x', True), (133, 'x', True), (133, 'x', False), (132, 'é', True)],
+)
+def test_init_agni_atmos_stops_before_socrates_on_a_file_name_above_132_bytes(
+    monkeypatch, tmp_path, length, filler, star
+):
+    """The SOCRATES tools read file names of at most 132 bytes. With a star to insert and a
+    longer io_dir/socstar.dat, AGNI setup does not run and the error names the limit; a run
+    with no star (grey gas here) runs no SOCRATES tool and has no such limit."""
+    limit = agni_mod.SOCRATES_MAX_PATH
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, tmp_path / 'cache')
+    monkeypatch.setattr(agni_mod, 'SOCRATES_MAX_PATH', limit)
+    if not star:
+        ctx.config.atmos_clim.agni.spectral_file = 'greygas'
+    with tempfile.TemporaryDirectory(prefix='a') as short:
+        io_dir = os.path.join(short, filler * (length - len(short) - len('/x/socstar.dat') + 1))
+        socstar = os.path.join(io_dir, 'socstar.dat')
+        assert len(socstar) == length
+        nbytes = len(os.fsencode(socstar))
+        if star and nbytes > 132:
+            with pytest.raises(ValueError, match=f'{nbytes} bytes.*132 bytes.*TMPDIR'):
+                init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, io_dir=io_dir)
+            assert ctx.fake_agni.last_setup_kwargs is None
+            assert ctx.fake_agni.last_allocate_input_star is None
+            status = ctx.output_dir / 'status'
+            assert status.is_file()
+            assert status.read_text().splitlines()[:1] == ['22']
+        else:
+            try:
+                init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, io_dir=io_dir)
+            except ValueError as err:
+                pytest.fail(f'{nbytes} bytes, star {star}: {err}')
+            assert ctx.fake_agni.last_allocate_input_star == (str(ctx.sflux) if star else '')
+            assert not (ctx.output_dir / 'status').exists()
+
+
+@pytest.mark.unit
+def test_a_cache_hit_runs_no_socrates_tool_and_has_no_file_name_limit(monkeypatch, tmp_path):
+    """A spectral file seeded from the cache needs no star insertion, so a 133-byte
+    io_dir/socstar.dat path does not stop the run."""
+    limit = agni_mod.SOCRATES_MAX_PATH
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    monkeypatch.setattr(agni_mod, 'SOCRATES_MAX_PATH', limit)
+    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None)
+    (cache / f'{key}.sf').write_text('cached', encoding='utf-8')
+    (cache / f'{key}.sf_k').write_text('cached k', encoding='utf-8')
+    with tempfile.TemporaryDirectory(prefix='a') as short:
+        io_dir = os.path.join(short, 'x' * (133 - len(short) - len('/x/socstar.dat') + 1))
+        assert len(os.fsencode(os.path.join(io_dir, 'socstar.dat'))) == 133
+        try:
+            init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, io_dir=io_dir)
+        except ValueError as err:
+            pytest.fail(f'cache hit: {err}')
+        assert ctx.fake_agni.last_allocate_input_star == ''
+        assert (Path(io_dir) / 'runtime.sf').read_text() == 'cached'
+    assert not (ctx.output_dir / 'status').exists()
 
 
 @pytest.mark.unit
@@ -4148,3 +4213,55 @@ def test_init_agni_atmos_sets_up_the_skin_in_effect(
         assert kwargs['skin_d'] == pytest.approx(expected[0], rel=1e-12)
         assert kwargs['skin_k'] == pytest.approx(expected[1], rel=1e-12)
         assert kwargs['skin_d'] > 0 and kwargs['skin_k'] > 0
+
+
+@pytest.mark.unit
+def test_update_agni_atmos_gives_the_lid_boundary_to_the_struct(monkeypatch):
+    """Under a full lid the AGNI struct gets the skin of the lid call: thickness k / G, the skin
+    conductivity and the lid base as the melt temperature, not the raw skin and T_magma."""
+    fake_agni = _ProfileAGNI()
+    _install_profile_fakes(monkeypatch, fake_agni)
+    atmos = _ProfileAtmosphere([1.0e1, 1.0e3, 1.0e5, 1.0e7], [200.0, 500.0, 1100.0, 1900.0])
+    hf_row = {
+        'boundary_layer_thickness': 0.01,
+        'boundary_layer_conductivity': 2.0,
+        'lid_weight': 1.0,
+        'lid_conductance': 100.0,
+        'lid_T_base': 1440.0,
+        'lid_T_node': 1550.0,
+        'F_ins': 1361.0,
+        'albedo_pl': 0.1,
+        'T_surf': 1300.0,
+        'T_magma': 2000.0,
+        'P_surf': 200.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'M_int': 6.0e24,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
+        'hill_radius': 6.4e8,
+    }
+    agni_mod.update_agni_atmos(atmos, hf_row, {'output': '/tmp/run'}, _build_profile_config())
+    assert atmos.skin_d == pytest.approx(0.02, rel=1e-14)
+    assert atmos.skin_k == pytest.approx(2.0, rel=1e-15)
+    assert atmos.tmp_magma == pytest.approx(1440.0, rel=1e-14)
+
+
+def test_write_atmos_ncdf_names_the_file_by_time_and_suffix(tmp_path):
+    """The default suffix writes the atmosphere snapshot data/<time>_atm.nc; another suffix,
+    as for the climate of coupled chemistry, writes beside it and leaves the snapshot alone."""
+    from proteus.atmos_clim import agni
+
+    atmos = SimpleNamespace(is_alloc=True)
+    dirs = {'output': str(tmp_path)}
+    with patch.object(agni, 'jl') as mock_jl:
+        agni.write_atmos_ncdf(atmos, dirs, 700.0)
+        agni.write_atmos_ncdf(atmos, dirs, 700.0, suffix='_chematm.nc')
+
+    paths = [c.args[1] for c in mock_jl.AGNI.save.write_ncdf.call_args_list]
+    assert paths == [
+        str(tmp_path / 'data' / '700p000_atm.nc'),
+        str(tmp_path / 'data' / '700p000_chematm.nc'),
+    ]
+    assert all(c.args[0] is atmos for c in mock_jl.AGNI.save.write_ncdf.call_args_list)

@@ -10,3 +10,7 @@ pip = "*"
 openssl = ">=3.5"
 # Prebuilt CVODE wrapper for Aragog; pulls in its matching SUNDIALS.
 scikits_odes_sundials = ">=3.1,<4"
+
+# Own Julia packages for this env; pixi sets this over any value in the shell.
+[activation.env]
+JULIA_DEPOT_PATH = "$CONDA_PREFIX/julia_depot:"

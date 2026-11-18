@@ -58,6 +58,8 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_struct.core_heatcap = 880.0
     config.interior_energetics.num_levels = 20
     config.interior_energetics.aragog.mass_coordinates = False
+    config.interior_energetics.aragog.cmb_cell_thickness = 1000.0
+    config.interior_energetics.aragog.surface_cell_thickness = 'uniform'
     config.interior_energetics.trans_conduction = True
     config.interior_energetics.trans_convection = True
     config.interior_energetics.trans_grav_sep = False
@@ -884,6 +886,71 @@ def test_setup_solver_passes_the_interior_rtol_to_aragog(tmp_path, rtol):
     with patch('proteus.interior_energetics.aragog._SolverParameters') as sp:
         _run_setup_solver(tmp_path, config, lambda **rest: MagicMock())
     assert sp.call_args.kwargs['rtol'] == pytest.approx(1e-8 if rtol is None else rtol)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_setup_solver_passes_the_configured_radionuclides(tmp_path):
+    """The Mercury inputs at Solar System formation, 8 Myr before the model start,
+    reach Aragog as six isotopes with t0 = -8e6 yr and the config ratios; the
+    heating Aragog evaluates from them, with its own ppm scaling, equals
+    radiogenic_heating at 0, 1 Myr and 1 Gyr of model time."""
+    pytest.importorskip('aragog')
+    from aragog.parser import _PPM, radionuclide_heating
+
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.interior_energetics.radiogenic import (
+        radiogenic_heating,
+        radionuclide_inventory,
+    )
+
+    config = _make_aragog_config(struct_module='spider')
+    ie = config.interior_energetics
+    ie.heat_radiogenic = True
+    ie.radio_tref, config.star.age_ini = 0.0, 0.008  # Gyr
+    # input/planets/mercury.toml: element totals [ppmw] and mass ratios at formation
+    ie.radio_Al, ie.radio_Al26_abund = 1.95e4, 5.0563e-5
+    ie.radio_Fe, ie.radio_Fe60_abund = 6.26e4, 9.8472e-9
+    ie.radio_K, ie.radio_K40_abund = 403.56, 1.5090e-3
+    ie.radio_Th, ie.radio_Th232_abund = 0.061432, 1.0
+    ie.radio_U, ie.radio_U235_abund, ie.radio_U238_abund = 0.073836, 0.23515, 0.76485
+
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters') as mock_params,
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
+
+    rads = mock_params.call_args.kwargs['radionuclides']
+    assert [r.name for r in rads] == ['al26', 'fe60', 'k40', 'th232', 'u235', 'u238']
+    np.testing.assert_allclose([r.t0_years for r in rads], -8.0e6, rtol=1e-12)
+    np.testing.assert_allclose(
+        [r.abundance for r in rads],
+        [5.0563e-5, 9.8472e-9, 1.5090e-3, 1.0, 0.23515, 0.76485],
+        rtol=1e-12,
+    )
+    np.testing.assert_allclose(  # ppm, scaled by Aragog itself
+        [r.concentration for r in rads], [1.95e4, 6.26e4, 403.56, 0.061432, 0.073836, 0.073836]
+    )
+    inventory = radionuclide_inventory(config)
+    for t in (0.0, 1.0e6, 1.0e9):  # model time [yr]
+        aragog_h = sum(
+            radionuclide_heating(
+                t,
+                r.heat_production * r.abundance * r.concentration * _PPM,
+                r.t0_years,
+                r.half_life_years,
+            )
+            for r in rads
+        )
+        assert aragog_h == pytest.approx(radiogenic_heating(inventory, -8.0e6, t), rel=1e-12)
+    # 26Al dominates at the start: 1.9e-10 W/kg, 11 half-lives below its value at t0
+    h0 = radiogenic_heating(inventory, -8.0e6, 0.0)
+    assert 1e-10 < h0 < 3e-10
+    assert abs(radiogenic_heating(inventory, 0.0, 0.0) / h0 - 1.0) > 10.0  # t0 dropped
 
 
 def test_setup_or_update_solver_tracks_stale_structure_steps():
@@ -3319,6 +3386,73 @@ def test_setup_solver_property_tables_follow_the_generated_set(
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('enabled', [False, True])
+def test_setup_solver_passes_the_rheology_to_the_solid_phase(tmp_path, enabled):
+    """The solid phase gets the rheology switch when it is on and no keyword when it is off;
+    the liquid phase never gets it."""
+    from aragog.rheology import SolidRheologyParams
+
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    if not hasattr(__import__('aragog.solver').solver.EntropySolver, '_rheology_enabled'):
+        pytest.skip('the installed aragog solver does not read the rheology')
+    outdir = tmp_path / 'out'
+    pt_dir = outdir / 'data' / 'aragog_pt'
+    pt_dir.mkdir(parents=True)
+    for name in ('density_melt.dat', 'heat_capacity_melt.dat'):
+        (pt_dir / name).write_text('dummy')
+    config = _make_aragog_config(struct_module='zalmoxis', mantle_eos='PALEOS:MgSiO3')
+    config.interior_struct.eos_dir = None
+    config.planet.mass_tot = 1.0
+    config.interior_energetics.aragog.rheology.enabled = enabled
+    config.interior_energetics.aragog.rheology.mlt_bottom_slope = 0.5
+    solid, liquid = tmp_path / 'solid.dat', tmp_path / 'liquid.dat'
+    solid.write_text('dummy')
+    liquid.write_text('dummy')
+    registry = {
+        'PALEOS-2phase:MgSiO3': {
+            'solid_mantle': {'eos_file': str(solid)},
+            'melted_mantle': {'eos_file': str(liquid)},
+        }
+    }
+    _seed_lookup_tables(tmp_path)
+    hf_row = {
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+        'T_eqm': 255.0,
+        'F_atm': 100.0,
+    }
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    interior_o._spider_eos_dir = str(tmp_path)
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value=registry,
+        ),
+        patch(
+            'proteus.interior_energetics.aragog._melting_curve_files',
+            return_value=(solid, liquid),
+        ),
+        patch('proteus.interior_energetics.aragog._PhaseParameters') as mock_phase,
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(outdir))
+
+    by_phase = {c.kwargs['melt_fraction']: c.kwargs for c in mock_phase.call_args_list}
+    assert 'rheology' not in by_phase[1]
+    if enabled:
+        want = SolidRheologyParams(enabled=True, mlt_bottom_slope=0.5)
+        assert by_phase[0].get('rheology') == want
+    else:
+        assert 'rheology' not in by_phase[0]
+
+
 @pytest.mark.parametrize('kept, liquid_path', [(False, True), (True, True), (False, False)])
 def test_setup_solver_stops_without_the_paleos_pair(tmp_path, kept, liquid_path):
     """A PALEOS mantle whose 2-phase liquid table is absent, or has no registry path,
@@ -3558,6 +3692,7 @@ class _RestoreSolver:
 
     def __init__(self, n_stag):
         self._n_stag = n_stag
+        self._r_basic_flat = np.linspace(3.5e6, 6.371e6, n_stag + 1)
         self._dSdr_cmb_init = -9.0  # a stale override from before the resume
         self.seen = []
 
@@ -3613,7 +3748,7 @@ def test_resume_restores_the_cmb_entropy_gradient(core_bc, stored, status, caplo
     def _setup(config, hf_row, interior_o, outdir):
         interior_o.aragog_solver = solver
 
-    def _update(dt, hf_row, interior_o, output_dir=None):
+    def _update(dt, hf_row, interior_o, output_dir=None, hf_all=None):
         interior_o._last_entropy = S_snap
         interior_o._last_dSdr_cmb = stored
         interior_o._last_dSdr_cmb_status = status
@@ -4316,6 +4451,42 @@ def test_setup_solver_passes_no_core_module_params_on_default_config(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('lid', [True, False])
+def test_setup_solver_passes_the_lid_onset_thickness_with_the_lid(tmp_path, lid):
+    """With the lid on, the boundary conditions get the onset thickness of the skin
+    (k_lid d / k = 3.0 x 0.03 / 1.5 = 0.06 m for this skin) and the two lid switches; without the
+    lid they keep the Aragog default and both switches are off."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = _make_aragog_config(struct_module='zalmoxis')
+    config.interior_energetics.aragog.lid_mush_base = lid
+    config.interior_energetics.aragog.lid_delta_on = None
+    config.interior_energetics.solid_cond = 3.0
+    config.atmos_clim.surface_d = 0.03
+    config.atmos_clim.surface_k = 1.5
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
+    hf_row.update(R_core=3.48e6)
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch(
+            'proteus.interior_energetics.aragog._BoundaryConditionsParameters'
+        ) as mock_bc_cls,
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
+
+    kwargs = mock_bc_cls.call_args.kwargs
+    assert kwargs['subgrid_lid'] is lid and kwargs['lid_mush_base'] is lid
+    if lid:
+        assert kwargs['lid_delta_on'] == pytest.approx(0.06, rel=1e-14)
+    else:
+        assert 'lid_delta_on' not in kwargs
+
+
+@pytest.mark.unit
 def test_core_module_snapshot_and_resume_preserves_t_core_and_gradient(tmp_path):
     """Resume with core_bc='core_module' preserves both T_core and dSdr_cmb.
 
@@ -4622,7 +4793,7 @@ def test_setup_or_update_solver_restores_the_core_temperature_on_resume(
     config = _make_aragog_config(struct_module='zalmoxis')
     config.params.resume = True
     config.interior_energetics.aragog.core_bc = 'core_module'
-    solver = MagicMock(_n_stag=20)
+    solver = MagicMock(_n_stag=20, _n_lid=0)
     interior_o = MagicMock(
         aragog_solver=None, _last_T_core=last_t_core, _last_T_core_status='absent'
     )
@@ -4674,7 +4845,7 @@ def test_a_resume_of_another_core_boundary_sets_no_core_start(core_bc):
     config = _make_aragog_config(struct_module='zalmoxis')
     config.params.resume = True
     config.interior_energetics.aragog.core_bc = core_bc
-    solver = MagicMock(_n_stag=20)
+    solver = MagicMock(_n_stag=20, _n_lid=0)
     interior_o = MagicMock(aragog_solver=None, _last_T_core=5280.0, _last_dSdr_cmb=-2e-11)
     interior_o._last_entropy = np.full(20, 4000.0)
 
@@ -4708,7 +4879,7 @@ def test_a_failed_core_carry_on_a_resume_raises_before_the_entropy_is_set():
     config = _make_aragog_config(struct_module='zalmoxis')
     config.params.resume = True
     config.interior_energetics.aragog.core_bc = 'core_module'
-    solver = MagicMock(_n_stag=20)
+    solver = MagicMock(_n_stag=20, _n_lid=0)
     interior_o = MagicMock(aragog_solver=None, _last_T_core=5280.0)
     interior_o._last_entropy = np.full(20, 4000.0)
     dirs = {'output': '.'}
@@ -4828,7 +4999,7 @@ def test_core_module_resumed_solver_matches_continuous_frozen_profile(tmp_path):
     mock_solver_res.get_state.return_value = _snapshot_output()
     mock_solver_res.get_current_core_temperature.return_value = 5000.0
     mock_solver_res.get_current_dSdr_cmb.return_value = -2e-11
-    mock_solver_res._r_basic_flat = np.linspace(3.48e6, 6.371e6, 21)
+    mock_solver_res._r_basic_flat = np.linspace(3.5e6, 6.371e6, 7)  # the snapshot mesh
     mock_solver_res._P_stag_flat = np.linspace(136e9, 1e5, 20)
     mock_bc_params_res = {}
     mock_solver_res.parameters.boundary_conditions.core_module_params = mock_bc_params_res
@@ -5037,7 +5208,7 @@ def _k40(t0_years=0.0):
     return _Radionuclide(
         name='k40',
         t0_years=t0_years,
-        abundance=k40['abundance'],
+        abundance=1.1926e-4,  # 40K/K mass ratio, present day
         concentration=310.0,
         heat_production=k40['heatprod'],
         half_life_years=k40['halflife'],
@@ -5225,7 +5396,7 @@ def _first_call(pending, S_snap=_S_SNAP):
 
     S_snap = None if S_snap is None else np.array(S_snap)
     solver = MagicMock()
-    solver._n_stag = 3
+    solver._n_stag, solver._n_lid = 3, 0
     interior_o = SimpleNamespace(
         aragog_solver=None, _last_entropy=S_snap, _last_dSdr_cmb=-6.2e-9, ic=2
     )
@@ -5264,7 +5435,7 @@ def _first_call(pending, S_snap=_S_SNAP):
         patch.object(
             AragogRunner,
             '_replay_structure_update',
-            side_effect=lambda c, row, i, dt: calls.replay(row, dt),
+            side_effect=lambda c, row, i, dt, hf_all=None: calls.replay(row, dt),
         ),
     ):
         AragogRunner.setup_or_update_solver(
@@ -5487,7 +5658,9 @@ def test_the_structure_update_resets_after_the_refresh_and_hands_the_entropy_las
             patch.object(
                 AragogRunner, 'update_structure', side_effect=lambda *a: calls.structure()
             ),
-            patch.object(AragogRunner, 'update_solver', side_effect=lambda *a: calls.solver()),
+            patch.object(
+                AragogRunner, 'update_solver', side_effect=lambda *a, **k: calls.solver()
+            ),
             patch.object(
                 AragogRunner, '_refresh_entropy_eos', side_effect=lambda *a: calls.refresh()
             ),

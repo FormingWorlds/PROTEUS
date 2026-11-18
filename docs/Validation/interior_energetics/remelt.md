@@ -52,6 +52,10 @@ The table lists the `@pytest.mark.reference_pinned` test and the slow-tier test 
 **Why this check exists.** The Aragog solver that PROTEUS builds has a staggered mesh and its own structural density. The melted mass must close on the cell masses of that mesh, not on the cell volumes or on densities from the equation of state (EOS).
 
 **What it tests.** A short cooled run of the Aragog solver that PROTEUS builds (fwl-aragog 26.10.22), for the `energy_balance` and the `core_module` core. At $f = 0.3$, the test recovers the weights from the re-melted entropy. They must close against $f$ times the structural mantle mass of the mesh before the impact.
+The case runs on the uniform mesh (`cmb_cell_thickness = 0`, `surface_cell_thickness = 0`), not on the default mesh with its thin cell at the core-mantle boundary (CMB).
+The reason is the stored plot: its data must be the same on the Linux and the macOS test machines within the plot tolerance.
+On the default mesh, the `core_module` volume share differs between the two machines by 2.0e-7, and the plot tolerance is about 5.8e-8.
+The mass closure itself holds on both meshes: the structural share equals $f$ to round-off.
 
 **How we know the right answer.** Mass balance gives it. The melted mass is $f$ times the mantle mass before the impact. The reference uses the same mesh and density as the weights, so the case checks the wiring and the mass closure, not the density itself. Against the cell volumes and against the EOS masses $\rho(P, S_\mathrm{end}) V$, the weights miss by more than 1e-3, so the test tells the right masses from the wrong ones.
 

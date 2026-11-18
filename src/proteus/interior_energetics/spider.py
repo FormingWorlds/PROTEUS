@@ -19,6 +19,7 @@ from proteus.interior_energetics.common import (
     _mantle_note,
     get_file_tides,
 )
+from proteus.interior_energetics.radiogenic import radiogenic_inputs
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import radnuc_data
@@ -1125,38 +1126,18 @@ def _try_spider(
 
     # radionuclides
     if config.interior_energetics.heat_radiogenic:
-        # offset by age_ini, which converts model simulation time to the actual age
-        radio_t0 = config.interior_energetics.radio_tref - config.star.age_ini
-        radio_t0 *= 1e9  # Convert Gyr to yr
+        # Inventory and its model time [yr], heating clipped at the model start
+        inventory, radio_t0 = radiogenic_inputs(config)
         radnuc_names = []
-
-        def _append_radnuc(_iso, _cnc):
+        for _iso, _cnc, _abund in inventory:
             radnuc_names.append(_iso)
             call_sequence.extend([f'-{_iso}_t0', '%.5e' % radio_t0])
-            call_sequence.extend([f'-{_iso}_concentration', '%.5f' % _cnc])
-            call_sequence.extend(
-                [f'-{_iso}_abundance', '%.5e' % radnuc_data[_iso]['abundance']]
-            )
+            call_sequence.extend([f'-{_iso}_concentration', '%.5e' % _cnc])
+            call_sequence.extend([f'-{_iso}_abundance', '%.5e' % _abund])
             call_sequence.extend(
                 [f'-{_iso}_heat_production', '%.5e' % radnuc_data[_iso]['heatprod']]
             )
             call_sequence.extend([f'-{_iso}_half_life', '%.5e' % radnuc_data[_iso]['halflife']])
-
-        if config.interior_energetics.radio_Al > 0.0:
-            _append_radnuc('al26', config.interior_energetics.radio_Al)
-
-        if config.interior_energetics.radio_Fe > 0.0:
-            _append_radnuc('fe60', config.interior_energetics.radio_Fe)
-
-        if config.interior_energetics.radio_K > 0.0:
-            _append_radnuc('k40', config.interior_energetics.radio_K)
-
-        if config.interior_energetics.radio_Th > 0.0:
-            _append_radnuc('th232', config.interior_energetics.radio_Th)
-
-        if config.interior_energetics.radio_U > 0.0:
-            _append_radnuc('u235', config.interior_energetics.radio_U)
-            _append_radnuc('u238', config.interior_energetics.radio_U)
 
         call_sequence.extend(['-radionuclide_names', ','.join(radnuc_names)])
 
