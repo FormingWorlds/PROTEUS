@@ -18,6 +18,7 @@ import html
 import json
 import re
 import sys
+import unicodedata
 from datetime import datetime, timedelta, timezone
 
 from common import DigestError, GitHub, find_category, iso, load_settings, parse_time
@@ -69,13 +70,21 @@ query($owner: String!, $name: String!, $number: Int!) {
 """
 
 
+def dropped_char(c: str) -> bool:
+    """Return True for a format (Cf) or control (Cc) character or one of U+E0000 to U+E007F."""
+    return unicodedata.category(c) in ('Cf', 'Cc') or '\U000e0000' <= c <= '\U000e007f'
+
+
 def clean_text(text: str | None, limit: int) -> str:
     """Remove links, images, HTML and mentions from untrusted text and cut it to ``limit``.
 
-    Only the first ``RAW_CHARS`` characters are read, without a tag that the cut leaves
-    open. An HTML comment ends only at ``-->`` and an unclosed one hides the rest, so the
-    result hides at least what a markdown or HTML renderer can hide. Every token with
-    ``://`` goes; a ``<`` with no ``>`` after it stays, as in ``T < 300 K``.
+    Only the first ``RAW_CHARS`` characters are read. Format and control characters and
+    U+E0000 to U+E007F go first (control characters become spaces). An HTML comment ends
+    only at ``-->`` and an unclosed one removes the rest. A tag starts with ``<`` and a
+    letter, ``/``, ``!`` or ``?``; every other ``<`` or ``>`` goes, and the text around it
+    stays, as in ``T < 300 K``. ``@`` goes, then every token with ``://`` or ``www.``.
+    The result has no ``<``, ``>``, ``@``, ``://`` or ``www.``. Text inside markup, such
+    as attribute values or script content, can stay.
 
     Parameters
     ----------
@@ -87,22 +96,20 @@ def clean_text(text: str | None, limit: int) -> str:
     Returns
     -------
     str
-        Plain text with markdown link text kept and every ``@`` removed.
+        Plain text with markdown link text kept.
     """
     if not text or limit <= 0:
         return ''
-    if len(text) > RAW_CHARS:
-        text = text[:RAW_CHARS]
-        open_tag = text.find('<', text.rfind('>') + 1)
-        text = text[:open_tag] if open_tag >= 0 else text
+    text = ''.join(
+        ' ' if c < ' ' else c for c in text[:RAW_CHARS] if not dropped_char(c) or c in '\t\n\r'
+    )
     text = re.sub(r'<!--(?:-?>|.*?-->|.*)', ' ', text, flags=re.S)
     text = re.sub(r'!\[[^\]]*\]\([^)]*\)', ' ', text)
     text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
-    text = re.sub(r'<[^>]*>', ' ', text)
-    text = re.sub(r'www\.\S+', ' ', ' '.join(w for w in text.split() if '://' not in w))
-    text = text.replace('@', '')
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text[:limit]
+    text = re.sub(r'<[A-Za-z/!?][^<>]*>', ' ', text)
+    text = re.sub(r'[<>]', ' ', text).replace('@', '')
+    text = re.sub(r'www\.\S*', ' ', ' '.join(w for w in text.split() if '://' not in w))
+    return ' '.join(text.split())[:limit]
 
 
 def short_name(repo: str) -> str:
