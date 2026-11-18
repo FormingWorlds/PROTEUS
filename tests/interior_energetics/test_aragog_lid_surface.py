@@ -126,10 +126,11 @@ def test_coupled_budget_of_a_step_closes_at_every_weight(w):
     'obc, mush, held', [(4, True, True), (4, False, False), (1, True, False)]
 )
 def test_the_solver_boundary_takes_the_held_surface_and_its_cap(obc, mush, held):
-    """The solver boundary holds the row surface with its cap only in flux mode with the mush base."""
+    """The solver boundary takes the cap of the row surface only in flux mode with the mush base;
+    the held surface is the one surface_temperature field."""
     bc = SimpleNamespace(outer_boundary_condition=obc, lid_mush_base=mush)
     _set_lid_surface(bc, _row(1.0, T_surf=900.0))
-    assert bc.lid_surface_temperature == (900.0 if held else None)
+    assert not hasattr(bc, 'lid_surface_temperature')
     assert bc.lid_surface_flux_cap == (pytest.approx(2000.0) if held else None)
     _set_lid_surface(bc, _row(0.0, T_surf=900.0))
     assert bc.lid_surface_flux_cap is None
@@ -155,7 +156,7 @@ def test_a_run_stored_without_the_lid_columns_resumes_as_no_lid(tmp_path):
     from proteus.utils.coupler import GetHelpfileKeys
 
     lid_keys = [k for k in GetHelpfileKeys() if k.startswith('lid_')]
-    assert len(lid_keys) == 9
+    assert len(lid_keys) == 11
     hf = _resumed_row(tmp_path, lid_keys)
     assert all(hf[k] == 0.0 for k in lid_keys)
     assert lid_boundary(hf) == (0.01, 2.0, 1450.0)
@@ -163,7 +164,7 @@ def test_a_run_stored_without_the_lid_columns_resumes_as_no_lid(tmp_path):
     assert lid_flux_cap(hf) is None
     bc = SimpleNamespace(outer_boundary_condition=4, lid_mush_base=True)
     _set_lid_surface(bc, hf)
-    assert (bc.lid_surface_temperature, bc.lid_surface_flux_cap) == (900.0, None)
+    assert bc.lid_surface_flux_cap is None
 
 
 def test_a_lid_resumed_without_the_skin_conductivity_is_refused_with_its_cause(tmp_path):
@@ -297,7 +298,6 @@ def test_update_solver_passes_the_lid_boundary_of_the_row(w, lid):
         subgrid_lid=lid,
         lid_mush_base=lid,
         outer_boundary_value=None,
-        lid_surface_temperature=-1.0,
         lid_surface_flux_cap=-1.0,
         equilibrium_temperature=None,
     )
@@ -314,7 +314,7 @@ def test_update_solver_passes_the_lid_boundary_of_the_row(w, lid):
     AragogRunner.update_solver(25.0, row, interior_o)
     assert params.solver.end_time == pytest.approx(30025.0, rel=1e-15)
     assert bc.outer_boundary_value == (165000.0 if w > 0.0 and lid else 7000.0)
-    assert bc.lid_surface_temperature == (727.3 if lid else None)
+    assert bc.surface_temperature == 727.3
     if w > 0.0 and lid:
         assert bc.lid_surface_flux_cap == pytest.approx(21.9 * (1440.0 - 727.3), rel=1e-14)
     else:
@@ -348,7 +348,6 @@ def test_update_solver_passes_the_surface_temperature_in_every_mode(obc, lid):
         subgrid_lid=lid,
         lid_mush_base=lid,
         outer_boundary_value=None,
-        lid_surface_temperature=-1.0,
         lid_surface_flux_cap=-1.0,
         equilibrium_temperature=None,
         surface_temperature=-1.0,
@@ -465,7 +464,6 @@ def test_a_weight_without_a_conductance_is_no_lid_on_every_path():
         subgrid_lid=True,
         lid_mush_base=True,
         outer_boundary_value=None,
-        lid_surface_temperature=None,
         lid_surface_flux_cap=None,
         equilibrium_temperature=None,
     )
@@ -517,7 +515,7 @@ def test_resolve_is_skipped_where_the_secant_is_the_tangent(tan, sec, skip):
 def _corrector(T_end, F_end, tangent=0.0, flux_at=True):
     """Runner and solver stubs: the solve records the slope and the start state it sees."""
     bc = SimpleNamespace(
-        lid_surface_temperature=700.0,
+        surface_temperature=700.0,
         lid_surface_flux_cap=1.0e4,
         lid_surface_flux_slope=tangent,
     )
@@ -649,7 +647,7 @@ def test_guard_and_corrector_on_a_saturating_flux():
     assert tangent == 0.0
     F_end = 13749.08 + 0.07658 * (1406.255 - 819.271)
     runner, solver, io, seen = _corrector([1406.255, 1406.144], F_end, tangent=tangent)
-    solver.parameters.boundary_conditions.lid_surface_temperature = 819.271
+    solver.parameters.boundary_conditions.surface_temperature = 819.271
     snap = _call_start(solver)
     out = runner._solve_with_retry({}, io, 'S0')
     out2 = AragogRunner._correct_lid_cap(runner, row, io, 'S0', out, snap)
@@ -670,7 +668,6 @@ def test_update_solver_passes_the_slope_of_the_last_two_rows():
         subgrid_lid=True,
         lid_mush_base=True,
         outer_boundary_value=None,
-        lid_surface_temperature=-1.0,
         lid_surface_flux_cap=-1.0,
         lid_surface_flux_slope=-1.0,
         equilibrium_temperature=None,

@@ -1002,24 +1002,6 @@ def test_open_part_goes_to_f_atm_as_the_weight_goes_to_zero(w, gap):
     assert lid_open_flux(dict(row, lid_weight=0.0)) == row['F_atm']
 
 
-def test_open_part_without_a_positive_balance_is_the_skin_flux(caplog, monkeypatch):
-    """A surface at or above the melt side of the call gives no scale; the skin flux stays,
-    with one warning per process."""
-    import proteus.atmos_clim.common as common
-
-    monkeypatch.setattr(common, '_OPEN_FLUX_WARNED', [False])
-    row = _row(0.99, T_surf=1450.0, F_atm=7.0)
-    d, k, T_melt = lid_boundary(row)
-    assert k / d * (T_melt - 1450.0) < 0.0
-    with caplog.at_level('WARNING', logger='fwl.proteus.atmos_clim.common'):
-        assert lid_open_flux(row) == pytest.approx(200.0 * 50.0, rel=1e-14)
-        assert lid_open_flux(_row(0.5, T_surf=1500.0, F_atm=7.0)) == 0.0
-        assert lid_open_flux(_balanced(_row(0.5, T_surf=900.0))) == pytest.approx(200.0 * 600.0)
-    warned = [r for r in caplog.records if 'unscaled' in r.getMessage()]
-    assert len(warned) == 1
-    assert 'T_surf 1450.00 K' in warned[0].getMessage()
-
-
 @pytest.mark.physics_invariant
 @given(
     w=st.floats(1e-6, 1.0),

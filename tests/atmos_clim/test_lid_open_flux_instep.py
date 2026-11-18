@@ -1,0 +1,182 @@
+"""Open part of the Aragog lid surface: solidus floor, start value and in-step response.
+
+The open part of the surface (weight ``1 - w``) sits on melt held at least at the lid base,
+``T_m = max(T_node, T_b)``. Its start value is the scaled skin flux where the skin balance of
+the call is positive and ``F_atm`` elsewhere; inside the step it follows ``T_m`` with
+``G_eff = G F' / (F' + w G_l' + (1 - w) G)`` per open area.
+"""
+
+from __future__ import annotations
+
+import math
+
+import pytest
+
+pytest.importorskip('hypothesis')
+from hypothesis import given, settings  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
+
+from proteus.atmos_clim.common import (  # noqa: E402
+    LID_SLOPE_GUARD_SIGN,
+    LID_SLOPE_GUARD_SIZE,
+    lid_boundary,
+    lid_open_conductance,
+    lid_open_flux,
+)
+from proteus.utils.constants import const_sigma as SIGMA  # noqa: E402
+
+
+def _row(w, G=4.0, T_b=1400.0, T_node=1500.0, **kw):
+    return dict(
+        lid_weight=w,
+        lid_conductance=G,
+        lid_T_base=T_b,
+        lid_T_node=T_node,
+        T_magma=1450.0,
+        boundary_layer_thickness=kw.pop('d', 0.01),
+        boundary_layer_conductivity=kw.pop('k', 2.0),
+        **kw,
+    )
+
+
+def _balanced(row, gap=1.0):
+    d, k, T_melt = lid_boundary(row)
+    row['F_atm'] = gap * k / d * (T_melt - row['T_surf'])
+    return row
+
+
+@pytest.mark.physics_invariant
+def test_the_call_holds_the_open_node_at_the_lid_base():
+    """With the node below the lid base the call sees the open part at ``T_b``."""
+    row = _row(0.3, T_node=1350.0, T_surf=900.0)
+    d, k, T_melt = lid_boundary(row)
+    assert T_melt == pytest.approx(1400.0, rel=1e-14)
+    above = _row(0.3, T_node=1500.0, T_surf=900.0)
+    G = 0.3 * 4.0 + 0.7 * 200.0
+    assert lid_boundary(above)[2] == pytest.approx(
+        (1.2 * 1400.0 + 140.0 * 1500.0) / G, rel=1e-14
+    )
+
+
+@pytest.mark.physics_invariant
+def test_the_start_value_takes_the_floored_skin():
+    """The scaled branch reads ``G (T_m - T_s)`` with the floored node."""
+    row = _balanced(_row(0.3, T_node=1350.0, T_surf=900.0))
+    assert lid_open_flux(row) == pytest.approx(200.0 * (1400.0 - 900.0), rel=1e-14)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('T_node', [1350.0, 1500.0])
+@pytest.mark.parametrize('w', [1e-12, 1e-11])
+def test_the_floored_start_value_goes_to_f_atm_at_the_onset(w, T_node):
+    """D2: the start value tends to ``F_atm`` as the weight goes to 0, floored or not."""
+    row = _balanced(_row(w, T_node=T_node, T_surf=1300.0), gap=0.97)
+    assert lid_open_flux(row) == pytest.approx(row['F_atm'], rel=1e-10)
+
+
+@pytest.mark.physics_invariant
+def test_the_unscaled_branch_takes_the_flux_of_the_atmosphere(caplog, monkeypatch):
+    """Where the skin balance of the call is not positive the open part starts at ``F_atm``, with
+    one warning per process."""
+    import proteus.atmos_clim.common as common
+
+    monkeypatch.setattr(common, '_OPEN_FLUX_WARNED', [False])
+    row = _row(0.99, T_surf=1450.0, F_atm=-0.91)
+    d, k, T_melt = lid_boundary(row)
+    assert k / d * (T_melt - 1450.0) < 0.0
+    with caplog.at_level('WARNING', logger='fwl.proteus.atmos_clim.common'):
+        assert lid_open_flux(row) == -0.91
+        assert lid_open_flux(_row(0.5, T_surf=1500.0, F_atm=7.0)) == 7.0
+    warned = [r for r in caplog.records if 'F_atm' in r.getMessage()]
+    assert len(warned) == 1
+
+
+@pytest.mark.physics_invariant
+def test_a_scale_of_zero_or_below_stops_the_run():
+    """G3: a positive skin balance with ``F_atm`` at or below 0 gives ``c <= 0``: the run stops."""
+    for F_atm in (0.0, -5.0):
+        row = _row(0.3, T_surf=900.0, F_atm=F_atm)
+        with pytest.raises(RuntimeError, match='scale'):
+            lid_open_flux(row)
+
+
+def _shared_surface(row, F_prime, T_m, F0=10.0, T_s0=900.0):
+    """Surface of the call where a linear atmosphere ``F0 + F' (T_s - T_s0)`` meets the parallel
+    balance of :func:`lid_boundary` with the open node at ``T_m``."""
+    r = dict(row, lid_T_node=T_m)
+    d, k, T_melt = lid_boundary(r)
+    G = k / d
+    return (G * T_melt - F0 + F_prime * T_s0) / (G + F_prime)
+
+
+@pytest.mark.physics_invariant
+def test_the_response_keeps_the_step_change_at_the_change_of_the_atmosphere():
+    """Form B on the probe onset row: the open part's own response (form A) plus the lid part's
+    change per total area is ``F' dT_s/dT_m``, which equals ``(1 - w) G_eff``."""
+    w, G_l, F_p = 0.703, 7.27, 0.306
+    row = _row(w, G=G_l, T_node=1600.0, T_surf=900.0, d=0.01, k=2.0, F_atm=1.0)
+    G_eff, code = lid_open_conductance(row, F_p)
+    assert code == 0
+    h = 1e-3
+    dT_s = (_shared_surface(row, F_p, 1600.0 + h) - _shared_surface(row, F_p, 1600.0 - h)) / (
+        2.0 * h
+    )
+    A_total = (1.0 - w) * 200.0 * (1.0 - dT_s)
+    lid_part = -w * G_l * dT_s
+    assert A_total + lid_part == pytest.approx(F_p * dT_s, rel=1e-9)
+    assert (1.0 - w) * G_eff == pytest.approx(F_p * dT_s, rel=1e-9)
+    assert (1.0 - w) * G_eff == pytest.approx(0.28043, rel=1e-4)
+    assert G_eff == pytest.approx(0.94420, rel=1e-4)
+
+
+@pytest.mark.physics_invariant
+def test_the_response_limits():
+    """At w = 0 the skin and the atmosphere in series; as w -> 1 ``G F' / (F' + G_l')`` per open
+    area and 0 per total area."""
+    F_p = 0.4
+    G0, _ = lid_open_conductance(_row(0.0 + 1e-300, G=7.0, T_surf=900.0, F_atm=1.0), F_p)
+    assert G0 == pytest.approx(200.0 * F_p / (200.0 + F_p), rel=1e-12)
+    w = 1.0 - 1e-12
+    G1, _ = lid_open_conductance(_row(w, G=7.0, T_surf=900.0, F_atm=1.0), F_p)
+    assert G1 == pytest.approx(200.0 * F_p / (F_p + 7.0), rel=1e-9)
+    assert (1.0 - w) * G1 < 1e-10
+
+
+@pytest.mark.physics_invariant
+@settings(max_examples=300, deadline=None)
+@given(
+    w=st.floats(1e-9, 1.0),
+    G_lid=st.floats(1e-3, 1e5),
+    k_over_d=st.floats(1.0, 1e4),
+    F_p=st.floats(1e-6, 1e3),
+    T_s=st.floats(200.0, 3000.0),
+)
+def test_the_response_is_positive_and_at_most_the_skin(w, G_lid, k_over_d, F_p, T_s):
+    """D3: ``0 < G_eff <= G``, and the size guard never raises the response."""
+    row = _row(w, G=G_lid, d=1.0 / k_over_d, k=1.0, T_surf=T_s, F_atm=1.0)
+    G_eff, code = lid_open_conductance(row, F_p)
+    assert 0.0 < G_eff <= k_over_d * (1.0 + 1e-12)
+    cap = 4.0 * SIGMA * T_s**3
+    assert code == (LID_SLOPE_GUARD_SIZE if F_p > cap else 0)
+    G_cap, _ = lid_open_conductance(row, min(F_p, cap))
+    assert G_eff == pytest.approx(G_cap, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('F_p', [0.0, -1.0, math.nan, math.inf])
+def test_a_slope_of_zero_or_a_bad_slope_holds_the_start_value(F_p):
+    """A slope of 0 (no usable slope, or a sign fault) or a non-finite one gives ``G_eff = 0``."""
+    G_eff, code = lid_open_conductance(_row(0.4, T_surf=900.0, F_atm=1.0), F_p)
+    assert G_eff == 0.0
+    assert code == LID_SLOPE_GUARD_SIGN
+
+
+@pytest.mark.physics_invariant
+def test_no_response_without_a_live_lid():
+    for row in (_row(0.0, T_surf=900.0, F_atm=1.0), {'F_atm': 1.0, 'T_surf': 900.0}):
+        assert lid_open_conductance(row, 0.3) == (None, 0)
+
+
+@pytest.mark.physics_invariant
+def test_the_guard_codes_are_distinct():
+    assert len({0, LID_SLOPE_GUARD_SIGN, LID_SLOPE_GUARD_SIZE}) == 3
