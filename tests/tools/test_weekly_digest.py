@@ -274,8 +274,8 @@ def test_clean_text_removes_links_html_mentions_and_cuts():
     assert collect.clean_text(None, 10) == '' and collect.clean_text('abc', 0) == ''
 
 
-def test_clean_text_hides_at_least_what_a_renderer_can_hide():
-    """A comment ends only at -->, an unclosed one hides the rest, and <!--> is empty."""
+def test_clean_text_ends_a_comment_only_at_its_end():
+    """A comment ends only at -->, an unclosed one removes the rest, and <!--> is empty."""
     assert collect.clean_text('<!-- a --!> INJECT -->', 100) == ''
     assert collect.clean_text('shown <!-- hidden rest', 100) == 'shown'
     assert collect.clean_text('<!-->shown<!--->too', 100) == 'shown too'
@@ -285,14 +285,20 @@ def test_clean_text_hides_at_least_what_a_renderer_can_hide():
 def test_clean_text_removes_every_url_scheme():
     """A scheme with nothing after it, or one other than http and ftp, is removed too."""
     assert collect.clean_text('see https:// and foo://y z', 100) == 'see and z'
-    assert collect.clean_text('T < 300 K', 100) == 'T < 300 K'
+    assert collect.clean_text('https:/@/evil.example/x', 100) == ''
+    assert collect.clean_text('ht​tps://evil.example tail', 100) == 'tail'
+
+
+def test_clean_text_keeps_text_after_a_less_than_sign():
+    """A < or > that is not part of a tag goes, and the text around it stays."""
+    assert collect.clean_text('T < 300 K and a -> b', 100) == 'T 300 K and a - b'
+    out = collect.clean_text('T < 300 K ' + 'word ' * 5000 + 'tail', 20000)
+    assert out == 'T 300 K ' + ' '.join(['word'] * 3998)
 
 
 def test_clean_text_cuts_the_raw_text_first():
     """Only the first 20000 raw characters are read; a cut at any place in markup leaks nothing."""
     assert collect.clean_text('a' * 20000 + 'tail', 20100) == 'a' * 20000
-    assert collect.clean_text('a' * 19996 + ' <3x', 20000).endswith(' <3x')
-    assert collect.clean_text('<' + 'a' * 20000, 20000) == ''
     tails = [
         '[click](https://evil.example/x)',
         'https://evil.example/x',
@@ -308,13 +314,29 @@ def test_clean_text_cuts_the_raw_text_first():
             assert 'evil' not in out and 'hidden' not in out, (tail, k, out[-20:])
 
 
-@given(st.text(max_size=400), st.integers(min_value=0, max_value=300))
-@settings(max_examples=200, deadline=None)
-def test_clean_text_never_leaks_a_mention_link_or_tag(text, limit):
-    """Whatever the input, the cleaned text has no @, no URL scheme, no tag and fits the limit."""
+HOSTILE = '@<>:/.w[]()!- a\n\t\x00​\U000e0041'
+PLAIN = 'aT3K .-'
+
+
+@given(
+    st.one_of(
+        st.text(max_size=400), st.text(HOSTILE, max_size=400), st.text(PLAIN, max_size=400)
+    ),
+    st.integers(min_value=0, max_value=300),
+)
+@settings(max_examples=300, deadline=None)
+def test_clean_text_contract(text, limit):
+    """Every output meets the contract; text with no markup character stays as it is."""
     out = collect.clean_text(text, limit)
-    assert '@' not in out and '://' not in out and len(out) <= limit
-    assert not re.search(r'<[^>]*>', out)
+    assert '<' not in out
+    assert '>' not in out
+    assert '@' not in out
+    assert '://' not in out
+    assert 'www.' not in out
+    assert not [c for c in out if collect.dropped_char(c)]
+    assert len(out) <= limit
+    if set(text) <= set(PLAIN):
+        assert out == ' '.join(text.split())[:limit]
 
 
 def test_resolve_window_rules():
