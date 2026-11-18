@@ -884,7 +884,7 @@ def _core_run(folder, ra=None, core_bc='core_module', drop=False):
 
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize('drop', [False, True], ids=['recorded 450', 'not recorded'])
-def test_a_run_written_with_450_refuses_an_eq16_resume(tmp_path, drop):
+def test_a_run_written_with_450_refuses_a_resume_under_the_default_law(tmp_path, drop):
     """A core_module run written with Ra_crit 450, or before the setting was recorded (when
     450 was the only law), keeps it at a resume: the default law would change the CMB flux."""
     out = _core_run(tmp_path, ra=450.0, drop=drop)
