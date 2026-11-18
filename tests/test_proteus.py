@@ -43,13 +43,19 @@ STALL_MAX_CONFIGURED = 41
 
 
 def _record_matching_separation_laws(config, output, buoyancy='mixture'):
-    """Give a mock config the 'mixture' separation laws and its run directory an
-    init_coupler.toml that records ``buoyancy``; return the text of that record."""
+    """Give a mock config the 'mixture' separation laws, the rheology and the lid off, and its run
+    directory an init_coupler.toml that records ``buoyancy``; return the text of that record."""
     aragog = config.interior_energetics.aragog
     aragog.separation_viscosity = aragog.separation_buoyancy = 'mixture'
     aragog.allow_resume_law_change = False
+    aragog.rheology.enabled = False  # a record without the rheology table ran with it off
+    aragog.lid_mush_base = False  # and without the lid
+    aragog.cmb_cell_thickness = 0.0  # and on the uniform mesh
+    aragog.surface_cell_thickness = 'uniform'
+    config.interior_energetics.mixing_length = 'constant'  # the record holds it too
     text = (
-        "[interior_energetics]\nmodule = 'aragog'\n\n[interior_energetics.aragog]\n"
+        "[interior_energetics]\nmodule = 'aragog'\nmixing_length = 'constant'\n\n"
+        '[interior_energetics.aragog]\n'
         f"separation_viscosity = 'mixture'\nseparation_buoyancy = '{buoyancy}'\n"
     )
     (Path(output) / 'init_coupler.toml').write_text(text)
@@ -380,6 +386,24 @@ def _resume_to_main_loop(p, *extra, restore=None):
     )
 
 
+def _resume_through_first_interior_step(p, interior, restore=None):
+    """Resume ``p`` into the main loop; ``interior`` stands in for run_interior, and the run
+    stops at the step after it; ``restore`` stands in for restore_accretion_state. Return
+    what start() raised, None at that stop."""
+    stop = patch.object(type(p), '_advance_to_step_end', side_effect=_StopAfterMeshRestore)
+    return _resume_to_init_star(
+        p,
+        patch('proteus.star.wrapper.init_star'),
+        patch('proteus.orbit.wrapper.init_orbit'),
+        patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
+        patch('proteus.accretion.wrapper.restore_accretion_state', side_effect=restore),
+        patch('proteus.interior_struct.common.volatile_mass_change', return_value=0.0),
+        patch('proteus.proteus.is_write_snapshot', return_value=False),
+        patch('proteus.interior_energetics.wrapper.run_interior', side_effect=interior),
+        stop,
+    )
+
+
 @pytest.mark.unit
 def test_a_resume_that_changes_the_separation_law_stops_before_init_coupler_is_written(
     tmp_path,
@@ -397,18 +421,38 @@ def test_a_resume_that_changes_the_separation_law_stops_before_init_coupler_is_w
 
 
 @pytest.mark.unit
-def test_an_allowed_switch_is_recorded_only_once_the_resume_reaches_the_main_loop(tmp_path):
-    """Under the allow switch, a resume that stops before the main loop leaves the record of
-    the old law, so the next attempt meets the check again; one that reaches the main loop
-    records the new law with the switch off."""
+def test_an_allowed_switch_is_recorded_only_once_the_first_interior_step_passes(tmp_path):
+    """Under the allow switch, a resume that stops before its first interior step leaves the
+    record of the old law, so the next attempt meets the check again; one whose first
+    interior step passes records the new law with the switch off."""
     p, stored_text = _resumable_run_with_buoyancy(tmp_path, 'solid')
     p.config.interior_energetics.aragog.allow_resume_law_change = True
     assert _resume_to_init_star(p) is None  # stopped at init_star, after the law check
-    assert (tmp_path / 'init_coupler.toml').read_text() == stored_text
     assert _resume_to_main_loop(p) is None
+    assert (tmp_path / 'init_coupler.toml').read_text() == stored_text
+    assert _resume_through_first_interior_step(p, lambda *a, **k: None) is None
     overrides = p.config.write.call_args.kwargs['overrides']
     assert overrides['interior_energetics.aragog.allow_resume_law_change'] is False
     assert (tmp_path / 'init_coupler.toml').read_text() == repr(overrides)
+
+
+@pytest.mark.unit
+def test_a_resume_refused_by_its_first_interior_step_keeps_the_record(tmp_path):
+    """The mesh check of the snapshot runs when the interior sets up its solver; a resume it
+    refuses leaves the record of the run, so the next attempt meets the same check."""
+    from proteus.interior_energetics.resume_laws import ResumeSeparationLawError
+
+    p, stored_text = _resumable_run_with_buoyancy(tmp_path, 'solid')
+    p.config.interior_energetics.aragog.allow_resume_law_change = True
+
+    def refuse(*args, **kwargs):
+        raise ResumeSeparationLawError('Resume refused: another mesh')
+
+    err = _resume_through_first_interior_step(p, refuse)
+    assert isinstance(err, ResumeSeparationLawError), repr(err)
+    assert (tmp_path / 'status').read_text().split()[0] == '20'
+    assert (tmp_path / 'init_coupler.toml').read_text() == stored_text
+    p.config.write.assert_not_called()
 
 
 @pytest.mark.unit
@@ -450,7 +494,7 @@ def test_a_resume_records_the_config_as_loaded_not_as_the_accretion_restore_left
         proteus.config.planet.mass_tot = 1.25
         proteus.config.orbit.semimajoraxis, proteus.config.orbit.eccentricity = 2.0, 0.1
 
-    assert _resume_to_main_loop(p, restore=grow) is None
+    assert _resume_through_first_interior_step(p, lambda *a, **k: None, restore=grow) is None
     assert p.config.planet.mass_tot == pytest.approx(1.25, rel=1e-15)  # the restore ran
     assert (tmp_path / 'init_coupler.toml').read_text() == (
         'planet.mass_tot = 1.0 orbit.semimajoraxis = 1.0 orbit.eccentricity = 0.0'
@@ -490,16 +534,17 @@ def test_a_fresh_run_records_its_config_with_the_allow_switch_off(tmp_path):
 @pytest.mark.unit
 @pytest.mark.parametrize('struct, expected', [('zalmoxis', -3.0e21), ('dummy', 0.0)])
 @pytest.mark.parametrize(
-    'crystallized, freeze, phi, frozen',
+    'crystallized, freeze, phi, sealed, frozen',
     [
-        (False, False, 0.0, False),
-        (True, False, 0.5, True),
-        (False, True, 0.01, True),
-        (False, True, 0.5, False),
+        (False, False, 0.0, False, False),
+        (True, False, 0.5, False, True),
+        (False, True, 0.01, False, True),
+        (False, True, 0.5, False, False),
+        (False, False, 0.5, True, True),  # a closed lid seal draws on the atmosphere alone
     ],
 )
 def test_the_escape_step_records_the_removed_mass_for_the_zalmoxis_target(
-    tmp_path, struct, expected, crystallized, freeze, phi, frozen
+    tmp_path, struct, expected, crystallized, freeze, phi, sealed, frozen
 ):
     """The main-loop escape step books the element mass escape removed into
     M_volatile_change with the Zalmoxis structure, and nothing with the dummy
@@ -510,7 +555,7 @@ def test_the_escape_step_records_the_removed_mass_for_the_zalmoxis_target(
     p.hf_row = {'H_kg_total': 5.0e21, 'O_kg_total': 2.0e22, 'Phi_global': phi}
     p.interior_o = SimpleNamespace(dt=100.0)
     p.loops = {'total': 5, 'init_loops': 2}  # the first loop that runs escape
-    p.desiccated, p.crystallized = False, crystallized
+    p.desiccated, p.crystallized, p.lid_sealed = False, crystallized, sealed
     p.config.params.stop.solid.freeze_volatiles = freeze
     calls = []
 
@@ -5006,3 +5051,180 @@ def test_a_frozen_mantle_escapes_over_many_steps_with_every_element_closing(
     # hydrogen that escaped, beyond the 1e-4 closure limit on the final total.
     gap = (1.0 - 1.0 / _CALLIOPE_SPECIES_OVER_ELEMENTS) * (h_start - h_end)
     assert gap / h_end > 1.0e-4
+
+
+def _run_seal_loop(tmp_path, enabled, make_seal_step=lambda _p: None):
+    """Drive 3 main-loop steps with the lid seal ``enabled`` or not, the seal step
+    replaced by ``make_seal_step(p)``; return the instance, the recorded outgas
+    rows, the mass-check calls and the patched seal step."""
+    p = _make_main_loop_proteus(
+        tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
+    )
+    p.config.outgas.lid_seal.enabled = enabled
+    rows, guard_calls = [], []
+    with patch(
+        'proteus.outgas.lid_seal.run_lid_seal_step', side_effect=make_seal_step(p)
+    ) as step:
+        _run_main_loop_recording_mass(
+            p,
+            stop_at_loop=3,
+            rows=rows,
+            row_writer=lambda row, n: _write_post_outgas_row(row, n, vapour=False),
+            guard_calls=guard_calls,
+        )
+    return p, rows, guard_calls, step
+
+
+def test_with_the_lid_seal_off_the_loop_keeps_the_chemistry_solve(tmp_path):
+    """With outgas.lid_seal.enabled false every step runs the chemistry solve,
+    never the seal step, and the element closure check stays off without trapping."""
+    p, rows, guard_calls, step = _run_seal_loop(tmp_path, False)
+    step.assert_not_called()
+    assert len(rows) == len(guard_calls) > 0
+    assert {kw['check_element_closure'] for _, kw in guard_calls} == {False}
+    assert p.lid_sealed is False
+
+
+def test_with_the_lid_seal_on_the_loop_carries_its_state_and_clears_it_on_desiccation(
+    tmp_path,
+):
+    """With the seal on the loop calls the seal step instead of the chemistry
+    solve, hands each step the state the previous one returned, and checks the
+    element closure. Once the run is desiccated the closure check is off, and the
+    next step takes the desiccated branch, which clears the seal. Each step gets
+    the completed rows of the run, which a remelt under front trapping reads."""
+    states, seen, history = [True, True, True], [], []
+
+    def _make(p):
+        def _seal_step(_dirs, _config, hf_row, _interior, sealed, **kw):
+            seen.append(sealed)
+            history.append(kw['hf_all'] is p.hf_all)
+            _write_post_outgas_row(hf_row, len(seen) - 1, vapour=False)
+            p.desiccated = len(seen) >= 2  # the run desiccates on the second step
+            return states[len(seen) - 1]
+
+        return _seal_step
+
+    p, rows, guard_calls, step = _run_seal_loop(tmp_path, True, _make)
+    assert rows == []
+    assert seen == [False, True] and history == [True, True]
+    closure = [kw['check_element_closure'] for _, kw in guard_calls]
+    assert closure[0] is True and set(closure[1:]) == {False} and len(closure) > 2
+    assert p.desiccated is True and p.lid_sealed is False
+
+
+@pytest.mark.parametrize('sealed', [True, False])
+def test_a_resume_restores_the_lid_seal_state_from_the_last_row(tmp_path, caplog, sealed):
+    """A resume reads the seal state from the last row and logs when a closed
+    seal closed."""
+    p = _make_proteus_instance(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    df = _make_hf_df()
+    df['seal_t_close'] = [0.0, 0.0, 0.0, 250.0, 250.0]
+    with (
+        caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'),
+        patch('proteus.outgas.lid_seal.restore_seal_state', return_value=sealed) as restore,
+    ):
+        _resume_with_patches(p, df)
+    restore.assert_called_once()
+    assert restore.call_args.args[0] is p.config
+    assert restore.call_args.args[1]['seal_t_close'] == pytest.approx(250.0, abs=0.0)
+    assert p.lid_sealed is sealed
+    logged = 'Resuming with the lid seal closed since t = 2.500e+02 yr' in caplog.text
+    assert logged is sealed
+
+
+# ---------------------------------------------------------------------------
+# Atmosphere snapshots at chemistry targets
+# ---------------------------------------------------------------------------
+
+
+def _chemistry_target_proteus(tmp_path, times, *, module='vulcan', init_stage=False):
+    """A Proteus instance whose helpfile cools past 2000 K between its last two rows."""
+    p = _make_proteus_instance(tmp_path)
+    p.config.atmos_chem.module = module
+    p.config.atmos_chem.times = times
+    p.init_stage = init_stage
+    p.hf_all = pd.DataFrame({'Time': [10.0, 20.0], 'T_surf': [2100.0, 1900.0]})
+    p.hf_row = p.hf_all.iloc[-1].to_dict()
+    p.atmos_o = MagicMock()
+    return p
+
+
+@pytest.mark.parametrize(
+    ('times', 'module', 'init_stage', 'written'),
+    [
+        ({'T_surf': [2000.0]}, 'vulcan', False, True),
+        ([15.0], 'vulcan', False, True),
+        ({'T_surf': [1500.0]}, 'vulcan', False, False),
+        ([25.0], 'vulcan', False, False),
+        ('end', 'vulcan', False, False),
+        ({'T_surf': [2000.0]}, None, False, False),
+        ({'T_surf': [2000.0]}, 'vulcan', True, False),
+    ],
+    ids=[
+        'table_value_crossed',
+        'listed_time_reached',
+        'table_value_not_reached',
+        'listed_time_later',
+        'end_has_no_target_inside_the_run',
+        'no_chemistry_module',
+        'init_stage',
+    ],
+)
+def test_chemistry_target_snapshot_written_only_at_a_crossed_target(
+    tmp_path, times, module, init_stage, written
+):
+    """The step that cools T_surf from 2100 to 1900 K writes an atmosphere snapshot for a
+    target of 2000 K or a listed time of 15 yr; not for an unreached target, for 'end', with
+    no chemistry module, or during the init stage, whose rows all hold t = 0."""
+    p = _chemistry_target_proteus(tmp_path, times, module=module, init_stage=init_stage)
+
+    with (
+        patch('proteus.atmos_clim.wrapper.write_atmosphere_snapshot') as mock_write,
+        patch('proteus.utils.coupler.WriteHelpfileToCSV') as mock_csv,
+    ):
+        result = p._write_chemistry_target_snapshot()
+
+    assert result is written
+    assert mock_write.call_count == int(written)
+    # the helpfile goes to disk with the snapshot, so a resume sees the snapshot's row
+    assert mock_csv.call_count == int(written)
+    if written:
+        mock_csv.assert_called_once_with(p.directories['output'], p.hf_all)
+    if written:
+        _, _, _, hf_row = mock_write.call_args.args
+        assert hf_row['Time'] == pytest.approx(20.0, abs=1e-12)
+
+
+def test_main_loop_checks_chemistry_targets_only_on_steps_without_a_snapshot(tmp_path):
+    """With write_mod = 2 the loop writes every other step; the chemistry-target check runs
+    on the other steps only, since a snapshot step already wrote its atmosphere."""
+    from proteus.proteus import Proteus
+
+    def _calls(write_mod, folder):
+        folder.mkdir()
+        p = _make_main_loop_proteus(
+            folder, plot_mod=None, write_mod=write_mod, dt_write_rel=0.0
+        )
+        calls = []
+
+        def _record(handler):
+            calls.append(handler.loops['total'])
+            return False
+
+        _run_main_loop_capturing_plots(
+            p,
+            patch.object(
+                Proteus, '_write_chemistry_target_snapshot', autospec=True, side_effect=_record
+            ),
+            stop_at_loop=6,
+        )
+        return calls
+
+    calls = _calls(2, tmp_path / 'every_other')
+    assert _calls(1, tmp_path / 'every_step') == []  # every step writes its atmosphere
+
+    # is_snapshot reads the count before its increment, so steps 0, 2 and 4 write; the
+    # check runs on steps 1, 3 and 5, by which time the count reads 2, 4 and 6
+    assert calls == [2, 4, 6]
