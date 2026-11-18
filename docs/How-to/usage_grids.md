@@ -144,7 +144,7 @@ Add `-s` to find out which cases have a particular status. For example, the comm
 proteus grid-summarise -o output/grid_demo/ -s completed
 ```
 
-A case without a readable status file, because it stopped before PROTEUS wrote one, counts as unknown with code -1; `-s unknown` lists those cases together with any unrecognised codes, and `-s code=-1` lists them alone.
+A case without a readable status file, because it stopped before PROTEUS wrote one or never started (a config in `cfgs/` but no case folder, for example when a packed SLURM job ran out of time), counts as unknown with code -1, and the summary warns how many cases never started; `-s unknown` lists those cases together with any unrecognised codes, and `-s code=-1` lists them alone.
 
 ## Packaging grid results
 

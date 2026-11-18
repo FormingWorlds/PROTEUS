@@ -3,8 +3,8 @@
 Covers the ``summarise`` entrypoint: invalid-path error, status
 aggregation, general-category dispatch (Running / Completed / Error /
 Unknown / All / named statuses), code-status dispatch, unmatched input,
-non-contiguous case folders, and cases without a readable status file,
-which count as unknown.
+non-contiguous case folders, and cases without a readable status file or
+without a folder (not started), which count as unknown.
 
 Testing standards:
   - docs/How-to/testing.md
@@ -186,7 +186,7 @@ def test_summarise_prints_help_message_for_unmatched_status(tmp_path, caplog):
 
 
 # ---------------------------------------------------------------------------
-# Robustness: non-contiguous case folders and unreadable status files
+# Robustness: non-contiguous, not-started and unreadable cases
 # ---------------------------------------------------------------------------
 
 
@@ -197,20 +197,23 @@ def test_summarise_handles_noncontiguous_case_folders(tmp_path, caplog):
 
     Discrimination: a regression that reconstructed paths as case_%06d for
     i in range(N) would count the absent case_000001 as unknown and
-    mislabel the error case (real index 5) as index 2.
+    mislabel the error case (real index 5) as index 2. Each folder has its
+    config in cfgs/ and the gaps have none, so no case counts as not started.
     """
     grid = tmp_path / 'grid'
-    grid.mkdir()
+    (grid / 'cfgs').mkdir(parents=True)
     for idx, code in [(0, 10), (2, 11), (5, 20)]:
         case = grid / f'case_{idx:06d}'
         case.mkdir()
         (case / 'status').write_text(f'{code}\nsome-comment\n', encoding='utf-8')
+        (grid / 'cfgs' / f'case_{idx:06d}.toml').write_text('', encoding='utf-8')
 
     with caplog.at_level(logging.INFO, logger='fwl'):
         result = summarise_mod.summarise(str(grid), tgt_status='code=20')
 
     assert result is True
     assert 'Found 3 cases' in caplog.text
+    assert 'not started' not in caplog.text
     code20_section = caplog.text.split('Code 20 cases:')[1]
     # The error case is at real index 5, never at a contiguous index 2.
     assert 'Case 5    ' in code20_section
@@ -269,6 +272,33 @@ def test_summarise_counts_a_case_without_a_readable_status_as_unknown(
     for idx in (0, 1, 2, 3):
         assert f'Case {idx}    ' in listed['all']
     assert unknown_line in listed['all']
+
+
+def test_summarise_counts_a_case_with_a_config_but_no_folder_as_not_started(tmp_path, caplog):
+    """A packed SLURM job can end before it starts every case, which leaves a config
+    in cfgs/ without a case folder. Such a case counts as unknown (code -1) under its
+    own index, and one warning gives how many there are; a config whose folder exists
+    and a gap with neither are not counted.
+    """
+    grid = _make_grid(tmp_path, statuses=[10, 20])
+    (grid / 'cfgs').mkdir()
+    for idx in (0, 1, 3, 4):  # 0 and 1 started, 3 and 4 did not; 2 has nothing
+        (grid / 'cfgs' / f'case_{idx:06d}.toml').write_text('', encoding='utf-8')
+
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        assert summarise_mod.summarise(str(grid), tgt_status='code=-1') is True
+
+    assert 'Found 4 cases' in caplog.text
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings == ['2 cases have a config in cfgs/ but no folder: not started']
+    # Two of the four cases are unknown: 50 %, where counting only started cases gives none.
+    assert '2     (50%) Unknown (no readable status file)' in caplog.text
+    assert '1     (25%) Completed (solidified)' in caplog.text
+    listed = caplog.text.split('Code -1 cases:')[1]
+    for idx in (3, 4):
+        assert f'Case {idx}     : Code -1 - Unknown (no readable status file)' in listed
+    for idx in (0, 1, 2):
+        assert f'Case {idx}    ' not in listed
 
 
 # ---------------------------------------------------------------------------
