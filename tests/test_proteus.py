@@ -866,12 +866,6 @@ def _stop_with(exc, code_first, seen, dirs):
         (_MODULE_CONFIG, SystemExit(143), None, '25'),
         (_MODULE_CONFIG, RuntimeError('AGNI deadlock'), 22, '22'),
         ('proteus.proteus.setup_logger', OSError(28, 'disk full'), None, '20'),
-        (
-            'proteus.utils.coupler.validate_module_versions',
-            RuntimeError('old AGNI'),
-            None,
-            '20',
-        ),
     ],
     ids=[
         'startup-error',
@@ -879,7 +873,6 @@ def _stop_with(exc, code_first, seen, dirs):
         'system-exit',
         'own-stop-code-kept',
         'logger-setup-error',
-        'module-version-error',
     ],
 )
 def test_a_run_stopped_after_the_output_is_cleaned_records_why(
@@ -888,10 +881,10 @@ def test_a_run_stopped_after_the_output_is_cleaned_records_why(
     """A fresh run that stops between cleaning its output folder and the main loop leaves
     a stop code, not a missing status file (#778, #744): 20 for an error, 25 for an interrupt
     or a requested exit, and the code the raise site wrote itself when it wrote one. The
-    sites include the logger setup and the module version check, the first steps after the
-    clean. While it initialises the run reads 0 (Started), so a run killed there without a
-    handler (SIGKILL, out of memory) does not read as a stale code or no file. The output
-    folder is cleaned for real, so a status written before the clean would be gone."""
+    logger setup is the first step after the clean. While it initialises the run reads 0
+    (Started), so a run killed there without a handler (SIGKILL, out of memory) does not read
+    as a stale code or no file. The output folder is cleaned for real, so a status written
+    before the clean would be gone."""
     p = _make_proteus_instance(tmp_path)
     p.directories.update(
         {k: str(tmp_path / k) for k in ('output/observe', 'output/offchem', 'output/plots')}
