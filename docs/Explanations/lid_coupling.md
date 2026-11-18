@@ -27,7 +27,7 @@ Set `interior_energetics.aragog.lid_mush_base = true` to run the lid. PROTEUS th
 [![Schematic of the top of the column with the sub-grid lid: the atmosphere above one surface temperature, a lid part of weight w with a solid lid over melt, an open part of weight 1 - w with a thin skin over melt, and the temperature with depth in both parts](../assets/lid_coupling_schematic.svg#only-light){ width="100%" }](../assets/lid_coupling_schematic.svg)
 [![Schematic of the top of the column with the sub-grid lid: the atmosphere above one surface temperature, a lid part of weight w with a solid lid over melt, an open part of weight 1 - w with a thin skin over melt, and the temperature with depth in both parts](../assets/lid_coupling_schematic_dark.svg#only-dark){ width="100%" }](../assets/lid_coupling_schematic_dark.svg)
 
-**How to read the figure.** Left: the column top, with one surface temperature $T_\mathrm{surf}$ for both parts. The lid part, weight $w$, conducts from its base $T_b$; the top-cell melt under it is at $T_b$ or warmer. The open part, weight $1 - w$, conducts through the skin from $T_\mathrm{node}$, the top basic node of the Aragog mesh. Rule 3 assumes $T_\mathrm{node} \ge T_b$.
+**How to read the figure.** Left: the column top, with one surface temperature $T_\mathrm{surf}$ for both parts. The lid part, weight $w$, conducts from its base $T_b$; the top-cell melt under it is at $T_b$ or warmer. The open part, weight $1 - w$, conducts through the skin from the melt at $T_m = \max(T_\mathrm{node}, T_b)$, with $T_\mathrm{node}$ the top basic node of the Aragog mesh ([What the atmosphere call sees](#what-the-atmosphere-call-sees)).
 
 The arrow in the atmosphere is the flux $F_\mathrm{atm}$ of the atmosphere call. The arrow in the lid is the flux $F_\mathrm{surf}$ that leaves the lid surface; where the held lid would conduct more than the cap $C$, [Rule 3](#rule-3-the-atmosphere-flux-is-the-largest-loss) sets it to $C$ plus a slope term. Under the lid, $F_\mathrm{melt}$ is the heat that the melt passes to the lid ([Rule 2](#rule-2-the-lid-ledger)). In the open part, $F_\mathrm{open}$ is its flux ([What the atmosphere call sees](#what-the-atmosphere-call-sees)).
 
@@ -82,8 +82,8 @@ $C$ is the lid term of the last atmosphere balance (see the next section). At $w
 
 **How the code keeps it.** Two parts:
 
-- In the atmosphere call, `lid_boundary` caps $G_\mathrm{lid}$ at $G_\mathrm{skin}$, so a lid never conducts more than the open surface. With $T_b \le T_\mathrm{node}$ and $T_\mathrm{surf} \le T_\mathrm{node}$, the lid part then never loses more than the open part would at the same surface temperature.
-- `lid_flux_cap` computes $C$ from the row after the atmosphere step. `_set_lid_surface` passes it to Aragog as `lid_surface_flux_cap`, next to the held surface temperature `lid_surface_temperature`. Without a lid, or for a surface at or above $T_b$ ($C \le 0$), no cap is set.
+- In the atmosphere call, `lid_boundary` caps $G_\mathrm{lid}$ at $G_\mathrm{skin}$, so a lid never conducts more than the open surface. The open part reads its melt at $T_m \ge T_b$, so with $T_\mathrm{surf} \le T_m$ the lid part never loses more than the open part would at the same surface temperature.
+- `lid_flux_cap` computes $C$ from the row after the atmosphere step. `_set_lid_surface` passes it to Aragog as `lid_surface_flux_cap`; the held surface is the `surface_temperature` of the solver boundary, the `T_surf` of the row. Without a lid, or for a surface at or above $T_b$ ($C \le 0$), no cap is set.
 - `lid_flux_slope` takes $F'$ from the last 2 rows, $\Delta F_\mathrm{atm} / \Delta T_\mathrm{surf}$, and sets it to 0 for a surface step below 0.01 K or a slope of 0 or below. `_set_lid_surface` passes it with the cap as `lid_surface_flux_slope`.
 - After the step, where the lid surface ends above the held one, `_correct_lid_cap` takes the secant of the atmosphere flux between the held and the end surface, $(F_\mathrm{atm}(T_\mathrm{end}) - F_\mathrm{atm}) / (T_\mathrm{end} - T_\mathrm{surf})$, at least 0, and runs the step again from its start with the secant as $F'$, once. A secant within $10^{-3}$ of $F'$ changes nothing, so that re-solve is skipped. The log names each re-solve with its wall time and the running total. The flux at $T_\mathrm{end}$ comes from the atmosphere module: the dummy without `fixed_flux` has it as a formula; the other modules have no corrector and take the slope of the rows alone.
 
@@ -93,9 +93,13 @@ Aragog applies the cap: where the lid held at $T_\mathrm{surf}$ would conduct mo
 
 ## What the atmosphere call sees
 
-Under a lid the surface has two parts that share one surface temperature. The lid part, weight $w$, conducts from the lid base $T_b$ (column `lid_T_base`). The open part, weight $1 - w$, conducts through the skin from the top basic node of the Aragog mesh $T_\mathrm{node}$ (column `lid_T_node`). The two act in parallel:
+Under a lid the surface has two parts that share one surface temperature. The lid part, weight $w$, conducts from the lid base $T_b$ (column `lid_T_base`). The open part, weight $1 - w$, conducts through the skin from the melt under it. That melt is held at least at the lid base,
 
-$$F = w\,G_\mathrm{lid}'\,(T_b - T_\mathrm{surf}) + (1 - w)\,G_\mathrm{skin}\,(T_\mathrm{node} - T_\mathrm{surf}), \qquad G_\mathrm{lid}' = \min(G_\mathrm{lid}, G_\mathrm{skin}).$$
+$$T_m = \max(T_\mathrm{node}, T_b),$$
+
+with $T_\mathrm{node}$ the top basic node of the Aragog mesh (column `lid_T_node`). The floor is a model construct of the coupling, not a result from the literature: the open part is melt, so it cannot sit below the solidus at the lid base, while the extrapolated top node of the mesh can (in the stored live-lid rows of the coupled runs checked, 5.8 to 10.6 K below $T_b$). The two parts act in parallel:
+
+$$F = w\,G_\mathrm{lid}'\,(T_b - T_\mathrm{surf}) + (1 - w)\,G_\mathrm{skin}\,(T_m - T_\mathrm{surf}), \qquad G_\mathrm{lid}' = \min(G_\mathrm{lid}, G_\mathrm{skin}).$$
 
 AGNI and the dummy solve against one skin, so `lid_boundary` writes this sum in the form of one skin. With the blended conductance
 
@@ -103,19 +107,41 @@ $$G = w\,G_\mathrm{lid}' + (1 - w)\,G_\mathrm{skin},$$
 
 the call takes the skin thickness $d_\mathrm{call} = k / G$ (with the same $k$) and the melt temperature
 
-$$T_\mathrm{magma,call} = \frac{w\,G_\mathrm{lid}'\,T_b + (1 - w)\,G_\mathrm{skin}\,T_\mathrm{node}}{G}.$$
+$$T_\mathrm{magma,call} = \frac{w\,G_\mathrm{lid}'\,T_b + (1 - w)\,G_\mathrm{skin}\,T_m}{G}.$$
 
-Then $\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})$ equals $F$ above for every $T_\mathrm{surf}$, so the atmosphere solves the parallel balance with the skin balance it already has. These values hold for the call only: `lid_boundary` writes nothing to the row. The row keeps the `T_magma` that Aragog writes under a lid, $w T_b + (1 - w) T_\mathrm{node}$, the melt temperature that outgassing reads. The large-increase clip of `tmagma_atol` and `tmagma_rtol` in the interior wrapper acts on this row value, not on the lid branch of the call. `planet.prevent_warming` is refused with the lid (see Limits).
+Then $\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})$ equals $F$ above for every $T_\mathrm{surf}$, so the atmosphere solves the parallel balance with the skin balance it already has. These values hold for the call only: `lid_boundary` writes nothing to the row. The row keeps the `T_magma` that Aragog writes under a lid, $w T_b + (1 - w) T_m$, the melt temperature that outgassing reads. The large-increase clip of `tmagma_atol` and `tmagma_rtol` in the interior wrapper acts on this row value, not on the lid branch of the call. A clip in a step where a lid acts (weight above 0 at the start or the end of the step, or at an accepted state of the solver, column `lid_weight_max`) stops the run with an error that names the clipped value: a clipped lid step does not keep the energy rules. Without a lid the clip acts as before and the column `T_magma_clipped` counts it. `planet.prevent_warming` is refused with the lid (see Limits).
 
 **Why the 10 mm skin is not added on top of the lid.** The skin stands for the boundary layer at the top of a molten surface. Under a solid lid no melt reaches the surface, so that boundary layer does not exist: the lid is the conductive layer, and $T_\mathrm{surf}$ is the temperature at its top. Adding the skin in series, $1/G = 1/G_\mathrm{lid} + 1/G_\mathrm{skin}$, would count one layer twice; at $G_\mathrm{lid} = G_\mathrm{skin}$ it would halve the conductance of the lid part.
 
 **What the interior takes.** After the atmosphere step, `run_atmosphere` writes `lid_F_open`, the flux of the open part:
 
-$$F_\mathrm{open} = r\,G_\mathrm{skin}\,(T_\mathrm{node} - T_\mathrm{surf}), \qquad r = \frac{F_\mathrm{atm}}{\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})},$$
+$$F_\mathrm{open,0} = r\,G_\mathrm{skin}\,(T_m - T_\mathrm{surf}), \qquad r = \frac{F_\mathrm{atm}}{\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})},$$
 
-and `F_atm` where no lid acts. The ratio $r$ compares the flux of the atmosphere with the parallel skin balance of its call. Where the atmosphere closes that balance, $r = 1$ and the weighted lid and open parts sum to `F_atm`. Where it does not, only the open part is scaled by $r$ and the cap $C$ of the lid part is not, so with the lid at its cap the weighted parts $w C + (1 - w) F_\mathrm{open}$ miss `F_atm` by $w C (r - 1)$; in the two AGNI onset runs they summed to 0.956 to 1.000 of `F_atm`. This sum needs a surface below $T_b$. For a surface at or above $T_b$ no cap is set and Aragog holds the lid surface 1 K below $T_b$, so the flux of the lid part is no longer $C$ and the sum does not hold. $F_\mathrm{open}$ tends to `F_atm` as $w$ goes to 0, so the boundary of the open part does not step by the difference when the weight first exceeds 0. Where the balance of the call is not positive (a surface at or above the melt side of the call), $F_\mathrm{open}$ is the skin flux alone. In the next interior step Aragog takes `lid_F_open` as the flux of the part $1 - w$ and holds the lid surface at $T_\mathrm{surf}$. `F_atm` itself holds the lid term too, so as the flux of the open part it would count the lid part a second time.
+and `F_atm` where no lid acts. The ratio $r$ compares the flux of the atmosphere with the parallel skin balance of its call. Where the atmosphere closes that balance, $r = 1$ and the weighted lid and open parts sum to `F_atm`. Where it does not, only the open part is scaled by $r$ and the cap $C$ of the lid part is not, so with the lid at its cap the weighted parts $w C + (1 - w) F_\mathrm{open}$ miss `F_atm` by $w C (r - 1)$; in the two AGNI onset runs they summed to 0.956 to 1.000 of `F_atm`. This sum needs a surface below $T_b$. For a surface at or above $T_b$ no cap is set and Aragog holds the lid surface 1 K below $T_b$, so the flux of the lid part is no longer $C$ and the sum does not hold. $F_\mathrm{open,0}$ tends to `F_atm` as $w$ goes to 0, so the boundary of the open part does not step by the difference when the weight first exceeds 0. Where the balance of the call or the skin flux is not positive (a surface at or above the melt side of the call), $F_\mathrm{open,0}$ is `F_atm`. A positive balance with `F_atm` at or below 0 gives $r \le 0$, a state the two parts cannot share; the run then stops with an error that names $r$, `F_atm` and the balance. In the next interior step Aragog takes `lid_F_open` as the start flux of the part $1 - w$ and holds the lid surface at $T_\mathrm{surf}$. `F_atm` itself holds the lid term too, so as the flux of the open part it would count the lid part a second time.
 
 **Where this is checked.** [Validation: the lid and the open surface in the atmosphere call](../Validation/atmos_clim/common.md) checks the parallel sum of the call and the sum of the two parts against their closed forms.
+
+### The open part within a step
+
+**Why.** The start flux $F_\mathrm{open,0}$ comes from the atmosphere at the start of the step. If the open part kept it for the whole step, the top cell would gain or lose that flux whatever its temperature does. At a lid onset with `F_atm` below 0 this heated the top cell by about $1.7 \times 10^3$ W m$^{-2}$ for a whole step in a coupled run, and that step clipped `T_magma` from 4710 K.
+
+**What.** Within the step the open part follows its melt:
+
+$$F_\mathrm{open} = F_\mathrm{open,0} + G_\mathrm{eff}\,(T_m - T_{m,0}),$$
+
+with $T_{m,0}$ the value of $T_m$ at the start of the step, which Aragog takes from its start state. At the start the open part therefore carries $F_\mathrm{open,0}$ exactly, and while the node stays below $T_b$ it keeps it.
+
+**The response.** A change $dT_m$ of the open melt moves the surface of the call balance by
+
+$$dT_\mathrm{surf} = \frac{(1 - w)\,G_\mathrm{skin}\,dT_m}{F' + w\,G_\mathrm{lid}' + (1 - w)\,G_\mathrm{skin}},$$
+
+with $F'$ the slope of `F_atm` with the surface temperature, and the atmosphere then takes $F'\,dT_\mathrm{surf}$ more. Aragog holds the lid surface through the step, so the lid part does not follow that surface. The open part alone carries the change, per open area
+
+$$G_\mathrm{eff} = \frac{G_\mathrm{skin}\,F'}{F' + w\,G_\mathrm{lid}' + (1 - w)\,G_\mathrm{skin}},$$
+
+so that $(1 - w)\,G_\mathrm{eff}\,dT_m = F'\,dT_\mathrm{surf}$. At $w = 0$ this is the skin and the atmosphere in series, $G_\mathrm{skin} F' / (G_\mathrm{skin} + F')$; as $w$ goes to 1 it is $G_\mathrm{skin} F' / (F' + G_\mathrm{lid}')$ per open area and 0 per total area. $G_\mathrm{eff}$ is at most $G_\mathrm{skin}$. On a stored lid-onset row of a coupled run ($w = 0.703$, $G_\mathrm{lid}' = 7.27$, $F' = 0.306$ W m$^{-2}$ K$^{-1}$) it is 0.944 W m$^{-2}$ K$^{-1}$ per open area, 0.280 per total area. Had the open part followed the shared surface on its own, it would have carried 4.96 W m$^{-2}$ K$^{-1}$ per total area, 17.7 times the change of the atmosphere.
+
+**The slope guard.** `lid_flux_slope` gives $F'$ from the last 2 rows. A slope of 0 or below, a non-finite one or one from a surface step below 0.01 K gives $G_\mathrm{eff} = 0$: the open part keeps $F_\mathrm{open,0}$ for the step. A slope above $4 \sigma T_\mathrm{surf}^3$, the slope of a bare grey surface, is cut to it. The column `lid_slope_guard` records 0 (none), 1 (slope set to 0) or 2 (slope cut) on rows with a live lid. PROTEUS passes $G_\mathrm{eff}$ to Aragog as `open_surface_conductance` only under a live lid in flux mode with the mush base.
 
 ## The onset thickness
 
@@ -170,6 +196,9 @@ The interior writes every column except `lid_F_open` at each step; the atmospher
 | `lid_T_node` | K | top basic node $T_\mathrm{node}$ of the Aragog mesh |
 | `lid_F_open` | W m$^{-2}$ | flux of the open part $1 - w$ of the surface |
 | `lid_F_diff` | W m$^{-2}$ | `F_int` of the step minus the `F_atm` it started from |
+| `lid_weight_max` | 1 | largest lid weight over the accepted solver states of the step |
+| `lid_slope_guard` | 1 | slope guard of the open part: 0 none, 1 slope set to 0, 2 slope cut |
+| `T_magma_clipped` | 1 | 1 where the step clipped a rise of `T_magma` (no lid), else 0 |
 
 ## Limits
 
@@ -177,7 +206,8 @@ The interior writes every column except `lid_F_open` at each step; the atmospher
 - **prevent_warming.** `planet.prevent_warming = true` is refused with the lid at load: it clamps `F_atm` while the open part of the lid keeps the skin flux, so the flux balance of the lid does not close.
 - **Saturation skin.** With `surface_d = "saturation"` the skin is the stack of condensate layers, and it has no thickness while no layer has formed; a condensate layer over the lid is not modelled. A config with the lid and a saturation skin is refused at load. A live lid with a zero skin, as on a resume from a helpfile without `boundary_layer_conductivity`, stops the run with an error, because the open part then has no conductance to blend.
 - **One column.** The lid and the open part share one surface temperature in a 1-D column, blended by $w$. The model has no map of where on the planet a crust lies.
-- **The cap.** Rule 3 caps the flux of the lid part only; the open part keeps the boundary flux `lid_F_open` for the whole step.
+- **The cap.** Rule 3 caps the flux of the lid part only; the open part starts at `lid_F_open` and follows its melt with $G_\mathrm{eff}$, a first-order response with the slope of the rows.
+- **The floor.** $T_m = \max(T_\mathrm{node}, T_b)$ is a model construct of the coupling: the mesh keeps its own top node below $T_b$, and only the call, the open flux and the row `T_magma` read the floored value.
 - **The slope with AGNI.** With AGNI the cap takes $F'$ from the last 2 rows alone, and `_correct_lid_cap` does not act. A secant from AGNI needs a second solve at a fixed surface temperature, and that solve differs from the flux of the row by up to about $2\times10^{-3}$ at `solution_rtol` 0.01 and $2.5\times10^{-3}$ at 0.15. In one AGNI onset passage at `solution_rtol` 0.01, with steps of 12 to 25 K, a secant from the row flux at the held end and a second solve at the end surface was off by 2.5 to 3.6 per cent, as much as the correction itself (0.3 to 3.4 per cent). Where `F_atm` levels off with the surface temperature within one step, a slope from the rows before lies above the slope across the step, and the lid part can lose more than the atmosphere at the end surface. That case is tested only on the dummy flux with a soft ceiling: it has no AGNI form and is not tested with AGNI.
 
 For the config keys, see [Aragog](../Reference/config/interior.md#aragog-interior_energeticsaragog) and [Atmosphere climate](../Reference/config/atmosphere.md#atmosphere-climate-atmos_clim).
