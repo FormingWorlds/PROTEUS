@@ -313,8 +313,10 @@ def test_update_solver_passes_the_lid_boundary_of_the_row(w, lid):
     row.update(Time=30000.0, T_eqm=255.0)
     AragogRunner.update_solver(25.0, row, interior_o)
     assert params.solver.end_time == pytest.approx(30025.0, rel=1e-15)
-    assert bc.outer_boundary_value == (165000.0 if w > 0.0 and lid else 7000.0)
-    assert bc.surface_temperature == 727.3
+    assert bc.outer_boundary_value == pytest.approx(
+        165000.0 if w > 0.0 and lid else 7000.0, abs=0.0
+    )
+    assert bc.surface_temperature == pytest.approx(727.3, abs=0.0)
     if w > 0.0 and lid:
         assert bc.lid_surface_flux_cap == pytest.approx(21.9 * (1440.0 - 727.3), rel=1e-14)
     else:
@@ -363,7 +365,7 @@ def test_update_solver_passes_the_surface_temperature_in_every_mode(obc, lid):
     row = _row(0.4 if lid else 0.0, G=21.9, T_b=1440.0, T_surf=727.3, F_atm=7000.0)
     row.update(Time=30000.0, T_eqm=255.0, lid_F_open=165000.0)
     AragogRunner.update_solver(25.0, row, interior_o)
-    assert bc.surface_temperature == 727.3
+    assert bc.surface_temperature == pytest.approx(727.3, abs=0.0)
     row['T_surf'] = float('nan')
     AragogRunner.update_solver(25.0, row, interior_o)
     assert bc.surface_temperature is None
