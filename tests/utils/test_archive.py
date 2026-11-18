@@ -152,6 +152,8 @@ def test_append_adds_new_files_to_existing_archive(tmp_path):
     # Discrimination: both 'a.txt' and 'b.txt' must be in the archive
     assert 'a.txt' in names
     assert 'b.txt' in names
+    # append moves the file: it is no longer loose
+    assert not (tmp_path / 'b.txt').exists()
 
 
 def test_append_returns_none_when_archive_missing(tmp_path, caplog):
@@ -449,20 +451,13 @@ def _tar_content_stats(tar_path) -> dict:
                            counted every time they appear);
       ``distinct``         total bytes counting each unique content once
                            (keyed by SHA-256 of the member bytes);
-      ``counts``           Counter of member name -> number of members;
-      ``distinct_by_name`` name -> number of *distinct* content hashes seen
-                           for that name.
+      ``counts``           Counter of member name -> number of members.
 
     ``inflation = gross / distinct``; 1.0 means no byte-identical duplication.
-    Measuring by content is what separates true waste -- the same bytes stored
-    twice, e.g. an unchanged EOS table re-appended every cycle -- from a
-    fixed-name file whose content legitimately evolved between cycles
-    (``distinct_by_name`` > 1), which must be preserved and is not waste.
     """
     gross = 0
     size_by_hash: dict[str, int] = {}
     counts: Counter = Counter()
-    hashes_by_name: dict[str, set[str]] = {}
     with tarfile.open(tar_path, 'r') as tar:
         for member in tar.getmembers():
             counts[member.name] += 1
@@ -472,12 +467,10 @@ def _tar_content_stats(tar_path) -> dict:
             digest = hashlib.sha256(data).hexdigest()
             gross += len(data)
             size_by_hash.setdefault(digest, len(data))
-            hashes_by_name.setdefault(member.name, set()).add(digest)
     return {
         'gross': gross,
         'distinct': sum(size_by_hash.values()),
         'counts': counts,
-        'distinct_by_name': {n: len(h) for n, h in hashes_by_name.items()},
     }
 
 
