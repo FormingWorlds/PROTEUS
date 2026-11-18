@@ -120,6 +120,17 @@ def test_escape_link_brackets_protects_units_but_not_real_links():
     assert _dg.escape_link_brackets('within (0, 10] bar') == 'within (0, 10\\] bar'
 
 
+def test_escape_link_brackets_keeps_footnote_marks():
+    """A footnote mark [^key] in a description stays a footnote mark; a unit bracket next to it
+    and a bracket that only looks like one are still escaped."""
+    text = 'value of Nimmo (2015)[^cite-nimmo2015b] in [W m-1 K-1]'
+    assert _dg.escape_link_brackets(text) == (
+        'value of Nimmo (2015)[^cite-nimmo2015b] in \\[W m-1 K-1\\]'
+    )
+    assert _dg.escape_link_brackets('a [^ b]') == 'a \\[^ b\\]'
+    assert _dg.escape_link_brackets(text, escape_pipes=True).count('[^cite-nimmo2015b]') == 1
+
+
 def test_escape_link_brackets_leaves_code_spans_alone_and_is_idempotent():
     """A backslash renders literally inside a code span, so brackets there must
     survive; escaping an already-escaped string is a fixed point."""

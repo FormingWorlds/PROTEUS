@@ -80,13 +80,15 @@ AGNI_DEADLOCK_MAX = 3
 
 
 def _status_on_missing_eos(start):
-    """Write status 20 when missing reference data stops ``start``, wherever it is raised."""
+    """Write status 20 when missing reference data or a refused resume stops ``start``,
+    wherever it is raised (the mesh check of a resume runs in the first interior step)."""
+    from proteus.interior_energetics.resume_laws import ResumeSeparationLawError
 
     @functools.wraps(start)
     def wrapper(self, *args, **kwargs):
         try:
             return start(self, *args, **kwargs)
-        except MissingReferenceData:
+        except (MissingReferenceData, ResumeSeparationLawError):
             UpdateStatusfile(self.directories, 20)
             raise
 
@@ -264,6 +266,7 @@ class Proteus:
         self.crystallized = (
             False  # Mantle solidified, outgassing stopped but evolution continues
         )
+        self.lid_sealed = False  # A crust holds the melt inventory (outgas.lid_seal)
         self.lockfile = '/tmp/none'  # Path to keepalive file
 
         # Default values for mors.spada cases
@@ -528,9 +531,13 @@ class Proteus:
             return False
         PrintHalfSeparator()
         stop = self.config.params.stop.solid
-        frozen = self.crystallized or (
-            stop.freeze_volatiles
-            and float(self.hf_row.get('Phi_global', 1.0)) <= float(stop.phi_crit)
+        frozen = (
+            self.crystallized
+            or self.lid_sealed
+            or (
+                stop.freeze_volatiles
+                and float(self.hf_row.get('Phi_global', 1.0)) <= float(stop.phi_crit)
+            )
         )
         kg_before = readable_total(self.hf_row)
         run_escape(
@@ -684,7 +691,8 @@ class Proteus:
         from proteus.orbit.common import Tides_t
         from proteus.orbit.wrapper import init_orbit, run_orbit
 
-        #   solid-phase volatile trapping
+        #   solid-phase volatile trapping, and the melt held under a closed crust
+        from proteus.outgas.lid_seal import restore_seal_state, run_lid_seal_step, seal_enabled
         from proteus.outgas.trapping import run_trapping
 
         #    outgassing
@@ -839,8 +847,8 @@ class Proteus:
         from proteus.accretion.wrapper import IMPACT_CONFIG_FIELDS
 
         # The record keeps the loaded values of the fields a giant impact changes; a resume
-        # writes it once every resume check has passed (before the main loop), so an attempt
-        # that stops earlier keeps the record of the laws the run used.
+        # writes it after its first interior step, once the solver has passed the mesh check of
+        # the snapshot, so an attempt that stops earlier keeps the record of the run.
         loaded = {key: attrgetter(key)(self.config) for key in IMPACT_CONFIG_FIELDS}
         record = functools.partial(
             self.config.write,
@@ -1100,6 +1108,14 @@ class Proteus:
                         self.config.params.stop.solid.phi_crit,
                     )
 
+            # The seal state is in the row; a held remelt reads the rows since closure.
+            self.lid_sealed = restore_seal_state(self.config, self.hf_row)
+            if self.lid_sealed:
+                log.info(
+                    'Resuming with the lid seal closed since t = %.3e yr',
+                    self.hf_row['seal_t_close'],
+                )
+
             # Restore the count of consecutive unresolved atmosphere solves, so
             # a run that stalls is not handed a fresh allowance by every
             # resume. Absent in helpfiles written before the column existed,
@@ -1251,8 +1267,7 @@ class Proteus:
         # advance Time indefinitely.
         self.agni_deadlock_count = 0
 
-        if self.config.params.resume:
-            record()
+        pending_record = record if self.config.params.resume else None
 
         # Main loop
         UpdateStatusfile(self.directories, 1)
@@ -1326,6 +1341,9 @@ class Proteus:
                 atmos_o=self.atmos_o,
                 write_data=is_snapshot,
             )
+            if pending_record is not None:
+                pending_record()
+                pending_record = None
             if _IT_TIMING_ENABLED:
                 _t_mod['interior'] = time.perf_counter() - _t0
 
@@ -1501,10 +1519,24 @@ class Proteus:
             if self.desiccated:
                 # no volatiles
                 run_desiccated(self.directories, self.config, self.hf_row, first_iter)
+                self.lid_sealed = False
 
             elif self.crystallized:
                 # post solidification
                 run_crystallized(self.config, self.hf_row, self.interior_o.dt)
+
+            elif seal_enabled(self.config):
+                self.lid_sealed = run_lid_seal_step(
+                    self.directories,
+                    self.config,
+                    self.hf_row,
+                    self.interior_o,
+                    self.lid_sealed,
+                    hf_all=self.hf_all,
+                    first_iter=first_iter,
+                    init_stage=self.init_stage,
+                    dt=self.interior_o.dt,
+                )
 
             else:
                 run_outgassing_and_vapourisation(
@@ -1536,7 +1568,8 @@ class Proteus:
             assert_mass_conservation(
                 self.hf_row,
                 require_atm_le_planet=not self.config.outgas.vapourise,
-                check_element_closure=trapping_active(self.config),
+                check_element_closure=trapping_active(self.config)
+                or (seal_enabled(self.config) and not self.desiccated),
                 derived_elements=derived_total_elements(self.config),
                 closure_rtol=self.config.outgas.solver_rtol,
             )
@@ -1669,6 +1702,8 @@ class Proteus:
                 if _IT_TIMING_ENABLED:
                     _t_mod['write'] = time.perf_counter() - _t0
                 self.last_write_time = self.hf_row.get('Time', 0.0)
+            else:
+                self._write_chemistry_target_snapshot()
 
             # Print info to terminal and log file
             PrintCurrentState(self.hf_row)
@@ -1844,6 +1879,30 @@ class Proteus:
         from proteus.observe.wrapper import run_observe
 
         run_observe(hf_row, self.config, self.directories)
+
+    def _write_chemistry_target_snapshot(self) -> bool:
+        """Write the atmosphere snapshot of a step that reaches a target of `atmos_chem.times`.
+
+        With a list or a table of targets, offline chemistry then finds a snapshot at each
+        target row, not only the snapshots written every `params.out.write_mod` steps. The
+        init stage, whose rows all hold t = 0, writes none. The helpfile is written with it,
+        so a resume sees the row of the snapshot and treats it like any other row without
+        an interior snapshot. Returns whether one was written.
+        """
+        from proteus.atmos_chem.common import chem_targets_crossed
+        from proteus.atmos_clim.wrapper import write_atmosphere_snapshot
+        from proteus.utils.coupler import WriteHelpfileToCSV
+
+        if self.init_stage or not self.config.atmos_chem.module:
+            return False
+        if not chem_targets_crossed(self.hf_all, self.config.atmos_chem.times):
+            return False
+        logging.getLogger('fwl.' + __name__).info(
+            'Writing the atmosphere snapshot for a chemistry target'
+        )
+        write_atmosphere_snapshot(self.atmos_o, self.config, self.directories, self.hf_row)
+        WriteHelpfileToCSV(self.directories['output'], self.hf_all)
+        return True
 
     def _postprocess_chemistry(self, hf_all):
         """Run atmospheric chemistry at the snapshots set by `atmos_chem.times`.

@@ -43,8 +43,10 @@ from proteus.config._config import (
     boreas_requires_atmosphere,
     boundary_requires_fixed_surface_state,
     check_module_dependencies,
+    chemistry_climate_needs_agni,
     front_trapping_requires_aragog,
     instmethod_evolve,
+    lid_requires_the_skin_atmosphere,
     orbit_requires_tides,
     parameterized_excludes_accretion,
     parameterized_excludes_tides,
@@ -346,7 +348,7 @@ def test_check_module_dependencies_raises_when_vulcan_missing():
         return real_import(name)
 
     with patch('importlib.import_module', side_effect=_fake_import):
-        with pytest.raises(ImportError, match=r'fwl-proteus\[vulcan\]') as excinfo:
+        with pytest.raises(ImportError, match='bash tools/get_vulcan.sh') as excinfo:
             check_module_dependencies(instance, None, None)
     # The message must name atmos_chem.module (not, e.g., outgas) so the vulcan
     # branch is the one that fired, and must carry the GPL-3.0 license notice.
@@ -354,9 +356,9 @@ def test_check_module_dependencies_raises_when_vulcan_missing():
     assert 'atmos_chem.module = "vulcan"' in msg
     assert 'needs the VULCAN package (GPL-3.0 licensed), which is not installed.' in msg
     assert 'bash install.sh sets it up;' in msg
-    assert msg.index('bash tools/get_vulcan.sh in the PROTEUS folder') < msg.index(
-        'pip install "fwl-proteus[vulcan]"'
-    )
+    assert 'run bash tools/get_vulcan.sh in the PROTEUS folder' in msg
+    # The PyPI wheel has no network files, so the message must not offer it as an install.
+    assert 'fwl-proteus[vulcan]' not in msg
     assert 'optional' not in msg
     assert 'backend' not in msg
     # The chained cause preserves the underlying import failure detail.
@@ -1951,3 +1953,124 @@ def test_saturation_skin_is_silent_with_atmodeller_condensates_or_a_numeric_skin
         assert saturation_skin_warns_without_condensates(on, None, None) is None
         assert saturation_skin_warns_without_condensates(numeric, None, None) is None
     assert not any('saturation' in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.unit
+def test_live_lid_requires_the_skin_surface_of_agni_or_the_dummy():
+    """The atmosphere sees the Aragog lid only through the skin of AGNI or the dummy, so a
+    live lid with JANUS or with another surface state is refused when the config loads."""
+
+    def cfg(module, state, mush=True, interior='aragog'):
+        return SimpleNamespace(
+            atmos_clim=SimpleNamespace(module=module, surf_state=state),
+            interior_energetics=SimpleNamespace(
+                module=interior, aragog=SimpleNamespace(lid_mush_base=mush)
+            ),
+        )
+
+    for module in ('agni', 'dummy'):
+        assert lid_requires_the_skin_atmosphere(cfg(module, 'skin'), None, None) is None
+    with pytest.raises(ValueError, match=r'atmos_clim.module = "janus"') as excinfo:
+        lid_requires_the_skin_atmosphere(cfg('janus', 'skin'), None, None)
+    assert 'lid_mush_base' in str(excinfo.value)
+    for state in ('fixed', 'mixed_layer'):
+        with pytest.raises(ValueError, match=r'surf_state') as excinfo:
+            lid_requires_the_skin_atmosphere(cfg('agni', state), None, None)
+        assert repr(state) in str(excinfo.value)
+    # without the lid, or with another interior, every atmosphere passes
+    assert (
+        lid_requires_the_skin_atmosphere(cfg('janus', 'fixed', mush=False), None, None) is None
+    )
+    assert (
+        lid_requires_the_skin_atmosphere(cfg('janus', 'fixed', interior='spider'), None, None)
+        is None
+    )
+
+
+@pytest.mark.unit
+def test_lid_delta_on_is_unset_by_default_and_refuses_bad_values():
+    """``interior_energetics.aragog.lid_delta_on`` is None by default (derived from the skin);
+    an explicit value must be a finite float above 0."""
+    from proteus.config._interior import Aragog
+
+    assert Aragog().lid_delta_on is None
+    assert Aragog(lid_delta_on='none').lid_delta_on is None  # the TOML spelling of None
+    assert Aragog(lid_delta_on=0.02).lid_delta_on == pytest.approx(0.02, rel=1e-15)
+    for bad in (True, False, '0.02', float('nan'), float('inf'), 0.0, -0.02):
+        with pytest.raises((TypeError, ValueError), match='lid_delta_on'):
+            Aragog(lid_delta_on=bad)
+
+
+@pytest.mark.unit
+def test_lid_delta_on_accepts_exactly_the_finite_positive_floats():
+    """Property: a float is accepted if and only if it is finite and above 0."""
+    import math
+
+    hypothesis = pytest.importorskip('hypothesis')
+    st = pytest.importorskip('hypothesis.strategies')
+
+    from proteus.config._interior import Aragog
+
+    @hypothesis.settings(max_examples=200, deadline=None)
+    @hypothesis.given(st.floats(allow_nan=True, allow_infinity=True))
+    @hypothesis.example(5e-324)
+    @hypothesis.example(-0.0)
+    def check(value):
+        if math.isfinite(value) and value > 0.0:
+            assert Aragog(lid_delta_on=value).lid_delta_on == value
+        else:
+            with pytest.raises(ValueError, match='lid_delta_on'):
+                Aragog(lid_delta_on=value)
+
+    check()
+
+
+@pytest.mark.unit
+def test_live_lid_on_a_saturation_skin_is_refused():
+    """A saturation skin has no thickness while no condensate layer has formed, and the series
+    stack of a condensate layer on the lid is not built: the lid on a saturation skin is refused
+    with or without lid_delta_on; a numeric skin passes."""
+
+    def cfg(surface_d, delta_on):
+        return SimpleNamespace(
+            atmos_clim=SimpleNamespace(module='agni', surf_state='skin', surface_d=surface_d),
+            interior_energetics=SimpleNamespace(
+                module='aragog',
+                aragog=SimpleNamespace(lid_mush_base=True, lid_delta_on=delta_on),
+            ),
+        )
+
+    for delta_on in (None, 0.02):
+        with pytest.raises(ValueError, match="surface_d = 'saturation'") as excinfo:
+            lid_requires_the_skin_atmosphere(cfg('saturation', delta_on), None, None)
+        assert 'lid_mush_base' in str(excinfo.value)
+    assert lid_requires_the_skin_atmosphere(cfg(0.01, None), None, None) is None
+    assert lid_requires_the_skin_atmosphere(cfg(0.01, 0.02), None, None) is None
+
+
+@pytest.mark.unit
+def test_chemistry_coupled_to_agni_needs_the_agni_climate():
+    """Coupling the chemistry to the climate re-solves the AGNI climate, so it is refused with
+    JANUS or the dummy climate, and with AGNI on a prescribed profile (solve_energy off),
+    and accepted with AGNI solving the energy balance; without coupling any climate passes."""
+
+    def cfg(climate, couple, solve_energy=True):
+        return SimpleNamespace(
+            atmos_clim=SimpleNamespace(
+                module=climate, agni=SimpleNamespace(solve_energy=solve_energy)
+            ),
+            atmos_chem=SimpleNamespace(vulcan=SimpleNamespace(couple_agni=couple)),
+        )
+
+    for climate in ('janus', 'dummy'):
+        instance = cfg(climate, True)
+        with pytest.raises(ValueError, match="needs atmos_clim.module = 'agni'"):
+            chemistry_climate_needs_agni(instance, None, instance.atmos_chem)
+    instance = cfg('agni', True)
+    assert chemistry_climate_needs_agni(instance, None, instance.atmos_chem) is None
+    # a prescribed AGNI profile does not respond to the composition
+    instance = cfg('agni', True, solve_energy=False)
+    with pytest.raises(ValueError, match='solve_energy = true'):
+        chemistry_climate_needs_agni(instance, None, instance.atmos_chem)
+    instance = cfg('janus', False)
+    assert chemistry_climate_needs_agni(instance, None, instance.atmos_chem) is None

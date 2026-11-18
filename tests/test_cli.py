@@ -2117,6 +2117,7 @@ def _export_env_site(monkeypatch, tmp_path, conda_prefix):
         monkeypatch.setenv('CONDA_PREFIX', conda_prefix)
         monkeypatch.setenv('CONDA_DEFAULT_ENV', 'proteus')
     (tmp_path / 'fwl data').mkdir()
+    monkeypatch.delenv('JULIA_DEPOT_PATH', raising=False)
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl data'))
     home = tmp_path / 'home'
     home.mkdir()
@@ -2223,6 +2224,119 @@ def test_export_env_keeps_a_value_with_a_single_quote_out_of_conda(monkeypatch, 
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('value', ['/data/depot:', '', None], ids=['set', 'empty', 'unset'])
+def test_install_vars_record_a_set_julia_depot_and_invent_none(monkeypatch, tmp_path, value):
+    """A set depot goes to the record; with none the user stays on the default of Julia."""
+    if value is None:
+        monkeypatch.delenv('JULIA_DEPOT_PATH', raising=False)
+    else:
+        monkeypatch.setenv('JULIA_DEPOT_PATH', value)
+    variables = cli._install_vars(tmp_path, tmp_path / 'fwl', None)
+    assert variables.get('JULIA_DEPOT_PATH') == (value or None)
+    assert variables['FWL_DATA'] == str(tmp_path / 'fwl')
+
+
+def _foreign_depot(tmp_path, kind):
+    """The depot value of another install, or of an env that is gone from an envs folder."""
+    if kind == 'other':
+        other = tmp_path / 'other'
+        (other / 'conda-meta').mkdir(parents=True)
+    else:
+        other = tmp_path / 'envs' / 'gone'
+        other.parent.mkdir()
+    return f'{other}/julia_depot:'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('kind', ['other', 'gone'])
+def test_setup_scripts_use_the_own_depot_and_say_the_shell_stays(
+    monkeypatch, tmp_path, kind, capsys
+):
+    """A Julia step fills the depot of this env, and one line names both values."""
+    root = tmp_path / 'proteus'
+    root.mkdir()
+    foreign = _foreign_depot(tmp_path, kind)
+    own = f'{tmp_path / "this"}/julia_depot:'
+    monkeypatch.setenv('CONDA_PREFIX', str(tmp_path / 'this'))
+    monkeypatch.delenv('CONDA_DEFAULT_ENV', raising=False)
+    monkeypatch.setenv('JULIA_DEPOT_PATH', foreign)
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    assert cli._env_with_proteus_julia(root).get('JULIA_DEPOT_PATH') == own
+    assert os.environ['JULIA_DEPOT_PATH'] == foreign
+    lines = [ln for ln in capsys.readouterr().out.splitlines() if foreign in ln]
+    assert len(lines) == 1
+    assert own in lines[0]
+    assert 'your shell stays' in lines[0]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'active',
+    [{}, {'CONDA_DEFAULT_ENV': 'base', 'CONDA_PREFIX': '<base>'}],
+    ids=['none', 'base'],
+)
+def test_setup_scripts_with_no_env_of_their_own_drop_the_value_and_say_so(
+    monkeypatch, tmp_path, active, capsys
+):
+    """With no env to hold a depot, Julia uses ~/.julia, and one line says so."""
+    root = tmp_path / 'proteus'
+    root.mkdir()
+    foreign = _foreign_depot(tmp_path, 'other')
+    monkeypatch.delenv('CONDA_PREFIX', raising=False)
+    monkeypatch.delenv('CONDA_DEFAULT_ENV', raising=False)
+    for name, value in active.items():
+        monkeypatch.setenv(name, value.replace('<base>', str(tmp_path / 'base')))
+    monkeypatch.setenv('JULIA_DEPOT_PATH', foreign)
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    assert 'JULIA_DEPOT_PATH' not in cli._env_with_proteus_julia(root)
+    lines = [ln for ln in capsys.readouterr().out.splitlines() if foreign in ln]
+    assert len(lines) == 1
+    assert '~/.julia' in lines[0]
+
+
+@pytest.mark.unit
+def test_install_vars_record_the_depot_that_the_julia_steps_used(monkeypatch, tmp_path, capsys):
+    """A later shell needs the packages that the steps installed, so the file holds that value."""
+    foreign = _foreign_depot(tmp_path, 'other')
+    own = f'{tmp_path / "this"}/julia_depot:'
+    monkeypatch.setenv('CONDA_PREFIX', str(tmp_path / 'this'))
+    monkeypatch.delenv('CONDA_DEFAULT_ENV', raising=False)
+    monkeypatch.setenv('JULIA_DEPOT_PATH', foreign)
+    monkeypatch.setenv('PATH', str(tmp_path))
+    variables = cli._install_vars(tmp_path, tmp_path / 'fwl', None)
+    assert variables.get('JULIA_DEPOT_PATH') == own
+    assert foreign.rstrip(':') in capsys.readouterr().out
+    cli._export_env(tmp_path, variables)
+    assert f"export JULIA_DEPOT_PATH='{own}'" in (tmp_path / '.proteus-env.sh').read_text()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('kind', ['other', 'gone'])
+def test_install_vars_with_no_env_record_no_foreign_depot(monkeypatch, tmp_path, kind, capsys):
+    """No env, so no own depot to record, and the words name what the folder is."""
+    foreign = _foreign_depot(tmp_path, kind)
+    monkeypatch.delenv('CONDA_PREFIX', raising=False)
+    monkeypatch.delenv('CONDA_DEFAULT_ENV', raising=False)
+    monkeypatch.setenv('JULIA_DEPOT_PATH', foreign)
+    variables = cli._install_vars(tmp_path, tmp_path / 'fwl', None)
+    assert 'JULIA_DEPOT_PATH' not in variables
+    out = capsys.readouterr().out
+    assert ('another PROTEUS install' in out) == (kind == 'other')
+    assert ('is gone' in out) == (kind == 'gone')
+
+
+@pytest.mark.unit
+def test_setup_scripts_keep_a_depot_of_the_user(monkeypatch, tmp_path):
+    """Any other value reaches the script unchanged."""
+    root = tmp_path / 'proteus'
+    root.mkdir()
+    monkeypatch.setenv('JULIA_DEPOT_PATH', f'{tmp_path}/depot:')
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    assert cli._env_with_proteus_julia(root).get('JULIA_DEPOT_PATH') == f'{tmp_path}/depot:'
+    assert os.environ['JULIA_DEPOT_PATH'] == f'{tmp_path}/depot:'
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     'bound', ['unset', 'not-executable', 'missing'], ids=['unset', 'not-executable', 'missing']
 )
@@ -2237,6 +2351,7 @@ def test_install_vars_never_take_the_julia_on_path(monkeypatch, tmp_path, capsys
         'which',
         lambda exe: '/opt/julia-1.10.4/bin/julia' if exe == 'julia' else None,
     )
+    monkeypatch.delenv('JULIA_DEPOT_PATH', raising=False)
     exe = tmp_path / 'julia-1.13.1' / 'bin' / 'julia'
     if bound == 'unset':
         monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)

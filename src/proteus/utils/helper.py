@@ -407,6 +407,17 @@ def format_subyear_time(time: float) -> str:
     return ('%.3f' % time).replace('.', 'p')
 
 
+def latest_at_or_before(times, target: float) -> float | None:
+    """The latest of `times` [yr] at or before `target` [yr], or None when all are later.
+
+    Snapshot and spectrum files are matched to a time this way, so each time uses the
+    files the run had written by then. Half of SUBYEAR_TIME_RESOLUTION is allowed after
+    `target`, for the rounding of a file name to that resolution.
+    """
+    earlier = [float(t) for t in times if t <= target + 0.5 * SUBYEAR_TIME_RESOLUTION]
+    return max(earlier) if earlier else None
+
+
 def parse_subyear_time(token: str) -> float:
     """Parse a sub-year time token back to a float.
 
