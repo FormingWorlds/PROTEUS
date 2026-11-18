@@ -303,6 +303,11 @@ def test_clean_text_keeps_text_after_a_less_than_sign():
     assert collect.clean_text('<!DOCTYPE html><?xml v?><B>x</B>', 100) == 'x'
     assert collect.clean_text('<a <b>x', 100) == 'a x'
     assert collect.clean_text('a<b>c x<3', 100) == 'a c x 3'
+    assert collect.clean_text('a<3 and b>2 <\u00e9>x', 100) == 'a 3 and b 2 \u00e9 x'
+    assert (
+        collect.clean_text('see now. Note: ok a//b my www site', 100)
+        == 'see now. Note: ok a//b my www site'
+    )
     out = collect.clean_text('T < 300 K ' + 'word ' * 5000 + 'tail', 20000)
     assert out == 'T 300 K ' + ' '.join(['word'] * 3998)
 
