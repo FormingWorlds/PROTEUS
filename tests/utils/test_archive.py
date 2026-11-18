@@ -522,27 +522,11 @@ def test_create_snapshots_only_first_cycle_skips_runtime_files(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# End-to-end lifecycle inflation
-#
-# The tests above exercise archive.* in isolation. The two below replay the
-# full archive lifecycle from src/proteus/proteus.py on a realistic mini
-# output/data/ directory and measure tar inflation by *content*, not just by
-# name. This is what the production profiling exposed: a per-run data.tar that
-# stored far more bytes than it extracted to, because tarfile append never
-# deduplicates (archive.py:183-187).
-#
-# The proteus.py sequence being mirrored:
-#   * rolling, in the coupling loop (proteus.py:1188-1198):
-#       archive.update(data, remove_files=False, snapshots_only=True)
-#       archive.remove_old(data, before=Time*0.99)
-#   * final, at run end (proteus.py:1269-1272):
-#       archive.update(data, remove_files=True)   # snapshots_only defaults False
+# End-to-end archive lifecycle
 # ---------------------------------------------------------------------------
 
-# Distinct simulated times [yr] for the rolling cycles. The ratio between
-# successive times exceeds 1/0.99, so remove_old(before=t*0.99) prunes the
-# previous cycle's snapshot only after the current cycle has already
-# re-appended it -- the mechanism that duplicates every snapshot.
+# Simulated times [yr]; each is more than 1/0.99 times the previous, so
+# remove_old prunes a snapshot only after the next cycle has appended it again.
 _CYCLE_TIMES = [100, 1000, 10000, 100000]
 
 
@@ -623,37 +607,19 @@ def _replay_lifecycle(data_dir, *, rolling_snapshots_only):
             str(data_dir), remove_files=False, snapshots_only=rolling_snapshots_only
         )
         archive_mod.remove_old(str(data_dir), before=t * 0.99)
-    # End-of-run full archive (proteus.py:1269-1272): snapshots_only defaults
-    # to False, so this packs the still-loose snapshots plus every fixed-name
-    # file and the EOS directory in one pass.
+    # End-of-run full archive: the loose snapshots, every fixed-name file and
+    # the EOS directory, in one pass.
     archive_mod.update(str(data_dir), remove_files=True)
 
 
 def test_lifecycle_final_pass_stores_reference_data_once(tmp_path):
-    """Over the *full* proteus.py lifecycle the static EOS table and the
-    fixed-name runtime files end up in data.tar exactly once.
+    """Over the full lifecycle, including the end-of-run archive, the static EOS
+    table and the fixed-name runtime files enter data.tar exactly once.
 
-    Scope vs the existing suite: that snapshots_only=True keeps these files
-    out of the per-cycle *rolling* growth is already covered by
-    ``test_update_snapshots_only_bounds_tar_growth_across_cycles`` (added in
-    PROTEUS #706), which stops after the rolling loop and checks name counts.
-    This test extends that coverage in two ways it does not reach:
-      1. it also runs the end-of-run full archive
-         (``update(remove_files=True)``, proteus.py:1269-1272), so the
-         assertion is "exactly once across the whole lifecycle" rather than
-         "zero during rolling" -- the final pass is where these files
-         legitimately enter the tar;
-      2. it measures by member *content*, not just by name.
-
-    Content-level discrimination against the pre-#706 behaviour: replaying
-    the identical directory with snapshots_only=False (which emulates the
-    frozen release that produced the profiled dataset) re-appends the EOS
-    table every cycle. By member *content* those repeats are one distinct
-    payload duplicated len(_CYCLE_TIMES)+1 times -- pure waste -- whereas the
-    evolving zalmoxis_output.dat yields one distinct content per cycle, which
-    must be preserved rather than counted as waste. A name-only count cannot
-    tell these apart; the assertions below check both directions so the guard
-    fails on the unfiltered path and is not trivially satisfied.
+    Discrimination: a rolling archive without snapshots_only stores the EOS
+    table once per cycle plus once at the end, as one distinct content, while
+    the evolving zalmoxis_output.dat keeps one distinct content per cycle. Only
+    a count by content tells these apart.
     """
     n_cycles = len(_CYCLE_TIMES)
 
@@ -672,10 +638,8 @@ def test_lifecycle_final_pass_stores_reference_data_once(tmp_path):
     _replay_lifecycle(unfixed, rolling_snapshots_only=False)
     unfixed_stats = _tar_content_stats(unfixed / 'unfixed.tar')
 
-    # Discrimination: without the filter the unchanging EOS table is re-added
-    # every rolling cycle plus once by the final pass -- many members, one
-    # distinct content. This is exactly the storage waste the profiling found,
-    # and proves the guard above would fail on the pre-#706 code path.
+    # Discrimination: without the filter the unchanging EOS table enters the tar
+    # every cycle and once more at the end: many members, one distinct content.
     assert unfixed_stats['counts']['spider_eos/table.dat'] == n_cycles + 1
     assert unfixed_stats['distinct_by_name']['spider_eos/table.dat'] == 1
     # But zalmoxis_output.dat genuinely changed each cycle: content hashing
