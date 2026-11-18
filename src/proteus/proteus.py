@@ -681,6 +681,7 @@ class Proteus:
 
         #   other utilities
         from proteus.utils.coupler import (
+            ESCAPE_NOT_EVALUATED_KEYS,
             CreateHelpfileFromDict,
             CreateLockFile,
             ExtendHelpfile,
@@ -856,6 +857,8 @@ class Proteus:
 
             # Create an empty initial row for helpfile
             self.hf_row = ZeroHelpfileRow()
+            for key in ESCAPE_NOT_EVALUATED_KEYS:
+                self.hf_row[key] = -1.0
 
             # Stellar mass
             update_stellar_mass(self.hf_row, self.config)

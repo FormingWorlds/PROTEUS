@@ -1156,6 +1156,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `esc_f_ion_exo` | `1` | ionization fraction at the exobase, -1 if not evaluated | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
 | `esc_base_clamp_dex` | `1` | decades between the wind base and the level used | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
 | `esc_profile_source` | `1` | column read: 1 latest solve, 2 earlier solve, 3 isothermal, 0 not set | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
+| `esc_flags` | `1` | dispatcher flags as bits, see escape.dispatcher.FLAG_BITS, 0 if none or not set | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
 | `esc_graphite_kg` | `kg` | carbon escape left as graphite over a frozen mantle | `outgas/fractionated_debit.py` | always | outgas |
 
 ### Climate quantities

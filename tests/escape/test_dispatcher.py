@@ -524,8 +524,150 @@ def test_a_skipped_step_leaves_no_diagnostic_of_the_step_before():
     ):
         assert row[key] == pytest.approx(-1.0, rel=0.0, abs=0.0), key
     assert (row['esc_base_clamp_dex'], row['esc_rate_branch'], row['esc_regime']) == (0, 0, 0)
+    assert row['esc_flags'] == 0.0
     assert row['p_xuv'] == pytest.approx(1e-12, rel=1e-15)
     assert row['R_xuv'] == row['R_int']
+
+    # A resumed run reads the same keys as -1 when its helpfile predates them.
+    from proteus.utils.coupler import ESCAPE_NOT_EVALUATED_KEYS
+
+    assert {k for k, v in row.items() if k.startswith('esc_') and v == -1.0} == set(
+        ESCAPE_NOT_EVALUATED_KEYS
+    )
+
+
+def test_raised_flags_reach_the_helpfile_as_bits():
+    """Each raised flag sets its own bit of esc_flags, and the bits decode to the same names.
+
+    A flag with a value (the Roche subflag) counts as raised, False and None do
+    not, and a name outside the documented list sets the reserved bit, so a
+    finished run can be searched for any flag without its log.
+    """
+    from proteus.escape.dispatcher import (
+        FLAG_NAMES,
+        FLAG_UNKNOWN_BIT,
+        decode_flags,
+        encode_flags,
+    )
+
+    flags = {
+        'hydrostatic_lower_limit': True,
+        'roche_subflag': 'dynamical',
+        'base_clamped': False,
+        'thermostat_clamped': None,
+        'a_flag_added_later': True,
+    }
+    value = encode_flags(flags)
+    assert decode_flags(value) == ['hydrostatic_lower_limit', 'roche_subflag', 'unknown']
+    assert value < 2.0**53 and value == float(int(value))
+    assert len(set(FLAG_NAMES)) == len(FLAG_NAMES)
+    assert encode_flags({}) == 0.0 and decode_flags(0.0) == []
+    assert decode_flags(float(FLAG_UNKNOWN_BIT)) == ['unknown']
+    assert decode_flags(-1.0) == [] and decode_flags(float('nan')) == []
+
+    result = SimpleNamespace(
+        regime='hydrostatic',
+        rate_branch='hydrostatic',
+        mdot=1.0,
+        per_species={'H': 1.0},
+        flags={'hydrostatic_lower_limit': True},
+        diagnostics={},
+    )
+    row = {}
+    store_result(row, result, PROFILE_SOLVE)
+    assert decode_flags(row['esc_flags']) == ['hydrostatic_lower_limit']
+
+
+def test_the_flag_bits_keep_their_positions():
+    """The bit of each flag is fixed, so a helpfile written now decodes the same later.
+
+    New flags may only be appended; the unknown-flag bit sits at 52, out of the
+    way of appended names.
+    """
+    from proteus.escape.dispatcher import FLAG_BITS, FLAG_NAMES, FLAG_UNKNOWN_BIT
+
+    frozen = (
+        'base_clamped', 'base_clamp_decades', 'base_extended', 'base_extension_truncated',
+        'base_method_fallback', 'photo_clamped', 'bondi_inflated', 'thermostat_clamped',
+        'subcritical_sonic', 'caldiroli_out_of_box', 'caldiroli_below_flux_bound',
+        'efficiency_fallback_fixed', 'bolometric_residual', 'gate_rerouted', 'contested_ion',
+        'hysteresis_active', 'hydrostatic_lower_limit', 'volkov_extrapolated',
+        'exobase_not_reached', 'exobase_at_anchor', 'extension_unbound', 'roche_overflow',
+        'roche_subflag', 'nozzle_saturated', 'nozzle_orbit_averaged', 'nozzle_partial_orbit',
+        'near_roche', 't_exo_floored_to_profile_top', 'luminosity_capped', 'k_tide_undefined',
+        'split_from_base_composition', 'rock_former_bij', 'substituted_bij',
+        'closure_trace_resolve_failed', 'stale_input',
+    )  # fmt: skip
+    assert FLAG_NAMES[: len(frozen)] == frozen
+    assert FLAG_BITS['base_clamped'] == 1 and FLAG_BITS['stale_input'] == 1 << 34
+    assert FLAG_UNKNOWN_BIT == 1 << 52 and len(FLAG_NAMES) < 52
+
+
+def test_every_flag_zephyrus_sets_by_name_has_a_bit():
+    """Every flag key the installed ZEPHYRUS source assigns by subscript is in FLAG_NAMES.
+
+    A scan of ``flags['name'] = ...`` assignments, which is how ZEPHYRUS raises
+    most of its flags; flags built in dict literals are not seen by it, so the
+    list is also checked against the ZEPHYRUS results reference by hand.
+    """
+    import re
+    from pathlib import Path
+
+    import zephyrus
+
+    from proteus.escape.dispatcher import FLAG_NAMES
+
+    pattern = re.compile(r"flags\[['\"]([a-z_0-9]+)['\"]\]\s*=")
+    found = set()
+    for path in Path(zephyrus.__file__).parent.glob('*.py'):
+        found |= set(pattern.findall(path.read_text()))
+    assert len(found) >= 20
+    assert found <= set(FLAG_NAMES), sorted(found - set(FLAG_NAMES))
+
+
+def test_a_flag_outside_the_list_is_recorded_and_warned(caplog):
+    """A flag a newer ZEPHYRUS adds sets the unknown bit and is named in a warning."""
+    import logging
+    from unittest.mock import patch
+
+    from proteus.escape.dispatcher import FLAG_UNKNOWN_BIT, decode_flags
+
+    result = SimpleNamespace(
+        regime='hydrostatic',
+        rate_branch='hydrostatic',
+        mdot=1.0,
+        per_species={'H': 1.0},
+        flags={'a_flag_added_later': True, 'hydrostatic_lower_limit': True},
+        diagnostics={},
+    )
+    row = _row()
+    with patch('zephyrus.dispatch', return_value=result), caplog.at_level(logging.WARNING):
+        run_dispatcher(_config(), row, atmos_o=_atmos(row), dt=1.0)
+    assert int(row['esc_flags']) & FLAG_UNKNOWN_BIT
+    assert decode_flags(row['esc_flags']) == ['hydrostatic_lower_limit', 'unknown']
+    assert 'a_flag_added_later' in caplog.text
+
+
+def test_the_flags_of_real_dispatches_have_bits(caplog):
+    """The flags real dispatches raise are all in the documented list, none in the reserved bit.
+
+    Runs the dispatcher on the test planets of this file and checks that no
+    raised flag falls outside FLAG_NAMES. These states raise only a few of the
+    flags; the source scan above covers the rest.
+    """
+    import logging
+
+    from proteus.escape.dispatcher import FLAG_UNKNOWN_BIT
+
+    rows = [_row(), _row(F_xuv=1.0e3), _mars_row(), _mars_row(H2_vmr=0.0, CO2_vmr=1.0)]
+    seen = 0
+    for row in rows:
+        with caplog.at_level(logging.WARNING):
+            run_dispatcher(_config(), row, atmos_o=None, dt=1.0)
+        assert not int(row['esc_flags']) & FLAG_UNKNOWN_BIT
+        seen |= int(row['esc_flags'])
+    assert 'outside the esc_flags bits' not in caplog.text
+    assert seen > 0
 
 
 def _mars_row(**gases):

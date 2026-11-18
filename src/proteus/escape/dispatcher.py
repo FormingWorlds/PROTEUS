@@ -47,6 +47,75 @@ F_FLOOR = 1.0e-10
 # Value written for a diagnostic the dispatcher did not evaluate.
 NOT_EVALUATED = -1.0
 
+# The flags ZEPHYRUS documents for a dispatch result, in the order of its results
+# reference page. Bit i of the helpfile column esc_flags is FLAG_NAMES[i], and bit 52
+# marks a flag missing from this list. Appending names keeps old rows readable.
+FLAG_NAMES = (
+    'base_clamped',
+    'base_clamp_decades',
+    'base_extended',
+    'base_extension_truncated',
+    'base_method_fallback',
+    'photo_clamped',
+    'bondi_inflated',
+    'thermostat_clamped',
+    'subcritical_sonic',
+    'caldiroli_out_of_box',
+    'caldiroli_below_flux_bound',
+    'efficiency_fallback_fixed',
+    'bolometric_residual',
+    'gate_rerouted',
+    'contested_ion',
+    'hysteresis_active',
+    'hydrostatic_lower_limit',
+    'volkov_extrapolated',
+    'exobase_not_reached',
+    'exobase_at_anchor',
+    'extension_unbound',
+    'roche_overflow',
+    'roche_subflag',
+    'nozzle_saturated',
+    'nozzle_orbit_averaged',
+    'nozzle_partial_orbit',
+    'near_roche',
+    't_exo_floored_to_profile_top',
+    'luminosity_capped',
+    'k_tide_undefined',
+    'split_from_base_composition',
+    'rock_former_bij',
+    'substituted_bij',
+    'closure_trace_resolve_failed',
+    'stale_input',
+)
+FLAG_BITS = {name: 1 << i for i, name in enumerate(FLAG_NAMES)}
+FLAG_UNKNOWN_BIT = 1 << 52
+
+
+def raised_flags(flags: dict) -> list[str]:
+    """Names of the flags a dispatch raised: every entry not False or None."""
+    return sorted(k for k, v in flags.items() if v is not False and v is not None)
+
+
+def encode_flags(flags: dict) -> float:
+    """Encode the raised flags of a dispatch as the bits of ``esc_flags``.
+
+    A flag outside :data:`FLAG_NAMES` sets :data:`FLAG_UNKNOWN_BIT`. Every bit
+    is below 2**53, so the value is exact in a float column.
+    """
+    bits = 0
+    for name in raised_flags(flags):
+        bits |= FLAG_BITS.get(name, FLAG_UNKNOWN_BIT)
+    return float(bits)
+
+
+def decode_flags(value: float) -> list[str]:
+    """Names of the flags set in an ``esc_flags`` value, ``'unknown'`` for the reserved bit."""
+    bits = int(value) if math.isfinite(value) and value > 0 else 0
+    names = [name for name, bit in FLAG_BITS.items() if bits & bit]
+    if bits & FLAG_UNKNOWN_BIT:
+        names.append('unknown')
+    return names
+
 
 def dispatch_settings(zcfg: Zephyrus):
     """Return the ZEPHYRUS dispatch settings for a ``escape.zephyrus`` block.
@@ -277,6 +346,7 @@ def store_result(hf_row: dict, result, source: int) -> None:
     hf_row['esc_f_ion_exo'] = _finite_or(hydrostatic.get('f_plus_exo'))
     hf_row['esc_base_clamp_dex'] = _finite_or(base.get('clamp_decades'), 0.0)
     hf_row['esc_profile_source'] = float(source)
+    hf_row['esc_flags'] = encode_flags(result.flags)
     p_base = _finite_or(base.get('p_Pa'))
     if p_base > 0.0:
         hf_row['p_xuv'] = p_base * 1e-5
@@ -293,7 +363,13 @@ def _no_escape(hf_row: dict) -> float:
     hf_row['esc_rate_total'] = 0.0
     for e in element_list:
         hf_row[f'esc_rate_{e}'] = 0.0
-    for key in ('esc_regime', 'esc_rate_branch', 'esc_profile_source', 'esc_base_clamp_dex'):
+    for key in (
+        'esc_regime',
+        'esc_rate_branch',
+        'esc_profile_source',
+        'esc_base_clamp_dex',
+        'esc_flags',
+    ):
         hf_row[key] = 0.0
     for key in (
         'esc_kn_sonic',
@@ -349,11 +425,13 @@ def run_dispatcher(
     result = dispatch(inputs)
     store_result(hf_row, result, source)
 
-    raised = sorted(
-        k if v is True else f'{k}={v}'
-        for k, v in result.flags.items()
-        if v is not False and v is not None
-    )
+    raised = [
+        k if result.flags[k] is True else f'{k}={result.flags[k]}'
+        for k in raised_flags(result.flags)
+    ]
+    unknown = [k for k in raised_flags(result.flags) if k not in FLAG_BITS]
+    if unknown:
+        log.warning('Escape flags outside the esc_flags bits: %s', ', '.join(unknown))
     log.info(
         'Escape regime %s (rate from %s), Kn at the sonic point %.2e',
         result.regime,
