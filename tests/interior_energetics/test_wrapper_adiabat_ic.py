@@ -79,6 +79,23 @@ from proteus.interior_energetics.wrapper import (
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
+@pytest.fixture(autouse=True)
+def core_table_calls(monkeypatch):
+    """Stub of the core temperature table: records (interior_o, t_anchor) and returns a sentinel,
+    since these rows carry no structure; tests/interior_energetics/test_structure_core_table.py
+    tests the table."""
+    import proteus.interior_energetics.wrapper as wrapper_mod
+
+    calls = []
+
+    def stub(config, interior_o, hf_row, t_anchor=None):
+        calls.append((interior_o, t_anchor))
+        return ('core table', t_anchor)
+
+    monkeypatch.setattr(wrapper_mod, '_structure_core_table', stub)
+    return calls
+
+
 def _config(
     module: str = 'aragog',
     temperature_mode: str = 'liquidus_super',
@@ -536,7 +553,7 @@ def test_sample_adiabat_arrays_returns_none_on_bad_input(tmp_path):
     assert _sample_adiabat_temperature_arrays(str(tmp_path), _raising_closure) is None
 
 
-def test_adiabat_solve_hands_sampled_arrays_alongside_callable(tmp_path):
+def test_adiabat_solve_hands_sampled_arrays_alongside_callable(tmp_path, core_table_calls):
     """The adiabat solve passes both the closure and its r-indexed sampling.
 
     With a numeric previous structure on disk, the solver receives the same
@@ -563,6 +580,7 @@ def test_adiabat_solve_hands_sampled_arrays_alongside_callable(tmp_path):
     ):
         received['tf'] = temperature_function
         received['arrays'] = temperature_arrays
+        received['core'] = kw.get('core_temperature_arrays')
         row['R_int'] = 1.2746e7
         row['M_int'] = M_target
         return 6.0e6, str(tmp_path / 'adiabat_mesh.dat')
@@ -585,9 +603,14 @@ def test_adiabat_solve_hands_sampled_arrays_alongside_callable(tmp_path):
     np.testing.assert_allclose(r_arr, r_file, rtol=0, atol=0)
     expected = np.array([tf(r, P) for r, P in zip(r_file, p_file)])
     np.testing.assert_allclose(t_arr, expected, rtol=1e-12)
+    # The core table is the adiabat through the deepest sampled mantle T, fitted to the row
+    assert core_table_calls == [(None, t_arr[0])]
+    assert received['core'] == ('core table', t_arr[0])
 
 
-def test_adiabat_solve_degrades_to_callable_only_without_previous_structure(tmp_path):
+def test_adiabat_solve_degrades_to_callable_only_without_previous_structure(
+    tmp_path, core_table_calls
+):
     """Without a usable previous structure the solve carries the callable alone.
 
     temperature_arrays arrives as None, which reproduces the pre-#719 call
@@ -612,6 +635,7 @@ def test_adiabat_solve_degrades_to_callable_only_without_previous_structure(tmp_
     ):
         received['tf'] = temperature_function
         received['arrays'] = temperature_arrays
+        received['core'] = kw.get('core_temperature_arrays')
         row['R_int'] = 1.2746e7
         row['M_int'] = M_target
         return 6.0e6, str(tmp_path / 'adiabat_mesh.dat')
@@ -628,6 +652,7 @@ def test_adiabat_solve_degrades_to_callable_only_without_previous_structure(tmp_
     assert ok is True
     assert received['tf'] is tf
     assert received['arrays'] is None
+    assert received['core'] is None and core_table_calls == []
 
 
 def test_adiabat_resolve_falls_back_when_adiabat_unavailable():

@@ -139,11 +139,13 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `P_solvus` | `Pa` | solvus pressure for global_miscibility mode | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct, main loop |
 | `T_solvus` | `K` | solvus temperature for global_miscibility mode | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct, main loop |
 | `P_center` | `Pa` | central pressure from Zalmoxis structure ; 0 for SPIDER, which models the mantle only | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_energetics, interior_struct |
-| `P_cmb` | `Pa` | core-mantle boundary pressure, from Zalmoxis structure or SPIDER's basic-node pressure profile | `interior_energetics/spider.py`<br>`interior_struct/zalmoxis.py` | interior_energetics.module = "spider"; interior_struct.module = "zalmoxis" | interior_energetics, utils |
+| `P_cmb` | `Pa` | core-mantle boundary pressure, from Zalmoxis structure or SPIDER's basic-node pressure profile | `interior_energetics/spider.py`<br>`interior_struct/zalmoxis.py` | interior_energetics.module = "spider"; interior_struct.module = "zalmoxis" | interior_energetics, interior_struct, utils |
 | `core_density` | `kg m-3` | core density from structure solver | `interior_energetics/aragog.py`<br>`interior_energetics/wrapper.py`<br>`interior_struct/dummy.py`<br>`interior_struct/zalmoxis.py` | always; interior_energetics.module = "aragog"; interior_struct.module = "dummy"; interior_struct.module = "zalmoxis" | interior_energetics, orbit |
 | `core_heatcap` | `J kg-1 K-1` | core heat capacity | `interior_energetics/wrapper.py`<br>`interior_struct/dummy.py`<br>`interior_struct/zalmoxis.py` | always; interior_struct.module = "dummy"; interior_struct.module = "zalmoxis" | interior_energetics |
 | `X_H2_int` | `1` | H2 mass fraction in interior (sub-Neptune mode) | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct |
 | `struct_mass_desync_frac` | `1` | \|trapezoid - ODE accumulator\| / accumulator structure mass self-consistency | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct |
+| `struct_core_T_used` | `1` | 1 when the last Zalmoxis solve set its core temperature from the core adiabat table, else 0 | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_energetics |
+| `struct_core_T_excess` | `1` | largest distance of a core node of that solve beyond the core temperature table, as a fraction of its pressure range | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_energetics, interior_struct |
 
 ### Temperatures
 

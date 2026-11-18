@@ -2341,6 +2341,7 @@ def _run_gate_solver(
     use_jax=None,
     config_edit=None,
     density_cache=None,
+    core_table=None,
 ):
     """Invoke zalmoxis_solver with the heavy solve mocked out.
 
@@ -2388,6 +2389,8 @@ def _run_gate_solver(
         Called with the mock config before the solve, for a field with no keyword here.
     density_cache : dict, optional
         Initial ``_density_cache`` (the density seed); the default is an empty cache.
+    core_table : tuple or None, optional
+        ``core_temperature_arrays`` of the solve.
     """
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
 
@@ -2462,6 +2465,7 @@ def _run_gate_solver(
             num_spider_nodes=0,
             temperature_function=tf,
             temperature_arrays=temperature_arrays,
+            core_temperature_arrays=core_table,
         )
 
     return main_mock, rho_mock, mixed_mock, hf_row, model_results, cmb_radius, mesh_file
@@ -2785,6 +2789,81 @@ def test_the_jax_rebuild_looks_up_a_padded_surface_node_at_the_target_pressure(
     assert len(pressures) == len(model_results['radii'])
     assert pressures[-1] == pytest.approx(hf_row['P_surf'] * 1e5, rel=1e-12)
     assert pressures[:-1] == pytest.approx(list(model_results['pressure'][:-1]), rel=1e-12)
+
+
+_CORE_TABLE = (np.linspace(1.0e11, 3.0e11, 5), np.linspace(4000.0, 6000.0, 5))
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_core_table_reaches_zalmoxis_and_sets_the_rebuilt_core_temperature(
+    tmp_path, monkeypatch
+):
+    """The core temperature table goes to the Zalmoxis solve; the row takes its flags; the JAX
+    rebuild evaluates every core node (below node 20, the CMB) at the table temperature of its
+    pressure, past the table ends too, and every mantle node at the hand-off temperature."""
+    from proteus.interior_struct.core_temperature import table_temperature
+
+    model = _plausible_model_results()
+    model.update(core_T_used=True, core_T_max_excess=0.02)
+    r_arr, t_arr = _cooled_mantle_arrays(model)
+    main_mock, rho_mock, _, hf_row, _, _, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        lambda r, P: float(np.interp(r, r_arr, t_arr)),
+        main_results=model,
+        core_table=_CORE_TABLE,
+    )
+    assert main_mock.call_args.kwargs['core_temperature_arrays'] is _CORE_TABLE
+    assert (hf_row['struct_core_T_used'], hf_row['struct_core_T_excess']) == (1.0, 0.02)
+    temps = np.array([c.args[3] for c in rho_mock.call_args_list])
+    p = model['pressure']
+    assert temps[:20] == pytest.approx(table_temperature(p[:20], _CORE_TABLE), rel=1e-12)
+    assert p[0] > _CORE_TABLE[0][-1]  # the centre lies past the table: the end-slope extension
+    assert temps[20:] == pytest.approx(np.interp(model['radii'][20:], r_arr, t_arr), rel=1e-12)
+
+
+@pytest.mark.unit
+def test_a_solve_without_a_core_table_gives_zalmoxis_no_table_and_zero_flags(
+    tmp_path, monkeypatch
+):
+    """Without a core table the Zalmoxis call carries no core_temperature_arrays argument and the
+    row flags are 0."""
+    main_mock, _, _, hf_row, _, _, _ = _run_gate_solver(
+        tmp_path, monkeypatch, 'Seager2007:silicate', None, None
+    )
+    assert 'core_temperature_arrays' not in main_mock.call_args.kwargs
+    assert (hf_row['struct_core_T_used'], hf_row['struct_core_T_excess']) == (0.0, 0.0)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('excess', 'refused'),
+    [(0.0, False), (0.1, False), (0.1000001, True), (np.inf, True), (np.nan, True)],
+)
+def test_core_nodes_beyond_the_table_by_more_than_the_limit_stop_the_solve(
+    tmp_path, monkeypatch, excess, refused
+):
+    """A Zalmoxis result whose core nodes lie beyond the core temperature table by more than
+    0.1 of its pressure range, or by a non-finite amount, raises; 0.1 and less pass."""
+    model = _plausible_model_results()
+    model.update(core_T_used=True, core_T_max_excess=excess)
+    run = lambda: _run_gate_solver(  # noqa: E731
+        tmp_path,
+        monkeypatch,
+        'Seager2007:silicate',
+        None,
+        None,
+        main_results=model,
+        core_table=_CORE_TABLE,
+    )
+    if refused:
+        with pytest.raises(RuntimeError, match='core temperature table'):
+            run()
+    else:
+        assert run()[3]['struct_core_T_excess'] == excess
 
 
 @pytest.mark.parametrize('mantle_eos', ['PALEOS-2phase:MgSiO3', 'PALEOS:MgSiO3'])

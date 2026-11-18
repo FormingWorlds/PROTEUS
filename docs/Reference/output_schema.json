@@ -828,6 +828,7 @@
       ],
       "consumers": [
         "interior_energetics",
+        "interior_struct",
         "utils"
       ],
       "consumers_possible": []
@@ -917,6 +918,41 @@
         }
       ],
       "consumers": [
+        "interior_struct"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "struct_core_T_used",
+      "unit": "1",
+      "description": "1 when the last Zalmoxis solve set its core temperature from the core adiabat table, else 0",
+      "group": "Planet structure",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_struct/zalmoxis.py",
+          "condition": "interior_struct.module = \"zalmoxis\""
+        }
+      ],
+      "consumers": [
+        "interior_energetics"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "struct_core_T_excess",
+      "unit": "1",
+      "description": "largest distance of a core node of that solve beyond the core temperature table, as a fraction of its pressure range",
+      "group": "Planet structure",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_struct/zalmoxis.py",
+          "condition": "interior_struct.module = \"zalmoxis\""
+        }
+      ],
+      "consumers": [
+        "interior_energetics",
         "interior_struct"
       ],
       "consumers_possible": []

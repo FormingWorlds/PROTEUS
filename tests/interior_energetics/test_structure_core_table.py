@@ -1,0 +1,126 @@
+"""Tests of the core temperature table that a structure solve hands to Zalmoxis."""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+
+from proteus.interior_energetics.wrapper import _structure_core_table
+from proteus.interior_struct.core_temperature import (
+    core_temperature_table,
+    structure_core_table,
+    table_temperature,
+)
+
+pytestmark = pytest.mark.unit
+
+ROW = {
+    'M_core': 1.94e24,
+    'P_center': 3.6e11,
+    'R_core': 3.48e6,
+    'P_cmb': 1.36e11,
+    'T_cmb': 4300.0,
+}
+
+
+def _config(core_bc='energy_balance', alpha=1.35e-5, c_p=840.0):
+    core = SimpleNamespace(alpha=alpha, c_p=c_p)
+    return SimpleNamespace(
+        interior_energetics=SimpleNamespace(
+            aragog=SimpleNamespace(core_bc=core_bc, core_module=core)
+        )
+    )
+
+
+def _gaussian(alpha=1.35e-5, c_p=840.0, **row):
+    from aragog.core.profiles import GaussianCoreProfiles
+
+    r = {**ROW, **row}
+    return GaussianCoreProfiles.from_structure(
+        m_core=r['M_core'],
+        p_cen=r['P_center'],
+        r_cmb=r['R_core'],
+        p_cmb=r['P_cmb'],
+        alpha=alpha,
+        c_p=c_p,
+    )
+
+
+def _live(t_core, profiles):
+    """Interior object with an Aragog solver holding a core budget at ``t_core``."""
+    solver = SimpleNamespace(
+        _core_module_budget=SimpleNamespace(profiles=profiles),
+        get_current_core_temperature=lambda: t_core,
+    )
+    return SimpleNamespace(aragog_solver=solver)
+
+
+@pytest.mark.physics_invariant
+def test_energy_balance_fits_a_gaussian_core_to_the_row_through_t_cmb():
+    """Without a live Aragog core the table is the adiabat of a Gaussian core fitted to the row
+    structure with the config alpha and c_p, through the row T_cmb: it starts at (P_cmb, T_cmb)
+    and equals the table of the same fit built directly; another c_p gives another table."""
+    p, t = _structure_core_table(_config(), SimpleNamespace(), dict(ROW))
+    pr, tr = core_temperature_table(_gaussian(), 4300.0)
+    assert np.array_equal(p, pr) and np.array_equal(t, tr)
+    assert p[0] == pytest.approx(1.36e11, rel=1e-12) and t[0] == pytest.approx(
+        4300.0, rel=1e-12
+    )
+    _, t2 = _structure_core_table(_config(c_p=420.0), SimpleNamespace(), dict(ROW))
+    assert t2[-1] > t[-1] * 1.05
+
+
+@pytest.mark.physics_invariant
+def test_a_live_aragog_core_sets_the_table_through_its_own_temperature():
+    """With core_bc = "core_module" and a live budget, the table is the adiabat of the budget
+    profiles through the Aragog core temperature, not a fit to the row through T_cmb."""
+    profiles = _gaussian(P_cmb=1.30e11)
+    p, t = _structure_core_table(_config('core_module'), _live(5100.0, profiles), dict(ROW))
+    pr, tr = core_temperature_table(profiles, 5100.0)
+    assert np.array_equal(p, pr) and np.array_equal(t, tr)
+    assert t[0] == pytest.approx(5100.0, rel=1e-12)
+    assert p[0] == pytest.approx(1.30e11, rel=1e-12)
+
+
+@pytest.mark.parametrize('case', ['anchor given', 'not core_module'])
+def test_the_row_fit_is_used_with_an_anchor_or_without_core_module(case):
+    """An explicit anchor (the start-up passes) or a core_bc other than core_module gives the
+    Gaussian fit to the row, even when the interior object holds an Aragog budget."""
+    live = _live(5100.0, _gaussian(P_cmb=1.30e11))
+    if case == 'anchor given':
+        p, t = _structure_core_table(_config('core_module'), live, dict(ROW), t_anchor=4800.0)
+        anchor = 4800.0
+    else:
+        p, t = _structure_core_table(_config('energy_balance'), live, dict(ROW))
+        anchor = 4300.0
+    pr, tr = structure_core_table(_config(), dict(ROW), anchor)
+    assert np.array_equal(p, pr) and np.array_equal(t, tr)
+
+
+def test_table_temperature_is_linear_inside_and_extends_with_the_end_slopes():
+    """Inside the table the temperature is linear in P between pairs; beyond either end it
+    continues with the slope of the end interval, continuous at the end. Hypothesis over P from
+    half the lowest pair pressure to twice the highest."""
+    hypothesis = pytest.importorskip('hypothesis')
+    st = pytest.importorskip('hypothesis.strategies')
+    table = core_temperature_table(_gaussian(), 4300.0)
+    pt, tt = table
+    lo, hi = (tt[1] - tt[0]) / (pt[1] - pt[0]), (tt[-1] - tt[-2]) / (pt[-1] - pt[-2])
+    assert table_temperature(pt, table) == pytest.approx(tt, rel=1e-15)
+
+    @hypothesis.settings(max_examples=200, deadline=None)
+    @hypothesis.given(st.floats(0.5 * pt[0], 2.0 * pt[-1]))
+    def _check(p):
+        got = float(table_temperature(p, table))
+        if p < pt[0]:
+            want = tt[0] + lo * (p - pt[0])
+        elif p > pt[-1]:
+            want = tt[-1] + hi * (p - pt[-1])
+        else:
+            want = float(np.interp(p, pt, tt))
+        assert got == pytest.approx(want, rel=1e-12)
+
+    _check()
+    assert lo > 0 and hi > 0

@@ -32,6 +32,7 @@ from proteus.data import (
     dataset_dir,
 )
 from proteus.interior_struct.common import solvus_radius, stored_core_target
+from proteus.interior_struct.core_temperature import MAX_CORE_T_EXCESS, table_temperature
 from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
     PALEOS_EOS_PREFIXES,
@@ -3273,6 +3274,7 @@ def zalmoxis_solver(
     temperature_function=None,
     temperature_mode_override: str | None = None,
     temperature_arrays=None,
+    core_temperature_arrays=None,
 ):
     """Run the Zalmoxis solver to compute the interior structure of a planet.
 
@@ -3314,6 +3316,13 @@ def zalmoxis_solver(
         the Config value is used. Currently used by
         ``determine_interior_radius_with_zalmoxis`` to force ``adiabatic``
         for SPIDER coupling with a T-dependent mantle EOS.
+    core_temperature_arrays : tuple[ndarray, ndarray] or None, optional
+        Core temperature table ``(P, T)`` [Pa, K], P ascending
+        (:func:`proteus.interior_struct.core_temperature.structure_core_table`), which Zalmoxis
+        applies to every core node at the node pressure. The row gets ``struct_core_T_used`` and
+        ``struct_core_T_excess``; a core node beyond the table by more than
+        ``MAX_CORE_T_EXCESS`` of its pressure range raises RuntimeError. None leaves the core
+        temperature to ``temperature_function`` and ``temperature_arrays``.
 
     Returns
     -------
@@ -3450,6 +3459,11 @@ def zalmoxis_solver(
         _use_jax_active and temperature_arrays is not None and _jax_viable and _wet_jax_viable
     )
     _tf_effective = None if _drop_callable else temperature_function
+    _core_kw = (
+        {}
+        if core_temperature_arrays is None
+        else {'core_temperature_arrays': core_temperature_arrays}
+    )
     if _drop_callable:
         log.debug(
             'Structure-solve T source: temperature_arrays via the Zalmoxis '
@@ -3487,6 +3501,7 @@ def zalmoxis_solver(
             volatile_profile=volatile_profile,
             temperature_function=_tf_effective,
             temperature_arrays=temperature_arrays,
+            **_core_kw,
             h2_mass_targets=h2_mass_targets,
             max_iterations=config.interior_struct.zalmoxis.miscibility_max_iter,
             mass_tolerance=config.interior_struct.zalmoxis.miscibility_tol,
@@ -3533,6 +3548,7 @@ def zalmoxis_solver(
             volatile_profile=volatile_profile,
             temperature_function=_tf_effective,
             temperature_arrays=temperature_arrays,
+            **_core_kw,
             p_center_hint=None if _drop_callable else hf_row.get('P_center'),
             initial_density=_seed_density,
             initial_radii=_seed_radii,
@@ -3612,6 +3628,7 @@ def zalmoxis_solver(
             volatile_profile=volatile_profile,
             temperature_function=_tf_effective,
             temperature_arrays=temperature_arrays,
+            **_core_kw,
         )
 
         radii = model_results['radii']
@@ -3708,6 +3725,13 @@ def zalmoxis_solver(
         raise RuntimeError('Zalmoxis: the structure result has no core arrays, so no CMB point')
     cmb_radius, cmb_pressure, cmb_gravity = (float(core[k][-1]) for k in ('r', 'P', 'g'))
     cmb_tol = float(mesh_radius_tolerance(cmb_radius, planet_radius))
+    hf_row['struct_core_T_used'] = float(bool(model_results.get('core_T_used', False)))
+    hf_row['struct_core_T_excess'] = float(model_results.get('core_T_max_excess', 0.0))
+    if not hf_row['struct_core_T_excess'] <= MAX_CORE_T_EXCESS:  # NaN refused too
+        raise RuntimeError(
+            f'Zalmoxis: core nodes lie {hf_row["struct_core_T_excess"]:.3g} of the core '
+            f'temperature table range beyond it (limit {MAX_CORE_T_EXCESS})'
+        )
     if radii[cmb_index] < cmb_radius - cmb_tol or cmb_index + 1 >= len(radii):
         raise RuntimeError(
             f'Zalmoxis: node {cmb_index} ({radii[cmb_index]:.6e} m) is the first at the core mass '
@@ -3767,7 +3791,9 @@ def zalmoxis_solver(
             _P = float(pressure[_i]) if pressure[_i] != 0.0 else _p_surface
             # r-indexed T: below r_ref[0] (= first Aragog staggered node
             # near CMB), clamp to T_cmb; else interp along the Aragog grid.
-            if _r <= float(_r_ref[0]):
+            if core_temperature_arrays is not None and _i < cmb_index:
+                _T = float(table_temperature(_P, core_temperature_arrays))
+            elif _r <= float(_r_ref[0]):
                 _T = _T_ref_cmb
             else:
                 _T = float(np.interp(_r, _r_ref, _T_ref))

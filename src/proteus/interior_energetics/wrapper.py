@@ -1335,6 +1335,8 @@ _ADIABAT_IC_RESTORE_KEYS = (
     'M_int',
     'M_core',
     'M_core_solve',
+    'struct_core_T_used',
+    'struct_core_T_excess',
     'M_int_target',
     'P_surf',
     'P_center',
@@ -1343,6 +1345,26 @@ _ADIABAT_IC_RESTORE_KEYS = (
     'core_density',
     'rho_avg',
 )
+
+
+def _structure_core_table(config: Config, interior_o, hf_row: dict, t_anchor=None):
+    """Core temperature table ``(P, T)`` of a structure solve.
+
+    With a live Aragog core (``core_bc = "core_module"``) the adiabat of its profiles through
+    its temperature; otherwise a Gaussian core fitted to the row structure through ``t_anchor``,
+    or the row ``T_cmb`` when ``t_anchor`` is None.
+    """
+    from proteus.interior_energetics.aragog_core import core_temperature_state
+    from proteus.interior_struct.core_temperature import structure_core_table
+
+    solver = getattr(interior_o, 'aragog_solver', None)
+    budget = getattr(solver, '_core_module_budget', None)
+    if budget is not None and t_anchor is None:
+        t_core = core_temperature_state(solver, config.interior_energetics.aragog.core_bc)
+        if t_core is not None:
+            return structure_core_table(config, hf_row, t_core, budget.profiles)
+    t = float(hf_row['T_cmb']) if t_anchor is None else float(t_anchor)
+    return structure_core_table(config, hf_row, t)
 
 
 def _sample_adiabat_temperature_arrays(outdir: str, temperature_function):
@@ -1484,6 +1506,12 @@ def _solve_structure_with_adiabat_or_rollback(
     adiabat_arrays = _sample_adiabat_temperature_arrays(outdir, temperature_function)
 
     try:
+        # The core takes the adiabat through the deepest mantle T, fitted to the previous pass
+        core_table = (
+            None
+            if adiabat_arrays is None
+            else _structure_core_table(config, None, hf_row, adiabat_arrays[1][0])
+        )
         _cmb_radius, adiabat_mesh_file = zalmoxis_solver(
             config,
             outdir,
@@ -1491,6 +1519,7 @@ def _solve_structure_with_adiabat_or_rollback(
             num_spider_nodes=num_spider_nodes,
             temperature_function=temperature_function,
             temperature_arrays=adiabat_arrays,
+            core_temperature_arrays=core_table,
         )
         # Mass-anchor contract: a too-loosely-converged adiabat solve is
         # treated as a failure, same as the time-evolution re-solve path.
@@ -3236,6 +3265,8 @@ def update_structure_from_interior(
             'M_int',
             'M_core',
             'M_core_solve',
+            'struct_core_T_used',
+            'struct_core_T_excess',
             'core_density',
             'M_mantle',
             'P_surf',
@@ -3281,6 +3312,7 @@ def update_structure_from_interior(
             num_spider_nodes=num_spider_nodes,
             temperature_function=temperature_function,
             temperature_arrays=(_r_asc, _T_asc),
+            core_temperature_arrays=_structure_core_table(config, interior_o, hf_row),
         )
         _zalmoxis_wall = _zalmoxis_time.monotonic() - _zalmoxis_wall_t0
         # Mass-anchor check: enforce |M_int / M_int_target - 1| <

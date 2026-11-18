@@ -44,6 +44,16 @@ from proteus.interior_energetics.wrapper import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+
+@pytest.fixture(autouse=True)
+def _no_core_table(monkeypatch):
+    """The re-solve tests use rows without a structure or T_cmb, so the core temperature table
+    is None here; tests/interior_energetics/test_structure_core_table.py tests the table."""
+    import proteus.interior_energetics.wrapper as wrapper_mod
+
+    monkeypatch.setattr(wrapper_mod, '_structure_core_table', lambda *a, **k: None)
+
+
 PROTEUS_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -818,6 +828,46 @@ def test_handoff_callable_anchors_cmb_for_aragog_ascending_profile():
     assert np.all(T_arr > 0.0)
     assert T_arr[0] == pytest.approx(7740.0, rel=1e-12)
     assert T_arr[-1] == pytest.approx(2500.0, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_resolve_hands_the_core_table_of_the_live_state(monkeypatch):
+    """A structure re-solve passes zalmoxis_solver the core temperature table built from the run
+    config, the interior object and the row of this step, with no anchor, so the live Aragog
+    core or the row T_cmb sets it."""
+    import proteus.interior_energetics.wrapper as wrapper_mod
+
+    calls = []
+
+    def stub(config, interior_o, hf_row, t_anchor=None):
+        calls.append((config, interior_o, hf_row, t_anchor))
+        return ('core table',)
+
+    monkeypatch.setattr(wrapper_mod, '_structure_core_table', stub)
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o(n_stag=49)
+    interior_o.radius = np.linspace(3.0e6, 6.0e6, 50)
+    interior_o.temp = np.linspace(7740.0, 2500.0, 49)
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)
+        ) as mock_solver,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        update_structure_from_interior(
+            _mock_dirs(), config, hf_row, interior_o, 0.0, 3000.0, 0.8
+        )
+    assert mock_solver.call_args.kwargs['core_temperature_arrays'] == ('core table',)
+    assert len(calls) == 1
+    assert calls[0][0] is config and calls[0][1] is interior_o and calls[0][3] is None
 
 
 @pytest.mark.unit
