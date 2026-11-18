@@ -289,6 +289,11 @@ def test_clean_text_removes_every_url_scheme():
     assert collect.clean_text('https:/@/evil.example/x', 100) == ''
     assert collect.clean_text('ht\u200btps://evil.example tail', 100) == 'tail'
     assert collect.clean_text('see www. and www.x', 100) == 'see and'
+    assert (
+        collect.clean_text('ht\u200btps:\u200b//evil.example tail www\u200b.evil x', 100)
+        == 'tail x'
+    )
+    assert collect.clean_text('go xwww.evil.com now WWW.EVIL.COM', 100) == 'go now'
     assert collect.clean_text('a\u200bb\x00c\U000e0041d\U000e0002e\nf', 100) == 'abcde f'
 
 
