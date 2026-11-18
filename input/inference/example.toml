@@ -24,7 +24,7 @@
 # ----------------------------------------------------
 
 # Config file format version (must match the PROTEUS version you are running)
-config_version = "3.0"
+config_version = "3.1"
 
 # Code execution, outputs, time-stepping, convergence
 [params]
@@ -504,7 +504,8 @@ config_version = "3.0"
     # Grid and spectral setup (shared by agni + janus)
     spectral_group            = "Dayspring"  # opacity k-table set; see docs/assets/spectral_files.pdf
     spectral_bands            = "16"         # wavenumber bands in k-table
-    num_levels                = 50           # vertical atmosphere levels (min 15)
+    num_levels                = 30           # vertical atmosphere levels (min 15)
+    p_top                     = 1.0e-3       # top-of-atmosphere pressure [bar]
     p_obs                     = 1.0e-2         # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
@@ -582,6 +583,7 @@ config_version = "3.0"
     module                    = "zephyrus"   # zephyrus | dummy
 
     [escape.zephyrus]
+        scheme                = "el"         # energy-limited escape, cheaper for inference forward runs
         Pxuv                  = 5e-5         # XUV opacity pressure level [bar]
         efficiency            = 0.1          # escape efficiency
 

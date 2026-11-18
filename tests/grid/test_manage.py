@@ -1744,7 +1744,7 @@ class TestGridFromConfig:
         and the loader's reason, and points at no cfgs/ or check-folder path, since the
         refused grid keeps the old output."""
         (fake_proteus_dir / 'base.toml').write_text(
-            '[interior_energetics]\nmodule = "aragog"\n'
+            'config_version = "3.1"\n[interior_energetics]\nmodule = "aragog"\n'
         )
         old = fake_proteus_dir / 'output' / 'unit_grid' / 'cfgs' / 'kept'
         old.parent.mkdir(parents=True)
@@ -2580,7 +2580,7 @@ def test_write_config_files_gives_each_module_its_default_rtol(
     """A grid over the interior module writes each case the rtol default of its own
     module unless the base config or the grid sets rtol or an alias; cases reload."""
     cfg = tmp_path / 'base_ie.toml'
-    cfg.write_text(f'[interior_energetics]\n{base}\n')
+    cfg.write_text(f'config_version = "3.1"\n[interior_energetics]\n{base}\n')
     g = Grid(name='rtol_grid', base_config_path=str(cfg))
     dims = {'interior_energetics.module': ['aragog', 'spider'], **dims}
     for i, (key, values) in enumerate(dims.items()):
@@ -2623,7 +2623,7 @@ def test_write_config_files_cross_field_rules_checked_when_a_case_is_read(
     depend on that order, and the grid reads each case back so an invalid one stops it."""
     cfg = tmp_path / 'base_ie.toml'
     limit = '[interior_energetics.aragog]\ntop_cell_dt_limit = true\n' if base else ''
-    cfg.write_text(f'[interior_energetics]\nmodule = "aragog"\n{limit}')
+    cfg.write_text(f'config_version = "3.1"\n[interior_energetics]\nmodule = "aragog"\n{limit}')
     g = Grid(name='pair_grid', base_config_path=str(cfg))
     ie_keys = ('surface_bc_mode', 'module')
     for i, (key, value) in enumerate(dims.items()):
@@ -2664,7 +2664,7 @@ def test_write_config_files_stops_at_the_first_invalid_case(
     """A grid with one invalid case among valid ones raises at generation and names that case;
     every written case is read back once with the config loader."""
     cfg = tmp_path / 'base_ie.toml'
-    cfg.write_text('[interior_energetics]\nmodule = "aragog"\n')
+    cfg.write_text('config_version = "3.1"\n[interior_energetics]\nmodule = "aragog"\n')
     g = Grid(name='mixed_grid', base_config_path=str(cfg))
     key = 'interior_energetics.aragog.top_cell_dt_rel_dT_solid'
     g.add_dimension('d0', key)
@@ -2772,7 +2772,7 @@ def test_grid_dimension_keys_skips_settings_and_keeps_file_order():
         'planet.mass_tot': _DIM,
         'output': 'g',
         'interior_struct.core_frac': _DIM,
-        'config_version': '3.0',
+        'config_version': '3.1',
         'orbit.semimajoraxis': _DIM,
         'jax_cache': True,
     }

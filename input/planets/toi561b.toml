@@ -1,7 +1,7 @@
 # PROTEUS configuration file for TOI-561 b.
 # Includes a orbit.parameterized migration track
 
-config_version = "3.0"
+config_version = "3.1"
 
 [atmos_chem]
 Kzz_const = "none"

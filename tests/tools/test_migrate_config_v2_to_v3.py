@@ -796,7 +796,7 @@ def _minimal_spider_v2():
 def test_spider_interior_split_and_renames():
     """The interior splits cleanly and the SPIDER renames map correctly."""
     flat, _ = _translate(_minimal_spider_v2())
-    assert flat['config_version'] == '3.0'
+    assert flat['config_version'] == '3.1'
     assert flat['interior_struct.module'] == 'spider'
     assert flat['interior_struct.core_frac_mode'] == 'radius'
     assert flat['interior_struct.core_frac'] == pytest.approx(0.55)
@@ -1099,7 +1099,7 @@ def test_grid_axis_renames():
         'delivery.elements.SH_ratio': {'method': 'direct', 'values': [1, 2]},
     }
     out, report = mig.translate_grid(grid)
-    assert out['config_version'] == '3.0'
+    assert out['config_version'] == '3.1'
     assert 'planet.elements.H_budget' in out
     assert 'planet.elements.S_budget' in out
     assert 'outgas.fO2_shift_IW' in out  # unchanged axis

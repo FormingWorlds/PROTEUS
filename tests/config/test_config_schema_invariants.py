@@ -1301,7 +1301,7 @@ def _make_combo_toml(combo, tmp_path):
     """Render a TOML string for a given module combo, writing to tmp_path."""
     outgas, ie, ac, achem, escape, star, orbit, struct = combo
     parts = [
-        'config_version = "3.0"',
+        'config_version = "3.1"',
         '[orbit]',
         '    semimajoraxis = 1.0',
         f'    module = "{orbit}"' if orbit is not None else '    module = "none"',
@@ -1347,7 +1347,7 @@ def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
     Additional guards:
     - Every accepted Config must round-trip the (outgas, interior, atmos)
       module names through structuring; a silent module-rename is a bug.
-    - Every accepted Config must validate config_version == "3.0".
+    - Every accepted Config must validate config_version == "3.1".
     - Acceptance count must be > 0 and rejection count must be > 0; if
       every combo accepts the validators are too loose; if every combo
       rejects the test surface is broken.
@@ -1398,7 +1398,7 @@ def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
             assert cfg.outgas.module == combo[0]
             assert cfg.interior_energetics.module == combo[1]
             assert cfg.atmos_clim.module == combo[2]
-            assert cfg.config_version == '3.0'
+            assert cfg.config_version == '3.1'
         except permitted as e:
             rejected += 1
             msg = str(e)

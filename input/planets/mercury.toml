@@ -4,7 +4,7 @@
 # ----------------------------------------------------
 
 # Config file format version (must match the PROTEUS version you are running)
-config_version = "3.0"
+config_version = "3.1"
 
 # Code execution, outputs, time-stepping, convergence
 [params]

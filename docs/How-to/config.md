@@ -79,6 +79,18 @@ its default. The name itself is spelled correctly in that case, so nothing
 about it looks wrong in the file. Loading refuses such a section and names it,
 and the fix is to remove the extra brackets.
 
+## Format versions
+
+Every configuration file states its format in `config_version`, and a file of another version is refused when it is read. The current version is `"3.1"`. A file without the key is read as 3.0, the version that allowed leaving it out, and is refused with the same message.
+
+Version 3.1 changed three defaults that a 3.0 file relies on without stating them. Escape uses the ZEPHYRUS regime dispatcher (`escape.zephyrus.scheme = "dispatcher"`) where 3.0 used energy-limited escape. Under it an unset `escape.reservoir` means `pxuv` (3.0: `outgas`), an unset `escape.hill_clamp` means off (3.0: on), and an unset `escape.zephyrus.tidal` means on (3.0: off). The top of the atmosphere, `atmos_clim.p_top`, moved from 1e-6 to 1e-10 bar, so that the XUV wind base of the dispatcher, near a nanobar for hydrogen, lies inside the column. AGNI conduction, `atmos_clim.agni.conduction`, is on, for a steadier temperature in the optically thin upper atmosphere. Since a 3.0 file would load and run differently without saying so, it is refused with the command that translates it:
+
+```console
+python tools/migrate_config_v3_0_to_v3_1.py old.toml -o new.toml
+```
+
+The tool sets `escape.zephyrus.scheme = "el"`, `atmos_clim.p_top = 1e-6`, and `atmos_clim.agni.conduction = false` wherever the file leaves them unset, keeps every value the file states, comments included, and writes `config_version = "3.1"`. The translated file runs as it did under 3.0. To move it to the new behaviour, delete the lines the tool added. A grid file only has its `config_version` updated, since the settings belong in its reference configuration. A run started under 3.0 is resumed with its translated configuration. A 2.0 file is translated to 3.1 in one step by `tools/migrate_config_v2_to_v3.py`.
+
 See [`all_options.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/all_options.toml) for a comprehensive example. Have a look at the other [input configs](https://github.com/FormingWorlds/PROTEUS/tree/main/input) for ideas of how to set up your config in practice.
 
 ## Root parameters

@@ -13,7 +13,7 @@ import attr
 import cattrs
 from cattrs.errors import AttributeValidationNote, IterableValidationNote
 
-from ._config import Config
+from ._config import Config, valid_config_version
 from ._interior import _STEP_CAP_FIELDS
 from .orphans import (
     UnknownConfigKeyError,
@@ -246,6 +246,18 @@ def structure_config(raw: dict, path: Path | str) -> Config:
         stops at the first validator that fails in a section, so a section reports one
         validator error at a time.
     """
+
+    # The version decides how the rest of the file reads, so a file of another
+    # version is refused before any other check can report a symptom of it. A 3.0
+    # file could leave the key out, so a file without it is read as 3.0.
+    version = str(raw.get('config_version', '3.0'))
+    try:
+        valid_config_version(None, None, version)
+    except ValueError as exc:
+        missing = '' if 'config_version' in raw else 'no config_version, read as "3.0". '
+        raise ValueError(
+            f'Invalid configuration in {path}:\n  config_version: {missing}{exc}'
+        ) from None
 
     _check_step_cap_zeros(raw, path)
 

@@ -18,7 +18,7 @@
 # stellar tracks and spectra, interior EOS tables). Add --offline on
 # later runs to skip the reference-data check.
 
-config_version = "3.0"
+config_version = "3.1"
 
 [params.out]
     path    = "tutorial_earth"

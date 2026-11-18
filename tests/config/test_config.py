@@ -620,7 +620,7 @@ def test_valid_config_version_rejects_old():
     from proteus.config._config import valid_config_version
 
     instance = SimpleNamespace()
-    with pytest.raises(ValueError, match='config_version = "3.0"'):
+    with pytest.raises(ValueError, match='config_version = "3.1"'):
         valid_config_version(instance, SimpleNamespace(), '2.0')
 
     # Discrimination: the rejection path must not mutate the input instance.
@@ -640,7 +640,7 @@ def test_valid_config_version_accepts_current():
     from proteus.config._config import valid_config_version
 
     instance = SimpleNamespace()
-    result = valid_config_version(instance, SimpleNamespace(), '3.0')
+    result = valid_config_version(instance, SimpleNamespace(), '3.1')
     assert result is None  # contract: validator returns None silently on accepted version
     assert vars(instance) == {}  # validator must not mutate the input instance
 
@@ -3501,7 +3501,7 @@ def test_planet_config_parses_on_the_current_schema(path):
 
     raw = read_config(path)
 
-    assert raw['config_version'] == '3.0'
+    assert raw['config_version'] == '3.1'
     assert 'interior' not in raw
 
     block = raw.get('orbit', {}).get('parameterized')

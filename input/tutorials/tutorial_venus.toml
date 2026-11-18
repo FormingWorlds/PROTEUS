@@ -2,7 +2,7 @@
 # Based on the nominal Venus case of CHILI (Lichtenberg et al. 2026, PSJ 7:108, Table 2); the protocol case at IW+4 is input/chili/intercomp/venus.toml.
 # Run: proteus start --offline -c input/tutorials/tutorial_venus.toml
 
-config_version = "3.0"
+config_version = "3.1"
 
 [params.out]
     path    = "tutorial_venus"

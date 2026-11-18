@@ -2,7 +2,7 @@
 # The run stops at 5% melt by mass or after 1 Gyr of model time; the energy-balance, escape and wall-clock stops are off.
 # Run: proteus start --offline -c input/tutorials/chili_grid/earth_Hhigh_Cmid.toml
 
-config_version = "3.0"
+config_version = "3.1"
 
 [params.out]
     path    = "chili_grid_earth_Hhigh_Cmid"

@@ -195,10 +195,27 @@ def parameterized_excludes_accretion(instance, attribute, value):
         )
 
 
-CURRENT_CONFIG_VERSION = '3.0'
+CURRENT_CONFIG_VERSION = '3.1'
 
 
 def valid_config_version(instance, attribute, value):
+    """Refuse a config file written for another format version.
+
+    A 3.0 file is refused with the migration command, because 3.1 changed three
+    defaults that a 3.0 file relies on without stating them: the escape scheme
+    (energy-limited to the ZEPHYRUS dispatcher, which brings its own reservoir,
+    Hill clip, and tidal defaults), ``atmos_clim.p_top`` (1e-6 to 1e-10 bar), and
+    ``atmos_clim.agni.conduction`` (off to on).
+    """
+    if value == '3.0':
+        raise ValueError(
+            'Config file version "3.0" predates the escape dispatcher defaults of '
+            f'version "{CURRENT_CONFIG_VERSION}". Translate it with '
+            '`python tools/migrate_config_v3_0_to_v3_1.py <file>`, which keeps its '
+            'behavior by setting escape.zephyrus.scheme = "el", '
+            'atmos_clim.p_top = 1e-6, and atmos_clim.agni.conduction = false where the '
+            'file leaves them unset. See docs/How-to/config.md, "Format versions".'
+        )
     if value != CURRENT_CONFIG_VERSION:
         raise ValueError(
             f'Config file version "{value}" is not compatible with this version of PROTEUS '
@@ -980,7 +997,7 @@ class Config:
     observe: Observe = field(factory=Observe, validator=(observe_resolved_atmosphere,))
 
     config_version: str = field(
-        default='3.0',
+        default=CURRENT_CONFIG_VERSION,
         validator=(
             valid_config_version,
             check_module_dependencies,

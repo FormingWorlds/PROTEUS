@@ -1,4 +1,4 @@
-config_version = "3.0"
+config_version = "3.1"
 
 [params]
 resume = false

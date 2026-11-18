@@ -1770,7 +1770,7 @@ def test_config_load_defaults_O_mode_to_ic_chemistry(tmp_path):
     from proteus.config import read_config_object
 
     toml_text = """
-config_version = "3.0"
+config_version = "3.1"
 
 [orbit]
     semimajoraxis = 1.0
@@ -1813,7 +1813,7 @@ def _minimal_valid_toml(extra_planet: str = '', extra_elements: str = '') -> str
     backend, so pinning the module here keeps the fixture portable.
     """
     return f"""
-config_version = "3.0"
+config_version = "3.1"
 
 [orbit]
     semimajoraxis = 1.0
@@ -1913,7 +1913,7 @@ def test_config_rejects_from_O_budget_with_gas_prs(tmp_path):
     from proteus.config import read_config_object
 
     toml_text = """
-config_version = "3.0"
+config_version = "3.1"
 
 [orbit]
     semimajoraxis = 1.0
@@ -1964,7 +1964,7 @@ def test_config_accepts_from_O_budget_with_concrete_O_mode(tmp_path, o_mode, o_b
     from proteus.config import read_config_object
 
     toml_text = f"""
-config_version = "3.0"
+config_version = "3.1"
 
 [orbit]
     semimajoraxis = 1.0
@@ -2007,7 +2007,7 @@ def test_config_accepts_from_O_budget_with_atmodeller_module(tmp_path):
     from proteus.config import read_config_object
 
     toml_text = """
-config_version = "3.0"
+config_version = "3.1"
 
 [orbit]
     semimajoraxis = 1.0
@@ -2044,7 +2044,7 @@ def test_config_rejects_from_O_budget_with_dummy_module(tmp_path):
     from proteus.config import read_config_object
 
     toml_text = """
-config_version = "3.0"
+config_version = "3.1"
 
 [orbit]
     semimajoraxis = 1.0
@@ -2147,7 +2147,7 @@ def test_config_warns_when_fO2_shift_IW_set_with_from_O_budget(tmp_path):
     from proteus.config import read_config_object
 
     toml_text = """
-config_version = "3.0"
+config_version = "3.1"
 
 [orbit]
     semimajoraxis = 1.0

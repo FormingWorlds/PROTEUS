@@ -7,7 +7,7 @@
 #
 # Run: proteus start --offline -c input/tutorials/tutorial_vapourise.toml
 
-config_version = "3.0"
+config_version = "3.1"
 
 # Code execution, outputs, time-stepping, convergence
 [params]

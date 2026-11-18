@@ -2,7 +2,7 @@
 # Do not edit: the super-liquidus solve results are pinned against this
 # exact configuration, so any change shifts the reference_pinned assertions.
 
-config_version = "3.0"
+config_version = "3.1"
 
 [params]
 offline = true

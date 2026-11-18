@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Translate a PROTEUS configuration file from format version 2.0 to 3.0.
+"""Translate a PROTEUS configuration file from format version 2.0 to the current format.
+
+The output carries the current format version, 3.1, and is compared against the
+current defaults, so a 2.0 file goes to 3.1 in one step.
 
 The 2.0 to 3.0 change is a structural refactor, not a value tweak: the interior
 splits into ``[interior_struct]`` and ``[interior_energetics]``, the volatile
@@ -224,7 +227,7 @@ INTERIOR_RENAMES = {
 
 # Value transforms keyed on the 2.0 path.
 TRANSFORMS = {
-    'version': lambda v: '3.0',
+    'version': lambda v: '3.1',
     'struct.module': _struct_module,
     'interior.spider.mixing_length': _mixing_length,
     'delivery.initial': _volatile_mode,
@@ -918,7 +921,7 @@ def translate(v2_toml: dict):
             keep[path] = val
             if deviates and path not in provenance_explicit and path not in OVERRIDES:
                 report.pinned_divergent.append((path, val))
-    keep['config_version'] = '3.0'
+    keep['config_version'] = '3.1'
 
     nested = _unflatten(keep)
     _validate(nested)
@@ -977,7 +980,7 @@ def translate_grid(grid_toml: dict):
     The base config referenced by ``ref_config`` must be migrated separately.
     """
     report = MigrationReport()
-    out = {'config_version': '3.0'}
+    out = {'config_version': '3.1'}
     for key, val in grid_toml.items():
         if key in ('version', 'config_version'):
             continue

@@ -6,7 +6,7 @@
 #
 # Run: proteus grid -c input/tutorials/tutorial_grid.toml
 
-config_version = "3.0"
+config_version = "3.1"
 
 # Base config: each grid point starts from this all-dummy file
 ref_config = "input/dummy.toml"

@@ -1,5 +1,5 @@
 # PROTEUS configuration file (version 2.0)
-config_version = "3.0"
+config_version = "3.1"
 
     [params.out]
         path        = "dummy_agni"
