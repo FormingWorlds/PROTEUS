@@ -259,9 +259,9 @@ def validate_zalmoxis_output_schema(
     handover boundary.
 
     The mantle mass is taken from ``mantle_mass_ref`` when the caller supplies it.
-    ``zalmoxis_solver`` passes ``mass_enclosed[-1] - mass_enclosed[cmb_index]``, from the
-    arrays it writes ``M_int`` and ``M_core`` from, so part (b) then checks the row write of
-    these two masses; it does not check the arrays or the choice of the CMB node. Without a
+    ``zalmoxis_solver`` passes ``mass_enclosed[-1] - cmb_mass``, from the values it writes
+    ``M_int`` and ``M_core`` from, so part (b) then checks the row write of these two masses;
+    it does not check the arrays or the CMB point. Without a
     reference, part (b) integrates the file nodes with a grid trapezoid; no PROTEUS call
     path reaches this fallback. Part (c) checks
     that the file starts at ``hf_row['R_core']`` within the mesh tolerance of Aragog,
@@ -3318,7 +3318,8 @@ def zalmoxis_solver(
     Returns
     -------
     cmb_radius : float
-        Core-mantle boundary radius [m].
+        Core-mantle boundary radius [m]: the radius at which the solve reaches the core mass,
+        the last radius of the core arrays of the Zalmoxis result.
     spider_mesh_file : str or None
         Path to the SPIDER mesh file, or None if ``num_spider_nodes == 0``.
     """
@@ -3699,10 +3700,19 @@ def zalmoxis_solver(
             f'Zalmoxis: no node reaches the core mass {cmb_mass:.4e} kg (last node {mass_enclosed[-1]:.4e} kg)'
         )
     cmb_index = np.argmax(mass_enclosed >= cmb_mass)
-
-    # Extract the planet radius and core-mantle boundary radius
     planet_radius = radii[-1]
-    cmb_radius = radii[cmb_index]
+
+    # The CMB is the point where the solve reaches the core mass: the end of the core arrays
+    core = model_results.get('core')
+    if not core:
+        raise RuntimeError('Zalmoxis: the structure result has no core arrays, so no CMB point')
+    cmb_radius, cmb_pressure, cmb_gravity = (float(core[k][-1]) for k in ('r', 'P', 'g'))
+    cmb_tol = float(mesh_radius_tolerance(cmb_radius, planet_radius))
+    if radii[cmb_index] < cmb_radius - cmb_tol or cmb_index + 1 >= len(radii):
+        raise RuntimeError(
+            f'Zalmoxis: node {cmb_index} ({radii[cmb_index]:.6e} m) is the first at the core mass '
+            f'but lies below the CMB point {cmb_radius:.6e} m or has no mantle node above it'
+        )
 
     # Recompute density and temperature against the accurate T(r) when the
     # solve took the JAX+temperature_arrays path (_drop_callable). On that
@@ -3853,15 +3863,13 @@ def zalmoxis_solver(
         f'Interior radius: {planet_radius:.2e} m or {planet_radius / R_earth:.2f} R_earth'
     )
     log.debug(f'Core radius: {cmb_radius:.2e} or {cmb_radius / R_earth:.2f} R_earth')
-    log.debug(f'Core-mantle boundary mass: {mass_enclosed[cmb_index]:.2e} kg')
+    log.debug(f'Core-mantle boundary mass: {cmb_mass:.2e} kg')
     log.debug(f'Mantle density at the core-mantle boundary: {density[cmb_index]:.2e} kg/m^3')
     log.debug(f'Core density at the core-mantle boundary: {density[cmb_index - 1]:.2e} kg/m^3')
-    log.debug(f'Pressure at the core-mantle boundary: {pressure[cmb_index]:.2e} Pa')
+    log.debug(f'Pressure at the core-mantle boundary: {cmb_pressure:.2e} Pa')
     log.debug(f'Pressure at the center: {pressure[0]:.2e} Pa')
     log.debug(f'Average density: {average_density:.2e} kg/m^3')
-    log.debug(
-        f'Core-mantle boundary mass fraction: {mass_enclosed[cmb_index] / mass_enclosed[-1]:.3f}'
-    )
+    log.debug(f'Core-mantle boundary mass fraction: {cmb_mass / mass_enclosed[-1]:.3f}')
     log.debug(f'Core radius fraction: {cmb_radius / planet_radius:.4f}')
     log.debug(
         f'Inner mantle radius fraction: {radii[np.argmax(mass_enclosed >= core_mantle_mass)] / planet_radius:.4f}'
@@ -4007,17 +4015,8 @@ def zalmoxis_solver(
     hf_row['R_int'] = planet_radius
     hf_row['R_core'] = cmb_radius
     hf_row['M_int'] = mass_enclosed[-1]
-    hf_row['M_core'] = float(mass_enclosed[cmb_index])  # the mass inside R_core
-    hf_row['M_core_solve'] = float(cmb_mass)  # the core mass of the solve
+    hf_row['M_core'] = hf_row['M_core_solve'] = float(cmb_mass)  # the mass inside R_core
     _mantle = float(mass_enclosed[-1]) - hf_row['M_core']
-    _shell = hf_row['M_core'] - float(cmb_mass)
-    if _mantle > 0 and _shell > 0.05 * _mantle:
-        log.warning(
-            'The shell between M_core_solve and R_core holds %.3g of the mantle mass above R_core '
-            '(M_int - M_core), so M_int - M_core is short of the mantle of the solve by the shell. '
-            'Raise interior_struct.zalmoxis.num_levels to shrink it.',
-            _shell / _mantle,
-        )
     hf_row['gravity'] = gravity[-1]
 
     if config.interior_energetics.module == 'boundary':
@@ -4029,7 +4028,7 @@ def zalmoxis_solver(
         hf_row['T_magma'] = temperature[-2]
         hf_row['T_surf'] = temperature[-1]
     hf_row['P_center'] = model_results.get('p_center')
-    hf_row['P_cmb'] = float(pressure[cmb_index])
+    hf_row['P_cmb'] = cmb_pressure
     # The mass target of this solve. The energetics wrapper treats a structure with
     # |M_int / M_int_target - 1| above _ZALMOXIS_MASS_ANCHOR_TOL as not converged.
     hf_row['M_int_target'] = float(config_params.get('planet_mass', 0.0))
@@ -4048,12 +4047,22 @@ def zalmoxis_solver(
 
     log.debug(f'Saving Zalmoxis output to {output_zalmoxis}')
 
-    # Select mantle arrays (to match the mesh needed for Aragog)
-    mantle_radii = radii[cmb_index:]
-    mantle_pressure = pressure[cmb_index:]
-    mantle_density = density[cmb_index:]
-    mantle_gravity = gravity[cmb_index:]
-    mantle_temperature = temperature[cmb_index:]
+    # Mantle arrays from the CMB point; its density and temperature are the mantle side: those of
+    # the first mantle node within the mesh tolerance, else linear in r from the first 2 nodes
+    on_node = radii[cmb_index] - cmb_radius <= cmb_tol
+    first = cmb_index + on_node
+    w = (cmb_radius - radii[cmb_index]) / (radii[cmb_index + 1] - radii[cmb_index])
+
+    def _from_cmb(a, at_cmb=None):
+        a = np.asarray(a, dtype=float)
+        side = a[cmb_index] + (0.0 if on_node else w * (a[cmb_index + 1] - a[cmb_index]))
+        return np.r_[side if at_cmb is None else at_cmb, a[first:]]
+
+    mantle_radii = _from_cmb(radii, cmb_radius)
+    mantle_pressure = _from_cmb(pressure, cmb_pressure)
+    mantle_density = _from_cmb(density)
+    mantle_gravity = _from_cmb(gravity, cmb_gravity)
+    mantle_temperature = _from_cmb(temperature)
 
     # Scale mantle temperature to match Aragog temperature profile format
     mantle_temperature_scaled = scale_temperature_profile_for_aragog(

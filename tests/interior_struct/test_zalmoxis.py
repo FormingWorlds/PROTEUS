@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import inspect
 import logging
-import re
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -2512,81 +2511,22 @@ def test_the_accretion_thermal_state_gets_the_core_fraction_of_the_solve(tmp_pat
     assert hf_row['M_core_target'] == pytest.approx(0.325 * (M_earth - 7.43e20), rel=1e-14)
 
 
-@pytest.mark.physics_invariant
-def test_a_thin_mantle_keeps_the_mass_inside_r_core_and_the_core_of_the_solve(
-    tmp_path, monkeypatch
-):
-    """With the core mass 1e-6 of a shell above node 55 of 60, the first node at or above it
-    holds a mantle shell of about 20 % of the mantle. M_core is the mass inside R_core (node
-    55), M_core_solve the core mass of the solve, core_density M_core over the volume inside
-    R_core. The schema check compares M_int - M_core with the mantle of the same arrays above
-    R_core, so it guards these writes and passes; a mantle above the core of the solve would
-    differ by the 20 % shell and refuse it."""
-    model = _plausible_model_results()
-    mass = model['mass_enclosed']
-    cmb_mass = float(mass[54] + 1e-6 * (mass[55] - mass[54]))
-    model['cmb_mass'] = model['core_mantle_mass'] = cmb_mass
-    assert (float(mass[55]) - cmb_mass) / (float(mass[-1]) - cmb_mass) > 0.15
-
-    _, _, _, hf_row, _, cmb_radius, _ = _run_gate_solver(
-        tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
-    )
-    assert hf_row['M_core'] == pytest.approx(float(mass[55]), rel=1e-15)
-    assert hf_row['M_core_solve'] == pytest.approx(cmb_mass, rel=1e-15)
-    assert hf_row['M_int'] - hf_row['M_core'] == pytest.approx(
-        float(mass[-1]) - float(mass[55]), rel=1e-12
-    )
-    assert cmb_radius == pytest.approx(float(model['radii'][55]), rel=1e-15)
-    core_volume = 4.0 / 3.0 * np.pi * cmb_radius**3
-    assert hf_row['core_density'] * core_volume == pytest.approx(float(mass[55]), rel=1e-12)
-
-
 @pytest.mark.unit
-@pytest.mark.physics_invariant
-@pytest.mark.parametrize('share', [0.04, 0.04995, 0.05005, 0.06])
-def test_a_shell_above_5_percent_of_the_mantle_above_r_core_is_logged_once(
-    tmp_path, monkeypatch, caplog, share
-):
-    """The shell between the core mass of the solve and R_core holds `share` of the mantle
-    mass above R_core (M_int - M_core). Above 0.05 the solve logs one warning with the share;
-    it accepts the structure in all cases. At 0.05005 a share of M_int - M_core_solve is 0.0477."""
+@pytest.mark.parametrize('case', ['last cell', 'point above the node'])
+def test_a_cmb_point_with_no_mantle_node_above_it_stops_the_solve(tmp_path, monkeypatch, case):
+    """The first node at the core mass must lie at or above the CMB point (within the 1 m mesh
+    tolerance) and have a mantle node above it: a core mass in the last cell leaves 1 mantle
+    node, and a CMB point 10 m above node 55 contradicts the node masses. Both raise."""
     model = _plausible_model_results()
-    mass = model['mass_enclosed']
-    cmb_mass = float(mass[55] - share * (mass[-1] - mass[55]))
-    assert mass[54] < cmb_mass
-    model['cmb_mass'] = model['core_mantle_mass'] = cmb_mass
-    with caplog.at_level(logging.WARNING):
-        _, _, _, hf_row, _, _, _ = _run_gate_solver(
-            tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
-        )
-    lines = [r.getMessage() for r in caplog.records if 'between M_core_solve' in r.getMessage()]
-    assert hf_row['M_core'] == pytest.approx(float(mass[55]), rel=1e-15)
-    assert len(lines) == (share > 0.05)
-    assert all('Raise interior_struct.zalmoxis.num_levels' in m for m in lines)
-    logged = [
-        float(re.search(r'holds (\S+) of the mantle mass above R_core', m)[1]) for m in lines
-    ]
-    assert logged == pytest.approx([share] * len(lines), rel=2e-3)
-
-
-@pytest.mark.unit
-@pytest.mark.physics_invariant
-def test_a_core_mass_in_the_last_cell_logs_no_mantle_shell_warning(
-    tmp_path, monkeypatch, caplog
-):
-    """A core mass between the masses of the last 2 nodes puts the CMB on the last node, so no
-    mantle mass lies above R_core: the solve logs no shell warning (its share would divide by
-    zero) and then stops with a ValueError in scale_temperature_profile_for_aragog, after the
-    warning block, on the 1-node mantle."""
-    model = _plausible_model_results()
-    mass = model['mass_enclosed']
-    model['cmb_mass'] = model['core_mantle_mass'] = float(0.5 * (mass[-2] + mass[-1]))
-    with caplog.at_level(logging.WARNING), pytest.raises(ValueError) as err:
+    if case == 'last cell':
+        _with_core_arrays(model, 0.5, node=len(model['radii']) - 1)
+    else:
+        _with_core_arrays(model, 0.5)
+        model['core']['r'][-1] = model['radii'][55] + 10.0
+    with pytest.raises(RuntimeError, match='no mantle node above it'):
         _run_gate_solver(
             tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
         )
-    assert any(e.name == 'scale_temperature_profile_for_aragog' for e in err.traceback)
-    assert not [r for r in caplog.records if 'M_core_solve' in r.getMessage()]
 
 
 @pytest.mark.unit
@@ -2603,19 +2543,19 @@ def test_a_core_mass_above_every_node_stops_the_structure_solve(tmp_path, monkey
     assert f'{top:.4e}' in str(err.value)
 
 
-def _with_core_arrays(model, frac):
-    """Put the core mass of ``model`` at ``frac`` of the mass of the cell below node 55 and give
+def _with_core_arrays(model, frac, node=55):
+    """Put the core mass of ``model`` at ``frac`` of the mass of the cell below ``node`` and give
     it core arrays as Zalmoxis returns them: the nodes below the core mass, then the CMB point
     at ``frac`` of that cell in radius, pressure and gravity. Returns the CMB point (r, P, g)."""
     r, m, P, g = (model[k] for k in ('radii', 'mass_enclosed', 'pressure', 'gravity'))
-    cmb_mass = float(m[54] + frac * (m[55] - m[54]))
+    cmb_mass = float(m[node - 1] + frac * (m[node] - m[node - 1]))
     model['cmb_mass'] = model['core_mantle_mass'] = cmb_mass
-    point = tuple(float(a[54] + frac * (a[55] - a[54])) for a in (r, P, g))
+    point = tuple(float(a[node - 1] + frac * (a[node] - a[node - 1])) for a in (r, P, g))
     model['core'] = {
-        'r': np.r_[r[:55], point[0]],
-        'm': np.r_[m[:55], cmb_mass],
-        'P': np.r_[P[:55], point[1]],
-        'g': np.r_[g[:55], point[2]],
+        'r': np.r_[r[:node], point[0]],
+        'm': np.r_[m[:node], cmb_mass],
+        'P': np.r_[P[:node], point[1]],
+        'g': np.r_[g[:node], point[2]],
     }
     return point
 
