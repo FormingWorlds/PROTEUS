@@ -599,7 +599,7 @@ def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:
         float
             The radius, limited when the clip is enabled and applicable.
     """
-    if not getattr(config.escape, 'hill_clamp', False):
+    if not getattr(config.escape, 'effective_hill_clamp', False):
         return radius
 
     # Zero before the first orbit update; nothing to clip against yet.

@@ -2183,7 +2183,7 @@ def _cryst_cfg(reservoir='outgas', seal=False):
     """Minimal config stub for run_crystallized: ``escape.reservoir`` (to confirm
     the escape model is unfractionated) and ``outgas.lid_seal.enabled``."""
     cfg = MagicMock()
-    cfg.escape.reservoir = reservoir
+    cfg.escape.effective_reservoir = reservoir
     cfg.outgas.lid_seal.enabled = seal
     return cfg
 
@@ -3003,7 +3003,7 @@ def test_a_frozen_atmosphere_loses_per_element_what_escape_takes_from_each_total
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0e9  # kg/s, capped at a quarter of the atmosphere
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3

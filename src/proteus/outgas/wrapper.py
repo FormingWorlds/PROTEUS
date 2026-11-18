@@ -612,7 +612,7 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     """
     # Uniform scaling holds only while escape takes the gases in proportion to
     # their abundance; fractionating escape debits each element from its gases.
-    reservoir = getattr(config.escape, 'reservoir', 'outgas')
+    reservoir = getattr(config.escape, 'effective_reservoir', 'outgas')
     if reservoir == 'pxuv':
         apply_frozen_debit(hf_row)
         return

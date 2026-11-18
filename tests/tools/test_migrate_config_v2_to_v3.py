@@ -652,7 +652,9 @@ def test_hill_clamp_override_reproduces_unclipped_2_0_escape():
     # opposite; that difference is what the pin exists to bridge.
     from proteus.config._escape import Escape, Zephyrus
 
-    assert Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el')).hill_clamp is True
+    assert (
+        Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el')).effective_hill_clamp is True
+    )
 
 
 def test_scheme_override_reproduces_energy_limited_2_0_escape():
@@ -668,7 +670,7 @@ def test_scheme_override_reproduces_energy_limited_2_0_escape():
     assert Escape(module='zephyrus').uses_dispatcher is True
     pinned = Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el'))
     assert pinned.uses_dispatcher is False
-    assert (pinned.reservoir, pinned.zephyrus.tidal) == ('outgas', False)
+    assert (pinned.effective_reservoir, pinned.zephyrus.effective_tidal) == ('outgas', False)
 
 
 def test_bol_scale_window_override_reproduces_unwindowed_2_0_scaling():

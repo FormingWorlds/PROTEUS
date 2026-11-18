@@ -52,6 +52,7 @@ is read, with an error that names the parameter.
 the configuration with every parameter resolved, including all the defaults
 that were filled in for the options you did not set. This is the
 fully-expanded configuration the simulation actually used.
+Three escape settings are the exception: `escape.reservoir`, `escape.hill_clamp`, and `escape.zephyrus.tidal` stay `"none"` when the file leaves them unset, because their default follows the escape scheme. The same file records the escape module and scheme. With `escape.module = "zephyrus"` and `escape.zephyrus.scheme = "dispatcher"` they resolve to `pxuv`, no Hill clip, and the tidal factor. Under `el`, or any other escape module, they resolve to `outgas`, the Hill clip, and no tidal factor.
 
 **Some parameters are conditionally required.** A parameter that is only
 meaningful for one module is required when that module is selected. For

@@ -73,7 +73,7 @@ def dispatch_settings(zcfg: Zephyrus):
         cool_o_finestructure=bool(zcfg.cool_o_finestructure),
         cool_recombination=bool(zcfg.cool_recombination),
         fractionate=bool(zcfg.fractionate),
-        tidal=True if zcfg.tidal is None else bool(zcfg.tidal),
+        tidal=zcfg.effective_tidal,
         photon_limit=bool(zcfg.photon_limit),
         recombination_limit=bool(zcfg.recombination_limit),
         nozzle_temperature=zcfg.nozzle_temperature,

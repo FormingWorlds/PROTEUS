@@ -84,7 +84,7 @@ def test_run_escape_dummy():
     config = MagicMock()
     config.escape.module = 'dummy'
     config.escape.dummy.rate = 1e5  # kg/s
-    config.escape.reservoir = 'bulk'
+    config.escape.effective_reservoir = 'bulk'
     config.outgas.mass_thresh = 1e10  # kg
 
     # Minimal hf_row with initial element inventories (all elements from element_list)
@@ -143,7 +143,7 @@ def test_run_escape_atmosphere_only_sources_loss_from_atmosphere():
         config = MagicMock()
         config.escape.module = 'dummy'
         config.escape.dummy.rate = rate
-        config.escape.reservoir = 'bulk'  # configured (interior-inclusive) reservoir
+        config.escape.effective_reservoir = 'bulk'  # configured (interior-inclusive) reservoir
         config.outgas.mass_thresh = 1.0  # kg, low enough that nothing is zeroed
         return config
 
@@ -209,10 +209,10 @@ def test_run_escape_zephyrus(mock_el_escape):
     config = MagicMock()
     config.escape.module = 'zephyrus'
     config.escape.uses_dispatcher = False
-    config.escape.zephyrus.tidal = False
+    config.escape.zephyrus.effective_tidal = False
     config.escape.zephyrus.efficiency = 0.15
     config.escape.zephyrus.Pxuv = 5e-5  # bar
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.outgas.mass_thresh = 1e10  # kg
     config.star.mass = 1.0e30  # kg (Sun-like)
 
@@ -277,10 +277,10 @@ def test_run_escape_zephyrus_atmosphere_only_overrides_bulk(mock_el_escape):
     config = MagicMock()
     config.escape.module = 'zephyrus'
     config.escape.uses_dispatcher = False
-    config.escape.zephyrus.tidal = False
+    config.escape.zephyrus.effective_tidal = False
     config.escape.zephyrus.efficiency = 0.15
     config.escape.zephyrus.Pxuv = 5e-5
-    config.escape.reservoir = 'bulk'  # configured reservoir, to be overridden
+    config.escape.effective_reservoir = 'bulk'  # configured reservoir, to be overridden
     config.outgas.mass_thresh = 1.0
     config.star.mass = 1.0e30
 
@@ -364,7 +364,7 @@ def test_run_escape_snapshots_baseline_on_first_call():
     config = MagicMock()
     config.escape.module = 'dummy'
     config.escape.dummy.rate = 1e3  # kg/s
-    config.escape.reservoir = 'bulk'
+    config.escape.effective_reservoir = 'bulk'
     config.outgas.mass_thresh = 1e10
 
     hf_row = {
@@ -520,7 +520,7 @@ def test_run_escape_baseline_persists_across_calls():
     config = MagicMock()
     config.escape.module = 'dummy'
     config.escape.dummy.rate = 1e9  # very high rate to make change visible
-    config.escape.reservoir = 'bulk'
+    config.escape.effective_reservoir = 'bulk'
     config.outgas.mass_thresh = 1e10
 
     hf_row = {
@@ -564,7 +564,7 @@ def test_run_escape_resets_baseline_if_corrupt():
     config = MagicMock()
     config.escape.module = 'dummy'
     config.escape.dummy.rate = 1e3
-    config.escape.reservoir = 'bulk'
+    config.escape.effective_reservoir = 'bulk'
     config.outgas.mass_thresh = 1e10
 
     hf_row = {
@@ -615,7 +615,7 @@ def test_run_zephyrus_no_tidal(mock_el_escape):
 
     # Mock config
     config = MagicMock()
-    config.escape.zephyrus.tidal = False
+    config.escape.zephyrus.effective_tidal = False
     config.escape.zephyrus.efficiency = 0.1
     config.star.mass = 2.0e30  # kg
 
@@ -657,7 +657,7 @@ def test_run_zephyrus_with_tidal(mock_el_escape):
 
     # Mock config with tidal enabled
     config = MagicMock()
-    config.escape.zephyrus.tidal = True
+    config.escape.zephyrus.effective_tidal = True
     config.escape.zephyrus.efficiency = 0.2
     config.star.mass = 1.5e30  # kg
 
@@ -1075,7 +1075,7 @@ def test_run_escape_recomputes_baseline_when_m_vol_initial_is_unparseable():
     # 'dummy' (not disabled) so we reach the baseline-rebuild branch
     # at lines 50-71; rate=0 keeps the post-dispatch arithmetic trivial.
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'bulk'
+    config.escape.effective_reservoir = 'bulk'
     config.escape.dummy.rate = 0.0
     config.outgas.mass_thresh = 1.0e10
     config.escape.step_max_frac = 0.25
@@ -1124,7 +1124,7 @@ def test_run_escape_dummy_zeroes_elemental_rates_when_unfract_raises():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'bulk'
+    config.escape.effective_reservoir = 'bulk'
     config.escape.dummy.rate = 0.0
     config.outgas.mass_thresh = 1.0e10
     config.escape.step_max_frac = 0.25
@@ -1175,8 +1175,8 @@ def test_run_escape_zephyrus_zeroes_elemental_rates_when_unfract_raises():
     config = MagicMock()
     config.escape.module = 'zephyrus'
     config.escape.uses_dispatcher = False
-    config.escape.reservoir = 'bulk'
-    config.escape.zephyrus.tidal = True
+    config.escape.effective_reservoir = 'bulk'
+    config.escape.zephyrus.effective_tidal = True
     config.escape.zephyrus.efficiency = 0.3
     config.escape.zephyrus.Pxuv = 1.0e-2
     config.star.mass = 1.0  # M_sun units
@@ -1471,7 +1471,7 @@ def test_run_escape_cumulative_matches_the_mass_actually_removed():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = rate
     config.outgas.mass_thresh = 1.0e10
     config.escape.step_max_frac = 0.25
@@ -1659,7 +1659,7 @@ def test_run_escape_publishes_the_step_limit_and_clears_it_again():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.outgas.mass_thresh = 1.0e10
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -1740,7 +1740,7 @@ def test_crystallized_atmosphere_scaling_uses_the_capped_loss():
     over_rate = 2.0e23 / (secs_per_year * dt)  # asks for 2.5x the atmosphere
 
     config = MagicMock()
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.module = 'dummy'
 
     capped = 0.25 * m_atm
@@ -1793,7 +1793,7 @@ def test_cumulative_counter_ignores_a_step_that_debited_nothing():
     rate = 1.0e4  # kg/s, live rate against nothing to lose
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = rate
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -1836,7 +1836,7 @@ def test_thin_atmosphere_does_not_erase_the_mantle_inventory():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0e5  # kg/s
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -1890,7 +1890,7 @@ def test_cumulative_counter_excludes_the_threshold_truncation():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = rate
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -1946,7 +1946,7 @@ def test_crystallized_step_moves_the_same_mass_in_every_record():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0e5  # kg/s
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -2004,7 +2004,7 @@ def test_unreadable_reservoir_debits_nothing_and_credits_nothing():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0e5  # kg/s, a live rate against a bad reservoir
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -2087,7 +2087,7 @@ def test_frozen_mantle_sizes_the_loss_from_the_column_it_will_rescale():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'bulk'  # the whole planet, not the frozen column
+    config.escape.effective_reservoir = 'bulk'  # the whole planet, not the frozen column
     config.escape.dummy.rate = 1.0e9  # kg/s
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -2251,7 +2251,7 @@ def test_an_element_escaping_below_the_threshold_on_a_frozen_mantle_keeps_its_co
     hf.update(M_atm=4.012e12, P_surf=1.0, esc_kg_cumulative=0.0, M_vol_initial=1.0012e13)
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0e5  # kg/s, capped at a quarter of the atmosphere
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -2307,7 +2307,7 @@ def test_a_frozen_mantle_escapes_to_desiccation_with_closed_books(H_kg, N_kg):
     hf.update(M_volatile_change=0.0, atm_kg_per_mol=0.002, Phi_global=0.5)
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0e9  # kg/s, capped at a quarter of the atmosphere
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -2359,7 +2359,7 @@ def test_a_new_escape_baseline_clears_the_desiccation_ledger():
     hf.update(M_vol_initial=0.0, esc_kg_cumulative=0.0, M_desiccated=5.0e15)
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -2392,7 +2392,7 @@ def _quarter_loss_config():
     """Dummy escape capped at a quarter of the atmosphere, at mass_thresh 1e16 kg."""
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0e9  # kg/s, capped at a quarter of the atmosphere
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -2512,7 +2512,7 @@ def test_frozen_atmosphere_under_pxuv_loses_each_element_from_its_own_gases():
         escape=SimpleNamespace(
             module='zephyrus',
             uses_dispatcher=True,
-            reservoir='pxuv',
+            effective_reservoir='pxuv',
             step_max_frac=0.25,
         ),
         outgas=SimpleNamespace(mass_thresh=1e10, prevent_desaturation=False),

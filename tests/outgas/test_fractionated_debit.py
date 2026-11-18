@@ -302,7 +302,10 @@ def test_graphite_reaches_the_row_through_the_escape_step():
 
     config = SimpleNamespace(
         escape=SimpleNamespace(
-            module='zephyrus', uses_dispatcher=True, reservoir='pxuv', step_max_frac=0.25
+            module='zephyrus',
+            uses_dispatcher=True,
+            effective_reservoir='pxuv',
+            step_max_frac=0.25,
         ),
         outgas=SimpleNamespace(mass_thresh=1e10, prevent_desaturation=False),
     )
@@ -389,7 +392,10 @@ def _frozen_pxuv_config():
 
     return SimpleNamespace(
         escape=SimpleNamespace(
-            module='zephyrus', uses_dispatcher=True, reservoir='pxuv', step_max_frac=0.25
+            module='zephyrus',
+            uses_dispatcher=True,
+            effective_reservoir='pxuv',
+            step_max_frac=0.25,
         ),
         outgas=SimpleNamespace(mass_thresh=1e10, prevent_desaturation=False),
     )

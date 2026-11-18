@@ -1162,7 +1162,7 @@ def test_run_atmosphere_clips_a_carried_radius_from_an_unclipped_row():
             surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
-        escape=SimpleNamespace(hill_clamp=True, hill_clamp_frac=1.0),
+        escape=SimpleNamespace(effective_hill_clamp=True, hill_clamp_frac=1.0),
     )
     hf_row = {
         'T_magma': 1800.0,
@@ -1268,7 +1268,7 @@ def test_run_atmosphere_does_not_place_gravity_from_a_radius_that_is_not_a_numbe
             surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
-        escape=SimpleNamespace(hill_clamp=hill_clamp, hill_clamp_frac=1.0),
+        escape=SimpleNamespace(effective_hill_clamp=hill_clamp, hill_clamp_frac=1.0),
     )
     hf_row = {
         'T_magma': 1800.0,
@@ -1370,7 +1370,7 @@ def test_run_atmosphere_keeps_a_level_the_bound_does_not_move():
             surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
-        escape=SimpleNamespace(hill_clamp=True, hill_clamp_frac=1.0),
+        escape=SimpleNamespace(effective_hill_clamp=True, hill_clamp_frac=1.0),
     )
     hf_row = {
         'T_magma': 1800.0,

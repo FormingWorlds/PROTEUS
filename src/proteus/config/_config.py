@@ -485,10 +485,10 @@ def lid_seal_requirements(instance, attribute, value):
             'outgas.lid_seal.enabled = true requires outgas.module = "calliope", not '
             f'"{instance.outgas.module}": the leak rebuilds the pressures as CALLIOPE does.'
         )
-    if instance.escape.reservoir not in ('outgas', 'bulk'):
+    if instance.escape.effective_reservoir not in ('outgas', 'bulk'):
         raise ValueError(
             'outgas.lid_seal.enabled = true requires unfractionated escape, '
-            f'not escape.reservoir = "{instance.escape.reservoir}": a held step scales the '
+            f'not escape.reservoir = "{instance.escape.effective_reservoir}": a held step scales the '
             'atmosphere uniformly. With ZEPHYRUS, set escape.zephyrus.scheme = "el".'
         )
     zalmoxis = instance.interior_struct.module == 'zalmoxis'

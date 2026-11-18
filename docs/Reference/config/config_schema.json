@@ -13585,7 +13585,7 @@
         "outgas"
       ],
       "touches": [
-        "escape.reservoir",
+        "escape.effective_reservoir",
         "interior_energetics.module",
         "interior_struct.module",
         "interior_struct.zalmoxis",

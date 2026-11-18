@@ -233,7 +233,7 @@ def test_lid_seal_validator_reads_a_missing_zalmoxis_table_as_dry():
         params=SimpleNamespace(
             stop=SimpleNamespace(solid=SimpleNamespace(freeze_volatiles=False))
         ),
-        escape=SimpleNamespace(module='zephyrus', reservoir='outgas'),
+        escape=SimpleNamespace(module='zephyrus', effective_reservoir='outgas'),
         interior_struct=SimpleNamespace(module='zalmoxis', zalmoxis=None),
     )
     assert lid_seal_requirements(inst, None, None) is None

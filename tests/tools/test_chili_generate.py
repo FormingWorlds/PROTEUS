@@ -483,7 +483,15 @@ def test_every_chili_config_runs_energy_limited_escape():
     for path in files:
         esc = _read_config(str(path)).escape
         assert esc.zephyrus.scheme == 'el', path.name
-        assert (esc.reservoir, esc.hill_clamp, esc.zephyrus.tidal) == ('outgas', True, False)
+        assert (
+            esc.effective_reservoir,
+            esc.effective_hill_clamp,
+            esc.zephyrus.effective_tidal,
+        ) == (
+            'outgas',
+            True,
+            False,
+        )
         assert esc.uses_dispatcher is False, path.name
 
 

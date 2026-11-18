@@ -174,6 +174,47 @@ def test_run_boreas_unit_conversions_and_fractionation(boreas_config, monkeypatc
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.usefixtures('_skip_if_no_boreas')
+def test_run_boreas_without_fractionation_splits_by_the_atmosphere(monkeypatch):
+    """With fractionation off, BOREAS's bulk rate is split by atmospheric element mass.
+
+    The reservoir is left unset, as in a config that does not name one, so it
+    resolves to ``outgas`` for BOREAS. Each element then escapes in proportion
+    to its mass in the atmosphere, and the element rates sum to the bulk rate.
+    """
+    from unittest.mock import MagicMock
+
+    import boreas as boreas_lib
+
+    from proteus.escape.boreas import run_boreas
+
+    cfg = read_config_object(Path('input/dummy.toml'))
+    cfg.escape.module = 'boreas'
+    cfg.escape.boreas.fractionate = False
+    assert cfg.escape.reservoir is None and cfg.escape.effective_reservoir == 'outgas'
+
+    out = {'regime': 'EL', 'Mdot': 1e10, 'cs': 1e6, 'RXUV': 7e8}
+    mock_ml = MagicMock()
+    mock_ml.compute_mass_loss_parameters.return_value = [out]
+    mock_frac = MagicMock()
+    mock_frac.execute.return_value = [out]
+    monkeypatch.setattr(boreas_lib, 'MassLoss', lambda params: mock_ml)
+    monkeypatch.setattr(boreas_lib, 'Fractionation', lambda params: mock_frac)
+
+    hf_row = _make_minimal_hf_row()
+    run_boreas(cfg, hf_row, {'output': '/tmp'})
+
+    total = hf_row['esc_rate_total']
+    assert total == pytest.approx(1e7, rel=1e-12)
+    rates = {e: hf_row[f'esc_rate_{e}'] for e in ('H', 'C', 'N', 'S')}
+    assert sum(rates.values()) == pytest.approx(total, rel=1e-9)
+    # 1:2:3:4 by atmospheric mass; the bulk inventory (10:5:2:1) would split otherwise.
+    assert rates['C'] / rates['H'] == pytest.approx(2.0, rel=1e-9)
+    assert rates['S'] / rates['N'] == pytest.approx(4.0 / 3.0, rel=1e-9)
+
+
+@pytest.mark.unit
 @pytest.mark.usefixtures('_skip_if_no_boreas')
 def test_run_boreas_raises_on_solver_failure(boreas_config, monkeypatch):
     """When the BOREAS mass-loss solver raises internally, RunBOREAS
@@ -280,7 +321,9 @@ def test_bound_escape_level_scales_the_rate_with_the_clipped_area():
     """
     from types import SimpleNamespace
 
-    config = SimpleNamespace(escape=SimpleNamespace(hill_clamp=True, hill_clamp_frac=1.0))
+    config = SimpleNamespace(
+        escape=SimpleNamespace(effective_hill_clamp=True, hill_clamp_frac=1.0)
+    )
     hf_row = {'hill_radius': 1.0e8, 'R_int': 6.4e6, 'esc_rate_total': 2.5e10}
 
     r = bound_escape_level(config, hf_row, 5.0e8)
@@ -296,7 +339,7 @@ def test_bound_escape_level_scales_the_rate_with_the_clipped_area():
     assert hf_row['esc_rate_total'] == pytest.approx(2.5e10, rel=1e-12)
 
     # Disabled, the solved radius passes through even beyond the Hill radius.
-    config.escape.hill_clamp = False
+    config.escape.effective_hill_clamp = False
     r_off = bound_escape_level(config, hf_row, 5.0e8)
     assert r_off == pytest.approx(5.0e8, rel=1e-12)
     assert hf_row['esc_rate_total'] == pytest.approx(2.5e10, rel=1e-12)

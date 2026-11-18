@@ -27,36 +27,81 @@ def test_hill_clamp_default_follows_the_escape_scheme():
     """
     from proteus.config._escape import Zephyrus
 
-    assert Escape(module='zephyrus').hill_clamp is False
+    assert Escape(module='zephyrus').effective_hill_clamp is False
     el = Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el'))
-    assert el.hill_clamp is True
+    assert el.effective_hill_clamp is True
     assert el.hill_clamp_frac == pytest.approx(1.0, rel=1e-12)
-    assert Escape(module='dummy').hill_clamp is True
-    assert Escape(module=None).hill_clamp is True
-    # An explicit setting wins under either scheme.
-    assert Escape(module='zephyrus', hill_clamp=True).hill_clamp is True
+    assert Escape(module='dummy').effective_hill_clamp is True
+    assert Escape(module=None).effective_hill_clamp is True
+    # An explicit setting wins under either scheme, and for any module.
+    assert Escape(module='zephyrus', hill_clamp=True).effective_hill_clamp is True
+    for module in ('zephyrus', 'dummy'):
+        off = Escape(module=module, zephyrus=Zephyrus(scheme='el'), hill_clamp=False)
+        assert off.effective_hill_clamp is False, module
+
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    toi = read_config_object(PROTEUS_ROOT / 'input' / 'planets' / 'toi561b.toml').escape
+    assert toi.zephyrus.scheme == 'el' and toi.effective_hill_clamp is False
 
 
-def test_scheme_dependent_defaults_resolve_once_at_construction():
+def test_scheme_dependent_defaults_follow_the_scheme_without_being_stored():
     """The reservoir and the tidal factor follow the scheme when left unset.
 
     The dispatcher returns a rate per element, so its reservoir is ``pxuv``;
     energy-limited escape splits by atmospheric abundance (``outgas``). The
     tidal reduction of the barrier is on under the dispatcher, as in ZEPHYRUS,
-    and off under energy-limited escape, as it was before the dispatcher.
+    and off under energy-limited escape, as it was before the dispatcher. The
+    fields stay unset, so a later change of module or scheme moves the
+    defaults with it.
     """
     from proteus.config._escape import Zephyrus
 
     d = Escape(module='zephyrus')
     assert d.uses_dispatcher is True
-    assert d.reservoir == 'pxuv'
-    assert d.zephyrus.tidal is True
+    assert d.effective_reservoir == 'pxuv'
+    assert d.zephyrus.effective_tidal is True
+    assert d.reservoir is None and d.hill_clamp is None and d.zephyrus.tidal is None
     el = Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el'))
     assert el.uses_dispatcher is False
-    assert el.reservoir == 'outgas'
-    assert el.zephyrus.tidal is False
-    assert Escape(module='boreas').reservoir == 'outgas'
-    assert Escape(module='zephyrus', zephyrus=Zephyrus(tidal=False)).zephyrus.tidal is False
+    assert el.effective_reservoir == 'outgas'
+    assert el.zephyrus.effective_tidal is False
+    assert Escape(module='boreas').effective_reservoir == 'outgas'
+    no_tide = Escape(module='zephyrus', zephyrus=Zephyrus(tidal=False))
+    assert no_tide.zephyrus.effective_tidal is False
+
+    d.module = 'dummy'
+    assert d.effective_reservoir == 'outgas' and d.effective_hill_clamp is True
+
+
+def test_a_case_switched_away_from_the_dispatcher_writes_and_reloads(tmp_path):
+    """A case switched to dummy escape or to "el" reloads from the file written for it.
+
+    This is what a grid does to each case: it loads the reference config,
+    sets the case value, writes the file and reads it back. The reference
+    leaves the reservoir, the Hill clip and the tidal factor unset, so the
+    written case leaves them unset too and they take the case's defaults.
+    """
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+    from proteus.utils.helper import recursive_setattr
+
+    reference = PROTEUS_ROOT / 'input' / 'all_options.toml'
+    for key, value in (('escape.module', 'dummy'), ('escape.zephyrus.scheme', 'el')):
+        case = read_config_object(reference)
+        assert case.escape.effective_reservoir == 'pxuv'
+        recursive_setattr(case, key, value)
+        path = tmp_path / f'{value}.toml'
+        case.write(str(path))
+        back = read_config_object(path)
+        assert back.escape.reservoir is None
+        assert back.escape.effective_reservoir == 'outgas'
+        assert back.escape.effective_hill_clamp is True
+        assert back.escape.zephyrus.tidal is None
+    assert back.escape.zephyrus.effective_tidal is False
 
 
 def test_reservoir_must_match_the_escape_scheme():
@@ -73,7 +118,7 @@ def test_reservoir_must_match_the_escape_scheme():
         with pytest.raises(ValueError, match='sets the escaping composition'):
             Escape(module='zephyrus', reservoir=res)
         el = Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el'), reservoir=res)
-        assert el.reservoir == res
+        assert el.effective_reservoir == res
     for module, scheme in (('zephyrus', 'el'), ('dummy', 'dispatcher'), ('boreas', 'el')):
         with pytest.raises(ValueError, match='"pxuv" requires'):
             Escape(module=module, zephyrus=Zephyrus(scheme=scheme), reservoir='pxuv')

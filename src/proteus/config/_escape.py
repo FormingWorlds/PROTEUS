@@ -182,6 +182,13 @@ class Zephyrus:
     hydrostatic_levels_max: int = field(default=3200, validator=ge(8))
     hydrostatic_rtol: float = field(default=1.0e-2, validator=gt(0))
 
+    @property
+    def effective_tidal(self) -> bool:
+        """Whether the tidal barrier reduction applies: ``tidal``, or its scheme default."""
+        if self.tidal is not None:
+            return bool(self.tidal)
+        return self.scheme == 'dispatcher'
+
 
 def valid_escapedummy(instance, attribute, value):
     """Dummy escape requires a non-negative escape rate."""
@@ -347,20 +354,26 @@ class Escape:
     step_max_frac: float = field(default=0.25, validator=(gt(0.0), le(1.0)))
     step_dt_floor_frac: float = field(default=1.0e-3, validator=(gt(0.0), le(1.0)))
 
-    def __attrs_post_init__(self):
-        """Resolve the settings whose default depends on the escape scheme."""
-        dispatcher = self.uses_dispatcher
-        if self.reservoir is None:
-            self.reservoir = 'pxuv' if dispatcher else 'outgas'
-        if self.hill_clamp is None:
-            self.hill_clamp = not dispatcher
-        if self.zephyrus.tidal is None:
-            self.zephyrus.tidal = dispatcher
-
     @property
     def uses_dispatcher(self) -> bool:
         """Is escape computed by the ZEPHYRUS regime dispatcher?"""
         return self.module == 'zephyrus' and self.zephyrus.scheme == 'dispatcher'
+
+    # The scheme-dependent defaults are resolved where they are read, never
+    # stored, so a config written after a module or scheme change reloads.
+    @property
+    def effective_reservoir(self) -> str:
+        """The reservoir in use: ``reservoir``, or its default for the escape scheme."""
+        if self.reservoir is not None:
+            return self.reservoir
+        return 'pxuv' if self.uses_dispatcher else 'outgas'
+
+    @property
+    def effective_hill_clamp(self) -> bool:
+        """Whether the Hill-radius limit applies: ``hill_clamp``, or its scheme default."""
+        if self.hill_clamp is not None:
+            return bool(self.hill_clamp)
+        return not self.uses_dispatcher
 
     @property
     def xuv_defined_by_radius(self) -> bool:

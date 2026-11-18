@@ -35,7 +35,7 @@ def reservoir_key(reservoir: str) -> str:
     Parameters
     ----------
         reservoir : str
-            Reservoir name from ``config.escape.reservoir``.
+            Reservoir name from ``config.escape.effective_reservoir``.
 
     Returns
     -------
@@ -90,7 +90,7 @@ def escapable_mass(
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
         reservoir : str
-            Reservoir name from ``config.escape.reservoir``.
+            Reservoir name from ``config.escape.effective_reservoir``.
         config : Config or None
             Run configuration; with ``outgas.prevent_desaturation`` on, condensed
             mass is excluded from what escape can reach. None excludes only
@@ -340,7 +340,7 @@ def run_escape(
             Time interval over which escape is occuring [yr]
         atmosphere_only : bool
             If True, size the per-element loss from the atmospheric reservoir
-            regardless of ``config.escape.reservoir``. Set once the mantle has
+            regardless of ``config.escape.effective_reservoir``. Set once the mantle has
             solidified: dissolved volatiles are then frozen into the solid and
             the atmosphere is the only reservoir that can supply escape. The
             element floor of :func:`calc_new_elements` is then off, since no
@@ -412,7 +412,7 @@ def run_escape(
     # `*_kg_atm` (atmospheric abundance). This keeps the per-element `*_kg_total`
     # debit proportional to the atmosphere, matching the uniform atmospheric
     # scaling that `outgas.wrapper.run_crystallized` applies in the same step.
-    reservoir = config.escape.reservoir
+    reservoir = config.escape.effective_reservoir
     if atmosphere_only and reservoir != 'pxuv':
         reservoir = 'outgas'
     # The frozen per-element debit cannot erode rock vapour, so the cap and the
@@ -517,7 +517,7 @@ def run_dummy(config: Config, hf_row: dict, atmosphere_only: bool = False):
 
     # Always unfractionating (best-effort: unit tests may not populate all keys)
     try:
-        reservoir = getattr(config.escape, 'reservoir', None)
+        reservoir = getattr(config.escape, 'effective_reservoir', None)
         if atmosphere_only and isinstance(reservoir, str):
             reservoir = 'outgas'
         if isinstance(reservoir, str):
@@ -564,7 +564,7 @@ def run_zephyrus(
 
     # Compute energy-limited escape
     mlr = EL_escape(
-        config.escape.zephyrus.tidal,  # tidal contribution (True/False)
+        config.escape.zephyrus.effective_tidal,  # tidal contribution (True/False)
         hf_row['semimajorax'],  # planetary semi-major axis [m]
         hf_row['eccentricity'],  # eccentricity
         hf_row['M_planet'],  # planetary mass [kg]
@@ -582,7 +582,7 @@ def run_zephyrus(
 
     # Always unfractionating - escaping in bulk
     try:
-        reservoir = getattr(config.escape, 'reservoir', None)
+        reservoir = getattr(config.escape, 'effective_reservoir', None)
         if atmosphere_only and isinstance(reservoir, str):
             reservoir = 'outgas'
         if isinstance(reservoir, str):
@@ -622,7 +622,7 @@ def escaping_fractions(hf_row: dict, reservoir: str, res: dict, M_vols: float) -
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
         reservoir : str
-            Reservoir name from ``config.escape.reservoir``.
+            Reservoir name from ``config.escape.effective_reservoir``.
         res : dict
             Element masses in the reservoir [kg].
         M_vols : float
