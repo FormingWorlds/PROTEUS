@@ -27,7 +27,7 @@ defaults:
     shell: bash
 
 concurrency:
-  group: weekly-digest
+  group: weekly-digest-${{ (github.event_name == 'schedule' || inputs.post) && 'live' || github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -55,11 +55,12 @@ jobs:
           [ -n "$SINCE" ] && args+=(--since "$SINCE")
           [ -n "$UNTIL" ] && args+=(--until "$UNTIL")
           python tools/digest/collect.py "${args[@]}"
-          python tools/digest/facts.py collected.json
+          python tools/digest/facts.py collected.json --summary "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v6
         with:
           name: collected
           path: collected.json
+          overwrite: true
 
   draft:
     name: Draft the entries
@@ -87,6 +88,7 @@ jobs:
         with:
           name: draft
           path: draft.json
+          overwrite: true
 
   publish:
     name: Check, render and post
@@ -129,6 +131,7 @@ jobs:
         if: always()
         with:
           name: digest
+          overwrite: true
           path: |
             out/
             collected.json
@@ -140,4 +143,5 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           POST: ${{ inputs.post || false }}
-        run: python tools/digest/post.py publish collected.json draft.json out --event "$EVENT" --post-input "$POST"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python tools/digest/post.py publish collected.json draft.json out --event "$EVENT" --post-input "$POST" --run-url "$RUN_URL"

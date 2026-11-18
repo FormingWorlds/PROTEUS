@@ -26,6 +26,21 @@ from common import SECTIONS, DigestError, is_bot, load_settings, parse_time
 MAX_FACTS = 4
 VALUE_CHARS = 60
 BODY_LIMIT = 65536
+LINK_RE = re.compile(r'\[((?:\\.|[^\\\[\]])*)\]\(([^()\s]*)\)')
+CODE_RE = re.compile(r'(?<!\\)`[^`\n]*`')
+MARKER_RE = re.compile(r'\n<!-- weekly-digest-state \{[^\n<>]*\} -->\n*\Z')
+MENTION_RE = re.compile(r'(?<![\w`])@([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)(?![\w/-])')
+LITERAL = {
+    'a URL': re.compile(r'://|www\.|mailto:|xmpp:|javascript:', re.I),
+    'an @': re.compile('[@\uff20\ufe6b]'),
+    'a # reference': re.compile(r'(?<!#)#\d|\bGH-\d', re.I),
+}
+RAW = {
+    'HTML': re.compile(r'<\s*[A-Za-z/!?]'),
+    'an HTML entity': re.compile(r'&#?[A-Za-z0-9]+;'),
+    'a bracket': re.compile(r'[\[\]]'),
+    'a backtick': re.compile('`'),
+}
 
 
 def tuesday_title(until: str) -> str:
@@ -71,8 +86,10 @@ def plain(text: str) -> str:
 
 def value(item: object) -> str:
     """A fact value as a short code span with no line break, pipe, backtick or comment delimiter."""
+    if item is None:
+        return '(none)'
     text = re.sub(r'<!--|-->|[`|\s]', ' ', str(item))[:VALUE_CHARS]
-    return f'`{text}`'
+    return f'`{text}`' if text.strip() else '(empty)'
 
 
 def fact_line(fact: dict) -> str:
@@ -113,7 +130,7 @@ class Mentions:
         """Render the author of a cited pull request or release."""
         login = item['author']
         if is_bot(login, item['author_kind'], self.bots):
-            return login or 'unknown'
+            return escape(login) if login else 'unknown'
         if login in self.done or (
             item.get('status') == 'open' and item['ref'] in self.announced
         ):
@@ -122,24 +139,52 @@ class Mentions:
         return f'@{login}' if self.live else f'`@{login}`'
 
 
+def link_url(url: str) -> str:
+    """The URL of a markdown link, quoted so it has no space or parenthesis."""
+    return urllib.parse.quote(url, safe=':/#?=&%@+.,-_~')
+
+
 def links(items: list[dict]) -> str:
     """Markdown links to the cited pull requests and releases."""
     texts = [
         re.sub(r'([\\\[\]()`<>*_])', r'\\\1', i['ref'].replace('@', ' ').replace('|', '/'))
         for i in items
     ]
-    urls = [urllib.parse.quote(i['url'], safe=':/#?=&%@+.,-_~') for i in items]
-    return ', '.join(f'[{text}]({url})' for text, url in zip(texts, urls))
+    return ', '.join(f'[{text}]({link_url(i["url"])})' for text, i in zip(texts, items))
+
+
+def scan_body(body: str, urls: list[str], logins: list[str]) -> list[str]:
+    """Return the problems of a rendered body: a link or mention that the data does not allow.
+
+    Code spans, the state marker and the links to ``urls`` are removed first. In
+    the rest, a URL, ``@`` or ``#`` reference fails even when escaped, because
+    GitHub links them in plain text; markup characters fail when not escaped.
+    """
+    allowed, problems = {link_url(u) for u in urls}, []
+
+    def link(match: re.Match) -> str:
+        if match.group(2) not in allowed:
+            problems.append(f'a link to {match.group(2)}')
+        return ' '
+
+    def mention(match: re.Match) -> str:
+        if match.group(1) not in logins:
+            problems.append(f'a mention of {match.group(1)}')
+        return ' '
+
+    rest = LINK_RE.sub(link, CODE_RE.sub(' ', MARKER_RE.sub('\n', body)))
+    literal = MENTION_RE.sub(mention, re.sub(r'\\([!-/:-@\[-`{-~])', r'\1', rest))
+    raw = re.sub(r'\\.', ' ', rest)
+    problems += [what for what, rx in LITERAL.items() if rx.search(literal)]
+    return problems + [what for what, rx in RAW.items() if rx.search(raw)]
 
 
 def authors(items: list[dict], mentions: Mentions) -> str:
     """Authors of the cited items, each once, in order of first appearance."""
-    seen, names = set(), []
+    first = {}
     for item in items:
-        if item['author'] not in seen:
-            seen.add(item['author'])
-            names.append(mentions.name(item))
-    return ', '.join(names)
+        first.setdefault(item['author'], item)
+    return ', '.join(mentions.name(item) for item in first.values())
 
 
 def render_body(

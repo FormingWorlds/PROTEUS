@@ -8,7 +8,7 @@ A language model drafts the text from the collected data. A script checks every 
 
 ## What the workflow does
 
-The workflow is `.github/workflows/weekly-digest.yml`, with its scripts in `tools/digest/`. It runs every Monday at 22:23 UTC (23:23 in Amsterdam in winter, 00:23 on Tuesday in summer). You can also start it by hand. It has 3 jobs, shown in the Actions tab as `Collect pull requests, releases and facts`, `Draft the entries` and `Check, render and post`. This page calls them the collect, draft and publish jobs. The publish job uploads its files as the artifact `digest`, a file set that you can download from the run page.
+The workflow is `.github/workflows/weekly-digest.yml`, with its scripts in `tools/digest/`. It runs every Monday at 22:23 UTC (23:23 in Amsterdam in winter, 00:23 on Tuesday in summer). You can also start it by hand. It has 3 jobs, shown in the Actions tab as `Collect pull requests, releases and facts`, `Draft the entries` and `Check, render and post`. This page calls them the collect job, the draft job and the check job (its job id in the workflow is `publish`). The check job checks the draft, renders it, and posts it only in a live run. It uploads its files as the artifact `digest`, a file set that you can download from the run page. Live runs wait for each other; each dry run runs on its own, so it cannot cancel a waiting scheduled run.
 
 A digest covers a window of time. The window starts where the window of the last digest post ended. `collect.py` reads that time from a hidden marker (an HTML comment) at the end of the post. The marker holds the window end, the run id and the open pull requests that the digest announced. `collect.py` trusts only a marker in a post by the login (GitHub user name) `github-actions`, the account the workflow posts as. The window ends at the time of the run. With no earlier post, the window is the last 7 days. A window that you set by hand, with a start or an end, is back-dated, and a back-dated run never posts.
 
@@ -27,7 +27,9 @@ For each merged pull request that changes a tracked file, `facts.py` compares th
 - a dependency that was added or removed, or whose version changed. This covers a new floor (the lowest version a package accepts), a Julia `[compat]` entry in `Project.toml`, and a changed module pin (a module version under `tool.proteus.modules` in `pyproject.toml`);
 - a key that was added, removed or changed in another tracked TOML file.
 
-A file that gains more than 8 keys in one pull request gives one fact for the added keys. A file that loses more than 8 keys gives one fact for the removed keys. Each of these facts holds the number of keys and their names, cut at 600 characters.
+A file that gains more than 8 keys in one pull request gives one fact for the added keys. A file that loses more than 8 keys gives one fact for the removed keys. Each of these facts holds the number of keys and their names, cut at 600 characters. A date in a TOML file becomes text, and a longer array or table is cut at 600 characters.
+
+A tracked file that does not parse gives no facts for that pull request. `facts.py` names the pull request, the file and the error in the run log and the job summary, and the run goes on. Without a fact, an entry about that pull request cannot go into the section "Changes that affect your results" unless it cites a release.
 
 ### Draft the entries
 
@@ -41,7 +43,8 @@ Each entry has an action marker, a flag that the model sets when every user must
 
 #### Checks on citations and form
 
-- the model returns no entry for a window that has a merged pull request or a release, or the draft says the window is empty when it is not, or the reverse;
+- the model returns no entry for a window that has a merged pull request or a release;
+- the draft says the window is empty although it has a merged pull request or a release, or says it has content although it has none;
 - an entry misses a field, has a field of the wrong type, or names a section that does not exist;
 - an entry cites a pull request, release or fact that is not in the collected data;
 - an entry cites no pull request and no release, or cites a release in the section "In review, coming soon";
@@ -54,20 +57,28 @@ Each entry has an action marker, a flag that the model sets when every user must
 
 #### Checks on the words of an entry
 
-- the title or text of an entry holds any of these:
-    - a link or a mention: a URL, an `@` or square brackets;
-    - markup: HTML, an HTML entity or a backtick;
-    - a reference: a `#` or `GH-` reference or a commit id;
-    - a hidden or special character: an invisible character, a superscript, a fraction or a letter number such as a Roman numeral;
-    - the words "Action for everyone", which only the script adds;
-- the title or text uses a number that is not in a cited pull request or release (cited fact values do not count):
-    - The check reads `v1.0`, `V100`, `mode_42`, `No.5` and `.5` as the numbers 1.0, 100, 42, 5 and 0.5. It also reads the 2 of `H2`.
-    - It does not read the digits of a formula of 2 or more element symbols (`H2O`, `CO2`) as numbers;
-- the title or text names a config key or helpfile column that is not in a cited fact.
+The check reads the title and text of an entry twice: as the model wrote them, and as the post shows them (a `|` shows as `/`, a dash as a comma). The run fails when either form has one of these:
+
+- a link or a mention: a URL, an `@` or square brackets;
+- markup: HTML, an HTML entity or a backtick;
+- a reference: a `#` or `GH-` reference or a commit id;
+- a hidden or special character: an invisible character, a superscript, a fraction or a letter number such as a Roman numeral;
+- the words "Action for everyone", which only the script adds;
+- a number that is not in a cited pull request or release (cited fact values do not count);
+- a config key or helpfile column that is not in a cited fact.
+
+How the check reads numbers:
+
+- It reads `v1.0`, `V100`, `Δ50`, `mode_42`, `No.5` and `.5` as the numbers 1.0, 100, 50, 42, 5 and 0.5.
+- It also reads the 2 of `H2`.
+- It does not read the digits of a formula of 2 or more element symbols (`H2O`, `CO2`).
 
 #### Warnings
 
-A sentence that gives the old value of a cited config key change as the current value gives a warning, not a failure. The sentence must name the config key, and either an assignment ("is now", "set to", "becomes", "equals", "uses") stands directly before the old value while the new value is absent or marked as old ("from", "not", "instead of"), or the sentence reads "from" the new value "to" the old value. A warning does not stop the run, and the post goes out.
+The check gives a warning when an entry states the old value of a cited config key change as the current value. A warning does not stop the run, and the post goes out. A sentence gives a warning when it names the config key and one of these is true:
+
+- an assignment ("is now", "set to", "becomes", "equals", "uses") stands directly before the old value, and the new value is absent or marked as old ("from", "not", "instead of");
+- the sentence reads "from" the new value "to" the old value.
 
 The check prints each failure as one line, `FAIL` and a quoted JSON string, so entry text cannot break the line. Each warning is a `WARN` line and an annotation on the run page. The job summary and `check.txt` in the artifact `digest` hold the `FAIL` and `WARN` lines.
 
@@ -77,20 +88,30 @@ The check prints each failure as one line, `FAIL` and a quoted JSON string, so e
 
 - The config keys, their values, the links, the dates and the mentions come from the collected data, not from the model text.
 - The model text is escaped, so any markdown in it shows as plain text.
+- An empty fact value shows as (empty), and a missing one as (none).
 - The title is the date of the Tuesday of the week (Monday to Sunday, Amsterdam time) in which the window ends. The scheduled Monday run takes the next day. A run from Tuesday to Sunday takes the Tuesday that is already past, the meeting of its own week.
 - A body longer than 65,536 characters stops the run.
 
 ### Post it once
 
-The post step runs only in a live run, a run that is allowed to post (see [Switch posting on or off](#switch-posting-on-or-off)). Before it posts, `post.py` repeats every guard: posting is switched on, the window is not back-dated, the run is scheduled or its box **Post the digest** is ticked, the draft passes `check.py`, and the body is not a dry run.
+The post step runs only in a live run, a run that is allowed to post (see [Switch posting on or off](#switch-posting-on-or-off)). Before it posts, `post.py` repeats every guard:
 
-`post.py` makes at most one post per meeting. It reads the newest digest post, and skips posting when that post has the same workflow run id (the number of the Actions run, which a rerun keeps), the same title, or a window end that is the same as or later than the window end of this run. The skip rules mean:
+- posting is switched on;
+- the window is not back-dated;
+- the run is scheduled, or its box **Post the digest** is ticked;
+- the draft passes `check.py`;
+- the body is not a dry run;
+- the final body links only to collected pull requests and releases and to the run, and mentions only their authors.
 
-- A rerun of failed jobs or of all jobs of the run that made the newest post, on any day, makes no second post.
-- A second manual run for the same meeting makes no second post.
-- A rerun of the failed jobs of an older run after a newer post makes no post, so the next window does not move back.
-- A rerun of all jobs of an older run collects a new window from the newest post. It posts like a manual run: for the meeting of its week, unless that meeting has a post.
-- A manual run on a Monday before the scheduled run takes the same title as the scheduled run. The scheduled run then posts nothing, and the next window starts at the end of the manual run, so no pull request is left out.
+`post.py` makes at most one post per meeting. It reads the newest digest post, and skips posting when that post has the same workflow run id (the number of the Actions run, which a rerun keeps), the same title, or a window end that is the same as or later than the window end of this run:
+
+| Situation | Result |
+| --- | --- |
+| Rerun of failed jobs or of all jobs of the run that made the newest post, on any day | No second post |
+| Second manual run for the same meeting | No second post |
+| Rerun of the failed jobs of an older run after a newer post | No post, so the next window does not move back |
+| Rerun of all jobs of an older run | It collects a new window from the newest post and posts for the meeting of its week, unless that meeting has a post |
+| Manual run on a Monday before the scheduled run | It takes the title of the scheduled run, which then posts nothing; the next window starts at the end of the manual run, so no pull request is left out |
 
 A skipped post gives a notice annotation on the run page, and the run stays green. After `post.py` creates the post, it checks the author in the answer of GitHub (see [If a run is red](#if-a-run-is-red)).
 
@@ -135,11 +156,11 @@ To add or remove a repository, edit `repos` in the same file. Each repository mu
 
 ## If a run is red
 
-If the collect job or the draft job is red, the publish job does not run and there is no `check.txt`. Open the log of that job: the collect job names each open pull request that it left out, and the draft job prints the error text of the model call.
+If the collect job or the draft job is red, the check job does not run and there is no `check.txt`. Open the log of that job: the collect job names each open pull request that it left out, and the draft job prints the error text of the model call.
 
-If the publish job is red before the post step, nothing is posted. Read the check lines in the job summary, or open `check.txt` in the artifact `digest` (see [Make a dry run](#make-a-dry-run)).
+If the check job is red before the post step, nothing is posted. Read the check lines in the job summary, or open `check.txt` in the artifact `digest` (see [Make a dry run](#make-a-dry-run)).
 
-A run that fails in the post step after GitHub created the post is red, and the post stays. If the author of the post is not `github-actions`, the run is red too, because the next run would not find the post, and a rerun of that run posts again. Look at the category before you start the run again.
+A run that fails in the post step after GitHub created the post is red, and the post stays. A run is also red when the author of the post is not `github-actions`: the next run would not find that post, and a rerun of this run posts again. Look at the category before you start the run again.
 
 ## Sections of a digest
 

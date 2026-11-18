@@ -131,6 +131,20 @@ def is_bot(login: str | None, kind: str | None, bots: list[str]) -> bool:
     return login.endswith('[bot]') or login.lower() in {b.lower() for b in bots}
 
 
+class SameHostAuth(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect, and drop the token when it leaves the host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        host = urllib.parse.urlsplit(req.full_url).netloc
+        if new is not None and urllib.parse.urlsplit(newurl).netloc != host:
+            new.remove_header('Authorization')
+        return new
+
+
+OPENER = urllib.request.build_opener(SameHostAuth)
+
+
 class GitHub:
     """Minimal GitHub REST and GraphQL client with retries on rate limits."""
 
@@ -148,7 +162,7 @@ class GitHub:
         for attempt in range(retries + 1):
             req = urllib.request.Request(url, data=data, headers=headers)
             try:
-                with urllib.request.urlopen(req, timeout=60) as resp:
+                with OPENER.open(req, timeout=60) as resp:
                     return resp.read()
             except urllib.error.HTTPError as err:
                 if err.code == 404:

@@ -23,6 +23,7 @@ import sys
 import unicodedata
 
 from common import DIGEST_DIR, SECTIONS
+from render import plain
 
 NUMBER_RE = re.compile(
     r'(?<![\w.])[-+]?(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)*(?:[eE][-+]?\d+)?)'
@@ -48,7 +49,7 @@ ELEMENTS = set(
     'Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am '
     'Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og'.split()
 )
-PREFIX_RE = re.compile(r'(?<![\w.])[A-Za-z](?=\d)(?:[\w.]*\w)?')
+PREFIX_RE = re.compile(r'(?<![\w.])[^\W\d_](?=\d)(?:[\w.]*\w)?')
 ASSIGN_RE = re.compile(
     r'(?:\b(?:is|are)(?:\s+now)?|\b(?:(?:re)?set|changed?|lower(?:s|ed)?|rais(?:es|ed)|'
     r'reduc(?:es|ed)|increas(?:es|ed)|decreas(?:es|ed)|updated?|adjusted?|revert(?:s|ed)?|'
@@ -90,13 +91,13 @@ def _split_prefix(match: re.Match) -> str:
 def prepare(text: str) -> str:
     """Normalise a text for number matching: NFKC, one minus sign, prefixes split from digits.
 
-    A single letter, an underscore or a letter and a dot before digits is split off
-    (``v1.0``, ``V100``, ``mode_42``, ``No.5``); a formula of 2 or more element symbols
-    (``H2O``) stays whole.
+    A single letter (also a non-ASCII one, ``Δ50``), an underscore or a letter and a
+    dot before digits is split off (``v1.0``, ``V100``, ``mode_42``, ``No.5``); a
+    formula of 2 or more element symbols (``H2O``) stays whole.
     """
     text = unicodedata.normalize('NFKC', text)
     text = ''.join('-' if c in MINUS or unicodedata.category(c) == 'Pd' else c for c in text)
-    text = re.sub(r'(?<=[A-Za-z])\.(?=\d)', '. ', text)
+    text = re.sub(r'(?<=[^\W\d_])\.(?=\d)', '. ', text)
     return re.sub(r'_(?=\d)', '_ ', PREFIX_RE.sub(_split_prefix, text))
 
 
@@ -259,9 +260,13 @@ def check_entry(entry: dict, index: dict) -> list[str]:
         if len(entry[k]) > n
     ]
     text = f'{entry["title"]} {entry["text"]}'
-    fails += [f'{name}: text holds {what}' for what, rx in FORBIDDEN.items() if rx.search(text)]
-    kinds = {unicodedata.category(c) for c in text if c not in '\t\n\r'}
-    if kinds & {'Cf', 'Cc'}:
+    shown = f'{plain(entry["title"])} {plain(entry["text"])}'
+    fails += [
+        f'{name}: text holds {what}'
+        for what, rx in FORBIDDEN.items()
+        if rx.search(text) or rx.search(shown)
+    ]
+    if any(unicodedata.category(c) in ('Cf', 'Cc') for c in text if c not in '\t\n\r'):
         fails.append(f'{name}: text holds an invisible character')
     if any(
         unicodedata.category(c) in ('No', 'Nl') and not '\u2080' <= c <= '\u2089' for c in text

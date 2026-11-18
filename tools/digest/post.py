@@ -3,12 +3,13 @@
 Usage::
 
     python tools/digest/post.py decide collected.json --event EVENT --post-input BOOL
-    python tools/digest/post.py publish collected.json draft.json OUTDIR --event EVENT --post-input BOOL
+    python tools/digest/post.py publish collected.json draft.json OUTDIR --event EVENT --post-input BOOL --run-url URL
 
 ``decide`` prints ``live=true`` or ``live=false`` for ``$GITHUB_OUTPUT``. ``publish``
 repeats every guard (posting switched on, a window that is not back-dated, a
 scheduled run or a ticked post box, a draft that passes the check, a body that is
-not a dry run), then creates the discussion in the digest category of the first
+not a dry run, a body that links only to collected items and the run and mentions
+only their authors), then creates the discussion in the digest category of the first
 repository in the settings. It skips with a notice when the newest digest post has
 the same run id or title, or a window end that is not earlier than this one: one
 post per run and per meeting, and no stale post after a newer one.
@@ -22,7 +23,8 @@ from pathlib import Path
 
 from check import check
 from collect import parse_state, previous_state, trusted
-from common import DigestError, GitHub, find_category, load_settings, parse_time
+from common import DigestError, GitHub, find_category, is_bot, load_settings, parse_time
+from render import scan_body
 
 CREATE = """
 mutation($repo: ID!, $category: ID!, $title: String!, $body: String!) {
@@ -84,6 +86,18 @@ def main(argv: list[str] | None = None) -> int:
     opts = dict(zip(args[4::2], args[5::2]))
     fails = check(data, json.loads(Path(args[2]).read_text()))
     post = json.loads((Path(args[3]) / 'digest.json').read_text())
+    items = data['prs'] + data['releases']
+    problems = scan_body(
+        post['body'],
+        [i['url'] for i in items] + [opts.get('--run-url', '')],
+        [
+            i['author']
+            for i in items
+            if not is_bot(i['author'], i['author_kind'], settings['bots'])
+        ],
+    )
+    for problem in problems:
+        print(f'Link problem: {json.dumps(problem)}')
     reasons = [
         reason
         for reason, bad in (
@@ -92,6 +106,7 @@ def main(argv: list[str] | None = None) -> int:
             ('not a live run', not live_event(opts['--event'], opts['--post-input'] == 'true')),
             (f'{len(fails)} check failures', fails),
             ('the body is a dry run', post['body'].startswith('**Dry run')),
+            (f'{len(problems)} link problems', problems),
         )
         if bad
     ]

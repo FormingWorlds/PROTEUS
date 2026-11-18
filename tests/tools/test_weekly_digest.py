@@ -222,9 +222,7 @@ def _http_error(code):
 
 
 def _urlopen_raises(monkeypatch, exc):
-    monkeypatch.setattr(
-        common.urllib.request, 'urlopen', lambda r, timeout: (_ for _ in ()).throw(exc)
-    )
+    monkeypatch.setattr(common.OPENER, 'open', lambda r, timeout: (_ for _ in ()).throw(exc))
 
 
 def test_github_retries_a_rate_limit_then_reads(monkeypatch):
@@ -237,7 +235,7 @@ def test_github_retries_a_rate_limit_then_reads(monkeypatch):
             raise _http_error(403)
         return _Resp(b'text')
 
-    monkeypatch.setattr(common.urllib.request, 'urlopen', fake)
+    monkeypatch.setattr(common.OPENER, 'open', fake)
     monkeypatch.setattr(common.time, 'sleep', lambda s: None)
     assert common.GitHub('t').raw_file('a/b', 'x y.toml', 'abc') == 'text'
     assert len(calls) == 2 and 'x%20y.toml?ref=abc' in calls[0]
@@ -252,7 +250,7 @@ def test_github_retries_a_rate_limit_then_reads(monkeypatch):
 def test_graphql_error_stops_the_run(monkeypatch):
     """A GraphQL answer with errors raises instead of returning partial data."""
     body = json.dumps({'data': None, 'errors': [{'message': 'boom'}]}).encode()
-    monkeypatch.setattr(common.urllib.request, 'urlopen', lambda r, timeout: _Resp(body))
+    monkeypatch.setattr(common.OPENER, 'open', lambda r, timeout: _Resp(body))
     with pytest.raises(common.DigestError, match='boom'):
         common.GitHub('t').graphql('{x}')
 
@@ -1160,7 +1158,7 @@ def test_workflow_jobs_keep_the_model_token_away_from_write_tokens():
     assert '    permissions: {}\n' in jobs['draft']
     perms = re.search(r'    permissions:\n((?:      .*\n)+)', jobs['publish']).group(1)
     assert perms == '      contents: read\n      discussions: write\n'
-    assert all('write' not in jobs[j] for j in ('collect', 'draft'))
+    assert all(not re.search(r':\s*write\b', jobs[j]) for j in ('collect', 'draft'))
     assert 'github.token' not in jobs['draft'] and 'GITHUB_TOKEN' not in jobs['draft']
     for name, job in jobs.items():
         assert ('CLAUDE_CODE_OAUTH_TOKEN' in job) is (name == 'draft'), name
@@ -1239,7 +1237,12 @@ def test_facts_main_rewrites_the_file(tmp_path, monkeypatch):
     monkeypatch.setattr(facts, 'GitHub', lambda: _FakeGH())
     monkeypatch.setattr(facts, 'load_settings', lambda: {'tracked': {}})
     assert facts.main([str(path)]) == 0
-    assert json.loads(path.read_text()) == {'prs': [], 'facts': [], 'known_keys': []}
+    assert json.loads(path.read_text()) == {
+        'prs': [],
+        'facts': [],
+        'facts_unreadable': [],
+        'known_keys': [],
+    }
 
 
 # markdown and autolink forms that must not reach a post
@@ -1374,7 +1377,7 @@ def test_github_retries_a_network_error_and_rejects_a_missing_graphql_answer(mon
             raise urllib.error.URLError('reset')
         return _Resp(b'ok')
 
-    monkeypatch.setattr(common.urllib.request, 'urlopen', flaky)
+    monkeypatch.setattr(common.OPENER, 'open', flaky)
     monkeypatch.setattr(common.time, 'sleep', lambda s: None)
     assert common.GitHub('t').raw_file('a/b', 'f', None) == 'ok'
     _urlopen_raises(monkeypatch, _http_error(404))
@@ -1441,7 +1444,7 @@ def test_mutation_is_sent_once_on_a_network_error(monkeypatch):
         calls.append(1)
         raise TimeoutError('read timeout')
 
-    monkeypatch.setattr(common.urllib.request, 'urlopen', flaky)
+    monkeypatch.setattr(common.OPENER, 'open', flaky)
     monkeypatch.setattr(common.time, 'sleep', lambda s: None)
     with pytest.raises(common.DigestError):
         common.GitHub('t').graphql('mutation {x}', retry=False)
@@ -1896,10 +1899,20 @@ def test_announced_open_pr_stays_until_merged_or_closed():
         ('Water as H2O and CO2, and MgSiO3.', set()),
         ('Escape of H2O.', set()),
         ('v1.0.0 and x100', {'1.0.0', '100'}),
+        ('Use V100 now.', {'100'}),
+        ('The grid has N128 levels.', {'128'}),
+        ('Uses S8 and H2.', {'8', '2'}),
+        ('Water as H2O, CO2 and Fe2O3.', set()),
+        ('Run No.5 is faster.', {'5'}),
+        ('See Fig.3 and Sec.4.2.', {'3', '4.2'}),
+        ('The surface warms by \u039450 K.', {'50'}),
+        ('Now \u00e9100 m.', {'100'}),
+        ('Now \u00b5100 m.', {'100'}),
+        ('Now \u03940.5 K.', {'0.5'}),
     ],
 )
-def test_numbers_split_a_capital_or_underscore_prefix_but_keep_formulas(text, found):
-    """A digit run after a single capital or an underscore is a number; a formula is not."""
+def test_numbers_split_a_letter_or_underscore_prefix_but_keep_formulas(text, found):
+    """Digits after one letter, a letter and a dot, or an underscore are a number; a formula is not."""
     assert check.numbers(text) == found
 
 
@@ -2020,20 +2033,6 @@ def test_workflow_collect_writes_the_summary():
 
 
 @pytest.mark.parametrize(
-    ('text', 'found'),
-    [
-        ('Use V100 now.', {'100'}),
-        ('The grid has N128 levels.', {'128'}),
-        ('Uses S8 and H2.', {'8', '2'}),
-        ('Water as H2O, CO2 and Fe2O3.', set()),
-    ],
-)
-def test_a_single_element_letter_before_digits_is_a_number(text, found):
-    """Only a word of 2 or more element symbols is a formula whose digits are not numbers."""
-    assert check.numbers(text) == found
-
-
-@pytest.mark.parametrize(
     ('association', 'kept'),
     [
         ('OWNER', True),
@@ -2086,17 +2085,6 @@ def test_limits_and_query_details():
     assert "cron: '23 22 * * 1'" in text and 'cancel-in-progress: false' in text
 
 
-def test_workflow_post_step_passes_the_live_inputs():
-    """The post step gets the event and the post input, so publish repeats the decision."""
-    _, jobs = _jobs()
-    assert 'EVENT: ${{ github.event_name }}' in jobs['publish']
-    assert 'POST: ${{ inputs.post || false }}' in jobs['publish']
-    assert (
-        'post.py publish collected.json draft.json out --event "$EVENT" --post-input "$POST"'
-        in jobs['publish']
-    )
-
-
 def test_collect_main_prints_no_empty_line(tmp_path, monkeypatch, capsys):
     """Without a dropped pull request the collect log is one line."""
     monkeypatch.setattr(collect, 'GitHub', lambda: 'gh')
@@ -2137,7 +2125,10 @@ def test_post_step_alone_carries_the_live_inputs():
         'EVENT: ${{ github.event_name }}' in step
         and 'POST: ${{ inputs.post || false }}' in step
     )
-    assert '--event "$EVENT" --post-input "$POST"' in step
+    assert (
+        'post.py publish collected.json draft.json out --event "$EVENT" --post-input "$POST"'
+        in step
+    )
 
 
 _SENTENCES = json.loads((_DATA / 'value_sentences.json').read_text())
@@ -2202,15 +2193,6 @@ def test_still_open_on_an_error(capsys, error, kept):
     assert out == ['PROTEUS#900', 'AGNI#5'] if kept else out == ['PROTEUS#900']
     log = capsys.readouterr().out
     assert 'AGNI#5' in log and 'Gone#3' in log
-
-
-@pytest.mark.parametrize(
-    ('text', 'found'),
-    [('Run No.5 is faster.', {'5'}), ('See Fig.3 and Sec.4.2.', {'3', '4.2'})],
-)
-def test_numbers_after_a_letter_and_a_dot(text, found):
-    """A number after an abbreviation with a dot is a number."""
-    assert check.numbers(text) == found
 
 
 def test_check_main_with_a_malformed_entry(tmp_path, capsys):
@@ -2350,8 +2332,22 @@ _TOKENS = st.sampled_from(
 )
 
 
-@settings(max_examples=300, deadline=None)
-@given(st.lists(_TOKENS, max_size=12).map(''.join), st.lists(_TOKENS, max_size=8).map(''.join))
+_FRAGMENTS = st.lists(
+    st.tuples(
+        st.sampled_from(
+            ['https:', 'http:', 'ftp:', 'www.', 'mailto:', '/', 'x', 'e.example', '\\']
+        ),
+        st.sampled_from(['', ' ', '|', '\u2013']),
+    ),
+    max_size=6,
+).map(lambda pairs: ''.join(w + s for w, s in pairs))
+
+
+@settings(max_examples=1000, deadline=None)
+@given(
+    st.one_of(_FRAGMENTS, st.lists(_TOKENS, max_size=12).map(''.join)),
+    st.lists(_TOKENS, max_size=8).map(''.join),
+)
 def test_checked_text_renders_without_foreign_links(text, value):
     """For any model text and fact value, either the check fails or the body passes the scan."""
     data = _data(fact_list=[_fact(new=value)])
@@ -2360,21 +2356,6 @@ def test_checked_text_renders_without_foreign_links(text, value):
         return
     body, _ = render.render_body(data, dft, True, 'https://run', [])
     assert render.scan_body(body, [_GOOD, 'https://run'], ['alice']) == []
-
-
-@pytest.mark.parametrize(
-    ('text', 'found'),
-    [
-        ('The surface warms by \u039450 K.', {'50'}),
-        ('Now \u00e9100 m.', {'100'}),
-        ('Now \u00b5100 m.', {'100'}),
-        ('Now \u03940.5 K.', {'0.5'}),
-        ('Water as H2O.', set()),
-    ],
-)
-def test_numbers_after_a_non_ascii_letter(text, found):
-    """Digits after one non-ASCII letter are a number, as after an ASCII letter."""
-    assert check.numbers(text) == found
 
 
 def test_workflow_dry_runs_cannot_cancel_a_live_run():

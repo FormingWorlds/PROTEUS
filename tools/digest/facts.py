@@ -2,15 +2,18 @@
 
 Usage::
 
-    python tools/digest/facts.py collected.json
+    python tools/digest/facts.py collected.json [--summary FILE]
 
 For every merged PR that touches a tracked file, the file before and after the
 merge commit is compared; each change becomes a fact with an id ``F<n>``. The
 model cites facts by id and never writes a setting, a value or a floor itself.
+A file that does not parse is listed in ``facts_unreadable`` and gives no facts.
 """
 
 from __future__ import annotations
 
+import argparse
+import html
 import json
 import os
 import re
@@ -23,6 +26,8 @@ CONFIG_SCHEMA = 'docs/Reference/config/config_schema.json'
 OUTPUT_SCHEMA = 'docs/Reference/output_schema.json'
 DESCRIPTION_CHARS = 600
 GROUP_LIMIT = 8
+CONFIG_FIELDS = ('default', 'choices', 'bounds', 'description')
+UNREADABLE = (ValueError, KeyError, TypeError, AttributeError)
 REQ_RE = re.compile(r'^\s*([A-Za-z0-9][A-Za-z0-9._-]*)(\[[^\]]*\])?\s*(.*)$')
 
 
@@ -99,6 +104,12 @@ def project_toml_map(text: str | None) -> dict:
 
 
 def _short(value: object) -> object:
+    """A JSON value of at most ``DESCRIPTION_CHARS`` characters; a date becomes text."""
+    if isinstance(value, (list, dict)):
+        text = json.dumps(value, default=str)
+        value = json.loads(text) if len(text) <= DESCRIPTION_CHARS else text
+    elif not isinstance(value, (str, int, float, bool, type(None))):
+        value = str(value)
     if isinstance(value, str) and len(value) > DESCRIPTION_CHARS:
         return value[:DESCRIPTION_CHARS] + ' [cut]'
     return value
@@ -115,24 +126,16 @@ def diff_file(path: str, old: str | None, new: str | None) -> list[dict]:
         File text before and after the merge; None when the file is absent.
     """
     if path == CONFIG_SCHEMA:
-        kind = 'config'
-        found = _changes(
-            config_schema_map(old),
-            config_schema_map(new),
-            ('default', 'choices', 'bounds', 'description'),
-        )
+        kind, parse, fields = 'config', config_schema_map, CONFIG_FIELDS
     elif path == OUTPUT_SCHEMA:
-        kind = 'output column'
-        found = _changes(output_schema_map(old), output_schema_map(new), ('unit',))
+        kind, parse, fields = 'output column', output_schema_map, ('unit',)
     elif path.endswith('pyproject.toml'):
-        kind = 'dependency'
-        found = _changes(pyproject_map(old), pyproject_map(new), ('value',))
+        kind, parse, fields = 'dependency', pyproject_map, ('value',)
     elif path.endswith('Project.toml'):
-        kind = 'dependency'
-        found = _changes(project_toml_map(old), project_toml_map(new), ('value',))
+        kind, parse, fields = 'dependency', project_toml_map, ('value',)
     else:
-        kind = 'config'
-        found = _changes(toml_map(old), toml_map(new), ('value',))
+        kind, parse, fields = 'config', toml_map, ('value',)
+    found = _changes(parse(old), parse(new), fields)
     return [
         {'file': path, 'kind': kind, 'change': c, 'key': k, 'old': _short(o), 'new': _short(n)}
         for c, k, o, n in found
@@ -173,8 +176,12 @@ def group_facts(facts: list[dict], limit: int = GROUP_LIMIT) -> list[dict]:
 
 
 def attach_facts(gh: GitHub, data: dict, settings: dict) -> None:
-    """Add ``facts`` and ``known_keys`` to the collected data in place."""
-    facts = []
+    """Add ``facts``, ``facts_unreadable`` and ``known_keys`` to the collected data in place.
+
+    A tracked file that does not parse is recorded with its PR and error and gives
+    no facts, so one broken file cannot stop every later run.
+    """
+    facts, unreadable = [], []
     for pr in data['prs']:
         if pr['status'] != 'merged' or not pr['parent_oid']:
             continue
@@ -183,9 +190,15 @@ def attach_facts(gh: GitHub, data: dict, settings: dict) -> None:
                 continue
             old = gh.raw_file(pr['repo'], path, pr['parent_oid'])
             new = gh.raw_file(pr['repo'], path, pr['merge_oid'])
-            for fact in group_facts(diff_file(path, old, new)):
+            try:
+                found = diff_file(path, old, new)
+            except UNREADABLE as err:
+                error = f'{type(err).__name__}: {err}'[:200]
+                unreadable.append({'pr': pr['ref'], 'file': path, 'error': error})
+                continue
+            for fact in group_facts(found):
                 facts.append({'id': f'F{len(facts) + 1}', 'pr': pr['ref'], **fact})
-    data['facts'] = facts
+    data['facts'], data['facts_unreadable'] = facts, unreadable
     data['known_keys'] = sorted(known_keys(gh, settings))
 
 
@@ -208,13 +221,23 @@ def known_keys(gh: GitHub, settings: dict) -> set[str]:
 
 def main(argv: list[str] | None = None) -> int:
     """Command-line entry point: add facts to a collected JSON file in place."""
-    path = (argv or sys.argv[1:])[0]
-    with open(path) as fh:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument('collected')
+    parser.add_argument('--summary')
+    args = parser.parse_args(argv)
+    with open(args.collected) as fh:
         data = json.load(fh)
     attach_facts(GitHub(), data, load_settings())
-    with open(path, 'w') as fh:
+    with open(args.collected, 'w') as fh:
         json.dump(data, fh)
+    lines = [f'{u["pr"]} {u["file"]}: {u["error"]}' for u in data['facts_unreadable']]
+    for line in lines:
+        print(f'Not read: {json.dumps(line)}')
     print(f'{len(data["facts"])} facts, {len(data["known_keys"])} known keys')
+    if args.summary and lines:
+        with open(args.summary, 'a') as fh:
+            text = html.escape('\n'.join(['Files that do not parse, no facts:', *lines]))
+            fh.write(f'<pre>\n{text}\n</pre>\n')
     return 0
 
 
