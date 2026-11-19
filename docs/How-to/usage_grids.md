@@ -179,8 +179,7 @@ The throttle counts only the jobs of this one array. It doesn't count other grid
 `max_jobs` is an upper limit, not a target. Slurm schedules each job of the array on its own, so fewer cases can run than `max_jobs` allows:
 
 - Some jobs can still wait in the queue.
-- A job keeps all of its cores until its last case ends, and it still counts for the throttle. Near the end of a job, fewer than `cores_per_job` of its cases run, and the free cores stay allocated to the job. A cluster that charges for allocated cores, such as Snellius, charges for them.
-- A job with fewer cases than cores has a free core from the start. In the 1000-case example, 8 of the 63 jobs get 15 cases on 16 cores.
+- A job keeps all of its cores until its last case ends, and it still counts for the throttle, also while some of its cores have no case (see [Idle cores](#idle-cores)).
 
 Without Slurm, the `proteus grid` process counts its own running cases in a loop. When fewer than `max_jobs` cases run, it starts the next case. It starts at most one case per check, and it checks every second while it starts the first cases and every 15 s after that. It runs at most as many cases as the machine has CPU cores (`os.cpu_count()`). It counts only its own cases on that machine, not other grids or other programs.
 
@@ -202,7 +201,7 @@ For example, 20000 cases with `cores_per_job = 16` and a MaxArraySize of 1000 gi
 
 #### Idle cores
 
-A job keeps all of its cores until its last case ends. If the cases of a job don't fill all of its cores in the last wave, some cores have no case. Memory is set per core, so the same share of the allocated memory is idle too.
+A job keeps all of its cores until its last case ends. If the cases of a job don't fill all of its cores in the last wave, some cores have no case. A cluster that charges for allocated cores, such as Snellius, charges for these cores too. Memory is set per core, so the same share of the allocated memory is idle too.
 
 The grid manager computes the share of allocated core time that the layout leaves idle, if every case runs equally long. If that share is more than 10 %, it logs a warning with the share and with the nearest `cores_per_job` values that leave at most 10 % idle. It doesn't change the layout. Real cases don't run equally long, so the real idle time is different.
 
