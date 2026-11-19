@@ -1154,6 +1154,7 @@ def test_the_call_flux_is_the_parallel_sum_of_the_lid_and_the_open_surface(valid
     validation_plot(figure, 'atmos_clim_lid_parallel_sum')
 
 
+@pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_the_weighted_parts_sum_to_f_atm(validation_plot):
     """Analytical limit: with r = F_atm over the skin balance of the call, the lid part at its

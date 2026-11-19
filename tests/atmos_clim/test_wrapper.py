@@ -501,15 +501,13 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
     assert run_janus.call_args.args[0] is seed
     assert atmos_o._atm is seed
     assert atmos_o._atm_janus_last is solved
-    # Without a lid the open-surface flux the interior takes is F_atm.
+    # Without a lid the open-surface flux the interior takes is F_atm, with no residual part.
     assert hf_row['lid_F_open'] == pytest.approx(100.0, rel=1e-15)
+    assert hf_row['lid_F_resid'] == 0.0
 
 
-def test_run_atmosphere_writes_status_22_for_an_open_flux_that_is_not_finite(tmp_path):
-    """Under a live lid, an atmosphere flux that is not finite stops the call with status 22
-    in the run's status file."""
-    from proteus.atmos_clim.common import LidOpenFluxError
-
+def _janus_lid_call(tmp_path, F_atm):
+    """``run_atmosphere`` on a JANUS column from an earlier call, under a live lid."""
     config = SimpleNamespace(
         atmos_clim=SimpleNamespace(
             module='janus',
@@ -527,7 +525,7 @@ def test_run_atmosphere_writes_status_22_for_an_open_flux_that_is_not_finite(tmp
         'M_planet': 6.0e24,
         'R_obs': 6.4e6,
         'F_int': 120.0,
-        'F_atm': math.nan,
+        'F_atm': F_atm,
         'axial_period': 86400.0,
         'atm_kg_per_mol': 0.029,
         'T_surf': 900.0,
@@ -546,14 +544,13 @@ def test_run_atmosphere_writes_status_22_for_an_open_flux_that_is_not_finite(tmp
         'boundary_layer_thickness': 0.01,
         'boundary_layer_conductivity': 2.0,
     }
-    atm_output = {'albedo': 0.2, 'F_atm': math.nan}
     atmos_o = Atmos_t()
     atmos_o._atm = object()  # a column from an earlier call: no init, no spectral file
     out = tmp_path / 'out'
     out.mkdir()
-    with (
-        patch('proteus.atmos_clim.janus.RunJANUS', return_value=(object(), atm_output)),
-        pytest.raises(LidOpenFluxError, match='not finite'),
+    with patch(
+        'proteus.atmos_clim.janus.RunJANUS',
+        return_value=(object(), {'albedo': 0.2, 'F_atm': F_atm}),
     ):
         atmos_wrapper.run_atmosphere(
             atmos_o,
@@ -566,8 +563,33 @@ def test_run_atmosphere_writes_status_22_for_an_open_flux_that_is_not_finite(tmp
             None,
             hf_row,
         )
-    assert (out / 'status').is_file()
-    assert (out / 'status').read_text().splitlines()[0] == '22'
+    return hf_row
+
+
+def test_run_atmosphere_writes_status_22_for_an_open_flux_that_is_not_finite(tmp_path):
+    """Under a live lid, an atmosphere flux that is not finite stops the call with status 22
+    in the run's status file."""
+    from proteus.atmos_clim.common import LidOpenFluxError
+
+    with pytest.raises(LidOpenFluxError, match='not finite'):
+        _janus_lid_call(tmp_path, math.nan)
+    status = tmp_path / 'out' / 'status'
+    assert status.is_file()
+    assert status.read_text().splitlines()[0] == '22'
+
+
+def test_run_atmosphere_writes_the_open_part_and_its_residual_under_a_live_lid(tmp_path):
+    """Under a live lid the call writes the start value of the open part and its residual
+    part, ``(F_atm - B) / (1 - w)`` with B the skin balance of the call."""
+    from proteus.atmos_clim.common import lid_boundary, lid_open_flux, lid_open_residual
+
+    hf_row = _janus_lid_call(tmp_path, 7.0)
+    d, k, T_melt = lid_boundary(hf_row)
+    want = (7.0 - k / d * (T_melt - 900.0)) / 0.7
+    assert hf_row['lid_F_resid'] == pytest.approx(want, rel=1e-12)
+    assert hf_row['lid_F_resid'] == lid_open_residual(hf_row)
+    assert hf_row['lid_F_open'] == lid_open_flux(hf_row)
+    assert abs(want) > 1e4
 
 
 @pytest.mark.unit

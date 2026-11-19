@@ -967,9 +967,10 @@ def test_a_config_file_with_the_lid_and_janus_is_refused_at_load(tmp_path):
 
 @pytest.mark.unit
 def test_a_config_file_with_the_lid_and_prevent_warming_is_refused_at_load(tmp_path):
-    """prevent_warming clamps F_atm while the open part of the lid keeps the skin flux, so the
-    flux balance of the lid does not close: the lid with prevent_warming is refused at load,
-    with both keys named; the same file with prevent_warming false loads."""
+    """prevent_warming raises F_atm to at least 1e-8 W m-2 and keeps T_magma from rising, so the
+    two parts of the lid surface would lose a flux that the atmosphere did not solve: the lid
+    with prevent_warming is refused at load, with both keys named; the same file with
+    prevent_warming false loads."""
     from pathlib import Path
 
     import tomlkit

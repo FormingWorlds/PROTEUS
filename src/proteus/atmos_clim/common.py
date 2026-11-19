@@ -581,6 +581,11 @@ def lid_open_flux(hf_row: dict) -> float:
     return (F_atm - w * L) / (1.0 - w)
 
 
+def lid_open_residual(hf_row: dict) -> float:
+    """Residual part [W m-2] of the open-part start value, per open area (not yet set: 0)."""
+    return 0.0
+
+
 # lid_slope_guard codes: the slope was 0 or below, not finite or from a short step; it was cut
 LID_SLOPE_GUARD_SIGN = 1
 LID_SLOPE_GUARD_SIZE = 2

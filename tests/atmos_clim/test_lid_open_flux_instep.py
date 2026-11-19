@@ -24,6 +24,7 @@ from proteus.atmos_clim.common import (  # noqa: E402
     lid_boundary,
     lid_open_conductance,
     lid_open_flux,
+    lid_open_residual,
 )
 from proteus.utils.constants import const_sigma as SIGMA  # noqa: E402
 
@@ -109,6 +110,39 @@ def test_the_weighted_parts_sum_to_f_atm_on_both_sides_of_the_lid_base(
     assert w * L + (1.0 - w) * F_open == pytest.approx(
         F_atm, rel=0.0, abs=1e-12 * (abs(F_atm) + abs(w * L)) + 1e-300
     )
+
+
+@pytest.mark.physics_invariant
+@given(
+    w=st.floats(1e-6, 1.0 - 4.0 * LID_OPEN_AREA_FLOOR),
+    T_node=st.floats(300.0, 4000.0),
+    T_b=st.floats(300.0, 4000.0),
+    T_surf=st.floats(200.0, 4500.0),
+    gap=st.floats(-50.0, 50.0),
+)
+@settings(max_examples=200, deadline=None)
+def test_the_residual_is_the_start_value_less_the_skin_flux(w, T_node, T_b, T_surf, gap):
+    """The residual part ``(F_atm - B) / (1 - w)`` is the start value less the skin flux
+    ``G_skin (T_m - T_surf)`` of the floored node; relative 1e-9 of the larger term."""
+    row = _row(w, T_b=T_b, T_node=T_node, T_surf=T_surf)
+    d, k, T_melt = lid_boundary(row)
+    B = k / d * (T_melt - T_surf)
+    row['F_atm'] = B + gap
+    S = 200.0 * (max(T_node, T_b) - T_surf)
+    resid = lid_open_residual(row)
+    assert resid == pytest.approx(gap / (1.0 - w), rel=1e-9, abs=1e-9 * abs(B) / (1.0 - w))
+    assert lid_open_flux(row) - S == pytest.approx(
+        resid, rel=1e-9, abs=1e-9 * (abs(S) + abs(B) / (1.0 - w))
+    )
+
+
+@pytest.mark.parametrize('w', [0.0, 1.0, 1.0 - 0.5 * LID_OPEN_AREA_FLOOR])
+def test_the_residual_is_0_without_a_lid_and_at_the_floor(w):
+    """Without a lid, and where the open area is at the floor, the open part takes ``F_atm``
+    and carries no residual part."""
+    row = _row(w, T_surf=900.0, F_atm=-3.0)
+    assert lid_open_residual(row) == 0.0
+    assert lid_open_residual({'F_atm': 5.0}) == 0.0
 
 
 @pytest.mark.physics_invariant
@@ -348,6 +382,27 @@ def test_only_the_open_flux_stop_writes_the_atmosphere_status():
         with pytest.raises(RuntimeError, match='zero skin'):
             lid_open_flux_or_stop({}, _row(0.3, T_surf=900.0, F_atm=1.0))
         status.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ('key', 'value'),
+    [
+        ('T_surf', math.nan),
+        ('T_surf', math.inf),
+        ('lid_T_base', math.nan),
+        ('lid_T_base', -math.inf),
+    ],
+)
+@pytest.mark.parametrize('w', [0.3, 1.0])
+def test_a_surface_or_lid_base_that_is_not_finite_stops_under_a_live_lid(key, value, w):
+    """A surface or lid-base temperature that is not finite stops under a live lid, also where
+    the open area is at the floor, with a finite ``F_atm``."""
+    from proteus.atmos_clim.common import LidOpenFluxError
+
+    row = _row(w, T_surf=900.0, F_atm=5.0)
+    row[key] = value
+    with pytest.raises(LidOpenFluxError, match='not finite'):
+        lid_open_flux(row)
 
 
 @pytest.mark.parametrize('F_atm', [math.nan, math.inf, -math.inf])
