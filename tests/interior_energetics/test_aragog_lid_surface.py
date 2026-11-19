@@ -161,10 +161,11 @@ def _resumed_row(tmp_path, drop, **cols):
 
 def test_a_run_stored_without_the_lid_columns_resumes_as_no_lid(tmp_path):
     """The resumed row of a helpfile without the lid columns acts as a surface without a lid."""
-    from proteus.utils.coupler import GetHelpfileKeys
+    from proteus.utils.coupler import RESUMABLE_ZERO_FILL_KEYS, GetHelpfileKeys
 
     lid_keys = [k for k in GetHelpfileKeys() if k.startswith('lid_')]
     assert len(lid_keys) == 12
+    assert set(lid_keys) <= RESUMABLE_ZERO_FILL_KEYS
     hf = _resumed_row(tmp_path, lid_keys)
     assert all(hf[k] == 0.0 for k in lid_keys)
     assert lid_boundary(hf) == (0.01, 2.0, 1450.0)

@@ -136,7 +136,7 @@ def test_the_residual_is_the_start_value_less_the_skin_flux(w, T_node, T_b, T_su
     assert lid_open_flux(row) - S == pytest.approx(resid, rel=1e-9, abs=tol + 1e-12 * abs(S))
 
 
-@pytest.mark.parametrize('w', [0.0, 1.0, 1.0 - 0.5 * LID_OPEN_AREA_FLOOR])
+@pytest.mark.parametrize('w', [0.0, 1.0, 1.0 - 0.5 * LID_OPEN_AREA_FLOOR, 1.0 - 1e-10])
 def test_the_residual_is_0_without_a_lid_and_at_the_floor(w):
     """Without a lid, and where the open area is at the floor, the open part takes ``F_atm``
     and carries no residual part."""
@@ -175,7 +175,7 @@ def test_an_atmosphere_flux_at_or_below_zero_gives_the_open_part_the_rest(F_atm)
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize('w', [1.0, 1.0 - 0.5 * LID_OPEN_AREA_FLOOR])
+@pytest.mark.parametrize('w', [1.0, 1.0 - 0.5 * LID_OPEN_AREA_FLOOR, 1.0 - 1e-10])
 def test_an_open_area_at_the_floor_takes_f_atm(w):
     """Where ``1 - w`` is at or below ``LID_OPEN_AREA_FLOOR`` the open part takes ``F_atm``."""
     assert 1.0 - w <= LID_OPEN_AREA_FLOOR

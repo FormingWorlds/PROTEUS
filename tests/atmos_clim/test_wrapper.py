@@ -503,7 +503,7 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
     assert atmos_o._atm_janus_last is solved
     # Without a lid the open-surface flux the interior takes is F_atm, with no residual part.
     assert hf_row['lid_F_open'] == pytest.approx(100.0, rel=1e-15)
-    assert hf_row['lid_F_resid'] == 0.0
+    assert hf_row.get('lid_F_resid') == 0.0
 
 
 def _janus_lid_call(tmp_path, F_atm):
@@ -586,7 +586,7 @@ def test_run_atmosphere_writes_the_open_part_and_its_residual_under_a_live_lid(t
     hf_row = _janus_lid_call(tmp_path, 7.0)
     d, k, T_melt = lid_boundary(hf_row)
     want = (7.0 - k / d * (T_melt - hf_row['T_surf'])) / 0.7
-    assert hf_row['lid_F_resid'] == pytest.approx(want, rel=1e-12)
+    assert hf_row.get('lid_F_resid') == pytest.approx(want, rel=1e-12)
     assert hf_row['lid_F_resid'] == lid_open_residual(hf_row)
     assert hf_row['lid_F_open'] == lid_open_flux(hf_row)
     assert abs(want) > 1e3

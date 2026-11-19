@@ -996,6 +996,7 @@ def test_a_config_file_with_the_lid_and_prevent_warming_is_refused_at_load(tmp_p
             with pytest.raises(ValueError, match='prevent_warming') as excinfo:
                 read_config_object(path)
             assert 'lid_mush_base' in str(excinfo.value)
+            assert 'at least 1e-8 W m-2' in str(excinfo.value)
         else:
             assert read_config_object(path).planet.prevent_warming is False
 
