@@ -474,15 +474,16 @@ LID_SLOPE_DT_MIN = 0.01
 
 def lid_prev_row(hf_all, hf_row: dict):
     """The helpfile row before ``hf_row`` in ``hf_all`` (with or without ``hf_row`` as the last
-    row), or None; the other end of the secant of :func:`lid_flux_slope`."""
+    row), or None; the other end of the secant of :func:`lid_flux_secant`."""
     if hf_all is None or len(hf_all) == 0:
         return None
     k = -2 if float(hf_all['Time'].iloc[-1]) == float(hf_row['Time']) else -1
     return hf_all.iloc[k] if len(hf_all) >= -k else None
 
 
-def lid_flux_slope(hf_all, hf_row: dict) -> float:
-    """Slope ``F'`` [W m-2 K-1] of ``F_atm`` with ``T_surf`` over the last 2 rows, for the lid cap.
+def lid_flux_secant(hf_all, hf_row: dict) -> tuple[float, float | None]:
+    """Slope ``F'`` [W m-2 K-1] of ``F_atm`` with ``T_surf`` over the last 2 rows, with the
+    surface of the row before, the other end of that secant.
 
     Parameters
     ----------
@@ -493,18 +494,25 @@ def lid_flux_slope(hf_all, hf_row: dict) -> float:
 
     Returns
     -------
-    float
-        ``(F_atm - F_atm before) / (T_surf - T_surf before)``; 0 without a row before, for a
-        surface step below ``LID_SLOPE_DT_MIN``, for a slope of 0 or below, or a non-finite one.
+    tuple
+        ``(slope, T_other)``: ``(F_atm - F_atm before) / (T_surf - T_surf before)`` and the
+        ``T_surf`` before [K]. The slope is 0 for a surface step below ``LID_SLOPE_DT_MIN``,
+        for a slope of 0 or below, or a non-finite one; ``(0, None)`` without a row before.
     """
     prev = lid_prev_row(hf_all, hf_row)
     if prev is None:
-        return 0.0
-    dT = float(hf_row['T_surf']) - float(prev['T_surf'])
+        return 0.0, None
+    T_other = float(prev['T_surf'])
+    dT = float(hf_row['T_surf']) - T_other
     if not abs(dT) >= LID_SLOPE_DT_MIN:
-        return 0.0
+        return 0.0, T_other
     slope = (float(hf_row['F_atm']) - float(prev['F_atm'])) / dT
-    return slope if np.isfinite(slope) and slope > 0.0 else 0.0
+    return (slope if np.isfinite(slope) and slope > 0.0 else 0.0), T_other
+
+
+def lid_flux_slope(hf_all, hf_row: dict) -> float:
+    """Slope ``F'`` [W m-2 K-1] of :func:`lid_flux_secant`, for the lid cap."""
+    return lid_flux_secant(hf_all, hf_row)[0]
 
 
 def lid_flux_cap(hf_row: dict) -> float | None:
@@ -625,7 +633,7 @@ def lid_open_conductance(
     hf_row : dict
         Current helpfile row after the atmosphere step, with ``T_surf`` and the lid columns.
     slope : float
-        Slope ``F'`` of ``F_atm`` with ``T_surf`` [W m-2 K-1], as :func:`lid_flux_slope`.
+        Slope ``F'`` of ``F_atm`` with ``T_surf`` [W m-2 K-1], as :func:`lid_flux_secant`.
     T_other : float, optional
         Other end surface [K] of a secant ``slope`` through ``T_surf``, below or above it; the
         size cut is then the grey secant ``sigma (T_other^4 - T_surf^4) / (T_other - T_surf)
