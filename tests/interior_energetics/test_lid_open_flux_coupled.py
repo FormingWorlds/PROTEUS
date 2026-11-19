@@ -34,11 +34,11 @@ def test_the_open_part_keeps_the_coupled_runs_from_swinging(validation_plot):
     """Both segments: the runs with the response swing less than half as much as the runs with
     the fixed open flux, and in the first segment less than the run with the lid off; they take up
     at most 1 W/m2 at the surface, keep T_magma below 1600 K, clip nothing and close the energy to
-    the bound. The lid is live on 2 rows of the first segment and 1 of the second; later rows
-    differ through the path of each run."""
+    the bound. The lid is live on 1 row of each segment; later rows differ through the path of
+    each run."""
     for response, fixed in (('seg1_response', 'seg1_fixed'), ('seg2_response', 'seg2_fixed')):
         f, b = RUNS[response], RUNS[fixed]
-        assert sum(w > 0.0 for w in f['lid_weight']) in (1, 2)
+        assert sum(w > 0.0 for w in f['lid_weight']) == 1
         assert _swing(response).max() < 0.5 * _swing(fixed).max()
         assert min(f['F_int']) > -1.0 > min(b['F_int'])
         assert max(f['T_magma']) < 1600.0 < max(b['T_magma'])
