@@ -103,7 +103,7 @@ def dispatch_script(
         Shell lines run before the cases, such as exports.
     """
     minutes = max(1, round(days * 24 * 60))
-    signal_s = min(300, minutes * 6)  # a tenth of the wall time, at most 5 minutes
+    signal_s = min(900, minutes * 6)  # a tenth of the wall time, at most 15 minutes
     last_start_s = minutes * 60 - signal_s - min(60, signal_s)
     return f"""#!/bin/bash
 #SBATCH -J proteus.grid.array

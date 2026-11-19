@@ -112,9 +112,9 @@ def test_dispatch_script_asks_for_the_cores_and_one_step_per_case(tmp_path):
 @pytest.mark.parametrize(
     ('days', 'minutes', 'lead', 'offset'),
     [
-        (1.0, 1440, 300, 86040),
-        (2.3, 3312, 300, 198360),  # 2.3 * 1440 is 3311.9999; truncation writes 3311
-        (1 / 24, 60, 300, 3240),
+        (1.0, 1440, 900, 85440),
+        (2.3, 3312, 900, 197760),  # 2.3 * 1440 is 3311.9999; truncation writes 3311
+        (1 / 24, 60, 360, 3180),  # a tenth of 3600 s is 360 s, below the cap
         (0.02, 29, 174, 1506),  # 28.8 min rounds to 29; a tenth of 1740 s is 174 s
         (0.001, 1, 6, 48),  # the 60 s margin shrinks to the 6 s lead
         (0.0001, 1, 6, 48),  # 0.144 min rounds to 0, which Slurm reads as no limit
@@ -123,7 +123,7 @@ def test_dispatch_script_asks_for_the_cores_and_one_step_per_case(tmp_path):
 )
 def test_walltime_signal_and_last_start_agree(tmp_path, days, minutes, lead, offset):
     """The wall time is written in whole minutes, at least one. The early SIGTERM comes
-    300 s before it, or a tenth of it for short jobs. Slurm may send it up to 60 s
+    900 s before it, or a tenth of it for short jobs. Slurm may send it up to 60 s
     early, so the script starts no case from 60 s before the signal on, or from the
     lead before it when the lead is shorter: the offset from the job start is the wall
     time minus the lead minus that margin."""
