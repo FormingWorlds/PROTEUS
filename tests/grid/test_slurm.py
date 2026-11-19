@@ -29,8 +29,19 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
         (20000, 16, 1000, (1000, 2)),
         (17, 16, 1000, (2, 1)),  # one case over a full job needs a second job
         (1, 16, 1000, (1, 1)),
+        (50, 4, 1001, (13, 1)),  # the check layouts of the grid layout explorer docs
+        (50, 4, 5, (5, 3)),
     ],
-    ids=['rome-eighth', 'rome-node', 'habrok-limit', 'two-waves', 'one-over', 'single'],
+    ids=[
+        'rome-eighth',
+        'rome-node',
+        'habrok-limit',
+        'two-waves',
+        'one-over',
+        'single',
+        'docs',
+        'docs-limit',
+    ],
 )
 def test_array_layout_covers_every_case_within_the_limit(n_cases, cores, max_array, expected):
     """The layout gives enough core slots for every case, stays within the array limit
@@ -63,8 +74,18 @@ def test_array_layout_refuses_a_count_below_one(args):
         (20000, 16, 1000, 0.375),  # 20 cases per job: the second wave fills 4 cores
         (20000, 20, 1000, 0.0),
         (5, 16, 1001, 11 / 16),  # fewer cases than cores in the only job
+        (50, 4, 1001, 2 / 52),  # the check layouts of the grid layout explorer docs
+        (50, 4, 5, 10 / 60),
     ],
-    ids=['rome-eighth', 'small-grid', 'two-waves', 'two-waves-full', 'few-cases'],
+    ids=[
+        'rome-eighth',
+        'small-grid',
+        'two-waves',
+        'two-waves-full',
+        'few-cases',
+        'docs',
+        'docs-limit',
+    ],
 )
 def test_idle_share_counts_core_time_without_a_case(n_cases, cores, max_array, expected):
     """With equal run times, the idle share is the allocated core time in which a core
