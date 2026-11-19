@@ -168,6 +168,18 @@ For example, 1000 cases with `cores_per_job = 16`, `max_jobs = 64`, `max_mem = 1
 
 If `max_jobs` is smaller than `cores_per_job`, one job still runs, so more cases run at the same time than `max_jobs` says. If `max_jobs` isn't a multiple of `cores_per_job`, the grid manager rounds the number of jobs at a time down.
 
+#### Grid layout explorer
+
+Move the sliders to see how the grid settings lay out the cases over Slurm jobs. Each box is one job with one column per core and one row per wave; each cell shows the case index. Jobs outside the throttle wait in the queue (dashed), and an empty cell with a dashed outline is an idle core. The MaxArraySize slider stops at 40 to keep the drawing readable; on Snellius, the real value is about 1000.
+
+<div class="grid-explorer"><p>The grid layout explorer needs JavaScript.</p></div>
+
+The explorer uses the formulas of the grid manager. To check it, compare these layouts with `array_layout` and `idle_share` in `proteus.grid.slurm`:
+
+- 50 cases with `cores_per_job = 4` give 13 jobs in 1 wave, with 3.8 % of the cores idle.
+- 20 cases with `cores_per_job = 16` give 2 jobs in 1 wave, with 37.5 % idle.
+- 50 cases with `cores_per_job = 4` and a MaxArraySize of 5 give 5 jobs in 3 waves, with 16.7 % idle.
+
 #### How `max_jobs` is enforced
 
 No lock or counter counts the running cases over the whole cluster. Two different mechanisms enforce `max_jobs`, one with Slurm and one without.

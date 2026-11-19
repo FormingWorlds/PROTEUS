@@ -235,6 +235,7 @@ extra:
 extra_javascript:
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
   - javascripts/header-links.js
+  - javascripts/grid-explorer.js
 
 extra_css:
   - stylesheets/extra.css
