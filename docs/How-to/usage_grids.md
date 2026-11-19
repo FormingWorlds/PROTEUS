@@ -174,6 +174,14 @@ Move the sliders to see how the grid settings lay out the cases over Slurm jobs.
 
 <div class="grid-explorer"><p>The grid layout explorer needs JavaScript.</p></div>
 
+Settings to try:
+
+- Waves: set MaxArraySize to 5, with 50 cases on 4 cores. Each of the 5 jobs gets 3 rows (waves), and the walltime per job becomes 3 times `max_days`.
+- Rounding: set `max_jobs` below `cores_per_job`, for example 2 with 4 cores, or to a value that isn't a multiple of it, for example 10. The warning line shows that 4 cases run at once instead of 2, or that 10 is rounded down to 2 jobs, so 8 cases at once.
+- Idle cores: set 20 cases with 16 cores per job. Each of the 2 jobs gets 10 cases, so 6 of its 16 cores stay idle. That's 37.5 % of the allocated cores, which the idle-core warning catches.
+
+The explorer assumes that every case runs equally long, so each row of a job is one wave. In a real run, `xargs` gives a free core the next case of its job, so when run times differ, the cases don't stay in these rows.
+
 The explorer uses the formulas of the grid manager. To check it, compare these layouts with `array_layout` and `idle_share` in `proteus.grid.slurm`:
 
 - 50 cases with `cores_per_job = 4` give 13 jobs in 1 wave, with 3.8 % of the cores idle.
