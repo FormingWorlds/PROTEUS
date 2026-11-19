@@ -29,6 +29,16 @@ PROTEUS and Slurm use some of the same words for different things. This page use
 | Throttle | The most jobs of the job array that run at the same time (`%N` at the end of `--array`). |
 | MaxArraySize | The cluster's limit on the number of jobs in one job array. |
 
+??? info "Intermezzo: why these words are confusing"
+    No single standard names these things. Each field uses the same few words in its own way:
+
+    - Slurm has a job (one `sbatch` submission), a job step (one `srun` call in a job) and a task (one process of a step). A job array is one submission of many array tasks, and each array task is a job of its own.
+    - "Batch" doesn't help. A batch system runs batch jobs that you submit with `sbatch`, but in other fields a batch is a group of inputs that a program processes together.
+    - `make -j 8` and GNU `parallel -j 8` run 8 jobs at the same time, and a job there is one command. `max_jobs` follows this meaning, which clashes with the Slurm meaning.
+    - Tools for parameter studies name one parameter point differently: an evaluation in Dakota, a trial in Optuna, and an ensemble member or a realization in climate models. PROTEUS calls it a case.
+
+    These docs use the Slurm words only for Slurm things, and "case" and "grid" for PROTEUS things.
+
 ## Defining grid axes
 
 A grid configuration file (`*.grid.toml`) contains two kinds of entries: top-level settings that control the whole ensemble, and one TOML table per parameter axis.
