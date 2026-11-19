@@ -1,9 +1,9 @@
 """Open part of the Aragog lid surface: solidus floor, start value and in-step response.
 
 The open part of the surface (weight ``1 - w``) sits on melt held at least at the lid base,
-``T_m = max(T_node, T_b)``. Its start value is the scaled skin flux where the skin balance of
-the call is positive and ``F_atm`` elsewhere; inside the step it follows ``T_m`` with
-``G_eff = G F' / (F' + w G_l' + (1 - w) G)`` per open area.
+``T_m = max(T_node, T_b)``. Its start value ``(F_atm - w L) / (1 - w)``, with the signed lid
+flux ``L`` of the call, closes the weighted sum to ``F_atm``; inside the step it follows ``T_m``
+with ``G_eff = G F' / (F' + w G_l' + (1 - w) G)`` per open area.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from hypothesis import given, settings  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
 from proteus.atmos_clim.common import (  # noqa: E402
+    LID_OPEN_AREA_FLOOR,
     LID_SLOPE_GUARD_SIGN,
     LID_SLOPE_GUARD_SIZE,
     lid_boundary,
@@ -63,7 +64,8 @@ def test_the_call_holds_the_open_node_at_the_lid_base():
 
 @pytest.mark.physics_invariant
 def test_the_start_value_takes_the_floored_skin():
-    """The scaled branch reads ``G (T_m - T_s)`` with the floored node."""
+    """At the balance of the call the start value is the skin flux ``G (T_m - T_s)`` of the
+    floored node."""
     row = _balanced(_row(0.3, T_node=1350.0, T_surf=900.0))
     assert lid_open_flux(row) == pytest.approx(200.0 * (1400.0 - 900.0), rel=1e-14)
 
@@ -77,30 +79,86 @@ def test_the_floored_start_value_goes_to_f_atm_at_the_onset(w, T_node):
     assert lid_open_flux(row) == pytest.approx(row['F_atm'], rel=1e-10)
 
 
-@pytest.mark.physics_invariant
-def test_the_unscaled_branch_takes_the_flux_of_the_atmosphere(caplog, monkeypatch):
-    """Where the skin balance of the call is not positive the open part starts at ``F_atm``, with
-    one warning per process."""
-    import proteus.atmos_clim.common as common
+def _lid_flux(row):
+    """Signed flux of the lid part in the call, ``min(G_lid, G_skin) (T_b - T_surf)``."""
+    G_skin = row['boundary_layer_conductivity'] / row['boundary_layer_thickness']
+    return min(row['lid_conductance'], G_skin) * (row['lid_T_base'] - row['T_surf'])
 
-    monkeypatch.setattr(common, '_OPEN_FLUX_WARNED', [False])
-    row = _row(0.99, T_surf=1450.0, F_atm=-0.91)
-    d, k, T_melt = lid_boundary(row)
-    assert k / d * (T_melt - 1450.0) < 0.0
+
+@pytest.mark.physics_invariant
+@given(
+    w=st.floats(1e-6, 1.0 - 4.0 * LID_OPEN_AREA_FLOOR),
+    G_lid=st.floats(1e-3, 1e5),
+    d=st.floats(1e-4, 1.0),
+    k=st.floats(0.1, 10.0),
+    T_node=st.floats(300.0, 4000.0),
+    T_b=st.floats(300.0, 4000.0),
+    T_surf=st.floats(200.0, 4500.0),
+    F_atm=st.floats(-1e5, 1e5),
+)
+@settings(max_examples=400, deadline=None)
+def test_the_weighted_parts_sum_to_f_atm_on_both_sides_of_the_lid_base(
+    w, G_lid, d, k, T_node, T_b, T_surf, F_atm
+):
+    """The lid part at its signed call flux ``L`` and the open part sum to ``F_atm`` for any sign
+    of ``F_atm`` and of ``T_b - T_surf``; relative 1e-12 of the larger term."""
+    row = _row(w, G=G_lid, T_b=T_b, T_node=T_node, d=d, k=k, T_surf=T_surf, F_atm=F_atm)
+    L = _lid_flux(row)
+    F_open = lid_open_flux(row)
+    assert math.isfinite(F_open)
+    assert w * L + (1.0 - w) * F_open == pytest.approx(
+        F_atm, rel=0.0, abs=1e-12 * (abs(F_atm) + abs(w * L)) + 1e-300
+    )
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('w', 'T_surf', 'F_atm'), [(0.99, 1450.0, -0.91), (0.5, 1500.0, 7.0), (0.97, 1400.01, -1.0)]
+)
+def test_a_surface_above_the_lid_base_takes_the_sum_with_a_signed_lid_flux(
+    w, T_surf, F_atm, caplog
+):
+    """With the surface above ``T_b`` the lid flux of the call is inward, and the open part
+    carries ``F_atm`` less that flux, with no warning."""
+    row = _row(w, T_surf=T_surf, F_atm=F_atm)
+    L = 4.0 * (1400.0 - T_surf)
+    assert L < 0.0
     with caplog.at_level('WARNING', logger='fwl.proteus.atmos_clim.common'):
-        assert lid_open_flux(row) == -0.91
-        assert lid_open_flux(_row(0.5, T_surf=1500.0, F_atm=7.0)) == 7.0
-    warned = [r for r in caplog.records if 'F_atm' in r.getMessage()]
-    assert len(warned) == 1
+        F_open = lid_open_flux(row)
+    assert F_open == (F_atm - w * L) / (1.0 - w)
+    assert abs(F_open - F_atm) > 1.0
+    assert caplog.records == []
 
 
 @pytest.mark.physics_invariant
-def test_a_scale_of_zero_or_below_stops_the_run():
-    """A positive skin balance with ``F_atm`` at or below 0 gives ``c <= 0``: the run stops."""
-    for F_atm in (0.0, -5.0):
-        row = _row(0.3, T_surf=900.0, F_atm=F_atm)
-        with pytest.raises(RuntimeError, match='scale'):
-            lid_open_flux(row)
+@pytest.mark.parametrize('F_atm', [0.0, -5.0, -1200.0])
+def test_an_atmosphere_flux_at_or_below_zero_gives_the_open_part_the_rest(F_atm):
+    """A positive skin balance with ``F_atm`` at or below 0 gives the open part
+    ``(F_atm - w L) / (1 - w)``; the run goes on."""
+    row = _row(0.3, T_surf=900.0, F_atm=F_atm)
+    L = 4.0 * 500.0
+    assert lid_open_flux(row) == (F_atm - 0.3 * L) / 0.7
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('w', [1.0, 1.0 - 0.5 * LID_OPEN_AREA_FLOOR])
+def test_an_open_area_at_the_floor_takes_f_atm(w):
+    """Where ``1 - w`` is at or below ``LID_OPEN_AREA_FLOOR`` the open part takes ``F_atm``."""
+    assert 1.0 - w <= LID_OPEN_AREA_FLOOR
+    row = _row(w, T_surf=900.0, F_atm=-3.0)
+    assert lid_open_flux(row) == row['F_atm']
+
+
+@pytest.mark.physics_invariant
+def test_an_open_area_just_above_the_floor_closes_the_sum():
+    """Just above the floor the open part closes the sum, far from ``F_atm`` per open area."""
+    w = 1.0 - 4.0 * LID_OPEN_AREA_FLOOR
+    row = _row(w, T_surf=900.0, F_atm=-3.0)
+    L = 4.0 * 500.0
+    F_open = lid_open_flux(row)
+    assert F_open == (-3.0 - w * L) / (1.0 - w)
+    assert F_open < -1e11
+    assert w * L + (1.0 - w) * F_open == pytest.approx(-3.0, rel=1e-6)
 
 
 def _shared_surface(row, F_prime, T_m, F0=10.0, T_s0=900.0):
@@ -210,19 +268,20 @@ def test_the_response_caps_the_lid_conductance_at_the_skin():
 
 
 @pytest.mark.unit
-def test_the_scale_stop_writes_the_atmosphere_status():
-    """The stop for a scale at or below 0 records status 22 before it ends the run; a usable row
-    passes its start value through."""
+def test_the_open_flux_stop_writes_the_atmosphere_status():
+    """The stop for an ``F_atm`` that is not finite records status 22 before it ends the run;
+    a usable row, ``F_atm`` below 0 included, passes its start value through."""
     from unittest.mock import patch
 
+    from proteus.atmos_clim.common import LidOpenFluxError
     from proteus.atmos_clim.wrapper import lid_open_flux_or_stop
 
     with patch('proteus.atmos_clim.wrapper.UpdateStatusfile') as status:
-        with pytest.raises(RuntimeError, match='scale'):
-            lid_open_flux_or_stop({}, _row(0.3, T_surf=900.0, F_atm=-5.0))
+        with pytest.raises(LidOpenFluxError, match='not finite'):
+            lid_open_flux_or_stop({}, _row(0.3, T_surf=900.0, F_atm=math.nan))
         assert [c.args[1] for c in status.call_args_list] == [22]
-        row = _balanced(_row(0.3, T_surf=900.0))
-        assert lid_open_flux_or_stop({}, row) == lid_open_flux(row)
+        for row in (_balanced(_row(0.3, T_surf=900.0)), _row(0.3, T_surf=900.0, F_atm=-5.0)):
+            assert lid_open_flux_or_stop({}, row) == lid_open_flux(row)
         assert status.call_count == 1
 
 
@@ -274,7 +333,7 @@ def test_the_response_is_the_change_of_the_shared_surface(validation_plot):
     validation_plot(figure, 'atmos_clim_lid_open_response')
 
 
-def test_only_the_scale_stop_writes_the_atmosphere_status():
+def test_only_the_open_flux_stop_writes_the_atmosphere_status():
     """Another error from the open-part flux passes up without status 22."""
     from unittest.mock import patch
 

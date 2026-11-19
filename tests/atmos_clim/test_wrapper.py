@@ -505,6 +505,71 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
     assert hf_row['lid_F_open'] == pytest.approx(100.0, rel=1e-15)
 
 
+def test_run_atmosphere_writes_status_22_for_an_open_flux_that_is_not_finite(tmp_path):
+    """Under a live lid, an atmosphere flux that is not finite stops the call with status 22
+    in the run's status file."""
+    from proteus.atmos_clim.common import LidOpenFluxError
+
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            module='janus',
+            albedo_pl=0.0,
+            rayleigh=False,
+            cloud_enabled=False,
+            surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
+        ),
+        interior_energetics=SimpleNamespace(module='aragog'),
+    )
+    hf_row = {
+        'T_magma': 1450.0,
+        'M_planet': 6.0e24,
+        'R_obs': 6.4e6,
+        'F_int': 120.0,
+        'F_atm': math.nan,
+        'axial_period': 86400.0,
+        'atm_kg_per_mol': 0.029,
+        'T_surf': 900.0,
+        'R_int': 6.371e6,
+        'R_star': 6.96e8,
+        'F_olr': 200.0,
+        'F_sct': 100.0,
+        'F_ins': 1361.0,
+        'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
+        'lid_weight': 0.3,
+        'lid_conductance': 4.0,
+        'lid_T_base': 1400.0,
+        'lid_T_node': 1500.0,
+        'boundary_layer_thickness': 0.01,
+        'boundary_layer_conductivity': 2.0,
+    }
+    atm_output = {'albedo': 0.2, 'F_atm': math.nan}
+    atmos_o = Atmos_t()
+    atmos_o._atm = object()  # a column from an earlier call: no init, no spectral file
+    out = tmp_path / 'out'
+    out.mkdir()
+    with (
+        patch('proteus.atmos_clim.janus.RunJANUS', return_value=(object(), atm_output)),
+        pytest.raises(LidOpenFluxError, match='not finite'),
+    ):
+        atmos_wrapper.run_atmosphere(
+            atmos_o,
+            config,
+            {'output': str(out)},
+            {'total': 5},
+            [1.0],
+            [1.0],
+            False,
+            None,
+            hf_row,
+        )
+    assert (out / 'status').is_file()
+    assert (out / 'status').read_text().splitlines()[0] == '22'
+
+
 @pytest.mark.unit
 def test_run_atmosphere_janus_stops_with_status_20_on_a_missing_spectral_file(tmp_path):
     """The JANUS branch stops on a missing spectral file with status 20 written to the

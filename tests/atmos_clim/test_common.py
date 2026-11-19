@@ -986,11 +986,14 @@ def test_the_two_parts_sum_to_the_balance_of_the_atmosphere():
 
 @pytest.mark.physics_invariant
 def test_open_part_takes_the_gap_of_the_atmosphere():
-    """Off the skin balance the open part is the skin flux scaled by F_atm over the balance."""
+    """Off the skin balance the open part takes the whole gap, so that the lid part at its call
+    flux and the open part sum to F_atm; a skin flux scaled by F_atm over the balance does not."""
     row = _balanced(_row(0.3, T_surf=900.0), gap=0.95)
     S, L = 200.0 * 600.0, 4.0 * 500.0
-    assert lid_open_flux(row) == pytest.approx(0.95 * S, rel=1e-14)
-    assert 0.3 * 0.95 * L + 0.7 * lid_open_flux(row) == pytest.approx(row['F_atm'], rel=1e-12)
+    F_open = lid_open_flux(row)
+    assert F_open == pytest.approx((row['F_atm'] - 0.3 * L) / 0.7, rel=1e-14)
+    assert 0.3 * L + 0.7 * F_open == pytest.approx(row['F_atm'], rel=1e-12)
+    assert abs(F_open / (0.95 * S) - 1.0) > 1e-3
 
 
 @pytest.mark.parametrize('gap', [0.95, 1.0, 1.05])
@@ -1004,7 +1007,7 @@ def test_open_part_goes_to_f_atm_as_the_weight_goes_to_zero(w, gap):
 
 @pytest.mark.physics_invariant
 @given(
-    w=st.floats(1e-6, 1.0),
+    w=st.floats(1e-6, 0.999999),
     G_lid=st.floats(1e-3, 1e5),
     d=st.floats(1e-4, 1.0),
     k=st.floats(0.1, 10.0),
@@ -1014,22 +1017,17 @@ def test_open_part_goes_to_f_atm_as_the_weight_goes_to_zero(w, gap):
     gap=st.floats(0.5, 1.5),
 )
 @settings(max_examples=300, deadline=None)
-def test_the_open_part_and_the_cap_miss_f_atm_by_the_unscaled_cap(
-    w, G_lid, d, k, T_node, dT_b, dT_s, gap
-):
-    """Only the open part is scaled by r = F_atm over the balance of the call, so the cap C of the
-    lid part and the open part sum to F_atm - w C (r - 1)."""
+def test_the_open_part_and_the_cap_sum_to_f_atm(w, G_lid, d, k, T_node, dT_b, dT_s, gap):
+    """Below the lid base the cap C of the lid part and the open part sum to F_atm at any ratio of
+    F_atm to the balance of the call."""
     T_b = T_node - dT_b
     T_s = T_b - min(dT_s, T_b - 1.0)
     row = _balanced(_row(w, G=G_lid, T_b=T_b, T_node=T_node, d=d, k=k, T_surf=T_s), gap=gap)
-    S = k / d * (T_node - T_s)
     L = min(G_lid, k / d) * (T_b - T_s)
-    F_open = lid_open_flux(row)
-    assert F_open == pytest.approx(gap * S, rel=1e-9)
     C = lid_flux_cap(row)
     assert C == pytest.approx(L, rel=1e-12)
-    assert w * C + (1.0 - w) * F_open == pytest.approx(
-        row['F_atm'] - w * C * (gap - 1.0), rel=1e-9, abs=1e-9 * row['F_atm']
+    assert w * C + (1.0 - w) * lid_open_flux(row) == pytest.approx(
+        row['F_atm'], rel=1e-9, abs=1e-12 * w * C
     )
 
 
@@ -1156,21 +1154,18 @@ def test_the_call_flux_is_the_parallel_sum_of_the_lid_and_the_open_surface(valid
     validation_plot(figure, 'atmos_clim_lid_parallel_sum')
 
 
-@pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_the_weighted_parts_sum_to_f_atm_less_the_unscaled_cap(validation_plot):
+def test_the_weighted_parts_sum_to_f_atm(validation_plot):
     """Analytical limit: with r = F_atm over the skin balance of the call, the lid part at its
-    cap C = min(G_lid, G_skin) (T_b - T_surf) and the open part sum to w C + (1 - w) F_open =
-    F_atm - w C (r - 1), so to F_atm where the atmosphere closes its balance (r = 1). C and the
-    balance are computed here from their formulas. Checked to 1e-12 for w from 0 to 1 at
+    cap C = min(G_lid, G_skin) (T_b - T_surf) and the open part sum to F_atm at every r. C and
+    the balance are computed here from their formulas. Checked to 1e-12 for w from 0 to 1 at
     r = 0.95, 1 and 1.06, with G_lid = G_skin / 2 and 2 G_skin. At w = 0.5 and G_lid = G_skin / 2
-    an open part equal to F_atm misses F_atm by 21 % at r = 1; an open part without the scale
-    misses F_atm by 5.7 % and the closed form by 4.0 % at r = 1.06 (the closed form is 1.7 %
-    below F_atm) and is not told apart at r = 1."""
+    an open part equal to F_atm misses F_atm by 21 % at r = 1, and the skin flux scaled by r
+    misses it by w C (r - 1), 1.7 % at r = 1.06."""
     T_b, T_node, T_surf, G_skin = 1400.0, 1500.0, 900.0, 200.0
     w_grid = np.linspace(0.0, 1.0, 21)
     gaps = (0.95, 1.0, 1.06)
-    ratio, closed = {}, {}
+    ratio, scaled = {}, {}
     for G_lid in (0.5 * G_skin, 2.0 * G_skin):
         G_cap = min(G_lid, G_skin)
         C_ref = G_cap * (T_b - T_surf)
@@ -1183,31 +1178,26 @@ def test_the_weighted_parts_sum_to_f_atm_less_the_unscaled_cap(validation_plot):
                 C = lid_flux_cap(row) or 0.0
                 if w > 0.0:
                     assert C == pytest.approx(C_ref, rel=1e-14)
-                total = w * C + (1.0 - w) * lid_open_flux(row)
-                got.append(total / F_atm)
+                got.append((w * C + (1.0 - w) * lid_open_flux(row)) / F_atm)
                 ref.append(1.0 - w * C_ref * (r - 1.0) / F_atm)
-            ratio[G_lid, r], closed[G_lid, r] = np.array(got), np.array(ref)
-            np.testing.assert_allclose(ratio[G_lid, r], closed[G_lid, r], rtol=1e-12)
-        np.testing.assert_allclose(ratio[G_lid, 1.0], 1.0, rtol=1e-12)
+            ratio[G_lid, r], scaled[G_lid, r] = np.array(got), np.array(ref)
+            np.testing.assert_allclose(ratio[G_lid, r], 1.0, rtol=1e-12)
     C_h, S = 100.0 * 500.0, G_skin * 600.0
-    F1, F6 = 0.5 * C_h + 0.5 * S, 1.06 * (0.5 * C_h + 0.5 * S)
+    F1 = 0.5 * C_h + 0.5 * S
     assert 1.0 - (0.5 * C_h + 0.5 * F1) / F1 == pytest.approx(0.206, abs=0.001)
-    unscaled = (0.5 * C_h + 0.5 * S) / F6
-    assert 1.0 - unscaled == pytest.approx(0.057, abs=0.001)
-    assert closed[100.0, 1.06][10] - unscaled == pytest.approx(0.040, abs=0.001)
-    assert 1.0 - ratio[100.0, 1.06][10] == pytest.approx(0.017, abs=0.001)
+    assert 1.0 - scaled[100.0, 1.06][10] == pytest.approx(0.017, abs=0.001)
     ratio = {r: ratio[100.0, r] for r in gaps}
-    closed = {r: closed[100.0, r] for r in gaps}
+    scaled = {r: scaled[100.0, r] for r in gaps}
 
     def figure():
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(figsize=(7, 3.6))
         for i, r in enumerate(gaps):
-            ax.plot(w_grid, closed[r], color=f'C{i}', label=f'r = {r:g}')
-            ax.plot(w_grid[::2], ratio[r][::2], 'o', color=f'C{i}', ms=5)
-        ink = plt.rcParams['text.color']
-        ax.plot([], [], 'o', color=ink, ms=5, label='code')
+            ax.plot(w_grid, scaled[r], color=f'C{i}', ls='--', label=f'scaled skin, r = {r:g}')
+            ax.plot(
+                w_grid[::2], ratio[r][::2], 'o', color=f'C{i}', ms=5, label=f'code, r = {r:g}'
+            )
         ax.set_xlabel('Lid weight $w$')
         ax.set_ylabel('sum / $F_\\mathrm{atm}$')
         ax.legend(fontsize=8, loc='center left', bbox_to_anchor=(1.0, 0.5))

@@ -538,6 +538,10 @@ def lid_flux_cap(hf_row: dict) -> float | None:
 _OPEN_FLUX_WARNED = [False]
 
 
+# open area 1 - w at or below which the open part takes F_atm
+LID_OPEN_AREA_FLOOR = 1e-9
+
+
 class LidOpenFluxError(RuntimeError):
     """The open part of a live lid has no start value: its scale ``c`` is not positive."""
 
