@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.atmos_clim.common import list_atmosphere_times
+from proteus.utils.constants import const_Nav, element_mmw
 from proteus.utils.helper import (
     SUBYEAR_TIME_RESOLUTION,
     format_subyear_time,
@@ -17,6 +18,47 @@ from proteus.utils.helper import (
 )
 
 log = logging.getLogger('fwl.' + __name__)
+
+
+def escape_atom_fluxes(hf_row: dict, elements: list[str]) -> dict[str, float]:
+    """Escape flux of each element as atoms through a sphere of radius `R_xuv`.
+
+    F_e = esc_rate_e * N_A / (M_e * 4 pi R^2), with `esc_rate_e` [kg s-1] from the
+    helpfile, M_e [kg mol-1] the molar mass of the element and R = max(R_xuv, R_int) [m],
+    converted to cm. The clip keeps the flux finite when the escape module leaves `R_xuv`
+    unset (zero) or gives a value below the surface, and replaces a NaN `R_xuv` by `R_int`.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row with `esc_rate_<e>` [kg s-1], `R_xuv` [m] and `R_int` [m].
+    elements : list of str
+        Elements of the chemical network.
+
+    Returns
+    -------
+    dict
+        Escape flux [atoms cm-2 s-1] of each element in `elements`, in that order;
+        zero for an element with a zero escape rate.
+
+    Raises
+    ------
+    HelpfileSchemaDriftError
+        With a `HelpfileRow`, a helpfile without one of the columns read.
+    """
+
+    # Get rate from PROTEUS helpfile for each atom in the network
+    rates = {e: float(hf_row['esc_rate_' + e]) for e in elements}
+
+    # Radius of the escape sphere, at least the surface radius; fmax skips a NaN R_xuv
+    radius = float(np.fmax(hf_row['R_xuv'], hf_row['R_int']))
+    area = 4.0 * np.pi * (radius * 100.0) ** 2  # cm2
+
+    # Rate per area, in atoms cm-2 s-1
+    out = {}
+    for e, r in rates.items():
+        out[e] = r * const_Nav / (element_mmw[e] * area)
+    return out
 
 
 def chem_csv_name(module: str, time: float) -> str:

@@ -926,6 +926,7 @@ config_version = "3.0"
         network               = "SNCHO"      # chemical network: CHO | NCHO | SNCHO
         ini_mix               = "profile"    # initial mixing ratios: profile | outgas | previous
         fix_surf              = false        # hold surface mixing ratios fixed
+        escape_bc             = false        # PROTEUS escape as top boundary (needs fix_surf)
         make_funs             = true         # generate reaction network functions
 
         # Processes

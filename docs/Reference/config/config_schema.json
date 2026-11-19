@@ -10619,6 +10619,22 @@
       "group_qualifier": null
     },
     {
+      "path": "atmos_chem.vulcan.escape_bc",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Upper boundary condition. If true, each atom in the network leaves the top layer at the PROTEUS escape rate; requires fix_surf = true. If false, no gas crosses the top.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "atmos_chem.vulcan.network",
       "toml_section": "atmos_chem.vulcan",
       "class": "Vulcan",
@@ -12759,6 +12775,17 @@
         "module"
       ],
       "doc": "The Morrigan module requires as many embryo masses as planets, all positive, and a valid selector value when the selector is a semi-major axis or planet id."
+    },
+    {
+      "validator": "valid_escape_bc",
+      "module": "_atmos_chem.py",
+      "attached_to": [
+        "atmos_chem.vulcan.escape_bc"
+      ],
+      "touches": [
+        "fix_surf"
+      ],
+      "doc": "Refuse `escape_bc = true` unless the surface mixing ratios are fixed."
     },
     {
       "validator": "valid_ini_mix",

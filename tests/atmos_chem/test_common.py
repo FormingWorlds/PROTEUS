@@ -2,8 +2,8 @@
 
 Exercises ``read_result`` (chemistry CSV reader), ``chem_csv_name``,
 ``resolve_chemistry_times``, the target functions ``crossing_rows``,
-``resolve_chemistry_targets`` and ``chem_targets_crossed``, ``snapshot_star_file``
-and ``helpfile_row_at``.
+``resolve_chemistry_targets`` and ``chem_targets_crossed``, ``snapshot_star_file``,
+``helpfile_row_at`` and ``escape_atom_fluxes``.
 
 Invariants tested:
   - Correct file path construction from module name and optional filename
@@ -16,6 +16,7 @@ Invariants tested:
   - A table target selects every row at which its column reaches or crosses the value
   - The main loop marks exactly the rows that the targets later resolve to
   - A snapshot uses the stellar spectrum it recorded, else the newest earlier one
+  - Escape atom fluxes return the helpfile escape rates [kg s-1] through a sphere of R_xuv
 
 Testing standards:
   - docs/How-to/testing.md
@@ -34,6 +35,7 @@ from proteus.atmos_chem.common import (
     chem_csv_name,
     chem_targets_crossed,
     crossing_rows,
+    escape_atom_fluxes,
     helpfile_row_at,
     read_result,
     resolve_chemistry_targets,
@@ -452,3 +454,159 @@ def test_snapshot_star_file_falls_back_to_the_newest_earlier_spectrum(tmp_path):
     _write_sflux(tmp_path / 'modern_only', [-1])
     with pytest.raises(FileNotFoundError, match='No stellar spectrum'):
         snapshot_star_file(str(tmp_path / 'modern_only'), 900.0)
+
+
+# ---------------------------------------------------------------------------
+# escape_atom_fluxes
+# ---------------------------------------------------------------------------
+
+_R_INT = 6.371e6  # m
+_R_XUV = 1.5 * _R_INT  # m; far enough from R_int that using R_int fails the tolerance
+
+# Asymmetric escape rates [kg s-1], so a swapped element changes the result
+_ESC_RATES = {'H': 3.7e3, 'O': 2.9e4, 'C': 1.1e3, 'N': 0.0, 'S': 5.3e2, 'Si': 8.0e2, 'He': 4.0}
+
+
+def _escape_row(rates=_ESC_RATES, r_xuv=_R_XUV):
+    """Helpfile row with escape rates [kg s-1] for every PROTEUS element and R_xuv [m]."""
+    from proteus.utils.constants import element_list
+
+    row = {'Time': 2.5e5, 'R_int': _R_INT, 'R_xuv': r_xuv}
+    for e in element_list:
+        row['esc_rate_' + e] = rates.get(e, 0.0)
+    return row
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_escape_atom_fluxes_pin_one_kg_per_second_of_hydrogen():
+    """1 kg/s of H through a sphere of radius 1e7 m is 4.7542e7 atoms cm-2 s-1.
+
+    By hand: 1 / 1.008e-3 kg mol-1 * 6.02214076e23 mol-1 = 5.97435e26 atoms s-1,
+    over 4 pi (1e9 cm)^2 = 1.256637e19 cm2. Guards: the molar mass of H2, the area
+    in m2 instead of cm2, and pi R^2 instead of 4 pi R^2 each fall far outside.
+    """
+    row = {'Time': 0.0, 'R_xuv': 1.0e7, 'R_int': 6.371e6, 'esc_rate_H': 1.0}
+    flux = escape_atom_fluxes(row, ['H'])
+    assert list(flux) == ['H']
+    assert flux['H'] == pytest.approx(4.7542e7, rel=1e-4)
+
+    atoms_per_s = 1.0 / 1.008e-3 * 6.02214076e23
+    wrong = {
+        'H2 molar mass': atoms_per_s / 2.0 / (4 * np.pi * 1.0e9**2),
+        'area in m2': atoms_per_s / (4 * np.pi * 1.0e7**2),
+        'disc area': atoms_per_s / (np.pi * 1.0e9**2),
+    }
+    for name, value in wrong.items():
+        assert flux['H'] != pytest.approx(value, rel=1e-2), name
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_escape_atom_fluxes_return_the_escape_rates_through_the_r_xuv_sphere():
+    """Each atom flux times the atomic mass and the area of the R_xuv sphere gives
+    back the helpfile escape rate of that element [kg s-1], to round-off.
+
+    The same flux spread over the R_int sphere is (R_xuv/R_int)^2 = 2.25 times
+    larger, so using R_int fails this check. N escapes at zero rate and gets a
+    zero flux, not a missing entry.
+    """
+    from proteus.utils.constants import const_Nav, element_mmw
+
+    elements = ['H', 'O', 'C', 'N', 'S']
+    flux = escape_atom_fluxes(_escape_row(), elements)
+    assert set(flux) == set(elements)
+    assert all(f >= 0 for f in flux.values())
+    assert flux['N'] == 0
+
+    area_xuv = 4 * np.pi * (_R_XUV * 100.0) ** 2  # cm2
+    area_int = 4 * np.pi * (_R_INT * 100.0) ** 2  # cm2
+    for e, f in flux.items():
+        back = f * area_xuv * element_mmw[e] / const_Nav
+        assert back == pytest.approx(_ESC_RATES[e], rel=1e-12, abs=0.0)
+        if _ESC_RATES[e] > 0:
+            assert f * area_int * element_mmw[e] / const_Nav != pytest.approx(
+                _ESC_RATES[e], rel=1e-2
+            )
+
+    # Flux through a sphere falls as R^-2 at a fixed rate
+    flux_2r = escape_atom_fluxes(_escape_row(r_xuv=2 * _R_XUV), elements)
+    for e in flux:
+        assert flux_2r[e] == pytest.approx(flux[e] / 4.0, rel=1e-12, abs=0.0)
+
+
+@pytest.mark.unit
+def test_escape_atom_fluxes_keys_are_the_network_elements_in_order():
+    """The fluxes are keyed by exactly the given network elements, in their
+    order, which is the row order of the VULCAN top boundary file. Si and He
+    escape but are outside the network, so they get no entry; a CHO network
+    leaves out N and S, and the O flux does not depend on which others are
+    asked for."""
+    flux = escape_atom_fluxes(_escape_row(), ['H', 'O', 'C', 'N', 'S'])
+    assert list(flux) == ['H', 'O', 'C', 'N', 'S']
+    assert 'Si' not in flux and 'He' not in flux
+
+    flux_cho = escape_atom_fluxes(_escape_row(), ['C', 'O', 'H'])
+    assert list(flux_cho) == ['C', 'O', 'H']
+    assert flux_cho['O'] == pytest.approx(flux['O'], rel=1e-12)
+    assert escape_atom_fluxes(_escape_row(), []) == {}
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_escape_atom_fluxes_without_escape_are_zero():
+    """With every escape rate zero (escape off) each network element has a zero
+    flux, so the top boundary removes nothing."""
+    elements = ['H', 'O', 'C', 'N', 'S']
+    flux = escape_atom_fluxes(_escape_row(rates={}), elements)
+    assert list(flux) == elements
+    assert all(f == 0 for f in flux.values())
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'r_xuv',
+    [0.0, -1.0e7, float('nan'), 0.5 * _R_INT],
+    ids=['unset', 'negative', 'nan', 'below_surface'],
+)
+def test_escape_atom_fluxes_clip_r_xuv_to_the_surface(r_xuv):
+    """An R_xuv that is unset (0), negative, NaN or below the surface is replaced
+    by R_int, so the fluxes are finite and equal those for R_xuv = R_int; with
+    every rate zero they stay zero instead of 0/0."""
+    elements = ['H', 'O', 'C', 'N', 'S']
+    flux = escape_atom_fluxes(_escape_row(r_xuv=r_xuv), elements)
+    at_surface = escape_atom_fluxes(_escape_row(r_xuv=_R_INT), elements)
+    assert all(np.isfinite(f) for f in flux.values())
+    for e in elements:
+        assert flux[e] == pytest.approx(at_surface[e], rel=1e-12, abs=0.0)
+
+    zero = escape_atom_fluxes(_escape_row(rates={}, r_xuv=r_xuv), elements)
+    assert all(f == 0 for f in zero.values())
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_escape_atom_fluxes_use_an_r_xuv_above_the_surface():
+    """An R_xuv just above R_int is used as it is: 1 % above the surface lowers
+    every flux by 1/1.01^2, which the clip to R_int would miss."""
+    elements = ['H', 'O', 'C', 'S']
+    above = escape_atom_fluxes(_escape_row(r_xuv=1.01 * _R_INT), elements)
+    at_surface = escape_atom_fluxes(_escape_row(r_xuv=_R_INT), elements)
+    for e in elements:
+        assert above[e] == pytest.approx(at_surface[e] / 1.01**2, rel=1e-12)
+        assert above[e] != pytest.approx(at_surface[e], rel=1e-3)
+
+
+@pytest.mark.unit
+def test_escape_atom_fluxes_report_a_helpfile_without_escape_columns():
+    """A helpfile written before the per-element escape columns raises the
+    schema-drift report naming the column, rather than a bare KeyError."""
+    from proteus.utils.coupler import HelpfileRow, HelpfileSchemaDriftError
+
+    row = HelpfileRow(
+        {'Time': 1.0, 'R_xuv': _R_XUV, 'R_int': _R_INT, 'esc_rate_H': 1.0}, 'old_run.csv'
+    )
+    with pytest.raises(HelpfileSchemaDriftError, match="'esc_rate_O'"):
+        escape_atom_fluxes(row, ['H', 'O'])
+    assert escape_atom_fluxes(row, ['H'])['H'] > 0

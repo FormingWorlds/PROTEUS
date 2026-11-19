@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 # Import PROTEUS
-from proteus.atmos_chem.common import chem_csv_name, snapshot_star_file
+from proteus.atmos_chem.common import chem_csv_name, escape_atom_fluxes, snapshot_star_file
 from proteus.atmos_chem.vulcan_agni import VULCAN_TMP_FLOOR
 from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.star.wrapper import flux_weighted_distance, scale_spectrum_to_stellar_surface
@@ -73,6 +73,19 @@ def _write_boundary_file(fpath: str, fixed_vmr: dict) -> None:
             hdl.write(f'{gas}  0.0  0.0  {vmr:.8e}\n')
 
 
+def _write_top_flux_file(fpath: str, escape_flux: dict) -> None:
+    """Write a VULCAN top boundary file of constant escape fluxes.
+
+    Each row is a species and its flux [cm-2 s-1], the columns VULCAN reads from
+    `top_BC_flux_file`. VULCAN counts a negative flux as outflow, so each escape flux
+    in `escape_flux`, given as a positive magnitude, is written with a minus sign.
+    """
+    with open(fpath, 'w') as hdl:
+        hdl.write('# species  flux(cm-2 s-1); negative is outflow\n')
+        for gas, flux in escape_flux.items():
+            hdl.write(f'{gas}  {-flux:.8e}\n')
+
+
 def read_vulcan_netcdf(fpath: str) -> dict:
     """Read the result of a VULCAN run from its NetCDF output file.
 
@@ -103,6 +116,26 @@ def read_vulcan_netcdf(fpath: str) -> dict:
         out['end_case'] = int(ds.end_case) if 'end_case' in ds.ncattrs() else None
         out['termination'] = str(getattr(ds, 'termination', ''))
     return out
+
+
+def _set_escape_top_bc(config: Config, hf_row: dict, ele_arr: list, fpath: str) -> None:
+    """Write the PROTEUS escape rates of the network elements as atom fluxes at the top.
+
+    The flux of each element is `escape_atom_fluxes`; it leaves VULCAN's top layer as the
+    atom of that element.
+    """
+    escape_flux = escape_atom_fluxes(hf_row, ele_arr)
+    _write_top_flux_file(fpath, escape_flux)
+    if not escape_flux:
+        log.info('    escape top boundary: all escape rates are zero')
+        return
+    for e, flux in escape_flux.items():
+        log.info(f'    escape top boundary: {e} {flux:.3e} cm-2 s-1')
+    if not config.atmos_chem.photo_on:
+        log.warning(
+            'Escape top boundary without photochemistry: atoms form slowly in the top '
+            'layer, so VULCAN may struggle to supply the escape fluxes'
+        )
 
 
 def network_settings(config: Config) -> tuple[str, list, list, list] | None:
@@ -445,9 +478,13 @@ def run_vulcan(
     _write_boundary_file(vcfg.bot_BC_flux_file, dict(vcfg.const_mix))
 
     # TOA boundary condition
-    vcfg.use_topflux = False
     vcfg.top_BC_flux_file = os.path.join(vulcan_out, 'bc_top.dat')
-    _write_boundary_file(vcfg.top_BC_flux_file, dict(vcfg.const_mix))
+    if config.atmos_chem.vulcan.escape_bc:
+        _set_escape_top_bc(config, hf_row, ele_arr, vcfg.top_BC_flux_file)
+        vcfg.use_topflux = True
+    else:
+        vcfg.use_topflux = False
+        _write_boundary_file(vcfg.top_BC_flux_file, dict(vcfg.const_mix))
     vcfg.diff_esc = []  # species for diffusion-limit escape at TOA
     vcfg.max_flux = 1e90  # cap on diffusion-limited escape flux (cm-2 s-1)
 

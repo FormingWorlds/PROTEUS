@@ -228,6 +228,7 @@ steady-state mixing ratios from a chemical reaction network.
 | `make_funs` | bool | `true` | Make functions from chemical network. |
 | `ini_mix` | str | `"profile"` | Initial mixing ratios. Options: profile (the climate profile), outgas (the surface mixing ratios at every level), previous (the result of the latest earlier chemistry snapshot, interpolated in log pressure; needs fix_surf = true; falls back to profile when there is none). Choices: `"profile"`, `"outgas"`, `"previous"`. |
 | `fix_surf` | bool | `false` | Fix the surface mixing ratios based on outgassed composition. |
+| `escape_bc` | bool | `false` | Upper boundary condition. If true, each atom in the network leaves the top layer at the PROTEUS escape rate; requires fix_surf = true. If false, no gas crosses the top. |
 | `network` | str | `"SNCHO"` | Chemical network. Options: CHO, NCHO, SNCHO. Choices: `"CHO"`, `"NCHO"`, `"SNCHO"`. |
 | `save_frames` | bool | `false` | Save simulation state as plots. |
 | `yconv_cri` | float | `0.05` | Steady state - max change in mixing ratio over test period. |
@@ -266,6 +267,7 @@ Cross-field constraints enforced when the config file loads:
 - A skin from saturation stays fixed unless atmodeller forms condensates.
 - Aerosol scattering needs band-resolved RT.
 - Validate AGNI settings: pressure ordering, surface-state support, rainout, spectral file.
+- Refuse `escape_bc = true` unless the surface mixing ratios are fixed.
 - Refuse `ini_mix = 'previous'` unless the surface mixing ratios are fixed.
 - Validate JANUS settings: spectral file selection and temperature-bound ordering.
 - Refuse coupled chemistry, and automatic chemistry without a module.

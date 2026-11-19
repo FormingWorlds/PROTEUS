@@ -27,6 +27,9 @@ Contracts and invariants tested:
   defines in the installed VULCAN, and no field VULCAN does not define
 - Boundary files hold the surface VMRs with zero fluxes, and VULCAN reads
   them only with a fixed surface
+- escape_bc = true: the top file holds each network element as an atom
+  outflow [cm-2 s-1] of its escape rate through the R_xuv sphere, and VULCAN
+  reads it with diffusion-limited escape off
 - Config pass-through of the solver and AGNI options
 - Network filter and background gas
 - Condensation of every gas of the network that VULCAN can condense
@@ -115,6 +118,7 @@ def _make_mock_config(*, network='CHO', photo_on=True, atmos_module='agni'):
     config.atmos_chem.vulcan.make_funs = True
     config.atmos_chem.vulcan.ini_mix = 'profile'
     config.atmos_chem.vulcan.fix_surf = False
+    config.atmos_chem.vulcan.escape_bc = False
     config.atmos_chem.vulcan.network = network
     config.atmos_chem.vulcan.save_frames = False
     config.atmos_chem.vulcan.yconv_cri = 0.05
@@ -176,12 +180,16 @@ def _make_mock_hf_row(*, year=1000.0):
         'R_int': 6.371e6,
         'gravity': 9.81,
         'T_surf': 1500.0,
+        'R_xuv': 7.0e6,
     }
     # Add VMR entries for all volatiles
-    from proteus.utils.constants import vol_list
+    from proteus.utils.constants import element_list, vol_list
 
     for gas in vol_list:
         hf_row[gas + '_vmr'] = 1e-4
+    # Escape rates [kg s-1]: no escape unless a test sets them
+    for e in element_list:
+        hf_row['esc_rate_' + e] = 0.0
     return hf_row
 
 
@@ -787,6 +795,124 @@ def test_run_vulcan_sets_every_field_of_the_installed_vulcan_config(tmp_path):
     )
     # PROTEUS reads the NetCDF output only.
     assert vcfg.save_type == ['netcdf']
+
+
+def _parse_top_flux(fpath):
+    """Read a top boundary file as VULCAN's BC_flux does: species and flux [cm-2 s-1]."""
+    rows = [
+        line.split()
+        for line in Path(fpath).read_text().splitlines()
+        if line.strip() and not line.startswith('#')
+    ]
+    return {row[0]: float(row[1]) for row in rows}
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_vulcan_escape_bc_writes_atom_outflows(tmp_path):
+    """With escape_bc = true each network element leaves the top as its atom,
+    with a negative (outflow) flux whose magnitude returns the helpfile rate
+    [kg s-1] over the R_xuv sphere.
+
+    The NCHO network carries H, O, C and N: Si and S escape but are outside it,
+    so they get no row, and N escapes at zero rate, so its row is zero. The
+    bottom boundary is left as with escape_bc = false. Diffusion-limited escape
+    stays off, so VULCAN does not overwrite the rows.
+    """
+    from proteus.utils.constants import const_Nav, element_mmw
+
+    config = _make_mock_config(network='NCHO')
+    config.atmos_chem.vulcan.make_funs = False
+    config.atmos_chem.vulcan.fix_surf = True
+    config.atmos_chem.vulcan.escape_bc = True
+    hf_row = _make_mock_hf_row(year=900.0)
+    rates = {'H': 2.0e4, 'O': 1.3e5, 'C': 7.0e3, 'S': 4.0e3, 'Si': 9.0e2}
+    for e, rate in rates.items():
+        hf_row['esc_rate_' + e] = rate
+
+    result, vcfg, _ = _run(tmp_path, config, hf_row)
+    assert result is True
+    assert vcfg.use_topflux is True
+    assert vcfg.diff_esc == []
+    assert vcfg.use_botflux is False
+    assert vcfg.use_fix_sp_bot == pytest.approx(vcfg.const_mix, rel=1e-12)
+
+    top = _parse_top_flux(vcfg.top_BC_flux_file)
+    assert list(top) == ['H', 'O', 'C', 'N']
+    assert all(top[e] < 0 for e in ('H', 'O', 'C'))
+    assert top['N'] == 0
+    area = 4 * np.pi * (hf_row['R_xuv'] * 100.0) ** 2  # cm2
+    for e, flux in top.items():
+        assert -flux * area * element_mmw[e] / const_Nav == pytest.approx(
+            rates.get(e, 0.0), rel=1e-8, abs=0.0
+        )
+    # O carries the largest mass rate but H, 16 times lighter, the largest atom flux
+    assert top['H'] < top['O'] < 0
+
+
+@pytest.mark.unit
+def test_run_vulcan_escape_bc_without_escape_writes_zero_fluxes(tmp_path, caplog):
+    """With escape_bc = true and every escape rate zero, the top file holds a
+    zero flux for each element of the CHO network, so nothing leaves the top,
+    and the log lists the zero fluxes."""
+    caplog.set_level('INFO', logger='fwl.proteus.atmos_chem.vulcan')
+    config = _make_mock_config()
+    config.atmos_chem.vulcan.make_funs = False
+    config.atmos_chem.vulcan.fix_surf = True
+    config.atmos_chem.vulcan.escape_bc = True
+    hf_row = _make_mock_hf_row(year=900.0)
+
+    result, vcfg, _ = _run(tmp_path, config, hf_row)
+    assert result is True
+    assert vcfg.use_topflux is True
+    top = _parse_top_flux(vcfg.top_BC_flux_file)
+    assert list(top) == ['H', 'O', 'C']
+    assert all(flux == 0 for flux in top.values())
+    assert 'escape top boundary: H 0.000e+00 cm-2 s-1' in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_vulcan_escape_bc_spreads_over_r_int_without_r_xuv(tmp_path):
+    """With R_xuv = 0 (left unset by the escape module) the escape rate is spread
+    over the surface sphere R_int, so the run goes ahead with a finite outflow
+    whose magnitude returns the helpfile rate [kg s-1] over that sphere."""
+    from proteus.utils.constants import const_Nav, element_mmw
+
+    config = _make_mock_config()
+    config.atmos_chem.vulcan.make_funs = False
+    config.atmos_chem.vulcan.fix_surf = True
+    config.atmos_chem.vulcan.escape_bc = True
+    hf_row = _make_mock_hf_row(year=900.0)
+    hf_row['esc_rate_H'] = 1.0e3
+    hf_row['R_xuv'] = 0.0
+
+    result, vcfg, _ = _run(tmp_path, config, hf_row)
+    assert result is True
+    mock_vulcan_package.run_vulcan.assert_called_once()
+    top = _parse_top_flux(vcfg.top_BC_flux_file)
+    assert np.isfinite(top['H']) and top['H'] < 0
+    area_int = 4 * np.pi * (hf_row['R_int'] * 100.0) ** 2  # cm2
+    assert -top['H'] * area_int * element_mmw['H'] / const_Nav == pytest.approx(1.0e3, rel=1e-8)
+
+
+@pytest.mark.unit
+def test_run_vulcan_escape_bc_warns_without_photochemistry(tmp_path, caplog):
+    """Without photochemistry few atoms form in the top layer, so an escape top
+    boundary with nonzero rates logs a warning; with photochemistry it does not."""
+    for photo_on, warned in ((False, True), (True, False)):
+        caplog.clear()
+        config = _make_mock_config(photo_on=photo_on)
+        config.atmos_chem.vulcan.make_funs = False
+        config.atmos_chem.vulcan.fix_surf = True
+        config.atmos_chem.vulcan.escape_bc = True
+        hf_row = _make_mock_hf_row(year=900.0)
+        hf_row['esc_rate_H'] = 1.0e3
+        run_dir = tmp_path / f'photo_{photo_on}'
+        run_dir.mkdir()
+        result, _, _ = _run(run_dir, config, hf_row)
+        assert result is True
+        assert ('without photochemistry' in caplog.text) is warned
 
 
 @pytest.mark.unit
