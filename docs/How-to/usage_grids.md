@@ -168,6 +168,22 @@ For example, 1000 cases with `cores_per_job = 16`, `max_jobs = 64`, `max_mem = 1
 
 If `max_jobs` is smaller than `cores_per_job`, one job still runs, so more cases run at the same time than `max_jobs` says. If `max_jobs` isn't a multiple of `cores_per_job`, the grid manager rounds the number of jobs at a time down.
 
+#### How `max_jobs` is enforced
+
+No lock or counter counts the running cases over the whole cluster. Two different mechanisms enforce `max_jobs`, one with Slurm and one without.
+
+With Slurm, Slurm enforces the limit through the throttle of the job array: `--array=0-62%4` means that at most 4 jobs of this array run at the same time. The grid manager sets the throttle to `max_jobs // cores_per_job` jobs, and each job runs `cores_per_job` cases at the same time with `xargs -P`. So the limit on cases is the product of these two numbers, and Slurm never sees it as one number.
+
+The throttle counts only the jobs of this one array. It doesn't count other grids, other job arrays that you submit, or the jobs of other users.
+
+`max_jobs` is an upper limit, not a target. Slurm schedules each job of the array on its own, so fewer cases can run than `max_jobs` allows:
+
+- Some jobs can still wait in the queue.
+- A job keeps all of its cores until its last case ends, and it still counts for the throttle. Near the end of a job, fewer than `cores_per_job` of its cases run, and the free cores stay allocated to the job. A cluster that charges for allocated cores, such as Snellius, charges for them.
+- A job with fewer cases than cores has a free core from the start. In the 1000-case example, 8 of the 63 jobs get 15 cases on 16 cores.
+
+Without Slurm, the `proteus grid` process counts its own running cases in a loop. When fewer than `max_jobs` cases run, it starts the next case. It starts at most one case per check, and it checks every second while it starts the first cases and every 15 s after that. It runs at most as many cases as the machine has CPU cores (`os.cpu_count()`). It counts only its own cases on that machine, not other grids or other programs.
+
 #### How cases are spread over the jobs
 
 Job `j` runs cases `j`, `j + jobs`, `j + 2 * jobs` and so on. For example, with 10 cases and `cores_per_job = 4`, the grid manager makes 3 jobs:
