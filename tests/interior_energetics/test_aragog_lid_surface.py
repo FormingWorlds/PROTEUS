@@ -884,15 +884,3 @@ def test_the_resolve_sets_no_open_response_where_the_step_had_none():
     assert len(seen) == 2 and seen[1][0] == pytest.approx(87.0, rel=1e-12)
     assert bc.open_surface_conductance is None
     assert 'lid_slope_guard' not in row
-
-
-def test_the_resolve_leaves_a_lid_without_an_open_response():
-    """Without an open response (conductance None) the re-solve sets none."""
-    runner, solver, io, seen = _corrector([710.0, 705.0], 15870.0, tangent=0.0)
-    bc = solver.parameters.boundary_conditions
-    bc.open_surface_conductance = None
-    snap = _call_start(solver)
-    out = runner._solve_with_retry({}, io, 'S0')
-    AragogRunner._correct_lid_cap(runner, {'F_atm': 15000.0}, io, 'S0', out, snap)
-    assert len(seen) == 2 and seen[1][0] == pytest.approx(87.0, rel=1e-12)
-    assert bc.open_surface_conductance is None

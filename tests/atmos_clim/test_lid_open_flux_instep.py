@@ -274,6 +274,39 @@ def test_a_secant_is_cut_at_the_grey_secant_of_its_interval():
 
 
 @pytest.mark.physics_invariant
+@pytest.mark.parametrize('T_end', [1480.0, 1520.0])
+def test_the_grey_secant_cuts_a_cooling_and_a_warming_secant(T_end):
+    """Below or above T_surf, a slope between the grey tangent at T_surf and the grey secant
+    over [T_surf, T_end] is cut only when it lies above that secant."""
+    T_s = 1500.0
+    row = _row(0.4, T_surf=T_s, F_atm=1.0)
+    tangent = 4.0 * SIGMA * T_s**3
+    grey = SIGMA * (T_end**4 - T_s**4) / (T_end - T_s)
+    between = 0.5 * (tangent + grey)
+    _, code = lid_open_conductance(row, between, T_end)
+    assert code == (LID_SLOPE_GUARD_SIZE if between > grey else 0)
+    assert code == (LID_SLOPE_GUARD_SIZE if T_end < T_s else 0)
+    G_cut, code_cut = lid_open_conductance(row, 2.0 * tangent, T_end)
+    assert code_cut == LID_SLOPE_GUARD_SIZE
+    assert G_cut == pytest.approx(
+        lid_open_conductance(row, grey * (1 - 1e-12), T_end)[0], rel=1e-9
+    )
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('T_end', [None, math.nan, 1500.0])
+def test_without_a_finite_other_end_the_cut_is_the_grey_tangent(T_end):
+    """With no finite other end, or the same surface, the cut is the tangent 4 sigma T_surf^3."""
+    T_s = 1500.0
+    row = _row(0.4, T_surf=T_s, F_atm=1.0)
+    tangent = 4.0 * SIGMA * T_s**3
+    assert lid_open_conductance(row, tangent * (1 - 1e-9), T_end)[1] == 0
+    G_cut, code = lid_open_conductance(row, 2.0 * tangent, T_end)
+    assert code == LID_SLOPE_GUARD_SIZE
+    assert G_cut == pytest.approx(lid_open_conductance(row, tangent)[0], rel=1e-12)
+
+
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize('F_p', [0.0, -1.0, math.nan, math.inf])
 def test_a_slope_of_zero_or_a_bad_slope_holds_the_start_value(F_p):
     """A slope of 0 (no usable slope, or a sign fault) or a non-finite one gives ``G_eff = 0``."""

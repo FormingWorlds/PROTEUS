@@ -578,18 +578,36 @@ def test_run_atmosphere_writes_status_22_for_an_open_flux_that_is_not_finite(tmp
     assert status.read_text().splitlines()[0] == '22'
 
 
-def test_run_atmosphere_writes_the_open_part_and_its_residual_under_a_live_lid(tmp_path):
+def test_run_atmosphere_writes_the_open_part_and_its_residual_under_a_live_lid(
+    tmp_path, caplog
+):
     """Under a live lid the call writes the start value of the open part and its residual
-    part, ``(F_atm - B) / (1 - w)`` with B the skin balance of the call."""
-    from proteus.atmos_clim.common import lid_boundary, lid_open_flux, lid_open_residual
+    part, ``(F_atm - B) / (1 - w)`` with B the skin balance of the call, and logs a warning
+    when the residual is above ``LID_RESID_WARN`` per open area, not below it."""
+    from proteus.atmos_clim.common import (
+        LID_RESID_WARN,
+        lid_boundary,
+        lid_open_flux,
+        lid_open_residual,
+    )
 
-    hf_row = _janus_lid_call(tmp_path, 7.0)
+    with caplog.at_level('WARNING', logger='fwl.proteus.atmos_clim.wrapper'):
+        hf_row = _janus_lid_call(tmp_path, 7.0)
     d, k, T_melt = lid_boundary(hf_row)
-    want = (7.0 - k / d * (T_melt - hf_row['T_surf'])) / 0.7
+    B = k / d * (T_melt - hf_row['T_surf'])
+    want = (7.0 - B) / 0.7
     assert hf_row.get('lid_F_resid') == pytest.approx(want, rel=1e-12)
     assert hf_row['lid_F_resid'] == lid_open_residual(hf_row)
     assert hf_row['lid_F_open'] == lid_open_flux(hf_row)
     assert abs(want) > 1e3
+    assert sum('start value residual' in r.getMessage() for r in caplog.records) == 1
+    caplog.clear()
+    with caplog.at_level('WARNING', logger='fwl.proteus.atmos_clim.wrapper'):
+        second = tmp_path / 'second'
+        second.mkdir()
+        hf_row = _janus_lid_call(second, B + 0.7 * 0.5 * LID_RESID_WARN)
+    assert hf_row['lid_F_resid'] == pytest.approx(0.5 * LID_RESID_WARN, rel=1e-6)
+    assert not any('start value residual' in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.unit

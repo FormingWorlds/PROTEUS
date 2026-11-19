@@ -431,22 +431,15 @@ def lid_acts(hf_row: dict) -> bool:
     )
 
 
-def lid_open_node(hf_row: dict) -> float:
-    """Temperature [K] of the melt under the open skin, ``T_m = max(T_node, T_b)``.
-
-    The open part of a lid surface is melt, so its node is held at least at the lid base (a
-    model construct of the coupling; the solver mesh keeps its own top node).
-    """
-    return max(float(hf_row['lid_T_node']), float(hf_row['lid_T_base']))
-
-
 def lid_boundary(hf_row: dict) -> tuple[float, float, float]:
     """Skin and melt temperature for the surface balance of the atmosphere.
 
     The lid and the open surface act in parallel on one surface temperature:
     ``F = w G_lid (T_b - T) + (1 - w) G_skin (T_m - T) = k / d (T_melt - T)``, with
     ``G_lid`` at most ``G_skin`` so that a lid never conducts more than the open surface, and
-    ``T_m`` from :func:`lid_open_node`. Without a lid the columns and ``T_magma`` pass unchanged.
+    ``T_m = max(T_node, T_b)``: the open part is melt, so its node is held at least at the lid
+    base (a construct of the coupling; the solver mesh keeps its own top node). Without a lid
+    the columns and ``T_magma`` pass unchanged.
 
     Parameters
     ----------
@@ -469,14 +462,30 @@ def lid_boundary(hf_row: dict) -> tuple[float, float, float]:
     G_skin = _lid_skin_conductance(hf_row)
     G_lid = min(G_lid, G_skin)
     G = w * G_lid + (1.0 - w) * G_skin
-    T_melt = w * G_lid * float(hf_row['lid_T_base']) + (1.0 - w) * G_skin * lid_open_node(
-        hf_row
-    )
+    T_b = float(hf_row['lid_T_base'])
+    T_m = max(float(hf_row['lid_T_node']), T_b)
+    T_melt = w * G_lid * T_b + (1.0 - w) * G_skin * T_m
     return k / G, k, T_melt / G
 
 
 # smallest surface step [K] of the 2 rows that give the slope of the lid cap
 LID_SLOPE_DT_MIN = 0.01
+
+
+def _lid_prev_row(hf_all, hf_row: dict):
+    """The helpfile row before ``hf_row`` in ``hf_all`` (with or without ``hf_row`` as the last
+    row), or None."""
+    if hf_all is None or len(hf_all) == 0:
+        return None
+    k = -2 if float(hf_all['Time'].iloc[-1]) == float(hf_row['Time']) else -1
+    return hf_all.iloc[k] if len(hf_all) >= -k else None
+
+
+def lid_slope_start_surface(hf_all, hf_row: dict) -> float | None:
+    """Surface temperature [K] of the row before ``hf_row``, the other end of the secant of
+    :func:`lid_flux_slope`; None without a row before."""
+    prev = _lid_prev_row(hf_all, hf_row)
+    return None if prev is None else float(prev['T_surf'])
 
 
 def lid_flux_slope(hf_all, hf_row: dict) -> float:
@@ -495,12 +504,9 @@ def lid_flux_slope(hf_all, hf_row: dict) -> float:
         ``(F_atm - F_atm before) / (T_surf - T_surf before)``; 0 without a row before, for a
         surface step below ``LID_SLOPE_DT_MIN``, for a slope of 0 or below, or a non-finite one.
     """
-    if hf_all is None or len(hf_all) == 0:
+    prev = _lid_prev_row(hf_all, hf_row)
+    if prev is None:
         return 0.0
-    k = -2 if float(hf_all['Time'].iloc[-1]) == float(hf_row['Time']) else -1
-    if len(hf_all) < -k:
-        return 0.0
-    prev = hf_all.iloc[k]
     dT = float(hf_row['T_surf']) - float(prev['T_surf'])
     if not abs(dT) >= LID_SLOPE_DT_MIN:
         return 0.0
@@ -536,6 +542,8 @@ def lid_flux_cap(hf_row: dict) -> float | None:
 
 # open area 1 - w at or below which the open part takes F_atm
 LID_OPEN_AREA_FLOOR = 1e-9
+# Residual of the open-part start value per open area [W m-2] above which a call is logged
+LID_RESID_WARN = 1.0
 
 
 class LidOpenFluxError(RuntimeError):
@@ -572,13 +580,11 @@ def lid_open_flux(hf_row: dict) -> float:
         return float(hf_row['F_atm'])
     G = min(float(hf_row['lid_conductance']), _lid_skin_conductance(hf_row))
     F_atm = float(hf_row['F_atm'])
-    if not math.isfinite(F_atm):
-        raise LidOpenFluxError(f'Lid open part: F_atm {F_atm} is not finite')
     L = G * (float(hf_row['lid_T_base']) - float(hf_row['T_surf']))
-    if not math.isfinite(L):
+    if not math.isfinite(F_atm + L):
         raise LidOpenFluxError(
-            f'Lid open part: lid flux {L} is not finite (T_surf {hf_row["T_surf"]}, '
-            f'lid_T_base {hf_row["lid_T_base"]})'
+            f'Lid open part: F_atm {F_atm} or lid flux {L} is not finite (T_surf '
+            f'{hf_row["T_surf"]}, lid_T_base {hf_row["lid_T_base"]})'
         )
     w = float(hf_row['lid_weight'])
     if not 1.0 - w > LID_OPEN_AREA_FLOOR:
@@ -628,17 +634,19 @@ def lid_open_conductance(
     slope : float
         Slope ``F'`` of ``F_atm`` with ``T_surf`` [W m-2 K-1], as :func:`lid_flux_slope`.
     T_end : float, optional
-        End surface [K] of a secant ``slope`` from ``T_surf``; the size cut is then the grey
-        secant ``sigma (T_end^4 - T_surf^4) / (T_end - T_surf)`` over the same interval.
+        Other end surface [K] of a secant ``slope`` through ``T_surf``, below or above it; the
+        size cut is then the grey secant ``sigma (T_end^4 - T_surf^4) / (T_end - T_surf)
+        = sigma (T_end^2 + T_surf^2)(T_end + T_surf)`` over the same interval. None or not
+        finite: the tangent ``4 sigma T_surf^3``, the same expression at ``T_end = T_surf``.
 
     Returns
     -------
     tuple
         ``(G_eff, code)``: ``G F' / (F' + w G_l' + (1 - w) G)`` with ``G`` the skin and
         ``G_l'`` the lid conductance of the call; ``(None, 0)`` without a live lid. A slope
-        that is not finite and above 0 gives ``(0.0, LID_SLOPE_GUARD_SIGN)``; one above
-        ``4 sigma T_surf^3``, the slope of a bare grey surface, is cut to it with
-        ``LID_SLOPE_GUARD_SIZE``.
+        that is not finite, or is 0 or below, gives ``(0.0, LID_SLOPE_GUARD_SIGN)``; one
+        above the slope of a bare grey surface over the same interval (see ``T_end``) is cut
+        to it with ``LID_SLOPE_GUARD_SIZE``.
 
     Notes
     -----
@@ -653,10 +661,8 @@ def lid_open_conductance(
         return 0.0, LID_SLOPE_GUARD_SIGN
     code = 0
     T_s = float(hf_row['T_surf'])
-    if T_end is not None and T_end > T_s:
-        F_grey = const_sigma * (T_end**4 - T_s**4) / (T_end - T_s)
-    else:
-        F_grey = 4.0 * const_sigma * T_s**3
+    T_e = T_s if T_end is None or not math.isfinite(T_end) else float(T_end)
+    F_grey = const_sigma * (T_e**2 + T_s**2) * (T_e + T_s)
     if F_p > F_grey:
         F_p, code = F_grey, LID_SLOPE_GUARD_SIZE
     w = float(hf_row['lid_weight'])

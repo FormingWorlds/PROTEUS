@@ -10,9 +10,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from proteus.atmos_clim.common import LID_SLOPE_GUARD_SIGN, lid_flux_slope, lid_open_conductance
+from proteus.atmos_clim.common import (
+    LID_SLOPE_GUARD_SIGN,
+    LID_SLOPE_GUARD_SIZE,
+    lid_flux_slope,
+    lid_open_conductance,
+)
 from proteus.interior_energetics.aragog import AragogRunner
 from proteus.interior_energetics.wrapper import guard_t_magma_clip
+from proteus.utils.constants import const_sigma
 from tests.atmos_clim.test_common import _row
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(60)]
@@ -65,6 +71,26 @@ def test_update_solver_passes_the_open_conductance_of_a_live_lid(w, lid):
         assert row['lid_slope_guard'] == 0
 
 
+def test_update_solver_cuts_the_slope_at_the_grey_secant_of_the_last_2_rows():
+    """The size cut of the open response uses the surface of the row before: a slope between
+    the grey secant over the 2 rows and the grey tangent at T_surf is cut to that secant."""
+    bc, interior_o = _runner_bc()
+    T_prev, T_s = 527.3, 727.3
+    row = _row(0.4, G=21.9, T_b=1440.0, T_surf=T_s, F_atm=7000.0, lid_F_open=165000.0)
+    row.update(Time=30000.0, T_eqm=255.0)
+    hf_all = pd.DataFrame(
+        {'Time': [29975.0, 30000.0], 'T_surf': [T_prev, T_s], 'F_atm': [-7000.0, 7000.0]}
+    )
+    slope = lid_flux_slope(hf_all, row)
+    secant = const_sigma * (T_s**4 - T_prev**4) / (T_s - T_prev)
+    assert secant < slope < 4.0 * const_sigma * T_s**3
+    AragogRunner.update_solver(25.0, row, interior_o, hf_all=hf_all)
+    assert row['lid_slope_guard'] == LID_SLOPE_GUARD_SIZE
+    assert bc.open_surface_conductance == pytest.approx(
+        lid_open_conductance(row, secant * (1.0 - 1e-12))[0], rel=1e-9
+    )
+
+
 def test_a_live_lid_without_a_usable_slope_holds_the_start_value():
     """A live lid without a usable slope gets conductance 0 and guard code 1."""
     bc, interior_o = _runner_bc()
@@ -85,6 +111,7 @@ def test_a_live_lid_without_a_usable_slope_holds_the_start_value():
         (0.0, 0.0, math.nan, False),
         (0.2, 0.0, 0.0, True),
         (0.0, 0.3, 0.3, True),
+        (0.0, 0.3, 0.0, True),
         (0.0, 0.0, 0.05, True),
     ],
 )
@@ -241,12 +268,20 @@ def test_a_state_out_of_the_tables_on_every_attempt_stops_the_run(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ('prev_w', 'T_magma', 'stops', 'clipped'),
-    [(0.3, 3500.0, True, None), (0.0, 3500.0, False, 1), (0.3, 3005.0, False, 0)],
+    ('prev_w', 'w_end', 'T_magma', 'stops', 'clipped'),
+    [
+        (0.3, 0.0, 3500.0, True, None),
+        (0.0, 0.3, 3500.0, True, None),
+        (0.0, 0.0, 3500.0, False, 1),
+        (0.3, 0.0, 3005.0, False, 0),
+    ],
 )
-def test_run_interior_guards_the_t_magma_clip_of_a_lid_step(prev_w, T_magma, stops, clipped):
-    """At its call site in run_interior: a clip where the previous row has a live lid stops the
-    run with status 21; without a lid the clip is counted; a step without a clip counts 0."""
+def test_run_interior_guards_the_t_magma_clip_of_a_lid_step(
+    prev_w, w_end, T_magma, stops, clipped
+):
+    """At its call site in run_interior: a clip where the previous row or the end of the step
+    has a live lid stops the run with status 21; without a lid the clip is counted; a step
+    without a clip counts 0."""
     from proteus.interior_energetics.common import Interior_t
     from proteus.interior_energetics.wrapper import run_interior
     from tests.interior_energetics.test_wrapper import (
@@ -257,7 +292,7 @@ def test_run_interior_guards_the_t_magma_clip_of_a_lid_step(prev_w, T_magma, sto
     config = _make_run_interior_config(prevent_warming=False)
     hf_all, hf_row = _make_run_interior_state(prev_f_int=1.0)
     hf_all['lid_weight'] = prev_w
-    hf_row.update(lid_weight=0.0, lid_weight_max=0.0)
+    hf_row.update(lid_weight=w_end, lid_weight_max=0.0)
     out = {
         'T_magma': T_magma,
         'T_surf': 2805.0,
