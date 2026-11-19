@@ -1112,7 +1112,7 @@ def GetHelpfileKeys():
         'lid_F_resid',      # residual (F_atm - B) / (1 - w) of the open-part start value against the skin balance B of the call, per open area; 0 without a lid [W m-2]
         'lid_F_diff',       # F_int of the step minus the F_atm it started from; 0 in grey_body mode [W m-2]
         'lid_weight_max',   # largest weight of the Aragog sub-grid lid over the accepted states of the step [1]
-        'lid_slope_guard',  # slope guard of the open lid part: 0 none, 1 slope set to 0 (no earlier row, 0 or below, not finite or a short step), 2 slope cut; a cap re-solve records its secant [1]
+        'lid_slope_guard',  # slope guard of the open lid part: 0 none, 1 slope set to 0 (no earlier row, 0 or below, not finite or a short step), 2 slope cut at the grey secant of the 2 rows; a cap re-solve records the code of its own secant [1]
         'T_magma_clipped',  # 1 where the step clipped a rise of T_magma, else 0 [1]
         'T_cmb',           # core temperature: the bottom mantle cell, or the core state with core_bc = core_module or bower2018 [K]
         'T_cmb_node',      # mantle temperature at the core-mantle boundary basic node; with core_bc = core_module the temperature of the bottom-cell entropy at P_cmb, so the CMB contrast is T_cmb - T_cmb_node, or core_T_top - T_cmb_node with stratification [K]
