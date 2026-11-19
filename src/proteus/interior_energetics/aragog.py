@@ -35,8 +35,8 @@ from proteus.atmos_clim.common import (
     lid_acts,
     lid_flux_cap,
     lid_flux_slope,
-    lid_slope_start_surface,
     lid_open_conductance,
+    lid_prev_row,
 )
 from proteus.interior_energetics import aragog_core, aragog_resume
 from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
@@ -2337,12 +2337,12 @@ class AragogRunner:
         bc = solver.parameters.boundary_conditions
         live = getattr(bc, 'subgrid_lid', False) and lid_acts(hf_row)
         bc.outer_boundary_value = hf_row['lid_F_open'] if live else hf_row['F_atm']
-        slope = lid_flux_slope(hf_all, hf_row)
+        slope, prev = lid_flux_slope(hf_all, hf_row), lid_prev_row(hf_all, hf_row)
         _set_lid_surface(bc, hf_row, slope)
         bc.surface_temperature = _surface_temperature_of_row(hf_row)
         # in flux mode with the mush base the open part of a live lid follows its node in the step
         G_eff, code = (
-            lid_open_conductance(hf_row, slope, lid_slope_start_surface(hf_all, hf_row))
+            lid_open_conductance(hf_row, slope, None if prev is None else float(prev['T_surf']))
             if live and bc.outer_boundary_condition == 4 and getattr(bc, 'lid_mush_base', False)
             else (None, 0)
         )

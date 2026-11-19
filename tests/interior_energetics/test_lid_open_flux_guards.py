@@ -71,23 +71,30 @@ def test_update_solver_passes_the_open_conductance_of_a_live_lid(w, lid):
         assert row['lid_slope_guard'] == 0
 
 
-def test_update_solver_cuts_the_slope_at_the_grey_secant_of_the_last_2_rows():
-    """The size cut of the open response uses the surface of the row before: a slope between
-    the grey secant over the 2 rows and the grey tangent at T_surf is cut to that secant."""
+@pytest.mark.parametrize(('T_prev', 'slope'), [(527.3, 70.0), (927.3, 100.0)])
+def test_update_solver_cuts_the_slope_at_the_grey_secant_of_the_last_2_rows(T_prev, slope):
+    """The size cut of the open response uses the surface of the row before. After a warming
+    step a slope between the grey secant over the 2 rows and the grey tangent at T_surf is cut
+    to that secant; after a cooling step a slope between the tangent and the larger secant
+    passes uncut."""
     bc, interior_o = _runner_bc()
-    T_prev, T_s = 527.3, 727.3
+    T_s = 727.3
     row = _row(0.4, G=21.9, T_b=1440.0, T_surf=T_s, F_atm=7000.0, lid_F_open=165000.0)
     row.update(Time=30000.0, T_eqm=255.0)
+    F_prev = 7000.0 - slope * (T_s - T_prev)
     hf_all = pd.DataFrame(
-        {'Time': [29975.0, 30000.0], 'T_surf': [T_prev, T_s], 'F_atm': [-7000.0, 7000.0]}
+        {'Time': [29975.0, 30000.0], 'T_surf': [T_prev, T_s], 'F_atm': [F_prev, 7000.0]}
     )
-    slope = lid_flux_slope(hf_all, row)
+    assert lid_flux_slope(hf_all, row) == pytest.approx(slope, rel=1e-12)
     secant = const_sigma * (T_s**4 - T_prev**4) / (T_s - T_prev)
-    assert secant < slope < 4.0 * const_sigma * T_s**3
+    tangent = 4.0 * const_sigma * T_s**3
+    assert min(secant, tangent) < slope < max(secant, tangent)
     AragogRunner.update_solver(25.0, row, interior_o, hf_all=hf_all)
-    assert row['lid_slope_guard'] == LID_SLOPE_GUARD_SIZE
+    cut = slope > secant
+    assert row['lid_slope_guard'] == (LID_SLOPE_GUARD_SIZE if cut else 0)
+    want = secant * (1.0 - 1e-12) if cut else slope
     assert bc.open_surface_conductance == pytest.approx(
-        lid_open_conductance(row, secant * (1.0 - 1e-12))[0], rel=1e-9
+        lid_open_conductance(row, want, T_prev)[0], rel=1e-9
     )
 
 

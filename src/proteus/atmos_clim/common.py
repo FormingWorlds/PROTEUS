@@ -472,20 +472,13 @@ def lid_boundary(hf_row: dict) -> tuple[float, float, float]:
 LID_SLOPE_DT_MIN = 0.01
 
 
-def _lid_prev_row(hf_all, hf_row: dict):
+def lid_prev_row(hf_all, hf_row: dict):
     """The helpfile row before ``hf_row`` in ``hf_all`` (with or without ``hf_row`` as the last
-    row), or None."""
+    row), or None; the other end of the secant of :func:`lid_flux_slope`."""
     if hf_all is None or len(hf_all) == 0:
         return None
     k = -2 if float(hf_all['Time'].iloc[-1]) == float(hf_row['Time']) else -1
     return hf_all.iloc[k] if len(hf_all) >= -k else None
-
-
-def lid_slope_start_surface(hf_all, hf_row: dict) -> float | None:
-    """Surface temperature [K] of the row before ``hf_row``, the other end of the secant of
-    :func:`lid_flux_slope`; None without a row before."""
-    prev = _lid_prev_row(hf_all, hf_row)
-    return None if prev is None else float(prev['T_surf'])
 
 
 def lid_flux_slope(hf_all, hf_row: dict) -> float:
@@ -504,7 +497,7 @@ def lid_flux_slope(hf_all, hf_row: dict) -> float:
         ``(F_atm - F_atm before) / (T_surf - T_surf before)``; 0 without a row before, for a
         surface step below ``LID_SLOPE_DT_MIN``, for a slope of 0 or below, or a non-finite one.
     """
-    prev = _lid_prev_row(hf_all, hf_row)
+    prev = lid_prev_row(hf_all, hf_row)
     if prev is None:
         return 0.0
     dT = float(hf_row['T_surf']) - float(prev['T_surf'])
@@ -623,7 +616,7 @@ LID_SLOPE_GUARD_SIZE = 2
 
 
 def lid_open_conductance(
-    hf_row: dict, slope: float, T_end: float | None = None
+    hf_row: dict, slope: float, T_other: float | None = None
 ) -> tuple[float | None, int]:
     """In-step response ``G_eff`` [W m-2 K-1] of the open part of a lid surface, per open area.
 
@@ -633,11 +626,12 @@ def lid_open_conductance(
         Current helpfile row after the atmosphere step, with ``T_surf`` and the lid columns.
     slope : float
         Slope ``F'`` of ``F_atm`` with ``T_surf`` [W m-2 K-1], as :func:`lid_flux_slope`.
-    T_end : float, optional
+    T_other : float, optional
         Other end surface [K] of a secant ``slope`` through ``T_surf``, below or above it; the
-        size cut is then the grey secant ``sigma (T_end^4 - T_surf^4) / (T_end - T_surf)
-        = sigma (T_end^2 + T_surf^2)(T_end + T_surf)`` over the same interval. None or not
-        finite: the tangent ``4 sigma T_surf^3``, the same expression at ``T_end = T_surf``.
+        size cut is then the grey secant ``sigma (T_other^4 - T_surf^4) / (T_other - T_surf)
+        = sigma (T_other^2 + T_surf^2)(T_other + T_surf)`` over the same interval. None, not
+        finite or not above 0: the tangent ``4 sigma T_surf^3``, the same expression at
+        ``T_other = T_surf``.
 
     Returns
     -------
@@ -645,7 +639,7 @@ def lid_open_conductance(
         ``(G_eff, code)``: ``G F' / (F' + w G_l' + (1 - w) G)`` with ``G`` the skin and
         ``G_l'`` the lid conductance of the call; ``(None, 0)`` without a live lid. A slope
         that is not finite, or is 0 or below, gives ``(0.0, LID_SLOPE_GUARD_SIGN)``; one
-        above the slope of a bare grey surface over the same interval (see ``T_end``) is cut
+        above the slope of a bare grey surface over the same interval (see ``T_other``) is cut
         to it with ``LID_SLOPE_GUARD_SIZE``.
 
     Notes
@@ -661,7 +655,8 @@ def lid_open_conductance(
         return 0.0, LID_SLOPE_GUARD_SIGN
     code = 0
     T_s = float(hf_row['T_surf'])
-    T_e = T_s if T_end is None or not math.isfinite(T_end) else float(T_end)
+    usable = T_other is not None and math.isfinite(T_other) and T_other > 0.0
+    T_e = float(T_other) if usable else T_s
     F_grey = const_sigma * (T_e**2 + T_s**2) * (T_e + T_s)
     if F_p > F_grey:
         F_p, code = F_grey, LID_SLOPE_GUARD_SIZE
