@@ -105,6 +105,7 @@ A property test, `test_the_weighted_parts_sum_to_f_atm_on_both_sides_of_the_lid_
     - Tolerance: relative $10^{-7}$ at each weight and slope.
     - Discrimination: the series response without the lid part, $(1 - w)\, G_\mathrm{skin} F' / (G_\mathrm{skin} + F')$, is 47 % below the reference at $w$ = 0.5 and $F'$ = 3 W m$^{-2}$ K$^{-1}$; the test asserts a miss of more than 10 %, and the code with that form fails the main comparison.
     - Test id: `tests/atmos_clim/test_lid_open_flux_instep.py::test_the_response_is_the_change_of_the_shared_surface`
+    - Slope guard: `tests/atmos_clim/test_lid_open_flux_instep.py::test_the_grey_secant_cuts_a_cooling_and_a_warming_secant` and `tests/atmos_clim/test_lid_open_flux_instep.py::test_without_a_finite_other_end_the_cut_is_the_grey_tangent` check the cut, and `tests/interior_energetics/test_lid_open_flux_guards.py::test_update_solver_cuts_the_slope_at_the_grey_secant_of_the_last_2_rows` checks it at its call site after a warming and a cooling step.
     - Command: `pytest tests/atmos_clim/test_lid_open_flux_instep.py -k shared_surface` (add `--validation-plots` to write the plot pair)
 
 ## Coupled runs through the lid onset

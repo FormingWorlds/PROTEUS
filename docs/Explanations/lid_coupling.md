@@ -119,15 +119,25 @@ Then $\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})$ equa
 
 ## What the interior takes
 
-What start flux does the open part get after the atmosphere step, and why does it not double-count the lid? After the atmosphere step, `run_atmosphere` writes `lid_F_open`, the start flux of the open part per open area:
+What start flux does the open part get after the atmosphere step, and why does it not count the lid twice?
+
+**Short answer.** The open part gets what is left of the atmosphere flux after the lid part, per open area. At the lid weight of the row the two weighted parts then add up to `F_atm`. An open part at `F_atm` would count the lid part a second time, because `F_atm` already holds the lid term.
+
+After the atmosphere step, `run_atmosphere` writes `lid_F_open`, the start flux of the open part per open area:
 
 $$F_\mathrm{open,0} = \frac{F_\mathrm{atm} - w\,L}{1 - w}, \qquad L = G_\mathrm{lid}'\,(T_b - T_\mathrm{surf}),$$
 
-and `F_atm` where no lid acts. $L$ is the flux of the lid part in the call, with its sign: it is inward for a surface above $T_b$. At the lid weight $w$ of the row, the start values $w L + (1 - w) F_\mathrm{open,0}$ add up to `F_atm` for any sign of `F_atm` and of $T_b - T_\mathrm{surf}$. An open part at `F_atm` would count the lid part a second time, because `F_atm` already holds the lid term.
+and `F_atm` where no lid acts. $L$ is the flux of the lid part in the call, with its sign: it is inward for a surface above $T_b$. At the lid weight $w$ of the row, the start values $w L + (1 - w) F_\mathrm{open,0}$ add up to `F_atm` for any sign of `F_atm` and of $T_b - T_\mathrm{surf}$.
 
-With $S = G_\mathrm{skin}(T_m - T_\mathrm{surf})$ the skin flux of the open part and $B$ the skin balance of the call, the start value is $F_\mathrm{open,0} = S + (F_\mathrm{atm} - B)/(1 - w)$. Where the atmosphere closes the balance of its call it is the skin flux, inward where the surface is above $T_m$. Only the residual $F_\mathrm{atm} - B$ grows as $1/(1 - w)$ near $w = 1$; in coupled 1 Earth-mass runs with AGNI it was at most 0.01 W m$^{-2}$ on the live-lid rows, and its share per open area at most 0.69 W m$^{-2}$ (at $w$ = 0.99951). The column `lid_F_resid` records that share on every row. A call whose share is above 1 W m$^{-2}$ per open area logs a warning with the value and the model time; the run goes on. Where $1 - w$ is $10^{-9}$ or less, $F_\mathrm{open,0}$ is `F_atm`. $F_\mathrm{open,0}$ tends to `F_atm` as $w$ goes to 0. An `F_atm`, $T_\mathrm{surf}$ or $T_b$ that is not finite stops the run with status 22.
+**The residual of the atmosphere solve.** With $S = G_\mathrm{skin}(T_m - T_\mathrm{surf})$ the skin flux of the open part and $B$ the skin balance of the call, the start value is $F_\mathrm{open,0} = S + (F_\mathrm{atm} - B)/(1 - w)$. Where the atmosphere closes the balance of its call, the start value is the skin flux, inward where the surface is above $T_m$. Only the residual $F_\mathrm{atm} - B$ grows as $1/(1 - w)$ near $w = 1$. In coupled 1 Earth-mass runs with AGNI it was at most 0.01 W m$^{-2}$ on the live-lid rows, and its share per open area at most 0.69 W m$^{-2}$ (at $w$ = 0.99951). The column `lid_F_resid` records that share on every row.
 
-In the next interior step Aragog takes `lid_F_open` as the start flux of the part $1 - w$ and holds the lid surface at $T_\mathrm{surf}$. Aragog sets the lid weight from its own state at each evaluation, so the sum closes at the weight of the row only: inside the step the open part carries the residual with its own area, $(1 - w_\mathrm{step})(F_\mathrm{atm} - B)/(1 - w)$. The lid part loses its own conduction, not $L$: Aragog holds the lid surface at least 1 K below $T_b$, so near $T_b$ the lid part loses at least $G_\mathrm{lid}$ times 1 K, and above the cap of Rule 3 it follows the Robin branch. What the step loses is `F_int`, and `lid_F_diff` records `F_int - F_atm` ([Rule 2](#rule-2-the-lid-ledger)).
+The start value has these limits:
+
+- A call whose share is above 1 W m$^{-2}$ per open area logs a warning with the value and the model time; the run goes on.
+- Where $1 - w$ is $10^{-9}$ or less, $F_\mathrm{open,0}$ is `F_atm`. $F_\mathrm{open,0}$ tends to `F_atm` as $w$ goes to 0.
+- An `F_atm`, $T_\mathrm{surf}$ or $T_b$ that is not finite stops the run with status 22.
+
+**Inside the step.** Aragog takes `lid_F_open` as the start flux of the part $1 - w$ and holds the lid surface at $T_\mathrm{surf}$. Aragog sets the lid weight from its own state at each evaluation, so the sum closes at the weight of the row only: inside the step the open part carries the residual with its own area, $(1 - w_\mathrm{step})(F_\mathrm{atm} - B)/(1 - w)$. The lid part loses its own conduction, not $L$. Aragog holds the lid surface at least 1 K below $T_b$, so near $T_b$ the lid part loses at least $G_\mathrm{lid}$ times 1 K. Where the held lid would conduct more than the cap of [Rule 3](#rule-3-the-atmosphere-flux-is-the-largest-loss), its surface carries $C + F'(T_s - T_\mathrm{surf})$. What the step loses is `F_int`, and `lid_F_diff` records `F_int - F_atm` ([Rule 2](#rule-2-the-lid-ledger)).
 
 **Where this is checked.** [The two parts of the surface sum to the atmosphere flux](../Validation/atmos_clim/common.md#the-two-parts-of-the-surface-sum-to-the-atmosphere-flux) checks the sum of the two parts against its closed form.
 
@@ -160,10 +170,8 @@ $G_\mathrm{eff}$ is the change of the shared surface balance. It does not depend
 **The slope guard.** `lid_flux_slope` gives $F'$ from the last 2 rows. The column `lid_slope_guard` records what the guard did:
 
 - 1: no earlier row, a slope of 0 or below, a non-finite slope, or one from a surface step below 0.01 K. Then $G_\mathrm{eff} = 0$, and the open part keeps $F_\mathrm{open,0}$ for the step, an inward value included.
-- 2: a slope above the slope of a bare grey surface over the same 2 rows, the secant $\sigma (T_1^4 - T_\mathrm{surf}^4)/(T_1 - T_\mathrm{surf})$ with $T_1$ the surface temperature of the row before, cooling or warming. After a cooling step this secant lies above the tangent $4 \sigma T_\mathrm{surf}^3$, so the cut is looser than the slope of a grey surface at $T_\mathrm{surf}$ itself. The slope is cut to that value.
+- 2: the slope was cut. The cut is the slope of a bare grey surface of emissivity 1 over the same 2 rows, the secant $\sigma (T_1^4 - T_\mathrm{surf}^4)/(T_1 - T_\mathrm{surf})$, with $\sigma$ the Stefan-Boltzmann constant and $T_1$ the surface temperature of the row before. The same cut applies after a cooling and after a warming step. After a cooling step this secant lies above the tangent $4 \sigma T_\mathrm{surf}^3$, so the cut is looser than the slope of a grey surface at $T_\mathrm{surf}$ itself.
 - 0: no guard acted.
-
-The tests `test_the_grey_secant_cuts_a_cooling_and_a_warming_secant` and `test_without_a_finite_other_end_the_cut_is_the_grey_tangent` check the cut, and `test_update_solver_cuts_the_slope_at_the_grey_secant_of_the_last_2_rows` checks it at its call site after a warming and a cooling step.
 
 PROTEUS passes $G_\mathrm{eff}$ to Aragog as `open_surface_conductance` only under a live lid in flux mode with the mush base. When the corrector of Rule 3 runs the step again with the secant, PROTEUS calculates $G_\mathrm{eff}$ again from that secant with the same guard. The size cut is then the grey secant from the held surface $T_\mathrm{surf}$ to the end surface of the step, not over the 2 rows. `lid_slope_guard` records the guard code of that secant.
 
