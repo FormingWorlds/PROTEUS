@@ -32,8 +32,8 @@ symlink = ""                # redirect output elsewhere (absolute path), or ""
 
 use_slurm = false
 max_jobs  = 8               # max concurrent cases (local)
-max_days  = 1               # per-job walltime [days] (Slurm)
-max_mem   = 12              # per-CPU memory [GB] (Slurm)
+max_days  = 1               # walltime per case [days] (Slurm)
+max_mem   = 12              # memory per case [GB] (Slurm)
 
 # Stop every case at solidification (already on in the base) or at energy
 # balance, whichever comes first. A single value sets the field for all cases.
@@ -231,7 +231,7 @@ jax_cache = true     # share compiled JAX kernels across array tasks
 ```
 
 The grid manager then writes a Slurm job-array script and prints the `sbatch`
-command to submit it. Each array task runs `cores_per_job` cases at a time. See the
+command to submit it. Each array task runs `cores_per_job` cases at a time. The [grid how-to](../How-to/usage_grids.md#how-the-grid-settings-become-slurm-settings) explains how each grid setting becomes a Slurm setting. See the
 cluster guides ([Habrok](../How-to/habrok_cluster_guide.md), [Snellius](../How-to/snellius_cluster_guide.md)).
 
 Setting `jax_cache = true` makes the dispatch script export `JAX_COMPILATION_CACHE_DIR` (a `jax_cache/` subdirectory of the grid output) so array tasks reuse each other's compiled interior-solver kernels rather than recompiling per task. The cache is bounded at 80 GiB (`JAX_COMPILATION_CACHE_MAX_SIZE`), with a 1 s minimum compile time and a 4 KiB minimum entry size. These exports are added to the Slurm script only; local runs (`use_slurm = false`) do not set them.
