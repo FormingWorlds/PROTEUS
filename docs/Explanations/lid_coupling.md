@@ -31,7 +31,7 @@ Set `interior_energetics.aragog.lid_mush_base = true` to run the lid. PROTEUS th
 
 **How to read the figure.** Left: the column top, with one surface temperature $T_\mathrm{surf}$ for both parts. The lid part, weight $w$, conducts from its base $T_b$; the top-cell melt under it is at $T_b$ or warmer. The open part, weight $1 - w$, conducts through the skin from the melt at $T_m = \max(T_\mathrm{node}, T_b)$, with $T_\mathrm{node}$ the top basic node of the Aragog mesh ([What the atmosphere call sees](#what-the-atmosphere-call-sees)).
 
-The arrow in the atmosphere is the flux $F_\mathrm{atm}$ of the atmosphere call. The arrow in the lid is the flux $F_\mathrm{surf}$ that leaves the lid surface; where the held lid would conduct more than the cap $C$, [Rule 3](#rule-3-the-atmosphere-flux-is-the-largest-loss) sets it to $C$ plus a slope term. Under the lid, $F_\mathrm{melt}$ is the heat that the melt passes to the lid ([Rule 2](#rule-2-the-lid-ledger)). In the open part, $F_\mathrm{open}$ is its flux ([What the atmosphere call sees](#what-the-atmosphere-call-sees)).
+The arrow in the atmosphere is the flux $F_\mathrm{atm}$ of the atmosphere call. The arrow in the lid is the flux $F_\mathrm{surf}$ that leaves the lid surface; where the held lid would conduct more than the cap $C$, [Rule 3](#rule-3-the-atmosphere-flux-is-the-largest-loss) sets it to $C$ plus a slope term. Under the lid, $F_\mathrm{melt}$ is the heat that the melt passes to the lid ([Rule 2](#rule-2-the-lid-ledger)). In the open part, $F_\mathrm{open}$ is its flux ([What the interior takes](#what-the-interior-takes)).
 
 Right: temperature $T$ against depth $z$ in each part; dotted lines: the melt of the top cell. The lid profile uses the shape parameter $s = 1$ of the Aragog lid ([The onset thickness](#the-onset-thickness)), for illustration.
 
@@ -82,11 +82,11 @@ its surface warms to $T_s$ and carries $F_s = C + F' (T_s - T_\mathrm{surf})$, w
 
 $C$ is the lid term of the last atmosphere balance (see the next section). At $w = 1$ that balance has only its lid term, so $C$ equals `F_atm` to the accuracy of the atmosphere solve.
 
-**How the code keeps it.** Two parts:
+**How the code keeps it.** Four steps:
 
 - In the atmosphere call, `lid_boundary` caps $G_\mathrm{lid}$ at $G_\mathrm{skin}$, so a lid never conducts more than the open surface. The open part reads its melt at $T_m \ge T_b$, so with $T_\mathrm{surf} \le T_m$ the lid part never loses more than the open part would at the same surface temperature.
 - `lid_flux_cap` computes $C$ from the row after the atmosphere step. `_set_lid_surface` passes it to Aragog as `lid_surface_flux_cap`; the held surface is the `surface_temperature` of the solver boundary, the `T_surf` of the row. Without a lid, or for a surface at or above $T_b$ ($C \le 0$), no cap is set.
-- `lid_flux_slope` takes $F'$ from the last 2 rows, $\Delta F_\mathrm{atm} / \Delta T_\mathrm{surf}$, and sets it to 0 for a surface step below 0.01 K or a slope of 0 or below. `_set_lid_surface` passes it with the cap as `lid_surface_flux_slope`.
+- `lid_flux_slope` takes $F'$ from the last 2 rows, $\Delta F_\mathrm{atm} / \Delta T_\mathrm{surf}$, and sets it to 0 for a surface step below 0.01 K, a slope of 0 or below, or a slope that is not finite. `_set_lid_surface` passes it with the cap as `lid_surface_flux_slope`. The cut of [the slope guard](#the-open-part-within-a-step), at the slope of a bare grey surface over the same 2 rows, acts on $G_\mathrm{eff}$ of the open part only; the cap takes the uncut slope.
 - After the step, where the lid surface ends above the held one, `_correct_lid_cap` takes the secant of the atmosphere flux between the held and the end surface, $(F_\mathrm{atm}(T_\mathrm{end}) - F_\mathrm{atm}) / (T_\mathrm{end} - T_\mathrm{surf})$, at least 0, and runs the step again from its start with the secant as $F'$, once. A secant within $10^{-3}$ of $F'$ changes nothing, so that re-solve is skipped. The log names each re-solve with its wall time and the running total. The flux at $T_\mathrm{end}$ comes from the atmosphere module: the dummy without `fixed_flux` has it as a formula; the other modules have no corrector and take the slope of the rows alone.
 
 Aragog applies the cap: where the lid held at $T_\mathrm{surf}$ would conduct more than $C$, its surface carries $C + F' (T_s - T_\mathrm{surf})$ at a warmer surface. With $G_\mathrm{lid} \le G_\mathrm{skin}$ the cap is close to the flux of the held lid at the start of the step, so it acts where the held lid would conduct more than at that start. The two are not equal: $C$ takes $G_\mathrm{lid}$ from the profile shape at the end surface of the last step, and the held lid has another shape at the new `T_surf` (in the first dummy row under a flux ceiling the held lid conducted 24 % less than $C$). The held lid conducts $k f_s'(0) (T_b - T_\mathrm{surf}) / \delta$, and $f_s'(0)$ rises with the shape parameter $s$ of the profile, so the cap acts while the lid thins and while $s$ rises. Near the onset, where $G_\mathrm{lid} > G_\mathrm{skin}$, the cap lies below the flux of the held lid and can act from the start of the step.
@@ -99,7 +99,7 @@ Under a lid the surface has two parts that share one surface temperature. The li
 
 $$T_m = \max(T_\mathrm{node}, T_b),$$
 
-with $T_\mathrm{node}$ the top basic node of the Aragog mesh (column `lid_T_node`). The floor is a model construct of the coupling, not a result from the literature: the open part is melt, so it cannot sit below the solidus at the lid base, while the extrapolated top node of the mesh can (in the stored live-lid rows of the coupled runs checked, 5.8 to 10.6 K below $T_b$). The two parts act in parallel:
+with $T_\mathrm{node}$ the top basic node of the Aragog mesh (column `lid_T_node`). The floor is a model construct of the coupling, not a result from the literature: the open part is melt, so it cannot sit below the solidus at the lid base, while the extrapolated top node of the mesh can (see the floor in [Limits](#limits)). The two parts act in parallel:
 
 $$F = w\,G_\mathrm{lid}'\,(T_b - T_\mathrm{surf}) + (1 - w)\,G_\mathrm{skin}\,(T_m - T_\mathrm{surf}), \qquad G_\mathrm{lid}' = \min(G_\mathrm{lid}, G_\mathrm{skin}).$$
 
@@ -115,7 +115,9 @@ Then $\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})$ equa
 
 **Why the 10 mm skin is not added on top of the lid.** The skin stands for the boundary layer at the top of a molten surface. Under a solid lid no melt reaches the surface, so that boundary layer does not exist: the lid is the conductive layer, and $T_\mathrm{surf}$ is the temperature at its top. Adding the skin in series, $1/G = 1/G_\mathrm{lid} + 1/G_\mathrm{skin}$, would count one layer twice; at $G_\mathrm{lid} = G_\mathrm{skin}$ it would halve the conductance of the lid part.
 
-**What the interior takes.** After the atmosphere step, `run_atmosphere` writes `lid_F_open`, the start flux of the open part per open area:
+### What the interior takes
+
+What start flux does the open part get after the atmosphere step, and why does it not double-count the lid? After the atmosphere step, `run_atmosphere` writes `lid_F_open`, the start flux of the open part per open area:
 
 $$F_\mathrm{open,0} = \frac{F_\mathrm{atm} - w\,L}{1 - w}, \qquad L = G_\mathrm{lid}'\,(T_b - T_\mathrm{surf}),$$
 
@@ -156,7 +158,7 @@ $G_\mathrm{eff}$ is the change of the shared surface balance. It does not depend
 **The slope guard.** `lid_flux_slope` gives $F'$ from the last 2 rows. The column `lid_slope_guard` records what the guard did:
 
 - 1: no earlier row, a slope of 0 or below, a non-finite slope, or one from a surface step below 0.01 K. Then $G_\mathrm{eff} = 0$, and the open part keeps $F_\mathrm{open,0}$ for the step, an inward value included.
-- 2: a slope above $4 \sigma T_\mathrm{surf}^3$, the slope of a bare grey surface. The slope is cut to that value.
+- 2: a slope above the slope of a bare grey surface over the same 2 rows, the secant $\sigma (T_1^4 - T_\mathrm{surf}^4)/(T_1 - T_\mathrm{surf})$ with $T_1$ the surface temperature of the row before, cooling or warming. The slope is cut to that value.
 - 0: no guard acted.
 
 PROTEUS passes $G_\mathrm{eff}$ to Aragog as `open_surface_conductance` only under a live lid in flux mode with the mush base. When the corrector of Rule 3 runs the step again with the secant, PROTEUS calculates $G_\mathrm{eff}$ again from the secant with the same guard; the size cut is then the grey secant over the same interval, and `lid_slope_guard` records the guard of the secant.
