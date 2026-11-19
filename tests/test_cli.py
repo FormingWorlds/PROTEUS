@@ -4391,7 +4391,9 @@ def test_grid_analyse_takes_a_grid_folder_and_needs_c_or_o(monkeypatch, tmp_path
 def test_start_records_status_25_on_sigterm(monkeypatch, tmp_path):
     """SLURM sends SIGTERM at the time limit and on scancel. Under `proteus start` it ends
     the run through the status guard of `Proteus.start`, which records status 25, with exit
-    code 143; without the handler the signal would end Python before the guard runs."""
+    code 143; without the handler the signal would end Python before the guard runs.
+    The stub calls the installed handler instead of sending a real SIGTERM, because with
+    PYTHON_JULIACALL_HANDLE_SIGNALS=yes (as in CI) Julia takes the signal and ends pytest."""
     from proteus.proteus import _status_on_exit
     from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
@@ -4405,10 +4407,10 @@ def test_start_records_status_25_on_sigterm(monkeypatch, tmp_path):
         @_status_on_exit
         def start(self, resume, offline):
             UpdateStatusfile(self.directories, 1)
-            os.kill(os.getpid(), signal.SIGTERM)
+            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
 
     monkeypatch.setattr(cli, 'Proteus', FakeProteus)
-    # Without the handler under test, this one takes the signal instead of pytest dying.
+    # Without the handler under test, the stub calls this one and the run keeps status 1.
     signal.signal(signal.SIGTERM, lambda *_: None)
     res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
     assert ReadStatus(tmp_path) == 25
