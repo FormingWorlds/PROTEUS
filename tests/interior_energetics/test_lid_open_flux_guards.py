@@ -83,7 +83,12 @@ def test_update_solver_cuts_the_slope_at_the_grey_secant_of_the_last_2_rows(T_pr
     row.update(Time=30000.0, T_eqm=255.0)
     F_prev = 7000.0 - slope * (T_s - T_prev)
     hf_all = pd.DataFrame(
-        {'Time': [29975.0, 30000.0], 'T_surf': [T_prev, T_s], 'F_atm': [F_prev, 7000.0]}
+        {
+            'Time': [29975.0, 30000.0],
+            'T_surf': [T_prev, T_s],
+            'F_atm': [F_prev, 7000.0],
+            'T_magma': [3000.0, 3000.0],
+        }
     )
     assert lid_flux_slope(hf_all, row) == pytest.approx(slope, rel=1e-12)
     secant = const_sigma * (T_s**4 - T_prev**4) / (T_s - T_prev)

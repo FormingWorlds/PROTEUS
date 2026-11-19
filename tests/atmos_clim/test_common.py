@@ -36,6 +36,7 @@ from proteus.atmos_clim.common import (  # noqa: E402
     lid_flux_cap,
     lid_flux_slope,
     lid_open_flux,
+    lid_prev_row,
     list_atmosphere_times,
     ncdf_flag_to_bool,
     read_atmosphere_data,
@@ -1082,10 +1083,13 @@ def test_flux_slope_is_zero_without_a_usable_slope(T, F):
 
 
 def test_flux_slope_is_zero_without_a_row_before():
-    """No row before the current one gives F' = 0."""
+    """No row before the current one (no frame, an empty frame, or only the current row) gives
+    F' = 0 and no row before."""
     row = {'Time': 10.0, 'T_surf': 700.0, 'F_atm': 15000.0}
-    assert lid_flux_slope(None, row) == 0.0
-    assert lid_flux_slope(_rows([700.0], [15000.0]), row) == 0.0
+    empty = _rows([700.0], [15000.0]).iloc[:0]
+    for hf_all in (None, empty, _rows([700.0], [15000.0])):
+        assert lid_flux_slope(hf_all, row) == 0.0
+    assert lid_prev_row(None, row) is None and lid_prev_row(empty, row) is None
 
 
 @pytest.mark.reference_pinned

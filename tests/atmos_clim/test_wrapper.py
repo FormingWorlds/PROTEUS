@@ -605,8 +605,9 @@ def test_run_atmosphere_writes_the_open_part_and_its_residual_under_a_live_lid(
     with caplog.at_level('WARNING', logger='fwl.proteus.atmos_clim.wrapper'):
         second = tmp_path / 'second'
         second.mkdir()
-        hf_row = _janus_lid_call(second, B + 0.7 * 0.5 * LID_RESID_WARN)
-    assert hf_row['lid_F_resid'] == pytest.approx(0.5 * LID_RESID_WARN, rel=1e-6)
+        hf_row = _janus_lid_call(second, B + 0.7 * 0.5)
+    assert hf_row['lid_F_resid'] == pytest.approx(0.5, rel=1e-6)
+    assert LID_RESID_WARN == 1.0
     assert not any('start value residual' in r.getMessage() for r in caplog.records)
 
 

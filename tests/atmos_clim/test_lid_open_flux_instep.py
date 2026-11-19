@@ -287,13 +287,15 @@ def test_the_grey_secant_cuts_a_cooling_and_a_warming_secant(T_end):
     assert code == (LID_SLOPE_GUARD_SIZE if T_end < T_s else 0)
     G_cut, code_cut = lid_open_conductance(row, 2.0 * tangent, T_end)
     assert code_cut == LID_SLOPE_GUARD_SIZE
+    at_cut = SIGMA * (T_end**2 + T_s**2) * (T_end + T_s)  # the cut itself is not cut
+    assert lid_open_conductance(row, at_cut, T_end)[1] == 0
     assert G_cut == pytest.approx(
         lid_open_conductance(row, grey * (1 - 1e-12), T_end)[0], rel=1e-9
     )
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize('T_end', [None, math.nan, 0.0, -1500.0, 1500.0])
+@pytest.mark.parametrize('T_end', [None, math.nan, math.inf, 0.0, -1500.0, 1500.0])
 def test_without_a_finite_other_end_the_cut_is_the_grey_tangent(T_end):
     """With no finite other end above 0, or the same surface, the cut is the tangent
     4 sigma T_surf^3."""
