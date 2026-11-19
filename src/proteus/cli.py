@@ -884,7 +884,7 @@ cli.add_command(infer)
     default=None,
     type=str,
     help='List cases with this status. '
-    "For example: 'completed', 'running', 'error', or 'code=x' for some error code x.",
+    "For example: 'completed', 'running', 'error', 'unknown', or 'code=x' for some error code x.",
 )
 def grid_summarise(output_path: Path, status: str):
     """
