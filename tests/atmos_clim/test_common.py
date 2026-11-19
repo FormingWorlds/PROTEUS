@@ -34,6 +34,7 @@ from proteus.atmos_clim.common import (  # noqa: E402
     get_spfile_path,
     lid_boundary,
     lid_flux_cap,
+    lid_flux_secant,
     lid_flux_slope,
     lid_open_flux,
     lid_prev_row,
@@ -1080,6 +1081,19 @@ def test_flux_slope_is_zero_without_a_usable_slope(T, F):
     hf_all = _rows(T, F)
     row = {'Time': 20.0, 'T_surf': T[1], 'F_atm': F[1]}
     assert lid_flux_slope(hf_all, row) == 0.0
+
+
+def test_flux_secant_pairs_the_slope_with_the_surface_of_its_row_before():
+    """The secant of the slope cut is one pair: F' and the surface of the row it was taken
+    from, with hf_all holding the current row or only the rows before it; (0, None) without
+    a row before."""
+    hf_all = _rows([700.0, 701.0], [15000.0, 15087.0])
+    row = {'Time': 20.0, 'T_surf': 701.0, 'F_atm': 15087.0}
+    for frame in (hf_all, hf_all.iloc[:1]):
+        slope, T_other = lid_flux_secant(frame, row)
+        assert (slope, T_other) == (pytest.approx(87.0, rel=1e-12), 700.0)
+        assert slope == lid_flux_slope(frame, row)
+    assert lid_flux_secant(None, row) == (0.0, None)
 
 
 def test_flux_slope_is_zero_without_a_row_before():

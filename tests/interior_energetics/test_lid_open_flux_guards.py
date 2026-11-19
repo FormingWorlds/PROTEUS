@@ -103,6 +103,23 @@ def test_update_solver_cuts_the_slope_at_the_grey_secant_of_the_last_2_rows(T_pr
     )
 
 
+def test_update_solver_cuts_the_slope_with_the_end_of_its_own_secant():
+    """The call site passes the slope and its other end as one pair from lid_flux_secant: a
+    secant whose row before lies at 527.3 K is cut to the grey secant over 527.3 to 727.3 K,
+    whatever the frame holds."""
+    bc, interior_o = _runner_bc()
+    T_s, T_o = 727.3, 527.3
+    row = _row(0.4, G=21.9, T_b=1440.0, T_surf=T_s, F_atm=7000.0, lid_F_open=165000.0)
+    row.update(Time=30000.0, T_eqm=255.0)
+    secant = const_sigma * (T_s**4 - T_o**4) / (T_s - T_o)
+    with patch('proteus.interior_energetics.aragog.lid_flux_secant', return_value=(70.0, T_o)):
+        AragogRunner.update_solver(25.0, row, interior_o, hf_all=None)
+    assert row['lid_slope_guard'] == LID_SLOPE_GUARD_SIZE
+    assert bc.open_surface_conductance == pytest.approx(
+        lid_open_conductance(row, secant * (1.0 - 1e-12), T_o)[0], rel=1e-9
+    )
+
+
 def test_a_live_lid_without_a_usable_slope_holds_the_start_value():
     """A live lid without a usable slope gets conductance 0 and guard code 1."""
     bc, interior_o = _runner_bc()

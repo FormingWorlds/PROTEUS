@@ -611,6 +611,17 @@ def test_run_atmosphere_writes_the_open_part_and_its_residual_under_a_live_lid(
     assert not any('start value residual' in r.getMessage() for r in caplog.records)
 
 
+def test_run_atmosphere_warns_on_a_residual_that_is_not_finite(tmp_path, caplog):
+    """A NaN residual of the open-part start value is reported like one above the bound."""
+    with (
+        patch.object(atmos_wrapper, 'lid_open_residual', return_value=math.nan),
+        caplog.at_level('WARNING', logger='fwl.proteus.atmos_clim.wrapper'),
+    ):
+        hf_row = _janus_lid_call(tmp_path, 7.0)
+    assert math.isnan(hf_row['lid_F_resid'])
+    assert sum('start value residual' in r.getMessage() for r in caplog.records) == 1
+
+
 @pytest.mark.unit
 def test_run_atmosphere_janus_stops_with_status_20_on_a_missing_spectral_file(tmp_path):
     """The JANUS branch stops on a missing spectral file with status 20 written to the
