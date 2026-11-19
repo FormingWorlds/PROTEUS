@@ -175,8 +175,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_chem.vulcan.conv_step',
         'atmos_chem.vulcan.dt_min',
         'atmos_chem.vulcan.dttry',
-        # The default false keeps the zero-flux top boundary VULCAN ran with.
-        'atmos_chem.vulcan.escape_bc',
+        'atmos_chem.vulcan.escape_bc',  # default false keeps the zero-flux top boundary
         'atmos_chem.vulcan.flux_atol',
         'atmos_chem.vulcan.mtol',
         'atmos_chem.vulcan.mtol_conv',

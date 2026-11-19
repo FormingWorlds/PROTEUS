@@ -29,9 +29,11 @@ Contracts and invariants tested:
   them only with a fixed surface
 - escape_bc = true: the top file holds each network element as an atom
   outflow [cm-2 s-1] of its escape rate through the R_xuv sphere, and VULCAN
-  reads it with diffusion-limited escape off
+  reads it with diffusion-limited escape off; each escaping atom starts at a
+  mixing ratio of at least ESCAPE_ATOM_VMR_MIN, without fixing it at the surface
 - Config pass-through of the solver and AGNI options
-- Network filter and background gas
+- Network filter and background gas; a warning when the gases outside the
+  network exceed NETWORK_DROPPED_VMR_WARN of the surface composition
 - Condensation of every gas of the network that VULCAN can condense
 
 Mocking strategy:
@@ -74,7 +76,10 @@ import proteus.atmos_chem.vulcan as _vulcan_mod  # noqa: E402
 importlib.reload(_vulcan_mod)  # Force re-import with the real vulcan mock
 
 from proteus.atmos_chem.vulcan import (  # noqa: E402
+    ESCAPE_ATOM_VMR_MIN,
+    NETWORK_DROPPED_VMR_WARN,
     _find_previous_chem,
+    _warn_dropped_gases,
     _write_ini_table,
     network_condensation,
     network_settings,
@@ -677,6 +682,34 @@ def test_write_ini_table_interpolates_in_log_pressure(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_write_ini_table_floors_listed_species_after_interpolation(tmp_path):
+    """A floor raises a species to at least its value on every row of the target
+    grid, after interpolation, and adds a column for a species the source lacks.
+
+    H goes from 1e-12 at 1e6 to 1e-6 at 1e2: on the grid 1e6, 1e4, 1e2 the
+    interpolated values are 1e-12, 5.000005e-7 and 1e-6, so a floor of 1e-10 changes
+    only the first. O is absent and becomes a column of 1e-10. H2O is untouched,
+    and without a floor the file holds the source species only.
+    """
+    p_src = np.array([1e2, 1e6])
+    src = {'H2O': np.array([0.4, 0.6]), 'H': np.array([1e-6, 1e-12])}
+    pco = np.array([1e6, 1e4, 1e2])
+
+    _write_ini_table(str(tmp_path / 'floor.dat'), pco, p_src, src, {'H': 1e-10, 'O': 1e-10})
+    _write_ini_table(str(tmp_path / 'plain.dat'), pco, p_src, src)
+
+    floor = _read_table(tmp_path / 'floor.dat')
+    plain = _read_table(tmp_path / 'plain.dat')
+    assert floor.dtype.names == ('Pressure', 'H2O', 'H', 'O')
+    assert plain.dtype.names == ('Pressure', 'H2O', 'H')
+    np.testing.assert_allclose(floor['H'], [1e-10, 5.000005e-7, 1e-6], rtol=1e-9)
+    np.testing.assert_allclose(plain['H'], [1e-12, 5.000005e-7, 1e-6], rtol=1e-9)
+    np.testing.assert_array_equal(floor['O'], 1e-10)
+    np.testing.assert_array_equal(floor['H2O'], plain['H2O'])
+
+
+@pytest.mark.unit
 def test_find_previous_chem_takes_the_latest_strictly_earlier_result(tmp_path):
     """The previous result is the latest data/<time>_chem.nc before the given
     time: a result at the same time or later is never used, and with none
@@ -851,12 +884,14 @@ def test_run_vulcan_escape_bc_writes_atom_outflows(tmp_path):
 
 
 @pytest.mark.unit
-def test_run_vulcan_escape_bc_without_escape_writes_zero_fluxes(tmp_path, caplog):
+@pytest.mark.physics_invariant
+def test_run_vulcan_escape_bc_without_escape_warns_and_writes_zero_fluxes(tmp_path, caplog):
     """With escape_bc = true and every escape rate zero, the top file holds a
-    zero flux for each element of the CHO network, so nothing leaves the top,
-    and the log lists the zero fluxes."""
+    zero flux for each element of the CHO network, so nothing leaves the top.
+    A warning says the option has no effect; the per-element fluxes and the
+    photochemistry warning, which concern a nonzero escape, are not logged."""
     caplog.set_level('INFO', logger='fwl.proteus.atmos_chem.vulcan')
-    config = _make_mock_config()
+    config = _make_mock_config(photo_on=False)
     config.atmos_chem.vulcan.make_funs = False
     config.atmos_chem.vulcan.fix_surf = True
     config.atmos_chem.vulcan.escape_bc = True
@@ -868,7 +903,9 @@ def test_run_vulcan_escape_bc_without_escape_writes_zero_fluxes(tmp_path, caplog
     top = _parse_top_flux(vcfg.top_BC_flux_file)
     assert list(top) == ['H', 'O', 'C']
     assert all(flux == 0 for flux in top.values())
-    assert 'escape top boundary: H 0.000e+00 cm-2 s-1' in caplog.text
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == 'WARNING']
+    assert warnings == ['escape_bc = true, but every escape rate is zero']
+    assert 'escape top boundary: H' not in caplog.text
 
 
 @pytest.mark.unit
@@ -899,7 +936,8 @@ def test_run_vulcan_escape_bc_spreads_over_r_int_without_r_xuv(tmp_path):
 @pytest.mark.unit
 def test_run_vulcan_escape_bc_warns_without_photochemistry(tmp_path, caplog):
     """Without photochemistry few atoms form in the top layer, so an escape top
-    boundary with nonzero rates logs a warning; with photochemistry it does not."""
+    boundary with a nonzero rate logs a warning; with photochemistry it does not.
+    With every rate zero the warning is not logged (see the zero-rate test)."""
     for photo_on, warned in ((False, True), (True, False)):
         caplog.clear()
         config = _make_mock_config(photo_on=photo_on)
@@ -913,6 +951,204 @@ def test_run_vulcan_escape_bc_warns_without_photochemistry(tmp_path, caplog):
         result, _, _ = _run(run_dir, config, hf_row)
         assert result is True
         assert ('without photochemistry' in caplog.text) is warned
+
+
+@pytest.mark.unit
+def test_run_vulcan_escape_bc_writes_a_negative_rate_as_inflow(tmp_path):
+    """A negative escape rate is kept: its row in the top file is positive,
+    which VULCAN reads as gas entering the top, with the magnitude of the rate."""
+    from proteus.utils.constants import const_Nav, element_mmw
+
+    config = _make_mock_config()
+    config.atmos_chem.vulcan.make_funs = False
+    config.atmos_chem.vulcan.fix_surf = True
+    config.atmos_chem.vulcan.escape_bc = True
+    hf_row = _make_mock_hf_row(year=900.0)
+    hf_row['esc_rate_H'] = 2.0e3
+    hf_row['esc_rate_O'] = -5.0e2
+
+    result, vcfg, _ = _run(tmp_path, config, hf_row)
+    assert result is True
+    top = _parse_top_flux(vcfg.top_BC_flux_file)
+    assert top['H'] < 0 < top['O']
+    area = 4 * np.pi * (hf_row['R_xuv'] * 100.0) ** 2  # cm2
+    assert top['O'] * area * element_mmw['O'] / const_Nav == pytest.approx(5.0e2, rel=1e-8)
+
+
+def _escape_seed_config(ini_mix, escape_bc):
+    """Mock config of the CHO network with a fixed surface, for the atom seed tests."""
+    config = _make_mock_config()
+    config.atmos_chem.vulcan.make_funs = False
+    config.atmos_chem.vulcan.fix_surf = True
+    config.atmos_chem.vulcan.ini_mix = ini_mix
+    config.atmos_chem.vulcan.escape_bc = escape_bc
+    return config
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_vulcan_escape_bc_seeds_atoms_in_the_initial_profile(tmp_path):
+    """With escape_bc = true and ini_mix = 'profile', vmrs.dat gains a column for
+    each atom of the CHO network (H, O, C) at ESCAPE_ATOM_VMR_MIN on every row,
+    since the climate profile has none, and the other columns are unchanged.
+
+    Invariant: each row sum rises by exactly 3 * ESCAPE_ATOM_VMR_MIN. With
+    escape_bc = false no atom column is written.
+    """
+    tables = {}
+    for escape_bc in (False, True):
+        run_dir = tmp_path / f'escape_{escape_bc}'
+        run_dir.mkdir()
+        hf_row = _make_mock_hf_row(year=900.0)
+        hf_row['esc_rate_H'] = 1.0e3
+        _, vcfg, _ = _run(run_dir, _escape_seed_config('profile', escape_bc), hf_row)
+        assert vcfg.ini_mix == 'table'
+        tables[escape_bc] = _read_table(vcfg.vul_ini)
+
+    off, on = tables[False], tables[True]
+    assert not {'H', 'O', 'C'} & set(off.dtype.names)
+    assert set(on.dtype.names) == set(off.dtype.names) | {'H', 'O', 'C'}
+    for atom in ('H', 'O', 'C'):
+        np.testing.assert_array_equal(on[atom], ESCAPE_ATOM_VMR_MIN)
+    for name in off.dtype.names:
+        np.testing.assert_array_equal(on[name], off[name])
+    gases = [n for n in off.dtype.names if n != 'Pressure']
+    sum_off = sum(off[g] for g in gases)
+    sum_on = sum(on[g] for g in on.dtype.names if g != 'Pressure')
+    np.testing.assert_allclose(sum_on - sum_off, 3 * ESCAPE_ATOM_VMR_MIN, rtol=1e-6)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_vulcan_escape_bc_seeds_atoms_without_fixing_them_at_the_surface(tmp_path):
+    """With escape_bc = true and ini_mix = 'outgas', VULCAN starts from const_mix,
+    so the atoms are added there at ESCAPE_ATOM_VMR_MIN. The fixed surface mixing
+    ratios (use_fix_sp_bot and bc_bot.dat) keep only the outgassed gases, so the
+    atoms are free to change at the surface."""
+    hf_row = _make_mock_hf_row(year=900.0)
+    hf_row['esc_rate_H'] = 1.0e3
+    result, vcfg, _ = _run(tmp_path, _escape_seed_config('outgas', True), hf_row)
+    assert result is True
+    assert vcfg.ini_mix == 'const_mix'
+    for atom in ('H', 'O', 'C'):
+        assert vcfg.const_mix[atom] == pytest.approx(ESCAPE_ATOM_VMR_MIN, rel=1e-12)
+    outgassed = {k: v for k, v in vcfg.const_mix.items() if k not in ('H', 'O', 'C')}
+    assert outgassed
+    assert vcfg.use_fix_sp_bot == pytest.approx(outgassed, rel=1e-12)
+    bot = Path(vcfg.bot_BC_flux_file).read_text().split()
+    assert not {'H', 'O', 'C'} & set(bot)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_vulcan_escape_bc_keeps_atoms_above_the_seed_from_a_previous_result(tmp_path):
+    """With ini_mix = 'previous', atoms carried over from the earlier result keep
+    their mixing ratio where it is above ESCAPE_ATOM_VMR_MIN and are raised to it
+    where it is below; an atom absent from that result starts at the seed."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    prev = vulcan_layers(P_b=1.0e8, P_t=1.0e2, nz=6)
+    h = np.array([0.0, 0.0, 1.0e-12, 1.0e-8, 1.0e-6, 1.0e-4])
+    o = np.full(6, 3.0e-7)
+    x_gas = np.column_stack([1.0 - 0.3 - h - o, np.full(6, 0.3), h, o])
+    write_vulcan_netcdf(str(data / '10p000_chem.nc'), prev, ['H2', 'H2O', 'H', 'O'], x_gas)
+    atmos = _make_mock_atmos(ncell=5, p_top=1.0e1, p_bot=1.0e7)  # 1e2 to 1e8 dyn cm-2
+    hf_row = _make_mock_hf_row(year=20.0)
+    hf_row['esc_rate_H'] = 1.0e3
+
+    _, vcfg, _ = _run(tmp_path, _escape_seed_config('previous', True), hf_row, atmos=atmos)
+    table = _read_table(vcfg.vul_ini)
+
+    expected_h = np.interp(np.log10(table['Pressure']), np.log10(prev['p'][::-1]), h[::-1])
+    np.testing.assert_allclose(
+        table['H'], np.maximum(expected_h, ESCAPE_ATOM_VMR_MIN), rtol=1e-6
+    )
+    assert table['H'][-1] > 1e3 * ESCAPE_ATOM_VMR_MIN  # the top keeps its abundance
+    assert table['H'][0] == pytest.approx(ESCAPE_ATOM_VMR_MIN, rel=1e-6)
+    np.testing.assert_allclose(table['O'], 3.0e-7, rtol=1e-6)
+    np.testing.assert_array_equal(table['C'], ESCAPE_ATOM_VMR_MIN)
+
+
+def _surface(**vmrs):
+    """Surface volume mixing ratios of every volatile: zero except those given."""
+    from proteus.utils.constants import vol_list
+
+    out = dict.fromkeys(vol_list, 0.0)
+    out.update(vmrs)
+    return out
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_vulcan_warns_when_a_major_gas_is_outside_the_network(tmp_path, caplog):
+    """An N2-dominated atmosphere run with the CHO network loses its N2, so VULCAN's
+    column is nearly pure H2: one warning gives the share left out and the gases.
+
+    Surface: N2 0.73, H2 0.2693, H2S 0.0007. Left out: 0.7307 (73.1 %), H2S included;
+    counting N2 alone would read 73.0 %. The H2S is below 1 % of the share left out,
+    so only N2 is named.
+    """
+    caplog.set_level('WARNING', logger='fwl.proteus.atmos_chem.vulcan')
+    config = _make_mock_config(network='CHO')
+    config.atmos_chem.vulcan.make_funs = False
+    hf_row = _make_mock_hf_row(year=900.0)
+    for gas, vmr in _surface(N2=0.73, H2=0.2693, H2S=0.0007).items():
+        hf_row[gas + '_vmr'] = vmr
+
+    result, vcfg, _ = _run(tmp_path, config, hf_row)
+    assert result is True
+    assert set(vcfg.const_mix) == {'H2'}
+    warnings = [r.getMessage() for r in caplog.records if 'outside the' in r.getMessage()]
+    assert warnings == [
+        '73.1% of the atmosphere (N2 0.73) is outside the CHO network and left out of VULCAN'
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'surface, ele_arr, network',
+    [
+        (_surface(N2=0.009, H2=0.991), ['H', 'O', 'C'], 'CHO'),
+        (_surface(N2=NETWORK_DROPPED_VMR_WARN, H2=0.99), ['H', 'O', 'C'], 'CHO'),
+        (_surface(N2=0.73, H2=0.27), ['H', 'O', 'C', 'N'], 'NCHO'),
+        (_surface(N2=0.73, H2S=0.2, H2=0.07), ['H', 'O', 'C', 'N', 'S'], 'SNCHO'),
+    ],
+    ids=['below_threshold', 'at_threshold', 'ncho_keeps_n2', 'sncho_keeps_all'],
+)
+def test_warn_dropped_gases_is_quiet_for_a_minor_or_kept_gas(surface, ele_arr, network, caplog):
+    """No warning when the gases left out total at most NETWORK_DROPPED_VMR_WARN
+    (the threshold itself included), or when the network holds every element."""
+    caplog.set_level('WARNING', logger='fwl.proteus.atmos_chem.vulcan')
+    _warn_dropped_gases(surface, ele_arr, network)
+    assert caplog.records == []
+    assert NETWORK_DROPPED_VMR_WARN == pytest.approx(1e-2)
+
+
+@pytest.mark.unit
+def test_warn_dropped_gases_names_only_the_gases_outside_the_network(caplog):
+    """With NCHO an atmosphere holding 5 % H2S loses only that gas: the warning names
+    H2S, not N2, which the network keeps, nor H2O."""
+    caplog.set_level('WARNING', logger='fwl.proteus.atmos_chem.vulcan')
+    _warn_dropped_gases(_surface(N2=0.5, H2S=0.05, H2O=0.45), ['H', 'O', 'C', 'N'], 'NCHO')
+    assert [r.getMessage() for r in caplog.records] == [
+        '5.0% of the atmosphere (H2S 0.05) is outside the NCHO network and left out of VULCAN'
+    ]
+    assert caplog.records[0].levelname == 'WARNING'
+
+
+@pytest.mark.unit
+def test_warn_dropped_gases_lists_the_major_gases_largest_first(caplog):
+    """Gases left out are named from the largest down, each at least 1 % of the share
+    left out: with CHO, N2 0.4 and SO2 0.1 are named, NH3 0.004 (0.8 % of 0.504) is
+    counted in the 50.4 % but not named."""
+    caplog.set_level('WARNING', logger='fwl.proteus.atmos_chem.vulcan')
+    surface = _surface(SO2=0.1, N2=0.4, NH3=0.004, H2O=0.496)
+    _warn_dropped_gases(surface, ['H', 'O', 'C'], 'CHO')
+    assert [r.getMessage() for r in caplog.records] == [
+        '50.4% of the atmosphere (N2 0.4, SO2 0.1) is outside the CHO network and left out '
+        'of VULCAN'
+    ]
+    assert 'NH3' not in caplog.text
 
 
 @pytest.mark.unit

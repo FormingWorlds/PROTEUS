@@ -16,7 +16,8 @@ Invariants tested:
   - A table target selects every row at which its column reaches or crosses the value
   - The main loop marks exactly the rows that the targets later resolve to
   - A snapshot uses the stellar spectrum it recorded, else the newest earlier one
-  - Escape atom fluxes return the helpfile escape rates [kg s-1] through a sphere of R_xuv
+  - Escape atom fluxes return the helpfile escape rates [kg s-1] through a sphere of R_xuv;
+    a non-finite rate gives zero with a warning, a negative rate a negative flux
 
 Testing standards:
   - docs/How-to/testing.md
@@ -596,6 +597,36 @@ def test_escape_atom_fluxes_use_an_r_xuv_above_the_surface():
     for e in elements:
         assert above[e] == pytest.approx(at_surface[e] / 1.01**2, rel=1e-12)
         assert above[e] != pytest.approx(at_surface[e], rel=1e-3)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('bad', [float('nan'), float('inf'), float('-inf')])
+def test_escape_atom_fluxes_replace_a_non_finite_rate_by_zero(bad, caplog):
+    """A non-finite escape rate of one element gives that element a zero flux and
+    a warning naming it; the other elements keep their fluxes."""
+    caplog.set_level('WARNING', logger='fwl.proteus.atmos_chem.common')
+    elements = ['H', 'O', 'C']
+    good = escape_atom_fluxes(_escape_row(), elements)
+    flux = escape_atom_fluxes(_escape_row(rates={**_ESC_RATES, 'O': bad}), elements)
+
+    assert flux['O'] == 0
+    assert all(np.isfinite(f) for f in flux.values())
+    for e in ('H', 'C'):
+        assert flux[e] == pytest.approx(good[e], rel=1e-12)
+    assert f'Escape rate of O is {bad} kg/s; using zero' in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_escape_atom_fluxes_keep_a_negative_rate_as_a_negative_flux(caplog):
+    """A negative escape rate (gas delivered at the top) is kept: its flux has the
+    same magnitude as for the positive rate and the opposite sign, with no warning."""
+    caplog.set_level('WARNING', logger='fwl.proteus.atmos_chem.common')
+    pos = escape_atom_fluxes(_escape_row(), ['O'])
+    neg = escape_atom_fluxes(_escape_row(rates={'O': -_ESC_RATES['O']}), ['O'])
+    assert neg['O'] < 0
+    assert neg['O'] == pytest.approx(-pos['O'], rel=1e-12)
+    assert caplog.text == ''
 
 
 @pytest.mark.unit

@@ -27,6 +27,8 @@ def escape_atom_fluxes(hf_row: dict, elements: list[str]) -> dict[str, float]:
     helpfile, M_e [kg mol-1] the molar mass of the element and R = max(R_xuv, R_int) [m],
     converted to cm. The clip keeps the flux finite when the escape module leaves `R_xuv`
     unset (zero) or gives a value below the surface, and replaces a NaN `R_xuv` by `R_int`.
+    A non-finite escape rate is replaced by zero, with a warning. A negative rate is kept
+    and gives a negative flux, which the caller writes as an inflow.
 
     Parameters
     ----------
@@ -39,7 +41,7 @@ def escape_atom_fluxes(hf_row: dict, elements: list[str]) -> dict[str, float]:
     -------
     dict
         Escape flux [atoms cm-2 s-1] of each element in `elements`, in that order;
-        zero for an element with a zero escape rate.
+        zero for an element with a zero or non-finite escape rate.
 
     Raises
     ------
@@ -48,7 +50,13 @@ def escape_atom_fluxes(hf_row: dict, elements: list[str]) -> dict[str, float]:
     """
 
     # Get rate from PROTEUS helpfile for each atom in the network
-    rates = {e: float(hf_row['esc_rate_' + e]) for e in elements}
+    rates = {}
+    for e in elements:
+        rate = float(hf_row['esc_rate_' + e])
+        if not np.isfinite(rate):
+            log.warning(f'Escape rate of {e} is {rate} kg/s; using zero at the top boundary')
+            rate = 0.0
+        rates[e] = rate
 
     # Radius of the escape sphere, at least the surface radius; fmax skips a NaN R_xuv
     radius = float(np.fmax(hf_row['R_xuv'], hf_row['R_int']))
