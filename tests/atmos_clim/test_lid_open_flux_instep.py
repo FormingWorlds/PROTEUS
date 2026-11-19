@@ -352,15 +352,22 @@ def test_the_response_is_the_change_of_the_shared_surface(validation_plot):
     def figure():
         import matplotlib.pyplot as plt
 
-        fig, (top, bottom) = plt.subplots(2, 1, sharex=True, figsize=(6.4, 5.6))
+        fig, ax = plt.subplots(figsize=(6.4, 4.2))
         for F_p, mk in zip(slopes, ('o', 's', '^'), strict=True):
             got, want = rows[F_p]
-            line = top.plot(weights, want / F_p, label=f"F' = {F_p:g}")[0]
-            top.plot(weights, got / F_p, mk, ms=4, mfc='none', color=line.get_color())
-            bottom.plot(weights, np.abs(got / want - 1.0) / 1e-7, mk, ms=4, mfc='none')
-        top.set(ylabel="(1 - w) G_eff / F'")
-        top.legend(fontsize=8)
-        bottom.set(xlabel='Lid weight w', ylabel='Diff. / tol.', ylim=(0.0, 1.0))
+            line = ax.plot(weights, want / F_p, label=f"F' = {F_p:g}")[0]
+            ax.plot(weights, got / F_p, mk, ms=4, mfc='none', color=line.get_color())
+        ax.set(xlabel='Lid weight w', ylabel="(1 - w) G_eff / F'")
+        ax.legend(fontsize=8)
+        # the difference is round-off: text, its value depends on the platform
+        err = max(np.max(np.abs(got / want - 1.0)) for got, want in rows.values()) / 1e-7
+        ax.text(
+            0.03,
+            0.08,
+            f'max difference / tolerance\n= {err:.1e}',
+            transform=ax.transAxes,
+            fontsize=8,
+        )
         fig.tight_layout()
         return fig
 

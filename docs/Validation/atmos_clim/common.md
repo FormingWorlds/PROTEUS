@@ -98,7 +98,7 @@ A property test, `test_the_weighted_parts_sum_to_f_atm_on_both_sides_of_the_lid_
 ![Response of the open part per slope of the atmosphere flux against the lid weight, at 3 slopes, code on the derivative of the surface balance](../../assets/validation/atmos_clim_lid_open_response.svg#only-light){ width="80%" }
 ![Response of the open part per slope of the atmosphere flux against the lid weight, at 3 slopes, code on the derivative of the surface balance](../../assets/validation/atmos_clim_lid_open_response_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The top panel shows $(1 - w)\, G_\mathrm{eff} / F'$ against the lid weight $w$. The lines are the central differences of the surface balance, and the open marks are the code, one colour for each slope $F'$. The value falls below 1 as the lid grows, because the shared surface warms less. The bottom panel shows the difference divided by the tolerance; a pass keeps every mark below 1.
+**How to read the plot.** The plot shows $(1 - w)\, G_\mathrm{eff} / F'$ against the lid weight $w$. The lines are the central differences of the surface balance, and the open marks are the code, one colour for each slope $F'$. The value falls below 1 as the lid grows, because the shared surface warms less. The text in the lower left gives the largest difference divided by the tolerance; a pass keeps it below 1.
 
 ??? info "Test details"
     - Reference: the derivative of the shared surface balance, by central difference at $\pm 10^{-3}$ K.
