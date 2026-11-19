@@ -9354,7 +9354,7 @@
       "class": "Agni",
       "type": "bool",
       "accepts_none": false,
-      "default": "false",
+      "default": "true",
       "choices": null,
       "bounds": null,
       "description": "Account for conductive heat transport, using Fourier's law.",
@@ -10603,6 +10603,22 @@
       "choices": null,
       "bounds": null,
       "description": "Fix the surface mixing ratios based on outgassed composition.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.escape_bc",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Upper boundary condition. If true, each atom in the network leaves the top layer at the PROTEUS escape rate; requires fix_surf = true. If false, no gas crosses the top.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12750,6 +12766,17 @@
         "module"
       ],
       "doc": "The Morrigan module requires as many embryo masses as planets, all positive, and a valid selector value when the selector is a semi-major axis or planet id."
+    },
+    {
+      "validator": "valid_escape_bc",
+      "module": "_atmos_chem.py",
+      "attached_to": [
+        "atmos_chem.vulcan.escape_bc"
+      ],
+      "touches": [
+        "fix_surf"
+      ],
+      "doc": "Refuse `escape_bc = true` unless the surface mixing ratios are fixed."
     },
     {
       "validator": "valid_ini_mix",

@@ -3696,7 +3696,7 @@ def test_provide_spider_eos_tables_hard_failure_when_no_source(tmp_path, monkeyp
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import _provide_spider_eos_tables
-    from proteus.utils.helper import MissingReferenceData
+    from proteus.utils.helper import MissingDataError
 
     _configured_melting_curve(tmp_path, monkeypatch)
     config = SimpleNamespace(
@@ -3714,7 +3714,7 @@ def test_provide_spider_eos_tables_hard_failure_when_no_source(tmp_path, monkeyp
     # would not raise at all.
     assert 'proteus get interiordata --config-path' in str(exc.value)
     assert '`fwl-io relocate`' in str(exc.value)
-    assert isinstance(exc.value, MissingReferenceData)  # start() writes status 20
+    assert isinstance(exc.value, MissingDataError)
 
 
 # ============================================================================
@@ -4041,7 +4041,7 @@ def test_dummy_structure_without_tables_raises_named_error(tmp_path):
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
-    from proteus.utils.helper import MissingReferenceData
+    from proteus.utils.helper import MissingDataError
 
     config = MagicMock()
     config.interior_energetics.module = 'aragog'
@@ -4058,7 +4058,7 @@ def test_dummy_structure_without_tables_raises_named_error(tmp_path):
             side_effect=FileNotFoundError('no P-S tables'),
         ),
         _patch('proteus.interior_energetics.wrapper.Interior_t') as interior_t,
-        pytest.raises(MissingReferenceData) as excinfo,
+        pytest.raises(MissingDataError) as excinfo,
     ):
         determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
 

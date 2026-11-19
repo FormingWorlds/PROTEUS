@@ -27884,6 +27884,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "escape",
         "orbit",
@@ -28024,6 +28025,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "escape",
         "plot"
       ],
@@ -28058,6 +28060,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "escape",
         "plot"
       ],
@@ -28092,6 +28095,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "escape",
         "plot"
       ],
@@ -28126,6 +28130,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "escape",
         "plot"
       ],
@@ -28160,6 +28165,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "escape",
         "plot"
       ],
