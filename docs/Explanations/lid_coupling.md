@@ -153,11 +153,15 @@ $$G_\mathrm{eff} = \frac{G_\mathrm{skin}\,F'}{F' + w\,G_\mathrm{lid}' + (1 - w)\
 
 $G_\mathrm{eff}$ is the change of the shared surface balance. It does not depend on how far `F_atm` is from the skin balance of the call; that difference sits in $F_\mathrm{open,0}$.
 
-**The slope guard.** `lid_flux_slope` gives $F'$ from the last 2 rows. No earlier row, a slope of 0 or below, a non-finite slope, or one from a surface step below 0.01 K gives $G_\mathrm{eff} = 0$, and the open part keeps $F_\mathrm{open,0}$ for the step, an inward value included (`lid_slope_guard` 1); a slope above $4 \sigma T_\mathrm{surf}^3$, the slope of a bare grey surface, is cut to it (2); 0 means no guard acted.
+**The slope guard.** `lid_flux_slope` gives $F'$ from the last 2 rows. The column `lid_slope_guard` records what the guard did:
+
+- 1: no earlier row, a slope of 0 or below, a non-finite slope, or one from a surface step below 0.01 K. Then $G_\mathrm{eff} = 0$, and the open part keeps $F_\mathrm{open,0}$ for the step, an inward value included.
+- 2: a slope above $4 \sigma T_\mathrm{surf}^3$, the slope of a bare grey surface. The slope is cut to that value.
+- 0: no guard acted.
 
 PROTEUS passes $G_\mathrm{eff}$ to Aragog as `open_surface_conductance` only under a live lid in flux mode with the mush base. When the corrector of Rule 3 runs the step again with the secant, PROTEUS calculates $G_\mathrm{eff}$ again from the secant with the same guard; the size cut is then the grey secant over the same interval, and `lid_slope_guard` records the guard of the secant.
 
-**Where this is checked.** [The open part follows the melt within the interior step](../Validation/atmos_clim/common.md#the-open-part-follows-the-melt-within-the-interior-step) checks $G_\mathrm{eff}$ against the derivative of the surface balance, and [Coupled runs through the lid onset](../Validation/atmos_clim/common.md#coupled-runs-through-the-lid-onset) the surface temperature of 2 stored run segments.
+**Where this is checked.** [The open part follows the melt within the interior step](../Validation/atmos_clim/common.md#the-open-part-follows-the-melt-within-the-interior-step) checks $G_\mathrm{eff}$ against the derivative of the surface balance and gives it in numbers for a stored lid-onset row, and [Coupled runs through the lid onset](../Validation/atmos_clim/common.md#coupled-runs-through-the-lid-onset) the surface temperature of 2 stored run segments.
 
 ## The onset thickness
 
@@ -199,7 +203,7 @@ A resume that changes `lid_mush_base` from the value in the run's `init_coupler.
 
 ## Helpfile columns
 
-The interior writes every column except `lid_F_open` at each step; the atmosphere wrapper writes `lid_F_open`. With the lid off the columns read 0, except `lid_T_node` (the top basic node of the Aragog mesh) and `lid_F_open` (`F_atm`). With the lid on and $w = 0$, `lid_delta` holds the thin phantom lid, so read it with `lid_weight`. The full list is in [Output format](../Reference/output.md).
+The interior writes every column except `lid_F_open` and `lid_F_resid` at each step; the atmosphere wrapper writes those 2. With the lid off the columns read 0, except `lid_T_node` (the top basic node of the Aragog mesh) and `lid_F_open` (`F_atm`). With the lid on and $w = 0$, `lid_delta` holds the thin phantom lid, so read it with `lid_weight`. The columns `lid_weight`, `lid_conductance`, `lid_delta`, `lid_delta_on`, `lid_T_base` and `lid_T_node` hold $w$, $G_\mathrm{lid}$, $\delta$, $\delta_\mathrm{on}$, $T_b$ and $T_\mathrm{node}$. [Output format](../Reference/output.md) gives the unit and meaning of every lid column.
 
 ## Limits
 
