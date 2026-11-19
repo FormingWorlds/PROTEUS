@@ -198,7 +198,20 @@ This way each job gets cases from across the parameter space of the grid, instea
 
 If a grid has more cases than MaxArraySize times `cores_per_job`, each core runs several cases one after the other. The number of cases per core is `waves`, and the walltime of each job is `max_days * waves`. The grid manager logs a warning when `waves` is more than 1.
 
-For example, 20000 cases with `cores_per_job = 16` and a MaxArraySize of 1000 give 1000 jobs of 20 cases. Each core runs at most 2 of these cases, so the walltime is 2 times `max_days`.
+For example, 20000 cases with `cores_per_job = 16` and a MaxArraySize of 1000 give 1000 jobs of 20 cases. Each core runs at most 2 of these cases, so the walltime is 2 times `max_days`. In the second wave, only 4 of the 16 cores of each job have a case, so this layout leaves 37.5 % of the allocated cores idle, and the grid manager warns about it. With `cores_per_job = 20`, each job runs its 20 cases in 1 wave, without idle cores.
+
+#### Idle cores
+
+A job keeps all of its cores until its last case ends. If the cases of a job don't fill all of its cores in the last wave, some cores have no case. Memory is set per core, so the same share of the allocated memory is idle too.
+
+The grid manager computes the share of allocated core time that the layout leaves idle, if every case runs equally long. If that share is more than 10 %, it logs a warning with the share and with the nearest `cores_per_job` values that leave at most 10 % idle. It doesn't change the layout. Real cases don't run equally long, so the real idle time is different.
+
+For example:
+
+- 1000 cases with `cores_per_job = 16` give 63 jobs with 1008 cores. 8 of these cores are idle, so less than 1 %: no warning.
+- 20 cases with `cores_per_job = 16` give 2 jobs of 10 cases with 32 cores. 12 cores are idle, so 37.5 %: the warning suggests `cores_per_job` = 20, 11 or 21.
+
+The warning starts at 10 % because a layout with 1 wave and at least 10 jobs has fewer idle cores than one job has, so less than 10 % idle. Only small grids and grids with more than 1 wave can get the warning.
 
 ## Grid output layout
 

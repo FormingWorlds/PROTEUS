@@ -37,7 +37,12 @@ from proteus.grid.dimensions import (
     dimension_logspace,
     direct_values_error,
 )
-from proteus.grid.slurm import array_layout, dispatch_script, max_array_size
+from proteus.grid.slurm import (
+    array_layout,
+    dispatch_script,
+    max_array_size,
+    warn_idle_cores,
+)
 from proteus.utils.coupler import get_output_root
 from proteus.utils.helper import (
     STATUS_MISSING,
@@ -726,7 +731,8 @@ class Grid:
             CPU cores per Slurm job; each core runs one case at a time.
         """
 
-        jobs, waves = array_layout(self.size, cores_per_job, max_array_size())
+        max_array = max_array_size()
+        jobs, waves = array_layout(self.size, cores_per_job, max_array)
         throttle = min(max(1, max_jobs // cores_per_job), jobs)
 
         log.info("Generating PROTEUS slurm config for parameter grid '%s'" % self.name)
@@ -747,6 +753,7 @@ class Grid:
                 waves,
                 max_days * waves,
             )
+        warn_idle_cores(self.size, cores_per_job, max_array)
         log.info(' ')
 
         log.info("Output path: '%s'" % self.outdir)

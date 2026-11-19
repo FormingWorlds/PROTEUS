@@ -57,6 +57,42 @@ def array_layout(n_cases: int, cores_per_job: int, max_array: int) -> tuple[int,
     return jobs, waves
 
 
+# A one-wave layout of at least 10 jobs idles fewer cores than one job has, so less than 10 %
+IDLE_WARN_SHARE = 0.1
+
+
+def idle_share(n_cases: int, cores_per_job: int, max_array: int) -> float:
+    """Return the share of allocated core time that the job layout leaves idle.
+
+    Assumes equal run times per case. A job of ``c`` cases holds its cores for
+    ``ceil(c / cores_per_job)`` run times, and the strides give each job ``q`` or
+    ``q + 1`` cases.
+    """
+    jobs, _ = array_layout(n_cases, cores_per_job, max_array)
+    q, r = divmod(n_cases, jobs)
+    runs = r * math.ceil((q + 1) / cores_per_job) + (jobs - r) * math.ceil(q / cores_per_job)
+    return 1 - n_cases / (runs * cores_per_job)
+
+
+def warn_idle_cores(n_cases: int, cores_per_job: int, max_array: int) -> None:
+    """Log a warning when the job layout leaves more than ``IDLE_WARN_SHARE`` of the
+    allocated core time idle, with nearby ``cores_per_job`` values that idle less."""
+    share = idle_share(n_cases, cores_per_job, max_array)
+    if share <= IDLE_WARN_SHARE:
+        return
+    better = sorted(
+        (abs(k - cores_per_job), k, s)
+        for k in range(1, 2 * cores_per_job + 1)  # 1 never idles, so the list is never empty
+        if (s := idle_share(n_cases, k, max_array)) <= IDLE_WARN_SHARE
+    )
+    log.warning(
+        'With equal run times per case, the jobs leave %.1f%% of their cores and memory '
+        'idle; cores_per_job values that idle less: %s',
+        share * 100,
+        ', '.join(f'{k} ({s:.0%})' for _, k, s in better[:3]),
+    )
+
+
 def dispatch_script(
     *,
     cfgdir: str,

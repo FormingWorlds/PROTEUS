@@ -8,6 +8,7 @@ nearest minute.
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 from unittest import mock
@@ -52,6 +53,80 @@ def test_array_layout_refuses_a_count_below_one(args):
     with pytest.raises(ValueError, match='array_layout needs positive counts') as exc:
         slurm.array_layout(*args)
     assert f'n_cases={args[0]}, cores_per_job={args[1]}, max_array={args[2]}' in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    ('n_cases', 'cores', 'max_array', 'expected'),
+    [
+        (1000, 16, 1001, 8 / 1008),  # 8 of 63 jobs have 15 cases on 16 cores
+        (20, 16, 1001, 0.375),  # 2 jobs of 10 cases on 16 cores
+        (20000, 16, 1000, 0.375),  # 20 cases per job: the second wave fills 4 cores
+        (20000, 20, 1000, 0.0),
+        (5, 16, 1001, 11 / 16),  # fewer cases than cores in the only job
+    ],
+    ids=['rome-eighth', 'small-grid', 'two-waves', 'two-waves-full', 'few-cases'],
+)
+def test_idle_share_counts_core_time_without_a_case(n_cases, cores, max_array, expected):
+    """With equal run times, the idle share is the allocated core time in which a core
+    of a job has no case, as a fraction of all allocated core time."""
+    share = slurm.idle_share(n_cases, cores, max_array)
+    assert share == pytest.approx(expected, abs=1e-12)
+    assert 0 <= share < 1
+
+
+@pytest.mark.parametrize(
+    ('cores', 'expected'), [(1, 0.0), (2, 1 - 2500 / 2998)], ids=['one', 'two']
+)
+def test_idle_share_ends_a_job_with_fewer_cases_earlier(cores, expected):
+    """2500 cases over 1001 jobs give jobs of 3 and of 2 cases. A job of 2 cases ends
+    earlier and frees its cores, so counting every job as long as the longest one
+    overestimates the idle share by more than 0.1."""
+    jobs, waves = slurm.array_layout(2500, cores, 1001)
+    share = slurm.idle_share(2500, cores, 1001)
+    assert share == pytest.approx(expected, abs=1e-12)
+    assert 1 - 2500 / (jobs * cores * waves) - share > 0.1  # 0.168 and 0.210
+
+
+def test_one_wave_of_ten_jobs_or_more_stays_under_the_warning_share():
+    """With one wave, the idle cores add up to fewer than one job has, so the idle share
+    is below 1 / jobs: at least 10 jobs keep it below the 10 % warning share."""
+    for cores in (1, 2, 3, 7, 16, 128):
+        for n_cases in range(1, 3000, 7):
+            jobs, waves = slurm.array_layout(n_cases, cores, 1001)
+            share = slurm.idle_share(n_cases, cores, 1001)
+            assert 0 <= share < 1
+            if waves == 1:
+                assert share < 1 / jobs
+                if jobs >= 10:
+                    assert share < slurm.IDLE_WARN_SHARE
+
+
+def test_warn_idle_cores_names_the_share_and_nearer_layouts(caplog):
+    """20 cases on 16 cores leave 37.5 % idle; the warning says so, says it assumes
+    equal run times, and lists the three nearest core counts that idle at most 10 %."""
+    with caplog.at_level(logging.WARNING, logger=slurm.log.name):
+        slurm.warn_idle_cores(20, 16, 1001)
+    (record,) = caplog.records
+    text = record.getMessage()
+    assert '37.5%' in text
+    assert 'equal run times' in text
+    # 20 (distance 4), then 11 and 21 (distance 5); 15 idles 33 % and is left out
+    assert text.endswith('20 (0%), 11 (9%), 21 (5%)')
+
+
+@pytest.mark.parametrize(
+    ('n_cases', 'cores', 'warns'),
+    [(1000, 16, False), (9, 10, False), (8, 9, True), (1, 4, True)],
+    ids=['rome-eighth', 'ten-percent', 'eleven-percent', 'one-case'],
+)
+def test_warn_idle_cores_only_above_ten_percent(caplog, n_cases, cores, warns):
+    """The warning starts above 10 % idle: 9 cases on 10 cores (10 %) stay quiet, 8
+    cases on 9 cores (11 %) warn. A single case on 4 cores still gets a suggestion."""
+    with caplog.at_level(logging.WARNING, logger=slurm.log.name):
+        slurm.warn_idle_cores(n_cases, cores, 1001)
+    assert bool(caplog.records) is warns
+    if warns:
+        assert caplog.records[0].getMessage().split(': ')[-1].startswith(f'{n_cases} (0%)')
 
 
 def test_max_array_size_reads_scontrol():

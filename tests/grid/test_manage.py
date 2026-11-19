@@ -991,6 +991,28 @@ class TestSlurmConfig:
         assert '--array=0-1%1\n' in contents
         assert '--array=0-1%0' not in contents  # max_jobs // cores_per_job
 
+    def test_idle_cores_are_reported_and_the_layout_kept(
+        self, grid_with_mocks, monkeypatch, caplog
+    ):
+        """20 cases on 16 cores per job leave 37.5 % of the cores idle: slurm_config logs
+        a warning and still writes the same 2 jobs of 16 cores."""
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_linspace('m', 0.5, 4.0, 20)
+        g.generate()
+        monkeypatch.setattr(g, 'write_config_files', lambda: None)
+
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.grid.slurm'):
+            g.slurm_config(
+                max_jobs=32, test_run=True, max_days=1, max_mem=1.5, cores_per_job=16
+            )
+        contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
+        assert '--array=0-1%2\n' in contents
+        assert '--cpus-per-task=16\n' in contents
+        idle = [r.getMessage() for r in caplog.records if r.name == 'fwl.proteus.grid.slurm']
+        assert len(idle) == 1
+        assert '37.5% of their cores and memory idle' in idle[0]
+
     def test_slurm_script_contents_test_run(self, grid_with_mocks, monkeypatch, tmp_path):
         """``slurm_config(..., test_run=True)`` writes a slurm_dispatch.sh
         with the echo-stub command. The SBATCH array bound matches size.
