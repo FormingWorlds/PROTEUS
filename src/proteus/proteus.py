@@ -1095,7 +1095,9 @@ class Proteus:
             # Restore the stale-structure flag so a resume that lands on a
             # fall-back Zalmoxis mesh keeps the stale-step accounting instead of
             # silently reading fresh.
-            self.interior_o.resume_structure_stale(self.directories['output'])
+            self.interior_o.resume_structure_stale(
+                self.directories['output'], float(self.hf_row['Time'])
+            )
 
             # Set loop counters
             self.loops['total'] = len(self.hf_all)

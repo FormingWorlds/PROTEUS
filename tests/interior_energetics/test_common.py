@@ -698,13 +698,8 @@ def test_resume_structure_stale_missing_or_malformed_file_defaults_fresh(tmp_pat
         corrupt = Interior_t(5)
         corrupt.structure_stale = True
         corrupt.last_successful_struct_time = 5e4
-        raised = None
         with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
-            try:
-                corrupt.resume_structure_stale(str(tmp_path))
-            except Exception as exc:
-                raised = exc
-        assert raised is None, f'{content!r} must not raise, got {raised!r}'
+            corrupt.resume_structure_stale(str(tmp_path))
         assert corrupt.structure_stale is False, 'malformed file must fall back to not-stale'
         assert corrupt.last_successful_struct_time == float('-inf')
     assert any('stale-structure flag' in r.message for r in caplog.records), (

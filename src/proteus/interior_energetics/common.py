@@ -1250,18 +1250,10 @@ class Interior_t:
         # budget; this counter is for visibility, not enforcement.
         self._stale_struct_steps = 0
 
-        # Simulation-time of the last SUCCESSFUL Zalmoxis structure
-        # refresh. Distinct from the main-loop's `last_struct_time`
-        # (which is reset on every call regardless of success). Drives
-        # the stale-aware ceiling trigger in
-        # update_structure_from_interior, which fires when
-        # Time - last_successful_struct_time >= update_stale_ceiling.
-        # Without this tracker, a fall-back keeps the trigger clock
-        # ticking past the next ceiling and Aragog can advance through
-        # an entire structure-update window with a frozen mesh. Set to
-        # -inf at __init__; updated to hf_row['Time'] on every Zalmoxis
-        # success (wrapper.py).
-        self.last_successful_struct_time = float('-inf')
+        # Anchor of the stale-aware ceiling: the time of the last Zalmoxis success or
+        # rejected up-step (the init structure at t = 0 for a fresh run). Unlike
+        # `last_struct_time` it does not move on a failed re-solve.
+        self.last_successful_struct_time = 0.0
 
         # Number of levels
         self.nlev_b = int(nlev_b)
@@ -1398,41 +1390,36 @@ class Interior_t:
                 hdl.write('%.7e %.7e \n' % (self.phi[i], self.tides[i]))
 
     def write_structure_stale(self, outdir: str):
-        # Persist the stale flag and the last-success time for a resume; written on every
+        # Persist the stale flag and the stale-ceiling anchor for a resume; written on every
         # Zalmoxis success, fall-back and rejected up-step. A write failure is logged, never
         # raised, so the fall-back rollback that follows this call still runs.
         try:
             with open(get_file_structure_stale(outdir), 'w') as hdl:
-                hdl.write(
-                    '%d %r\n'
-                    % (
-                        1 if self.structure_stale else 0,
-                        float(self.last_successful_struct_time),
-                    )
-                )
+                hdl.write(f'{int(self.structure_stale)} {self.last_successful_struct_time!r}\n')
         except OSError as exc:
             log.warning('Could not persist stale-structure flag file: %s', exc)
 
-    def resume_structure_stale(self, outdir: str):
-        # Restore the stale flag and the last-success time (the anchor of the stale-aware
-        # ceiling) on resume. A missing or malformed file means a fresh mesh; a missing
-        # second field leaves the anchor unknown (-inf).
-        path = get_file_structure_stale(outdir)
-        self.last_successful_struct_time = float('-inf')
-        if not os.path.exists(path):
-            self.structure_stale = False
-            return
+    def resume_structure_stale(self, outdir: str, time: float | None = None):
+        # Restore the stale flag and the stale-ceiling anchor on resume. A missing or
+        # malformed file means a fresh mesh. With the resume `time`, a stale flag without
+        # an anchor takes `time`, and an anchor after `time` (a walk-back) moves to it.
+        self.structure_stale, self.last_successful_struct_time = False, float('-inf')
         try:
-            with open(path) as hdl:
-                fields = hdl.read().split()
-            stale = bool(int(fields[0]))
-            last_success = float(fields[1]) if len(fields) > 1 else float('-inf')
-        except (ValueError, OSError, IndexError):
-            log.warning('Could not parse stale-structure flag file; assuming fresh')
-            self.structure_stale = False
+            with open(get_file_structure_stale(outdir)) as hdl:
+                head, *rest = hdl.read().split()
+            stale = bool(int(head))
+            last_success = float(rest[0]) if rest else float('-inf')
+            if not last_success < float('inf'):
+                raise ValueError(f'non-finite anchor {last_success}')
+        except FileNotFoundError:
             return
-        self.structure_stale = stale
-        self.last_successful_struct_time = last_success
+        except (ValueError, OSError):
+            log.warning('Could not parse stale-structure flag file; assuming fresh')
+            return
+        if time is not None:
+            last_success = time if stale and last_success == float('-inf') else last_success
+            last_success = min(last_success, time)
+        self.structure_stale, self.last_successful_struct_time = stale, last_success
 
     def update_rheology(self, visc: bool = False):
         # Update shear and bulk moduli arrays based on the melt fraction at each layer.
