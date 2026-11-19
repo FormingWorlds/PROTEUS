@@ -103,7 +103,7 @@ atmodeller = ["atmodeller>=1.0.2"]
 # vulcan: atmospheric photochemistry module, selected via
 # atmos_chem.module = "vulcan". The wheel holds the package only; VULCAN
 # runs from the clone that tools/get_vulcan.sh sets up.
-vulcan = ["fwl-vulcan>=26.11.13"]
+vulcan = ["fwl-vulcan>=26.11.18"]
 # morrigan: protoplanet accretion module for giant-impact timelines,
 # selected via accretion.module = "morrigan". Also installable editable
 # via tools/get_morrigan.sh.
@@ -264,7 +264,7 @@ directory = "htmlcov"
 # Tracks nichollsh/AGNI main. Bump after every AGNI release that
 # PROTEUS depends on.
 url = "https://github.com/nichollsh/AGNI.git"
-ref = "f4a16a8691a662dd2dd6011ce11218448ff05ce3"
+ref = "861d7a3375185b503f22cc6e0d6c4db2a920b46b"
 
 [tool.proteus.modules.socrates]
 # Spectral radiative transfer library (Fortran). Compiled in-place
