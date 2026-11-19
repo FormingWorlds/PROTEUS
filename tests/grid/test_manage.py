@@ -1269,6 +1269,47 @@ class TestGridRun:
         # the run failed for the documented reason, not some other path).
         assert not os.path.exists(g._get_tmpcfg(0))
 
+    def test_run_marks_cases_without_a_final_status_as_died(self, grid_with_mocks, monkeypatch):
+        """After all children exit, a case whose status still reads running, whose status
+        file is empty, or that never wrote one (it stopped before `Proteus.start`, #778)
+        gets status 25; a completed case keeps its code, and a missing file in the first
+        case does not stop the check of the cases after it."""
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0, 2.0, 3.0])
+        g.generate()
+        monkeypatch.setattr(g, 'write_config_files', lambda: None)
+        for i in range(g.size):
+            with open(g._get_tmpcfg(i), 'w') as h:
+                h.write('# fake\n')
+
+        # Case 0 leaves nothing, case 1 a running status, case 2 an empty file, case 3 done.
+        written = {1: '1\nRunning\n', 2: '', 3: '13\nCompleted (target time)\n'}
+
+        def _child(command, **_kwargs):
+            i = int(os.path.basename(command[-1]).removesuffix('.toml').split('_')[1])
+            if i in written:
+                case_dir = os.path.join(g.outdir, g.CONFIG_BASENAME % i)
+                os.makedirs(case_dir, exist_ok=True)
+                with open(os.path.join(case_dir, 'status'), 'w') as h:
+                    h.write(written[i])
+            return mock.MagicMock(returncode=1)
+
+        monkeypatch.setattr(gm.subprocess, 'run', _child)
+        monkeypatch.setattr(gm.time, 'sleep', lambda *a, **k: None)
+        monkeypatch.setattr(gm.multiprocessing, 'Process', _ImmediateDoneProcess)
+
+        g.run(num_threads=2, test_run=False, check_interval=0.01)
+
+        def _status(i):
+            path = os.path.join(g.outdir, g.CONFIG_BASENAME % i, 'status')
+            with open(path) as h:
+                return h.read().splitlines()
+
+        assert [_status(i)[0] for i in range(4)] == ['25', '25', '25', '13']
+        assert _status(0)[1] == 'Error (died, or exit requested by user)'
+        assert _status(3)[1] == 'Completed (target time)'
+
 
 # ---------------------------------------------------------------------------
 # grid_from_config

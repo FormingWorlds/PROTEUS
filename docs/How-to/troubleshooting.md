@@ -28,6 +28,7 @@ step-by-step guide or the advice below,
 | `libudev.so.1` not found | [libudev](#libudevso1-not-found) |
 | `OpenSSL_jll` / Julia error | [Julia compatibility](#julia-compatibility-error) |
 | `PythonCall ... is required but does not seem to be installed` / `failed to find source of parent package` | [Julia depot with no packages](#julia-depot-with-no-packages) |
+| `could not load library ".../.juliaup/bin/../lib/julia/sys.so"`, or pytest exits with code 1 and prints nothing | [Julia system image not found](#julia-system-image-not-found) |
 | PETSc fails on Apple Silicon | [PETSc Apple Silicon](#petsc-compilation-fails-on-apple-silicon) |
 | `x86-pad-for-align` / SOCRATES | [SOCRATES compilation](#errors-during-the-socrates-compilation) |
 | `libcrypto.3.dylib` not found | [netCDF error](#python-netcdf-library-error) |
@@ -278,6 +279,28 @@ LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --project=AGNI -e 'using Pkg; Pkg.inst
 ```
 
 A project that you set yourself with `PYTHON_JULIAPKG_PROJECT` needs the same command; the installer leaves it alone.
+
+### Julia system image not found {#julia-system-image-not-found}
+
+`import proteus`, `import juliacall` or a run with AGNI stops with `could not load library ".../.juliaup/bin/../lib/julia/sys.so"`, or pytest exits with code 1 and prints nothing. This happens in some shells, not all. juliapkg has recorded the juliaup launcher (`~/.juliaup/bin/julia`) as the Julia program, and juliacall looks for the Julia system image (`sys.so`) next to it, where there is none. Julia then ends the Python process, so there is no Python traceback.
+
+Point juliacall at the real Julia program and at the Julia project of your Python environment. Set both variables together, because juliacall refuses one without the other, in the shell before any PROTEUS, AGNI or test command:
+
+```console
+export PYTHON_JULIACALL_EXE="$(julia --startup-file=no -e 'print(joinpath(Sys.BINDIR, "julia"))')"
+export PYTHON_JULIACALL_PROJECT="$(python -c 'import juliapkg; print(juliapkg.project())')"
+```
+
+The first line asks Julia, through the launcher, for the path of the program it runs, for example `~/.julia/juliaup/julia-1.13.1+0.x64.linux.gnu/bin/julia`. The second prints the Julia project that juliacall uses for the active Python environment, which is `$CONDA_PREFIX/julia_env` in a conda environment. Run both with the `proteus` environment active.
+
+To keep the values in every new shell, store them in the environment and activate it again:
+
+```console
+conda env config vars set -n proteus PYTHON_JULIACALL_EXE="$PYTHON_JULIACALL_EXE" PYTHON_JULIACALL_PROJECT="$PYTHON_JULIACALL_PROJECT"
+conda deactivate && conda activate proteus
+```
+
+Set them again after a Julia update, since the path of the program changes with the version. Where juliacall starts Julia without them, leave both unset.
 
 ### Julia compatibility error {#julia-compatibility-error}
 

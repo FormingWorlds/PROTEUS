@@ -1,0 +1,36 @@
+# Settings of the weekly ecosystem digest (.github/workflows/weekly-digest.yml).
+# publish = false keeps every run a dry run that only uploads the digest as an artifact.
+publish = false
+category = "weekly-digest"  # slug of the discussion category
+model = "claude-sonnet-5-5"
+# Bodies of the largest merged PRs (additions + deletions) go to the model; the rest give titles only.
+max_bodies = 40
+body_chars = 1500
+bots = ["dependabot", "github-actions", "pre-commit-ci", "renovate", "codecov", "copilot"]
+
+repos = [
+    "FormingWorlds/PROTEUS",
+    "FormingWorlds/aragog",
+    "FormingWorlds/fwl-io",
+    "FormingWorlds/CALLIOPE",
+    "FormingWorlds/JANUS",
+    "FormingWorlds/MORS",
+    "FormingWorlds/ZEPHYRUS",
+    "FormingWorlds/SPIDER",
+    "FormingWorlds/VULCAN",
+    "FormingWorlds/SOCRATES",
+    "FormingWorlds/atmodeller",
+    "FormingWorlds/Zalmoxis",
+    "FormingWorlds/Obliqua",
+    "FormingWorlds/Erebus.jl",
+    "FormingWorlds/Morrigan",
+    "nichollsh/AGNI",
+]
+
+# Files whose changes become facts, per repository; every repository also gets
+# pyproject.toml and Project.toml when it has them.
+[tracked]
+"FormingWorlds/PROTEUS" = ["docs/Reference/config/config_schema.json", "docs/Reference/output_schema.json"]
+"FormingWorlds/Zalmoxis" = ["input/default.toml"]
+"FormingWorlds/Erebus.jl" = ["configs/default.toml"]
+"nichollsh/AGNI" = ["res/config/default.toml"]
