@@ -37,12 +37,7 @@ from proteus.grid.dimensions import (
     dimension_logspace,
     direct_values_error,
 )
-from proteus.grid.slurm import (
-    array_layout,
-    dispatch_script,
-    max_array_size,
-    warn_idle_cores,
-)
+from proteus.grid.slurm import array_layout, dispatch_script, max_array_size, warn_idle_cores
 from proteus.utils.coupler import get_output_root
 from proteus.utils.helper import (
     STATUS_MISSING,

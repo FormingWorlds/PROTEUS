@@ -62,12 +62,8 @@ IDLE_WARN_SHARE = 0.1
 
 
 def idle_share(n_cases: int, cores_per_job: int, max_array: int) -> float:
-    """Return the share of allocated core time that the job layout leaves idle.
-
-    Assumes equal run times per case. A job of ``c`` cases holds its cores for
-    ``ceil(c / cores_per_job)`` run times, and the strides give each job ``q`` or
-    ``q + 1`` cases.
-    """
+    """Return the idle share of the allocated core time, with equal run times per case:
+    a job of ``c`` cases holds its cores for ``ceil(c / cores_per_job)`` run times."""
     jobs, _ = array_layout(n_cases, cores_per_job, max_array)
     q, r = divmod(n_cases, jobs)
     runs = r * math.ceil((q + 1) / cores_per_job) + (jobs - r) * math.ceil(q / cores_per_job)
