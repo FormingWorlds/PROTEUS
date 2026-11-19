@@ -1,4 +1,4 @@
-config_version = "3.0"
+config_version = "3.1"
 
 [params]
 resume = false
@@ -471,6 +471,7 @@ step_max_frac = 0.25
 step_dt_floor_frac = 0.001
 
 [escape.zephyrus]
+scheme = "el"
 Pxuv = 5e-05
 efficiency = 0.3
 tidal = false

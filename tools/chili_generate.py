@@ -145,6 +145,23 @@ PROTOCOL_STOP = {
 # hold: the separation buoyancy against the solid.
 RUN_SETTINGS = {'interior_energetics.aragog.separation_buoyancy': 'solid'}
 
+# The atmosphere of the submitted runs: their grid, since the tutorials now reach 1e-10 bar,
+# and no conduction, which AGNI now has on by default.
+PROTOCOL_ATMOSPHERE = {
+    'atmos_clim.num_levels': 45,
+    'atmos_clim.p_top': tomlkit.value('1e-4'),
+    'atmos_clim.agni.conduction': False,
+}
+
+# The escape of the submitted runs: the "el" scheme with its defaults written out,
+# since the PROTEUS default is the dispatcher.
+PROTOCOL_ESCAPE = {
+    'escape.reservoir': 'outgas',
+    'escape.hill_clamp': True,
+    'escape.zephyrus.scheme': 'el',
+    'escape.zephyrus.tidal': False,
+}
+
 # Protocol H and C inventory axes [kg] for the grid sweeps. The
 # standalone per-case grid configs under input/tutorials/chili_grid/
 # carry exactly these values; the lockstep test compares the two.
@@ -236,8 +253,8 @@ def _format_stop_block(text: str, name: str) -> str:
 
 
 def case_deltas(name: str) -> dict:
-    """Deltas of case ``name``: ``CASE_DELTAS``, the protocol's redox state and stop rule, and
-    ``RUN_SETTINGS``.
+    """Deltas of case ``name``: ``CASE_DELTAS``, the protocol's redox state, stop rule,
+    atmosphere grid and escape scheme, and ``RUN_SETTINGS``.
 
     Raises
     ------
@@ -249,11 +266,13 @@ def case_deltas(name: str) -> dict:
         'outgas.fO2_shift_IW': PROTOCOL_FO2_SHIFT_IW,
         **PROTOCOL_STOP,
         **RUN_SETTINGS,
+        **PROTOCOL_ATMOSPHERE,
+        **PROTOCOL_ESCAPE,
     }
     if clash := sorted(set(deltas) & set(protocol)):
         raise ValueError(
-            f'{name}: PROTOCOL_FO2_SHIFT_IW, PROTOCOL_STOP and RUN_SETTINGS set {clash} '
-            'for all cases'
+            f'{name}: PROTOCOL_FO2_SHIFT_IW, PROTOCOL_STOP, RUN_SETTINGS, PROTOCOL_ATMOSPHERE and '
+            f'PROTOCOL_ESCAPE set {clash} for all cases'
         )
     return {**deltas, **protocol}
 

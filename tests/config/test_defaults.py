@@ -829,6 +829,7 @@ def test_aragog_top_cell_dt_limit_grey_body_checked_at_load_in_any_order(tmp_pat
 
     cfg = tmp_path / 'grey_limit.toml'
     cfg.write_text(
+        'config_version = "3.1"\n'
         '[interior_energetics]\nmodule = "aragog"\nsurface_bc_mode = "grey_body"\n'
         '[interior_energetics.aragog]\ntop_cell_dt_limit = true\n'
     )

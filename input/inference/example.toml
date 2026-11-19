@@ -24,7 +24,7 @@
 # ----------------------------------------------------
 
 # Config file format version (must match the PROTEUS version you are running)
-config_version = "3.0"
+config_version = "3.1"
 
 # Code execution, outputs, time-stepping, convergence
 [params]
@@ -532,7 +532,7 @@ config_version = "3.0"
         # Physics switches
         solve_energy          = false         # iterative energy-conserving T(p) profile
         convection            = true         # convective adjustment (MLT)
-        conduction            = false         # conductive heat transport (Fourier)
+        conduction            = true          # conductive heat transport (Fourier)
         sens_heat             = true         # sensible heat flux at surface
         rainout               = false         # volatile condensation and evaporation
         oceans                = false         # surface liquid water oceans
@@ -581,12 +581,11 @@ config_version = "3.0"
 # Atmospheric escape
 [escape]
     module                    = "zephyrus"   # zephyrus | dummy
-    reservoir                 = "outgas"     # reservoir setting escaping composition
 
     [escape.zephyrus]
+        scheme                = "el"         # energy-limited escape, cheaper for inference forward runs
         Pxuv                  = 5e-5         # XUV opacity pressure level [bar]
         efficiency            = 0.1          # escape efficiency
-        tidal                 = false        # tidal contribution
 
 # Late accretion
 [accretion]

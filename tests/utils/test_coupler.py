@@ -5137,6 +5137,34 @@ def test_a_helpfile_missing_physical_state_is_refused_not_zero_filled():
 
 
 @pytest.mark.unit
+def test_a_helpfile_without_the_escape_diagnostics_resumes_them_as_not_evaluated(tmp_path):
+    """A run written before the dispatcher columns resumes them as "not evaluated".
+
+    The six diagnostics that write -1 when the dispatcher did not evaluate them
+    read back as -1, not as a zero that would look like a value; the codes and
+    the flag bits read back as 0, which is their "not set".
+    """
+    from proteus.utils.coupler import (
+        ESCAPE_NOT_EVALUATED_KEYS,
+        RESUMABLE_ZERO_FILL_KEYS,
+        ReadHelpfileFromCSV,
+    )
+
+    assert ESCAPE_NOT_EVALUATED_KEYS <= RESUMABLE_ZERO_FILL_KEYS
+    row = ZeroHelpfileRow()
+    escape_keys = [k for k in row if k.startswith('esc_') and k in RESUMABLE_ZERO_FILL_KEYS]
+    for key in escape_keys:
+        del row[key]
+    pd.DataFrame([row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+
+    loaded = ReadHelpfileFromCSV(str(tmp_path)).iloc[-1]
+    for key in escape_keys:
+        want = -1.0 if key in ESCAPE_NOT_EVALUATED_KEYS else 0.0
+        assert loaded[key] == pytest.approx(want, abs=0.0), key
+    assert {'esc_regime', 'esc_flags', 'esc_kn_sonic'} <= set(escape_keys)
+
+
+@pytest.mark.unit
 def test_a_helpfile_without_m_desiccated_resumes_with_nothing_booked(tmp_path):
     """M_desiccated is a ledger: a helpfile written before the column resumes with it at zero."""
     from proteus.utils.coupler import GetHelpfileKeys, ReadHelpfileFromCSV

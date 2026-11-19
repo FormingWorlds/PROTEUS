@@ -1420,7 +1420,7 @@ def test_cli_does_not_convert_unrelated_value_errors(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, 'Proteus', boom)
 
     cfg = tmp_path / 'cfg.toml'
-    cfg.write_text('config_version = "3.0"\n')
+    cfg.write_text('config_version = "3.1"\n')
 
     res = runner.invoke(cli.cli, ['start', '-c', str(cfg), '--offline'])
     assert res.exit_code != 0
@@ -1456,7 +1456,7 @@ def test_grid_reports_an_unknown_key_in_the_base_config_cleanly(tmp_path, monkey
 
     grid_toml = tmp_path / 'run.grid.toml'
     grid_toml.write_text(
-        'config_version = "3.0"\n'
+        'config_version = "3.1"\n'
         'output = "cli_typo_grid"\n'
         'symlink = ""\n'
         f'ref_config = "{base_path}"\n'

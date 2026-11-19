@@ -3,7 +3,7 @@
 # (no AGNI, SPIDER, VULCAN, MORS, Zalmoxis, CALLIOPE, or SOCRATES needed).
 # Use this for wiring tests, CI, and rapid development iteration.
 # Config file format version
-config_version = "3.0"
+config_version = "3.1"
 
     [params.out]
         path = "auto"

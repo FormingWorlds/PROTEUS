@@ -1770,7 +1770,7 @@ def test_config_load_defaults_O_mode_to_ic_chemistry(tmp_path):
     from proteus.config import read_config_object
 
     toml_text = """
-config_version = "3.0"
+config_version = "3.1"
 
 [orbit]
     semimajoraxis = 1.0
@@ -1813,7 +1813,7 @@ def _minimal_valid_toml(extra_planet: str = '', extra_elements: str = '') -> str
     backend, so pinning the module here keeps the fixture portable.
     """
     return f"""
-config_version = "3.0"
+config_version = "3.1"
 
 [orbit]
     semimajoraxis = 1.0
@@ -1913,7 +1913,7 @@ def test_config_rejects_from_O_budget_with_gas_prs(tmp_path):
     from proteus.config import read_config_object
 
     toml_text = """
-config_version = "3.0"
+config_version = "3.1"
 
 [orbit]
     semimajoraxis = 1.0
@@ -1964,7 +1964,7 @@ def test_config_accepts_from_O_budget_with_concrete_O_mode(tmp_path, o_mode, o_b
     from proteus.config import read_config_object
 
     toml_text = f"""
-config_version = "3.0"
+config_version = "3.1"
 
 [orbit]
     semimajoraxis = 1.0
@@ -2007,7 +2007,7 @@ def test_config_accepts_from_O_budget_with_atmodeller_module(tmp_path):
     from proteus.config import read_config_object
 
     toml_text = """
-config_version = "3.0"
+config_version = "3.1"
 
 [orbit]
     semimajoraxis = 1.0
@@ -2044,7 +2044,7 @@ def test_config_rejects_from_O_budget_with_dummy_module(tmp_path):
     from proteus.config import read_config_object
 
     toml_text = """
-config_version = "3.0"
+config_version = "3.1"
 
 [orbit]
     semimajoraxis = 1.0
@@ -2147,7 +2147,7 @@ def test_config_warns_when_fO2_shift_IW_set_with_from_O_budget(tmp_path):
     from proteus.config import read_config_object
 
     toml_text = """
-config_version = "3.0"
+config_version = "3.1"
 
 [orbit]
     semimajoraxis = 1.0
@@ -2183,7 +2183,7 @@ def _cryst_cfg(reservoir='outgas', seal=False):
     """Minimal config stub for run_crystallized: ``escape.reservoir`` (to confirm
     the escape model is unfractionated) and ``outgas.lid_seal.enabled``."""
     cfg = MagicMock()
-    cfg.escape.reservoir = reservoir
+    cfg.escape.effective_reservoir = reservoir
     cfg.outgas.lid_seal.enabled = seal
     return cfg
 
@@ -2337,11 +2337,78 @@ def test_run_crystallized_guard_branches_preserve_reservoirs(hf_over, dt, label)
 
 
 @pytest.mark.unit
-def test_run_crystallized_rejects_fractionated_escape():
-    """A fractionating escape reservoir would change the atmospheric composition
-    and break the composition-preserving uniform scaling, so run_crystallized
-    refuses it. The unfractionated 'bulk' and 'outgas' reservoirs are accepted
-    and actually debit the atmosphere."""
+@pytest.mark.physics_invariant
+def test_run_crystallized_pxuv_applies_only_this_steps_debit():
+    """Under fractionating escape the frozen atmosphere takes the gas masses escape left.
+
+    Physical scenario: escape on this step removed hydrogen from a water and
+    CO2 atmosphere, leaving 60 kg of H2O, 30 kg of CO2 and 5 kg of O2 behind
+    out of 100 kg of H2O and 30 kg of CO2. The atmosphere takes those masses;
+    mixing ratios follow the moles, the surface pressure follows the column
+    mass, and the column holds exactly the species sum. A debit stamped with
+    an earlier time is ignored, so a step on which escape did not run leaves
+    the atmosphere as it was.
+    """
+    from proteus.outgas.fractionated_debit import FROZEN_DEBIT_KEY as ATM_DEBIT_KEY
+    from proteus.outgas.wrapper import run_crystallized
+    from proteus.utils.constants import gas_list
+
+    base = {f'{g}_kg_atm': 0.0 for g in gas_list}
+    base.update({f'{g}_mol_atm': 0.0 for g in gas_list})
+    base.update(
+        {
+            'Time': 2.0e8,
+            'H2O_kg_atm': 100.0,
+            'CO2_kg_atm': 30.0,
+            'M_atm': 130.0,
+            'M_vol_atm': 130.0,
+            'P_vol': 13.0,
+            'P_vap': 0.0,
+            'P_surf': 13.0,
+            'esc_rate_total': 1.0,
+        }
+    )
+    new_kg = {'H2O': 60.0, 'CO2': 30.0, 'O2': 5.0}
+    # Element columns of the old gases, carbon including the 2 kg the debit condenses.
+    h_w, o_w, c_c, o_c = 2 * 1.008 / 18.015, 15.999 / 18.015, 12.011 / 44.009, 31.998 / 44.009
+    base.update(
+        H_kg_atm=100.0 * h_w, O_kg_atm=100.0 * o_w + 30.0 * o_c, C_kg_atm=30.0 * c_c + 2.0
+    )
+    applied = {'H': 40.0 * h_w, 'O': 40.0 * o_w - 5.0, 'C': 0.0}
+    debit = {'kg': new_kg, 'applied_kg': applied}
+
+    stale = dict(base, **{ATM_DEBIT_KEY: {'Time': 1.0e8, 'graphite_kg': 0.0, **debit}})
+    run_crystallized(_cryst_cfg('pxuv'), stale, 1.0)
+    assert stale['M_atm'] == pytest.approx(130.0, rel=1e-12)
+    assert stale['H2O_kg_atm'] == pytest.approx(100.0, rel=1e-12)
+    assert ATM_DEBIT_KEY not in stale
+
+    row = dict(base, **{ATM_DEBIT_KEY: {'Time': 2.0e8, 'graphite_kg': 2.0, **debit}})
+    run_crystallized(_cryst_cfg('pxuv'), row, 1.0)
+    assert row['M_atm'] == pytest.approx(95.0, rel=1e-12)
+    assert row['M_vol_atm'] == pytest.approx(sum(row[f'{g}_kg_atm'] for g in gas_list))
+    assert row['P_surf'] == pytest.approx(13.0 * 95.0 / 130.0, rel=1e-12)
+    assert sum(row[f'{g}_vmr'] for g in gas_list) == pytest.approx(1.0, rel=1e-12)
+    # Moles: 60/0.018015 H2O against 5/0.031998 O2; equal masses would give 12:1.
+    assert row['H2O_vmr'] / row['O2_vmr'] == pytest.approx(
+        (60.0 / 0.018015) / (5.0 / 0.031998), rel=2e-3
+    )
+    assert row['C_kg_condensed'] == pytest.approx(2.0, rel=1e-12)
+    assert row['C_cd_kg'] == pytest.approx(2.0, rel=1e-12)
+    # The element columns are those of the new gases: the graphite left the carbon one.
+    assert row['H_kg_atm'] == pytest.approx(60.0 * h_w, rel=1e-12)
+    assert row['O_kg_atm'] == pytest.approx(60.0 * o_w + 30.0 * o_c + 5.0, rel=1e-12)
+    assert row['C_kg_atm'] == pytest.approx(30.0 * c_c, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_crystallized_unfractionated_reservoirs_scale_uniformly():
+    """The unfractionated reservoirs keep the uniform scaling.
+
+    Physical scenario: 10 kg escapes from a 100 kg water atmosphere under
+    ``bulk``; the column keeps 90 kg, with the same composition.
+    """
     from proteus.outgas.wrapper import run_crystallized
     from proteus.utils.constants import secs_per_year
 
@@ -2353,16 +2420,12 @@ def test_run_crystallized_rejects_fractionated_escape():
         'H2O_bar': 10.0,
         'P_surf': 10.0,
     }
-    # A fractionating reservoir is an explicit, documented refusal.
-    with pytest.raises(NotImplementedError, match='unfractionated'):
-        run_crystallized(_cryst_cfg('pxuv'), dict(base), dt)
-
-    # 'bulk' is unfractionated and accepted: the atmosphere is actually debited
-    # (90 kg retained), not passed through unchanged.
     hf_bulk = dict(base)
     run_crystallized(_cryst_cfg('bulk'), hf_bulk, dt)
     assert hf_bulk['M_atm'] == pytest.approx(90.0, rel=1e-9)
-    assert hf_bulk['M_atm'] < base['M_atm'] - 1.0
+    assert hf_bulk['H2O_bar'] == pytest.approx(9.0, rel=1e-9)
+    with pytest.raises(NotImplementedError, match='unfractionated'):
+        run_crystallized(_cryst_cfg('wind'), dict(base), dt)
 
 
 # ---------------------------------------------------------------------------
@@ -2940,7 +3003,7 @@ def test_a_frozen_atmosphere_loses_per_element_what_escape_takes_from_each_total
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0e9  # kg/s, capped at a quarter of the atmosphere
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3

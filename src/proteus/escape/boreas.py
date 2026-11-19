@@ -179,7 +179,9 @@ def run_boreas(config: Config, hf_row: dict, dirs: dict):
     # If not doing fractionation, overwrite fluxes...
     if not config.escape.boreas.fractionate:
         calc_unfract_fluxes(
-            hf_row, reservoir=config.escape.reservoir, min_thresh=config.outgas.mass_thresh
+            hf_row,
+            reservoir=config.escape.effective_reservoir,
+            min_thresh=config.outgas.mass_thresh,
         )
         return
 

@@ -27,7 +27,7 @@ parameter selects the surface energy balance scheme (`mixed_layer`,
 | `spectral_bands` | str | `"48"` | Number of wavenumber bands in k-table. |
 | `spectral_cache` | str or none | `none` | Folder in which to reuse prepared spectral files across runs that share a stellar spectrum. None disables the cache and every run builds its own. |
 | `num_levels` | int | `50` | Number of vertical atmosphere levels. Must be >= 15. |
-| `p_top` | float | `1e-06` | Top-of-atmosphere pressure \[bar\]. Must be > 0. |
+| `p_top` | float | `1e-10` | Top-of-atmosphere pressure \[bar\]. The default, 1e-10 bar, keeps the XUV wind base of the ZEPHYRUS dispatcher, near a nanobar for hydrogen, inside the column. Must be > 0. |
 | `p_obs` | float or Literal or none | `0.02` | Observation pressure level \[bar\] (transit radius). Set to 'none' (-> None) to instead let AGNI determine this pressure level self-consistently from the optical depth (see `agni.tau_obs`, `agni.wl_obs`); AGNI only. |
 | `overlap_method` | str | `"ee"` | Gas overlap method. Choices: 'ro', 'rorr', 'ee'. |
 
@@ -74,7 +74,7 @@ interior heat flux. The `fastchem_*` parameters apply when
 |---|---|---|---|
 | `solve_energy` | bool | `true` | Solve for an energy-conserving atmosphere solution. |
 | `convection` | bool | `true` | Account for convective heat transport, using MLT. |
-| `conduction` | bool | `false` | Account for conductive heat transport, using Fourier's law. |
+| `conduction` | bool | `true` | Account for conductive heat transport, using Fourier's law. On by default, for a more stable temperature in the optically thin upper atmosphere. |
 | `sens_heat` | bool | `true` | Include sensible heat flux at surface. |
 | `rainout` | bool | `true` | Enable volatile condensation and evaporation in the atmosphere. |
 | `oceans` | bool | `true` | Enable volatile ocean formation at the surface. |

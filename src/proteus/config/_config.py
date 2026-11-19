@@ -24,10 +24,21 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def spada_zephyrus(instance, attribute, value):
-    """ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks."""
+    """ZEPHYRUS escape wants the MORS star module with the Spada evolution tracks.
+
+    Energy-limited escape needs the XUV flux those tracks provide, so the "el"
+    scheme requires them. The dispatcher stays meaningful without XUV (boil-off
+    and Jeans escape do not need it), so it only warns.
+    """
     if (instance.escape.module == 'zephyrus') and not (
         (instance.star.module == 'mors') and (instance.star.mors.tracks == 'spada')
     ):
+        if getattr(instance.escape, 'uses_dispatcher', False):
+            log.warning(
+                'ZEPHYRUS without MORS and the Spada tracks: the XUV-driven escape '
+                'branches see the XUV flux of the configured star model.'
+            )
+            return
         raise ValueError('ZEPHYRUS must be used with MORS and the Spada evolution tracks')
 
 
@@ -184,10 +195,27 @@ def parameterized_excludes_accretion(instance, attribute, value):
         )
 
 
-CURRENT_CONFIG_VERSION = '3.0'
+CURRENT_CONFIG_VERSION = '3.1'
 
 
 def valid_config_version(instance, attribute, value):
+    """Refuse a config file written for another format version.
+
+    A 3.0 file is refused with the migration command, because 3.1 changed three
+    defaults that a 3.0 file relies on without stating them: the escape scheme
+    (energy-limited to the ZEPHYRUS dispatcher, which brings its own reservoir,
+    Hill clip, and tidal defaults), ``atmos_clim.p_top`` (1e-6 to 1e-10 bar), and
+    ``atmos_clim.agni.conduction`` (off to on).
+    """
+    if value == '3.0':
+        raise ValueError(
+            'Config file version "3.0" predates the escape dispatcher defaults of '
+            f'version "{CURRENT_CONFIG_VERSION}". Translate it with '
+            '`python tools/migrate_config_v3_0_to_v3_1.py <file>`, which keeps its '
+            'behavior by setting escape.zephyrus.scheme = "el", '
+            'atmos_clim.p_top = 1e-6, and atmos_clim.agni.conduction = false where the '
+            'file leaves them unset. See docs/How-to/config.md, "Format versions".'
+        )
     if value != CURRENT_CONFIG_VERSION:
         raise ValueError(
             f'Config file version "{value}" is not compatible with this version of PROTEUS '
@@ -474,10 +502,11 @@ def lid_seal_requirements(instance, attribute, value):
             'outgas.lid_seal.enabled = true requires outgas.module = "calliope", not '
             f'"{instance.outgas.module}": the leak rebuilds the pressures as CALLIOPE does.'
         )
-    if instance.escape.reservoir not in ('outgas', 'bulk'):
+    if instance.escape.effective_reservoir not in ('outgas', 'bulk'):
         raise ValueError(
-            'outgas.lid_seal.enabled = true requires escape.reservoir = "outgas" or "bulk", '
-            f'not "{instance.escape.reservoir}": a held step applies unfractionated escape.'
+            'outgas.lid_seal.enabled = true requires unfractionated escape, '
+            f'not escape.reservoir = "{instance.escape.effective_reservoir}": a held step scales the '
+            'atmosphere uniformly. With ZEPHYRUS, set escape.zephyrus.scheme = "el".'
         )
     zalmoxis = instance.interior_struct.module == 'zalmoxis'
     if zalmoxis and not getattr(instance.interior_struct.zalmoxis, 'dry_mantle', True):
@@ -968,7 +997,7 @@ class Config:
     observe: Observe = field(factory=Observe, validator=(observe_resolved_atmosphere,))
 
     config_version: str = field(
-        default='3.0',
+        default=CURRENT_CONFIG_VERSION,
         validator=(
             valid_config_version,
             check_module_dependencies,

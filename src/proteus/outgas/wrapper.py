@@ -10,6 +10,7 @@ import numpy as np
 from proteus.escape.wrapper import readable_total
 from proteus.interior_struct.common import record_volatile_change
 from proteus.outgas.common import EMPTY_ATMOSPHERE_KEPT_KEYS, expected_keys, set_element_ratios
+from proteus.outgas.fractionated_debit import apply_frozen_debit
 from proteus.outgas.lavatmos import run_vapourisation
 from proteus.outgas.lid_seal import clear_seal, seal_enabled, sealed_mass
 from proteus.outgas.trapping import (
@@ -609,12 +610,12 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     dt : float
         Length of the current step [yr], used to size the escaped mass.
     """
-    # Uniform scaling is valid only while escape removes atmospheric species in
-    # proportion to their abundance. A fractionating model would change the
-    # composition and require per-species debiting, so refuse it explicitly at
-    # the point that relies on the assumption.
-
-    reservoir = getattr(config.escape, 'reservoir', 'outgas')
+    # Uniform scaling holds only while escape takes the gases in proportion to
+    # their abundance; fractionating escape debits each element from its gases.
+    reservoir = getattr(config.escape, 'effective_reservoir', 'outgas')
+    if reservoir == 'pxuv':
+        apply_frozen_debit(hf_row)
+        return
     if reservoir not in ('outgas', 'bulk'):
         raise NotImplementedError(
             f'run_crystallized assumes unfractionated escape; escape.reservoir='

@@ -63,7 +63,7 @@ class _Holder:
 
 
 _MINIMAL_VALID = {
-    'config_version': '3.0',
+    'config_version': '3.1',
     'star': {'module': 'dummy', 'dummy': {'radius': 1.0}},
     'planet': {
         'mass_tot': 1.0,
@@ -167,7 +167,7 @@ def test_orphans_find_key_problems_valid_top_level_keys():
     """
     from proteus.config._config import Config
 
-    data = {'star': {}, 'planet': {}, 'orbit': {}, 'config_version': '3.0'}
+    data = {'star': {}, 'planet': {}, 'orbit': {}, 'config_version': '3.1'}
     result = find_key_problems(data, Config)[0]
     assert result == []
 

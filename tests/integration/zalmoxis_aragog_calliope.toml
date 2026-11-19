@@ -17,7 +17,7 @@
 # solves the mass-radius profile once at the initial condition and the
 # result is held fixed for the rest of the run. The test asserts R_int is
 # constant across rows, which this guarantees by construction.
-config_version = "3.0"
+config_version = "3.1"
 
     [params.out]
         path = "auto"

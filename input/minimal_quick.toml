@@ -3,7 +3,7 @@
 # For an install check in under 1 min use input/dummy.toml, which replaces every module by its dummy.
 
 # Config file format version
-config_version = "3.0"
+config_version = "3.1"
 
 [params]
     [params.dt]

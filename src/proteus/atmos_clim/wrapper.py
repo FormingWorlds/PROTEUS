@@ -19,6 +19,7 @@ from proteus.atmos_clim.common import (
     lid_open_flux,
     require_spfile_path,
 )
+from proteus.atmos_clim.escape_profile import store_escape_profile
 from proteus.atmos_clim.surface_skin import effective_surf_state
 from proteus.star.wrapper import flux_weighted_distance
 from proteus.utils.constants import const_R, gas_list
@@ -395,6 +396,7 @@ def run_atmosphere(
     # (not persisted to helpfile). AGNI sets this from its Newton solver;
     # JANUS / dummy / transparent always succeed and default to True.
     atmos_o.converged = bool(atm_output.pop('agni_converged', True))
+    store_escape_profile(atmos_o, config, hf_row)
 
     # Store variables common to `hf_row` and `atm_output`
     for key in atm_output.keys():
