@@ -26,7 +26,7 @@ The physics of the lid in the coupling is on the page [Sub-grid lid and the surf
 | Test id | Reference | Scope | Last compared |
 |---|---|---|---|
 | `tests/atmos_clim/test_common.py::test_the_call_flux_is_the_parallel_sum_of_the_lid_and_the_open_surface` | Analytical limit: two conductors in parallel at one surface temperature | `lid_boundary` at 110 surface temperatures, 4 weights, 3 lid conductances | 2026-11-08 |
-| `tests/atmos_clim/test_common.py::test_the_weighted_parts_sum_to_f_atm_less_the_unscaled_cap` | Analytical limit: the sum of the two weighted parts | `lid_flux_cap` and `lid_open_flux` at 21 weights, 3 ratios $r$ and 2 lid conductances | 2026-11-08 |
+| `tests/atmos_clim/test_common.py::test_the_weighted_parts_sum_to_f_atm` | Analytical limit: the sum of the two weighted parts | `lid_flux_cap` and `lid_open_flux` at 21 weights, 3 ratios $r$ and 2 lid conductances | 2026-11-19 |
 | `tests/atmos_clim/test_lid_open_flux_instep.py::test_the_response_is_the_change_of_the_shared_surface` | Derivative of the shared surface balance (central difference) | `lid_open_conductance` at 19 weights and 3 slopes $F'$ | 2026-11-18 |
 | `tests/interior_energetics/test_lid_open_flux_coupled.py::test_the_open_part_keeps_the_coupled_runs_from_swinging` | Stored coupled runs with the fixed open flux and with the lid off | 2 segments of 1 Earth-mass runs through the lid onset | 2026-11-18 |
 
@@ -56,29 +56,31 @@ $$F = w \min(G_\mathrm{lid}, G_\mathrm{skin}) (T_b - T_\mathrm{surf}) + (1 - w)\
 
 ## The two parts of the surface sum to the atmosphere flux
 
-**Why this check exists.** After the atmosphere step the interior takes two fluxes, the lid part at most the cap $C$ and the open part $F_\mathrm{open}$, and their weighted sum must not count a flux twice or lose one. An open part equal to $F_\mathrm{atm}$ counts the lid part twice, because $F_\mathrm{atm}$ already holds it. An open part without a scale loses the difference between the atmosphere and the skin balance of its call; the test sees both faults.
+**Why this check exists.** After the atmosphere step the interior takes two fluxes, the lid part at most the cap $C$ and the open part $F_\mathrm{open}$, and their weighted sum must not count a flux twice or lose one. An open part equal to $F_\mathrm{atm}$ counts the lid part twice, because $F_\mathrm{atm}$ already holds it. An open part equal to the skin flux scaled by the ratio of the atmosphere to its call loses the part of that difference that falls on the lid; the test sees both faults.
 
-**What it tests.** The test builds a surface with $T_\mathrm{surf}$ = 900 K, the temperatures and skin of the first case, and $G_\mathrm{lid}$ = 100 and 400 W m$^{-2}$ K$^{-1}$ (half of $G_\mathrm{skin}$ and twice it, where the cap at $G_\mathrm{skin}$ acts). It sets $F_\mathrm{atm}$ to $r$ times the skin balance of the call, for $r$ = 0.95, 1 and 1.06, at 21 weights from 0 to 1. The ratio $r$ says how far the atmosphere is from the skin balance; AGNI closes it only to its solver tolerance. The code scales the open part by $r$: $F_\mathrm{open} = r\, G_\mathrm{skin} (T_m - T_\mathrm{surf})$. This scaled form holds where the skin balance of the call is positive; where it is 0 or below, the open part starts at $F_\mathrm{atm}$ ([explanation](../../Explanations/lid_coupling.md#the-open-part-within-a-step)). The test checks the sum
+**What it tests.** The test builds a surface with $T_\mathrm{surf}$ = 900 K, the temperatures and skin of the first case, and $G_\mathrm{lid}$ = 100 and 400 W m$^{-2}$ K$^{-1}$ (half of $G_\mathrm{skin}$ and twice it, where the cap at $G_\mathrm{skin}$ acts). It sets $F_\mathrm{atm}$ to $r$ times the skin balance of the call, for $r$ = 0.95, 1 and 1.06, at 21 weights from 0 to 1. The ratio $r$ says how far the atmosphere is from the skin balance; AGNI closes it only to its solver tolerance. The code gives the open part the rest of the atmosphere flux, $F_\mathrm{open} = (F_\mathrm{atm} - w C) / (1 - w)$ per open area, with $C$ the flux of the lid part in the call ([explanation](../../Explanations/lid_coupling.md#what-the-atmosphere-call-sees)). The test checks the sum
 
-$$w C + (1 - w) F_\mathrm{open} = F_\mathrm{atm} - w C (r - 1).$$
+$$w C + (1 - w) F_\mathrm{open} = F_\mathrm{atm}.$$
 
-**How we know the right answer.** Where the atmosphere closes its balance, $r = 1$, the two parts are the two terms of the parallel sum of the first case, so they add to $F_\mathrm{atm}$ exactly. For $r \neq 1$ only the open part is scaled, and the cap of the lid part is not, so the sum misses $F_\mathrm{atm}$ by $w C (r - 1)$. The test computes $C = \min(G_\mathrm{lid}, G_\mathrm{skin}) (T_b - T_\mathrm{surf})$ and the skin balance from these formulas, not from the code.
+A property test, `test_the_weighted_parts_sum_to_f_atm_on_both_sides_of_the_lid_base` in `tests/atmos_clim/test_lid_open_flux_instep.py`, checks the same sum with the signed lid flux at up to 400 random states, with `F_atm` of either sign and the surface on either side of $T_b$.
 
-**Why it matters.** The interior loses the sum of the two parts. A flux counted twice would cool the interior too fast under a growing lid.
+**How we know the right answer.** The sum is the flux that the atmosphere carries away, by the definition of the two parts. The test computes $C = \min(G_\mathrm{lid}, G_\mathrm{skin}) (T_b - T_\mathrm{surf})$ and the skin balance from these formulas, not from the code. At $r = 1$ the open part is the second term of the parallel sum of the first case, the skin flux $G_\mathrm{skin}(T_m - T_\mathrm{surf})$.
+
+**Why it matters.** The interior loses the sum of the two parts. A flux counted twice would cool the interior too fast under a growing lid, and a flux lost would let it cool too slowly.
 
 ![Sum of the two weighted parts divided by the atmosphere flux, against the lid weight, for 3 ratios r](../../assets/validation/atmos_clim_lid_open_part_sum.svg#only-light){ width="80%" }
 ![Sum of the two weighted parts divided by the atmosphere flux, against the lid weight, for 3 ratios r](../../assets/validation/atmos_clim_lid_open_part_sum_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The horizontal axis is the lid weight $w$, the vertical axis the sum $w C + (1 - w) F_\mathrm{open}$ divided by $F_\mathrm{atm}$, for $G_\mathrm{lid}$ = 100 W m$^{-2}$ K$^{-1}$. The lines are the closed form for each ratio $r$, and the dots are the sum from `lid_flux_cap` and `lid_open_flux`. The dots lie on the lines. At $r = 1$ the sum is $F_\mathrm{atm}$ for every weight.
+**How to read the plot.** The horizontal axis is the lid weight $w$, the vertical axis the sum $w C + (1 - w) F_\mathrm{open}$ divided by $F_\mathrm{atm}$, for $G_\mathrm{lid}$ = 100 W m$^{-2}$ K$^{-1}$. The dots are the sum from `lid_flux_cap` and `lid_open_flux`; they lie at 1 for every weight below 1. The dashed lines are the sum with the open part equal to the skin flux scaled by $r$, $1 - w C (r - 1) / F_\mathrm{atm}$, for comparison. At $w = 1$ the open area is 0, and both give the lid part alone, $C / F_\mathrm{atm} = 1/r$.
 
-**Known limit.** For $r \neq 1$ the sum misses $F_\mathrm{atm}$ by $w C (r - 1)$, by design: 1.7 % at $r$ = 1.06 and $w$ = 0.5 here.
+**Known limit.** Where the open area $1 - w$ is $10^{-9}$ or less, the open part takes $F_\mathrm{atm}$ and the sum is $w C + (1 - w) F_\mathrm{atm}$, close to the lid part alone. Per open area $F_\mathrm{open}$ grows as $1/(1 - w)$ near $w = 1$.
 
 ??? info "Test details"
     - Reference: analytical limit, the sum of the two weighted parts from the definitions of the cap and the open part.
-    - Tolerance: relative $10^{-12}$ at each weight.
-    - Discrimination (computed in the test): at $w = 0.5$ and $G_\mathrm{lid} = G_\mathrm{skin}/2$, an open part equal to $F_\mathrm{atm}$ misses $F_\mathrm{atm}$ by 21 % at $r = 1$. An open part without the scale misses $F_\mathrm{atm}$ by 5.7 % and the closed form by 4.0 % at $r = 1.06$, where the closed form is 1.7 % below $F_\mathrm{atm}$; at $r = 1$ the two are equal, so only $r$ = 0.95 and 1.06 tell them apart.
-    - Test id: `tests/atmos_clim/test_common.py::test_the_weighted_parts_sum_to_f_atm_less_the_unscaled_cap`
-    - Command: `pytest tests/atmos_clim/test_common.py -k less_the_unscaled_cap` (add `--validation-plots` to write the plot pair)
+    - Tolerance: relative $10^{-12}$ at each weight below 1, and $1/r$ to $10^{-12}$ at $w = 1$.
+    - Discrimination (computed in the test): at $w = 0.5$ and $G_\mathrm{lid} = G_\mathrm{skin}/2$, an open part equal to $F_\mathrm{atm}$ misses $F_\mathrm{atm}$ by 21 % at $r = 1$, and the skin flux scaled by $r$ misses it by $w C (r - 1)$, 1.7 % at $r = 1.06$.
+    - Test id: `tests/atmos_clim/test_common.py::test_the_weighted_parts_sum_to_f_atm`
+    - Command: `pytest tests/atmos_clim/test_common.py -k test_the_weighted_parts_sum_to_f_atm` (add `--validation-plots` to write the plot pair)
 
 ## The open part follows the melt within the interior step
 

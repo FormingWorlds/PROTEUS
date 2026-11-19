@@ -115,11 +115,11 @@ Then $\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})$ equa
 
 **Why the 10 mm skin is not added on top of the lid.** The skin stands for the boundary layer at the top of a molten surface. Under a solid lid no melt reaches the surface, so that boundary layer does not exist: the lid is the conductive layer, and $T_\mathrm{surf}$ is the temperature at its top. Adding the skin in series, $1/G = 1/G_\mathrm{lid} + 1/G_\mathrm{skin}$, would count one layer twice; at $G_\mathrm{lid} = G_\mathrm{skin}$ it would halve the conductance of the lid part.
 
-**What the interior takes.** After the atmosphere step, `run_atmosphere` writes `lid_F_open`, the flux of the open part:
+**What the interior takes.** After the atmosphere step, `run_atmosphere` writes `lid_F_open`, the flux of the open part per open area:
 
-$$F_\mathrm{open,0} = r\,G_\mathrm{skin}\,(T_m - T_\mathrm{surf}), \qquad r = \frac{F_\mathrm{atm}}{\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})},$$
+$$F_\mathrm{open,0} = \frac{F_\mathrm{atm} - w\,L}{1 - w}, \qquad L = G_\mathrm{lid}'\,(T_b - T_\mathrm{surf}),$$
 
-and `F_atm` where no lid acts. The ratio $r$ compares the flux of the atmosphere with the parallel skin balance of its call. Where the atmosphere closes that balance, $r = 1$ and the weighted lid and open parts sum to `F_atm`. Where it does not, only the open part is scaled by $r$ and the cap $C$ of the lid part is not, so with the lid at its cap the weighted parts $w C + (1 - w) F_\mathrm{open}$ miss `F_atm` by $w C (r - 1)$; in the two AGNI onset runs they summed to 0.956 to 1.000 of `F_atm`. This sum needs a surface below $T_b$. For a surface at or above $T_b$ no cap is set and Aragog holds the lid surface 1 K below $T_b$, so the flux of the lid part is no longer $C$ and the sum does not hold. $F_\mathrm{open,0}$ tends to `F_atm` as $w$ goes to 0, so the boundary of the open part does not step by the difference when the weight first exceeds 0. Where the balance of the call or the skin flux is not positive (a surface at or above the melt side of the call), $F_\mathrm{open,0}$ is `F_atm`. A positive balance with `F_atm` at or below 0 gives $r \le 0$, a state the two parts cannot share; the run then stops with an error that names $r$, `F_atm` and the balance. In the next interior step Aragog takes `lid_F_open` as the start flux of the part $1 - w$ and holds the lid surface at $T_\mathrm{surf}$. `F_atm` itself holds the lid term too, so as the flux of the open part it would count the lid part a second time.
+and `F_atm` where no lid acts. $L$ is the flux of the lid part in the call, with its sign: it is inward for a surface above $T_b$. The weighted parts $w L + (1 - w) F_\mathrm{open,0}$ sum to `F_atm` for any sign of `F_atm` and of $T_b - T_\mathrm{surf}$, so the two parts lose what the atmosphere carries away. Where the atmosphere closes the skin balance of its call, $F_\mathrm{open,0}$ is the skin flux $G_\mathrm{skin}(T_m - T_\mathrm{surf})$; where it does not, the open part takes the whole difference. $F_\mathrm{open,0}$ tends to `F_atm` as $w$ goes to 0, so the boundary of the open part does not step by the difference when the weight first exceeds 0. Per open area the value grows as $1/(1 - w)$ near $w = 1$, while its share $(1 - w) F_\mathrm{open,0}$ stays `F_atm` less $w L$; where $1 - w$ is $10^{-9}$ or less, $F_\mathrm{open,0}$ is `F_atm`. An `F_atm` that is not finite stops the run with status 22. In the next interior step Aragog takes `lid_F_open` as the start flux of the part $1 - w$ and holds the lid surface at $T_\mathrm{surf}$. In that step the lid part loses its own conduction, at most the cap $C$ of Rule 3 for a surface below $T_b$; for a surface at or above $T_b$ no cap is set and Aragog holds the lid surface 1 K below $T_b$, so the flux of the lid part in the step is not $L$. `F_atm` itself holds the lid term too, so as the flux of the open part it would count the lid part a second time.
 
 **Where this is checked.** [Validation: the lid and the open surface in the atmosphere call](../Validation/atmos_clim/common.md) checks the parallel sum of the call and the sum of the two parts against their closed forms.
 
@@ -127,7 +127,7 @@ and `F_atm` where no lid acts. The ratio $r$ compares the flux of the atmosphere
 
 How does the flux of the open part change while the interior step runs?
 
-**Short answer.** The open part starts the step at $F_\mathrm{open,0}$ and then follows its melt: when the melt under it warms by 1 K, its loss rises by $G_\mathrm{eff}$ per open area. A fixed start flux would let a warming melt lose no more heat, and an inward start flux would heat the top cell for the whole step.
+**Short answer.** The open part starts the step at $F_\mathrm{open,0}$ and then follows its melt: when the melt under it warms by 1 K, its loss rises by $G_\mathrm{eff}$ per open area. A fixed start flux would let a warming melt lose no more heat, and a fixed inward start flux would heat the top cell for the whole step.
 
 Within the step
 
@@ -147,7 +147,7 @@ $$G_\mathrm{eff} = \frac{G_\mathrm{skin}\,F'}{F' + w\,G_\mathrm{lid}' + (1 - w)\
 - As $w$ goes to 1 it is $G_\mathrm{skin} F' / (F' + G_\mathrm{lid}')$ per open area and 0 per total area.
 - It is at most $G_\mathrm{skin}$.
 
-The start value carries the scale $r$ of the call, $r\,G_\mathrm{skin}(T_m - T_\mathrm{surf})$, and the response uses $G_\mathrm{skin}$ without it. Where the atmosphere does not close its balance the response therefore differs from that of the scaled skin by the factor $r$; where it closes the balance, $r = 1$ and the two agree.
+$G_\mathrm{eff}$ is the change of the shared surface balance. It does not depend on how far `F_atm` is from the skin balance of the call; that difference sits in $F_\mathrm{open,0}$.
 
 **Example.** On a stored lid-onset row of a coupled run ($w = 0.703$, $G_\mathrm{lid}' = 7.27$, $F' = 0.306$ W m$^{-2}$ K$^{-1}$), $G_\mathrm{eff}$ is 0.944 W m$^{-2}$ K$^{-1}$ per open area and 0.280 per total area. An open part that followed the shared surface on its own, with the lid part held, would carry 4.96 W m$^{-2}$ K$^{-1}$ per total area, 17.7 times the change of the atmosphere.
 
@@ -221,7 +221,7 @@ The interior writes every column except `lid_F_open` at each step; the atmospher
 ## Limits
 
 - **JANUS.** JANUS does not read the lid. With `interior_energetics.module = "aragog"` and `lid_mush_base = true`, a config with `atmos_clim.module = "janus"` is refused at load, and so is any `atmos_clim.surf_state` other than `"skin"`. The dummy with `atmos_clim.dummy.fixed_flux > 0` is refused too: it returns its flux without the skin, so the lid does not reach the atmosphere.
-- **prevent_warming.** `planet.prevent_warming = true` is refused with the lid at load: it clamps `F_atm` while the open part of the lid keeps the skin flux, so the flux balance of the lid does not close.
+- **prevent_warming.** `planet.prevent_warming = true` is refused with the lid at load: it raises `F_atm` to at least $10^{-8}$ W m$^{-2}$ and keeps `T_magma` from rising, so the two parts of the surface would lose a flux that the atmosphere did not solve.
 - **Saturation skin.** With `surface_d = "saturation"` the skin is the stack of condensate layers, and it has no thickness while no layer has formed; a condensate layer over the lid is not modelled. A config with the lid and a saturation skin is refused at load. A live lid with a zero skin, as on a resume from a helpfile without `boundary_layer_conductivity`, stops the run with an error, because the open part then has no conductance to blend.
 - **One column.** The lid and the open part share one surface temperature in a 1-D column, blended by $w$. The model has no map of where on the planet a crust lies.
 - **The cap.** Rule 3 caps the flux of the lid part only; the open part starts at `lid_F_open` and follows its melt with $G_\mathrm{eff}$, a first-order response with the slope of the rows.

@@ -534,16 +534,12 @@ def lid_flux_cap(hf_row: dict) -> float | None:
     return C if C > 0.0 else None
 
 
-# set by the first unscaled open part, so that the warning is logged once per process
-_OPEN_FLUX_WARNED = [False]
-
-
 # open area 1 - w at or below which the open part takes F_atm
 LID_OPEN_AREA_FLOOR = 1e-9
 
 
 class LidOpenFluxError(RuntimeError):
-    """The open part of a live lid has no start value: its scale ``c`` is not positive."""
+    """The open part of a live lid has no start value: ``F_atm`` is not finite."""
 
 
 def lid_open_flux(hf_row: dict) -> float:
@@ -557,53 +553,32 @@ def lid_open_flux(hf_row: dict) -> float:
     Returns
     -------
     float
-        ``F_atm`` without a lid. Where a lid acts, the skin flux ``G_skin (T_m - T_surf)``
-        (``T_m`` of :func:`lid_open_node`) scaled by ``c = F_atm / (G (T_melt - T_surf))``, the
-        ratio of the atmosphere flux to the parallel balance of :func:`lid_boundary`; ``F_atm``
-        where that balance or the skin flux is not positive.
+        ``F_atm`` without a lid. Where a lid acts, ``(F_atm - w L) / (1 - w)`` per open area,
+        with ``L = min(G_lid, G_skin) (T_b - T_surf)`` the signed flux of the lid part in the
+        call; ``F_atm`` where the open area ``1 - w`` is at or below ``LID_OPEN_AREA_FLOOR``.
 
     Raises
     ------
     LidOpenFluxError
-        For an ``F_atm`` that is not finite, or a scale ``c`` that is not positive: a positive
-        balance with ``F_atm`` at or below 0.
+        For an ``F_atm`` that is not finite under a live lid.
 
     Notes
     -----
-    The scale makes the boundary continuous at the onset: it tends to ``F_atm`` as the lid
-    weight goes to 0. Where the atmosphere closes the skin balance it is 1, and the weighted
-    lid and open parts sum to ``F_atm``. The value is the start of the step; inside it the
-    open part follows its node with :func:`lid_open_conductance`.
+    The lid part at ``L`` and the open part sum to ``F_atm`` for any sign of ``F_atm`` and of
+    ``T_b - T_surf``. The value tends to ``F_atm`` as the lid weight goes to 0. It is the start
+    of the step; inside it the open part follows its node with :func:`lid_open_conductance`.
     """
     if not lid_acts(hf_row):
         return float(hf_row['F_atm'])
-    T_surf = float(hf_row['T_surf'])
-    skin = _lid_skin_conductance(hf_row) * (lid_open_node(hf_row) - T_surf)
-    d, k, T_melt = lid_boundary(hf_row)
-    balance = k / d * (T_melt - T_surf)
+    G = min(float(hf_row['lid_conductance']), _lid_skin_conductance(hf_row))
     F_atm = float(hf_row['F_atm'])
     if not math.isfinite(F_atm):
         raise LidOpenFluxError(f'Lid open part: F_atm {F_atm} is not finite')
-    if not (balance > 0.0 and skin > 0.0):
-        if not _OPEN_FLUX_WARNED[0]:
-            log.warning(
-                'Lid open part: the skin balance of the call is %.4g W m-2 and the skin flux %.4g '
-                'W m-2 at T_surf %.2f K; the open part starts at F_atm %.4g W m-2',
-                balance,
-                skin,
-                T_surf,
-                F_atm,
-            )
-            _OPEN_FLUX_WARNED[0] = True
+    w = float(hf_row['lid_weight'])
+    if not 1.0 - w > LID_OPEN_AREA_FLOOR:
         return F_atm
-    c = F_atm / balance
-    if not c > 0.0:
-        raise LidOpenFluxError(
-            f'Lid open part: scale c = F_atm / balance = {c:.4g} not positive (F_atm {F_atm:.4g}, '
-            f'balance {balance:.4g} W m-2, T_surf {T_surf:.2f} K, lid weight '
-            f'{float(hf_row["lid_weight"]):.4g})'
-        )
-    return c * skin
+    L = G * (float(hf_row['lid_T_base']) - float(hf_row['T_surf']))
+    return (F_atm - w * L) / (1.0 - w)
 
 
 # lid_slope_guard codes: the slope was 0 or below, not finite or from a short step; it was cut

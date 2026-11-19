@@ -993,7 +993,7 @@ def test_open_part_takes_the_gap_of_the_atmosphere():
     F_open = lid_open_flux(row)
     assert F_open == pytest.approx((row['F_atm'] - 0.3 * L) / 0.7, rel=1e-14)
     assert 0.3 * L + 0.7 * F_open == pytest.approx(row['F_atm'], rel=1e-12)
-    assert abs(F_open / (0.95 * S) - 1.0) > 1e-3
+    assert abs(F_open - 0.95 * S) > 40.0  # 0.3 L (1 - 0.95) / 0.7 = 42.9
 
 
 @pytest.mark.parametrize('gap', [0.95, 1.0, 1.05])
@@ -1158,8 +1158,9 @@ def test_the_call_flux_is_the_parallel_sum_of_the_lid_and_the_open_surface(valid
 def test_the_weighted_parts_sum_to_f_atm(validation_plot):
     """Analytical limit: with r = F_atm over the skin balance of the call, the lid part at its
     cap C = min(G_lid, G_skin) (T_b - T_surf) and the open part sum to F_atm at every r. C and
-    the balance are computed here from their formulas. Checked to 1e-12 for w from 0 to 1 at
-    r = 0.95, 1 and 1.06, with G_lid = G_skin / 2 and 2 G_skin. At w = 0.5 and G_lid = G_skin / 2
+    the balance are computed here from their formulas. Checked to 1e-12 for w from 0 to 0.95 at
+    r = 0.95, 1 and 1.06, with G_lid = G_skin / 2 and 2 G_skin. At w = 1 the open area is 0 and
+    the sum is the lid part, C / F_atm = 1 / r. At w = 0.5 and G_lid = G_skin / 2
     an open part equal to F_atm misses F_atm by 21 % at r = 1, and the skin flux scaled by r
     misses it by w C (r - 1), 1.7 % at r = 1.06."""
     T_b, T_node, T_surf, G_skin = 1400.0, 1500.0, 900.0, 200.0
@@ -1181,7 +1182,8 @@ def test_the_weighted_parts_sum_to_f_atm(validation_plot):
                 got.append((w * C + (1.0 - w) * lid_open_flux(row)) / F_atm)
                 ref.append(1.0 - w * C_ref * (r - 1.0) / F_atm)
             ratio[G_lid, r], scaled[G_lid, r] = np.array(got), np.array(ref)
-            np.testing.assert_allclose(ratio[G_lid, r], 1.0, rtol=1e-12)
+            np.testing.assert_allclose(ratio[G_lid, r][:-1], 1.0, rtol=1e-12)
+            assert ratio[G_lid, r][-1] == pytest.approx(1.0 / r, rel=1e-12)
     C_h, S = 100.0 * 500.0, G_skin * 600.0
     F1 = 0.5 * C_h + 0.5 * S
     assert 1.0 - (0.5 * C_h + 0.5 * F1) / F1 == pytest.approx(0.206, abs=0.001)

@@ -223,7 +223,7 @@ def realign_xuv_gravity(hf_row: dict, radius: float):
 
 
 def lid_open_flux_or_stop(dirs: dict, hf_row: dict) -> float:
-    """:func:`lid_open_flux` of the row; its stop for a scale that is not positive writes status 22."""
+    """:func:`lid_open_flux` of the row; its stop for an ``F_atm`` that is not finite writes status 22."""
     try:
         return lid_open_flux(hf_row)
     except LidOpenFluxError:
