@@ -20,7 +20,6 @@ from proteus.utils.constants import (
     vol_list,
 )
 from proteus.utils.helper import (
-    eval_gas_mmw,
     format_subyear_time,
     list_snapshot_times,
     mol_to_ele,
@@ -144,14 +143,6 @@ def _set_escape_top_bc(config: Config, hf_row: dict, ele_arr: list, fpath: str) 
             'Escape top boundary without photochemistry: atoms form slowly in the top '
             'layer, so VULCAN may struggle to supply the escape fluxes'
         )
-
-
-def _mean_molar_mass(vmr: dict) -> float:
-    """Mean molar mass [g mol-1] of the gases in `vmr` (volume mixing ratios), renormalised."""
-    total = sum(vmr.values())
-    if total <= 0:
-        return float('nan')
-    return 1e3 * sum(x * eval_gas_mmw(gas) for gas, x in vmr.items()) / total
 
 
 def _warn_dropped_gases(surface: dict, ele_arr: list, network: str) -> None:
