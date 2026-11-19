@@ -23,6 +23,7 @@ Functions tested:
 from __future__ import annotations
 
 import logging
+import math
 import os
 import sys
 import warnings
@@ -906,6 +907,54 @@ def test_a_run_stopped_after_the_output_is_cleaned_records_why(
     lines = (tmp_path / 'status').read_text().splitlines()
     assert lines[0] == expected
     assert lines[1].startswith('Error (')
+
+
+def _lid_stop(site, then_exit, dirs):
+    """A start-up step that stops the run at a real lid raise site; with then_exit a SIGTERM
+    exit (SystemExit 143) follows the stop."""
+
+    def step(*_args, **_kwargs):
+        from tests.atmos_clim.test_common import _row
+
+        try:
+            if site == 'open flux':
+                from proteus.atmos_clim.wrapper import lid_open_flux_or_stop
+
+                lid_open_flux_or_stop(dirs, _row(0.3, T_surf=900.0, F_atm=math.nan))
+            else:
+                from proteus.interior_energetics.wrapper import guard_t_magma_clip
+
+                guard_t_magma_clip(dirs, {'Time': 1e5, 'lid_weight': 0.2}, 0.0, 1500.0)
+        except Exception:
+            if then_exit:
+                raise SystemExit(143)
+            raise
+
+    return step
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('site', 'code'), [('open flux', '22'), ('T_magma clip', '21')], ids=['open-flux', 'clip']
+)
+@pytest.mark.parametrize('then_exit', [False, True], ids=['raise', 'sigterm-after'])
+def test_a_lid_stop_keeps_its_status_through_the_exit_guard(tmp_path, site, code, then_exit):
+    """The lid stops write their own code (22 for an open-part input that is not finite, 21
+    for a T_magma clip under a live lid). The guard on Proteus.start keeps it, also when a
+    SIGTERM exit (SystemExit 143, status 25 for a running run) follows the stop."""
+    p = _make_proteus_instance(tmp_path)
+    p.directories.update(
+        {k: str(tmp_path / k) for k in ('output/observe', 'output/offchem', 'output/plots')}
+    )
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch(_MODULE_CONFIG, side_effect=_lid_stop(site, then_exit, p.directories))
+        )
+        with pytest.raises(SystemExit if then_exit else Exception):
+            p.start(resume=False, offline=True)
+    assert (tmp_path / 'status').read_text().splitlines()[0] == code
 
 
 @pytest.mark.unit
