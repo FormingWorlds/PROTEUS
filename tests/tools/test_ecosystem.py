@@ -346,3 +346,51 @@ def test_function_spans_attributes_a_method_and_its_decorator():
     spans = people_kb.function_spans(text)
     assert spans == [(4, 6, 'A.f')]
     assert not any(s[0] <= 2 <= s[1] for s in spans)
+
+
+def test_module_interfaces_maps_names_to_module_files_and_lists_misses():
+    """Python names map to their module file, a Julia call to <submodule>.jl in any folder, a miss stays unresolved."""
+    tree = {
+        'tree': [
+            {'path': 'src/aragog/solver/__init__.py', 'type': 'blob'},
+            {'path': 'src/aragog/core.py', 'type': 'blob'},
+            {'path': 'src/aragog', 'type': 'tree'},
+        ]
+    }
+    gh = FakeGitHub(
+        {
+            'repos/FormingWorlds/aragog/commits/main': {'sha': 'a1'},
+            'repos/FormingWorlds/aragog/git/trees/a1?recursive=1': tree,
+            'repos/nichollsh/AGNI/commits/main': {'sha': 'b2'},
+            'repos/nichollsh/AGNI/git/trees/b2?recursive=1': {
+                'tree': [
+                    {'path': 'src/state/atmosphere.jl', 'type': 'blob'},
+                    {'path': 'agni.jl', 'type': 'blob'},
+                ]
+            },
+        }
+    )
+    g = {
+        'home': HOME,
+        'nodes': {
+            'FormingWorlds/aragog': node(dist='fwl-aragog'),
+            'nichollsh/AGNI': node(julia='AGNI'),
+        },
+        'edges': [
+            edge(
+                'FormingWorlds/aragog',
+                symbols={
+                    'aragog.solver:EntropySolver': ['a.py:1'],
+                    'aragog.core:f': ['a.py:2'],
+                    'aragog.mesh:g': ['a.py:3'],
+                },
+            ),
+            edge('nichollsh/AGNI', symbols={'AGNI.atmosphere:setup!': ['b.py:1']}),
+        ],
+    }
+    out = {(i['to'], i['kind']): i for i in graph.module_interfaces(gh, g)}
+    aragog = out[('FormingWorlds/aragog', 'import')]
+    assert aragog['module_files'] == ['src/aragog/core.py', 'src/aragog/solver/__init__.py']
+    assert aragog['unresolved'] == ['aragog.mesh:g']
+    assert aragog['built_from'] == 'a1'
+    assert out[('nichollsh/AGNI', 'call')]['module_files'] == ['src/state/atmosphere.jl']

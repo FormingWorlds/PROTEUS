@@ -4,8 +4,9 @@ Usage::
 
     python tools/ecosystem/graph.py --out DIR
 
-Writes ``DIR/graph.json``, ``DIR/graph.md`` and ``DIR/interfaces.json`` (the PROTEUS files
-that each edge of PROTEUS depends on, per kind). The public, active repositories of the
+Writes ``DIR/graph.json``, ``DIR/graph.md``, ``DIR/interfaces.json`` (the PROTEUS files
+that each edge of PROTEUS depends on, per kind) and ``DIR/module_interfaces.json`` (the
+files of each module that PROTEUS imports from or calls). The public, active repositories of the
 organisation and the extra repositories of ``ecosystem.toml`` are read through the GitHub
 API: ``pyproject.toml`` and ``Project.toml`` give the package names and the dependency
 edges. The PROTEUS checkout adds the module pins of ``[tool.proteus.modules]``, the
@@ -481,6 +482,50 @@ def interfaces(graph: dict, sha: str) -> list[dict]:
     return out
 
 
+def module_files(module: str, name: str | None, julia: str | None) -> list[str]:
+    """Path suffixes of the files that can define ``module`` or ``module.name``. A Julia
+    submodule ``AGNI.atmosphere`` lives in a file ``atmosphere.jl`` in any folder; two files
+    of that name both count."""
+    parts = module.split('.')
+    if parts[0] == julia:
+        return [f'{parts[-1]}.jl']
+    base = '/'.join(parts)
+    return [f'{base}.py', f'{base}/__init__.py'] + ([f'{base}/{name}.py'] if name else [])
+
+
+def module_interfaces(gh: GitHub, graph: dict) -> list[dict]:
+    """Per PROTEUS edge, the files of the module repository at the head of its default branch
+    that define what PROTEUS imports (``import``) or calls through juliacall (``call``).
+    A name whose file is not found is listed in ``unresolved``."""
+    out = []
+    for e in (e for e in graph['edges'] if e['from'] == graph['home'] and e['symbols']):
+        node = graph['nodes'][e['to']]
+        head = gh.get_json(f'repos/{e["to"]}/commits/{node["default_branch"]}') or {}
+        tree = gh.get_json(f'repos/{e["to"]}/git/trees/{head.get("sha")}?recursive=1') or {}
+        paths = [t['path'] for t in tree.get('tree', []) if t['type'] == 'blob']
+        found = defaultdict(lambda: {'files': set(), 'symbols': set(), 'unresolved': set()})
+        for key in e['symbols']:
+            module, _, name = key.partition(':')
+            kind = 'call' if module.split('.')[0] == node['julia'] else 'import'
+            suffixes = module_files(module, name or None, node['julia'])
+            hits = {p for p in paths if any(p == c or p.endswith('/' + c) for c in suffixes)}
+            found[kind]['files' if hits else 'unresolved'] |= hits or {key}
+            found[kind]['symbols'].add(key)
+        out += [
+            {
+                'from': e['from'],
+                'to': e['to'],
+                'kind': kind,
+                'module_files': sorted(f['files']),
+                'symbols': sorted(f['symbols']),
+                'unresolved': sorted(f['unresolved']),
+                'built_from': head.get('sha'),
+            }
+            for kind, f in sorted(found.items())
+        ]
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--out', type=Path, required=True)
@@ -492,6 +537,8 @@ def main(argv: list[str] | None = None) -> int:
     (args.out / 'graph.md').write_text(render(graph))
     sha = git(args.root, 'rev-parse', 'HEAD').strip()
     (args.out / 'interfaces.json').write_text(json.dumps(interfaces(graph, sha), indent=1))
+    modules = module_interfaces(GitHub(), graph)
+    (args.out / 'module_interfaces.json').write_text(json.dumps(modules, indent=1))
     print(
         f'{len(graph["nodes"])} components, {len(graph["edges"])} edges, {len(graph["unlinked"])} unlinked'
     )

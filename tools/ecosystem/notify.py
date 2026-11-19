@@ -30,7 +30,7 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from graph import ROOT, load_settings, norm, version
+from graph import ROOT, load_settings, module_files, norm, version
 
 sys.path.insert(0, str(ROOT / 'tools' / 'digest'))
 from common import GitHub, is_bot  # noqa: E402
@@ -123,17 +123,8 @@ def symbols(edge: dict, julia: str | None):
     """``(module, name or None, sites, candidate files)`` of every name PROTEUS takes from a module."""
     for key, sites in edge['symbols'].items():
         module, _, name = key.partition(':')
-        if name.startswith('__'):
-            continue
-        parts = module.split('.')
-        if parts[0] == julia:
-            files = [f'src/{parts[-1]}.jl']
-        else:
-            base = '/'.join(parts)
-            files = [f'{base}.py', f'{base}/__init__.py'] + (
-                [f'{base}/{name}.py'] if name else []
-            )
-        yield module, name or None, sites, files
+        if not name.startswith('__'):
+            yield module, name or None, sites, module_files(module, name, julia)
 
 
 def site_files(edge: dict) -> set[str]:
