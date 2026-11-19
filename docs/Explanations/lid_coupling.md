@@ -153,13 +153,7 @@ $$G_\mathrm{eff} = \frac{G_\mathrm{skin}\,F'}{F' + w\,G_\mathrm{lid}' + (1 - w)\
 
 $G_\mathrm{eff}$ is the change of the shared surface balance. It does not depend on how far `F_atm` is from the skin balance of the call; that difference sits in $F_\mathrm{open,0}$.
 
-**Example.** On a stored lid-onset row of a coupled run ($w = 0.703$, $G_\mathrm{lid}' = 7.27$, $F' = 0.306$ W m$^{-2}$ K$^{-1}$), $G_\mathrm{eff}$ is 0.944 W m$^{-2}$ K$^{-1}$ per open area and 0.280 per total area. An open part that followed the shared surface on its own, with the lid part held, would carry 4.96 W m$^{-2}$ K$^{-1}$ per total area, 17.7 times the change of the atmosphere.
-
-**The slope guard.** `lid_flux_slope` gives $F'$ from the last 2 rows; the column `lid_slope_guard` records what the guard did on rows with a live lid:
-
-- 1: no earlier row, a slope of 0 or below, a non-finite slope, or one from a surface step below 0.01 K gives $G_\mathrm{eff} = 0$, and the open part keeps $F_\mathrm{open,0}$ for the step, an inward value included.
-- 2: a slope above $4 \sigma T_\mathrm{surf}^3$, the slope of a bare grey surface, is cut to it.
-- 0: no guard acted.
+**The slope guard.** `lid_flux_slope` gives $F'$ from the last 2 rows. No earlier row, a slope of 0 or below, a non-finite slope, or one from a surface step below 0.01 K gives $G_\mathrm{eff} = 0$, and the open part keeps $F_\mathrm{open,0}$ for the step, an inward value included (`lid_slope_guard` 1); a slope above $4 \sigma T_\mathrm{surf}^3$, the slope of a bare grey surface, is cut to it (2); 0 means no guard acted.
 
 PROTEUS passes $G_\mathrm{eff}$ to Aragog as `open_surface_conductance` only under a live lid in flux mode with the mush base. When the corrector of Rule 3 runs the step again with the secant, PROTEUS calculates $G_\mathrm{eff}$ again from the secant with the same guard; the size cut is then the grey secant over the same interval, and `lid_slope_guard` records the guard of the secant.
 
@@ -206,22 +200,6 @@ A resume that changes `lid_mush_base` from the value in the run's `init_coupler.
 ## Helpfile columns
 
 The interior writes every column except `lid_F_open` at each step; the atmosphere wrapper writes `lid_F_open`. With the lid off the columns read 0, except `lid_T_node` (the top basic node of the Aragog mesh) and `lid_F_open` (`F_atm`). With the lid on and $w = 0$, `lid_delta` holds the thin phantom lid, so read it with `lid_weight`. The full list is in [Output format](../Reference/output.md).
-
-| Column | Unit | Meaning |
-|---|---|---|
-| `lid_weight` | 1 | weight $w$ of the lid |
-| `lid_conductance` | W m$^{-2}$ K$^{-1}$ | conductance $G_\mathrm{lid}$ of the lid |
-| `lid_delta` | m | thickness $\delta$ of the lid; 0 without the lid, read with `lid_weight` |
-| `lid_delta_on` | m | onset thickness $\delta_\mathrm{on}$; 0 without the lid |
-| `lid_T_surface` | K | surface temperature of the lid |
-| `lid_T_base` | K | base temperature $T_b$ of the lid |
-| `lid_T_node` | K | top basic node $T_\mathrm{node}$ of the Aragog mesh |
-| `lid_F_open` | W m$^{-2}$ | start flux of the open part $1 - w$ of the surface, per open area |
-| `lid_F_resid` | W m$^{-2}$ | residual part $(F_\mathrm{atm} - B)/(1 - w)$ of `lid_F_open`, per open area; 0 without a lid |
-| `lid_F_diff` | W m$^{-2}$ | `F_int` of the step minus the `F_atm` it started from |
-| `lid_weight_max` | 1 | largest lid weight over the accepted solver states of the step |
-| `lid_slope_guard` | 1 | slope guard of the open part: 0 none, 1 slope set to 0, 2 slope cut |
-| `T_magma_clipped` | 1 | 1 where the step clipped a rise of `T_magma` (no lid), else 0 |
 
 ## Limits
 
