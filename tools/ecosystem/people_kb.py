@@ -7,13 +7,14 @@ Usage::
 Writes ``OUT/people.json`` with, per component, its recent committers, the openers of its
 open issues and the authors in its ``pyproject.toml``, and the openers of open PROTEUS
 issues that name it. With ``--people-py`` (``people.py`` of the related-work review), it
-also blames the PROTEUS functions that call each module and merges the commit emails by
-GitHub login with that script's ``blame``, ``functions``, ``enclosing`` and ``by_login``.
+also finds who last changed the PROTEUS functions that call each module, with that
+script's ``people_for_lines``, its stable interface.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib.util
 import json
 import re
@@ -75,10 +76,28 @@ def openers(issues: list[dict]) -> list[dict]:
     ]
 
 
+def function_spans(text: str) -> list[tuple[int, int, str]]:
+    """``(first, last, qualified name)`` of every function, decorators included."""
+    spans = []
+
+    def walk(node, prefix):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                name = f'{prefix}{child.name}'
+                if not isinstance(child, ast.ClassDef):
+                    first = min([child.lineno, *(d.lineno for d in child.decorator_list)])
+                    spans.append((first, child.end_lineno, name))
+                walk(child, f'{name}.')
+
+    walk(ast.parse(text), '')
+    return spans
+
+
 def call_site_owners(people, clone: Path, home: str, edge: dict, cache: Path) -> dict:
-    """``{file: {'sites': {line: function}, 'functions': {function: {login: lines}}}}``: blame
-    of the PROTEUS functions that call the module; ``''`` holds lines outside a function and
-    ``~name`` a commit author without a known GitHub login."""
+    """``{file: {'sites': {line: function}, 'functions': {function: {login: lines}}}}``: who
+    last changed the lines of the PROTEUS functions that call the module, from
+    ``people.people_for_lines``. ``''`` holds call lines outside a function and ``~name``
+    a commit author without a known GitHub login."""
     sites = defaultdict(set)
     for refs in edge['symbols'].values():
         for ref in refs:
@@ -86,25 +105,20 @@ def call_site_owners(people, clone: Path, home: str, edge: dict, cache: Path) ->
             sites[path].add(int(line))
     out = {}
     for path, lines in sorted(sites.items()):
-        spans = [s for s in people.functions((clone / path).read_text()) if not s[3]]
-        where, owned = {}, {}
+        spans = function_spans((clone / path).read_text())
+        where, blocks = {}, defaultdict(set)
         for line in lines:
-            span = people.enclosing(spans, line)
+            inside = [s for s in spans if s[0] <= line <= s[1]]
+            span = min(inside, key=lambda s: s[1] - s[0]) if inside else None
             where[line] = span[2] if span else ''
-            owned.update(
-                {n: where[line] for n in (range(span[0], span[1] + 1) if span else [line])}
-            )
-        records = defaultdict(people.record)
-        for n, (email, name, sha) in people.blame(str(clone), 'HEAD', path, set(owned)).items():
-            rec = records[email]
-            rec['names'].add(name)
-            rec['emails'].add(email)
-            rec['sha'] = rec['sha'] or sha
-            rec['function_lines'][owned[n]] += 1
-        functions = defaultdict(dict)
-        for p in people.by_login(home, records, cache).values():
-            for fn, n in p['function_lines'].items():
-                functions[fn][p['login'] or '~' + sorted(p['names'])[0]] = n
+            blocks[where[line]] |= set(range(span[0], span[1] + 1)) if span else {line}
+        functions = {}
+        for fn, block in blocks.items():
+            found = people.people_for_lines(str(clone), home, 'HEAD', {path: block}, cache)
+            functions[fn] = {
+                p['login'] or '~' + sorted(p['names'])[0]: sum(p['lines'].values())
+                for p in found.values()
+            }
         out[path] = {'sites': where, 'functions': functions}
     return out
 

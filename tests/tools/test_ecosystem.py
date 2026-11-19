@@ -20,6 +20,7 @@ sys.path.insert(0, str(_ROOT / 'tools' / 'ecosystem'))
 
 import graph  # noqa: E402
 import notify  # noqa: E402
+import people_kb  # noqa: E402
 
 HOME = 'FormingWorlds/PROTEUS'
 SETTINGS = {'bots': ['dependabot'], 'tag_limit': 2}
@@ -298,3 +299,50 @@ def test_render_puts_fyi_only_targets_in_the_digest_and_never_tags_them():
     assert '## Draft issue in FormingWorlds/aragog' not in text
     assert '- aragog: FormingWorlds/PROTEUS#1087 sets the pin.' in text
     assert text.count('@tim') == 1
+
+
+def test_interfaces_lists_exact_proteus_files_per_kind_and_skips_other_edges():
+    """Each PROTEUS edge gives one entry per kind with exact paths; a module edge gives none."""
+    g = {
+        'home': HOME,
+        'edges': [
+            edge(
+                'nichollsh/AGNI',
+                [
+                    {'kind': 'git pin', 'package': 'agni', 'spec': 'f4a1'},
+                    {'kind': 'script', 'file': 'tools/get_agni.sh'},
+                ],
+                symbols={
+                    'AGNI.atmosphere:setup!': [
+                        'src/proteus/atmos_clim/agni.py:400',
+                        'src/proteus/atmos_clim/agni.py:410',
+                    ]
+                },
+            ),
+            {
+                **edge(
+                    'FormingWorlds/fwl-io',
+                    [{'kind': 'runtime', 'package': 'fwl-io', 'spec': '>=1'}],
+                ),
+                'from': 'FormingWorlds/JANUS',
+            },
+        ],
+    }
+    g['edges'][0]['dispatch'] = ['src/proteus/atmos_clim/agni.py:run_agni']
+    out = graph.interfaces(g, 'abc123')
+    assert [(i['kind'], i['interface_files']) for i in out] == [
+        ('import', ['src/proteus/atmos_clim/agni.py']),
+        ('pin', ['pyproject.toml']),
+        ('script', ['tools/get_agni.sh']),
+        ('wrapper', ['src/proteus/atmos_clim/agni.py']),
+    ]
+    assert {i['built_from'] for i in out} == {'abc123'}
+    assert all(i['from'] == HOME for i in out), 'the JANUS edge is not a PROTEUS interface'
+
+
+def test_function_spans_attributes_a_method_and_its_decorator():
+    """A decorated method spans from its decorator; a class body line is in no function."""
+    text = 'class A:\n    x = 1\n\n    @staticmethod\n    def f():\n        return 2\n'
+    spans = people_kb.function_spans(text)
+    assert spans == [(4, 6, 'A.f')]
+    assert not any(s[0] <= 2 <= s[1] for s in spans)

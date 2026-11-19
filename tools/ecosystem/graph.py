@@ -4,7 +4,8 @@ Usage::
 
     python tools/ecosystem/graph.py --out DIR
 
-Writes ``DIR/graph.json`` and ``DIR/graph.md``. The public, active repositories of the
+Writes ``DIR/graph.json``, ``DIR/graph.md`` and ``DIR/interfaces.json`` (the PROTEUS files
+that each edge of PROTEUS depends on, per kind). The public, active repositories of the
 organisation and the extra repositories of ``ecosystem.toml`` are read through the GitHub
 API: ``pyproject.toml`` and ``Project.toml`` give the package names and the dependency
 edges. The PROTEUS checkout adds the module pins of ``[tool.proteus.modules]``, the
@@ -22,6 +23,7 @@ import re
 import subprocess
 import sys
 import tomllib
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -451,6 +453,34 @@ def build(gh: GitHub, root: Path, settings: dict) -> dict:
     }
 
 
+def interfaces(graph: dict, sha: str) -> list[dict]:
+    """The PROTEUS files of each PROTEUS edge, per kind: ``pin`` (``pyproject.toml``),
+    ``script`` (``tools/get_*.sh``), ``import`` (files that import or call the module) and
+    ``wrapper`` (dispatch entry files), with the commit the graph was built from."""
+    out = []
+    for e in (e for e in graph['edges'] if e['from'] == graph['home']):
+        files = defaultdict(set)
+        for how in e['how']:
+            if how['kind'] == 'script':
+                files['script'].add(how['file'])
+            elif how['kind'] in ('git pin', 'runtime') or how['kind'].startswith('extra'):
+                files['pin'].add('pyproject.toml')
+        files['import'] = {s.rsplit(':', 1)[0] for v in e['symbols'].values() for s in v}
+        files['wrapper'] = {d.split(':')[0] for d in e['dispatch']}
+        out += [
+            {
+                'from': e['from'],
+                'to': e['to'],
+                'kind': kind,
+                'interface_files': sorted(paths),
+                'built_from': sha,
+            }
+            for kind, paths in sorted(files.items())
+            if paths
+        ]
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--out', type=Path, required=True)
@@ -460,6 +490,8 @@ def main(argv: list[str] | None = None) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / 'graph.json').write_text(json.dumps(graph, indent=1))
     (args.out / 'graph.md').write_text(render(graph))
+    sha = git(args.root, 'rev-parse', 'HEAD').strip()
+    (args.out / 'interfaces.json').write_text(json.dumps(interfaces(graph, sha), indent=1))
     print(
         f'{len(graph["nodes"])} components, {len(graph["edges"])} edges, {len(graph["unlinked"])} unlinked'
     )
