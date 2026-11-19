@@ -2185,6 +2185,118 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
     interior_o.zalmoxis_fail_count = 0
 
 
+def _call_with_failing_solver(config, dirs, interior_o, hf_row, last_struct_time):
+    """Run update_structure_from_interior with a solver stub that always raises; return
+    the output tuple and the solver mock."""
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        side_effect=RuntimeError('mock failure'),
+    ) as solver:
+        out = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, last_struct_time, 3000.0, 0.8
+        )
+    return out, solver
+
+
+@pytest.mark.unit
+def test_stale_ceiling_spaces_its_retries_by_the_ceiling(tmp_path):
+    """After a failed stale-ceiling re-solve the next attempt waits update_stale_ceiling
+    from that attempt: 8 steps of 10 yr make 1 solver call, not 8 (which would reach
+    the abort count), and a step 25 kyr after the failed attempt retries."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    last_struct_time, calls, aborted = 7e4, 0, False
+    for k in range(8):
+        hf_row['Time'] = 1e5 + 10.0 * k
+        try:
+            out, solver = _call_with_failing_solver(
+                config, dirs, interior_o, hf_row, last_struct_time
+            )
+        except RuntimeError:
+            aborted, calls = True, calls + 1
+            break
+        last_struct_time, calls = out[0], calls + solver.call_count
+    assert (calls, aborted) == (1, False)
+    assert interior_o.structure_stale is True
+    assert interior_o.last_successful_struct_time == 7e4
+
+    hf_row['Time'] = 1e5 + 2.5e4
+    out, solver = _call_with_success_solver(
+        tmp_path, config, dirs, interior_o, hf_row, last_struct_time
+    )
+    solver.assert_called_once()
+    assert interior_o.structure_stale is False and out[0] == 1.25e5
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(('last_success', 'fires'), [(7.5e4, True), (7.5e4 + 1.0, False)])
+def test_stale_ceiling_fires_from_exactly_the_ceiling(tmp_path, last_success, fires):
+    """At 1e5 yr the stale ceiling (2.5e4 yr) fires for a last success at 7.5e4 yr and
+    stays silent 1 yr later; the last attempt is the last success here."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(
+        tmp_path, stale=True, last_success=last_success
+    )
+    out, solver = _call_with_success_solver(
+        tmp_path, config, dirs, interior_o, hf_row, last_success
+    )
+    assert solver.call_count == int(fires)
+    assert out[0] == (1e5 if fires else last_success)
+
+
+@pytest.mark.unit
+def test_stale_ceiling_without_an_anchor_stays_silent(tmp_path):
+    """A stale flag with no time of a last success (-inf) gives the ceiling no anchor,
+    so it does not fire, even 1e5 yr into the run."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(
+        tmp_path, stale=True, last_success=float('-inf')
+    )
+    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 9e4)
+    solver.assert_not_called()
+    assert out == (9e4, 3000.0, 0.8)
+
+
+@pytest.mark.unit
+def test_a_fresh_interior_anchors_the_stale_ceiling_at_the_init_structure(tmp_path):
+    """A fresh run takes its init structure at t = 0 as the last success, so a stale flag
+    raised by a failed first re-solve still has an anchor for the recovery."""
+    config, dirs, _, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    fresh = Interior_t(50)
+    fresh.radius = np.linspace(6.371e6, 3.504e6, 50)
+    fresh.temp = np.full(49, 3000.0)
+    fresh.structure_stale = True
+    assert fresh.last_successful_struct_time == 0.0
+    out, solver = _call_with_success_solver(tmp_path, config, dirs, fresh, hf_row, 5e4)
+    solver.assert_called_once()
+    assert out[0] == 1e5
+
+
+@pytest.mark.unit
+def test_a_failed_resolve_writes_the_pending_recovery_for_a_resume(tmp_path):
+    """A failed re-solve leaves the stale flag and the old last-success time on disk, so
+    a resume restores both."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
+    hf_row['Time'] = 1.3e5
+    out, solver = _call_with_failing_solver(config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_called_once()
+    assert out[0] == 1.3e5
+
+    resumed = Interior_t(50)
+    resumed.resume_structure_stale(str(tmp_path))
+    assert resumed.structure_stale is True
+    assert resumed.last_successful_struct_time == 7e4
+
+
+@pytest.mark.unit
+def test_the_update_floor_also_spaces_the_stale_recovery(tmp_path):
+    """update_min_interval holds off every trigger but mesh convergence, the stale ceiling
+    included: 30 kyr after the last success but 1 kyr after the last attempt, a 20 kyr
+    floor keeps the solver idle."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    config.interior_struct.zalmoxis.update_min_interval = 2e4
+    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 9.9e4)
+    solver.assert_not_called()
+    assert out == (9.9e4, 3000.0, 0.8)
+
+
 # ============================================================================
 # JAX caches cleared after an accepted re-solve
 # ============================================================================

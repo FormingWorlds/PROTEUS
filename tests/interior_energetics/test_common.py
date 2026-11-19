@@ -619,6 +619,54 @@ def test_resume_structure_stale_reads_a_flag_only_file(tmp_path):
     assert resumed.last_successful_struct_time == float('-inf')
 
 
+def test_resume_structure_stale_anchors_a_flag_only_file_at_the_resume_time(tmp_path):
+    """A stale flag with no stored last-success time takes the resume time as its anchor,
+    so the stale ceiling stays armed after the resume."""
+    from proteus.interior_energetics.common import get_file_structure_stale
+
+    (tmp_path / 'data').mkdir()
+    with open(get_file_structure_stale(str(tmp_path)), 'w') as hdl:
+        hdl.write('1\n')
+    resumed = Interior_t(5)
+    resumed.resume_structure_stale(str(tmp_path), 8.2e4)
+    assert resumed.structure_stale is True
+    assert resumed.last_successful_struct_time == 8.2e4
+
+
+@pytest.mark.parametrize(('stored', 'want'), [(9e4, 8.2e4), (6e4, 6e4)])
+def test_resume_structure_stale_keeps_the_anchor_at_or_before_the_resume_time(
+    tmp_path, stored, want
+):
+    """A last-success time after the resumed row (a resume that walked back past it) is
+    moved to the resume time; an earlier one is kept."""
+    (tmp_path / 'data').mkdir()
+    before = Interior_t(5)
+    before.structure_stale = True
+    before.last_successful_struct_time = stored
+    before.write_structure_stale(str(tmp_path))
+
+    resumed = Interior_t(5)
+    resumed.resume_structure_stale(str(tmp_path), 8.2e4)
+    assert resumed.structure_stale is True
+    assert resumed.last_successful_struct_time == want
+
+
+@pytest.mark.parametrize('content', ['1 nan\n', '1 inf\n'])
+def test_resume_structure_stale_refuses_a_non_finite_anchor(tmp_path, caplog, content):
+    """A stored last-success time of NaN or +inf would keep the ceiling silent for good;
+    the file counts as malformed (warning, fresh)."""
+    from proteus.interior_energetics.common import get_file_structure_stale
+
+    (tmp_path / 'data').mkdir()
+    with open(get_file_structure_stale(str(tmp_path)), 'w') as hdl:
+        hdl.write(content)
+    resumed = Interior_t(5)
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        resumed.resume_structure_stale(str(tmp_path), 8.2e4)
+    assert resumed.structure_stale is False
+    assert any('stale-structure flag' in r.message for r in caplog.records)
+
+
 def test_resume_structure_stale_missing_or_malformed_file_defaults_fresh(tmp_path, caplog):
     """resume_structure_stale degrades to not-stale on an absent or corrupt file.
 
