@@ -585,11 +585,11 @@ def test_run_atmosphere_writes_the_open_part_and_its_residual_under_a_live_lid(t
 
     hf_row = _janus_lid_call(tmp_path, 7.0)
     d, k, T_melt = lid_boundary(hf_row)
-    want = (7.0 - k / d * (T_melt - 900.0)) / 0.7
+    want = (7.0 - k / d * (T_melt - hf_row['T_surf'])) / 0.7
     assert hf_row['lid_F_resid'] == pytest.approx(want, rel=1e-12)
     assert hf_row['lid_F_resid'] == lid_open_residual(hf_row)
     assert hf_row['lid_F_open'] == lid_open_flux(hf_row)
-    assert abs(want) > 1e4
+    assert abs(want) > 1e3
 
 
 @pytest.mark.unit

@@ -539,7 +539,7 @@ LID_OPEN_AREA_FLOOR = 1e-9
 
 
 class LidOpenFluxError(RuntimeError):
-    """The open part of a live lid has no start value: ``F_atm`` is not finite."""
+    """The open part of a live lid has no start value: an input of it is not finite."""
 
 
 def lid_open_flux(hf_row: dict) -> float:
@@ -560,7 +560,7 @@ def lid_open_flux(hf_row: dict) -> float:
     Raises
     ------
     LidOpenFluxError
-        For an ``F_atm`` that is not finite under a live lid.
+        For an ``F_atm``, ``T_surf`` or ``lid_T_base`` that is not finite under a live lid.
 
     Notes
     -----
@@ -574,16 +574,41 @@ def lid_open_flux(hf_row: dict) -> float:
     F_atm = float(hf_row['F_atm'])
     if not math.isfinite(F_atm):
         raise LidOpenFluxError(f'Lid open part: F_atm {F_atm} is not finite')
+    L = G * (float(hf_row['lid_T_base']) - float(hf_row['T_surf']))
+    if not math.isfinite(L):
+        raise LidOpenFluxError(
+            f'Lid open part: lid flux {L} is not finite (T_surf {hf_row["T_surf"]}, '
+            f'lid_T_base {hf_row["lid_T_base"]})'
+        )
     w = float(hf_row['lid_weight'])
     if not 1.0 - w > LID_OPEN_AREA_FLOOR:
         return F_atm
-    L = G * (float(hf_row['lid_T_base']) - float(hf_row['T_surf']))
     return (F_atm - w * L) / (1.0 - w)
 
 
 def lid_open_residual(hf_row: dict) -> float:
-    """Residual part [W m-2] of the open-part start value, per open area (not yet set: 0)."""
-    return 0.0
+    """Residual part [W m-2] of the open-part start value, per open area.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row after the atmosphere step, with ``T_surf`` and ``F_atm``.
+
+    Returns
+    -------
+    float
+        ``(F_atm - B) / (1 - w)``, with ``B`` the skin balance of the call
+        (:func:`lid_boundary`): the start value of :func:`lid_open_flux` less the skin flux
+        ``G_skin (T_m - T_surf)``. 0 without a lid and where the open area is at or below
+        ``LID_OPEN_AREA_FLOOR``.
+    """
+    if not lid_acts(hf_row):
+        return 0.0
+    w = float(hf_row['lid_weight'])
+    if not 1.0 - w > LID_OPEN_AREA_FLOOR:
+        return 0.0
+    d, k, T_melt = lid_boundary(hf_row)
+    return (float(hf_row['F_atm']) - k / d * (T_melt - float(hf_row['T_surf']))) / (1.0 - w)
 
 
 # lid_slope_guard codes: the slope was 0 or below, not finite or from a short step; it was cut

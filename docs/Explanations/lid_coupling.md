@@ -115,11 +115,15 @@ Then $\frac{k}{d_\mathrm{call}}\,(T_\mathrm{magma,call} - T_\mathrm{surf})$ equa
 
 **Why the 10 mm skin is not added on top of the lid.** The skin stands for the boundary layer at the top of a molten surface. Under a solid lid no melt reaches the surface, so that boundary layer does not exist: the lid is the conductive layer, and $T_\mathrm{surf}$ is the temperature at its top. Adding the skin in series, $1/G = 1/G_\mathrm{lid} + 1/G_\mathrm{skin}$, would count one layer twice; at $G_\mathrm{lid} = G_\mathrm{skin}$ it would halve the conductance of the lid part.
 
-**What the interior takes.** After the atmosphere step, `run_atmosphere` writes `lid_F_open`, the flux of the open part per open area:
+**What the interior takes.** After the atmosphere step, `run_atmosphere` writes `lid_F_open`, the start flux of the open part per open area:
 
 $$F_\mathrm{open,0} = \frac{F_\mathrm{atm} - w\,L}{1 - w}, \qquad L = G_\mathrm{lid}'\,(T_b - T_\mathrm{surf}),$$
 
-and `F_atm` where no lid acts. $L$ is the flux of the lid part in the call, with its sign: it is inward for a surface above $T_b$. The weighted parts $w L + (1 - w) F_\mathrm{open,0}$ sum to `F_atm` for any sign of `F_atm` and of $T_b - T_\mathrm{surf}$, so the two parts lose what the atmosphere carries away. Where the atmosphere closes the skin balance of its call, $F_\mathrm{open,0}$ is the skin flux $G_\mathrm{skin}(T_m - T_\mathrm{surf})$; where it does not, the open part takes the whole difference. $F_\mathrm{open,0}$ tends to `F_atm` as $w$ goes to 0, so the boundary of the open part does not step by the difference when the weight first exceeds 0. Per open area the value grows as $1/(1 - w)$ near $w = 1$, while its share $(1 - w) F_\mathrm{open,0}$ stays `F_atm` less $w L$; where $1 - w$ is $10^{-9}$ or less, $F_\mathrm{open,0}$ is `F_atm`. An `F_atm` that is not finite stops the run with status 22. In the next interior step Aragog takes `lid_F_open` as the start flux of the part $1 - w$ and holds the lid surface at $T_\mathrm{surf}$. In that step the lid part loses its own conduction, at most the cap $C$ of Rule 3 for a surface below $T_b$; for a surface at or above $T_b$ no cap is set and Aragog holds the lid surface 1 K below $T_b$, so the flux of the lid part in the step is not $L$. `F_atm` itself holds the lid term too, so as the flux of the open part it would count the lid part a second time.
+and `F_atm` where no lid acts. $L$ is the flux of the lid part in the call, with its sign: it is inward for a surface above $T_b$. At the lid weight $w$ of the row, the start values $w L + (1 - w) F_\mathrm{open,0}$ add up to `F_atm` for any sign of `F_atm` and of $T_b - T_\mathrm{surf}$. An open part at `F_atm` would count the lid part a second time, because `F_atm` already holds the lid term.
+
+With $S = G_\mathrm{skin}(T_m - T_\mathrm{surf})$ the skin flux of the open part and $B$ the skin balance of the call, the start value is $F_\mathrm{open,0} = S + (F_\mathrm{atm} - B)/(1 - w)$. Where the atmosphere closes the balance of its call it is the skin flux, inward where the surface is above $T_m$. Only the residual $F_\mathrm{atm} - B$ grows as $1/(1 - w)$ near $w = 1$; in coupled 1 Earth-mass runs with AGNI it was at most 0.01 W m$^{-2}$ on the live-lid rows, and its share per open area at most 0.69 W m$^{-2}$ (at $w$ = 0.99951). The column `lid_F_resid` records that share on every row. Where $1 - w$ is $10^{-9}$ or less, $F_\mathrm{open,0}$ is `F_atm`. $F_\mathrm{open,0}$ tends to `F_atm` as $w$ goes to 0. An `F_atm`, $T_\mathrm{surf}$ or $T_b$ that is not finite stops the run with status 22.
+
+In the next interior step Aragog takes `lid_F_open` as the start flux of the part $1 - w$ and holds the lid surface at $T_\mathrm{surf}$. Aragog sets the lid weight from its own state at each evaluation, so the sum closes at the weight of the row only: inside the step the open part carries the residual with its own area, $(1 - w_\mathrm{step})(F_\mathrm{atm} - B)/(1 - w)$. The lid part loses its own conduction, not $L$: Aragog holds the lid surface at least 1 K below $T_b$, so near $T_b$ the lid part loses at least $G_\mathrm{lid}$ times 1 K, and above the cap of Rule 3 it follows the Robin branch. What the step loses is `F_int`, and `lid_F_diff` records `F_int - F_atm` ([Rule 2](#rule-2-the-lid-ledger)).
 
 **Where this is checked.** [Validation: the lid and the open surface in the atmosphere call](../Validation/atmos_clim/common.md) checks the parallel sum of the call and the sum of the two parts against their closed forms.
 
@@ -153,7 +157,7 @@ $G_\mathrm{eff}$ is the change of the shared surface balance. It does not depend
 
 **The slope guard.** `lid_flux_slope` gives $F'$ from the last 2 rows; the column `lid_slope_guard` records what the guard did on rows with a live lid:
 
-- 1: no earlier row, a slope of 0 or below, a non-finite slope, or one from a surface step below 0.01 K gives $G_\mathrm{eff} = 0$, and the open part keeps $F_\mathrm{open,0}$ for the step.
+- 1: no earlier row, a slope of 0 or below, a non-finite slope, or one from a surface step below 0.01 K gives $G_\mathrm{eff} = 0$, and the open part keeps $F_\mathrm{open,0}$ for the step, an inward value included.
 - 2: a slope above $4 \sigma T_\mathrm{surf}^3$, the slope of a bare grey surface, is cut to it.
 - 0: no guard acted.
 
@@ -212,7 +216,8 @@ The interior writes every column except `lid_F_open` at each step; the atmospher
 | `lid_T_surface` | K | surface temperature of the lid |
 | `lid_T_base` | K | base temperature $T_b$ of the lid |
 | `lid_T_node` | K | top basic node $T_\mathrm{node}$ of the Aragog mesh |
-| `lid_F_open` | W m$^{-2}$ | flux of the open part $1 - w$ of the surface |
+| `lid_F_open` | W m$^{-2}$ | start flux of the open part $1 - w$ of the surface, per open area |
+| `lid_F_resid` | W m$^{-2}$ | residual part $(F_\mathrm{atm} - B)/(1 - w)$ of `lid_F_open`, per open area; 0 without a lid |
 | `lid_F_diff` | W m$^{-2}$ | `F_int` of the step minus the `F_atm` it started from |
 | `lid_weight_max` | 1 | largest lid weight over the accepted solver states of the step |
 | `lid_slope_guard` | 1 | slope guard of the open part: 0 none, 1 slope set to 0, 2 slope cut |

@@ -1171,7 +1171,7 @@
     {
       "name": "lid_F_open",
       "unit": "W m-2",
-      "description": "flux of the open part 1 - w of the surface",
+      "description": "start flux of the open part 1 - w, per open area",
       "group": "Temperatures",
       "origin": "literal",
       "producers": [
@@ -1183,6 +1183,21 @@
       "consumers": [
         "interior_energetics"
       ],
+      "consumers_possible": []
+    },
+    {
+      "name": "lid_F_resid",
+      "unit": "W m-2",
+      "description": "residual (F_atm - B) / (1 - w) of the open-part start value against the skin balance B of the call, per open area; 0 without a lid",
+      "group": "Temperatures",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/atmos_clim/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
       "consumers_possible": []
     },
     {

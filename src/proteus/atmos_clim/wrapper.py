@@ -18,6 +18,7 @@ from proteus.atmos_clim.common import (
     LidOpenFluxError,
     clip_radius_to_hill,
     lid_open_flux,
+    lid_open_residual,
     require_spfile_path,
 )
 from proteus.atmos_clim.surface_skin import effective_surf_state
@@ -223,7 +224,7 @@ def realign_xuv_gravity(hf_row: dict, radius: float):
 
 
 def lid_open_flux_or_stop(dirs: dict, hf_row: dict) -> float:
-    """:func:`lid_open_flux` of the row; its stop for an ``F_atm`` that is not finite writes status 22."""
+    """:func:`lid_open_flux` of the row; its stop for an input that is not finite writes status 22."""
     try:
         return lid_open_flux(hf_row)
     except LidOpenFluxError:
@@ -443,6 +444,7 @@ def run_atmosphere(
     hf_row['rho_obs'] = 3 * hf_row['M_planet'] / (4 * pi * hf_row['R_obs'] ** 3)
     hf_row['F_net'] = hf_row['F_int'] - hf_row['F_atm']
     hf_row['lid_F_open'] = lid_open_flux_or_stop(dirs, hf_row)
+    hf_row['lid_F_resid'] = lid_open_residual(hf_row)
     hf_row['bond_albedo'] = atm_output['albedo']
 
     # Calculate bolometric observables (measured at infinite distance)

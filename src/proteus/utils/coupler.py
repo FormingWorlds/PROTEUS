@@ -1010,6 +1010,7 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'lid_delta_on',
         'lid_F_diff',
         'lid_F_open',
+        'lid_F_resid',
         'lid_T_base',
         'lid_T_node',
         'lid_T_surface',
@@ -1107,7 +1108,8 @@ def GetHelpfileKeys():
         'lid_T_surface',    # surface temperature of the Aragog sub-grid lid [K]
         'lid_T_base',       # base temperature of the Aragog sub-grid lid [K]
         'lid_T_node',       # top basic node of the Aragog mesh [K]
-        'lid_F_open',       # flux of the open part 1 - w of the surface [W m-2]
+        'lid_F_open',       # start flux of the open part 1 - w, per open area [W m-2]
+        'lid_F_resid',      # residual (F_atm - B) / (1 - w) of the open-part start value against the skin balance B of the call, per open area; 0 without a lid [W m-2]
         'lid_F_diff',       # F_int of the step minus the F_atm it started from; 0 in grey_body mode [W m-2]
         'lid_weight_max',   # largest weight of the Aragog sub-grid lid over the accepted states of the step [1]
         'lid_slope_guard',  # slope guard of the open lid part: 0 none, 1 slope set to 0 (no earlier row, 0 or below, not finite or a short step), 2 slope cut; a cap re-solve records its secant [1]

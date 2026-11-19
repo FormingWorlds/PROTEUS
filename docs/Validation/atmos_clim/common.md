@@ -56,15 +56,18 @@ $$F = w \min(G_\mathrm{lid}, G_\mathrm{skin}) (T_b - T_\mathrm{surf}) + (1 - w)\
 
 ## The two parts of the surface sum to the atmosphere flux
 
-**Why this check exists.** After the atmosphere step the interior takes two fluxes, the lid part at most the cap $C$ and the open part $F_\mathrm{open}$, and their weighted sum must not count a flux twice or lose one. An open part equal to $F_\mathrm{atm}$ counts the lid part twice, because $F_\mathrm{atm}$ already holds it. An open part equal to the skin flux scaled by the ratio of the atmosphere to its call loses the part of that difference that falls on the lid; the test sees both faults.
+**Why this check exists.** After the atmosphere step the interior takes two start fluxes, the lid part and the open part $F_\mathrm{open}$, and their weighted sum must not count a flux twice or lose one. The test fails for 2 wrong forms of the open part:
 
-**What it tests.** The test builds a surface with $T_\mathrm{surf}$ = 900 K, the temperatures and skin of the first case, and $G_\mathrm{lid}$ = 100 and 400 W m$^{-2}$ K$^{-1}$ (half of $G_\mathrm{skin}$ and twice it, where the cap at $G_\mathrm{skin}$ acts). It sets $F_\mathrm{atm}$ to $r$ times the skin balance of the call, for $r$ = 0.95, 1 and 1.06, at 21 weights from 0 to 1. The ratio $r$ says how far the atmosphere is from the skin balance; AGNI closes it only to its solver tolerance. The code gives the open part the rest of the atmosphere flux, $F_\mathrm{open} = (F_\mathrm{atm} - w C) / (1 - w)$ per open area, with $C$ the flux of the lid part in the call ([explanation](../../Explanations/lid_coupling.md#what-the-atmosphere-call-sees)). The test checks the sum
+- an open part equal to $F_\mathrm{atm}$ counts the lid part twice, because $F_\mathrm{atm}$ already holds it;
+- an open part equal to the skin flux scaled by $r$, the ratio of $F_\mathrm{atm}$ to the skin balance of the call, loses the share $w C (r - 1)$ of the gap that falls on the lid.
+
+**What it tests.** The test builds a surface with $T_\mathrm{surf}$ = 900 K, the temperatures and skin of the first case, and $G_\mathrm{lid}$ = 100 and 400 W m$^{-2}$ K$^{-1}$ (half of $G_\mathrm{skin}$ and twice it, where the cap at $G_\mathrm{skin}$ acts). It sets $F_\mathrm{atm}$ to $r$ times the skin balance of the call, for $r$ = 0.95, 1 and 1.06, at 21 weights from 0 to 1. The ratio $r$ says how far the atmosphere is from the skin balance; AGNI closes it only to its solver tolerance. The code gives the open part the rest of the atmosphere flux, $F_\mathrm{open} = (F_\mathrm{atm} - w L) / (1 - w)$ per open area, with $L$ the signed flux of the lid part in the call; for a surface below $T_b$, as here, $L$ is the cap $C$ ([explanation](../../Explanations/lid_coupling.md#what-the-atmosphere-call-sees)). The test checks the sum
 
 $$w C + (1 - w) F_\mathrm{open} = F_\mathrm{atm}.$$
 
 A property test, `test_the_weighted_parts_sum_to_f_atm_on_both_sides_of_the_lid_base` in `tests/atmos_clim/test_lid_open_flux_instep.py`, checks the same sum with the signed lid flux at up to 400 random states, with `F_atm` of either sign and the surface on either side of $T_b$.
 
-**How we know the right answer.** The sum is the flux that the atmosphere carries away, by the definition of the two parts. The test computes $C = \min(G_\mathrm{lid}, G_\mathrm{skin}) (T_b - T_\mathrm{surf})$ and the skin balance from these formulas, not from the code. At $r = 1$ the open part is the second term of the parallel sum of the first case, the skin flux $G_\mathrm{skin}(T_m - T_\mathrm{surf})$.
+**How we know the right answer.** The sum is the flux that the atmosphere carries away, by the definition of the open part, so the case checks that `lid_open_flux` and `lid_flux_cap` use the same lid flux, the cap at $G_\mathrm{skin}$ included. The test computes $C = \min(G_\mathrm{lid}, G_\mathrm{skin}) (T_b - T_\mathrm{surf})$ and the skin balance from these formulas, not from the code. At $r = 1$ the open part is the second term of the parallel sum of the first case, the skin flux $G_\mathrm{skin}(T_m - T_\mathrm{surf})$.
 
 **Why it matters.** The interior loses the sum of the two parts. A flux counted twice would cool the interior too fast under a growing lid, and a flux lost would let it cool too slowly.
 
@@ -73,7 +76,7 @@ A property test, `test_the_weighted_parts_sum_to_f_atm_on_both_sides_of_the_lid_
 
 **How to read the plot.** The horizontal axis is the lid weight $w$, the vertical axis the sum $w C + (1 - w) F_\mathrm{open}$ divided by $F_\mathrm{atm}$, for $G_\mathrm{lid}$ = 100 W m$^{-2}$ K$^{-1}$. The dots are the sum from `lid_flux_cap` and `lid_open_flux`; they lie at 1 for every weight below 1. The dashed lines are the sum with the open part equal to the skin flux scaled by $r$, $1 - w C (r - 1) / F_\mathrm{atm}$, for comparison. At $w = 1$ the open area is 0, and both give the lid part alone, $C / F_\mathrm{atm} = 1/r$.
 
-**Known limit.** Where the open area $1 - w$ is $10^{-9}$ or less, the open part takes $F_\mathrm{atm}$ and the sum is $w C + (1 - w) F_\mathrm{atm}$, close to the lid part alone. Per open area $F_\mathrm{open}$ grows as $1/(1 - w)$ near $w = 1$.
+**Known limit.** The sum closes at the lid weight of the row; Aragog sets its own weight within the step, so there the open part carries the residual $(F_\mathrm{atm} - B)/(1 - w)$ with its own area ([explanation](../../Explanations/lid_coupling.md#what-the-atmosphere-call-sees)). That residual part grows as $1/(1 - w)$ near $w = 1$; in coupled 1 Earth-mass runs with AGNI it was at most 0.69 W m$^{-2}$ per open area, at $w$ = 0.99951, and the column `lid_F_resid` records it. Where the open area $1 - w$ is $10^{-9}$ or less, the open part takes $F_\mathrm{atm}$ and the sum is $w C + (1 - w) F_\mathrm{atm}$, close to the lid part alone.
 
 ??? info "Test details"
     - Reference: analytical limit, the sum of the two weighted parts from the definitions of the cap and the open part.

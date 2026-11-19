@@ -130,10 +130,10 @@ def test_the_residual_is_the_start_value_less_the_skin_flux(w, T_node, T_b, T_su
     row['F_atm'] = B + gap
     S = 200.0 * (max(T_node, T_b) - T_surf)
     resid = lid_open_residual(row)
-    assert resid == pytest.approx(gap / (1.0 - w), rel=1e-9, abs=1e-9 * abs(B) / (1.0 - w))
-    assert lid_open_flux(row) - S == pytest.approx(
-        resid, rel=1e-9, abs=1e-9 * (abs(S) + abs(B) / (1.0 - w))
-    )
+    # B is a difference of terms of size G T: its round-off sets the absolute tolerance
+    tol = 1e-12 * 200.0 * max(T_node, T_b, T_surf) / (1.0 - w)
+    assert resid == pytest.approx(gap / (1.0 - w), rel=1e-9, abs=tol)
+    assert lid_open_flux(row) - S == pytest.approx(resid, rel=1e-9, abs=tol + 1e-12 * abs(S))
 
 
 @pytest.mark.parametrize('w', [0.0, 1.0, 1.0 - 0.5 * LID_OPEN_AREA_FLOOR])
