@@ -9363,7 +9363,7 @@
       "class": "Agni",
       "type": "bool",
       "accepts_none": false,
-      "default": "false",
+      "default": "true",
       "choices": null,
       "bounds": null,
       "description": "Account for conductive heat transport, using Fourier's law.",
