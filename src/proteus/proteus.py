@@ -3,7 +3,9 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import shutil
 import sys
+import tempfile
 import time
 from collections.abc import Mapping
 from datetime import datetime
@@ -92,6 +94,43 @@ def _status_on_exit(start):
                 stopped = isinstance(exc, (KeyboardInterrupt, SystemExit))
                 UpdateStatusfile(self.directories, 25 if stopped else 20)
             raise
+
+    return wrapper
+
+
+def _run_temp_dir(start):
+    """Give ``start`` its own temporary folder as ``directories['temp']`` and remove it after.
+
+    The folder comes from `tempfile.mkdtemp` under ``$TMPDIR``, so runs sharing
+    a node never collide and other users cannot read it. It is removed whether
+    the run ends or fails. With DEBUG logging the output folder is used and kept.
+    After the run, ``directories['temp']`` is the output folder, as outside a run.
+    """
+
+    @functools.wraps(start)
+    def wrapper(self, *args, **kwargs):
+        if self.config.params.out.logging == 'DEBUG':
+            return start(self, *args, **kwargs)
+
+        log = logging.getLogger('fwl.' + __name__)
+        temp = tempfile.mkdtemp(prefix='proteus_')
+        self.directories['temp'] = temp + '/'
+        try:
+            return start(self, *args, **kwargs)
+        except BaseException as exc:
+            clean_exit = isinstance(exc, SystemExit) and not exc.code
+            if not clean_exit and os.path.isdir(temp) and os.listdir(temp):
+                log.warning(
+                    f'Removing temporary files in {temp}; set params.out.logging = '
+                    "'DEBUG' to keep them in the output folder"
+                )
+            raise
+        finally:
+            self.directories['temp'] = self.directories['output']
+            try:
+                shutil.rmtree(temp)
+            except OSError as exc:
+                log.warning(f'Could not remove temporary folder {temp}: {exc}')
 
     return wrapper
 
@@ -608,6 +647,7 @@ class Proteus:
                     self.config.params.stop.solid.phi_crit,
                 )
 
+    @_run_temp_dir
     @_status_on_exit
     def start(self, *, resume: bool = False, offline: bool = False):
         """Start PROTEUS simulation.
@@ -1848,20 +1888,21 @@ class Proteus:
         WriteHelpfileToCSV(self.directories['output'], self.hf_all)
         return True
 
-    def _postprocess_chemistry(self, hf_all):
+    def _postprocess_chemistry(self, hf_all, network_compiled: bool = False):
         """Run atmospheric chemistry at the snapshots set by `atmos_chem.times`.
 
         The one chemistry stage for the end of a run and for `proteus offchem`.
         Snapshots in the data archive are unpacked first, and snapshots without
         an atmosphere (after desiccation) are left out by `run_chemistry`.
+        With ``network_compiled``, VULCAN uses the network compiled already.
         """
         from proteus.atmos_chem.wrapper import run_chemistry
 
         if archive.archive_exists(self.directories['output/data'], ignore_warnings=True):
             self.extract_archives()
-        return run_chemistry(self.directories, self.config, hf_all)
+        return run_chemistry(self.directories, self.config, hf_all, network_compiled)
 
-    def offline_chemistry(self):
+    def offline_chemistry(self, network_compiled: bool = False):
         # Load data from helpfile. Read it before unpacking the archive, so a
         # run this cannot postprocess is left archived as it was found.
         from proteus.utils.coupler import (
@@ -1882,7 +1923,7 @@ class Proteus:
             raise Exception('Simulation is too short to be postprocessed')
 
         # Run offline chemistry at atmos_chem.times, whatever atmos_chem.mode is
-        result = self._postprocess_chemistry(hf_all)
+        result = self._postprocess_chemistry(hf_all, network_compiled)
 
         # Refresh the chemistry plot
         if result is not None:

@@ -161,7 +161,8 @@ def test_run_chemistry_all_runs_in_ascending_time(tmp_path):
 def test_run_chemistry_vulcan_compiles_the_network_on_the_first_snapshot_only(tmp_path):
     """Only the first VULCAN run of a call compiles the network: a failed run
     stops the sequence, so every later run follows a run that compiled it.
-    A second call compiles it again, and the dummy backend gets no such flag."""
+    A second call compiles it again, a call given network_compiled=True compiles it on
+    no snapshot, and the dummy backend gets no such flag."""
     compiled = []
 
     def run(dirs, config, hf_row, **kwargs):
@@ -180,6 +181,13 @@ def test_run_chemistry_vulcan_compiles_the_network_on_the_first_snapshot_only(tm
 
     flags = [kw['network_compiled'] for kw in compiled]
     assert flags == [False, True, True, False, True]
+
+    # With the network compiled before the call, as `proteus offchem --grid` does,
+    # the first snapshot skips compiling too
+    compiled.clear()
+    with patch('proteus.atmos_chem.vulcan.run_vulcan', side_effect=run):
+        run_chemistry(_dirs(tmp_path), config, _helpfile([0.0, 10.0]), network_compiled=True)
+    assert [kw['network_compiled'] for kw in compiled] == [True, True]
 
     run_dummy, _ = _fake_backend(tmp_path)
     with patch('proteus.atmos_chem.dummy.run_dummy_chem', side_effect=run_dummy) as dummy:

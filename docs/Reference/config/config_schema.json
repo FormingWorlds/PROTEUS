@@ -4579,7 +4579,7 @@
           "value": 0
         }
       ],
-      "description": "Minimum time between structure updates [yr]; prevents thrashing.",
+      "description": "Minimum time between structure updates [yr]; prevents thrashing. Every trigger waits for it, the recovery of `update_stale_ceiling` included. Only mesh convergence skips it: the extra re-solves, spaced by `mesh_convergence_interval`, that follow an update whose mesh shift was limited to `mesh_max_shift`.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 4,
@@ -4675,7 +4675,7 @@
           "value": 0
         }
       ],
-      "description": "Time since the last successful re-solve after which a trigger refires [yr]; 0 disables.",
+      "description": "Recovery after a failed re-solve [yr]: if no other trigger fires, a new re-solve starts once this time has passed since the last attempt. The other triggers can start one sooner, after `update_min_interval`. On resume the resumed time counts as the last attempt. Has an effect only if smaller than `update_interval`, and only while the last re-solve has failed; 0 disables.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 5,
@@ -11158,7 +11158,7 @@
       "default": "true",
       "choices": null,
       "bounds": null,
-      "description": "Use photochemistry.",
+      "description": "Use photochemistry. Required with the VULCAN network SNCHO, which VULCAN has only with photochemistry.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12799,6 +12799,18 @@
         "module"
       ],
       "doc": "Refuse coupled chemistry, and automatic chemistry without a module."
+    },
+    {
+      "validator": "valid_photo_on",
+      "module": "_atmos_chem.py",
+      "attached_to": [
+        "atmos_chem.photo_on"
+      ],
+      "touches": [
+        "module",
+        "vulcan.network"
+      ],
+      "doc": "Refuse VULCAN's SNCHO network without photochemistry, which VULCAN does not have."
     },
     {
       "validator": "valid_aerosols_enabled",

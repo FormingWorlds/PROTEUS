@@ -149,11 +149,25 @@ Run nothing automatically, then postprocess three chosen times with `proteus off
     times  = [1e3, 1e5, 1e7]   # yr
 ```
 
+### Grids
+
+`proteus offchem --grid` (or `-g`) runs the chemistry on every case of a [grid](usage_grids.md) that has a helpfile:
+
+```console
+proteus offchem -g output/<grid folder>           # run the cases here
+proteus offchem -g output/<grid folder> --slurm   # write a Slurm job array instead
+```
+
+- Each case runs `proteus offchem` with its own config, so `atmos_chem.module` must be set in every case.
+- `max_jobs` of the grid file sets how many cases run at once, at most one per CPU core of the machine. With `--slurm`, the command writes `slurm_offchem.sh` to submit with `sbatch`, which packs the cases into jobs by `cores_per_job`, with `max_days` and `max_mem` per case, as the grid run does. Its jobs are named `proteusoffchem.grid.array`, so `scancel -n` stops them apart from those of the grid run.
+- VULCAN compiles one chemical network file per local installation, so this command compiles it once, before any case runs, and refuses cases that use different networks.
+- The command adds its log to `offchem.log` in the grid output folder, and the output of each case is in `logs/offchem/`.
+
 ### Chemistry configuration
 
 The chemistry behaviour is further controlled by settings under `[atmos_chem]` and `[atmos_chem.vulcan]` in the configuration file. Key options include:
 
-- `atmos_chem.vulcan.network`: Chemical network to use (`"CHO"`, `"NCHO"`, or `"SNCHO"`)
+- `atmos_chem.vulcan.network`: Chemical network to use (`"CHO"`, `"NCHO"`, or `"SNCHO"`; VULCAN has SNCHO only with photochemistry)
 - `atmos_chem.photo_on`: Enable photochemistry
 - `atmos_chem.Kzz_on`: Enable eddy diffusion mixing
 
