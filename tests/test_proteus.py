@@ -910,13 +910,16 @@ def test_a_run_stopped_after_the_output_is_cleaned_records_why(
 
 @pytest.mark.unit
 def test_resume_reads_the_stale_sidecar_of_the_output_folder(tmp_path):
-    """A resume restores the stale-structure flag from the sidecar of the output folder."""
+    """A resume restores the stale-structure flag from the sidecar of the output folder, and
+    the resumed time is the last attempt from which the recovery counts."""
     p = _make_proteus_instance(tmp_path)
     (tmp_path / 'data').mkdir(exist_ok=True)
+    hf = _make_hf_df()
 
-    _resume_with_patches(p, _make_hf_df())
+    _resume_with_patches(p, hf)
 
     p.interior_o.resume_structure_stale.assert_called_once_with(p.directories['output'])
+    assert p.last_struct_time == hf['Time'].iloc[-1]
 
 
 @pytest.mark.unit

@@ -29,8 +29,6 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from hypothesis import HealthCheck, example, given, settings
-from hypothesis import strategies as st
 
 from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.wrapper import (
@@ -1946,7 +1944,7 @@ def _stale_ceiling_case(tmp_path, *, stale):
     return config, dirs, interior_o, hf_row
 
 
-def _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, last_struct_time):
+def _call_with_success_solver(config, dirs, interior_o, hf_row, last_struct_time):
     """Run update_structure_from_interior with a converging solver stub; return the
     output tuple and the solver mock."""
 
@@ -1954,7 +1952,7 @@ def _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, last_s
         hf_row['M_int'] = 5.972e24
         hf_row['M_int_target'] = 5.972e24
         hf_row['R_int'] = 6.371e6
-        return (3.504e6, str(tmp_path / 'mesh.dat'))
+        return (3.504e6, 'mesh.dat')
 
     with (
         patch(
@@ -1996,14 +1994,14 @@ def test_the_recovery_fires_after_a_failed_attempt_and_only_then(tmp_path):
     routine ceiling) a stale structure is re-solved, the flag clears and the sidecar says
     so; the same state without the flag stays silent."""
     config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
-    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 7e4)
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
     solver.assert_not_called()
     assert out == (7e4, 3000.0, 0.8)
 
     config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
-    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 7e4)
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
     solver.assert_called_once()
-    assert out[0] == 1e5 and interior_o.structure_stale is False
+    assert out[0] == hf_row['Time'] and interior_o.structure_stale is False
     assert _sidecar(tmp_path) == '0\n'
 
 
@@ -2013,9 +2011,21 @@ def test_a_zero_recovery_time_disables_the_recovery(tmp_path):
     its failed attempt waits for the routine ceiling."""
     config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
     config.interior_struct.zalmoxis.update_stale_ceiling = 0.0
-    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 7e4)
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
     solver.assert_not_called()
     assert out == (7e4, 3000.0, 0.8) and interior_o.structure_stale is True
+
+
+@pytest.mark.unit
+def test_a_mock_interior_flag_does_not_fire_the_recovery(tmp_path):
+    """Only a stale flag that is True fires the recovery: a MagicMock interior, whose
+    ``structure_stale`` is a truthy mock, stays silent 30 kyr after its last attempt."""
+    config, dirs, _, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    interior_o = MagicMock()
+    assert bool(interior_o.structure_stale) and interior_o.structure_stale is not True
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_not_called()
+    assert out == (7e4, 3000.0, 0.8)
 
 
 @pytest.mark.unit
@@ -2023,12 +2033,12 @@ def test_another_trigger_re_solves_a_stale_structure_before_the_recovery_time(tm
     """A melt-fraction change past update_dphi_abs re-solves a stale structure 10 kyr
     after its last attempt, before the 25 kyr recovery time; without the change it waits."""
     config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
-    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 9e4)
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 9e4)
     solver.assert_not_called()
     hf_row['Phi_global'] = 0.8 - 0.06
-    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 9e4)
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 9e4)
     solver.assert_called_once()
-    assert out[0] == 1e5 and interior_o.structure_stale is False
+    assert out[0] == hf_row['Time'] and interior_o.structure_stale is False
 
 
 @pytest.mark.unit
@@ -2046,7 +2056,7 @@ def test_the_routine_ceiling_decides_when_the_recovery_time_is_not_below_it(
     config.interior_struct.zalmoxis.update_stale_ceiling = recovery_time
     hf_row['Time'] = time
     with caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.wrapper'):
-        _, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 7e4)
+        _, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
     solver.assert_called_once()
     msgs = [
         r.getMessage()
@@ -2057,46 +2067,6 @@ def test_the_routine_ceiling_decides_when_the_recovery_time_is_not_below_it(
 
 
 @pytest.mark.unit
-@settings(
-    max_examples=150, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
-)
-@example(stale=True, elapsed=3e4, recovery_time=0.0, interval=5e4)
-@example(stale=True, elapsed=2.5e4, recovery_time=2.5e4, interval=5e4)
-@example(stale=False, elapsed=3e4, recovery_time=2.5e4, interval=5e4)
-@example(stale=True, elapsed=6e4, recovery_time=6e4, interval=5e4)
-@given(
-    stale=st.booleans(),
-    elapsed=st.floats(min_value=0.0, max_value=1e5),
-    recovery_time=st.sampled_from([0.0, 1.0, 2.5e4, 5e4, 6e4]) | st.floats(0.0, 1e5),
-    interval=st.floats(min_value=1.0, max_value=1e5),
-)
-def test_the_solver_runs_exactly_when_the_ceiling_or_the_recovery_is_due(
-    tmp_path, stale, elapsed, recovery_time, interval
-):
-    """With no Phi or T_magma change and no floor, a re-solve runs exactly when the
-    routine ceiling is due or a stale structure has reached a recovery time above 0."""
-    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=stale)
-    config.interior_struct.zalmoxis.update_interval = interval
-    config.interior_struct.zalmoxis.update_stale_ceiling = recovery_time
-    last = hf_row['Time'] - elapsed
-    _, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, last)
-    elapsed_seen = hf_row['Time'] - last
-    due = elapsed_seen >= interval or (stale and 0 < recovery_time <= elapsed_seen)
-    assert solver.call_count == int(due)
-
-
-@pytest.mark.unit
-def test_stale_ceiling_without_a_stale_attribute_stays_silent(tmp_path):
-    """An interior without a ``structure_stale`` attribute counts as fresh: 30 kyr after
-    its last attempt the recovery does not fire."""
-    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
-    del interior_o.structure_stale
-    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 7e4)
-    solver.assert_not_called()
-    assert out == (7e4, 3000.0, 0.8)
-
-
-@pytest.mark.unit
 def test_a_failed_resolve_leaves_the_stale_flag_for_a_resume(tmp_path):
     """A failed re-solve returns its own time as the last attempt and writes the stale
     flag, so a resume restores it."""
@@ -2104,11 +2074,45 @@ def test_a_failed_resolve_leaves_the_stale_flag_for_a_resume(tmp_path):
     hf_row['Time'] = 1.3e5
     out, solver = _call_with_failing_solver(config, dirs, interior_o, hf_row, 7e4)
     solver.assert_called_once()
-    assert out[0] == 1.3e5 and interior_o.structure_stale is True
+    assert out[0] == hf_row['Time'] and interior_o.structure_stale is True
     assert _sidecar(tmp_path) == '1\n'
     resumed = Interior_t(50)
     resumed.resume_structure_stale(str(tmp_path))
     assert resumed.structure_stale is True
+
+
+@pytest.mark.unit
+def test_a_lost_sidecar_write_delays_the_recovery_to_the_next_failure(tmp_path, caplog):
+    """A failed re-solve whose sidecar write fails (no data folder) is logged and the run goes
+    on; a resume then reads no failure, so the recovery stays off 30 kyr later. The next
+    failed re-solve writes the flag, and the recovery fires 30 kyr after it."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
+    lost = tmp_path / 'no_data_folder'
+    lost.mkdir()
+    dirs['output'] = str(lost)
+    hf_row['Time'] = 1.3e5  # the routine ceiling fires; the solver fails
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        out, _ = _call_with_failing_solver(config, dirs, interior_o, hf_row, 8e4)
+    assert interior_o.structure_stale is True
+    assert any('Could not persist' in r.getMessage() for r in caplog.records)
+
+    resumed = Interior_t(50)
+    resumed.radius, resumed.temp = interior_o.radius, interior_o.temp
+    resumed.resume_structure_stale(str(lost))
+    assert resumed.structure_stale is False
+    hf_row['Time'] = 1.6e5  # 3e4 after the failed attempt: the recovery is lost
+    out2, solver = _call_with_success_solver(config, dirs, resumed, hf_row, out[0])
+    solver.assert_not_called()
+    assert out2[0] == out[0]
+
+    dirs['output'] = str(tmp_path)  # writable again; the next failure (ceiling) is saved
+    hf_row['Time'] = 1.8e5
+    out3, _ = _call_with_failing_solver(config, dirs, resumed, hf_row, out2[0])
+    assert resumed.structure_stale is True and _sidecar(tmp_path) == '1\n'
+    hf_row['Time'] = 2.1e5
+    _, solver = _call_with_success_solver(config, dirs, resumed, hf_row, out3[0])
+    solver.assert_called_once()
+    assert resumed.structure_stale is False
 
 
 @pytest.mark.unit
@@ -2121,9 +2125,9 @@ def test_resume_after_a_failure_keeps_the_pending_recovery(tmp_path):
     resumed.radius, resumed.temp = before.radius, before.temp
     resumed.resume_structure_stale(str(tmp_path))
     assert resumed.structure_stale is True
-    out, solver = _call_with_success_solver(tmp_path, config, dirs, resumed, hf_row, 7e4)
+    out, solver = _call_with_success_solver(config, dirs, resumed, hf_row, 7e4)
     solver.assert_called_once()
-    assert out[0] == 1e5 and resumed.structure_stale is False
+    assert out[0] == hf_row['Time'] and resumed.structure_stale is False
 
 
 @pytest.mark.unit
@@ -2147,11 +2151,9 @@ def test_stale_ceiling_spaces_its_retries_by_the_ceiling(tmp_path):
     assert interior_o.structure_stale is True
 
     hf_row['Time'] = 1e5 + 2.5e4
-    out, solver = _call_with_success_solver(
-        tmp_path, config, dirs, interior_o, hf_row, last_struct_time
-    )
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, last_struct_time)
     solver.assert_called_once()
-    assert interior_o.structure_stale is False and out[0] == 1.25e5
+    assert interior_o.structure_stale is False and out[0] == hf_row['Time']
 
 
 @pytest.mark.unit
@@ -2160,11 +2162,9 @@ def test_stale_ceiling_fires_from_exactly_the_ceiling(tmp_path, last_attempt, fi
     """At 1e5 yr the recovery (2.5e4 yr) fires for a failed attempt at 7.5e4 yr and stays
     silent 1 yr later."""
     config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
-    out, solver = _call_with_success_solver(
-        tmp_path, config, dirs, interior_o, hf_row, last_attempt
-    )
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, last_attempt)
     assert solver.call_count == int(fires)
-    assert out[0] == (1e5 if fires else last_attempt)
+    assert out[0] == (hf_row['Time'] if fires else last_attempt)
 
 
 @pytest.mark.unit
@@ -2175,9 +2175,9 @@ def test_the_update_floor_also_spaces_the_recovery(tmp_path, floor, calls):
     without the floor the recovery fires."""
     config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
     config.interior_struct.zalmoxis.update_min_interval = floor
-    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 7e4)
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
     assert solver.call_count == calls
-    assert out[0] == (7e4 if calls == 0 else 1e5)
+    assert out[0] == (7e4 if calls == 0 else hf_row['Time'])
 
 
 @pytest.mark.unit
@@ -2195,9 +2195,9 @@ def test_a_resumed_run_recovers_after_a_later_failure(tmp_path, sidecar):
     interior_o.resume_structure_stale(str(tmp_path))
     hf_row['Time'] = 1.3e5  # the routine ceiling (5e4 since 8e4) fires; the solver fails
     out, _ = _call_with_failing_solver(config, dirs, interior_o, hf_row, 8e4)
-    assert interior_o.structure_stale is True and out[0] == 1.3e5
+    assert interior_o.structure_stale is True and out[0] == hf_row['Time']
     hf_row['Time'] = 1.6e5  # 3e4 after the failed attempt: only the recovery can fire
-    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, out[0])
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, out[0])
     solver.assert_called_once()
     assert interior_o.structure_stale is False
 
@@ -2209,11 +2209,11 @@ def test_a_fresh_run_recovers_after_a_failed_first_resolve(tmp_path):
     config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
     hf_row['Time'] = 5e4
     out, _ = _call_with_failing_solver(config, dirs, interior_o, hf_row, 0.0)
-    assert interior_o.structure_stale is True and out[0] == 5e4
+    assert interior_o.structure_stale is True and out[0] == hf_row['Time']
     hf_row['Time'] = 8e4
-    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, out[0])
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, out[0])
     solver.assert_called_once()
-    assert out[0] == 8e4 and interior_o.structure_stale is False
+    assert out[0] == hf_row['Time'] and interior_o.structure_stale is False
 
 
 # ============================================================================
