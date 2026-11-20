@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 from proteus.atmos_clim.common import (
-    LID_SLOPE_GUARD_SIGN,
+    LID_SLOPE_GUARD_GREY,
     LID_SLOPE_GUARD_SIZE,
     lid_flux_slope,
     lid_open_conductance,
@@ -120,17 +120,17 @@ def test_update_solver_cuts_the_slope_with_the_end_of_its_own_secant():
     )
 
 
-def test_a_live_lid_without_a_usable_slope_holds_the_start_value():
-    """A live lid without a usable slope gets conductance 0 and guard code 1."""
+def test_a_live_lid_without_any_usable_slope_takes_the_grey_tangent():
+    """A live lid in a run without a usable secant takes the response of the grey tangent
+    4 sigma T_surf^3 and guard code 4, not the response 0 of a pure flux boundary."""
     bc, interior_o = _runner_bc()
     row = _row(0.4, G=21.9, T_b=1440.0, T_surf=727.3, F_atm=7000.0, lid_F_open=165000.0)
     row.update(Time=30000.0, T_eqm=255.0)
     AragogRunner.update_solver(25.0, row, interior_o, hf_all=None)
-    # the guard of a slope of 0, exact
-    assert (bc.open_surface_conductance, row['lid_slope_guard']) == lid_open_conductance(
-        row, 0.0
-    )
-    assert row['lid_slope_guard'] == LID_SLOPE_GUARD_SIGN
+    grey = 4.0 * const_sigma * 727.3**3
+    assert bc.open_surface_conductance == lid_open_conductance(row, grey)[0]
+    assert bc.open_surface_conductance > 0.0
+    assert row['lid_slope_guard'] == LID_SLOPE_GUARD_GREY
 
 
 @pytest.mark.parametrize(

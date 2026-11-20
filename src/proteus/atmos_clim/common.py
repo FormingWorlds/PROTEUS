@@ -510,6 +510,39 @@ def lid_flux_secant(hf_all, hf_row: dict) -> tuple[float, float | None]:
     return (slope if np.isfinite(slope) and slope > 0.0 else 0.0), T_other
 
 
+def lid_fallback_slope(hf_all, hf_row: dict) -> tuple[float, int, int]:
+    """Slope ``F'`` [W m-2 K-1] for a live lid whose last secant is unusable.
+
+    Parameters
+    ----------
+    hf_all : pandas.DataFrame or None
+        Helpfile rows, with or without the current row as the last one.
+    hf_row : dict
+        Current helpfile row, with ``Time`` and ``T_surf``.
+
+    Returns
+    -------
+    tuple
+        ``(slope, rows_back, code)``: the newest usable secant of 2 consecutive earlier rows
+        (the rules of :func:`lid_flux_secant`), the number of rows from its later row to the
+        current one, and ``LID_SLOPE_GUARD_FALLBACK``; without one in the run, the grey tangent
+        ``4 sigma T_surf^3``, 0 and ``LID_SLOPE_GUARD_GREY``.
+    """
+    rows = hf_all
+    if rows is not None and len(rows) and float(rows['Time'].iloc[-1]) == float(hf_row['Time']):
+        rows = rows.iloc[:-1]
+    if rows is not None and len(rows) >= 2:
+        T = rows['T_surf'].to_numpy(dtype=float)
+        F = rows['F_atm'].to_numpy(dtype=float)
+        for i in range(len(T) - 1, 0, -1):
+            dT = T[i] - T[i - 1]
+            if abs(dT) >= LID_SLOPE_DT_MIN:
+                slope = (F[i] - F[i - 1]) / dT
+                if math.isfinite(slope) and slope > 0.0:
+                    return float(slope), len(T) - i, LID_SLOPE_GUARD_FALLBACK
+    return 4.0 * const_sigma * float(hf_row['T_surf']) ** 3, 0, LID_SLOPE_GUARD_GREY
+
+
 def lid_flux_slope(hf_all, hf_row: dict) -> float:
     """Slope ``F'`` [W m-2 K-1] of :func:`lid_flux_secant`, without the other end of its secant."""
     return lid_flux_secant(hf_all, hf_row)[0]
@@ -646,9 +679,12 @@ def lid_open_residual(hf_row: dict) -> float:
     return (float(hf_row['F_atm']) - k / d * (T_melt - float(hf_row['T_surf']))) / (1.0 - w)
 
 
-# lid_slope_guard codes: the slope was 0 or below, not finite or from a short step; it was cut
+# lid_slope_guard codes: the slope was 0 or below, not finite or from a short step; it was cut;
+# a live lid took the newest usable earlier secant, or the grey tangent without one
 LID_SLOPE_GUARD_SIGN = 1
 LID_SLOPE_GUARD_SIZE = 2
+LID_SLOPE_GUARD_FALLBACK = 3
+LID_SLOPE_GUARD_GREY = 4
 
 
 def lid_open_conductance(

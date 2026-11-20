@@ -34,6 +34,9 @@ from proteus.accretion.common import snap_to_impact
 from proteus.atmos_clim.common import (
     lid_acts,
     lid_flux_cap,
+    LID_SLOPE_GUARD_GREY,
+    LID_SLOPE_GUARD_SIZE,
+    lid_fallback_slope,
     lid_flux_secant,
     lid_open_conductance,
 )
@@ -2337,6 +2340,18 @@ class AragogRunner:
         live = getattr(bc, 'subgrid_lid', False) and lid_acts(hf_row)
         bc.outer_boundary_value = hf_row['lid_F_open'] if live else hf_row['F_atm']
         slope, T_other = lid_flux_secant(hf_all, hf_row)
+        fallback = 0
+        if live and slope == 0.0:
+            # an unusable secant would leave the held lid a pure flux cap
+            slope, rows_back, fallback = lid_fallback_slope(hf_all, hf_row)
+            T_other = None
+            log.info(
+                'Lid slope: last secant unusable, %s %.4g W m-2 K-1 (%d row%s back)',
+                'grey tangent' if fallback == LID_SLOPE_GUARD_GREY else 'secant',
+                slope,
+                rows_back,
+                '' if rows_back == 1 else 's',
+            )
         _set_lid_surface(bc, hf_row, slope)
         bc.surface_temperature = _surface_temperature_of_row(hf_row)
         # in flux mode with the mush base the open part of a live lid follows its node in the step
@@ -2346,7 +2361,9 @@ class AragogRunner:
             else (None, 0)
         )
         bc.open_surface_conductance = G_eff
-        hf_row['lid_slope_guard'] = code
+        # the grey tangent is the cut itself; it keeps its own code
+        cut = code == LID_SLOPE_GUARD_SIZE and fallback != LID_SLOPE_GUARD_GREY
+        hf_row['lid_slope_guard'] = fallback if fallback and not cut else code
 
         # Update equilibrium temperature (tracks stellar luminosity evolution).
         # SPIDER receives fresh T_eqm at every call via -teqm (spider.py:748).

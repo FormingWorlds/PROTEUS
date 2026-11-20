@@ -109,7 +109,7 @@ def test_without_a_live_lid_no_fallback_acts():
 
 @settings(max_examples=120, deadline=None)
 @given(
-    T=st.lists(st.floats(1000.0, 1500.0), min_size=2, max_size=8),
+    T=st.lists(st.floats(1000.0, 1430.0), min_size=2, max_size=8),  # below the lid base 1440 K
     F=st.lists(st.floats(1.0e3, 3.0e4), min_size=9, max_size=9),
     tiny=st.floats(0.0, 0.009),
 )
