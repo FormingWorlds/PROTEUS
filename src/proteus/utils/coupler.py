@@ -36,7 +36,6 @@ from proteus.utils.constants import (
 )
 from proteus.utils.helper import (
     UpdateStatusfile,
-    create_tmp_folder,
     format_subyear_time,
     get_proteus_dir,
     parse_subyear_time,
@@ -62,44 +61,15 @@ def _get_current_time():
 
 
 def _get_git_revision(dir: str) -> str:
-    """
-    Get git hash for repository in `dir`.
-    """
-    # change dir
-    cwd = os.getcwd()
+    """Git hash of the repository in `dir`, or 'unknown'. Leaves the working directory
+    alone, so a process whose own working directory is gone still gets the hash."""
     try:
-        os.chdir(dir)
-    except Exception:
-        # If we can't change to the directory, return unknown
-        return 'unknown'
-
-    # get hash (https://stackoverflow.com/a/21901260)
-    try:
-        hash = (
-            subprocess.check_output(
-                ['git', 'rev-parse', 'HEAD'],
-                stderr=subprocess.DEVNULL,
-                timeout=5,  # Add timeout to prevent hanging
-            )
-            .decode('ascii')
-            .strip()
+        out = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'], cwd=dir, stderr=subprocess.DEVNULL, timeout=5
         )
-    except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        subprocess.TimeoutExpired,
-        Exception,
-    ):
-        # Handle: git not found, not a git repo, git command failed, or any other error
-        hash = 'unknown'
-    finally:
-        # Always change dir back, even if an exception occurred
-        try:
-            os.chdir(cwd)
-        except Exception:
-            pass  # If we can't change back, continue anyway
-
-    return hash
+    except Exception:
+        return 'unknown'
+    return out.decode('ascii').strip()
 
 
 def _get_socrates_version():
@@ -2849,6 +2819,7 @@ def get_proteus_directories(outdir='_unset') -> dict[str, str]:
         'output/observe': os.path.join(output_root, outdir, 'observe'),
         'output/offchem': os.path.join(output_root, outdir, 'offchem'),
         'output/plots': os.path.join(output_root, outdir, 'plots'),
+        'temp': os.path.join(output_root, outdir),
     }
 
 
@@ -2906,13 +2877,6 @@ def set_directories(config: Config) -> dict[str, str]:
             )
         else:
             dirs['rad'] = os.environ.get('RAD_DIR')
-
-    # Temporary directory
-    if config.params.out.logging == 'DEBUG':
-        dirs['temp'] = dirs['output']
-    else:
-        dirs['temp'] = create_tmp_folder()
-    log.debug(f'Temporary-file working dir: {dirs["temp"]}')
 
     # Get abspaths
     for key in dirs.keys():

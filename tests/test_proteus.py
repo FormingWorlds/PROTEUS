@@ -777,7 +777,6 @@ def test_require_paleos_tables_runs_only_for_the_zalmoxis_structure(
     'error, site',
     [
         ('missing', 'solve'),
-        ('other', 'solve'),
         ('missing', 'start check'),
         ('melting curve', 'solve'),
         ('P-S table', 'solve'),
@@ -790,7 +789,7 @@ def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(
     """Missing reference data raised at the start check or mid-run, here from the
     structure solve, leaves status 20, so the run does not read as still running: a
     Zalmoxis EOS table, a melting curve or a SPIDER P-S table, each from its real raise
-    site. Other errors leave the status as is."""
+    site."""
     from types import SimpleNamespace as NS
 
     import proteus.interior_energetics.spider as spider
@@ -817,9 +816,7 @@ def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(
     )
     p.config.interior_energetics.flux_guess = 100.0
     p.config.star.age_ini = 0.1
-    exc = real_site.get(error) or (
-        ZalmoxisMissingEOSFilesError('pair') if error == 'missing' else RuntimeError('x')
-    )
+    exc = real_site.get(error) or ZalmoxisMissingEOSFilesError('pair')
     with ExitStack() as stack:
         for target in _START_PATCHES:
             stack.enter_context(patch(target))
@@ -834,10 +831,81 @@ def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(
             stack.enter_context(
                 patch('proteus.interior_energetics.wrapper.solve_structure', side_effect=exc)
             )
-        with pytest.raises(Exception, match='pair|x|not found'):
+        with pytest.raises(Exception, match='pair|not found'):
             p.start(resume=False, offline=True)
     status = (tmp_path / 'status').read_text().splitlines()[0]
-    assert status == ('0' if error == 'other' else '20')
+    assert status == '20'
+
+
+_MODULE_CONFIG = 'proteus.utils.coupler.print_module_configuration'
+
+
+def _stop_with(exc, code_first, seen, dirs):
+    """A start-up step that records the status it finds and raises `exc`, after writing
+    its own stop code if given."""
+
+    def step(*_args, **_kwargs):
+        from proteus.utils.helper import ReadStatus
+
+        seen.append(ReadStatus(dirs['output']))
+        if code_first is not None:
+            from proteus.utils.helper import UpdateStatusfile
+
+            UpdateStatusfile(dirs, code_first)
+        raise exc
+
+    return step
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'site, exc, code_first, expected',
+    [
+        (_MODULE_CONFIG, FileNotFoundError(2, 'cwd is gone'), None, '20'),
+        (_MODULE_CONFIG, KeyboardInterrupt(), None, '25'),
+        (_MODULE_CONFIG, SystemExit(143), None, '25'),
+        (_MODULE_CONFIG, RuntimeError('AGNI deadlock'), 22, '22'),
+        ('proteus.proteus.setup_logger', OSError(28, 'disk full'), None, '20'),
+    ],
+    ids=[
+        'startup-error',
+        'ctrl-c',
+        'system-exit',
+        'own-stop-code-kept',
+        'logger-setup-error',
+    ],
+)
+def test_a_run_stopped_after_the_output_is_cleaned_records_why(
+    tmp_path, site, exc, code_first, expected
+):
+    """A fresh run that stops between cleaning its output folder and the main loop leaves
+    a stop code, not a missing status file (#778, #744): 20 for an error, 25 for an interrupt
+    or a requested exit, and the code the raise site wrote itself when it wrote one. The
+    logger setup is the first step after the clean. While it initialises the run reads 0
+    (Started), so a run killed there without a handler (SIGKILL, out of memory) does not read
+    as a stale code or no file. The output folder is cleaned for real, so a status written
+    before the clean would be gone."""
+    p = _make_proteus_instance(tmp_path)
+    p.directories.update(
+        {k: str(tmp_path / k) for k in ('output/observe', 'output/offchem', 'output/plots')}
+    )
+    (tmp_path / 'status').write_text('13\nCompleted (target time)\n')
+    seen = []
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch(
+                site,
+                side_effect=_stop_with(exc, code_first, seen, p.directories),
+            )
+        )
+        with pytest.raises(type(exc)):
+            p.start(resume=False, offline=True)
+    assert seen == [0]
+    lines = (tmp_path / 'status').read_text().splitlines()
+    assert lines[0] == expected
+    assert lines[1].startswith('Error (')
 
 
 @pytest.mark.unit
@@ -1540,6 +1608,8 @@ def _resume_at_helpfile_load(p, *, read_effect=None):
     their call history after the patches are lifted, plus the exception the
     run ended on.
     """
+    from proteus.utils.helper import UpdateStatusfile
+
     with ExitStack() as stack:
         for target in _START_PATCHES:
             stack.enter_context(patch(target))
@@ -1559,7 +1629,9 @@ def _resume_at_helpfile_load(p, *, read_effect=None):
                 side_effect=_StopAfterHelpfileLoad,
             )
         )
-        mock_status = stack.enter_context(patch('proteus.proteus.UpdateStatusfile'))
+        mock_status = stack.enter_context(
+            patch('proteus.proteus.UpdateStatusfile', wraps=UpdateStatusfile)
+        )
 
         with pytest.raises(Exception) as excinfo:
             p.start(resume=True, offline=True)
@@ -4598,6 +4670,8 @@ def test_start_stops_before_touching_output_when_aragog_lacks_cvode(
     """
     p = _make_proteus_instance(tmp_path, interior_module='aragog')
     p.config.interior_energetics.aragog.solver_method = 'cvode'
+    # An earlier run's final status in the folder, which the stop must leave as it is.
+    (tmp_path / 'status').write_text('13\nCompleted (target time)\n')
 
     with ExitStack() as stack:
         for target in _START_PATCHES:
@@ -4609,6 +4683,7 @@ def test_start_stops_before_touching_output_when_aragog_lacks_cvode(
 
     status.assert_not_called()
     clean.assert_not_called()
+    assert (tmp_path / 'status').read_text().splitlines()[0] == '13'
 
 
 @pytest.mark.parametrize(
@@ -5051,6 +5126,220 @@ def test_a_frozen_mantle_escapes_over_many_steps_with_every_element_closing(
     # hydrogen that escaped, beyond the 1e-4 closure limit on the final total.
     gap = (1.0 - 1.0 / _CALLIOPE_SPECIES_OVER_ELEMENTS) * (h_start - h_end)
     assert gap / h_end > 1.0e-4
+
+
+class _TempDirRunner:
+    """Stand-in for Proteus carrying only what `_run_temp_dir` reads."""
+
+    def __init__(self, output, logging_level='INFO'):
+        self.config = MagicMock()
+        self.config.params.out.logging = logging_level
+        self.directories = {'output': str(output) + '/', 'temp': str(output) + '/'}
+
+
+@pytest.mark.parametrize(
+    ('raised', 'writes', 'warns'),
+    [
+        (None, True, False),
+        (RuntimeError('solver failed'), True, True),
+        (RuntimeError('solver failed'), False, False),
+        (KeyboardInterrupt(), True, True),
+        (SystemExit(143), True, True),
+        (SystemExit(0), True, False),
+    ],
+    ids=[
+        'run-ends',
+        'run-raises',
+        'run-raises-with-empty-folder',
+        'run-interrupted',
+        'run-terminated',
+        'run-exits-cleanly',
+    ],
+)
+def test_run_temp_dir_is_private_and_removed_when_the_run_ends_or_fails(
+    tmp_path, system_tmp, caplog, raised, writes, warns
+):
+    """A run works in its own 0700 folder under $TMPDIR, removed when start returns or raises.
+
+    A failed, interrupted (Ctrl-C) or terminated (SIGTERM, exit 143) run also
+    says how to keep the files, because they are gone. KeyboardInterrupt and
+    SystemExit are not an Exception, so a handler that catches only Exception
+    would drop that hint. A clean exit (status 0) is no failure and gives none,
+    and nor does an empty folder, as when AGNI verbosity >= 2 writes to the output folder.
+    """
+    from proteus.proteus import _run_temp_dir
+
+    runner = _TempDirRunner(tmp_path / 'out')
+    seen = {}
+
+    @_run_temp_dir
+    def start(self):
+        seen['temp'] = Path(self.directories['temp'])
+        seen['mode'] = seen['temp'].stat().st_mode & 0o777
+        if writes:
+            (seen['temp'] / 'fastchem').mkdir()
+            (seen['temp'] / 'runtime.sf_k').write_bytes(b'\0' * 1024)
+        if raised is not None:
+            raise raised
+        return 'done'
+
+    with caplog.at_level(logging.WARNING, logger='fwl'):
+        if raised is None:
+            assert start(runner) == 'done'
+        else:
+            with pytest.raises(type(raised)):
+                start(runner)
+
+    assert seen['temp'].parent == system_tmp
+    assert seen['temp'].name.startswith('proteus_')
+    assert seen['mode'] == 0o700
+    assert os.listdir(system_tmp) == []
+    assert runner.directories['temp'] == runner.directories['output']
+    assert ("'DEBUG'" in caplog.text) is warns
+
+
+def test_concurrent_runs_with_the_same_numpy_seed_get_separate_temp_dirs(tmp_path, system_tmp):
+    """Two runs on one node never share a temp folder, even with identical RNG state.
+
+    The old name came from NumPy's global RNG and the folder was emptied first,
+    so a second run seeded like the first took over and wiped its folder.
+    """
+    from proteus.proteus import _run_temp_dir
+
+    outer, inner = _TempDirRunner(tmp_path / 'a'), _TempDirRunner(tmp_path / 'b')
+    seen = {}
+
+    @_run_temp_dir
+    def start_inner(self):
+        seen['inner'] = self.directories['temp']
+
+    @_run_temp_dir
+    def start_outer(self):
+        seen['outer'] = self.directories['temp']
+        marker = Path(seen['outer']) / 'runtime.sf'
+        marker.write_text('outer run file')
+        # Same RNG state as when the outer folder was named
+        np.random.seed(7)
+        start_inner(inner)
+        seen['outer_file_survives'] = marker.read_text() == 'outer run file'
+
+    np.random.seed(7)
+    start_outer(outer)
+
+    assert seen['outer'] != seen['inner']
+    assert seen['outer_file_survives']
+    assert os.listdir(system_tmp) == []
+
+
+def test_debug_run_uses_and_keeps_the_output_folder(tmp_path, system_tmp):
+    """With DEBUG logging the temporary files go to the output folder and are kept."""
+    from proteus.proteus import _run_temp_dir
+
+    output = tmp_path / 'out'
+    output.mkdir()
+    runner = _TempDirRunner(output, logging_level='DEBUG')
+
+    @_run_temp_dir
+    def start(self):
+        (Path(self.directories['temp']) / 'fastchem').mkdir()
+        raise RuntimeError('solver failed')
+
+    with pytest.raises(RuntimeError):
+        start(runner)
+
+    assert runner.directories['temp'] == runner.directories['output']
+    assert (output / 'fastchem').is_dir()
+    assert os.listdir(system_tmp) == []
+
+
+def test_proteus_start_gives_modules_a_temp_dir_and_removes_it(
+    tmp_path, system_tmp, monkeypatch
+):
+    """Proteus.start sets directories['temp'] before the modules run, then removes the folder.
+
+    The run is stopped at the module-configuration printout, which is the first
+    step that reads the folder.
+    """
+    # A fresh start empties the output folder, so it must not contain $TMPDIR
+    output = tmp_path / 'run'
+    output.mkdir()
+    p = _make_proteus_instance(output)
+    for sub in ('observe', 'offchem', 'plots'):
+        p.directories[f'output/{sub}'] = str(output / sub)
+    p.directories['fwl'] = str(tmp_path / 'fwl')
+    assert 'temp' not in p.directories
+    seen = {}
+
+    def _stop(dirs, *_a):
+        seen['temp'] = dirs['temp']
+        seen['is_dir'] = os.path.isdir(dirs['temp'])
+        raise RuntimeError('stop here')
+
+    monkeypatch.setattr('proteus.utils.coupler.print_module_configuration', _stop)
+    with pytest.raises(RuntimeError, match='stop here'):
+        p.start()
+
+    assert Path(seen['temp']).parent == system_tmp
+    assert seen['is_dir']
+    assert os.listdir(system_tmp) == []
+    assert p.directories['temp'] == p.directories['output']
+
+
+def test_a_temp_dir_that_cannot_be_removed_is_reported_not_raised(
+    tmp_path, system_tmp, monkeypatch, caplog
+):
+    """A failed removal logs a warning naming the folder and keeps the run's result.
+
+    The run itself succeeded, so a busy or vanished folder must not turn it into
+    a failure.
+    """
+    from proteus.proteus import _run_temp_dir
+
+    runner = _TempDirRunner(tmp_path / 'out')
+    seen = {}
+
+    def _refuse(path):
+        raise OSError(16, 'Device or resource busy', path)
+
+    monkeypatch.setattr('proteus.proteus.shutil.rmtree', _refuse)
+
+    @_run_temp_dir
+    def start(self):
+        seen['temp'] = self.directories['temp'].rstrip('/')
+        return 'done'
+
+    with caplog.at_level(logging.WARNING, logger='fwl'):
+        assert start(runner) == 'done'
+
+    assert f'Could not remove temporary folder {seen["temp"]}' in caplog.text
+    assert 'Device or resource busy' in caplog.text
+    # The warning about removing files of a failed run is not given here
+    assert "'DEBUG'" not in caplog.text
+    assert runner.directories['temp'] == runner.directories['output']
+
+
+def test_run_folder_follows_tmpdir_for_habrok(tmp_path, system_tmp, monkeypatch):
+    """With only $TMPDIR set, the run's temporary folder is created under it.
+
+    This supports Habrok, which sets $TMPDIR for jobs: runs there must use it,
+    not /tmp or a fixed folder.
+    """
+    from proteus.proteus import _run_temp_dir
+
+    monkeypatch.setattr('tempfile.tempdir', None)
+    runner = _TempDirRunner(tmp_path / 'out')
+    seen = {}
+
+    @_run_temp_dir
+    def start(self):
+        seen['temp'] = Path(self.directories['temp'])
+        seen['listing'] = os.listdir(system_tmp)
+
+    start(runner)
+
+    assert seen['temp'].parent == system_tmp
+    assert seen['listing'] == [seen['temp'].name]
+    assert os.listdir(system_tmp) == []
 
 
 def _run_seal_loop(tmp_path, enabled, make_seal_step=lambda _p: None):

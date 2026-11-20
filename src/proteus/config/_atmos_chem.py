@@ -23,6 +23,18 @@ def valid_ini_mix(instance, attribute, value):
         raise ValueError(f"{attribute.name} = 'previous' requires fix_surf = true")
 
 
+def valid_escape_bc(instance, attribute, value):
+    """Refuse `escape_bc = true` unless the surface mixing ratios are fixed.
+
+    Escape removes elements selectively at the top, so a zero-flux bottom would let the
+    column drain without reaching a steady state.
+    """
+    if value and not instance.fix_surf:
+        raise ValueError(
+            f'`Setting {attribute.name} = true` requires `fix_surf = true` in order to conserve mass.'
+        )
+
+
 def valid_mode(instance, attribute, value):
     """Refuse coupled chemistry, and automatic chemistry without a module."""
     if value == 'online':
@@ -127,6 +139,8 @@ class Vulcan:
         Initial mixing ratios. Options: profile (the climate profile), outgas (the surface mixing ratios at every level), previous (the result of the latest earlier chemistry snapshot, interpolated in log pressure; needs fix_surf = true; falls back to profile when there is none).
     fix_surf : bool
         Fix the surface mixing ratios based on outgassed composition.
+    escape_bc : bool
+        Upper boundary condition. If true, each atom in the network leaves the top layer at the PROTEUS escape rate; requires fix_surf = true. If false, no gas crosses the top.
     network : str
         Chemical network. Options: CHO, NCHO, SNCHO.
     save_frames : bool
@@ -187,6 +201,7 @@ class Vulcan:
         validator=(in_(('profile', 'outgas', 'previous')), valid_ini_mix),
     )
     fix_surf: bool = field(default=False)
+    escape_bc: bool = field(default=False, validator=valid_escape_bc)
     network: str = field(default='SNCHO', validator=in_(('CHO', 'NCHO', 'SNCHO')))
     save_frames: bool = field(default=False)
     yconv_cri: float = field(default=0.05)

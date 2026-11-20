@@ -2,7 +2,7 @@
 
 Covers `proteus.config._atmos_chem`: each VULCAN solver option, the
 scheduling keys `mode` and `times` (including its table of helpfile keys), and the
-initial composition `ini_mix`
+initial composition `ini_mix` and the upper boundary `escape_bc`
 accept a valid value and refuse an invalid one at construction.
 """
 
@@ -222,3 +222,21 @@ def test_vulcan_defaults_start_from_the_profile_with_a_free_surface():
     assert vul.fix_surf is False
     with pytest.raises(ValueError, match='requires fix_surf = true'):
         Vulcan(ini_mix='previous')
+
+
+@pytest.mark.unit
+def test_vulcan_escape_bc_requires_a_fixed_surface():
+    """escape_bc = true is accepted with fix_surf = true and refused with
+    fix_surf = false, since a free surface does not close the mass budget;
+    escape_bc = false is accepted with either and is the default."""
+    assert Vulcan().escape_bc is False
+    assert Vulcan(escape_bc=True, fix_surf=True).escape_bc is True
+    with pytest.raises(
+        ValueError,
+        match='`Setting escape_bc = true` requires `fix_surf = true` in order to conserve mass',
+    ):
+        Vulcan(escape_bc=True, fix_surf=False)
+    with pytest.raises(ValueError, match='escape_bc'):
+        Vulcan(escape_bc=True)
+    for fix_surf in (True, False):
+        assert Vulcan(escape_bc=False, fix_surf=fix_surf).escape_bc is False

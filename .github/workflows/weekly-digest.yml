@@ -1,0 +1,147 @@
+name: Weekly ecosystem digest
+
+# Collects ecosystem pull requests and releases, drafts the digest with the model, checks it
+# against the collected data and posts it when publish is on in tools/digest/repos.toml. Every
+# run uploads the digest as an artifact; no job holds both the model token and a write token.
+
+on:
+  schedule:
+    - cron: '23 22 * * 1'
+  workflow_dispatch:
+    inputs:
+      since:
+        description: 'Window start (ISO date or time, UTC); setting it makes a back-dated dry run'
+        required: false
+      until:
+        description: 'Window end (ISO date or time, UTC); setting it makes a back-dated dry run'
+        required: false
+      post:
+        description: 'Post the digest (only when publish = true and the window is not back-dated)'
+        type: boolean
+        default: false
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: weekly-digest-${{ (github.event_name == 'schedule' || (inputs.post && !inputs.since && !inputs.until)) && 'live' || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    name: Collect pull requests, releases and facts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      discussions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Collect
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SINCE: ${{ inputs.since }}
+          UNTIL: ${{ inputs.until }}
+        run: |
+          args=(--out collected.json --summary "$GITHUB_STEP_SUMMARY")
+          [ -n "$SINCE" ] && args+=(--since "$SINCE")
+          [ -n "$UNTIL" ] && args+=(--until "$UNTIL")
+          python tools/digest/collect.py "${args[@]}"
+          python tools/digest/facts.py collected.json --summary "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: collected
+          path: collected.json
+          overwrite: true
+
+  draft:
+    name: Draft the entries
+    needs: collect
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: {}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v6
+        with:
+          name: collected
+      - name: Install the model CLI
+        run: npm install --global @anthropic-ai/claude-code@2.1.318
+      - name: Draft
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: python tools/digest/draft.py collected.json draft.json
+      - uses: actions/upload-artifact@v6
+        with:
+          name: draft
+          path: draft.json
+          overwrite: true
+
+  publish:
+    name: Check, render and post
+    needs: draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      discussions: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v6
+        with:
+          name: collected
+      - uses: actions/download-artifact@v6
+        with:
+          name: draft
+      - name: Check the draft
+        run: python tools/digest/check.py collected.json draft.json --out check.txt --summary "$GITHUB_STEP_SUMMARY"
+      - name: Decide whether to post
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          POST: ${{ inputs.post || false }}
+        run: python tools/digest/post.py decide collected.json --event "$EVENT" --post-input "$POST" | tee -a "$GITHUB_OUTPUT"
+      - name: Render
+        env:
+          LIVE: ${{ steps.mode.outputs.live }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          live=(); [ "$LIVE" = true ] && live=(--live)
+          python tools/digest/render.py collected.json draft.json out --run-url "$RUN_URL" --run-id "$GITHUB_RUN_ID" "${live[@]}"
+          cat out/digest.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: digest
+          overwrite: true
+          path: |
+            out/
+            collected.json
+            draft.json
+            check.txt
+      - name: Post
+        if: steps.mode.outputs.live == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          POST: ${{ inputs.post || false }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python tools/digest/post.py publish collected.json draft.json out --event "$EVENT" --post-input "$POST" --run-url "$RUN_URL"
