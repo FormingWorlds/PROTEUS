@@ -602,7 +602,7 @@ def _replay_lifecycle(data_dir, *, rolling_snapshots_only):
         (data_dir / f'{t}_atm.nc').write_bytes((b'atm-%d' % t) * 64)
         # Fixed-name file whose content legitimately evolves each cycle.
         (data_dir / 'zalmoxis_output.dat').write_bytes((b'zalmoxis-v%d' % i) * 64)
-        # Rolling in-loop archive (proteus.py:1188-1198).
+        # Rolling in-loop archive, as in Proteus.start.
         archive_mod.update(
             str(data_dir), remove_files=False, snapshots_only=rolling_snapshots_only
         )
@@ -627,7 +627,7 @@ def test_lifecycle_final_pass_stores_reference_data_once(tmp_path):
     _replay_lifecycle(fixed, rolling_snapshots_only=True)
     fixed_stats = _tar_content_stats(fixed / 'fixed.tar')
 
-    # The fix: reference data and fixed-name files enter the tar exactly once.
+    # Reference data and fixed-name files enter the tar exactly once.
     assert fixed_stats['counts']['spider_eos/table.dat'] == 1
     assert fixed_stats['counts']['spider_mesh.dat'] == 1
     assert fixed_stats['counts']['zalmoxis_output.dat'] == 1
@@ -649,16 +649,13 @@ def test_lifecycle_final_pass_stores_reference_data_once(tmp_path):
 
 @pytest.mark.xfail(
     reason=(
-        'Snapshot .nc/.json members are re-appended across rolling cycles '
-        '(the in-loop archive uses remove_files=False, so a snapshot stays '
-        'loose and is appended again on the next cycle before remove_old '
-        'prunes it) and once more by the final full-archive pass. PROTEUS '
-        '#706 fixed the EOS/fixed-file inflation via snapshots_only=True but '
-        'not this snapshot re-append: on main every snapshot lands in '
-        'data.tar ~2x (observed inflation ~1.45x on this fixture). Expected '
-        'to pass once the archive stores each distinct '
-        'content once.'
+        'The rolling archive appends every loose snapshot on each cycle, and '
+        'remove_old prunes a snapshot only after the next cycle appended it '
+        'again, so every snapshot but the newest enters data.tar twice; the '
+        'final pass appends the newest, still loose, a second time (inflation '
+        '1.44 on this fixture).'
     ),
+    raises=AssertionError,
     strict=True,
 )
 def test_lifecycle_snapshot_reappend_no_inflation(tmp_path):
@@ -666,12 +663,9 @@ def test_lifecycle_snapshot_reappend_no_inflation(tmp_path):
     lifecycle must leave every timestamped snapshot in data.tar exactly once
     and an overall content-inflation factor of ~1.0.
 
-    This encodes the *target* contract, which main does not yet meet -- hence
-    the strict xfail. Verified behaviour on main (commit reachable from this
-    branch, run with the snapshots_only=True rolling config, i.e. the current
-    fix): each snapshot appears twice and gross/distinct is ~1.45 on this
-    fixture. strict=True means the test turns into a hard failure the moment
-    the redesign removes the duplication, forcing this marker to be dropped.
+    The current archive stores every snapshot twice, so the test is a strict
+    xfail; it fails hard once each snapshot is stored once, which forces the
+    marker to be dropped.
     """
     data_dir = _build_data_dir(tmp_path / 'run')
     _replay_lifecycle(data_dir, rolling_snapshots_only=True)
