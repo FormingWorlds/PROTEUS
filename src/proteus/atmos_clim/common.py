@@ -481,6 +481,16 @@ def lid_prev_row(hf_all, hf_row: dict):
     return hf_all.iloc[k] if len(hf_all) >= -k else None
 
 
+def _usable_secant(T0: float, T1: float, F0: float, F1: float) -> float:
+    """Secant ``(F1 - F0) / (T1 - T0)`` [W m-2 K-1] of ``F_atm`` with ``T_surf``; 0 for a surface
+    step below ``LID_SLOPE_DT_MIN``, a slope of 0 or below, or one that is not finite."""
+    dT = T1 - T0
+    if not abs(dT) >= LID_SLOPE_DT_MIN:
+        return 0.0
+    slope = (F1 - F0) / dT
+    return float(slope) if math.isfinite(slope) and slope > 0.0 else 0.0
+
+
 def lid_flux_secant(hf_all, hf_row: dict) -> tuple[float, float | None]:
     """Slope ``F'`` [W m-2 K-1] of ``F_atm`` with ``T_surf`` over the last 2 rows, with the
     surface of the row before, the other end of that secant.
@@ -503,11 +513,8 @@ def lid_flux_secant(hf_all, hf_row: dict) -> tuple[float, float | None]:
     if prev is None:
         return 0.0, None
     T_other = float(prev['T_surf'])
-    dT = float(hf_row['T_surf']) - T_other
-    if not abs(dT) >= LID_SLOPE_DT_MIN:
-        return 0.0, T_other
-    slope = (float(hf_row['F_atm']) - float(prev['F_atm'])) / dT
-    return (slope if np.isfinite(slope) and slope > 0.0 else 0.0), T_other
+    F_prev, F_now = float(prev['F_atm']), float(hf_row['F_atm'])
+    return _usable_secant(T_other, float(hf_row['T_surf']), F_prev, F_now), T_other
 
 
 def lid_fallback_slope(hf_all, hf_row: dict) -> tuple[float, int, int]:
@@ -535,11 +542,9 @@ def lid_fallback_slope(hf_all, hf_row: dict) -> tuple[float, int, int]:
         T = rows['T_surf'].to_numpy(dtype=float)
         F = rows['F_atm'].to_numpy(dtype=float)
         for i in range(len(T) - 1, 0, -1):
-            dT = T[i] - T[i - 1]
-            if abs(dT) >= LID_SLOPE_DT_MIN:
-                slope = (F[i] - F[i - 1]) / dT
-                if math.isfinite(slope) and slope > 0.0:
-                    return float(slope), len(T) - i, LID_SLOPE_GUARD_FALLBACK
+            slope = _usable_secant(T[i - 1], T[i], F[i - 1], F[i])
+            if slope > 0.0:
+                return slope, len(T) - i, LID_SLOPE_GUARD_FALLBACK
     return 4.0 * const_sigma * float(hf_row['T_surf']) ** 3, 0, LID_SLOPE_GUARD_GREY
 
 
