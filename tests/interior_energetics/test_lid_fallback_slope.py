@@ -14,13 +14,16 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, settings
-from hypothesis import strategies as st
 
-from proteus.atmos_clim.common import LID_SLOPE_DT_MIN
-from proteus.interior_energetics.aragog import AragogRunner
-from proteus.utils.constants import const_sigma
-from tests.atmos_clim.test_common import _row
+pytest.importorskip('hypothesis')
+
+from hypothesis import given, settings  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
+
+from proteus.atmos_clim.common import LID_SLOPE_DT_MIN  # noqa: E402
+from proteus.interior_energetics.aragog import AragogRunner  # noqa: E402
+from proteus.utils.constants import const_sigma  # noqa: E402
+from tests.atmos_clim.test_common import _row  # noqa: E402
 
 pytestmark = pytest.mark.unit
 

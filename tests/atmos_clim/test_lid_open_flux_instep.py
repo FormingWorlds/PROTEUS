@@ -466,8 +466,9 @@ def test_a_lid_column_that_is_not_finite_stops_where_it_is_read(key, value, w):
 
     row = _row(w, T_surf=900.0, F_atm=5.0)
     row[key] = value
-    with pytest.raises(LidOpenFluxError, match='not finite'):
+    with pytest.raises(LidOpenFluxError, match='not finite') as err:
         lid_open_flux(row)
+    assert f'{key} {value}' in str(err.value)
 
 
 def test_a_lid_column_that_is_not_read_passes_when_not_finite():
@@ -476,10 +477,10 @@ def test_a_lid_column_that_is_not_read_passes_when_not_finite():
     for key in ('lid_conductance', 'lid_T_node'):
         row = _row(0.0, T_surf=900.0, F_atm=5.0)
         row[key] = math.nan
-        assert lid_open_flux(row) == 5.0
+        assert lid_open_flux(row) == row['F_atm']
     row = _row(0.3, G=0.0, T_surf=900.0, F_atm=5.0)
     row['lid_T_node'] = math.nan
-    assert lid_open_flux(row) == 5.0
+    assert lid_open_flux(row) == row['F_atm']
 
 
 @pytest.mark.parametrize('F_atm', [math.nan, math.inf, -math.inf])
