@@ -4254,7 +4254,8 @@ def test_set_directories_sets_rad_and_creates_no_temp_folder(monkeypatch, system
     """Resolving directories for AGNI sets RAD_DIR and allocates no temporary folder.
 
     The temporary folder belongs to a run (`Proteus.start`), so a runner that is
-    only constructed, or whose config is refused, leaves nothing in TMPDIR.
+    only constructed, or whose config is refused, leaves nothing in TMPDIR. A
+    script that calls a module outside a run gets the output folder as 'temp'.
     """
     cfg = types.SimpleNamespace(
         params=types.SimpleNamespace(out=types.SimpleNamespace(path='run3', logging='INFO')),
@@ -4267,7 +4268,7 @@ def test_set_directories_sets_rad_and_creates_no_temp_folder(monkeypatch, system
     dirs = set_directories(cfg)
 
     assert dirs['rad'].endswith('/tmp/rad_dir/')
-    assert 'temp' not in dirs
+    assert dirs['temp'] == dirs['output']
     assert os.listdir(system_tmp) == []
     assert dirs['output'].endswith('/tmp/proteus/output/run3/')
 

@@ -2881,4 +2881,7 @@ def set_directories(config: Config) -> dict[str, str]:
     for key in dirs.keys():
         dirs[key] = os.path.abspath(dirs[key]) + '/'
 
+    # Proteus.start swaps in a private folder; outside a run, modules use the output folder
+    dirs['temp'] = dirs['output']
+
     return dirs

@@ -104,12 +104,13 @@ def _run_temp_dir(start):
     The folder comes from `tempfile.mkdtemp` under ``$TMPDIR``, so runs sharing
     a node never collide and other users cannot read it. It is removed whether
     the run ends or fails. With DEBUG logging the output folder is used and kept.
+    After the run, ``directories['temp']`` is the output folder, as outside a run.
     """
 
     @functools.wraps(start)
     def wrapper(self, *args, **kwargs):
+        self.directories['temp'] = self.directories['output']
         if self.config.params.out.logging == 'DEBUG':
-            self.directories['temp'] = self.directories['output']
             return start(self, *args, **kwargs)
 
         log = logging.getLogger('fwl.' + __name__)
@@ -117,14 +118,16 @@ def _run_temp_dir(start):
         self.directories['temp'] = temp + '/'
         try:
             return start(self, *args, **kwargs)
-        except BaseException:
-            log.warning(
-                f'Removing temporary files in {temp}; set params.out.logging = '
-                "'DEBUG' to keep them in the output folder"
-            )
+        except BaseException as exc:
+            clean_exit = isinstance(exc, SystemExit) and not exc.code
+            if not clean_exit and os.path.isdir(temp) and os.listdir(temp):
+                log.warning(
+                    f'Removing temporary files in {temp}; set params.out.logging = '
+                    "'DEBUG' to keep them in the output folder"
+                )
             raise
         finally:
-            self.directories.pop('temp', None)
+            self.directories['temp'] = self.directories['output']
             try:
                 shutil.rmtree(temp)
             except OSError as exc:
