@@ -2256,6 +2256,28 @@ def test_stale_ceiling_without_an_anchor_stays_silent(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('sidecar', ['0\n', None], ids=['flag-off', 'missing'])
+def test_a_resumed_run_recovers_after_a_later_failure(tmp_path, sidecar):
+    """A run resumed from a flag-off sidecar (the format main writes) or from none, whose
+    next re-solve fails, re-solves again once the recovery time has passed since that
+    attempt: the recovery does not depend on what the sidecar held."""
+    from proteus.interior_energetics.common import get_file_structure_stale
+
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
+    if sidecar is not None:
+        with open(get_file_structure_stale(str(tmp_path)), 'w') as hdl:
+            hdl.write(sidecar)
+    interior_o.resume_structure_stale(str(tmp_path))
+    hf_row['Time'] = 1.3e5  # the routine ceiling (5e4 since 8e4) fires; the solver fails
+    out, _ = _call_with_failing_solver(config, dirs, interior_o, hf_row, 8e4)
+    assert interior_o.structure_stale is True and out[0] == 1.3e5
+    hf_row['Time'] = 1.6e5  # 3e4 after the failed attempt: only the recovery can fire
+    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, out[0])
+    solver.assert_called_once()
+    assert interior_o.structure_stale is False
+
+
+@pytest.mark.unit
 def test_a_fresh_interior_anchors_the_stale_ceiling_at_the_init_structure(tmp_path):
     """A fresh run takes its init structure at t = 0 as the last success, so a stale flag
     raised by a failed first re-solve still has an anchor for the recovery."""
