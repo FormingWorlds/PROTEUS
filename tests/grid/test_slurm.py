@@ -356,6 +356,13 @@ def test_dispatch_script_starts_no_case_after_the_last_start_time(tmp_path):
     assert done.stdout.decode().count('not started') == 3
 
 
+def _default_sigterm() -> None:
+    """Give the batch shell the default SIGTERM action, unblocked: a CI runner can start
+    the tests with SIGTERM ignored or blocked, and the shell and its cases inherit that."""
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    signal.pthread_sigmask(signal.SIG_UNBLOCK, [signal.SIGTERM])
+
+
 @pytest.mark.parametrize('ending', [False, True], ids=['early-signal', 'scancel'])
 def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp_path, ending):
     """A SIGTERM to the batch shell, as the early signal or a scancel sends it, is
@@ -366,7 +373,7 @@ def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp
     don't start, and the shell waits for the running cases and exits non-zero."""
     bindir = tmp_path / 'bin'
     bindir.mkdir()
-    pids, calls = tmp_path / 'pids', tmp_path / 'scancel_args'
+    pids, calls, ready = tmp_path / 'pids', tmp_path / 'scancel_args', tmp_path / 'ready'
     # srun stand-in: record the step's pid, drop the options, run the command
     (bindir / 'srun').write_text(
         f'#!/bin/sh\necho $$ >> "{pids}"\n'
@@ -382,8 +389,8 @@ def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp
         '#!/bin/sh\n'
         'out="$(dirname "$(dirname "$1")")/$(basename "$1" .toml)"\n'
         'mkdir -p "$out"; echo 1 > "$out/status"\n'
-        'trap \'kill $!; sleep 0.5; printf "25\\nError\\n" > "$out/status"; exit 143\' TERM\n'
-        'sleep 30 & wait $!\n'
+        'trap \'kill $!; sleep 0.2; printf "25\\nError\\n" > "$out/status"; exit 143\' TERM\n'
+        f'sleep 30 & echo >> "{ready}"; wait $!\n'
     )
     for tool in ('srun', 'scancel', 'fakecase'):
         os.chmod(bindir / tool, 0o755)
@@ -403,13 +410,13 @@ def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         start_new_session=True,
+        preexec_fn=_default_sigterm,
     )
     try:
-        for _ in range(100):
-            if pids.exists() and len(pids.read_text().split()) == 2:
+        for _ in range(500):
+            if ready.exists() and ready.read_text() == '\n\n':
                 break
-            time.sleep(0.05)
-        time.sleep(0.2)
+            time.sleep(0.01)
         job.send_signal(signal.SIGTERM)
         out = job.communicate(timeout=10)[0].decode()
     finally:
