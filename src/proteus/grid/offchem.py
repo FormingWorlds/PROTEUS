@@ -10,6 +10,8 @@ from pathlib import Path
 import toml
 
 from proteus.config import read_config_object
+from proteus.grid.manage import _grid_positive_int
+from proteus.grid.slurm import array_layout, dispatch_script, max_array_size
 from proteus.grid.summarise import status_category
 from proteus.utils.coupler import get_proteus_directories, helpfile_path, vulcan_problem
 from proteus.utils.helper import ReadStatus
@@ -18,12 +20,14 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def grid_limits(grid: Path) -> dict:
-    """Read `max_jobs`, `max_days` [days] and `max_mem` [GB] from the grid file in ``grid``.
+    """Read `max_jobs`, `max_days` [days], `max_mem` [GB] and `cores_per_job` (default 1)
+    from the grid file in ``grid``.
 
     Raises
     ------
     ValueError
-        If ``grid`` has no copy.grid.toml, or it lacks one of the keys.
+        If ``grid`` has no copy.grid.toml, it lacks one of the first three keys, or
+        `cores_per_job` is not a positive integer.
     """
     path = grid / 'copy.grid.toml'
     if not path.is_file():
@@ -32,7 +36,9 @@ def grid_limits(grid: Path) -> dict:
     keys = ('max_jobs', 'max_days', 'max_mem')
     if missing := [k for k in keys if k not in table]:
         raise ValueError(f'{path} lacks {", ".join(missing)}')
-    return {k: int(table[k]) if k == 'max_jobs' else float(table[k]) for k in keys}
+    limits = {k: int(table[k]) if k == 'max_jobs' else float(table[k]) for k in keys}
+    limits['cores_per_job'] = _grid_positive_int(table, 'cores_per_job', str(path))
+    return limits
 
 
 def find_cases(grid: Path) -> list[tuple[str, Path]]:
@@ -104,29 +110,34 @@ def _run_case(cfg: Path, flag: list[str], logfile: Path) -> int:
         return subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, check=False).returncode
 
 
-def write_slurm(grid: Path, cases: list[tuple[str, Path]], limits: dict, flag: list[str]):
-    """Write a Slurm job array that runs `proteus offchem` on each case; return its path."""
+def write_slurm(
+    grid: Path, cases: list[tuple[str, Path]], limits: dict, flag: list[str]
+) -> Path:
+    """Write a Slurm job array that runs `proteus offchem` on each case, packed into jobs
+    as the grid run packs its cases, with logs in logs/offchem/; return its path."""
     listing = grid / 'offchem_cases.txt'
-    listing.write_text(''.join(f'{cfg}\n' for _, cfg in cases))
-    # Split days into days/hours/minutes for the Slurm time format
-    days = max(0.001, limits['max_days'])  # do not request negative days
-    time_d = int(days)
-    time_h = int((days - time_d) * 24)
-    time_m = int(((days - time_d) * 24 - time_h) * 60)
+    listing.write_text(''.join(f'{name}\n' for name, _ in cases))
+    cores = limits['cores_per_job']
+    jobs, waves = array_layout(len(cases), cores, max_array_size())
+    throttle = min(max(1, limits['max_jobs'] // cores), jobs)
+    log.info(
+        '%d cases in %d jobs of %d cores, up to %d at a time', len(cases), jobs, cores, throttle
+    )
     script = grid / 'slurm_offchem.sh'
-    script.write_text(f"""#!/bin/sh
-#SBATCH -J proteus.offchem.array
-#SBATCH --export=ALL
-#SBATCH --time={time_d}-{time_h:02d}:{time_m:02d}:00
-#SBATCH --mem-per-cpu={int(limits['max_mem'] * 1024)}M
-#SBATCH -i /dev/null
-#SBATCH -o {grid / 'logs' / 'offchem-%A_%a.log'}
-#SBATCH --array=0-{len(cases) - 1}%{max(1, min(limits['max_jobs'], len(cases)))}
-
-cfg=$(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" "{listing}")
-echo "running offline chemistry with config $cfg"
-proteus offchem --config "$cfg"{''.join(' ' + f for f in flag)}
-""")
+    script.write_text(
+        dispatch_script(
+            cfgdir=str(grid / 'cfgs'),
+            logdir=str(grid / 'logs' / 'offchem'),
+            n_cases=len(cases),
+            cores_per_job=cores,
+            jobs=jobs,
+            throttle=throttle,
+            days=limits['max_days'] * waves,
+            mem_per_case_mb=int(limits['max_mem'] * 1024),
+            command=' '.join(['proteus', 'offchem', *flag, '--config']),
+            case_list=str(listing),
+        )
+    )
     return script
 
 
@@ -135,7 +146,8 @@ def offchem_grid(grid: Path, slurm: bool = False) -> list[str]:
 
     Each case runs `proteus offchem` with its config in cfgs/, so with its own `[atmos_chem]`
     table. `max_jobs` of the grid file caps the cases at once; with ``slurm``, a job array
-    script is written instead, with `max_days` and `max_mem` as the limits of each job.
+    script is written instead, packed by `cores_per_job`, with `max_days` and `max_mem`
+    per case, as for the grid run.
 
     Returns the names of the cases whose chemistry failed (none with ``slurm``).
     """
@@ -145,7 +157,7 @@ def offchem_grid(grid: Path, slurm: bool = False) -> list[str]:
     if not cases:
         raise ValueError(f'No case in {grid} has a helpfile and a config in cfgs/')
     flag = ['--network-compiled'] if check_cases(grid, cases) else []
-    (grid / 'logs').mkdir(exist_ok=True)
+    (grid / 'logs' / 'offchem').mkdir(parents=True, exist_ok=True)
 
     if slurm:
         log.info('Submit to Slurm with `sbatch %s`', write_slurm(grid, cases, limits, flag))
@@ -158,7 +170,7 @@ def offchem_grid(grid: Path, slurm: bool = False) -> list[str]:
     failed = []
     with ThreadPoolExecutor(max_workers=jobs) as pool:
         runs = {
-            pool.submit(_run_case, cfg, flag, grid / 'logs' / f'offchem_{name}.log'): name
+            pool.submit(_run_case, cfg, flag, grid / 'logs' / 'offchem' / f'{name}.log'): name
             for name, cfg in cases
         }
         for i, run in enumerate(as_completed(runs)):

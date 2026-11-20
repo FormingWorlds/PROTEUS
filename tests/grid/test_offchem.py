@@ -87,11 +87,11 @@ def _add_cases(grid, monkeypatch, configs, helpfile=True, status=None):
 
 
 def test_grid_limits_reads_the_three_keys_with_their_types(grid):
-    """max_jobs is an int and the time [days] and memory [GB] are floats; the dimension
-    tables of the grid file are not read as limits."""
+    """max_jobs is an int and the time [days] and memory [GB] are floats; cores_per_job
+    defaults to 1 as for the grid run, and the dimension tables are not read as limits."""
     limits = offchem.grid_limits(grid)
 
-    assert limits == {'max_jobs': 2, 'max_days': 1.5, 'max_mem': 4.0}
+    assert limits == {'max_jobs': 2, 'max_days': 1.5, 'max_mem': 4.0, 'cores_per_job': 1}
     assert isinstance(limits['max_jobs'], int)
     assert isinstance(limits['max_mem'], float)
 
@@ -191,7 +191,7 @@ def test_offchem_grid_runs_max_jobs_cases_at_once_and_reports_failures(grid, mon
     assert all(
         c[:3] == ['proteus', 'offchem', '--config'] and len(c) == 4 for c in state['cmds']
     )
-    assert (grid / 'logs' / 'offchem_case_000003.log').read_text() == 'ran\n'
+    assert (grid / 'logs' / 'offchem' / 'case_000003.log').read_text() == 'ran\n'
 
 
 def test_offchem_grid_refuses_a_grid_without_cases(grid):
@@ -201,3 +201,27 @@ def test_offchem_grid_refuses_a_grid_without_cases(grid):
     with pytest.raises(ValueError, match='No case'):
         offchem.offchem_grid(grid)
     assert not (grid / 'logs').exists()
+
+
+def test_offchem_grid_slurm_packs_the_selected_cases_as_the_grid_run(grid, monkeypatch):
+    """Cases 0, 2 and 5 with cores_per_job = 2 and max_jobs = 2 give two jobs of two
+    cores, one job at a time (max_jobs // cores_per_job), the 1.5 days in minutes and
+    4 GB per case; the listing holds the selected case names and the command passes
+    the compiled network on. No case runs here."""
+    _write_grid_file(grid, max_jobs=2, max_days=1.5, max_mem=4, cores_per_job=2)
+    names = ['case_000000', 'case_000002', 'case_000005']
+    _add_cases(grid, monkeypatch, {n: _fake_config(n) for n in names})
+    monkeypatch.setattr(offchem, 'check_cases', lambda g, c: True)
+    monkeypatch.setattr(offchem, 'max_array_size', lambda: 1001)
+    monkeypatch.setattr(offchem, '_run_case', lambda *a: pytest.fail('a case ran locally'))
+
+    assert offchem.offchem_grid(grid, slurm=True) == []
+
+    script = (grid / 'slurm_offchem.sh').read_text()
+    assert '#SBATCH --array=0-1%1\n' in script
+    assert '#SBATCH --cpus-per-task=2\n' in script
+    assert '#SBATCH --time=2160\n' in script  # 1.5 days
+    assert '#SBATCH --mem-per-cpu=4096M\n' in script  # 4 GB
+    assert 'proteus offchem --network-compiled --config "$cfgs/$1.toml"' in script
+    assert f'-o {grid}/logs/offchem/proteus-%A_%a.log' in script
+    assert (grid / 'offchem_cases.txt').read_text().split() == names

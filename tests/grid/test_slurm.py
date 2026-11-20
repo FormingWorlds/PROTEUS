@@ -453,3 +453,52 @@ def test_error_status_fails_the_job_also_after_exit_code_0(tmp_path, status, fai
     assert (
         (tmp_path / 'my grid' / 'case_000000' / 'status').read_text().startswith(f'{status}\n')
     )
+
+
+def test_dispatch_script_runs_only_the_listed_cases_once_each(tmp_path):
+    """With a case list, the tasks run the listed cases, gaps in the numbering included,
+    each once, and no other case: five listed cases in two jobs of two cores, so task 0
+    runs list lines 1, 3 and 5 and task 1 lines 2 and 4."""
+    bindir = tmp_path / 'bin'
+    bindir.mkdir()
+    (bindir / 'srun').write_text(
+        '#!/bin/sh\nwhile [ "${1#-}" != "$1" ]; do shift; done\nexec "$@"\n'
+    )
+    record = tmp_path / 'ran.txt'
+    (bindir / 'fakecase').write_text(
+        f'#!/bin/sh\necho "$SLURM_ARRAY_TASK_ID $(basename "$1" .toml)" >> "{record}"\n'
+    )
+    for tool in ('srun', 'fakecase'):
+        os.chmod(bindir / tool, 0o755)
+    listed = ['case_000000', 'case_000002', 'case_000003', 'case_000007', 'case_000011']
+    listing = tmp_path / 'my grid' / 'cases.txt'
+    os.makedirs(tmp_path / 'my grid' / 'logs')
+    listing.write_text(''.join(f'{name}\n' for name in listed))
+    jobs, _ = slurm.array_layout(len(listed), 2, max_array=2)
+    script = tmp_path / 'dispatch.sh'
+    script.write_text(
+        slurm.dispatch_script(
+            cfgdir=str(tmp_path / 'my grid' / 'cfgs'),
+            logdir=str(tmp_path / 'my grid' / 'logs'),
+            n_cases=len(listed),
+            cores_per_job=2,
+            jobs=jobs,
+            throttle=jobs,
+            days=1.0,
+            mem_per_case_mb=1024,
+            command='fakecase',
+            case_list=str(listing),
+        )
+    )
+    env = dict(os.environ, PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}')
+    for task in range(jobs):
+        subprocess.run(
+            ['bash', str(script)], env={**env, 'SLURM_ARRAY_TASK_ID': str(task)}, check=True
+        )
+
+    ran = sorted(line.split() for line in record.read_text().splitlines())
+    assert jobs == 2
+    assert ran == sorted(
+        [['0', 'case_000000'], ['0', 'case_000003'], ['0', 'case_000011']]
+        + [['1', 'case_000002'], ['1', 'case_000007']]
+    )
