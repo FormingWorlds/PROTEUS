@@ -447,6 +447,41 @@ def test_a_surface_or_lid_base_that_is_not_finite_stops_under_a_live_lid(key, va
         lid_open_flux(row)
 
 
+@pytest.mark.parametrize(
+    ('key', 'value', 'w'),
+    [
+        ('lid_weight', math.nan, 0.3),
+        ('lid_weight', math.inf, 0.3),
+        ('lid_conductance', math.nan, 0.3),
+        ('lid_conductance', math.inf, 0.3),
+        ('lid_T_node', math.nan, 0.3),
+        ('lid_T_node', -math.inf, 1.0),
+    ],
+)
+def test_a_lid_column_that_is_not_finite_stops_where_it_is_read(key, value, w):
+    """A lid weight that is not finite, a lid conductance that is not finite under a weight
+    above 0, and a node temperature that is not finite under a live lid stop the call, with a
+    finite ``F_atm``, surface and lid base."""
+    from proteus.atmos_clim.common import LidOpenFluxError
+
+    row = _row(w, T_surf=900.0, F_atm=5.0)
+    row[key] = value
+    with pytest.raises(LidOpenFluxError, match='not finite'):
+        lid_open_flux(row)
+
+
+def test_a_lid_column_that_is_not_read_passes_when_not_finite():
+    """Without a lid weight the conductance and the node are not read, and with a conductance
+    of 0 the node is not read: a NaN there passes ``F_atm`` through."""
+    for key in ('lid_conductance', 'lid_T_node'):
+        row = _row(0.0, T_surf=900.0, F_atm=5.0)
+        row[key] = math.nan
+        assert lid_open_flux(row) == 5.0
+    row = _row(0.3, G=0.0, T_surf=900.0, F_atm=5.0)
+    row['lid_T_node'] = math.nan
+    assert lid_open_flux(row) == 5.0
+
+
 @pytest.mark.parametrize('F_atm', [math.nan, math.inf, -math.inf])
 @pytest.mark.parametrize('T_surf', [900.0, 1490.0])
 def test_an_atmosphere_flux_that_is_not_finite_stops_under_a_live_lid(F_atm, T_surf):

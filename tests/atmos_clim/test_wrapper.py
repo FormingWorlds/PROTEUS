@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import math
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -506,8 +506,9 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
     assert hf_row.get('lid_F_resid') == 0.0
 
 
-def _janus_lid_call(tmp_path, F_atm):
-    """``run_atmosphere`` on a JANUS column from an earlier call, under a live lid."""
+def _janus_lid_call(tmp_path, F_atm, janus=None, **cols):
+    """``run_atmosphere`` on a JANUS column from an earlier call, under a live lid; ``cols``
+    replace columns of the row and ``janus`` the JANUS call."""
     config = SimpleNamespace(
         atmos_clim=SimpleNamespace(
             module='janus',
@@ -543,15 +544,15 @@ def _janus_lid_call(tmp_path, F_atm):
         'lid_T_node': 1500.0,
         'boundary_layer_thickness': 0.01,
         'boundary_layer_conductivity': 2.0,
+        **cols,
     }
     atmos_o = Atmos_t()
     atmos_o._atm = object()  # a column from an earlier call: no init, no spectral file
     out = tmp_path / 'out'
     out.mkdir()
-    with patch(
-        'proteus.atmos_clim.janus.RunJANUS',
-        return_value=(object(), {'albedo': 0.2, 'F_atm': F_atm}),
-    ):
+    if janus is None:
+        janus = MagicMock(return_value=(object(), {'albedo': 0.2, 'F_atm': F_atm}))
+    with patch('proteus.atmos_clim.janus.RunJANUS', janus):
         atmos_wrapper.run_atmosphere(
             atmos_o,
             config,
@@ -576,6 +577,25 @@ def test_run_atmosphere_writes_status_22_for_an_open_flux_that_is_not_finite(tmp
     status = tmp_path / 'out' / 'status'
     assert status.is_file()
     assert status.read_text().splitlines()[0] == '22'
+
+
+@pytest.mark.parametrize(
+    ('key', 'value'),
+    [('lid_T_node', math.nan), ('lid_weight', math.nan)],
+    ids=['node', 'weight'],
+)
+def test_run_atmosphere_writes_status_22_before_the_call_for_a_lid_column_not_finite(
+    tmp_path, key, value
+):
+    """Under a live lid, a node temperature or a lid weight that is not finite stops with
+    status 22 before the atmosphere call reads the lid."""
+    from proteus.atmos_clim.common import LidOpenFluxError
+
+    janus = MagicMock(return_value=(object(), {'albedo': 0.2, 'F_atm': 7.0}))
+    with pytest.raises(LidOpenFluxError, match='not finite'):
+        _janus_lid_call(tmp_path, 7.0, janus=janus, **{key: value})
+    assert (tmp_path / 'out' / 'status').read_text().splitlines()[0] == '22'
+    assert janus.call_count == 0
 
 
 def test_run_atmosphere_writes_the_open_part_and_its_residual_under_a_live_lid(
