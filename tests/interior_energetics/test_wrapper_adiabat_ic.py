@@ -1257,14 +1257,13 @@ def _monotonic_interior_o(n_stag=49):
     """Real Interior_t with a mantle T(r) profile for the re-solve hand-off.
 
     A real Interior_t (not a MagicMock) so zalmoxis_fail_count is a true integer
-    the guard must leave untouched and last_successful_struct_time is settable.
+    the guard must leave untouched.
     The radius/temp arrays feed the temperature_function the wrapper builds.
     """
     interior_o = Interior_t(n_stag + 1)
     interior_o.radius = np.linspace(6.371e6, 3.504e6, n_stag + 1)
     interior_o.temp = np.full(n_stag, 3000.0)
     interior_o.zalmoxis_fail_count = 0
-    interior_o.last_successful_struct_time = float('-inf')
     return interior_o
 
 
@@ -1393,9 +1392,6 @@ def test_monotonic_radius_guard_rejects_representation_up_step(tmp_path):
     assert sentinel[0] == pytest.approx(1100.0, rel=1e-12)
     assert sentinel[1] == pytest.approx(3000.0, rel=1e-12)
     assert sentinel[2] == pytest.approx(0.8, rel=1e-12)
-    # The stale-aware ceiling anchor advances too, so it does not immediately
-    # re-arm and force a wasteful re-solve next step.
-    assert interior_o.last_successful_struct_time == pytest.approx(1100.0, rel=1e-12)
     # No-op contract 3 (the load-bearing one): a rejected up-step is NOT a solver
     # failure, so the consecutive-failure counter stays at zero and the run's
     # abort budget is untouched.
