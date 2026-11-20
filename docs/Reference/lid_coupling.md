@@ -34,14 +34,14 @@ Every lid branch acts only for $w > 0$. With $w = 0$:
 | Code | When | Slope of the cap | Slope of the open part |
 |---|---|---|---|
 | 0 | the secant of the last 2 rows is usable and at or below the cut, or no lid is live | the secant | the secant |
-| 1 | a re-solve of Rule 3 found a secant of 0 (the flux at the end surface not above the held flux, or not finite) | 0 for that re-solve | 0 for that re-solve |
 | 2 | the slope lies above the cut | the slope | the cut |
 | 3 | the last secant is unusable; a live lid took the newest usable secant of 2 consecutive earlier rows | that secant | that secant, at most the grey tangent |
 | 4 | the last secant is unusable and the run has no usable secant; a live lid took the grey tangent $4 \sigma T_\mathrm{surf}^3$ | the grey tangent | the grey tangent |
+| 5 | as code 3, with that secant above the grey tangent | that secant | the grey tangent |
 
-Here $\sigma$ is the Stefan-Boltzmann constant. The cut is the grey secant $\sigma (T_1^4 - T_\mathrm{surf}^4)/(T_1 - T_\mathrm{surf})$ over the same 2 rows, with $T_1$ the surface of the row before. The same cut applies after a cooling and after a warming step. After a cooling step this secant lies above the tangent $4 \sigma T_\mathrm{surf}^3$, so the cut is looser than the slope of a grey surface at $T_\mathrm{surf}$ itself. A slope from an earlier pair of rows has no other end at the current row, so its cut is the grey tangent; a code 3 slope above it records code 2. In a re-solve of Rule 3 the cut is the grey secant from the held surface to the end surface of the step, and `lid_slope_guard` records the code of that secant.
+Here $\sigma$ is the Stefan-Boltzmann constant. The cut is the grey secant $\sigma (T_1^4 - T_\mathrm{surf}^4)/(T_1 - T_\mathrm{surf})$ over the same 2 rows, with $T_1$ the surface of the row before. The same cut applies after a cooling and after a warming step. After a cooling step this secant lies above the tangent $4 \sigma T_\mathrm{surf}^3$, so the cut is looser than the slope of a grey surface at $T_\mathrm{surf}$ itself. A slope from an earlier pair of rows has no other end at the current row, so its cut is the grey tangent; a code 3 slope above it records code 5. In a re-solve of Rule 3 the cut is the grey secant from the held surface to the end surface of the step, and `lid_slope_guard` records the code of that secant.
 
-The log line `Lid slope: last secant unusable, ...` names the slope taken and, for code 3, its age in rows. Without a live lid no slope goes to Aragog.
+The log line `Lid slope: last secant unusable, ...` names the slope taken and, for codes 3 and 5, its age in rows. Without a live lid no slope goes to Aragog. The grey tangent acts only where the run has no usable secant at all; no row of the stored coupled runs of the Validation page needs a fallback.
 
 ## The open-part diagnostic
 
@@ -51,11 +51,11 @@ $$F_\mathrm{open,0} = \frac{F_\mathrm{atm} - w\,L}{1 - w}, \qquad L = G_\mathrm{
 
 and `F_atm` where no lid acts. $L$ is the flux of the lid part in the call, with its sign: it is inward for a surface above $T_b$. Aragog does not read this column; it takes the open part per total area ([What the interior takes](../Explanations/lid_coupling.md#what-the-interior-takes)).
 
-**The residual of the atmosphere solve.** With $S = G_\mathrm{skin}(T_m - T_\mathrm{surf})$ the skin flux of the open part and $B$ the skin balance of the call, $F_\mathrm{open,0} = S + (F_\mathrm{atm} - B)/(1 - w)$. Where the atmosphere closes the balance of its call, the start value is the skin flux. Only the share $(F_\mathrm{atm} - B)/(1 - w)$ grows near $w = 1$. In coupled 1 Earth-mass runs with AGNI the residual $F_\mathrm{atm} - B$ was at most 0.01 W m$^{-2}$ on the live-lid rows, and its share per open area at most 0.69 W m$^{-2}$ (at $w$ = 0.99951). The column `lid_F_resid` records that share on every row.
+**The residual of the atmosphere solve.** With $S = G_\mathrm{skin}(T_m - T_\mathrm{surf})$ the skin flux of the open part and $B$ the skin balance of the call, $F_\mathrm{open,0} = S + (F_\mathrm{atm} - B)/(1 - w)$. Where the atmosphere closes the balance of its call, the start value is the skin flux. The column `lid_F_resid` records the residual $F_\mathrm{atm} - B$ per total area on every row; it does not grow near $w = 1$. In coupled 1 Earth-mass runs with AGNI it was at most 0.01 W m$^{-2}$ on the live-lid rows.
 
 Limits of these columns:
 
-- A call whose share is above 1 W m$^{-2}$ per open area, or is not finite, logs a warning with the value and the model time; the run goes on.
+- A call whose residual is above 1 W m$^{-2}$, or is not finite, logs a warning with the value and the model time; the run goes on.
 - Where $1 - w$ is $10^{-9}$ or less, $F_\mathrm{open,0}$ is `F_atm`. $F_\mathrm{open,0}$ tends to `F_atm` as $w$ goes to 0.
 - An `F_atm`, $T_\mathrm{surf}$ or $T_b$ that is not finite stops the run with status 22. The same stop comes before the atmosphere call for a lid weight that is not finite, a lid conductance that is not finite under a weight above 0, or a node or lid base temperature that is not finite under a live lid.
 

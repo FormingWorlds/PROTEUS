@@ -35,6 +35,8 @@ from proteus.accretion.common import snap_to_impact
 from proteus.atmos_clim.common import (
     lid_acts,
     lid_flux_cap,
+    LID_SLOPE_GUARD_FALLBACK,
+    LID_SLOPE_GUARD_FALLBACK_CUT,
     LID_SLOPE_GUARD_GREY,
     LID_SLOPE_GUARD_SIZE,
     lid_fallback_slope,
@@ -2364,9 +2366,11 @@ class AragogRunner:
         fields, code = lid_open_fields(hf_row, slope, T_other) if open_part else ({}, 0)
         for name in OPEN_PART_FIELDS:  # None without a live lid
             setattr(bc, name, fields.get(name))
-        # the grey tangent is the cut itself; it keeps its own code
-        cut = code == LID_SLOPE_GUARD_SIZE and fallback != LID_SLOPE_GUARD_GREY
-        hf_row['lid_slope_guard'] = fallback if fallback and not cut else code
+        # a cut fallback keeps its source in its own code; the grey tangent is the cut itself
+        if fallback == LID_SLOPE_GUARD_FALLBACK and code == LID_SLOPE_GUARD_SIZE:
+            hf_row['lid_slope_guard'] = LID_SLOPE_GUARD_FALLBACK_CUT
+        else:
+            hf_row['lid_slope_guard'] = fallback or code
 
         # Update equilibrium temperature (tracks stellar luminosity evolution).
         # SPIDER receives fresh T_eqm at every call via -teqm (spider.py:748).
@@ -2600,8 +2604,8 @@ class AragogRunner:
         The cap acts at the end where the lid surface ends above the held one. The secant of the
         atmosphere flux between the held and the end surface (``self._lid_flux_at``) replaces
         the slope of the call for the lid part and, through ``lid_open_slope``, for the open
-        part, and the call runs again from its start; a secant equal to the
-        slope (:func:`lid_resolve_skip`) or no flux provider keeps the first solve. The count
+        part, and the call runs again from its start; a secant of 0 (unusable), a secant equal
+        to the slope (:func:`lid_resolve_skip`) or no flux provider keeps the first solve. The count
         and the wall time of the re-solves are kept on ``interior_o``.
 
         Returns
@@ -2621,7 +2625,8 @@ class AragogRunner:
             return out
         tangent = float(bc.lid_surface_flux_slope or 0.0)
         secant = lid_cap_secant(T_held, T_end, float(hf_row['F_atm']), float(flux_at(T_end)))
-        if lid_resolve_skip(tangent, secant):
+        # an unusable secant keeps the first solve: a live lid never runs as a pure flux cap
+        if secant == 0.0 or lid_resolve_skip(tangent, secant):
             return out
         t0 = time.perf_counter()
         _restore_call_start(solver, snap, interior_o)

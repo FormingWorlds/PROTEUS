@@ -620,7 +620,7 @@ def test_run_atmosphere_writes_the_open_part_and_its_residual_under_a_live_lid(
     assert hf_row['lid_F_resid'] == lid_open_residual(hf_row)
     assert hf_row['lid_F_open'] == lid_open_flux(hf_row)
     assert abs(want) > 1e3
-    assert sum('start value residual' in r.getMessage() for r in caplog.records) == 1
+    assert sum('atmosphere residual' in r.getMessage() for r in caplog.records) == 1
     caplog.clear()
     with caplog.at_level('WARNING', logger='fwl.proteus.atmos_clim.wrapper'):
         second = tmp_path / 'second'
@@ -628,7 +628,7 @@ def test_run_atmosphere_writes_the_open_part_and_its_residual_under_a_live_lid(
         hf_row = _janus_lid_call(second, B + 0.5)
     assert hf_row['lid_F_resid'] == pytest.approx(0.5, rel=1e-6)
     assert LID_RESID_WARN == 1.0
-    assert not any('start value residual' in r.getMessage() for r in caplog.records)
+    assert not any('atmosphere residual' in r.getMessage() for r in caplog.records)
 
 
 def test_run_atmosphere_warns_on_a_residual_that_is_not_finite(tmp_path, caplog):
@@ -639,7 +639,7 @@ def test_run_atmosphere_warns_on_a_residual_that_is_not_finite(tmp_path, caplog)
     ):
         hf_row = _janus_lid_call(tmp_path, 7.0)
     assert math.isnan(hf_row['lid_F_resid'])
-    assert sum('start value residual' in r.getMessage() for r in caplog.records) == 1
+    assert sum('atmosphere residual' in r.getMessage() for r in caplog.records) == 1
 
 
 @pytest.mark.unit

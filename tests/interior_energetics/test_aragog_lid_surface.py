@@ -10,7 +10,6 @@ import pytest
 from scipy.optimize import brentq
 
 from proteus.atmos_clim.common import (
-    LID_SLOPE_GUARD_SIGN,
     LID_SLOPE_GUARD_SIZE,
     lid_boundary,
     lid_flux_cap,
@@ -625,11 +624,12 @@ def test_a_resolve_keeps_one_stall_window_entry_per_step():
     assert io.aragog_step_progress == full[1:] + [(2.0, 2.0)]
 
 
-def test_an_unusable_resolve_secant_keeps_the_first_solve():
-    """Where the atmosphere flux at the end surface is not above the held flux, the secant of
-    the re-solve is 0: the first solve, with its slope and guard code, stands, so a live lid
-    never runs as a pure flux cap."""
-    runner, solver, io, seen = _corrector([710.0, 705.0], 14000.0, tangent=40.0)
+@pytest.mark.parametrize('F_end', [14000.0, math.nan])
+def test_an_unusable_resolve_secant_keeps_the_first_solve(F_end):
+    """Where the atmosphere flux at the end surface is not above the held flux, or is not
+    finite, the secant of the re-solve is 0: the first solve, with its slope and guard code,
+    stands, so a live lid never runs as a pure flux cap."""
+    runner, solver, io, seen = _corrector([710.0, 705.0], F_end, tangent=40.0)
     bc = solver.parameters.boundary_conditions
     bc.open_surface_slope = 40.0
     row = {'F_atm': 15000.0, 'T_surf': 700.0, 'lid_slope_guard': 3}
@@ -852,16 +852,12 @@ def test_the_resolve_gives_the_open_part_the_secant_too():
     assert row['lid_slope_guard'] == code
 
 
-@pytest.mark.parametrize(
-    'F_end, code_want',
-    [(math.nan, LID_SLOPE_GUARD_SIGN), (17000.0, LID_SLOPE_GUARD_SIZE)],
-)
-def test_the_resolve_records_the_guard_of_its_secant(F_end, code_want):
-    """A secant of 0 (end flux not finite) holds the open part; a secant of 200 W/m2/K, above the
-    grey secant over 700 to 710 K, is cut to it. The row records the guard of the secant."""
+def test_the_resolve_records_the_guard_of_its_secant():
+    """A re-solve secant of 200 W/m2/K, above the grey secant over 700 to 710 K, is cut to it for
+    the open part, and the row records the guard of that secant."""
     from proteus.atmos_clim.common import lid_open_slope
 
-    runner, solver, io, seen = _corrector([710.0, 705.0], F_end, tangent=3.0)
+    runner, solver, io, seen = _corrector([710.0, 705.0], 17000.0, tangent=3.0)
     bc = solver.parameters.boundary_conditions
     row = _row(0.4, G=21.9, T_b=1440.0, T_surf=700.0, F_atm=15000.0, lid_F_open=165000.0)
     G_tan, code_tan = lid_open_slope(row, 3.0)
@@ -879,10 +875,9 @@ def test_the_resolve_records_the_guard_of_its_secant(F_end, code_want):
     out = runner._solve_with_retry(row, io, 'S0')
     AragogRunner._correct_lid_cap(runner, row, io, 'S0', out, snap)
     grey = const_sigma * (710.0**4 - 700.0**4) / 10.0
-    G_want = 0.0 if code_want == LID_SLOPE_GUARD_SIGN else lid_open_slope(row, grey, 710.0)[0]
     assert seen_G[0] == G_tan
-    assert seen_G[1] == pytest.approx(G_want, rel=1e-12, abs=1e-300)
-    assert row['lid_slope_guard'] == code_want
+    assert seen_G[1] == pytest.approx(lid_open_slope(row, grey, 710.0)[0], rel=1e-12)
+    assert row['lid_slope_guard'] == LID_SLOPE_GUARD_SIZE
 
 
 def test_the_resolve_sets_no_open_response_where_the_step_had_none():

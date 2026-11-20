@@ -657,7 +657,7 @@ def lid_open_flux(hf_row: dict) -> float:
 
 
 def lid_open_residual(hf_row: dict) -> float:
-    """Residual part [W m-2] of the open-part start value, per open area.
+    """Residual [W m-2] of the atmosphere solve against the skin balance of the call, per total area.
 
     Parameters
     ----------
@@ -667,26 +667,24 @@ def lid_open_residual(hf_row: dict) -> float:
     Returns
     -------
     float
-        ``(F_atm - B) / (1 - w)``, with ``B`` the skin balance of the call
-        (:func:`lid_boundary`): the start value of :func:`lid_open_flux` less the skin flux
-        ``G_skin (T_m - T_surf)``. 0 without a lid and where the open area is at or below
-        ``LID_OPEN_AREA_FLOOR``.
+        ``F_atm - B``, with ``B`` the skin balance of the call (:func:`lid_boundary`); divided
+        by ``1 - w`` it is the start value of :func:`lid_open_flux` less the skin flux
+        ``G_skin (T_m - T_surf)``. 0 without a lid.
     """
     if not lid_acts(hf_row):
         return 0.0
-    w = float(hf_row['lid_weight'])
-    if not 1.0 - w > LID_OPEN_AREA_FLOOR:
-        return 0.0
     d, k, T_melt = lid_boundary(hf_row)
-    return (float(hf_row['F_atm']) - k / d * (T_melt - float(hf_row['T_surf']))) / (1.0 - w)
+    return float(hf_row['F_atm']) - k / d * (T_melt - float(hf_row['T_surf']))
 
 
 # lid_slope_guard codes: the slope was 0 or below, not finite or from a short step; it was cut;
-# a live lid took the newest usable earlier secant, or the grey tangent without one
+# a live lid took the newest usable earlier secant, the grey tangent without one, or that
+# earlier secant cut to the grey tangent
 LID_SLOPE_GUARD_SIGN = 1
 LID_SLOPE_GUARD_SIZE = 2
 LID_SLOPE_GUARD_FALLBACK = 3
 LID_SLOPE_GUARD_GREY = 4
+LID_SLOPE_GUARD_FALLBACK_CUT = 5
 
 
 def lid_open_slope(

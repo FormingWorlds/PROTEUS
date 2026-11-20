@@ -459,7 +459,7 @@ def run_atmosphere(
     hf_row['lid_F_resid'] = lid_open_residual(hf_row)
     if not abs(hf_row['lid_F_resid']) <= LID_RESID_WARN:  # 0 without a live lid; NaN warns
         log.warning(
-            'Lid open part: start value residual %.4g W m-2 per open area at t = %.6e yr '
+            'Lid open part: atmosphere residual %.4g W m-2 per total area at t = %.6e yr '
             '(above %g W m-2 or not finite): the atmosphere flux and the skin balance of the call differ',
             hf_row['lid_F_resid'],
             float(hf_row.get('Time', float('nan'))),
