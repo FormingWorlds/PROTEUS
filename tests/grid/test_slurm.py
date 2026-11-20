@@ -424,14 +424,20 @@ def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp
     assert out.count('not started: the job got SIGTERM') == 2
 
 
-def test_error_status_fails_the_job_also_after_exit_code_0(tmp_path):
+@pytest.mark.parametrize(
+    ('status', 'fails'),
+    [(20, True), (28, True), (29, False)],
+    ids=['first-error', 'last-error', 'planet-evaporated'],
+)
+def test_error_status_fails_the_job_also_after_exit_code_0(tmp_path, status, fails):
     """A case that writes an error status (20 to 28) and exits with code 0 keeps its
-    status and fails its job, so sacct doesn't show the job as completed."""
+    status and fails its job, so sacct doesn't show the job as completed. Status 29,
+    "Completed (planet evaporated)", is no error: that case and its job succeed."""
     env = _fake_tools(
         tmp_path,
         srun=_SRUN,
         fakecase='out="$(dirname "$(dirname "$1")")/$(basename "$1" .toml)"\n'
-        'mkdir -p "$out"; printf "21\\nError\\n" > "$out/status"\n',
+        f'mkdir -p "$out"; printf "{status}\\nEnded\\n" > "$out/status"\n',
     )
     os.makedirs(tmp_path / 'my grid' / 'logs')
     script = tmp_path / 'slurm_dispatch.sh'
@@ -442,6 +448,8 @@ def test_error_status_fails_the_job_also_after_exit_code_0(tmp_path):
         capture_output=True,
         timeout=20,
     )
-    assert done.returncode != 0
-    assert 'case_000000 ended with error status 21' in done.stdout.decode()
-    assert (tmp_path / 'my grid' / 'case_000000' / 'status').read_text().startswith('21\n')
+    assert (done.returncode != 0) is fails
+    assert (f'case_000000 ended with error status {status}' in done.stdout.decode()) is fails
+    assert (
+        (tmp_path / 'my grid' / 'case_000000' / 'status').read_text().startswith(f'{status}\n')
+    )

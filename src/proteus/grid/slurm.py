@@ -184,7 +184,7 @@ rm -rf "$TMPDIR"
 if [ -n "$cases" ]; then
     status=$(head -n 1 "$cases/$1/status" 2>/dev/null)
     case "$status" in
-        2?) [ "$code" -ne 0 ] || {{ echo "$1 ended with error status $status"; exit 1; }} ;;
+        2[0-8]) [ "$code" -ne 0 ] || {{ echo "$1 ended with error status $status"; exit 1; }} ;;
         ""|0|1)
             echo "$1 ended without a final status"
             mkdir -p "$cases/$1"
