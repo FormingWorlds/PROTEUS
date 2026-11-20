@@ -2019,6 +2019,65 @@ def test_dT_pdt_excludes_latent_heat_from_a_wholly_molten_mantle(boundary_runner
     )
 
 
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('sensible_heat', ['molten', 'whole'])
+def test_dT_pdt_above_liquidus_is_independent_of_latent_heat_of_fusion(
+    mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos, sensible_heat
+):
+    """Above the liquidus the cooling rate does not depend on the latent heat.
+
+    Above the liquidus `r_s` returns the core radius and `drs_dTp` does not
+    depend on the melt fraction, so a latent term keyed on ``r_s < R_p`` stays
+    nonzero there. With heating off, T_surf = 1500 K and T_p = 2500 K that term
+    slows the cooling of a fully molten mantle 6.6 times at the default
+    L = 4e6 J/kg. Inside the mushy zone the rate must still depend on L.
+    """
+    mock_config.interior_energetics.boundary.sensible_heat = sensible_heat
+
+    def runner_with_latent_heat(L):
+        mock_config.interior_energetics.latent_heat_of_fusion = L  # J/kg
+        with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+            runner = BoundaryRunner(
+                config=mock_config,
+                dirs=mock_dirs,
+                hf_row=mock_hf_row,
+                hf_all=mock_hf_all,
+                interior_o=mock_interior,
+                atmos_o=mock_atmos,
+            )
+        runner.use_radiogenic_heating = False
+        runner.tidal_term = 0.0
+        return runner
+
+    no_latent = runner_with_latent_heat(0.0)
+    default_latent = runner_with_latent_heat(4.0e6)  # schema default, J/kg
+
+    T_p, T_surf = 2500.0, 1500.0  # K, T_p above the 2020 K liquidus
+    assert no_latent.melt_fraction(T_p) == pytest.approx(1.0, rel=1e-12)
+    assert no_latent.r_s(T_p) < no_latent.planet_radius
+
+    rate_no_latent = no_latent.dT_pdt(T_p, T_surf, 0.0)
+    rate_default = default_latent.dT_pdt(T_p, T_surf, 0.0)
+    assert rate_no_latent < 0.0
+    assert rate_default == pytest.approx(rate_no_latent, rel=1e-12)
+
+    # Discrimination: the ungated latent term at the core radius slows the rate
+    # several times, far outside the tolerance above.
+    r_s = no_latent.r_s(T_p)
+    ungated_latent = (
+        -4 * np.pi * r_s**2 * no_latent.mantle_bulk_density * 4.0e6 * no_latent.drs_dTp(T_p)
+    )
+    sensible = no_latent.heat_capacity(T_p)
+    ungated = rate_no_latent * sensible / (sensible + ungated_latent)
+    assert rate_no_latent / ungated > 2.0
+
+    # Inside the mushy zone the latent heat still slows the cooling.
+    T_mush = 0.5 * (no_latent.T_solidus + no_latent.T_liquidus)
+    assert abs(default_latent.dT_pdt(T_mush, T_surf, 0.0)) < 0.5 * abs(
+        no_latent.dT_pdt(T_mush, T_surf, 0.0)
+    )
+
+
 # =============================================================================
 # Tests: adiabat melt model
 # =============================================================================
