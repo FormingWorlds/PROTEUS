@@ -155,12 +155,11 @@ def dispatch_script(
 export stop_at=$(( $(date +%s) + {last_start_s} )) stop="${{TMPDIR:-/tmp}}/${{SLURM_JOB_ID}}_stop"
 
 # The early signal or a scancel: start no new case, send SIGTERM on to the running ones.
-# A scancel or the walltime has already signalled the cases; the forward then fails.
+# After a scancel or at the walltime, Slurm signals the cases itself and this scancel fails.
 on_term() {{
     echo "SIGTERM at $(date -u +%Y-%m-%dT%H:%M:%SZ), $SECONDS s into the job: no new case starts, and the running cases get SIGTERM"
     touch "$stop"
-    scancel --signal=TERM "$SLURM_JOB_ID" 2>/dev/null ||
-        echo "The job is already ending, so Slurm sends SIGTERM to the cases itself"
+    scancel --signal=TERM "$SLURM_JOB_ID"
 }}
 trap on_term TERM
 
