@@ -298,10 +298,9 @@ def test_helpfile_carries_the_lid_onset_thickness(lid, want):
 
 @pytest.mark.parametrize(('w', 'lid'), [(0.0, True), (0.4, True), (1.0, True), (1.0, False)])
 def test_update_solver_passes_the_lid_boundary_of_the_row(w, lid):
-    """The interior takes the open-surface flux of the row under a live lid and the flux of the
-    atmosphere without one, and holds the lid surface at the row surface with the row cap. A
-    solver without the lid (a resume with the lid switched off) takes the flux of the atmosphere
-    even where the row still has a lid weight."""
+    """The interior takes the flux of the atmosphere (total area) with or without a lid, and
+    holds the lid surface at the row surface with the row cap. A solver without the lid (a
+    resume with the lid switched off) gets no cap even where the row still has a lid weight."""
     bc = SimpleNamespace(
         outer_boundary_condition=4,
         subgrid_lid=lid,
@@ -323,7 +322,7 @@ def test_update_solver_passes_the_lid_boundary_of_the_row(w, lid):
     AragogRunner.update_solver(25.0, row, interior_o)
     assert params.solver.end_time == pytest.approx(30025.0, rel=1e-15)
     # pass-through values: exact
-    assert bc.outer_boundary_value == row['lid_F_open' if w > 0.0 and lid else 'F_atm']
+    assert bc.outer_boundary_value == row['F_atm']
     assert bc.surface_temperature == row['T_surf']
     if w > 0.0 and lid:
         assert bc.lid_surface_flux_cap == pytest.approx(21.9 * (1440.0 - 727.3), rel=1e-14)
@@ -810,27 +809,27 @@ def test_a_secant_from_a_non_finite_flux_is_zero(F_end):
 
 
 def test_the_resolve_gives_the_open_part_the_secant_too():
-    """In the re-solve the open part follows the secant as the lid part does: its conductance is
-    ``lid_open_conductance`` of the secant, with the guard code of that slope."""
-    from proteus.atmos_clim.common import lid_open_conductance
+    """In the re-solve the open part follows the secant as the lid part does: its slope is
+    ``lid_open_slope`` of the secant, with the guard code of that slope."""
+    from proteus.atmos_clim.common import lid_open_slope
 
     runner, solver, io, seen = _corrector([710.0, 705.0], 15870.0, tangent=0.0)
     bc = solver.parameters.boundary_conditions
     row = _row(0.4, G=21.9, T_b=1440.0, T_surf=700.0, F_atm=15000.0, lid_F_open=165000.0)
-    G_tan, _ = lid_open_conductance(row, 3.0)
-    bc.open_surface_conductance = G_tan
+    G_tan, _ = lid_open_slope(row, 3.0)
+    bc.open_surface_slope = G_tan
     seen_G = []
     solve = runner._solve_with_retry
 
     def solve_and_record(hf_row, interior_o, S0_entry=None):
-        seen_G.append(bc.open_surface_conductance)
+        seen_G.append(bc.open_surface_slope)
         return solve(hf_row, interior_o, S0_entry)
 
     runner._solve_with_retry = solve_and_record
     snap = _call_start(solver)
     out = runner._solve_with_retry(row, io, 'S0')
     AragogRunner._correct_lid_cap(runner, row, io, 'S0', out, snap)
-    G_sec, code = lid_open_conductance(row, 87.0, 710.0)
+    G_sec, code = lid_open_slope(row, 87.0, 710.0)
     assert seen_G == [G_tan, pytest.approx(G_sec, rel=1e-12)]
     assert G_sec != pytest.approx(G_tan, rel=1e-3)
     assert row['lid_slope_guard'] == code
@@ -843,19 +842,19 @@ def test_the_resolve_gives_the_open_part_the_secant_too():
 def test_the_resolve_records_the_guard_of_its_secant(F_end, code_want):
     """A secant of 0 (end flux not finite) holds the open part; a secant of 200 W/m2/K, above the
     grey secant over 700 to 710 K, is cut to it. The row records the guard of the secant."""
-    from proteus.atmos_clim.common import lid_open_conductance
+    from proteus.atmos_clim.common import lid_open_slope
 
     runner, solver, io, seen = _corrector([710.0, 705.0], F_end, tangent=3.0)
     bc = solver.parameters.boundary_conditions
     row = _row(0.4, G=21.9, T_b=1440.0, T_surf=700.0, F_atm=15000.0, lid_F_open=165000.0)
-    G_tan, code_tan = lid_open_conductance(row, 3.0)
+    G_tan, code_tan = lid_open_slope(row, 3.0)
     assert code_tan == 0
-    bc.open_surface_conductance = G_tan
+    bc.open_surface_slope = G_tan
     seen_G = []
     solve = runner._solve_with_retry
 
     def solve_and_record(hf_row, interior_o, S0_entry=None):
-        seen_G.append(bc.open_surface_conductance)
+        seen_G.append(bc.open_surface_slope)
         return solve(hf_row, interior_o, S0_entry)
 
     runner._solve_with_retry = solve_and_record
@@ -863,24 +862,22 @@ def test_the_resolve_records_the_guard_of_its_secant(F_end, code_want):
     out = runner._solve_with_retry(row, io, 'S0')
     AragogRunner._correct_lid_cap(runner, row, io, 'S0', out, snap)
     grey = const_sigma * (710.0**4 - 700.0**4) / 10.0
-    G_want = (
-        0.0 if code_want == LID_SLOPE_GUARD_SIGN else lid_open_conductance(row, grey, 710.0)[0]
-    )
+    G_want = 0.0 if code_want == LID_SLOPE_GUARD_SIGN else lid_open_slope(row, grey, 710.0)[0]
     assert seen_G[0] == G_tan
     assert seen_G[1] == pytest.approx(G_want, rel=1e-12, abs=1e-300)
     assert row['lid_slope_guard'] == code_want
 
 
 def test_the_resolve_sets_no_open_response_where_the_step_had_none():
-    """A live lid whose step had no open response (conductance None) gets none in the re-solve,
-    and the row keeps no slope guard of it."""
+    """A live lid whose step had no open part (slope None) gets none in the re-solve, and the row
+    keeps no slope guard of it."""
     runner, solver, io, seen = _corrector([710.0, 705.0], 15870.0, tangent=0.0)
     bc = solver.parameters.boundary_conditions
-    bc.open_surface_conductance = None
+    bc.open_surface_slope = None
     row = _row(0.4, G=21.9, T_b=1440.0, T_surf=700.0, F_atm=15000.0, lid_F_open=165000.0)
     snap = _call_start(solver)
     out = runner._solve_with_retry(row, io, 'S0')
     AragogRunner._correct_lid_cap(runner, row, io, 'S0', out, snap)
     assert len(seen) == 2 and seen[1][0] == pytest.approx(87.0, rel=1e-12)
-    assert bc.open_surface_conductance is None
+    assert bc.open_surface_slope is None
     assert 'lid_slope_guard' not in row

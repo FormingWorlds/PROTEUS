@@ -14,7 +14,7 @@ from proteus.atmos_clim.common import (
     LID_SLOPE_GUARD_GREY,
     LID_SLOPE_GUARD_SIZE,
     lid_flux_slope,
-    lid_open_conductance,
+    lid_open_slope,
 )
 from proteus.interior_energetics.aragog import AragogRunner
 from proteus.interior_energetics.wrapper import guard_t_magma_clip
@@ -32,7 +32,7 @@ def _runner_bc(lid=True):
         outer_boundary_value=None,
         lid_surface_flux_cap=-1.0,
         lid_surface_flux_slope=-1.0,
-        open_surface_conductance=-1.0,
+        open_surface_slope=-1.0,
         equilibrium_temperature=None,
         surface_temperature=-1.0,
     )
@@ -49,7 +49,7 @@ def _runner_bc(lid=True):
 
 @pytest.mark.parametrize(('w', 'lid'), [(0.0, True), (0.4, True), (0.4, False)])
 def test_update_solver_passes_the_open_conductance_of_a_live_lid(w, lid):
-    """A live lid gets ``G_eff`` of the row slope and the guard column; the held surface is the
+    """A live lid gets the open slope of the row and the guard column; the held surface is the
     one ``surface_temperature`` field, and no lid surface field is written."""
     bc, interior_o = _runner_bc(lid)
     row = _row(w, G=21.9, T_b=1440.0, T_surf=727.3, F_atm=7000.0, lid_F_open=165000.0)
@@ -61,13 +61,13 @@ def test_update_solver_passes_the_open_conductance_of_a_live_lid(w, lid):
     assert not hasattr(bc, 'lid_surface_temperature')
     assert bc.surface_temperature == row['T_surf']
     if w > 0.0 and lid:
-        G_eff, code = lid_open_conductance(row, lid_flux_slope(hf_all, row))
-        assert bc.open_surface_conductance == G_eff
-        assert G_eff > 0.0
+        F_p, code = lid_open_slope(row, lid_flux_slope(hf_all, row))
+        assert bc.open_surface_slope == F_p
+        assert F_p > 0.0
         assert row['lid_slope_guard'] == code
         assert bc.lid_surface_flux_cap == pytest.approx(21.9 * (1440.0 - 727.3), rel=1e-14)
     else:
-        assert bc.open_surface_conductance is None
+        assert bc.open_surface_slope is None
         assert row['lid_slope_guard'] == 0
 
 
@@ -98,8 +98,8 @@ def test_update_solver_cuts_the_slope_at_the_grey_secant_of_the_last_2_rows(T_pr
     cut = slope > secant
     assert row['lid_slope_guard'] == (LID_SLOPE_GUARD_SIZE if cut else 0)
     want = secant * (1.0 - 1e-12) if cut else slope
-    assert bc.open_surface_conductance == pytest.approx(
-        lid_open_conductance(row, want, T_prev)[0], rel=1e-9
+    assert bc.open_surface_slope == pytest.approx(
+        lid_open_slope(row, want, T_prev)[0], rel=1e-9
     )
 
 
@@ -115,21 +115,21 @@ def test_update_solver_cuts_the_slope_with_the_end_of_its_own_secant():
     with patch('proteus.interior_energetics.aragog.lid_flux_secant', return_value=(70.0, T_o)):
         AragogRunner.update_solver(25.0, row, interior_o, hf_all=None)
     assert row['lid_slope_guard'] == LID_SLOPE_GUARD_SIZE
-    assert bc.open_surface_conductance == pytest.approx(
-        lid_open_conductance(row, secant * (1.0 - 1e-12), T_o)[0], rel=1e-9
+    assert bc.open_surface_slope == pytest.approx(
+        lid_open_slope(row, secant * (1.0 - 1e-12), T_o)[0], rel=1e-9
     )
 
 
 def test_a_live_lid_without_any_usable_slope_takes_the_grey_tangent():
-    """A live lid in a run without a usable secant takes the response of the grey tangent
-    4 sigma T_surf^3 and guard code 4, not the response 0 of a pure flux boundary."""
+    """A live lid in a run without a usable secant takes the grey tangent 4 sigma T_surf^3 as
+    its open slope, with guard code 4, not the slope 0 of a pure flux boundary."""
     bc, interior_o = _runner_bc()
     row = _row(0.4, G=21.9, T_b=1440.0, T_surf=727.3, F_atm=7000.0, lid_F_open=165000.0)
     row.update(Time=30000.0, T_eqm=255.0)
     AragogRunner.update_solver(25.0, row, interior_o, hf_all=None)
     grey = 4.0 * const_sigma * 727.3**3
-    assert bc.open_surface_conductance == lid_open_conductance(row, grey)[0]
-    assert bc.open_surface_conductance > 0.0
+    assert bc.open_surface_slope == pytest.approx(lid_open_slope(row, grey)[0], rel=1e-12)
+    assert bc.open_surface_slope > 0.0
     assert row['lid_slope_guard'] == LID_SLOPE_GUARD_GREY
 
 
@@ -352,7 +352,7 @@ def test_run_interior_guards_the_t_magma_clip_of_a_lid_step(
 @pytest.mark.parametrize(('obc', 'mush'), [(4, True), (4, False), (1, True), (1, False)])
 def test_only_a_flux_lid_with_the_mush_base_gets_an_open_response(obc, mush):
     """The open response needs the flux boundary (outer condition 4) and the mush base; any
-    other live lid gets no conductance and guard code 0."""
+    other live lid gets no open fields and guard code 0."""
     bc, interior_o = _runner_bc(True)
     bc.outer_boundary_condition, bc.lid_mush_base = obc, mush
     row = _row(0.4, G=21.9, T_b=1440.0, T_surf=727.3, F_atm=7000.0, lid_F_open=165000.0)
@@ -362,7 +362,7 @@ def test_only_a_flux_lid_with_the_mush_base_gets_an_open_response(obc, mush):
     )
     AragogRunner.update_solver(25.0, row, interior_o, hf_all=hf_all)
     if obc == 4 and mush:
-        assert bc.open_surface_conductance > 0.0
+        assert bc.open_surface_slope > 0.0
     else:
-        assert bc.open_surface_conductance is None
+        assert bc.open_surface_slope is None
         assert row['lid_slope_guard'] == 0

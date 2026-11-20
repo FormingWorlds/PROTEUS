@@ -722,20 +722,75 @@ def lid_open_conductance(
     """
     if not lid_acts(hf_row):
         return None, 0
-    F_p = float(slope)
-    if not (math.isfinite(F_p) and F_p > 0.0):
-        return 0.0, LID_SLOPE_GUARD_SIGN
-    code = 0
-    T_s = float(hf_row['T_surf'])
-    usable = T_other is not None and math.isfinite(T_other) and T_other > 0.0
-    T_e = float(T_other) if usable else T_s
-    F_grey = const_sigma * (T_e**2 + T_s**2) * (T_e + T_s)
-    if F_p > F_grey:
-        F_p, code = F_grey, LID_SLOPE_GUARD_SIZE
+    F_p, code = lid_open_slope(hf_row, slope, T_other)
     w = float(hf_row['lid_weight'])
     G = _lid_skin_conductance(hf_row)
     G_l = min(float(hf_row['lid_conductance']), G)
     return G * F_p / (F_p + w * G_l + (1.0 - w) * G), code
+
+
+def lid_open_slope(
+    hf_row: dict, slope: float, T_other: float | None = None
+) -> tuple[float, int]:
+    """Slope ``F'`` [W m-2 K-1] of the open part of a lid surface, with its guard code.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row, with ``T_surf``.
+    slope : float
+        Slope of ``F_atm`` with ``T_surf`` [W m-2 K-1].
+    T_other : float, optional
+        Other end surface [K] of a secant ``slope``, as in :func:`lid_open_conductance`.
+
+    Returns
+    -------
+    tuple
+        ``(F', code)``: ``(0.0, LID_SLOPE_GUARD_SIGN)`` for a slope that is not finite or is 0
+        or below; a slope above the grey secant over the same interval is cut to it with
+        ``LID_SLOPE_GUARD_SIZE``; otherwise the slope and 0.
+    """
+    F_p = float(slope)
+    if not (math.isfinite(F_p) and F_p > 0.0):
+        return 0.0, LID_SLOPE_GUARD_SIGN
+    T_s = float(hf_row['T_surf'])
+    usable = T_other is not None and math.isfinite(T_other) and T_other > 0.0
+    T_e = float(T_other) if usable else T_s
+    F_grey = const_sigma * (T_e**2 + T_s**2) * (T_e + T_s)
+    return (F_grey, LID_SLOPE_GUARD_SIZE) if F_p > F_grey else (F_p, 0)
+
+
+def lid_open_fields(
+    hf_row: dict, slope: float, T_other: float | None = None
+) -> tuple[dict, int]:
+    """Fields of the call balance for the open part of a live lid, per total area.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row after the atmosphere step, with ``T_surf`` and the lid columns.
+    slope, T_other
+        As in :func:`lid_open_slope`.
+
+    Returns
+    -------
+    tuple
+        ``(fields, code)``: ``open_lid_flux`` ``L = G_l (T_b - T_surf)`` [W m-2],
+        ``open_surface_slope`` ``F'`` (cut as :func:`lid_open_slope`), ``open_skin_conductance``
+        ``G`` and ``open_lid_conductance`` ``G_l = min(G_lid, G)`` [W m-2 K-1]; the guard code
+        of ``F'``.
+    """
+    F_p, code = lid_open_slope(hf_row, slope, T_other)
+    G = _lid_skin_conductance(hf_row)
+    G_l = min(float(hf_row['lid_conductance']), G)
+    L = G_l * (float(hf_row['lid_T_base']) - float(hf_row['T_surf']))
+    fields = {
+        'open_lid_flux': L,
+        'open_surface_slope': F_p,
+        'open_skin_conductance': G,
+        'open_lid_conductance': G_l,
+    }
+    return fields, code
 
 
 def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:

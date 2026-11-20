@@ -38,7 +38,8 @@ from proteus.atmos_clim.common import (
     LID_SLOPE_GUARD_SIZE,
     lid_fallback_slope,
     lid_flux_secant,
-    lid_open_conductance,
+    lid_open_fields,
+    lid_open_slope,
 )
 from proteus.interior_energetics import aragog_core, aragog_resume
 from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
@@ -629,6 +630,15 @@ def _surface_temperature_of_row(hf_row: dict) -> float | None:
     except (TypeError, ValueError):
         return None
     return T_surf if np.isfinite(T_surf) and T_surf > 0.0 else None
+
+
+# fields of the open part of a live lid on the Aragog boundary, None without one
+LID_OPEN_FIELDS = (
+    'open_lid_flux',
+    'open_surface_slope',
+    'open_skin_conductance',
+    'open_lid_conductance',
+)
 
 
 def _set_lid_surface(bc, hf_row: dict, slope: float | None = None) -> None:
@@ -2334,11 +2344,11 @@ class AragogRunner:
         if S_field is not None:
             interior_o._last_entropy = S_field
 
-        # Update boundary conditions (F_atm from atmosphere module); the open part of a live
-        # lid takes lid_F_open, also checked against the solver, since a resume can turn it off
+        # Update boundary conditions (F_atm from atmosphere module, per total area); the lid is
+        # also checked against the solver, since a resume can turn it off
         bc = solver.parameters.boundary_conditions
         live = getattr(bc, 'subgrid_lid', False) and lid_acts(hf_row)
-        bc.outer_boundary_value = hf_row['lid_F_open'] if live else hf_row['F_atm']
+        bc.outer_boundary_value = hf_row['F_atm']
         slope, T_other = lid_flux_secant(hf_all, hf_row)
         fallback = 0
         if live and slope == 0.0:
@@ -2354,13 +2364,14 @@ class AragogRunner:
             )
         _set_lid_surface(bc, hf_row, slope)
         bc.surface_temperature = _surface_temperature_of_row(hf_row)
-        # in flux mode with the mush base the open part of a live lid follows its node in the step
-        G_eff, code = (
-            lid_open_conductance(hf_row, slope, T_other)
-            if live and bc.outer_boundary_condition == 4 and getattr(bc, 'lid_mush_base', False)
-            else (None, 0)
+        # in flux mode with the mush base the open part of a live lid follows its node in the
+        # step, as a total-area term at the in-step lid weight
+        open_part = (
+            live and bc.outer_boundary_condition == 4 and getattr(bc, 'lid_mush_base', False)
         )
-        bc.open_surface_conductance = G_eff
+        fields, code = lid_open_fields(hf_row, slope, T_other) if open_part else ({}, 0)
+        for name in LID_OPEN_FIELDS:
+            setattr(bc, name, fields.get(name))
         # the grey tangent is the cut itself; it keeps its own code
         cut = code == LID_SLOPE_GUARD_SIZE and fallback != LID_SLOPE_GUARD_GREY
         hf_row['lid_slope_guard'] = fallback if fallback and not cut else code
@@ -2596,7 +2607,7 @@ class AragogRunner:
 
         The cap acts at the end where the lid surface ends above the held one. The secant of the
         atmosphere flux between the held and the end surface (``self._lid_flux_at``) replaces
-        the slope of the call for the lid part and, through ``lid_open_conductance``, for the open
+        the slope of the call for the lid part and, through ``lid_open_slope``, for the open
         part, and the call runs again from its start; a secant equal to the
         slope (:func:`lid_resolve_skip`) or no flux provider keeps the first solve. The count
         and the wall time of the re-solves are kept on ``interior_o``.
@@ -2623,9 +2634,9 @@ class AragogRunner:
         t0 = time.perf_counter()
         _restore_call_start(solver, snap, interior_o)
         bc.lid_surface_flux_slope = secant
-        if getattr(bc, 'open_surface_conductance', None) is not None:
+        if getattr(bc, 'open_surface_slope', None) is not None:
             # the open part follows the same secant, with the guard of that slope
-            bc.open_surface_conductance, hf_row['lid_slope_guard'] = lid_open_conductance(
+            bc.open_surface_slope, hf_row['lid_slope_guard'] = lid_open_slope(
                 hf_row, secant, T_end
             )
         out2 = self._solve_with_retry(hf_row, interior_o, S0_entry)
