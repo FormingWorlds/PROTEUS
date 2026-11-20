@@ -29,7 +29,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from proteus.interior_energetics.common import Interior_t
@@ -2060,6 +2060,10 @@ def test_the_routine_ceiling_decides_when_the_recovery_time_is_not_below_it(
 @settings(
     max_examples=150, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
+@example(stale=True, elapsed=3e4, recovery_time=0.0, interval=5e4)
+@example(stale=True, elapsed=2.5e4, recovery_time=2.5e4, interval=5e4)
+@example(stale=False, elapsed=3e4, recovery_time=2.5e4, interval=5e4)
+@example(stale=True, elapsed=6e4, recovery_time=6e4, interval=5e4)
 @given(
     stale=st.booleans(),
     elapsed=st.floats(min_value=0.0, max_value=1e5),
