@@ -334,11 +334,11 @@ The *interior* module (SPIDER or Aragog) evolves the mantle temperature and melt
 When `interior_struct.module = 'zalmoxis'` and `interior_struct.zalmoxis.update_interval > 0`, PROTEUS can dynamically recompute the planetary structure during a simulation.
 Structure updates are governed by a hybrid trigger that combines physics-based criteria with timing constraints:
 
-- **Floor** (`update_min_interval`): minimum time between updates for every trigger except mesh convergence, the recovery included, preventing excessive recomputation during rapid cooling.
+- **Floor** (`update_min_interval`): minimum time between updates for every trigger except mesh convergence (the extra re-solves after a mesh update, `mesh_convergence_interval`), the recovery included, preventing excessive recomputation during rapid cooling.
 - **Ceiling** (`update_interval`): maximum time between updates, guaranteeing periodic recomputation.
 - **Temperature trigger** (`update_dtmagma_frac`): fires when the relative change in mantle surface temperature since the last update exceeds the threshold.
 - **Melt fraction trigger** (`update_dphi_abs`): fires when the absolute change in global melt fraction since the last update exceeds the threshold.
-- **Recovery** (`update_stale_ceiling`): a failed re-solve keeps the previous structure; a new re-solve then fires once this time has passed since the failed attempt, so a failing solver is retried no more often than this. On resume the resumed time counts as the last attempt. While every re-solve succeeds it does not act.
+- **Recovery** (`update_stale_ceiling`): a failed re-solve keeps the previous structure. If no other trigger fires, a new re-solve starts once this time has passed since the last attempt; the other triggers can start one sooner, after the floor. On resume the resumed time counts as the last attempt. It acts only below the ceiling and not while every re-solve succeeds.
 
 Setting `update_interval = 0` disables dynamic updates entirely; the structure is computed only at initialisation.
 

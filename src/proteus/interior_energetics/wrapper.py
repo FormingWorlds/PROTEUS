@@ -132,7 +132,7 @@ _REMELT_RETAINED_BAND = (0.01, 1.0)
 # dT/T-triggered re-solves recompute the same radius at a large wall cost. Once
 # the structure has converged (relative R_int change below the tolerance), the
 # guard suppresses further dT/T-only-triggered re-solves for the remainder of
-# the settling window; the mesh-convergence, ceiling, stale-ceiling and Phi
+# the settling window; the mesh-convergence, ceiling, recovery and Phi
 # triggers are left intact, and a Phi move beyond the backstop forces a re-solve
 # so genuine solidification during the window is never frozen. The window is
 # armed only on resume, so a fresh run never enters the guard.
@@ -3029,7 +3029,7 @@ def update_structure_from_interior(
         reason = f'ceiling ({elapsed:.1f} yr >= {config.interior_struct.zalmoxis.update_interval:.1f} yr)'
 
     # Recovery after a failed re-solve (structure_stale): re-solve once update_stale_ceiling
-    # has passed since the last attempt, so a failing solver is retried at that spacing.
+    # has passed since the last attempt, unless another trigger fired first.
     stale_ceiling = config.interior_struct.zalmoxis.update_stale_ceiling
     if (
         not triggered
@@ -3038,9 +3038,7 @@ def update_structure_from_interior(
         and elapsed >= stale_ceiling
     ):
         triggered = True
-        reason = (
-            f'recovery ({elapsed:.1f} yr since the failed attempt >= {stale_ceiling:.1f} yr)'
-        )
+        reason = f'recovery ({elapsed:.1f} yr since the last attempt >= {stale_ceiling:.1f} yr)'
 
     # Phi_global absolute change (primary trigger: directly reflects rheological state)
     if not triggered:
@@ -3460,12 +3458,9 @@ def update_structure_from_interior(
             dirs['mesh_convergence_steps'] = 0
             del r_stag, _r_unsorted, _T_unsorted
             gc.collect()
-            # Advance the trigger clock and the stale-aware anchor so a
-            # persistent cross-table artifact does not re-fire an expensive
-            # re-solve every timestep: the retained previous structure is the
-            # current best structure, so this state is "checked at current_time".
-            # The sentinels advance like the success path (current Phi/T_magma),
-            # but the structure itself is unchanged.
+            # Advance the trigger clock so a persistent cross-table artifact does
+            # not re-fire an expensive re-solve every timestep; the sentinels
+            # advance like the success path, but the structure is unchanged.
             # The previous structure was retained, so the accepted radius did
             # not change: record zero so the resume-settling guard treats this
             # as converged and suppresses further spurious dT/T re-solves (a

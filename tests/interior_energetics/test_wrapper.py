@@ -2017,6 +2017,44 @@ def test_a_zero_recovery_time_disables_the_recovery(tmp_path):
 
 
 @pytest.mark.unit
+def test_another_trigger_re_solves_a_stale_structure_before_the_recovery_time(tmp_path):
+    """A melt-fraction change past update_dphi_abs re-solves a stale structure 10 kyr
+    after its last attempt, before the 25 kyr recovery time; without the change it waits."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 9e4)
+    solver.assert_not_called()
+    hf_row['Phi_global'] = 0.8 - 0.06
+    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 9e4)
+    solver.assert_called_once()
+    assert out[0] == 1e5 and interior_o.structure_stale is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'recovery_time, time, reason',
+    [(2.5e4, 1e5, 'recovery ('), (6e4, 1.25e5, 'ceiling ('), (6e4, 1.3e5, 'ceiling (')],
+)
+def test_the_routine_ceiling_decides_when_the_recovery_time_is_not_below_it(
+    tmp_path, caplog, recovery_time, time, reason
+):
+    """Under a 50 kyr routine ceiling a 25 kyr recovery re-solves a stale structure 30 kyr
+    after its last attempt; a 60 kyr recovery never decides: at 55 and 60 kyr the ceiling
+    re-solves it."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    config.interior_struct.zalmoxis.update_stale_ceiling = recovery_time
+    hf_row['Time'] = time
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.wrapper'):
+        _, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_called_once()
+    msgs = [
+        r.getMessage()
+        for r in caplog.records
+        if r.getMessage().startswith('Updating structure')
+    ]
+    assert len(msgs) == 1 and f'(trigger: {reason}' in msgs[0]
+
+
+@pytest.mark.unit
 def test_stale_ceiling_without_a_stale_attribute_stays_silent(tmp_path):
     """An interior without a ``structure_stale`` attribute counts as fresh: 30 kyr after
     its last attempt the recovery does not fire."""
@@ -2145,55 +2183,6 @@ def test_a_fresh_run_recovers_after_a_failed_first_resolve(tmp_path):
     out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, out[0])
     solver.assert_called_once()
     assert out[0] == 8e4 and interior_o.structure_stale is False
-
-
-def _old_and_new_recovery(events, ceiling=2.5e4):
-    """Decisions of the earlier rule (stale, since the last attempt AND since the last
-    success, a known anchor) and of the current rule (stale, since the last attempt) over
-    a sequence of (event, dt) from a fresh run at t = 0. Events move the state as
-    update_structure_from_interior and the resume do; 'skew' puts the anchor after the
-    last attempt, a state no code path reaches. Returns [(old, new)] at each 'query'."""
-    t, last, anchor, stale, out = 0.0, 0.0, 0.0, False, []
-    for event, dt in events:
-        t += dt
-        if event == 'success':
-            last, anchor, stale = t, t, False
-        elif event == 'reject':  # rejected up-step: structure kept, both clocks at t
-            last, anchor = t, t
-        elif event == 'fail':
-            last, stale = t, True
-        elif event == 'resume':  # the resumed row is the last attempt; anchor clamped
-            last, anchor = t, (t if anchor == float('-inf') else min(anchor, t))
-        elif event == 'skew':
-            anchor = last + dt
-        elif event == 'query':
-            new = stale and t - last >= ceiling
-            old = new and anchor > float('-inf') and t - anchor >= ceiling
-            out.append((old, new))
-    return out
-
-
-@pytest.mark.unit
-def test_the_recovery_decides_as_the_anchored_rule_on_every_reachable_state():
-    """Property: over any sequence of successes, rejected up-steps, failures, resumes and
-    queries, the rule without the success anchor decides exactly as the anchored rule,
-    because no path puts the anchor after the last attempt. A skewed anchor (a state no
-    path reaches) makes the two rules differ, so the comparison can see a binding anchor."""
-    hypothesis = pytest.importorskip('hypothesis')
-    st = hypothesis.strategies
-    event = st.sampled_from(['success', 'reject', 'fail', 'resume', 'query'])
-    step = st.floats(min_value=0.0, max_value=6e4, allow_nan=False, allow_infinity=False)
-
-    @hypothesis.settings(max_examples=300, deadline=None)
-    @hypothesis.given(st.lists(st.tuples(event, step), max_size=40))
-    def same_decisions(events):
-        for old, new in _old_and_new_recovery(events):
-            assert old == new
-
-    same_decisions()
-    # anchor 30 kyr after the failed attempt, query 10 kyr later: only the old rule waits
-    skewed = _old_and_new_recovery([('fail', 1e5), ('skew', 3e4), ('query', 1e4)])
-    assert skewed == [(False, True)]
 
 
 # ============================================================================
