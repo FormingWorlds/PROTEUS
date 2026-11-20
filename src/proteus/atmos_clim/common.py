@@ -576,7 +576,8 @@ def lid_flux_cap(hf_row: dict) -> float | None:
 
 # open area 1 - w at or below which the open part takes F_atm
 LID_OPEN_AREA_FLOOR = 1e-9
-# Size of the residual F_atm - B per total area [W m-2] above which a call is logged
+# Size of the residual F_atm - B per total area [W m-2] above which a call is logged; absolute,
+# since a bound relative to F_atm would warn wherever F_atm crosses 0
 LID_RESID_WARN = 1.0
 
 
@@ -670,6 +671,12 @@ def lid_open_residual(hf_row: dict) -> float:
         ``F_atm - B``, with ``B`` the skin balance of the call (:func:`lid_boundary`); where
         ``1 - w`` is above ``LID_OPEN_AREA_FLOOR``, divided by ``1 - w`` it is the start value
         of :func:`lid_open_flux` less the skin flux ``G_skin (T_m - T_surf)``. 0 without a lid.
+
+    Notes
+    -----
+    The call is logged where the size of the residual is above ``LID_RESID_WARN`` (1 W m-2),
+    an absolute bound: the residual is a diagnostic, and a bound relative to ``F_atm`` would warn
+    on every step where ``F_atm`` crosses 0.
     """
     if not lid_acts(hf_row):
         return 0.0

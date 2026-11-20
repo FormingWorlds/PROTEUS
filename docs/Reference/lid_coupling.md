@@ -55,7 +55,7 @@ and `F_atm` where no lid acts. $L$ is the flux of the lid part in the call, with
 
 Limits of these columns:
 
-- A call whose residual has a size above 1 W m$^{-2}$, or is not finite, logs a warning with the value and the model time; the run goes on.
+- A call whose residual has a size above 1 W m$^{-2}$, or is not finite, logs a warning with the value and the model time; the run goes on. The bound is absolute: a bound relative to `F_atm` would warn on every step where `F_atm` crosses 0.
 - Where $1 - w$ is $10^{-9}$ or less, $F_\mathrm{open,0}$ is `F_atm`. $F_\mathrm{open,0}$ tends to `F_atm` as $w$ goes to 0.
 - Under a live lid, an `F_atm` or $T_\mathrm{surf}$ that is not finite stops the run with status 22. So does a lid weight that is not finite, a lid conductance that is not finite under a weight above 0, or a node or lid base temperature that is not finite. The check of the lid columns runs before the atmosphere call.
 
