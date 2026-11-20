@@ -107,8 +107,9 @@ def dispatch_script(
 
     Task ``j`` runs cases ``j, j + jobs, ...``, ``cores_per_job`` at a time, each as a
     one-core job step; "With Slurm" in docs/How-to/usage_grids.md describes the statuses,
-    the early SIGTERM and the last case start. Slurm may send the SIGTERM up to 60 s
-    early, so no case starts within ``min(60 s, lead)`` of it.
+    the early SIGTERM and the last case start. The early SIGTERM goes to the batch shell,
+    which logs its time, starts no new case and sends it on to the running cases. As a
+    fallback, no case starts within ``min(60 s, lead)`` of the time asked for the signal.
 
     Parameters
     ----------
@@ -142,7 +143,7 @@ def dispatch_script(
 #SBATCH --export=ALL
 #SBATCH --no-requeue
 #SBATCH --time={minutes}
-#SBATCH --signal=TERM@{signal_s}
+#SBATCH --signal=B:TERM@{signal_s}
 #SBATCH --cpus-per-task={cores_per_job}
 #SBATCH --mem-per-cpu={mem_per_case_mb}M
 #SBATCH -i /dev/null
@@ -150,10 +151,22 @@ def dispatch_script(
 #SBATCH --array=0-{jobs - 1}%{throttle}
 
 {env}export cfgs={shlex.quote(cfgdir)} logs={shlex.quote(logdir)} cases={shlex.quote(casedir or '')}
-export stop_at=$(( $(date +%s) + {last_start_s} ))
+export stop_at=$(( $(date +%s) + {last_start_s} )) stop="${{TMPDIR:-/tmp}}/proteus-stop-$$"
+
+# The early signal or a scancel: start no new case, send SIGTERM on to the running ones
+on_term() {{
+    echo "SIGTERM at $(date -u +%Y-%m-%dT%H:%M:%SZ): no new case starts, and the running cases get SIGTERM"
+    touch "$stop"
+    scancel --signal=TERM "$SLURM_JOB_ID"
+}}
+trap on_term TERM
 
 # One case: $1 is its name, case_NNNNNN
 run_case='
+if [ -e "$stop" ]; then
+    echo "$1 not started: the job got SIGTERM"
+    exit 1
+fi
 if [ "$(date +%s)" -ge "$stop_at" ]; then
     echo "$1 not started: the job is within {minutes * 60 - last_start_s} s of its walltime"
     exit 1
@@ -179,5 +192,11 @@ fi
 '
 
 printf 'case_%06d\\n' $(seq $SLURM_ARRAY_TASK_ID {jobs} {n_cases - 1}) |
-    xargs -n 1 -P {cores_per_job} sh -c "$run_case" sh
+    xargs -n 1 -P {cores_per_job} sh -c "$run_case" sh &
+pid=$!
+while kill -0 "$pid" 2>/dev/null; do wait "$pid"; done
+wait "$pid"
+code=$?
+rm -f "$stop"
+exit "$code"
 """

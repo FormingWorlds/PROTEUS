@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import signal
 import subprocess
+import time
 from unittest import mock
 
 import pytest
@@ -218,15 +221,15 @@ def test_dispatch_script_asks_for_the_cores_and_one_step_per_case(tmp_path):
     ids=['day', 'float-below-minute', 'hour', 'half-hour', 'one-minute', 'below-a-minute'],
 )
 def test_walltime_signal_and_last_start_agree(tmp_path, days, minutes, lead, offset):
-    """The wall time is written in whole minutes, at least one. The early SIGTERM comes
-    900 s before it, or a tenth of it for short jobs. Slurm may send it up to 60 s
-    early, so the script starts no case from 60 s before the signal on, or from the
-    lead before it when the lead is shorter: the offset from the job start is the wall
-    time minus the lead minus that margin."""
+    """The wall time is written in whole minutes, at least one. The early SIGTERM goes to
+    the batch shell 900 s before it, or a tenth of it for short jobs. As a fallback for a
+    signal that doesn't come, the script starts no case from 60 s before the signal on,
+    or from the lead before it when the lead is shorter: the offset from the job start
+    is the wall time minus the lead minus that margin."""
     text = _script(tmp_path, n_cases=4, cores=2, jobs=2, command='x', days=days)
     assert f'#SBATCH --time={minutes}\n' in text
-    assert f'#SBATCH --signal=TERM@{lead}\n' in text
-    assert f'export stop_at=$(( $(date +%s) + {offset} ))\n' in text
+    assert f'#SBATCH --signal=B:TERM@{lead}\n' in text
+    assert f'export stop_at=$(( $(date +%s) + {offset} )) ' in text
     assert '#SBATCH --time=0\n' not in text
 
 
@@ -309,10 +312,10 @@ def test_dispatch_script_runs_each_case_once_and_gives_killed_cases_a_status(tmp
     }
 
 
-def test_dispatch_script_starts_no_case_after_the_early_signal(tmp_path):
-    """Once the clock passes the time of the early SIGTERM, the job starts none of its
-    remaining cases: they keep no status folder, as not started, and the job exits
-    non-zero."""
+def test_dispatch_script_starts_no_case_after_the_last_start_time(tmp_path):
+    """Once the clock passes the last start time, the job starts none of its remaining
+    cases, also without a signal: they keep no status folder, as not started, and the
+    job exits non-zero."""
     bindir = tmp_path / 'bin'
     bindir.mkdir()
     marker = tmp_path / 'started'
@@ -338,3 +341,67 @@ def test_dispatch_script_starts_no_case_after_the_early_signal(tmp_path):
     assert not marker.exists()
     assert not any((tmp_path / 'my grid').glob('case_*'))
     assert done.stdout.decode().count('not started') == 3
+
+
+def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp_path):
+    """A SIGTERM to the batch shell, as the early signal or a scancel sends it, is
+    logged with its UTC time and sent on with scancel to the job steps. The two running
+    cases get it, write status 25 and exit 143, as PROTEUS does. The two queued cases
+    don't start, and the shell waits for the running cases and exits non-zero."""
+    bindir = tmp_path / 'bin'
+    bindir.mkdir()
+    pids, calls = tmp_path / 'pids', tmp_path / 'scancel_args'
+    # srun stand-in: record the step's pid, drop the options, run the command
+    (bindir / 'srun').write_text(
+        f'#!/bin/sh\necho $$ >> "{pids}"\n'
+        'while [ "${1#-}" != "$1" ]; do shift; done\nexec "$@"\n'
+    )
+    # scancel stand-in: signal every step, not the batch shell
+    (bindir / 'scancel').write_text(
+        f'#!/bin/sh\necho "$@" > "{calls}"\nkill -TERM $(cat "{pids}") 2>/dev/null\nexit 0\n'
+    )
+    (bindir / 'fakecase').write_text(
+        '#!/bin/sh\n'
+        'out="$(dirname "$(dirname "$1")")/$(basename "$1" .toml)"\n'
+        'mkdir -p "$out"; echo 1 > "$out/status"\n'
+        'trap \'kill $!; sleep 0.5; printf "25\\nError\\n" > "$out/status"; exit 143\' TERM\n'
+        'sleep 30 & wait $!\n'
+    )
+    for tool in ('srun', 'scancel', 'fakecase'):
+        os.chmod(bindir / tool, 0o755)
+    os.makedirs(tmp_path / 'my grid' / 'logs')
+    script = tmp_path / 'slurm_dispatch.sh'
+    script.write_text(_script(tmp_path, n_cases=4, cores=2, jobs=1, command='fakecase'))
+    env = dict(
+        os.environ,
+        PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}',
+        TMPDIR=str(tmp_path),
+        SLURM_ARRAY_TASK_ID='0',
+        SLURM_JOB_ID='4242',
+    )
+    job = subprocess.Popen(
+        ['bash', str(script)], env=env, stdout=subprocess.PIPE, start_new_session=True
+    )
+    try:
+        for _ in range(100):
+            if pids.exists() and len(pids.read_text().split()) == 2:
+                break
+            time.sleep(0.05)
+        time.sleep(0.2)
+        job.send_signal(signal.SIGTERM)
+        out = job.communicate(timeout=10)[0].decode()
+    finally:
+        if job.poll() is None:
+            os.killpg(job.pid, signal.SIGKILL)
+
+    assert job.returncode != 0
+    assert re.search(r'^SIGTERM at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ: ', out, re.M)
+    assert calls.read_text().split() == ['--signal=TERM', '4242']
+    status = {
+        i: (tmp_path / 'my grid' / f'case_{i:06d}' / 'status').read_text().split('\n')[0]
+        for i in (0, 1)
+    }
+    assert status == {0: '25', 1: '25'}
+    assert 'case_000000 failed with exit code 143' in out
+    assert not (tmp_path / 'my grid' / 'case_000002').exists()
+    assert out.count('not started: the job got SIGTERM') == 2
