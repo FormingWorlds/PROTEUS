@@ -564,11 +564,9 @@ Cross-field constraints enforced when the config file loads:
 
 [^cite-abe1995]: Y. Abe, *Basic equations for evolution of partially molten mantle and core*, in T. Yukutake (ed.), The Earth's Central Part: Its Structure and Dynamics, Terra Sci. Pub. Com., Tokyo, 215-230, 1995.
 
- [^cite-kervazo2021]: Kervazo, M., Tobie, G., Choblet, G., Dumoulin, C. & Běhounková, M., *[Solid tides in Io's partially molten interior: Contribution of bulk dissipation](https://doi.org/10.1051/0004-6361/202039433)*, Astronomy & Astrophysics, 650, A72, 2021.
+[^cite-christensen2009]: U. R. Christensen, V. Holzwarth, A. Reiners, *[Energy flux determines magnetic field strength of planets and stars](https://doi.org/10.1038/nature07626)*, Nature, 457, 167-169, 2009.
 
- [^cite-ruedas2017]: Ruedas, T., *[Radioactive heat production of six geologically important nuclides](https://doi.org/10.1002/2017GC006997)*, Geochemistry, Geophysics, Geosystems, 18, 3530-3541, 2017.
-
- [^cite-schaefer2016]: Schaefer, L., Wordsworth, R.D., Berta-Thompson, Z. & Sasselov, D., *[Predictions of the atmospheric composition of GJ 1132b](https://doi.org/10.3847/0004-637X/829/2/63)*, The Astrophysical Journal, 829, 63, 2016. [SciX](https://scixplorer.org/abs/2016ApJ...829...63S/abstract).
+[^cite-kervazo2021]: M. Kervazo, G. Tobie, G. Choblet, C. Dumoulin, M. Běhounková, *[Solid tides in Io's partially molten interior: Contribution of bulk dissipation](https://doi.org/10.1051/0004-6361/202039433)*, Astronomy & Astrophysics, 650, A72, 2021.
 
 [^cite-mckenzie1984]: D. McKenzie, *[The generation and compaction of partially molten rock](https://doi.org/10.1093/petrology/25.3.713)*, Journal of Petrology, 25, 713-765, 1984.
 

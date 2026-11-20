@@ -2050,6 +2050,104 @@ def test_live_lid_on_a_saturation_skin_is_refused():
     assert lid_requires_the_skin_atmosphere(cfg(0.01, 0.02), None, None) is None
 
 
+# ---------------------------------------------------------------------------
+# Melting curve folder advisory for the boundary interior backend
+# ---------------------------------------------------------------------------
+def _melting_dir_instance(
+    module='boundary',
+    melt_model='adiabat',
+    struct_module='zalmoxis',
+    melting_dir='Monteux-600',
+    mantle_eos='PALEOS:MgSiO3',
+):
+    """Config namespace with the fields the melting curve advisory reads."""
+    instance = _make_config_instance(**{'interior_energetics.module': module})
+    instance.interior_energetics.boundary = SimpleNamespace(melt_model=melt_model)
+    instance.interior_struct = SimpleNamespace(
+        module=struct_module,
+        melting_dir=melting_dir,
+        zalmoxis=SimpleNamespace(mantle_eos=mantle_eos, mushy_zone_factor=0.75),
+    )
+    return instance
+
+
+@pytest.mark.unit
+def test_melting_dir_advisory_names_the_bypassed_folder(caplog):
+    """A melting curve folder bypassed by the boundary backend under Zalmoxis is flagged.
+
+    The adiabat melt model then uses the PALEOS curves, so the advisory names
+    the folder that is not read and the mushy-zone factor actually in use, and
+    changes nothing.
+    """
+    instance = _melting_dir_instance()
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.config._config'):
+        result = boundary_melting_dir_advisory(instance, None, None)
+
+    assert result is None
+    assert instance.interior_struct.melting_dir == 'Monteux-600'
+    assert "'Monteux-600' is not read" in caplog.text
+    assert "'boundary'" in caplog.text
+    # 0.75 rather than the 0.8 default, so a hardcoded factor would show here.
+    assert '0.75 x liquidus' in caplog.text
+    # A PALEOS mantle gives the structure the same curves: no mismatch to report.
+    assert 'different melting curves' not in caplog.text
+
+
+@pytest.mark.unit
+def test_melting_dir_advisory_reports_a_structure_energetics_mismatch(caplog):
+    """A non-PALEOS mantle EOS keeps reading the folder in the structure solve.
+
+    The energetics still use PALEOS, so the two halves of the model melt on
+    different curves, and the advisory says so and names the EOS.
+    """
+    instance = _melting_dir_instance(mantle_eos='WolfBower2018:MgSiO3')
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.config._config'):
+        boundary_melting_dir_advisory(instance, None, None)
+
+    assert 'different melting curves' in caplog.text
+    assert 'WolfBower2018:MgSiO3' in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'overrides',
+    [
+        {'melting_dir': None},
+        {'struct_module': 'dummy'},
+        {'melt_model': 'linear'},
+        {'module': 'aragog'},
+        {'module': 'dummy'},
+    ],
+    ids=[
+        'no_folder_set',
+        'dummy_structure',
+        'linear_melt_model',
+        'aragog_backend',
+        'dummy_backend',
+    ],
+)
+def test_melting_dir_advisory_silent_when_the_folder_is_honoured(caplog, overrides):
+    """The advisory stays silent whenever the folder is read or nothing is bypassed.
+
+    No folder set means nothing to bypass; a non-Zalmoxis structure keeps the
+    tabulated folder; the linear melt model uses constants; Aragog and the
+    dummy backend have their own melting curve selection.
+    """
+    instance = _melting_dir_instance(**overrides)
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.config._config'):
+        boundary_melting_dir_advisory(instance, None, None)
+    assert 'is not read' not in caplog.text
+
+    # Discrimination: the default case of the same builder does warn, so the
+    # silence comes from the override and not from a dead advisory.
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.config._config'):
+        boundary_melting_dir_advisory(_melting_dir_instance(), None, None)
+    assert 'is not read' in caplog.text
+
+
 @pytest.mark.unit
 def test_chemistry_coupled_to_agni_needs_the_agni_climate():
     """Coupling the chemistry to the climate re-solves the AGNI climate, so it is refused with
