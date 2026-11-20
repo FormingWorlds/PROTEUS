@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 
 pytest.importorskip('hypothesis')
+from aragog.surface_lid import open_conductance  # noqa: E402
 from hypothesis import given, settings  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
@@ -21,8 +22,9 @@ from proteus.atmos_clim.common import (  # noqa: E402
     LID_OPEN_AREA_FLOOR,
     LID_SLOPE_GUARD_SIGN,
     LID_SLOPE_GUARD_SIZE,
+    lid_acts,
     lid_boundary,
-    lid_open_conductance,
+    lid_open_fields,
     lid_open_flux,
     lid_open_residual,
 )
@@ -42,6 +44,22 @@ def _row(w, G=4.0, T_b=1400.0, T_node=1500.0, **kw):
         boundary_layer_conductivity=kw.pop('k', 2.0),
         **kw,
     )
+
+
+def _g_eff(row, slope, T_other=None):
+    """Response ``G_eff`` per open area and the guard code along the run path: the fields of
+    ``lid_open_fields`` passed to Aragog's ``open_conductance``; ``(None, 0)`` without a live
+    lid."""
+    if not lid_acts(row):
+        return None, 0
+    f, code = lid_open_fields(row, slope, T_other)
+    G_eff = open_conductance(
+        float(row['lid_weight']),
+        f['open_surface_slope'],
+        f['open_skin_conductance'],
+        f['open_lid_conductance'],
+    )
+    return G_eff, code
 
 
 def _balanced(row, gap=1.0):
@@ -210,7 +228,7 @@ def test_the_response_keeps_the_step_change_at_the_change_of_the_atmosphere():
     change per total area is ``F' dT_s/dT_m``, which equals ``(1 - w) G_eff``."""
     w, G_l, F_p = 0.703, 7.27, 0.306
     row = _row(w, G=G_l, T_node=1600.0, T_surf=900.0, d=0.01, k=2.0, F_atm=1.0)
-    G_eff, code = lid_open_conductance(row, F_p)
+    G_eff, code = _g_eff(row, F_p)
     assert code == 0
     h = 1e-3
     dT_s = (_shared_surface(row, F_p, 1600.0 + h) - _shared_surface(row, F_p, 1600.0 - h)) / (
@@ -229,10 +247,10 @@ def test_the_response_limits():
     """At w = 0 the skin and the atmosphere in series; as w -> 1 ``G F' / (F' + G_l')`` per open
     area and 0 per total area."""
     F_p = 0.4
-    G0, _ = lid_open_conductance(_row(0.0 + 1e-300, G=7.0, T_surf=900.0, F_atm=1.0), F_p)
+    G0, _ = _g_eff(_row(0.0 + 1e-300, G=7.0, T_surf=900.0, F_atm=1.0), F_p)
     assert G0 == pytest.approx(200.0 * F_p / (200.0 + F_p), rel=1e-12)
     w = 1.0 - 1e-12
-    G1, _ = lid_open_conductance(_row(w, G=7.0, T_surf=900.0, F_atm=1.0), F_p)
+    G1, _ = _g_eff(_row(w, G=7.0, T_surf=900.0, F_atm=1.0), F_p)
     assert G1 == pytest.approx(200.0 * F_p / (F_p + 7.0), rel=1e-9)
     assert (1.0 - w) * G1 < 1e-10
 
@@ -249,11 +267,11 @@ def test_the_response_limits():
 def test_the_response_is_positive_and_at_most_the_skin(w, G_lid, k_over_d, F_p, T_s):
     """``0 < G_eff <= G``, and the size guard never raises the response."""
     row = _row(w, G=G_lid, d=1.0 / k_over_d, k=1.0, T_surf=T_s, F_atm=1.0)
-    G_eff, code = lid_open_conductance(row, F_p)
+    G_eff, code = _g_eff(row, F_p)
     assert 0.0 < G_eff <= k_over_d * (1.0 + 1e-12)
     cap = 4.0 * SIGMA * T_s**3
     assert code == (LID_SLOPE_GUARD_SIZE if F_p > cap else 0)
-    G_cap, _ = lid_open_conductance(row, min(F_p, cap))
+    G_cap, _ = _g_eff(row, min(F_p, cap))
     assert G_eff == pytest.approx(G_cap, rel=1e-12)
 
 
@@ -264,12 +282,12 @@ def test_a_secant_is_cut_at_the_grey_secant_of_its_interval():
     row = _row(0.4, T_surf=T_s, F_atm=1.0)
     grey = SIGMA * (T_end**4 - T_s**4) / (T_end - T_s)
     assert grey > 4.0 * SIGMA * T_s**3 * 1.01
-    G_in, code_in = lid_open_conductance(row, grey, T_end)
+    G_in, code_in = _g_eff(row, grey, T_end)
     assert code_in == 0
-    G_above, code_above = lid_open_conductance(row, 1.5 * grey, T_end)
+    G_above, code_above = _g_eff(row, 1.5 * grey, T_end)
     assert code_above == LID_SLOPE_GUARD_SIZE
     assert G_above == pytest.approx(G_in, rel=1e-12)
-    _, code_tangent = lid_open_conductance(row, grey)
+    _, code_tangent = _g_eff(row, grey)
     assert code_tangent == LID_SLOPE_GUARD_SIZE
 
 
@@ -283,15 +301,13 @@ def test_the_grey_secant_cuts_a_cooling_and_a_warming_secant(T_end):
     tangent = 4.0 * SIGMA * T_s**3
     grey = SIGMA * (T_end**4 - T_s**4) / (T_end - T_s)
     between = 0.5 * (tangent + grey)
-    _, code = lid_open_conductance(row, between, T_end)
+    _, code = _g_eff(row, between, T_end)
     assert code == (LID_SLOPE_GUARD_SIZE if T_end < T_s else 0)
-    G_cut, code_cut = lid_open_conductance(row, 2.0 * tangent, T_end)
+    G_cut, code_cut = _g_eff(row, 2.0 * tangent, T_end)
     assert code_cut == LID_SLOPE_GUARD_SIZE
     at_cut = SIGMA * (T_end**2 + T_s**2) * (T_end + T_s)  # the cut itself is not cut
-    assert lid_open_conductance(row, at_cut, T_end)[1] == 0
-    assert G_cut == pytest.approx(
-        lid_open_conductance(row, grey * (1 - 1e-12), T_end)[0], rel=1e-9
-    )
+    assert _g_eff(row, at_cut, T_end)[1] == 0
+    assert G_cut == pytest.approx(_g_eff(row, grey * (1 - 1e-12), T_end)[0], rel=1e-9)
 
 
 @pytest.mark.physics_invariant
@@ -302,17 +318,17 @@ def test_without_a_finite_other_end_the_cut_is_the_grey_tangent(T_end):
     T_s = 1500.0
     row = _row(0.4, T_surf=T_s, F_atm=1.0)
     tangent = 4.0 * SIGMA * T_s**3
-    assert lid_open_conductance(row, tangent * (1 - 1e-9), T_end)[1] == 0
-    G_cut, code = lid_open_conductance(row, 2.0 * tangent, T_end)
+    assert _g_eff(row, tangent * (1 - 1e-9), T_end)[1] == 0
+    G_cut, code = _g_eff(row, 2.0 * tangent, T_end)
     assert code == LID_SLOPE_GUARD_SIZE
-    assert G_cut == pytest.approx(lid_open_conductance(row, tangent)[0], rel=1e-12)
+    assert G_cut == pytest.approx(_g_eff(row, tangent)[0], rel=1e-12)
 
 
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize('F_p', [0.0, -1.0, math.nan, math.inf])
 def test_a_slope_of_zero_or_a_bad_slope_holds_the_start_value(F_p):
     """A slope of 0 (no usable slope, or a sign fault) or a non-finite one gives ``G_eff = 0``."""
-    G_eff, code = lid_open_conductance(_row(0.4, T_surf=900.0, F_atm=1.0), F_p)
+    G_eff, code = _g_eff(_row(0.4, T_surf=900.0, F_atm=1.0), F_p)
     assert G_eff == 0.0
     assert code == LID_SLOPE_GUARD_SIGN
 
@@ -321,7 +337,7 @@ def test_a_slope_of_zero_or_a_bad_slope_holds_the_start_value(F_p):
 def test_no_response_without_a_live_lid():
     """Without a live lid there is no open response and no guard code."""
     for row in (_row(0.0, T_surf=900.0, F_atm=1.0), {'F_atm': 1.0, 'T_surf': 900.0}):
-        assert lid_open_conductance(row, 0.3) == (None, 0)
+        assert _g_eff(row, 0.3) == (None, 0)
 
 
 @pytest.mark.physics_invariant
@@ -329,7 +345,7 @@ def test_the_response_caps_the_lid_conductance_at_the_skin():
     """A lid conducting more than the skin enters ``G_eff`` at the skin conductance, as in the
     parallel sum of the call."""
     w, F_p, G = 0.5, 3.0, 200.0
-    G_eff, code = lid_open_conductance(_row(w, G=1000.0, T_surf=900.0, F_atm=1.0), F_p)
+    G_eff, code = _g_eff(_row(w, G=1000.0, T_surf=900.0, F_atm=1.0), F_p)
     assert code == 0
     assert G_eff == pytest.approx(G * F_p / (F_p + w * G + (1.0 - w) * G), rel=1e-14)
     uncapped = G * F_p / (F_p + w * 1000.0 + (1.0 - w) * G)
@@ -368,7 +384,7 @@ def test_the_response_is_the_change_of_the_shared_surface(validation_plot):
         got, want = [], []
         for w in weights:
             row = _row(w, G=G_l, T_node=1600.0, T_surf=900.0, d=0.01, k=2.0, F_atm=1.0)
-            G_eff, code = lid_open_conductance(row, F_p)
+            G_eff, code = _g_eff(row, F_p)
             assert code == 0
             h = 1e-3
             dT_s = (

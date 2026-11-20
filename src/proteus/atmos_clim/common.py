@@ -543,11 +543,6 @@ def lid_fallback_slope(hf_all, hf_row: dict) -> tuple[float, int, int]:
     return 4.0 * const_sigma * float(hf_row['T_surf']) ** 3, 0, LID_SLOPE_GUARD_GREY
 
 
-def lid_flux_slope(hf_all, hf_row: dict) -> float:
-    """Slope ``F'`` [W m-2 K-1] of :func:`lid_flux_secant`, without the other end of its secant."""
-    return lid_flux_secant(hf_all, hf_row)[0]
-
-
 def lid_flux_cap(hf_row: dict) -> float | None:
     """Largest surface flux [W m-2] of the lid in the next interior step, or None.
 
@@ -613,7 +608,7 @@ def check_lid_inputs(hf_row: dict) -> None:
 
 
 def lid_open_flux(hf_row: dict) -> float:
-    """Flux [W m-2] of the surface without a lid, the boundary value of the interior.
+    """Open-part flux [W m-2] per open area at the start of the step, the column ``lid_F_open``.
 
     Parameters
     ----------
@@ -636,8 +631,8 @@ def lid_open_flux(hf_row: dict) -> float:
     Notes
     -----
     The lid part at ``L`` and the open part sum to ``F_atm`` for any sign of ``F_atm`` and of
-    ``T_b - T_surf``. The value tends to ``F_atm`` as the lid weight goes to 0. It is the start
-    of the step; inside it the open part follows its node with :func:`lid_open_conductance`.
+    ``T_b - T_surf``. The value tends to ``F_atm`` as the lid weight goes to 0. It is a
+    diagnostic: the interior takes ``F_atm`` and the fields of :func:`lid_open_fields`.
     """
     check_lid_inputs(hf_row)
     if not lid_acts(hf_row):
@@ -689,48 +684,6 @@ LID_SLOPE_GUARD_FALLBACK = 3
 LID_SLOPE_GUARD_GREY = 4
 
 
-def lid_open_conductance(
-    hf_row: dict, slope: float, T_other: float | None = None
-) -> tuple[float | None, int]:
-    """In-step response ``G_eff`` [W m-2 K-1] of the open part of a lid surface, per open area.
-
-    Parameters
-    ----------
-    hf_row : dict
-        Current helpfile row after the atmosphere step, with ``T_surf`` and the lid columns.
-    slope : float
-        Slope ``F'`` of ``F_atm`` with ``T_surf`` [W m-2 K-1], as :func:`lid_flux_secant`.
-    T_other : float, optional
-        Other end surface [K] of a secant ``slope`` through ``T_surf``, below or above it; the
-        size cut is then the grey secant ``sigma (T_other^4 - T_surf^4) / (T_other - T_surf)
-        = sigma (T_other^2 + T_surf^2)(T_other + T_surf)`` over the same interval. None, not
-        finite or not above 0: the tangent ``4 sigma T_surf^3``, the same expression at
-        ``T_other = T_surf``.
-
-    Returns
-    -------
-    tuple
-        ``(G_eff, code)``: ``G F' / (F' + w G_l' + (1 - w) G)`` with ``G`` the skin and
-        ``G_l'`` the lid conductance of the call; ``(None, 0)`` without a live lid. A slope
-        that is not finite, or is 0 or below, gives ``(0.0, LID_SLOPE_GUARD_SIGN)``; one
-        above the slope of a bare grey surface over the same interval (see ``T_other``) is cut
-        to it with ``LID_SLOPE_GUARD_SIZE``.
-
-    Notes
-    -----
-    With the lid part held through the step, this response makes the in-step change of the
-    total surface flux ``(1 - w) G_eff dT_m`` equal to the change ``F' dT_s`` of the
-    atmosphere at the surface the call balance would move to.
-    """
-    if not lid_acts(hf_row):
-        return None, 0
-    F_p, code = lid_open_slope(hf_row, slope, T_other)
-    w = float(hf_row['lid_weight'])
-    G = _lid_skin_conductance(hf_row)
-    G_l = min(float(hf_row['lid_conductance']), G)
-    return G * F_p / (F_p + w * G_l + (1.0 - w) * G), code
-
-
 def lid_open_slope(
     hf_row: dict, slope: float, T_other: float | None = None
 ) -> tuple[float, int]:
@@ -743,7 +696,9 @@ def lid_open_slope(
     slope : float
         Slope of ``F_atm`` with ``T_surf`` [W m-2 K-1].
     T_other : float, optional
-        Other end surface [K] of a secant ``slope``, as in :func:`lid_open_conductance`.
+        Other end surface [K] of a secant ``slope`` through ``T_surf``, below or above it; the
+        cut is then the grey secant ``sigma (T_other^2 + T_surf^2)(T_other + T_surf)`` over
+        the same interval. None, not finite or not above 0: the tangent ``4 sigma T_surf^3``.
 
     Returns
     -------

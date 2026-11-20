@@ -13,7 +13,7 @@ import pytest
 from proteus.atmos_clim.common import (
     LID_SLOPE_GUARD_GREY,
     LID_SLOPE_GUARD_SIZE,
-    lid_flux_slope,
+    lid_flux_secant,
     lid_open_slope,
 )
 from proteus.interior_energetics.aragog import AragogRunner
@@ -61,7 +61,7 @@ def test_update_solver_passes_the_open_conductance_of_a_live_lid(w, lid):
     assert not hasattr(bc, 'lid_surface_temperature')
     assert bc.surface_temperature == row['T_surf']
     if w > 0.0 and lid:
-        F_p, code = lid_open_slope(row, lid_flux_slope(hf_all, row))
+        F_p, code = lid_open_slope(row, lid_flux_secant(hf_all, row)[0])
         assert bc.open_surface_slope == F_p
         assert F_p > 0.0
         assert row['lid_slope_guard'] == code
@@ -90,7 +90,7 @@ def test_update_solver_cuts_the_slope_at_the_grey_secant_of_the_last_2_rows(T_pr
             'T_magma': [3000.0, 3000.0],
         }
     )
-    assert lid_flux_slope(hf_all, row) == pytest.approx(slope, rel=1e-12)
+    assert lid_flux_secant(hf_all, row)[0] == pytest.approx(slope, rel=1e-12)
     secant = const_sigma * (T_s**4 - T_prev**4) / (T_s - T_prev)
     tangent = 4.0 * const_sigma * T_s**3
     assert min(secant, tangent) < slope < max(secant, tangent)

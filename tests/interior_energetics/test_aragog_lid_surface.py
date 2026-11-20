@@ -644,7 +644,7 @@ def test_guard_and_corrector_on_a_saturating_flux():
     surface, and the corrector runs the call again with the small secant of the ceiling."""
     import pandas as pd
 
-    from proteus.atmos_clim.common import lid_flux_slope
+    from proteus.atmos_clim.common import lid_flux_secant
 
     hf_all = pd.DataFrame(
         {
@@ -654,7 +654,7 @@ def test_guard_and_corrector_on_a_saturating_flux():
         }
     )
     row = {'Time': 29950.67, 'T_surf': 819.271, 'F_atm': 13749.08}
-    tangent = lid_flux_slope(hf_all, row)
+    tangent = lid_flux_secant(hf_all, row)[0]
     assert tangent == 0.0
     F_end = 13749.08 + 0.07658 * (1406.255 - 819.271)
     runner, solver, io, seen = _corrector([1406.255, 1406.144], F_end, tangent=tangent)
@@ -672,7 +672,7 @@ def test_update_solver_passes_the_slope_of_the_last_two_rows():
     2 rows next to the cap of a live lid."""
     import pandas as pd
 
-    from proteus.atmos_clim.common import lid_flux_slope
+    from proteus.atmos_clim.common import lid_flux_secant
 
     bc = SimpleNamespace(
         outer_boundary_condition=4,
@@ -697,7 +697,7 @@ def test_update_solver_passes_the_slope_of_the_last_two_rows():
         {'Time': [29975.0, 30000.0], 'T_surf': [717.3, 727.3], 'F_atm': [6500.0, 7000.0]}
     )
     AragogRunner.update_solver(25.0, row, interior_o, hf_all=hf_all)
-    assert lid_flux_slope(hf_all, row) == pytest.approx(50.0, rel=1e-12)
+    assert lid_flux_secant(hf_all, row)[0] == pytest.approx(50.0, rel=1e-12)
     assert bc.lid_surface_flux_slope == pytest.approx(50.0, rel=1e-12)
 
 

@@ -35,7 +35,6 @@ from proteus.atmos_clim.common import (  # noqa: E402
     lid_boundary,
     lid_flux_cap,
     lid_flux_secant,
-    lid_flux_slope,
     lid_open_flux,
     lid_prev_row,
     list_atmosphere_times,
@@ -1066,7 +1065,7 @@ def test_flux_slope_is_the_slope_of_the_last_two_rows():
     hf_all = _rows([700.0, 701.0], [15000.0, 15087.0])
     row = {'Time': 20.0, 'T_surf': 701.0, 'F_atm': 15087.0}
     for frame in (hf_all, hf_all.iloc[:1]):
-        assert lid_flux_slope(frame, row) == pytest.approx(87.0, rel=1e-12)
+        assert lid_flux_secant(frame, row)[0] == pytest.approx(87.0, rel=1e-12)
         assert lid_flux_secant(frame, row) == (pytest.approx(87.0, rel=1e-12), 700.0)
 
 
@@ -1082,7 +1081,7 @@ def test_flux_slope_is_zero_without_a_usable_slope(T, F):
     """A surface step below 0.01 K, a slope of 0 or below, or a non-finite value give F' = 0."""
     hf_all = _rows(T, F)
     row = {'Time': 20.0, 'T_surf': T[1], 'F_atm': F[1]}
-    assert lid_flux_slope(hf_all, row) == 0.0
+    assert lid_flux_secant(hf_all, row)[0] == 0.0
 
 
 def test_flux_slope_is_zero_without_a_row_before():
@@ -1091,7 +1090,7 @@ def test_flux_slope_is_zero_without_a_row_before():
     row = {'Time': 10.0, 'T_surf': 700.0, 'F_atm': 15000.0}
     empty = _rows([700.0], [15000.0]).iloc[:0]
     for hf_all in (None, empty, _rows([700.0], [15000.0])):
-        assert lid_flux_slope(hf_all, row) == 0.0
+        assert lid_flux_secant(hf_all, row)[0] == 0.0
         assert lid_flux_secant(hf_all, row) == (0.0, None)
     assert lid_prev_row(None, row) is None and lid_prev_row(empty, row) is None
 
