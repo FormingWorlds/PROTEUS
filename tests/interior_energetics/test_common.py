@@ -575,108 +575,6 @@ def test_write_structure_stale_survives_resume_roundtrip(tmp_path):
     assert resumed_false.structure_stale is False, 'cleared flag must survive the resume'
 
 
-def test_structure_stale_sidecar_restores_flag_and_last_success(tmp_path):
-    """The sidecar carries the stale flag and the time of the last successful re-solve
-    through a resume, bit for bit, onto an Interior_t seeded with the opposite state."""
-    hypothesis = pytest.importorskip('hypothesis')
-    st = hypothesis.strategies
-    (tmp_path / 'data').mkdir(exist_ok=True)
-
-    @hypothesis.settings(max_examples=60, deadline=None)
-    @hypothesis.given(
-        stale=st.booleans(),
-        last_success=st.one_of(
-            st.just(float('-inf')),
-            st.floats(min_value=0.0, max_value=1e11, allow_nan=False, allow_infinity=False),
-        ),
-    )
-    def roundtrip(stale, last_success):
-        before = Interior_t(5)
-        before.structure_stale = stale
-        before.last_successful_struct_time = last_success
-        before.write_structure_stale(str(tmp_path))
-
-        resumed = Interior_t(5)
-        resumed.structure_stale = not stale
-        resumed.last_successful_struct_time = 123.0
-        resumed.resume_structure_stale(str(tmp_path))
-        assert resumed.structure_stale is stale
-        assert resumed.last_successful_struct_time == last_success
-
-    roundtrip()
-
-
-def test_resume_structure_stale_reads_a_flag_only_file(tmp_path):
-    """A sidecar with the flag alone restores the flag; the time of the last success
-    stays unknown (-inf), so the stale ceiling has no anchor."""
-    from proteus.interior_energetics.common import get_file_structure_stale
-
-    (tmp_path / 'data').mkdir()
-    with open(get_file_structure_stale(str(tmp_path)), 'w') as hdl:
-        hdl.write('1\n')
-    resumed = Interior_t(5)
-    resumed.last_successful_struct_time = 5e4
-    resumed.resume_structure_stale(str(tmp_path))
-    assert resumed.structure_stale is True
-    assert resumed.last_successful_struct_time == float('-inf')
-
-
-def test_resume_structure_stale_anchors_a_flag_only_file_at_the_resume_time(tmp_path):
-    """A stale flag with no stored last-success time takes the resume time as its anchor,
-    so the stale ceiling stays armed after the resume."""
-    from proteus.interior_energetics.common import get_file_structure_stale
-
-    (tmp_path / 'data').mkdir()
-    with open(get_file_structure_stale(str(tmp_path)), 'w') as hdl:
-        hdl.write('1\n')
-    resumed = Interior_t(5)
-    resumed.resume_structure_stale(str(tmp_path), 8.2e4)
-    assert resumed.structure_stale is True
-    assert resumed.last_successful_struct_time == 8.2e4
-
-
-@pytest.mark.parametrize(('stored', 'want'), [(9e4, 8.2e4), (6e4, 6e4)])
-def test_resume_structure_stale_keeps_the_anchor_at_or_before_the_resume_time(
-    tmp_path, stored, want
-):
-    """A last-success time after the resumed row (a resume that walked back past it) is
-    moved to the resume time; an earlier one is kept."""
-    (tmp_path / 'data').mkdir()
-    before = Interior_t(5)
-    before.structure_stale = True
-    before.last_successful_struct_time = stored
-    before.write_structure_stale(str(tmp_path))
-
-    resumed = Interior_t(5)
-    resumed.resume_structure_stale(str(tmp_path), 8.2e4)
-    assert resumed.structure_stale is True
-    assert resumed.last_successful_struct_time == want
-
-
-def _resume_never_raises(interior, outdir, time=None):
-    """resume_structure_stale on a malformed file; an escaping ValueError fails the test."""
-    try:
-        interior.resume_structure_stale(outdir, time)
-    except ValueError as exc:
-        raise AssertionError(f'a malformed sidecar raised {exc!r}') from exc
-
-
-@pytest.mark.parametrize('content', ['1 nan\n', '1 inf\n'])
-def test_resume_structure_stale_refuses_a_non_finite_anchor(tmp_path, caplog, content):
-    """A stored last-success time of NaN or +inf would keep the ceiling silent for good;
-    the file counts as malformed (warning, fresh)."""
-    from proteus.interior_energetics.common import get_file_structure_stale
-
-    (tmp_path / 'data').mkdir()
-    with open(get_file_structure_stale(str(tmp_path)), 'w') as hdl:
-        hdl.write(content)
-    resumed = Interior_t(5)
-    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
-        _resume_never_raises(resumed, str(tmp_path), 8.2e4)
-    assert resumed.structure_stale is False
-    assert any('stale-structure flag' in r.message for r in caplog.records)
-
-
 def test_resume_structure_stale_missing_or_malformed_file_defaults_fresh(tmp_path, caplog):
     """resume_structure_stale degrades to not-stale on an absent or corrupt file.
 
@@ -696,22 +594,17 @@ def test_resume_structure_stale_missing_or_malformed_file_defaults_fresh(tmp_pat
     # Absent file: no sidecar written.
     missing = Interior_t(5)
     missing.structure_stale = True  # seed non-default so the reset is observable
-    missing.last_successful_struct_time = 5e4
     missing.resume_structure_stale(str(tmp_path))
     assert missing.structure_stale is False, 'absent file must reset to not-stale'
-    assert missing.last_successful_struct_time == float('-inf')
 
-    # Malformed and empty files: warn and fall back to not-stale, never raise.
-    for content in ('not-an-int\n', ''):
-        with open(get_file_structure_stale(str(tmp_path)), 'w') as hdl:
-            hdl.write(content)
-        corrupt = Interior_t(5)
-        corrupt.structure_stale = True
-        corrupt.last_successful_struct_time = 5e4
-        with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
-            _resume_never_raises(corrupt, str(tmp_path))
-        assert corrupt.structure_stale is False, 'malformed file must fall back to not-stale'
-        assert corrupt.last_successful_struct_time == float('-inf')
+    # Malformed file: unparseable content must warn and fall back to False.
+    with open(get_file_structure_stale(str(tmp_path)), 'w') as hdl:
+        hdl.write('not-an-int\n')
+    corrupt = Interior_t(5)
+    corrupt.structure_stale = True
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        corrupt.resume_structure_stale(str(tmp_path))
+    assert corrupt.structure_stale is False, 'malformed file must fall back to not-stale'
     assert any('stale-structure flag' in r.message for r in caplog.records), (
         'the malformed-file branch must emit a warning for provenance'
     )

@@ -3028,9 +3028,8 @@ def update_structure_from_interior(
         triggered = True
         reason = f'ceiling ({elapsed:.1f} yr >= {config.interior_struct.zalmoxis.update_interval:.1f} yr)'
 
-    # Stale-aware ceiling, a recovery path after a failed re-solve (structure_stale): it
-    # fires once update_stale_ceiling has passed since the last success and since the last
-    # attempt, so a failing solver is retried at that spacing, not on every step.
+    # Recovery after a failed re-solve (structure_stale): re-solve once update_stale_ceiling
+    # has passed since the last attempt, so a failing solver is retried at that spacing.
     stale_ceiling = config.interior_struct.zalmoxis.update_stale_ceiling
     if (
         not triggered
@@ -3038,14 +3037,10 @@ def update_structure_from_interior(
         and getattr(interior_o, 'structure_stale', False) is True
         and elapsed >= stale_ceiling
     ):
-        last_success = float(getattr(interior_o, 'last_successful_struct_time', float('-inf')))
-        stale_elapsed = current_time - last_success
-        if last_success > float('-inf') and stale_elapsed >= stale_ceiling:
-            triggered = True
-            reason = (
-                f'stale-aware ceiling ({stale_elapsed:.1f} yr since the last success, '
-                f'{elapsed:.1f} yr since the last attempt, >= {stale_ceiling:.1f} yr)'
-            )
+        triggered = True
+        reason = (
+            f'recovery ({elapsed:.1f} yr since the failed attempt >= {stale_ceiling:.1f} yr)'
+        )
 
     # Phi_global absolute change (primary trigger: directly reflects rheological state)
     if not triggered:
@@ -3471,8 +3466,6 @@ def update_structure_from_interior(
             # current best structure, so this state is "checked at current_time".
             # The sentinels advance like the success path (current Phi/T_magma),
             # but the structure itself is unchanged.
-            interior_o.last_successful_struct_time = float(current_time)
-            interior_o.write_structure_stale(dirs['output'])
             # The previous structure was retained, so the accepted radius did
             # not change: record zero so the resume-settling guard treats this
             # as converged and suppresses further spurious dT/T re-solves (a
@@ -3515,9 +3508,6 @@ def update_structure_from_interior(
         # It lives on interior_o (not hf_row) to stay out of the floats-only
         # helpfile schema, and is persisted so a resume recovers it.
         interior_o.structure_stale = False
-        # Anchor the stale-aware ceiling on the last SUCCESSFUL re-solve (vs
-        # `last_struct_time`, reset on every call); the sidecar stores both.
-        interior_o.last_successful_struct_time = float(current_time)
         interior_o.write_structure_stale(dirs['output'])
         # Record the relative radius change this accepted re-solve produced.
         # The resume-settling guard reads it next loop: a value below the
