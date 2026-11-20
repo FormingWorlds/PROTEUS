@@ -353,6 +353,7 @@ def store_result(hf_row: dict, result, source: int) -> None:
         raise ValueError(f'dispatcher returned rates for untracked elements: {sorted(unknown)}')
     diag = result.diagnostics
     hydrostatic = diag.get('hydrostatic', {})
+    hydrodynamic = diag.get('hydrodynamic', {})
     base = diag.get('base_level', {})
 
     raw = {e: float(result.per_species.get(e, 0.0)) for e in element_list}
@@ -377,6 +378,8 @@ def store_result(hf_row: dict, result, source: int) -> None:
     hf_row['esc_T_esc_neutral'] = _finite_or(hydrostatic.get('T_esc_neutral'))
     hf_row['esc_T_esc_plasma'] = _finite_or(hydrostatic.get('T_esc_plasma'))
     hf_row['esc_f_ion_exo'] = _finite_or(hydrostatic.get('f_plus_exo'))
+    hf_row['esc_efficiency'] = _finite_or(hydrodynamic.get('efficiency'))
+    hf_row['esc_T_wind'] = _finite_or(hydrodynamic.get('T_wind'))
     hf_row['esc_base_clamp_dex'] = _finite_or(base.get('clamp_decades'), 0.0)
     hf_row['esc_profile_source'] = float(source)
     hf_row['esc_flags'] = encode_flags(result.flags)
@@ -411,6 +414,8 @@ def _no_escape(hf_row: dict) -> float:
         'esc_T_esc_neutral',
         'esc_T_esc_plasma',
         'esc_f_ion_exo',
+        'esc_efficiency',
+        'esc_T_wind',
     ):
         hf_row[key] = NOT_EVALUATED
     hf_row['p_xuv'] = float(hf_row.get('P_surf', 0.0))

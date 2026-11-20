@@ -1154,6 +1154,8 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `esc_T_esc_neutral` | `K` | neutral escape temperature at the exobase, -1 if not evaluated | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
 | `esc_T_esc_plasma` | `K` | plasma escape temperature at the exobase, -1 if not evaluated | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
 | `esc_f_ion_exo` | `1` | ionization fraction at the exobase, -1 if not evaluated | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
+| `esc_efficiency` | `1` | escape efficiency of the energy-limited wind, -1 if not evaluated | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
+| `esc_T_wind` | `K` | wind temperature of the hydrodynamic branch, -1 if not evaluated | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
 | `esc_base_clamp_dex` | `1` | decades between the wind base and the level used | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
 | `esc_profile_source` | `1` | column read: 1 latest solve, 2 earlier solve, 3 isothermal, 0 not set | `escape/dispatcher.py` | escape.module = "zephyrus" |   |
 | `esc_flags` | `1` | dispatcher flags as bits, see escape.dispatcher.FLAG_BITS, 0 if none or not set | `escape/dispatcher.py` | escape.module = "zephyrus" |   |

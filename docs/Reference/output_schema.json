@@ -29589,6 +29589,36 @@
       "consumers_possible": []
     },
     {
+      "name": "esc_efficiency",
+      "unit": "1",
+      "description": "escape efficiency of the energy-limited wind, -1 if not evaluated",
+      "group": "Atmospheric escape",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "escape.module = \"zephyrus\""
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "esc_T_wind",
+      "unit": "K",
+      "description": "wind temperature of the hydrodynamic branch, -1 if not evaluated",
+      "group": "Atmospheric escape",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/dispatcher.py",
+          "condition": "escape.module = \"zephyrus\""
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
       "name": "esc_base_clamp_dex",
       "unit": "1",
       "description": "decades between the wind base and the level used",

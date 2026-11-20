@@ -1004,6 +1004,7 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'boundary_layer_conductivity',
         # the escape dispatcher: zero is a row it did not set
         'esc_base_clamp_dex',
+        'esc_efficiency',
         'esc_f_ion_exo',
         'esc_flags',
         'esc_graphite_kg',
@@ -1016,6 +1017,7 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'esc_T_esc_neutral',
         'esc_T_esc_plasma',
         'esc_T_exo',
+        'esc_T_wind',
         'f_remelt',
         # the Aragog lid: zero is no lid, and the interior writes them at every step
         'lid_conductance',
@@ -1042,12 +1044,14 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
 # escape.dispatcher._no_escape sets to -1.
 ESCAPE_NOT_EVALUATED_KEYS = frozenset(
     {
+        'esc_efficiency',
         'esc_f_ion_exo',
         'esc_kn_sonic',
         'esc_lambda',
         'esc_T_esc_neutral',
         'esc_T_esc_plasma',
         'esc_T_exo',
+        'esc_T_wind',
     }
 )
 
@@ -1408,6 +1412,8 @@ def GetHelpfileKeys():
     keys.append('esc_T_esc_neutral')    # neutral escape temperature at the exobase, -1 if not evaluated [K]
     keys.append('esc_T_esc_plasma')     # plasma escape temperature at the exobase, -1 if not evaluated [K]
     keys.append('esc_f_ion_exo')        # ionization fraction at the exobase, -1 if not evaluated [1]
+    keys.append('esc_efficiency')       # escape efficiency of the energy-limited wind, -1 if not evaluated [1]
+    keys.append('esc_T_wind')           # wind temperature of the hydrodynamic branch, -1 if not evaluated [K]
     keys.append('esc_base_clamp_dex')   # decades between the wind base and the level used [1]
     keys.append('esc_profile_source')   # column read: 1 latest solve, 2 earlier solve, 3 isothermal, 0 not set [1]
     keys.append('esc_flags')            # dispatcher flags as bits, see escape.dispatcher.FLAG_BITS, 0 if none or not set [1]

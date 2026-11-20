@@ -504,6 +504,7 @@ def test_a_renamed_state_records_its_rate_branch_and_every_diagnostic():
                 'T_esc_plasma': 2650.0,
                 'f_plus_exo': 0.004,
             },
+            'hydrodynamic': {'efficiency': 0.23, 'T_wind': 8800.0},
             'base_level': {'p_Pa': 2.0e-4, 'r_m': 9.0e6, 'clamp_decades': 0.7},
         },
     )
@@ -512,9 +513,11 @@ def test_a_renamed_state_records_its_rate_branch_and_every_diagnostic():
     assert row['esc_regime'] == REGIME_CODES['roche_overflow']
     assert row['esc_rate_branch'] == REGIME_CODES['hydrodynamic:EL']
     got = {k: row[k] for k in ('esc_kn_sonic', 'esc_lambda', 'esc_T_exo', 'esc_T_esc_neutral',
-                               'esc_T_esc_plasma', 'esc_f_ion_exo', 'esc_base_clamp_dex')}  # fmt: skip
+                               'esc_T_esc_plasma', 'esc_f_ion_exo', 'esc_base_clamp_dex',
+                               'esc_efficiency', 'esc_T_wind')}  # fmt: skip
     want = dict(esc_kn_sonic=0.11, esc_lambda=23.0, esc_T_exo=1100.0, esc_T_esc_neutral=5300.0,
-                esc_T_esc_plasma=2650.0, esc_f_ion_exo=0.004, esc_base_clamp_dex=0.7)  # fmt: skip
+                esc_T_esc_plasma=2650.0, esc_f_ion_exo=0.004, esc_base_clamp_dex=0.7,
+                esc_efficiency=0.23, esc_T_wind=8800.0)  # fmt: skip
     assert got == pytest.approx(want, rel=1e-12)
     assert row['esc_profile_source'] == PROFILE_KEPT
     assert row['p_xuv'] == pytest.approx(2.0e-9, rel=1e-12)
@@ -553,6 +556,35 @@ def test_no_atmosphere_or_a_broken_flux_means_no_escape_this_step(caplog):
     assert run_dispatcher(config, _row(), atmos_o=_atmos(_row()), dt=1.0) > 1.0
 
 
+@pytest.mark.physics_invariant
+def test_the_helpfile_records_the_efficiency_and_wind_temperature_in_use():
+    """esc_efficiency is the efficiency the energy-limited rate used, esc_T_wind the wind's.
+
+    Physical scenario: the 5 Earth-mass H2-He planet of this file. With a fixed
+    efficiency the column holds the setting, 0.1. With the Caldiroli et al.
+    (2022) fit it holds the fitted value converted to the energy-limited
+    geometry, which differs from the setting, so a column copying the setting
+    would fail. Both columns match what the dispatcher itself reports.
+    """
+    from zephyrus import dispatch
+
+    row = _row()
+    run_dispatcher(_config(), row, atmos_o=_atmos(row), dt=1.0)
+    assert row['esc_efficiency'] == pytest.approx(0.1, rel=1e-12)
+
+    config = _config(efficiency_mode='caldiroli')
+    row = _row()
+    atmos = _atmos(row)
+    run_dispatcher(config, row, atmos_o=atmos, dt=1.0)
+    profile, _source = escape_profile(config, row, atmos)
+    hydro = dispatch(escape_inputs(config, row, profile, 1.0)).diagnostics['hydrodynamic']
+    assert row['esc_efficiency'] == pytest.approx(hydro['efficiency'], rel=1e-12)
+    assert abs(row['esc_efficiency'] / 0.1 - 1.0) > 1e-3
+    assert 0.0 < row['esc_efficiency'] < 1.0
+    assert row['esc_T_wind'] == pytest.approx(hydro['T_wind'], rel=1e-12)
+    assert row['esc_T_wind'] > 1000.0
+
+
 def test_a_skipped_step_leaves_no_diagnostic_of_the_step_before():
     """A step without escape reads as not evaluated, not as the previous verdict.
 
@@ -575,6 +607,8 @@ def test_a_skipped_step_leaves_no_diagnostic_of_the_step_before():
         'esc_T_esc_neutral',
         'esc_T_esc_plasma',
         'esc_f_ion_exo',
+        'esc_efficiency',
+        'esc_T_wind',
     ):
         assert row[key] == pytest.approx(-1.0, rel=0.0, abs=0.0), key
     assert (row['esc_base_clamp_dex'], row['esc_rate_branch'], row['esc_regime']) == (0, 0, 0)
