@@ -18,6 +18,7 @@ import platformdirs
 from scipy.optimize import OptimizeResult
 
 from aragog import aragog_file_logger
+from aragog.config.boundary import OPEN_PART_FIELDS
 from aragog.mesh import derive_core_density_from_mesh
 from aragog.solver import EntropySolver, SolverOutput
 from aragog.parser import (
@@ -630,15 +631,6 @@ def _surface_temperature_of_row(hf_row: dict) -> float | None:
     except (TypeError, ValueError):
         return None
     return T_surf if np.isfinite(T_surf) and T_surf > 0.0 else None
-
-
-# fields of the open part of a live lid on the Aragog boundary, None without one
-LID_OPEN_FIELDS = (
-    'open_lid_flux',
-    'open_surface_slope',
-    'open_skin_conductance',
-    'open_lid_conductance',
-)
 
 
 def _set_lid_surface(bc, hf_row: dict, slope: float | None = None) -> None:
@@ -2370,7 +2362,7 @@ class AragogRunner:
             live and bc.outer_boundary_condition == 4 and getattr(bc, 'lid_mush_base', False)
         )
         fields, code = lid_open_fields(hf_row, slope, T_other) if open_part else ({}, 0)
-        for name in LID_OPEN_FIELDS:
+        for name in OPEN_PART_FIELDS:  # None without a live lid
             setattr(bc, name, fields.get(name))
         # the grey tangent is the cut itself; it keeps its own code
         cut = code == LID_SLOPE_GUARD_SIZE and fallback != LID_SLOPE_GUARD_GREY

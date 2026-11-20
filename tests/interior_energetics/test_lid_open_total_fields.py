@@ -7,44 +7,22 @@ slope ``F'`` (cut at the grey secant), the skin conductance ``G`` and ``G_l = mi
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
-import numpy as np
 import pandas as pd
 import pytest
+from aragog.config.boundary import OPEN_PART_FIELDS as FIELDS
 
 from proteus.interior_energetics.aragog import AragogRunner
 from proteus.utils.constants import const_sigma
 from tests.atmos_clim.test_common import _row
+from tests.interior_energetics.test_lid_open_flux_guards import _runner_bc
 
 pytestmark = pytest.mark.unit
 
-FIELDS = (
-    'open_lid_flux',
-    'open_surface_slope',
-    'open_skin_conductance',
-    'open_lid_conductance',
-)
 UNSET = object()
 
 
 def _update(w, lid=True, T=(1150.0, 1160.0, 1170.0), F=(14000.0, 14400.0, 14900.0), G=21.9):
-    bc = SimpleNamespace(
-        outer_boundary_condition=4,
-        subgrid_lid=lid,
-        lid_mush_base=lid,
-        outer_boundary_value=None,
-        lid_surface_flux_cap=None,
-        equilibrium_temperature=None,
-    )
-    params = SimpleNamespace(
-        solver=SimpleNamespace(start_time=None, end_time=None),
-        boundary_conditions=bc,
-        energy=SimpleNamespace(tidal_array=None),
-    )
-    interior_o = SimpleNamespace(
-        aragog_solver=SimpleNamespace(parameters=params, solution=None), tides=np.zeros(3)
-    )
+    bc, interior_o = _runner_bc(lid)
     hf_all = pd.DataFrame({'Time': [10.0, 20.0, 30.0], 'T_surf': T, 'F_atm': F})
     row = _row(w, G=G, T_b=1440.0, T_surf=T[-1], F_atm=F[-1], lid_F_open=165000.0)
     row.update(Time=30.0, T_eqm=255.0)

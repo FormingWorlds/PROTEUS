@@ -9,9 +9,7 @@ from __future__ import annotations
 
 import logging
 import math
-from types import SimpleNamespace
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -24,6 +22,7 @@ from proteus.atmos_clim.common import LID_SLOPE_DT_MIN  # noqa: E402
 from proteus.interior_energetics.aragog import AragogRunner  # noqa: E402
 from proteus.utils.constants import const_sigma  # noqa: E402
 from tests.atmos_clim.test_common import _row  # noqa: E402
+from tests.interior_energetics.test_lid_open_flux_guards import _runner_bc  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -31,22 +30,7 @@ pytestmark = pytest.mark.unit
 def _update(T, F, w=1.0):
     """Run update_solver on a history with surfaces ``T`` and fluxes ``F``, the last entry being
     the current row; return the boundary parameters and the row."""
-    bc = SimpleNamespace(
-        outer_boundary_condition=4,
-        subgrid_lid=True,
-        lid_mush_base=True,
-        outer_boundary_value=None,
-        lid_surface_flux_cap=None,
-        equilibrium_temperature=None,
-    )
-    params = SimpleNamespace(
-        solver=SimpleNamespace(start_time=None, end_time=None),
-        boundary_conditions=bc,
-        energy=SimpleNamespace(tidal_array=None),
-    )
-    interior_o = SimpleNamespace(
-        aragog_solver=SimpleNamespace(parameters=params, solution=None), tides=np.zeros(3)
-    )
+    bc, interior_o = _runner_bc()
     hf_all = pd.DataFrame(
         {'Time': [10.0 * (i + 1) for i in range(len(T))], 'T_surf': T, 'F_atm': F}
     )
