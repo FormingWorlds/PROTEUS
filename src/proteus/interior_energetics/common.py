@@ -1170,14 +1170,8 @@ class Interior_t:
         # pairs in years, tracking phase-change stalls across valid solves.
         self.aragog_step_progress: list[tuple[float, float]] = []
 
-        # True when the interior is running on a fallback (previous-step)
-        # structure because the last Zalmoxis re-solve did not converge; set on
-        # that fall-back and cleared on the next successful re-solve. Downstream
-        # consumers (Aragog's stale-mesh visibility counter, the baseline-commit
-        # guard) read it here rather than from hf_row so it stays out of the
-        # floats-only helpfile schema. Persisted to disk (write_structure_stale)
-        # and restored on resume (resume_structure_stale) so a crash right after
-        # a fall-back does not resume believing the on-disk mesh is fresh.
+        # True from a failed Zalmoxis re-solve (previous structure kept) to the next success;
+        # it arms the recovery (update_stale_ceiling) and is saved for a resume.
         self.structure_stale = False
 
         # Cumulative SPIDER time [yr]. Used by the CVode failure
@@ -1385,13 +1379,8 @@ class Interior_t:
                 hdl.write('%.7e %.7e \n' % (self.phi[i], self.tides[i]))
 
     def write_structure_stale(self, outdir: str):
-        # Persist the stale-structure flag so a resumed run recovers it. Written
-        # whenever the flag changes (the Zalmoxis success and fall-back paths in
-        # wrapper.py), so the on-disk value tracks the in-memory one. A write
-        # failure (disk full, absent data/ directory) must not abort the run or,
-        # on the fall-back path, skip the mesh and zalmoxis_output.dat rollback
-        # that follows this call: the flag is only a resume-visibility bit, so
-        # log and continue rather than propagate.
+        # Saved at each change of the flag. A failed write is logged, not raised: a resume
+        # then reads the older flag, and a lost True waits for the next failure to recover.
         try:
             with open(get_file_structure_stale(outdir), 'w') as hdl:
                 hdl.write('%d\n' % (1 if self.structure_stale else 0))
@@ -1399,10 +1388,7 @@ class Interior_t:
             log.warning('Could not persist stale-structure flag file: %s', exc)
 
     def resume_structure_stale(self, outdir: str):
-        # Restore the stale-structure flag from disk on resume. A missing file
-        # means no fall-back was recorded, so the mesh
-        # is fresh and the flag stays False. A malformed file is treated the
-        # same way rather than aborting the resume over a visibility bit.
+        # A missing or malformed file reads as no failed re-solve (flag False).
         path = get_file_structure_stale(outdir)
         if not os.path.exists(path):
             self.structure_stale = False

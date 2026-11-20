@@ -3016,7 +3016,7 @@ def update_structure_from_interior(
     if (
         not triggered
         and stale_ceiling > 0
-        and getattr(interior_o, 'structure_stale', False) is True
+        and interior_o.structure_stale is True
         and elapsed >= stale_ceiling
     ):
         triggered = True
