@@ -45,6 +45,17 @@ def _after(run, key):
     return RUNS[run][key][LIVE + 1]
 
 
+def _live(run):
+    """Indices of the rows of ``run`` with a live lid."""
+    return [i for i, w in enumerate(RUNS[run]['lid_weight']) if w > 0.0]
+
+
+def _later_steps(run):
+    """Size of each change of ``T_surf`` between rows after the step out of the live-lid row."""
+    T = RUNS[run]['T_surf']
+    return [abs(T[i + 1] - T[i]) for i in range(LIVE + 1, len(T) - 1)]
+
+
 def _band(run):
     """Atmosphere flux band of the step out of the live-lid row, widened by the floor."""
     a, b = RUNS[run]['F_atm'][LIVE], RUNS[run]['F_atm'][LIVE + 1]
@@ -64,30 +75,47 @@ def _facts():
     facts = []
     for s in ('seg1', 'seg2'):
         r, o = f'{s}_response', f'{s}_off'
-        lo, hi = RUNS[r]['F_atm'][LIVE], RUNS[r]['F_atm'][LIVE + 1]
         facts += [
             f'from {t[s][0]:.3f} to {t[s][1]:.3f} Myr',
             f'({_step(r, "T_surf"):.1f} K against {_step(o, "T_surf"):.1f} K)',
+            f'({_step(r, "T_magma"):.1f} K against {_step(o, "T_magma"):.1f} K)',
             f'({_after(r, "T_magma"):.0f} K against {_after(o, "T_magma"):.0f} K)',
-            f'{_after(r, "F_int"):.2f} {wm2} in [{lo:.2f}, {hi:.2f}] {wm2}',
         ]
-    return [*facts, f'${e_max / 10**exp:.1f} \\times 10^{{{exp}}}$']
+        for run in (r, o):
+            lo, hi = RUNS[run]['F_atm'][LIVE], RUNS[run]['F_atm'][LIVE + 1]
+            facts.append(f'{_after(run, "F_int"):.2f} {wm2} in [{lo:.2f}, {hi:.2f}] {wm2}')
+    swings = [max(_later_steps(n)) for n in NAMES]
+    ratios = [_step(a, 'T_surf') / _step(b, 'T_surf') for a, b in PAIRS]
+    k2 = _live('seg1_response')[1]
+    dT_end = _after('seg1_response', 'T_magma') - _after('seg1_response', 'T_surf')
+    return [
+        *facts,
+        f'up to {swings[0]:.1f} and {swings[1]:.1f} K between rows in the first segment and '
+        f'{swings[2]:.1f} and {swings[3]:.1f} K in the second',
+        f'({RUNS["seg1_response"]["Time"][k2] / 1e6:.3f} Myr, $w$ = '
+        f'{RUNS["seg1_response"]["lid_weight"][k2]:.3f})',
+        f'the 2 stored ratios, {ratios[0]:.2f} and {ratios[1]:.2f}',
+        f'lies {dT_end:.2f} K below the magma temperature',
+        f'${e_max / 10**exp:.1f} \\times 10^{{{exp}}}$',
+    ]
 
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_the_open_part_carries_the_coupled_runs_through_the_live_lid_step(validation_plot):
     """The response acts on the step out of the live-lid row; each pair agrees up to that row.
-    With the response, that step books an interior loss inside the atmosphere flux band of the
-    step, moves T_surf by less than 2/3 of the step with the response off, and ends with
-    cooler magma. No run clips T_magma. Later rows differ through the path of each run and are
-    not credited to the response."""
+    Both runs book an interior loss inside the atmosphere flux band of that step (the energy
+    closure). With the response the step moves T_surf and T_magma by less than 2/3 of the step
+    with the response off and ends with cooler magma. No run clips T_magma. Later rows differ
+    through the path of each run and are not credited to the response."""
     for a, b in PAIRS:
         assert all(RUNS[a][k][: LIVE + 1] == RUNS[b][k][: LIVE + 1] for k in START)
         assert RUNS[a]['lid_weight'][LIVE - 1] == 0.0 < RUNS[a]['lid_weight'][LIVE]
-        lo, hi = _band(a)
-        assert lo <= _after(a, 'F_int') <= hi
-        assert abs(_step(a, 'T_surf')) < SWING_RATIO * abs(_step(b, 'T_surf'))
+        for run in (a, b):  # the band holds the energy closure of both runs
+            lo, hi = _band(run)
+            assert lo <= _after(run, 'F_int') <= hi
+        for key in ('T_surf', 'T_magma'):
+            assert abs(_step(a, key)) < SWING_RATIO * abs(_step(b, key))
         assert _after(a, 'T_magma') < _after(b, 'T_magma')
     for name in NAMES:
         assert sum(RUNS[name]['T_magma_clipped']) == 0.0

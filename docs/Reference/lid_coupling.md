@@ -41,7 +41,7 @@ Every lid branch acts only for $w > 0$. With $w = 0$:
 
 Here $\sigma$ is the Stefan-Boltzmann constant. The cut is the grey secant $\sigma (T_1^4 - T_\mathrm{surf}^4)/(T_1 - T_\mathrm{surf})$ over the same 2 rows, with $T_1$ the surface of the row before. The same cut applies after a cooling and after a warming step. After a cooling step this secant lies above the tangent $4 \sigma T_\mathrm{surf}^3$, so the cut is looser than the slope of a grey surface at $T_\mathrm{surf}$ itself. A slope from an earlier pair of rows has no other end at the current row, so its cut is the grey tangent; a code 3 slope above it records code 2. In a re-solve of Rule 3 the cut is the grey secant from the held surface to the end surface of the step, and `lid_slope_guard` records the code of that secant.
 
-The log line `Lid slope: last secant unusable, ...` names the slope taken and, for code 3, its age in rows. Without a live lid an unusable secant gives $F' = 0$.
+The log line `Lid slope: last secant unusable, ...` names the slope taken and, for code 3, its age in rows. Without a live lid no slope goes to Aragog.
 
 ## The open-part diagnostic
 
@@ -57,7 +57,7 @@ Limits of these columns:
 
 - A call whose share is above 1 W m$^{-2}$ per open area, or is not finite, logs a warning with the value and the model time; the run goes on.
 - Where $1 - w$ is $10^{-9}$ or less, $F_\mathrm{open,0}$ is `F_atm`. $F_\mathrm{open,0}$ tends to `F_atm` as $w$ goes to 0.
-- An `F_atm`, $T_\mathrm{surf}$ or $T_b$ that is not finite stops the run with status 22. The same stop comes before the atmosphere call for a lid weight that is not finite, a lid conductance that is not finite under a weight above 0, or a node temperature that is not finite under a live lid.
+- An `F_atm`, $T_\mathrm{surf}$ or $T_b$ that is not finite stops the run with status 22. The same stop comes before the atmosphere call for a lid weight that is not finite, a lid conductance that is not finite under a weight above 0, or a node or lid base temperature that is not finite under a live lid.
 
 ## Resume of a run with the lid
 
@@ -106,7 +106,7 @@ These numbers come from coupled runs of 1 Earth-mass planets. They show how the 
 
 ### The first lid rows
 
-In two AGNI runs (drain step $\times 1$ and $\times 0.5$) the first lid row had $w = 3.0$ and $3.6 \times 10^{-10}$, with the held surface 13.7 and 15.3 K below $T_b$. That step therefore booked the full `F_atm` it started from. The first rows with $w$ above 0.5 came 284 and 267 yr later, with the surface 77 and 79 K below $T_b$.
+In two AGNI runs (drain step $\times 1$ and $\times 0.5$) the first lid row had $w = 3.0 \times 10^{-10}$ and $3.6 \times 10^{-10}$, with the held surface 13.7 and 15.3 K below $T_b$. That step therefore booked the full `F_atm` it started from. The first rows with $w$ above 0.5 came 284 and 267 yr later, with the surface 77 and 79 K below $T_b$.
 
 ### Several balances at the onset
 
@@ -116,11 +116,11 @@ On the state of the Aragog test `test_rows_follow_the_branch_of_the_previous_row
 
 ### The guard and the corrector in dummy runs
 
-After a kick of $-5$ K on the held surface, the row slope (87.4 W m$^{-2}$ K$^{-1}$) lies within 2.2 % of the exact slope of the dummy flux (85.5), and the re-solve moves the end surface by 0.001 K. In the first row under a soft ceiling of the dummy flux, the surface rose from 729 to 819 K while `F_atm` fell, so the row slope is below 0 and the secant is unusable. The lid then ended at 1406.3 K, far above the held 819.3 K. The corrector took the secant 0.0766 W m$^{-2}$ K$^{-1}$, and the step ended at 1406.1 K, as with the exact slope (secant 0.0770). The guard and the corrector, not the row slope alone, carry such a row.
+After a kick of $-5$ K on the held surface, the row slope (87.4 W m$^{-2}$ K$^{-1}$) lies within 2.2 % of the exact slope of the dummy flux (85.5), and the re-solve moves the end surface by 0.001 K.
 
 ### The lid against the hand-over
 
-With the mush base the lid hands over at 0.7 of the top-cell width. In the coupled runs of the Explanation page the top cell is 65.8 km thick. The lid stays near 0.18 m in the dummy runs and below 0.06 m in the two AGNI onset runs, far from the hand-over.
+With the mush base the lid hands over at 0.7 of the top-cell width. The lid stays near 0.18 m in the dummy runs and below 0.06 m in the two AGNI onset runs.
 
 ### The slope with AGNI
 
@@ -128,7 +128,7 @@ A secant from AGNI needs a second solve at a fixed surface temperature. That sol
 
 ### Lid onset within a step
 
-Two runs start from one stored state at 50828.99 yr: one at the normal coupling step and one at half that step. The band of a coupling step is the range between `F_atm` at its start and at its end. A step lies outside the band where its `F_int` is below the smaller or above the larger of the two. The relative gap is that distance divided by the `F_atm` at the start of the step.
+Two runs start from one stored state at 50828.99 yr, with the open part per total area and the slope guard of this page: one at the normal coupling step and one at half that step. The band of a coupling step is the range between `F_atm` at its start and at its end. A step lies outside the band where its `F_int` is below the smaller or above the larger of the two. The relative gap is that distance divided by the `F_atm` at the start of the step.
 
 | Start of step (yr) | $w$ at start | `F_atm` start (W m$^{-2}$) | `F_atm` end (W m$^{-2}$) | `F_int` (W m$^{-2}$) | Relative gap |
 |---|---|---|---|---|---|
