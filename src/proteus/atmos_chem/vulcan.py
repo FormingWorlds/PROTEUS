@@ -204,6 +204,9 @@ def network_settings(config: Config) -> tuple[str, list, list, list] | None:
                 network_file = 'NCHO_thermo_network.txt'
 
         case 'SNCHO':
+            if not config.atmos_chem.photo_on:
+                log.error('VULCAN has no SNCHO network without photochemistry')
+                return None
             plt_arr = [
                 'H2',
                 'H',
@@ -227,6 +230,37 @@ def network_settings(config: Config) -> tuple[str, list, list, list] | None:
             return None
 
     return network_file, ele_arr, plt_arr, sct_arr
+
+
+def _network_path(network_file: str) -> str:
+    """Path of a network file in VULCAN's thermo folder; FileNotFoundError if absent."""
+    import vulcan
+
+    path = os.path.join(vulcan.paths.THERMO_DIR, network_file)
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f'VULCAN network file not found: {path}. VULCAN reads its data from its '
+            'git clone; install it with tools/get_vulcan.sh.'
+        )
+    return path
+
+
+def compile_network(config: Config) -> str:
+    """Compile the network of `config` for the VULCAN runs.
+
+    VULCAN writes the compiled network into one file of its install and renumbers the
+    network file in place, so runs that compile at the same time can corrupt both.
+    `proteus offchem --grid` compiles once here, then runs its cases without compiling.
+    """
+    import vulcan
+    from vulcan.make_chem_funs import make_all
+
+    network_file = network_settings(config)[0]
+    vcfg = vulcan.Config()
+    vcfg.network = _network_path(network_file)
+    vcfg.use_photo = config.atmos_chem.photo_on
+    make_all(vcfg)
+    return network_file
 
 
 def _write_ini_table(
@@ -475,12 +509,7 @@ def run_vulcan(
     vcfg = vulcan.Config()
 
     log.info(f"    using '{network_file}' network")
-    vcfg.network = os.path.join(vulcan.paths.THERMO_DIR, network_file)
-    if not os.path.isfile(vcfg.network):
-        raise FileNotFoundError(
-            f'VULCAN network file not found: {vcfg.network}. VULCAN reads its data from its '
-            'git clone; install it with tools/get_vulcan.sh.'
-        )
+    vcfg.network = _network_path(network_file)
     vcfg.atom_list = ele_arr
     vcfg.use_photo = config.atmos_chem.photo_on
     vcfg.use_ion = False

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import filecmp
+import io
 import os
+import subprocess
 import tomllib
 
 import numpy as np
@@ -10,8 +12,10 @@ import pandas as pd
 import pytest
 from helpers import PROTEUS_ROOT
 
+from proteus.atmos_chem.dummy import _ALL_SPECIES
 from proteus.grid.analyse import analyse_grid
 from proteus.grid.manage import grid_from_config
+from proteus.grid.offchem import find_cases, offchem_grid
 from proteus.grid.pack import pack as gpack
 from proteus.grid.summarise import status_category
 from proteus.grid.summarise import summarise as gsummarise
@@ -153,3 +157,30 @@ def test_grid_post_process(grid_run):
     is_completed = summary['status_category'] == 'Completed'
     assert set(read['completed']['case_number']) == set(summary.index[is_completed])
     assert set(read['running_error']['case_number']) == set(summary.index[~is_completed])
+
+
+def test_grid_offchem(grid_run):
+    """``proteus offchem --grid`` runs the dummy chemistry of base.toml on each of the four
+    cases, and the table of a case equals the one ``proteus offchem -c`` writes for that
+    case alone. The cases differ in hydrogen budget and core, so their tables differ; each
+    holds the species of the dummy module, and the mixing ratios of every level sum to 1 within the rounding of the written digits:
+    at most 5e-9 relative per value, so about 5e-9 on a sum of 1 (tolerance 1e-8).
+    """
+    assert offchem_grid(OUT_DIR) == []
+    tables = {
+        name: (OUT_DIR / name / 'offchem' / 'dummy.csv').read_bytes()
+        for name, _ in find_cases(OUT_DIR)
+    }
+    assert sorted(tables) == [f'case_{i:06d}' for i in range(4)]
+    assert len(set(tables.values())) == 4
+
+    single = OUT_DIR / 'cfgs' / 'case_000002.toml'
+    subprocess.run(['proteus', 'offchem', '--config', str(single)], check=True)
+    assert (OUT_DIR / 'case_000002' / 'offchem' / 'dummy.csv').read_bytes() == tables[
+        'case_000002'
+    ]
+
+    for table in tables.values():
+        vmr = pd.read_csv(io.BytesIO(table), sep=r'\s+').drop(columns=['tmp', 'p', 'z', 'Kzz'])
+        assert sorted(vmr.columns) == sorted(_ALL_SPECIES)
+        np.testing.assert_allclose(vmr.sum(axis=1), 1.0, rtol=0, atol=1e-8)

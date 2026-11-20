@@ -103,6 +103,8 @@ def dispatch_script(
     command: str,
     casedir: str | None = None,
     env: str = '',
+    case_list: str | None = None,
+    job_name: str = 'proteus.grid.array',
 ) -> str:
     """Return the sbatch script that runs the cases of a grid as a job array.
 
@@ -135,12 +137,22 @@ def dispatch_script(
         Folder that holds the case output folders; None writes no status.
     env : str
         Shell lines run before the cases, such as exports.
+    case_list : str or None
+        File with one case name per line, to run only those ``n_cases`` cases; task ``j``
+        then runs the listed cases ``j, j + jobs, ...``. None runs every case of the grid.
+    job_name : str
+        Slurm name of the job array, as used by ``squeue -n`` and ``scancel -n``.
     """
+    names = f"printf 'case_%06d\\n' $(seq $SLURM_ARRAY_TASK_ID {jobs} {n_cases - 1})"
+    if case_list is not None:
+        names = (
+            f"awk -v t=$SLURM_ARRAY_TASK_ID '(NR - 1) % {jobs} == t' {shlex.quote(case_list)}"
+        )
     minutes = max(1, round(days * 24 * 60))
     signal_s = min(900, minutes * 6)  # a tenth of the wall time, at most 15 minutes
     last_start_s = minutes * 60 - signal_s - min(60, signal_s)
     return f"""#!/bin/bash
-#SBATCH -J proteus.grid.array
+#SBATCH -J {job_name}
 #SBATCH --export=ALL
 #SBATCH --no-requeue
 #SBATCH --time={minutes}
@@ -195,7 +207,7 @@ fi
 [ "$code" -eq 0 ] || {{ echo "$1 failed with exit code $code"; exit 1; }}
 '
 
-printf 'case_%06d\\n' $(seq $SLURM_ARRAY_TASK_ID {jobs} {n_cases - 1}) |
+{names} |
     xargs -n 1 -P {cores_per_job} sh -c "$run_case" sh &
 pid=$!
 while kill -0 "$pid" 2>/dev/null; do wait "$pid"; done
