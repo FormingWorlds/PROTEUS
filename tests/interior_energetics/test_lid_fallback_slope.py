@@ -24,7 +24,7 @@ from proteus.utils.constants import const_sigma  # noqa: E402
 from tests.atmos_clim.test_common import _row  # noqa: E402
 from tests.interior_energetics.test_lid_open_flux_guards import _runner_bc  # noqa: E402
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(60)]
 
 
 def _update(T, F, w=1.0):

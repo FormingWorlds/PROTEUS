@@ -625,7 +625,7 @@ def test_a_resolve_keeps_one_stall_window_entry_per_step():
 
 
 @pytest.mark.parametrize('F_end', [14000.0, math.nan])
-def test_an_unusable_resolve_secant_keeps_the_first_solve(F_end):
+def test_an_unusable_resolve_secant_keeps_the_first_solve(F_end, caplog):
     """Where the atmosphere flux at the end surface is not above the held flux, or is not
     finite, the secant of the re-solve is 0: the first solve, with its slope and guard code,
     stands, so a live lid never runs as a pure flux cap."""
@@ -635,7 +635,9 @@ def test_an_unusable_resolve_secant_keeps_the_first_solve(F_end):
     row = {'F_atm': 15000.0, 'T_surf': 700.0, 'lid_slope_guard': 3}
     snap = _call_start(solver)
     out = runner._solve_with_retry({}, io, 'S0')
-    assert AragogRunner._correct_lid_cap(runner, row, io, 'S0', out, snap) is out
+    with caplog.at_level('INFO'):
+        assert AragogRunner._correct_lid_cap(runner, row, io, 'S0', out, snap) is out
+    assert sum('re-solve skipped' in r.getMessage() for r in caplog.records) == 1
     assert len(seen) == 1
     assert (bc.lid_surface_flux_slope, bc.open_surface_slope) == (40.0, 40.0)
     assert row['lid_slope_guard'] == 3

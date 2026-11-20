@@ -576,7 +576,7 @@ def lid_flux_cap(hf_row: dict) -> float | None:
 
 # open area 1 - w at or below which the open part takes F_atm
 LID_OPEN_AREA_FLOOR = 1e-9
-# Residual of the open-part start value per open area [W m-2] above which a call is logged
+# Size of the residual F_atm - B per total area [W m-2] above which a call is logged
 LID_RESID_WARN = 1.0
 
 
@@ -667,9 +667,9 @@ def lid_open_residual(hf_row: dict) -> float:
     Returns
     -------
     float
-        ``F_atm - B``, with ``B`` the skin balance of the call (:func:`lid_boundary`); divided
-        by ``1 - w`` it is the start value of :func:`lid_open_flux` less the skin flux
-        ``G_skin (T_m - T_surf)``. 0 without a lid.
+        ``F_atm - B``, with ``B`` the skin balance of the call (:func:`lid_boundary`); where
+        ``1 - w`` is above ``LID_OPEN_AREA_FLOOR``, divided by ``1 - w`` it is the start value
+        of :func:`lid_open_flux` less the skin flux ``G_skin (T_m - T_surf)``. 0 without a lid.
     """
     if not lid_acts(hf_row):
         return 0.0
@@ -677,9 +677,9 @@ def lid_open_residual(hf_row: dict) -> float:
     return float(hf_row['F_atm']) - k / d * (T_melt - float(hf_row['T_surf']))
 
 
-# lid_slope_guard codes: the slope was 0 or below, not finite or from a short step; it was cut;
-# a live lid took the newest usable earlier secant, the grey tangent without one, or that
-# earlier secant cut to the grey tangent
+# guard codes: 1 is the return code of lid_open_slope for an unusable slope, which a run does not
+# record; lid_slope_guard records a cut (2), the newest usable earlier secant (3), the grey
+# tangent without one (4), or that earlier secant cut to the grey tangent (5)
 LID_SLOPE_GUARD_SIGN = 1
 LID_SLOPE_GUARD_SIZE = 2
 LID_SLOPE_GUARD_FALLBACK = 3

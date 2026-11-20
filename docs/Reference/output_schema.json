@@ -1186,7 +1186,7 @@
     {
       "name": "lid_F_resid",
       "unit": "W m-2",
-      "description": "residual F_atm - B of the atmosphere solve against the skin balance B of the call, per total area; 0 without a lid; a call above 1 W m-2 or not finite logs a warning",
+      "description": "residual F_atm - B of the atmosphere solve against the skin balance B of the call, per total area; 0 without a lid; a call with a size above 1 W m-2 or not finite logs a warning",
       "group": "Temperatures",
       "origin": "literal",
       "producers": [

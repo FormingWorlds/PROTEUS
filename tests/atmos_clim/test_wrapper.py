@@ -581,8 +581,8 @@ def test_run_atmosphere_writes_status_22_for_an_open_flux_that_is_not_finite(tmp
 
 @pytest.mark.parametrize(
     ('key', 'value'),
-    [('lid_T_node', math.nan), ('lid_weight', math.nan)],
-    ids=['node', 'weight'],
+    [('lid_T_node', math.nan), ('lid_weight', math.nan), ('lid_T_base', math.nan)],
+    ids=['node', 'weight', 'base'],
 )
 def test_run_atmosphere_writes_status_22_before_the_call_for_a_lid_column_not_finite(
     tmp_path, key, value

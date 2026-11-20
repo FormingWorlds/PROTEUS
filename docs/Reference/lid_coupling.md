@@ -23,7 +23,7 @@ Every lid branch acts only for $w > 0$. With $w = 0$:
 - In the atmosphere call, `lid_boundary` caps $G_\mathrm{lid}$ at $G_\mathrm{skin}$, so a lid never conducts more than the open surface. The open part reads its melt at $T_m \ge T_b$, so with $T_\mathrm{surf} \le T_m$ the lid part never loses more than the open part would at the same surface temperature.
 - `lid_flux_cap` computes $C$ from the row after the atmosphere step. `_set_lid_surface` passes it to Aragog as `lid_surface_flux_cap`. The held surface is the `surface_temperature` of the solver boundary, the `T_surf` of the row. Without a lid, or for a surface at or above $T_b$ ($C \le 0$), no cap is set.
 - `_set_lid_surface` passes $F'$ with the cap as `lid_surface_flux_slope`. The cap takes the slope after the replacement of an unusable secant, but before the cut at the grey secant; only the open part takes the cut ([Slope guard codes](#slope-guard-codes)).
-- After the step, where the lid surface ends above the held one, `_correct_lid_cap` takes the secant of the atmosphere flux between the held and the end surface, $(F_\mathrm{atm}(T_\mathrm{end}) - F_\mathrm{atm}) / (T_\mathrm{end} - T_\mathrm{surf})$, at least 0. It then runs the step again from its start, once, with that secant as $F'$ for the cap and for the open part. A secant within $10^{-3}$ of $F'$ changes nothing, so that re-solve is skipped. The log names each re-solve with its wall time and the running total. The flux at $T_\mathrm{end}$ comes from the atmosphere module: the dummy without `fixed_flux` has it as a formula; the other modules have no corrector and take the slope of the rows alone.
+- After the step, where the lid surface ends above the held one, `_correct_lid_cap` takes the secant of the atmosphere flux between the held and the end surface, $(F_\mathrm{atm}(T_\mathrm{end}) - F_\mathrm{atm}) / (T_\mathrm{end} - T_\mathrm{surf})$, at least 0. A secant of 0 (the flux at the end surface not above the held flux, or not finite) keeps the first solve, with its slope and guard code, and the log names it. Otherwise `_correct_lid_cap` runs the step again from its start, once, with that secant as $F'$ for the cap and for the open part. A secant within $10^{-3}$ of $F'$ changes nothing, so that re-solve is skipped. The log names each re-solve with its wall time and the running total. The flux at $T_\mathrm{end}$ comes from the atmosphere module: the dummy without `fixed_flux` has it as a formula; the other modules have no corrector and take the slope of the rows alone.
 
 **When the cap acts.** With $G_\mathrm{lid} \le G_\mathrm{skin}$ the cap is close to the flux of the held lid at the start of the step, so it acts where the held lid would conduct more than at that start. The two are not equal. $C$ takes $G_\mathrm{lid}$ from the profile shape at the end surface of the last step, and the held lid has another shape at the new `T_surf`. In the first dummy row under a flux ceiling, the held lid conducted 24 % less than $C$. The held lid conducts $k f_s'(0) (T_b - T_\mathrm{surf}) / \delta$, and $f_s'(0)$ rises with the shape parameter $s$ of the profile, so the cap acts while the lid thins and while $s$ rises. Near the onset, where $G_\mathrm{lid} > G_\mathrm{skin}$, the cap lies below the flux of the held lid and can act from the start of the step.
 
@@ -55,9 +55,9 @@ and `F_atm` where no lid acts. $L$ is the flux of the lid part in the call, with
 
 Limits of these columns:
 
-- A call whose residual is above 1 W m$^{-2}$, or is not finite, logs a warning with the value and the model time; the run goes on.
+- A call whose residual has a size above 1 W m$^{-2}$, or is not finite, logs a warning with the value and the model time; the run goes on.
 - Where $1 - w$ is $10^{-9}$ or less, $F_\mathrm{open,0}$ is `F_atm`. $F_\mathrm{open,0}$ tends to `F_atm` as $w$ goes to 0.
-- An `F_atm`, $T_\mathrm{surf}$ or $T_b$ that is not finite stops the run with status 22. The same stop comes before the atmosphere call for a lid weight that is not finite, a lid conductance that is not finite under a weight above 0, or a node or lid base temperature that is not finite under a live lid.
+- Under a live lid, an `F_atm` or $T_\mathrm{surf}$ that is not finite stops the run with status 22. So does a lid weight that is not finite, a lid conductance that is not finite under a weight above 0, or a node or lid base temperature that is not finite. The check of the lid columns runs before the atmosphere call.
 
 ## Resume of a run with the lid
 
@@ -128,7 +128,7 @@ A secant from AGNI needs a second solve at a fixed surface temperature. That sol
 
 ### Lid onset within a step
 
-Two runs start from one stored state at 50828.99 yr, with the open part per total area and the slope guard of this page: one at the normal coupling step and one at half that step. The band of a coupling step is the range between `F_atm` at its start and at its end. A step lies outside the band where its `F_int` is below the smaller or above the larger of the two. The relative gap is that distance divided by the `F_atm` at the start of the step.
+Two runs, not stored in the repository, start from one state at 50828.99 yr: one at the normal coupling step and one at half that step. The band of a coupling step is the range between `F_atm` at its start and at its end. A step lies outside the band where its `F_int` is below the smaller or above the larger of the two. The relative gap is that distance divided by the `F_atm` at the start of the step.
 
 | Start of step (yr) | $w$ at start | `F_atm` start (W m$^{-2}$) | `F_atm` end (W m$^{-2}$) | `F_int` (W m$^{-2}$) | Relative gap |
 |---|---|---|---|---|---|

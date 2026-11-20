@@ -16,7 +16,7 @@ from proteus.utils.constants import const_sigma
 from tests.atmos_clim.test_common import _row
 from tests.interior_energetics.test_lid_open_flux_guards import _runner_bc
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(60)]
 
 UNSET = object()
 

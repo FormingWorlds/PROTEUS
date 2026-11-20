@@ -2626,7 +2626,16 @@ class AragogRunner:
         tangent = float(bc.lid_surface_flux_slope or 0.0)
         secant = lid_cap_secant(T_held, T_end, float(hf_row['F_atm']), float(flux_at(T_end)))
         # an unusable secant keeps the first solve: a live lid never runs as a pure flux cap
-        if secant == 0.0 or lid_resolve_skip(tangent, secant):
+        if secant == 0.0:
+            log.info(
+                'Lid cap re-solve skipped: no usable secant from the held surface %.3f K to the '
+                'end %.3f K; the first solve with slope %.4g W/m2/K stands',
+                T_held,
+                T_end,
+                tangent,
+            )
+            return out
+        if lid_resolve_skip(tangent, secant):
             return out
         t0 = time.perf_counter()
         _restore_call_start(solver, snap, interior_o)

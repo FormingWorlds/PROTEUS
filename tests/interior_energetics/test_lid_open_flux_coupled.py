@@ -21,6 +21,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(60)]
 
 DATA = Path(__file__).parents[1] / 'data' / 'lid_open_flux' / 'coupled_rows.json'
 PAGE = Path(__file__).parents[2] / 'docs' / 'Validation' / 'atmos_clim' / 'common.md'
+EXPLANATION = Path(__file__).parents[2] / 'docs' / 'Explanations' / 'lid_coupling.md'
 RUNS = json.loads(DATA.read_text())
 PAIRS = (('seg1_response', 'seg1_off'), ('seg2_response', 'seg2_off'))
 NAMES = tuple(n for pair in PAIRS for n in pair)
@@ -118,6 +119,7 @@ def test_the_open_part_carries_the_coupled_runs_through_the_live_lid_step(valida
             assert abs(_step(a, key)) < SWING_RATIO * abs(_step(b, key))
         assert _after(a, 'T_magma') < _after(b, 'T_magma')
     for name in NAMES:
+        assert set(RUNS[name]['lid_slope_guard']) == {0.0}  # no row needs a fallback slope
         assert sum(RUNS[name]['T_magma_clipped']) == 0.0
         assert max(RUNS[name]['T_magma']) < 1600.0
         assert max(abs(x) for x in RUNS[name]['E_residual_cons_frac']) <= E_RES_BOUND
@@ -157,3 +159,20 @@ def test_the_page_states_the_numbers_of_the_stored_coupled_rows():
     section = text.split('## Coupled runs through the lid onset', 1)[1].split('\n## ', 1)[0]
     missing = [f for f in _facts() if not re.search(r'(?<![\d.])' + re.escape(f), section)]
     assert missing == []
+
+
+@pytest.mark.physics_invariant
+def test_the_explanation_states_the_lid_onset_of_the_stored_rows():
+    """The Explanation page gives the onset of the stored segments: in the step that switches
+    the lid on, the held surface (the row before) lies above the lid base, and at its end the
+    top node lies below it; the numbers come from the stored rows."""
+    held, node = [], []
+    for name in ('seg1_response', 'seg2_response'):
+        run = RUNS[name]
+        T_b = run['lid_T_base'][LIVE]
+        assert run['T_surf'][LIVE - 1] > T_b > run['lid_T_node'][LIVE]
+        held.append(run['T_surf'][LIVE - 1] - T_b)
+        node.append(T_b - run['lid_T_node'][LIVE])
+    text = EXPLANATION.read_text()
+    assert f'held surface lay {held[0]:.1f} and {held[1]:.1f} K above $T_b$' in text
+    assert f'top node lay {node[0]:.1f} and {node[1]:.1f} K below it' in text

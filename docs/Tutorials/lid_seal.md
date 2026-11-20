@@ -262,7 +262,7 @@ lid_F_open 20726.4 W m-2 per open area
 - `open_surface_slope` is $F'$, cut at the grey secant of the same 2 rows (cut code 2). The call above passes no other end, so the cut is the grey tangent, 363.3 W m$^{-2}$ K$^{-1}$; 40 lies below it, so no cut acts.
 - `open_skin_conductance` is $G_\mathrm{skin} = k / d$ of the skin, and `open_lid_conductance` is $G_\mathrm{lid}'$.
 - `lid_F_open` is $(F_\mathrm{atm} - w L) / (1 - w)$, the start flux of the open part per open area; Aragog does not read it.
-- These rows are built by hand, not by an atmosphere call, so they do not close the skin balance: the skin of the open part conducts $G_\mathrm{skin} (T_m - T_\mathrm{surf})$ = 65999 W m$^{-2}$ per open area here, not 20726. A run records the residual of the atmosphere call per total area, $F_\mathrm{atm} - B$ with $B$ the skin balance of the call, in `lid_F_resid` (here -27163.6 W m$^{-2}$) and logs a warning where it is above 1 W m$^{-2}$.
+- These rows are built by hand, not by an atmosphere call, so they do not close the skin balance: the skin of the open part conducts $G_\mathrm{skin} (T_m - T_\mathrm{surf})$ = 65999 W m$^{-2}$ per open area here, not 20726. A run records the residual of the atmosphere call per total area, $F_\mathrm{atm} - B$ with $B$ the skin balance of the call, in `lid_F_resid` (here -27163.6 W m$^{-2}$) and logs a warning where its size is above 1 W m$^{-2}$.
 
 A run writes `lid_weight`, `lid_slope_guard` and `lid_F_open` on every row of `runtime_helpfile.csv`.
 The block writes the 4 rows in that format, with the same lid columns on each row and the codes that a run gives them, and reads them back as you would read a run:

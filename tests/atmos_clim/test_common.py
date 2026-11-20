@@ -14,6 +14,7 @@ See also:
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -26,6 +27,7 @@ from hypothesis import given, settings  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
 from proteus.atmos_clim.common import (  # noqa: E402
+    _usable_secant,
     clip_radius_to_hill,
     find_latest_atmosphere_time,
     get_oarr_from_parr,
@@ -1056,6 +1058,24 @@ def _rows(T, F):
     return pd.DataFrame(
         {'Time': [10.0 * (i + 1) for i in range(len(T))], 'T_surf': T, 'F_atm': F}
     )
+
+
+@pytest.mark.parametrize(
+    ('T0', 'T1', 'F0', 'F1', 'want'),
+    [
+        (0.0, 0.01, 0.0, 1.0, 100.0),  # a step of exactly LID_SLOPE_DT_MIN is usable
+        (0.0, 0.0099, 0.0, 1.0, 0.0),  # just below it is not
+        (10.0, 9.0, 5.0, 3.0, 2.0),  # a cooling step with a falling flux
+        (10.0, 9.0, 3.0, 5.0, 0.0),  # a cooling step with a rising flux: slope below 0
+        (0.0, math.nan, 0.0, 1.0, 0.0),  # a step that is not finite
+        (0.0, 1.0, 0.0, math.inf, 0.0),  # a slope that is not finite
+    ],
+)
+def test_the_secant_rule_of_the_lid_slope(T0, T1, F0, F1, want):
+    """A secant counts where the surface step is at least LID_SLOPE_DT_MIN and the slope is
+    finite and above 0, for a warming and a cooling step; otherwise it is 0."""
+    assert _usable_secant(T0, T1, F0, F1) == pytest.approx(want, rel=1e-12)
+    assert isinstance(_usable_secant(T0, T1, F0, F1), float)
 
 
 def test_flux_slope_is_the_slope_of_the_last_two_rows():
