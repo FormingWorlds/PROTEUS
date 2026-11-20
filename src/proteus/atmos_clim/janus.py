@@ -1,10 +1,10 @@
 # Functions used to handle atmosphere thermodynamics (running JANUS, etc.)
 from __future__ import annotations  # noqa: I001
 
-import glob
+import contextlib
 import logging
 import os
-import shutil
+import tempfile
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -15,7 +15,7 @@ from proteus.atmos_clim.surface_skin import (
     effective_surf_state,
 )
 from proteus.utils.constants import vap_list, vol_list, gas_list
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, format_subyear_time
+from proteus.utils.helper import UpdateStatusfile, format_subyear_time
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -167,15 +167,65 @@ def write_atmos_ncdf(atm, dirs: dict, time: float):
     atm.write_ncdf(nc_fpath)
 
 
+def _solve_janus(atm, dirs, config, hf_row, hf_all):
+    """Solve the JANUS atmosphere for the effective surface state; returns the solved atmosphere."""
+    trppD = config.atmos_clim.janus.tropopause == 'dynamic'
+    rscatter = config.atmos_clim.rayleigh
+
+    # Run JANUS
+    surf_state = effective_surf_state(config, hf_row)
+    if surf_state == 'fixed':  # fixed T_Surf
+        from janus.modules import MCPA
+
+        atm = MCPA(dirs, atm, False, trppD, rscatter)
+
+    elif surf_state == 'skin':  # conductive lid
+        from janus.modules import MCPA_CBL
+
+        T_surf_max = -1
+        T_surf_old = -1
+        rtol, atol = 1.0e-4, 1.0e-5
+
+        # Done with initial loops
+        if hf_row['Time'] > 0 and hf_all is not None and len(hf_all) > 0:
+            # Get previous temperature as initial guess
+            T_surf_old = hf_all.iloc[-1]['T_surf']
+
+            # Prevent heating of the interior
+            if config.planet.prevent_warming:
+                T_surf_max = T_surf_old
+
+            # calculate tolerance
+            tol = rtol * abs(hf_all.iloc[-1]['F_atm']) + atol
+        else:
+            tol = 0.1
+
+        # run JANUS
+        atm = MCPA_CBL(
+            dirs,
+            atm,
+            trppD,
+            rscatter,
+            method=0,
+            atol=tol,
+            atm_bc=int(config.atmos_clim.janus.F_atm_bc),
+            T_surf_guess=float(T_surf_old) - 1.0,
+            T_surf_max=float(T_surf_max),
+        )
+
+    else:
+        UpdateStatusfile(dirs, 20)
+        raise Exception('Invalid surface state chosen for JANUS')
+
+    return atm
+
+
 def RunJANUS(
     atm,
     dirs: dict,
     config: Config,
     hf_row: dict,
     hf_all: pd.DataFrame,
-    write_in_tmp_dir=True,
-    search_method=0,
-    rtol=1.0e-4,
     write_data: bool = True,
 ):
     """Run JANUS.
@@ -196,12 +246,6 @@ def RunJANUS(
             Dictionary containing simulation variables for current iteration
         hf_all : pd.DataFrame
             Dataframe containing simulation variables (now and historic)
-        write_in_tmp_dir : bool
-            Write temporary files in a local folder within /tmp, rather than in the output folder
-        search_method : int
-            Root finding method used by JANUS
-        rtol : float
-            Relative tolerance on solution for root finding method
         write_data : bool
             Whether to write the atmosphere NetCDF file this iteration.
     Returns
@@ -225,71 +269,15 @@ def RunJANUS(
     # Update atmosphere with current variables
     UpdateStateAtm(atm, config, hf_row, config.atmos_clim.janus.tropopause)
 
-    # Change dir
-    cwd = os.getcwd()
-    tmp_dir = dirs['output']
-    if write_in_tmp_dir:
-        tmp_dir = create_tmp_folder()
-    log.debug("Will run socrates inside '%s'" % tmp_dir)
-    os.chdir(tmp_dir)
-
-    # Prepare to calculate temperature structure w/ General Adiabat
-    trppD = config.atmos_clim.janus.tropopause == 'dynamic'
-    rscatter = config.atmos_clim.rayleigh
-
-    # Run JANUS
-    surf_state = effective_surf_state(config, hf_row)
-    if surf_state == 'fixed':  # fixed T_Surf
-        from janus.modules import MCPA
-
-        atm = MCPA(dirs, atm, False, trppD, rscatter)
-
-    elif surf_state == 'skin':  # conductive lid
-        from janus.modules import MCPA_CBL
-
-        T_surf_max = -1
-        T_surf_old = -1
-        atol = 1.0e-5
-
-        # Done with initial loops
-        if time > 0 and hf_all is not None and len(hf_all) > 0:
-            # Get previous temperature as initial guess
-            T_surf_old = hf_all.iloc[-1]['T_surf']
-
-            # Prevent heating of the interior
-            if config.planet.prevent_warming:
-                T_surf_max = T_surf_old
-
-            # calculate tolerance
-            tol = rtol * abs(hf_all.iloc[-1]['F_atm']) + atol
-        else:
-            tol = 0.1
-
-        # run JANUS
-        atm = MCPA_CBL(
-            dirs,
-            atm,
-            trppD,
-            rscatter,
-            method=search_method,
-            atol=tol,
-            atm_bc=int(config.atmos_clim.janus.F_atm_bc),
-            T_surf_guess=float(T_surf_old) - 1.0,
-            T_surf_max=float(T_surf_max),
-        )
-
-    else:
-        UpdateStatusfile(dirs, 20)
-        raise Exception('Invalid surface state chosen for JANUS')
-
-    # Clean up run directory
-    for file in glob.glob(tmp_dir + '/current??.????'):
-        os.remove(file)
-    for file in glob.glob(tmp_dir + '/profile.*'):
-        os.remove(file)
-    os.chdir(cwd)
-    if write_in_tmp_dir:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+    # SOCRATES writes its working files into the current directory
+    with (
+        tempfile.TemporaryDirectory(
+            prefix='janus_', dir=dirs['temp'], ignore_cleanup_errors=True
+        ) as tmp_dir,
+        contextlib.chdir(tmp_dir),
+    ):
+        log.debug("Will run socrates inside '%s'" % tmp_dir)
+        atm = _solve_janus(atm, dirs, config, hf_row, hf_all)
 
     any_cloud = np.any(np.array(atm.clfr) > 1.0e-20)
     log.info('Water clouds have formed = %s' % (str(any_cloud)))
