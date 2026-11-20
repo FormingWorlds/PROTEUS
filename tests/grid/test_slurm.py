@@ -129,13 +129,23 @@ def test_warn_idle_cores_names_the_share_and_nearer_layouts(caplog):
     """20 cases on 16 cores leave 37.5 % idle; the warning says so, says it assumes
     equal run times, and lists the three nearest core counts that idle at most 10 %."""
     with caplog.at_level(logging.WARNING, logger=slurm.log.name):
-        slurm.warn_idle_cores(20, 16, 1001)
+        slurm.warn_idle_cores(20, 16, 1001, max_jobs=64)
     (record,) = caplog.records
     text = record.getMessage()
     assert '37.5%' in text
     assert 'equal run times' in text
     # 20 (distance 4), then 11 and 21 (distance 5); 15 idles 33 % and is left out
     assert text.endswith('20 (0%), 11 (9%), 21 (5%)')
+
+
+def test_warn_idle_cores_proposes_no_more_cores_than_max_jobs(caplog):
+    """With max_jobs = 16 cases at a time, 20 and 21 cores would run more cases at once;
+    the next nearest values that idle at most 10 % are 11, 10 and 7."""
+    with caplog.at_level(logging.WARNING, logger=slurm.log.name):
+        slurm.warn_idle_cores(20, 16, 1001, max_jobs=16)
+    text = caplog.records[0].getMessage()
+    assert '37.5%' in text
+    assert text.endswith('11 (9%), 10 (0%), 7 (5%)')
 
 
 @pytest.mark.parametrize(
@@ -147,7 +157,7 @@ def test_warn_idle_cores_only_above_ten_percent(caplog, n_cases, cores, warns):
     """The warning starts above 10 % idle: 9 cases on 10 cores (10 %) stay quiet, 8
     cases on 9 cores (11 %) warn. A single case on 4 cores still gets a suggestion."""
     with caplog.at_level(logging.WARNING, logger=slurm.log.name):
-        slurm.warn_idle_cores(n_cases, cores, 1001)
+        slurm.warn_idle_cores(n_cases, cores, 1001, max_jobs=64)
     assert bool(caplog.records) is warns
     if warns:
         assert caplog.records[0].getMessage().split(': ')[-1].startswith(f'{n_cases} (0%)')

@@ -70,15 +70,16 @@ def idle_share(n_cases: int, cores_per_job: int, max_array: int) -> float:
     return 1 - n_cases / (runs * cores_per_job)
 
 
-def warn_idle_cores(n_cases: int, cores_per_job: int, max_array: int) -> None:
+def warn_idle_cores(n_cases: int, cores_per_job: int, max_array: int, max_jobs: int) -> None:
     """Log a warning when the job layout leaves more than ``IDLE_WARN_SHARE`` of the
-    allocated core time idle, with nearby ``cores_per_job`` values that idle less."""
+    allocated core time idle, with nearby ``cores_per_job`` values that idle less and
+    don't exceed ``max_jobs``, the number of cases that run at the same time."""
     share = idle_share(n_cases, cores_per_job, max_array)
     if share <= IDLE_WARN_SHARE:
         return
     better = sorted(
         (abs(k - cores_per_job), k, s)
-        for k in range(1, 2 * cores_per_job + 1)  # 1 never idles, so the list is never empty
+        for k in range(1, min(2 * cores_per_job, max_jobs) + 1)  # 1 never idles
         if (s := idle_share(n_cases, k, max_array)) <= IDLE_WARN_SHARE
     )
     log.warning(

@@ -748,7 +748,7 @@ class Grid:
                 waves,
                 max_days * waves,
             )
-        warn_idle_cores(self.size, cores_per_job, max_array)
+        warn_idle_cores(self.size, cores_per_job, max_array, max_jobs)
         log.info(' ')
 
         log.info("Output path: '%s'" % self.outdir)
