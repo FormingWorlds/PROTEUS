@@ -2006,6 +2006,17 @@ def test_the_recovery_fires_after_a_failed_attempt_and_only_then(tmp_path):
 
 
 @pytest.mark.unit
+def test_a_zero_recovery_time_disables_the_recovery(tmp_path):
+    """update_stale_ceiling = 0 switches the recovery off: a stale structure 30 kyr after
+    its failed attempt waits for the routine ceiling."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    config.interior_struct.zalmoxis.update_stale_ceiling = 0.0
+    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_not_called()
+    assert out == (7e4, 3000.0, 0.8) and interior_o.structure_stale is True
+
+
+@pytest.mark.unit
 def test_stale_ceiling_without_a_stale_attribute_stays_silent(tmp_path):
     """An interior without a ``structure_stale`` attribute counts as fresh: 30 kyr after
     its last attempt the recovery does not fire."""
