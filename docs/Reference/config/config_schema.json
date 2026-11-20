@@ -4579,7 +4579,7 @@
           "value": 0
         }
       ],
-      "description": "Minimum time between structure updates [yr], for every trigger except mesh convergence, the stale-aware recovery included; prevents thrashing.",
+      "description": "Minimum time between structure updates [yr], for every trigger except mesh convergence, the recovery of `update_stale_ceiling` included; prevents thrashing.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 4,
@@ -4675,7 +4675,7 @@
           "value": 0
         }
       ],
-      "description": "After a failed re-solve, the time [yr] that must pass since the last successful re-solve (or rejected up-step) and since the last attempt before a re-solve is triggered, so a failing solve is retried at this spacing. Not used while every re-solve succeeds; 0 disables.",
+      "description": "Recovery after a failed re-solve [yr]: a new re-solve starts once this time has passed since the failed attempt, so a failing solver is retried no more often than this. On resume the resumed time counts as the last attempt. Not used while every re-solve succeeds; 0 disables.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 5,

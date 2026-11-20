@@ -84,8 +84,8 @@ belong to the experimental binodal-aware mode.
 | `update_dtmagma_frac` | float | `0.05` | Re-solve the structure when T_magma changes by this fraction. Must be > 0 and < 1. |
 | `update_dw_comp_abs` | float | `0.05` | Re-solve when the relative dissolved-volatile (H2O or H2) mantle mass fraction changes by this amount. Must be > 0 and < 1. |
 | `update_interval` | float | `1000000000.0` | Maximum time between structure updates \[yr\]; effectively disabled at the default. Must be >= 0. |
-| `update_min_interval` | float | `0` | Minimum time between structure updates \[yr\], for every trigger except mesh convergence, the stale-aware recovery included; prevents thrashing. Must be >= 0. |
-| `update_stale_ceiling` | float | `25000.0` | After a failed re-solve, the time \[yr\] that must pass since the last successful re-solve (or rejected up-step) and since the last attempt before a re-solve is triggered, so a failing solve is retried at this spacing. Not used while every re-solve succeeds; 0 disables. Must be >= 0. |
+| `update_min_interval` | float | `0` | Minimum time between structure updates \[yr\], for every trigger except mesh convergence, the recovery of `update_stale_ceiling` included; prevents thrashing. Must be >= 0. |
+| `update_stale_ceiling` | float | `25000.0` | Recovery after a failed re-solve \[yr\]: a new re-solve starts once this time has passed since the failed attempt, so a failing solver is retried no more often than this. On resume the resumed time counts as the last attempt. Not used while every re-solve succeeds; 0 disables. Must be >= 0. |
 | `mesh_max_shift` | float | `0.05` | Maximum fractional radius shift per structure update. Must be > 0 and < 1. |
 | `mesh_convergence_interval` | float | `10.0` | Convergence relaxation time after a mesh update \[yr\]. Must be > 0. |
 

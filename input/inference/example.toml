@@ -293,7 +293,7 @@ config_version = "3.0"
         update_dw_comp_abs    = 0.05         # composition trigger: relative change in dissolved H2O/H2 mass fraction
         update_interval       = 1e9          # time-cadence ceiling [yr]; the large default leaves refreshes to the dphi/dtmagma/dw triggers; 0 = init only
         update_min_interval   = 0            # min time between updates [yr]
-        update_stale_ceiling  = 2.5e4        # recovery after a failed re-solve: re-solve once this time [yr] has passed since the last success and since the last attempt; 0 = disabled
+        update_stale_ceiling  = 2.5e4        # recovery after a failed re-solve: re-solve once this time [yr] has passed since the failed attempt; 0 = disabled
         mesh_max_shift        = 0.05         # max fractional radius shift per update
         mesh_convergence_interval = 10.0     # convergence time after mesh update [yr]
 

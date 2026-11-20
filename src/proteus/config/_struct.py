@@ -221,14 +221,14 @@ class Zalmoxis:
         at the default.
     update_min_interval: float
         Minimum time between structure updates [yr], for every trigger
-        except mesh convergence, the stale-aware recovery included;
-        prevents thrashing.
+        except mesh convergence, the recovery of `update_stale_ceiling`
+        included; prevents thrashing.
     update_stale_ceiling: float
-        After a failed re-solve, the time [yr] that must pass since the
-        last successful re-solve (or rejected up-step) and since the last
-        attempt before a re-solve is triggered, so a failing solve is
-        retried at this spacing. Not used while every re-solve succeeds;
-        0 disables.
+        Recovery after a failed re-solve [yr]: a new re-solve starts once
+        this time has passed since the failed attempt, so a failing solver
+        is retried no more often than this. On resume the resumed time
+        counts as the last attempt. Not used while every re-solve
+        succeeds; 0 disables.
     mesh_max_shift: float
         Maximum fractional radius shift per structure update.
     mesh_convergence_interval: float
