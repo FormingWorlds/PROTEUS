@@ -5134,29 +5134,38 @@ class _TempDirRunner:
     def __init__(self, output, logging_level='INFO'):
         self.config = MagicMock()
         self.config.params.out.logging = logging_level
-        self.directories = {'output': str(output) + '/'}
+        self.directories = {'output': str(output) + '/', 'temp': str(output) + '/'}
 
 
 @pytest.mark.parametrize(
-    ('raised', 'warns'),
+    ('raised', 'writes', 'warns'),
     [
-        (None, False),
-        (RuntimeError('solver failed'), True),
-        (KeyboardInterrupt(), True),
-        (SystemExit(143), True),
-        (SystemExit(0), False),
+        (None, True, False),
+        (RuntimeError('solver failed'), True, True),
+        (RuntimeError('solver failed'), False, False),
+        (KeyboardInterrupt(), True, True),
+        (SystemExit(143), True, True),
+        (SystemExit(0), True, False),
     ],
-    ids=['run-ends', 'run-raises', 'run-interrupted', 'run-terminated', 'run-exits-cleanly'],
+    ids=[
+        'run-ends',
+        'run-raises',
+        'run-raises-with-empty-folder',
+        'run-interrupted',
+        'run-terminated',
+        'run-exits-cleanly',
+    ],
 )
 def test_run_temp_dir_is_private_and_removed_when_the_run_ends_or_fails(
-    tmp_path, system_tmp, caplog, raised, warns
+    tmp_path, system_tmp, caplog, raised, writes, warns
 ):
     """A run works in its own 0700 folder under $TMPDIR, removed when start returns or raises.
 
     A failed, interrupted (Ctrl-C) or terminated (SIGTERM, exit 143) run also
     says how to keep the files, because they are gone. KeyboardInterrupt and
     SystemExit are not an Exception, so a handler that catches only Exception
-    would drop that hint. A clean exit (status 0) is no failure and gives none.
+    would drop that hint. A clean exit (status 0) is no failure and gives none,
+    and nor does an empty folder, as when AGNI verbosity >= 2 writes to the output folder.
     """
     from proteus.proteus import _run_temp_dir
 
@@ -5167,8 +5176,9 @@ def test_run_temp_dir_is_private_and_removed_when_the_run_ends_or_fails(
     def start(self):
         seen['temp'] = Path(self.directories['temp'])
         seen['mode'] = seen['temp'].stat().st_mode & 0o777
-        (seen['temp'] / 'fastchem').mkdir()
-        (seen['temp'] / 'runtime.sf_k').write_bytes(b'\0' * 1024)
+        if writes:
+            (seen['temp'] / 'fastchem').mkdir()
+            (seen['temp'] / 'runtime.sf_k').write_bytes(b'\0' * 1024)
         if raised is not None:
             raise raised
         return 'done'
@@ -5186,30 +5196,6 @@ def test_run_temp_dir_is_private_and_removed_when_the_run_ends_or_fails(
     assert os.listdir(system_tmp) == []
     assert runner.directories['temp'] == runner.directories['output']
     assert ("'DEBUG'" in caplog.text) is warns
-
-
-def test_failed_run_with_an_empty_temp_dir_gives_no_hint(tmp_path, system_tmp, caplog):
-    """A failed run that wrote nothing to its temporary folder does not say it removed files.
-
-    This is the case when AGNI verbosity >= 2 puts its files in the output folder.
-    """
-    from proteus.proteus import _run_temp_dir
-
-    runner = _TempDirRunner(tmp_path / 'out')
-    seen = {}
-
-    @_run_temp_dir
-    def start(self):
-        seen['temp'] = Path(self.directories['temp'])
-        raise RuntimeError('solver failed')
-
-    with caplog.at_level(logging.WARNING, logger='fwl'):
-        with pytest.raises(RuntimeError):
-            start(runner)
-
-    assert seen['temp'].parent == system_tmp
-    assert not seen['temp'].exists()
-    assert 'Removing temporary files' not in caplog.text
 
 
 def test_concurrent_runs_with_the_same_numpy_seed_get_separate_temp_dirs(tmp_path, system_tmp):

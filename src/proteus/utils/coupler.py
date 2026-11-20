@@ -2819,6 +2819,7 @@ def get_proteus_directories(outdir='_unset') -> dict[str, str]:
         'output/observe': os.path.join(output_root, outdir, 'observe'),
         'output/offchem': os.path.join(output_root, outdir, 'offchem'),
         'output/plots': os.path.join(output_root, outdir, 'plots'),
+        'temp': os.path.join(output_root, outdir),
     }
 
 
@@ -2880,8 +2881,5 @@ def set_directories(config: Config) -> dict[str, str]:
     # Get abspaths
     for key in dirs.keys():
         dirs[key] = os.path.abspath(dirs[key]) + '/'
-
-    # Proteus.start swaps in a private folder; outside a run, modules use the output folder
-    dirs['temp'] = dirs['output']
 
     return dirs

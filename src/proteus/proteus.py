@@ -109,7 +109,6 @@ def _run_temp_dir(start):
 
     @functools.wraps(start)
     def wrapper(self, *args, **kwargs):
-        self.directories['temp'] = self.directories['output']
         if self.config.params.out.logging == 'DEBUG':
             return start(self, *args, **kwargs)
 
