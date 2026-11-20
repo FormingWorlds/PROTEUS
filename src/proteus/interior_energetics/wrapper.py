@@ -124,27 +124,9 @@ _ARAGOG_CALL_ENERGY_KEYS = (
 # Values outside this range indicate initial conditions dominate collision energy.
 _REMELT_RETAINED_BAND = (0.01, 1.0)
 
-# Resume-settling guard for the dynamic structure re-solve. After a resume the
-# interior relaxes thermally over the first loops, swinging T_magma enough to
-# fire the dT/T structure-re-solve trigger every loop. The structure radius,
-# however, converges after the first couple of re-solves and then no longer
-# moves (R_int tracks melt fraction, not temperature), so subsequent
-# dT/T-triggered re-solves recompute the same radius at a large wall cost. Once
-# the structure has converged (relative R_int change below the tolerance), the
-# guard suppresses further dT/T-only-triggered re-solves for the remainder of
-# the settling window; the mesh-convergence, ceiling, recovery and Phi
-# triggers are left intact, and a Phi move beyond the backstop forces a re-solve
-# so genuine solidification during the window is never frozen. The window is
-# armed only on resume, so a fresh run never enters the guard.
-#
-# The backstop is the SMALLER of the config's own melt-fraction trigger
-# (update_dphi_abs) and the cap below. A dT/T-triggered re-solve only happens
-# when the melt-fraction trigger did NOT fire, i.e. when the Phi change is
-# already below update_dphi_abs, so tying the backstop to update_dphi_abs means
-# the guard never blocks a re-solve the melt-fraction trigger would have let
-# through. The cap supplies a finite floor for configs that disable the
-# melt-fraction trigger (update_dphi_abs set very high), so a large Phi move in
-# the window still forces a re-solve there.
+# Resume-settling guard: for this many loops after a resume, a re-solve triggered by dT/T alone
+# is skipped while the last relative R_int change is below the tolerance and Phi moved less
+# than min(update_dphi_abs, the cap) since the last re-solve (update_structure_from_interior).
 _RESUME_STRUCT_SETTLE_LOOPS = 50
 _RESUME_STRUCT_DR_REL_TOL = 1e-4
 _RESUME_STRUCT_DPHI_BACKSTOP_CAP = 0.10
@@ -3458,13 +3440,9 @@ def update_structure_from_interior(
             dirs['mesh_convergence_steps'] = 0
             del r_stag, _r_unsorted, _T_unsorted
             gc.collect()
-            # Advance the trigger clock so a persistent cross-table artifact does
-            # not re-fire an expensive re-solve every timestep; the sentinels
-            # advance like the success path, but the structure is unchanged.
-            # The previous structure was retained, so the accepted radius did
-            # not change: record zero so the resume-settling guard treats this
-            # as converged and suppresses further spurious dT/T re-solves (a
-            # rejected cross-table up-step recurs every step otherwise).
+            # The structure is unchanged: advance the trigger clock and sentinels and record a
+            # zero radius change, so a recurring cross-table up-step neither re-fires a re-solve
+            # every step nor keeps the resume-settling guard from treating it as converged.
             dirs['_last_resolve_dR_rel'] = 0.0
             # Advance the dissolved-volatile composition sentinels exactly as the
             # success path does. This reject path returns before the success-path
