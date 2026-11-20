@@ -100,6 +100,16 @@ _REVIEWED_NEUTRAL = frozenset(
         # prevent_desaturation defaults to false: condensates re-equilibrate each
         # solve, as before the flag existed, so behaviour is unchanged.
         'outgas.prevent_desaturation',
+        # The lid seal defaults to off; its parameters are read only when it is on.
+        'outgas.lid_seal.chi_d',
+        'outgas.lid_seal.crust_rate',
+        'outgas.lid_seal.delta_close',
+        'outgas.lid_seal.delta_open',
+        'outgas.lid_seal.enabled',
+        'outgas.lid_seal.phi_close',
+        'outgas.lid_seal.phi_open',
+        'outgas.lid_seal.phi_solid',
+        'outgas.lid_seal.tau_leak',
         # Accretion defaults to inactive with zero impactor budgets, zero
         # loss fractions, and unread dummy/morrigan sub-blocks.
         'accretion.atmloss_frac',
@@ -153,12 +163,19 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_clim.agni.wl_obs',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
+        # Chemistry coupled to the climate is off by default, so a migrated config runs the
+        # chemistry as before; the other three act only with couple_agni.
+        'atmos_chem.vulcan.agni_T_rtol',
+        'atmos_chem.vulcan.agni_call_frq',
+        'atmos_chem.vulcan.agni_max_calls',
+        'atmos_chem.vulcan.couple_agni',
         # VULCAN options keep the values it ran with, except dttry and dt_min (100x smaller,
         # the adaptive step's start and floor); r_p acts only with use_condense.
         'atmos_chem.vulcan.atol',
         'atmos_chem.vulcan.conv_step',
         'atmos_chem.vulcan.dt_min',
         'atmos_chem.vulcan.dttry',
+        'atmos_chem.vulcan.escape_bc',  # default false keeps the zero-flux top boundary
         'atmos_chem.vulcan.flux_atol',
         'atmos_chem.vulcan.mtol',
         'atmos_chem.vulcan.mtol_conv',
@@ -219,6 +236,8 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.aragog.scalar_gravity_override',
         'interior_energetics.aragog.separation_buoyancy',
         'interior_energetics.aragog.rheology.enabled',
+        # Read only with the rheology on, which a migrated config keeps off.
+        'interior_energetics.aragog.rheology.mlt_bottom_slope',
         'interior_energetics.aragog.separation_viscosity',
         'interior_energetics.aragog.solver_method',
         'interior_energetics.aragog.temperature_step_cap',

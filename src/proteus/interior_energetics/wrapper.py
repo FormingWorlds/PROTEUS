@@ -5,6 +5,8 @@ import gc
 import logging
 import os
 import shutil
+import sys
+import time
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
@@ -1328,17 +1330,14 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
 _ADIABAT_IC_PCMB_MARGIN = 1.05
 
 
-# Structure-defining hf_row keys saved before an adiabat re-solve so a failed or
-# off-anchor solve can be rolled back to the linear-guess result. These are the
-# keys the adiabat re-solve may mutate plus the mass/pressure anchors. M_mantle
-# is intentionally absent: zalmoxis_solver writes only M_int and M_core, and the
-# caller recomputes M_mantle = M_int - M_core after the helper returns, so
-# restoring M_int/M_core fully reverts the masses the solve touches.
+# hf_row keys an adiabat re-solve writes, restored when it fails or misses the mass anchor.
+# M_mantle is absent: the solve does not write it, and the caller sets M_int - M_core after.
 _ADIABAT_IC_RESTORE_KEYS = (
     'R_int',
     'R_core',
     'M_int',
     'M_core',
+    'M_core_solve',
     'M_int_target',
     'P_surf',
     'P_center',
@@ -2822,6 +2821,28 @@ def run_interior(
     # equilibration sees the final zalmoxis_output.dat.
 
 
+def _clear_jax_caches_after_resolve(config: Config) -> None:
+    """Free the compiled JAX programs after an accepted structure re-solve.
+
+    Aragog, updated in place on the new structure, compiles its programs again, and
+    those of the previous structure stay mapped until the caches are cleared; a run that
+    re-solves often then reaches the per-process memory-map limit of Linux. Only with the
+    Aragog interior and when JAX is imported; a failure is logged, not raised.
+    """
+    jax = sys.modules.get('jax')
+    if jax is None or config.interior_energetics.module != 'aragog':
+        return
+    t0 = time.perf_counter()
+    try:
+        jax.clear_caches()
+    except Exception as e:
+        log.warning('JAX caches not cleared after the structure re-solve: %s', e)
+        return
+    log.info(
+        'JAX caches cleared after the structure re-solve (%.2f s)', time.perf_counter() - t0
+    )
+
+
 def _refresh_composition_sentinels(dirs: dict, hf_row: dict) -> None:
     """Refresh the dissolved-volatile composition sentinels to the current state.
 
@@ -3260,6 +3281,8 @@ def update_structure_from_interior(
             'R_int',
             'M_int',
             'M_core',
+            'M_core_solve',
+            'core_density',
             'M_mantle',
             'P_surf',
             'R_core',
@@ -3570,6 +3593,7 @@ def update_structure_from_interior(
             _zalmoxis_wall,
             reason,
         )
+        _clear_jax_caches_after_resolve(config)
     except RuntimeError as e:
         interior_o.zalmoxis_fail_count += 1
         log.warning(

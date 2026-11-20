@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import sys
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -33,6 +34,7 @@ from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.wrapper import (
     _RESUME_STRUCT_DPHI_BACKSTOP_CAP,
     _RESUME_STRUCT_DR_REL_TOL,
+    _clear_jax_caches_after_resolve,
     _eos_grid_extent_up_step,
     _prevent_warming_clamp_active,
     _refresh_composition_sentinels,
@@ -1742,6 +1744,44 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
     interior_o.zalmoxis_fail_count = 0
 
 
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('path', ['raise', 'mass_anchor', 'up_step'])
+def test_a_rejected_structure_update_restores_the_core_keys_of_the_row(path):
+    """A solve that writes M_core, M_core_solve and core_density and then fails (a schema
+    violation raises after the writes), misses the mass anchor, or makes a rejected radius
+    up-step leaves the 3 keys at their values before the call."""
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()  # cooling, so an up-step is rejected
+    before = {'M_core': 1.95e24, 'M_core_solve': 1.94e24, 'core_density': 1.1e4}
+    hf_row.update(before)
+    interior_o = _mock_interior_o()
+
+    def solver(cfg, outdir, row, *a, **k):
+        row.update(M_core=2.1e24, M_core_solve=2.0e24, core_density=1.2e4)
+        if path == 'raise':
+            raise RuntimeError('zalmoxis_output.dat schema violation')
+        if path == 'mass_anchor':
+            row.update(M_int_target=5.972e24, M_int=5.972e24 * (1 + 5e-3))
+        else:
+            row['R_int'] *= 1.0 + 1.0e-3
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=solver)
+    with (
+        s,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(_mock_dirs(), config, hf_row, interior_o, lt, lT, lP)
+    assert {k: hf_row[k] for k in before} == before
+    assert interior_o.zalmoxis_fail_count == (0 if path == 'up_step' else 1)
+    assert interior_o.structure_stale is (path != 'up_step')
+
+
 # ============================================================================
 # Post-acceptance mass-anchor guard
 # ============================================================================
@@ -2132,6 +2172,146 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
     mock_solver.assert_called_once()
 
     interior_o.zalmoxis_fail_count = 0
+
+
+# ============================================================================
+# JAX caches cleared after an accepted re-solve
+# ============================================================================
+
+
+def _resolve_call(tmp_path, solver_side_effect, module='aragog'):
+    """Run one ceiling-triggered re-solve with a mocked Zalmoxis solver; return the
+    Interior_t it updated."""
+    config = _mock_config(update_interval=1e3, update_min_interval=0.0)
+    config.interior_struct.zalmoxis.update_stale_ceiling = 0.0
+    config.interior_energetics.module = module
+    dirs = _mock_dirs()
+    dirs['output'] = str(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    interior_o = Interior_t(50)
+    interior_o.radius = np.linspace(6.371e6, 3.504e6, 50)
+    interior_o.temp = np.full(49, 3000.0)
+    hf_row = {
+        'Time': 7e4,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'M_int': 5.972e24,
+    }
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solver_side_effect
+        ),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+        patch('proteus.interior_energetics.spider.blend_mesh_files', return_value=0.0),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
+    return interior_o
+
+
+def _success_side(tmp_path, mass_factor=1.0):
+    """A Zalmoxis stand-in that converges to ``mass_factor`` times the target mass."""
+
+    def side(config, outdir, hf_row, **kwargs):
+        hf_row['M_int'] = mass_factor * 5.972e24
+        hf_row['M_int_target'] = 5.972e24
+        hf_row['R_int'] = 6.371e6
+        return (3.504e6, str(tmp_path / 'mesh.dat'))
+
+    return side
+
+
+class _StubJax:
+    """Stand-in for the jax module that counts clear_caches calls, or raises in them."""
+
+    def __init__(self, error=None):
+        self.calls, self.error = 0, error
+
+    def clear_caches(self):
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+
+
+@pytest.mark.unit
+def test_an_accepted_resolve_frees_the_compiled_jax_programs(tmp_path, caplog):
+    """An accepted re-solve of an Aragog run empties the JAX compile caches, so the
+    programs built for the previous structure no longer hold memory; one INFO line."""
+    jax = pytest.importorskip('jax')
+    program = jax.jit(lambda x: 2.0 * x + 1.0)
+    program(1.0)
+    assert program._cache_size() == 1
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
+        interior_o = _resolve_call(tmp_path, _success_side(tmp_path))
+    assert interior_o.structure_stale is False  # written on the success path only
+    assert interior_o.last_successful_struct_time == pytest.approx(7e4)
+    assert program._cache_size() == 0
+    assert sum('JAX caches cleared' in r.getMessage() for r in caplog.records) == 1
+    assert float(program(1.0)) == pytest.approx(3.0)  # it compiles again on its next call
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('side', 'module'),
+    [('failure', 'aragog'), ('mass anchor', 'aragog'), ('accepted', 'spider')],
+)
+def test_the_jax_caches_stay_without_an_accepted_aragog_resolve(
+    tmp_path, monkeypatch, caplog, side, module
+):
+    """A re-solve that fails, one whose result misses the mass anchor after the solver
+    returned, and an accepted re-solve of a run without Aragog keep the JAX caches."""
+    stub = _StubJax()
+    monkeypatch.setitem(sys.modules, 'jax', stub)
+    effect = {
+        'failure': RuntimeError('mock failure'),
+        'mass anchor': _success_side(tmp_path, 1.01),
+        'accepted': _success_side(tmp_path),
+    }[side]
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
+        interior_o = _resolve_call(tmp_path, effect, module=module)
+    fell_back = any(
+        'Falling back to previous structure' in r.getMessage() for r in caplog.records
+    )
+    assert fell_back is (side != 'accepted')
+    assert interior_o.structure_stale is (side != 'accepted')
+    assert stub.calls == 0
+
+
+@pytest.mark.unit
+def test_a_failed_cache_clear_keeps_the_accepted_structure(tmp_path, monkeypatch, caplog):
+    """A clear that raises is logged as a warning; the accepted structure stays accepted."""
+    stub = _StubJax(RuntimeError('mock clear failure'))
+    monkeypatch.setitem(sys.modules, 'jax', stub)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
+        interior_o = _resolve_call(tmp_path, _success_side(tmp_path))
+    assert stub.calls == 1
+    assert interior_o.structure_stale is False
+    assert interior_o.zalmoxis_fail_count == 0
+    messages = [(r.levelno, r.getMessage()) for r in caplog.records]
+    assert (
+        logging.WARNING,
+        'JAX caches not cleared after the structure re-solve: mock clear failure',
+    ) in messages
+    assert not any('Falling back' in m for _, m in messages)
+
+
+@pytest.mark.unit
+def test_the_cache_clear_does_not_import_jax(monkeypatch, caplog):
+    """Without jax in sys.modules nothing is imported or logged; with it, one call."""
+    config = _mock_config()
+    config.interior_energetics.module = 'aragog'
+    monkeypatch.delitem(sys.modules, 'jax', raising=False)
+    before = set(sys.modules)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
+        _clear_jax_caches_after_resolve(config)
+    assert set(sys.modules) == before
+    assert not caplog.records
+    stub = _StubJax()
+    monkeypatch.setitem(sys.modules, 'jax', stub)
+    _clear_jax_caches_after_resolve(config)
+    assert stub.calls == 1
 
 
 # ============================================================================
@@ -3635,7 +3815,7 @@ def test_provide_spider_eos_tables_hard_failure_when_no_source(tmp_path, monkeyp
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import _provide_spider_eos_tables
-    from proteus.utils.helper import MissingReferenceData
+    from proteus.utils.helper import MissingDataError
 
     _configured_melting_curve(tmp_path, monkeypatch)
     config = SimpleNamespace(
@@ -3653,7 +3833,7 @@ def test_provide_spider_eos_tables_hard_failure_when_no_source(tmp_path, monkeyp
     # would not raise at all.
     assert 'proteus get interiordata --config-path' in str(exc.value)
     assert '`fwl-io relocate`' in str(exc.value)
-    assert isinstance(exc.value, MissingReferenceData)  # start() writes status 20
+    assert isinstance(exc.value, MissingDataError)
 
 
 # ============================================================================
@@ -3980,7 +4160,7 @@ def test_dummy_structure_without_tables_raises_named_error(tmp_path):
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
-    from proteus.utils.helper import MissingReferenceData
+    from proteus.utils.helper import MissingDataError
 
     config = MagicMock()
     config.interior_energetics.module = 'aragog'
@@ -3997,7 +4177,7 @@ def test_dummy_structure_without_tables_raises_named_error(tmp_path):
             side_effect=FileNotFoundError('no P-S tables'),
         ),
         _patch('proteus.interior_energetics.wrapper.Interior_t') as interior_t,
-        pytest.raises(MissingReferenceData) as excinfo,
+        pytest.raises(MissingDataError) as excinfo,
     ):
         determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
 
@@ -5822,6 +6002,39 @@ def test_resume_settling_monotonic_noop_records_zero_dr():
     # (or leaving the prior 2e-4) would keep the guard above tolerance forever.
     # Zero is what lets the next dT/T trigger skip.
     assert dirs['_last_resolve_dR_rel'] < _RESUME_STRUCT_DR_REL_TOL
+
+
+@pytest.mark.unit
+def test_a_rejected_up_step_keeps_the_jax_caches(monkeypatch):
+    """An up-step the monotonic-radius guard rejects keeps the previous structure, so an
+    Aragog run keeps its compiled JAX programs."""
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    config.interior_energetics.module = 'aragog'
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 50
+    dirs['_last_resolve_dR_rel'] = 2.0e-4
+    r_prev = hf_row['R_int']
+    stub = _StubJax()
+    monkeypatch.setitem(sys.modules, 'jax', stub)
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, _mock_interior_o(), lt, lT, lP)
+    mock_solver.assert_called_once()
+    assert dirs['_last_resolve_dR_rel'] == 0.0  # the reject path ran
+    assert stub.calls == 0
 
 
 @pytest.mark.unit

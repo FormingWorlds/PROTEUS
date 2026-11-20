@@ -144,3 +144,180 @@ def test_h2_binodal_enabled_is_rejected():
         Outgas(h2_binodal=True)
     o = Outgas()
     assert o.h2_binodal is False
+
+
+# Lid seal: each numeric field refuses a TOML bool, a string, NaN and the values
+# outside its range, and keeps the values inside it.
+_SEAL_BAD = [True, False, '1.0', float('nan')]
+
+
+def _seal(**kw):
+    from proteus.config._outgas import LidSeal
+
+    return LidSeal(**kw)
+
+
+def test_lid_seal_defaults_hold_and_derive_the_open_band():
+    """Defaults: off, 10 km to close, top cell below 0.3 melt, tau inf, no crust
+    production; the open band is 0.5 delta_close and phi_close + 0.05."""
+    s = _seal()
+    assert (s.enabled, s.delta_close, s.phi_close, s.tau_leak) == (
+        False,
+        1e4,
+        0.3,
+        float('inf'),
+    )
+    assert (s.crust_rate, s.chi_d, s.phi_solid) == (0.0, 0.02, 1e-3)
+    assert s.delta_open_value == pytest.approx(5.0e3, rel=1e-15)
+    assert s.phi_open_value == pytest.approx(0.35, rel=1e-15)
+    s = _seal(delta_close=0.3, delta_open=0.2, phi_open=0.31)
+    assert (s.delta_open_value, s.phi_open_value) == (0.2, 0.31)
+
+
+@pytest.mark.parametrize(
+    ('field', 'bad'),
+    [
+        *(('delta_close', b) for b in (*_SEAL_BAD, 0.0, -1.0, float('inf'))),
+        *(('phi_close', b) for b in (*_SEAL_BAD, 0.0, 1.0, -0.1)),
+        *(('tau_leak', b) for b in (*_SEAL_BAD, 0.0, -1.0, 1.0e-310, 5.0e-324)),
+        *(
+            pytest.param(f, 10**400, id=f'{f}-int-beyond-float')
+            for f in ('delta_close', 'tau_leak', 'crust_rate')
+        ),
+        *(('chi_d', b) for b in (*_SEAL_BAD, -1e-9, 1.0 + 1e-9)),
+        *(('crust_rate', b) for b in (*_SEAL_BAD, -1.0, float('inf'))),
+        *(('phi_solid', b) for b in (*_SEAL_BAD, 0.0, 0.3, 0.5)),
+        *(('delta_open', b) for b in (*_SEAL_BAD, 0.0, 1e4 + 1.0, float('inf'))),
+        *(('phi_open', b) for b in (*_SEAL_BAD, 0.29, 1.0)),
+    ],
+)
+def test_lid_seal_refuses_values_outside_each_domain(field, bad):
+    """Each field refuses a bool, a string, NaN and its out-of-range values; the
+    bounds phi_solid < phi_close, delta_open <= delta_close and phi_open >=
+    phi_close read the other fields (defaults 1e4 m and 0.3)."""
+    with pytest.raises(ValueError, match=rf'^{field} must'):
+        _seal(**{field: bad})
+    valid = {
+        'delta_close': 2.0,
+        'phi_close': 0.4,
+        'tau_leak': 1.0,
+        'chi_d': 0.5,
+        'crust_rate': 1.0,
+        'phi_solid': 0.1,
+        'delta_open': 1.0,
+        'phi_open': 0.5,
+    }
+    assert getattr(_seal(**{field: valid[field]}), field) == pytest.approx(valid[field])
+
+
+def test_lid_seal_refuses_a_derived_phi_open_at_or_above_one():
+    """phi_open = none with phi_close >= 0.95 would derive a value >= 1."""
+    with pytest.raises(ValueError, match='phi_open = None'):
+        _seal(phi_close=0.95)
+    assert _seal(phi_close=0.949).phi_open_value == pytest.approx(0.999, rel=1e-12)
+    phi_open = 0.99
+    assert _seal(phi_close=0.95, phi_open=phi_open).phi_open_value == phi_open
+
+
+def test_lid_seal_validator_reads_a_missing_zalmoxis_table_as_dry():
+    """A Struct built in code with no zalmoxis table counts as a dry mantle."""
+    from types import SimpleNamespace
+
+    from proteus.config._config import lid_seal_requirements
+
+    inst = SimpleNamespace(
+        outgas=SimpleNamespace(
+            lid_seal=_seal(enabled=True), vapourise=False, module='calliope'
+        ),
+        interior_energetics=SimpleNamespace(module='aragog'),
+        params=SimpleNamespace(
+            stop=SimpleNamespace(solid=SimpleNamespace(freeze_volatiles=False))
+        ),
+        escape=SimpleNamespace(module='zephyrus', reservoir='outgas'),
+        interior_struct=SimpleNamespace(module='zalmoxis', zalmoxis=None),
+    )
+    assert lid_seal_requirements(inst, None, None) is None
+    bare = SimpleNamespace(
+        outgas=SimpleNamespace(), interior_energetics=SimpleNamespace(module='spider')
+    )
+    assert lid_seal_requirements(bare, None, None) is None  # no seal table: nothing to check
+    inst.interior_struct.zalmoxis = SimpleNamespace(dry_mantle=False)
+    with pytest.raises(ValueError, match='dry_mantle'):
+        lid_seal_requirements(inst, None, None)
+
+
+def test_lid_seal_accepts_the_limits_and_both_regimes():
+    """Range limits that are inside: tau inf, chi_d 0 and 1, an int thickness,
+    delta_open == delta_close, phi_open == phi_close; both the 0.3 m and the
+    10 km closure regimes load."""
+    assert _seal(tau_leak=float('inf'), chi_d=0.0).chi_d == 0.0
+    assert _seal(chi_d=1.0, crust_rate=0).crust_rate == 0
+    assert _seal(delta_close=2, delta_open=2).delta_open_value == 2
+    phi_open = 0.3
+    assert _seal(phi_open=phi_open).phi_open_value == phi_open
+    assert _seal(delta_close=0.3).delta_open_value == pytest.approx(0.15, rel=1e-15)
+
+
+def test_lid_seal_hypothesis_over_the_thickness_and_fraction_domains():
+    """Property: any finite thickness > 0 and fraction in (0, 1) loads, and the
+    derived band stays inside (0, delta_close] and [phi_close, 1)."""
+    hypothesis = pytest.importorskip('hypothesis')
+    given, settings, st = hypothesis.given, hypothesis.settings, hypothesis.strategies
+
+    @settings(max_examples=200, deadline=None, derandomize=True)
+    @given(
+        st.floats(min_value=1e-9, max_value=1e9, allow_nan=False, allow_infinity=False),
+        st.floats(min_value=2e-3, max_value=0.9499, allow_nan=False),
+    )
+    def check(delta, phi):
+        s = _seal(delta_close=delta, phi_close=phi)
+        assert 0.0 < s.delta_open_value <= s.delta_close
+        assert s.phi_close <= s.phi_open_value < 1.0
+
+    check()
+    with pytest.raises(ValueError):
+        _seal(delta_close=-1e-9)
+
+
+def test_lid_seal_cross_field_rules(tmp_path):
+    """With the seal on, a non-Aragog interior, freeze_volatiles and vapourise
+    are refused at load; front trapping is allowed."""
+    import tomllib
+
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    with open(PROTEUS_ROOT / 'input' / 'all_options.toml', 'rb') as f:
+        base = tomllib.load(f)
+    assert base['interior_energetics']['module'] == 'aragog'
+
+    def load(edit):
+        import copy
+
+        import tomlkit
+
+        cfg = copy.deepcopy(base)
+        cfg['outgas']['lid_seal']['enabled'] = True
+        edit(cfg)
+        path = tmp_path / 'c.toml'
+        path.write_text(tomlkit.dumps(cfg))
+        return read_config_object(path)
+
+    assert load(lambda c: c['outgas'].update(trap_mode='front')).outgas.lid_seal.enabled
+    with pytest.raises(ValueError, match='freeze_volatiles'):
+        load(lambda c: c['params']['stop']['solid'].update(freeze_volatiles=True))
+    with pytest.raises(ValueError, match='vapourise'):
+        load(lambda c: c['outgas'].update(vapourise=True))
+    with pytest.raises(ValueError, match='lid_seal.enabled = true requires'):
+        load(lambda c: c['interior_energetics'].update(module='spider'))
+    with pytest.raises(ValueError, match='lid_seal.*escape.reservoir'):
+        load(lambda c: c['escape'].update(reservoir='pxuv'))
+    with pytest.raises(ValueError, match='lid_seal.*escape.reservoir'):
+        load(lambda c: c['escape'].update(module='none', reservoir='pxuv'))
+    assert load(lambda c: c['escape'].update(reservoir='bulk')).escape.reservoir == 'bulk'
+    with pytest.raises(ValueError, match='lid_seal.*outgas.module'):
+        load(lambda c: c['outgas'].update(module='atmodeller'))
+    with pytest.raises(ValueError, match='lid_seal.*dry_mantle'):
+        load(lambda c: c['interior_struct'].setdefault('zalmoxis', {}).update(dry_mantle=False))
+    assert not load(lambda c: None).params.stop.solid.freeze_volatiles

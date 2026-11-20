@@ -46,7 +46,6 @@ from proteus.utils.constants import (
 )
 from proteus.utils.data import RELOCATE_HINT, GetFWLData, get_zalmoxis_melting_curves
 from proteus.utils.helper import (
-    MissingReferenceData,
     _strip_fraction_tokens,
     energetics_eos_key,
     eos_components,
@@ -202,13 +201,9 @@ def _log_jax_nonviable_once(core_eos: str, mantle_eos: str) -> bool:
     return True
 
 
-# Module-level cache for density seeding between Zalmoxis calls.
-# Stores the last successful density profile so the next call can
-# use it as a starting point for the Picard iteration. The cache only
-# seeds the iterative solver; it never changes the converged result.
-# `key` records which planet the seed belongs to so an in-process
-# multi-planet driver does not seed one planet from another.
-_density_cache = {'density': None, 'radii': None, 'key': None}
+# Last structure of the planet `key`: density and radii seed the Picard iteration, radii,
+# pressure and mass_enclosed are the adiabat_seed of the next start-up re-solve
+_density_cache = dict.fromkeys(('density', 'radii', 'pressure', 'mass_enclosed', 'key'))
 
 
 def _structure_cache_key(config):
@@ -256,33 +251,29 @@ def validate_zalmoxis_output_schema(
 
     The file is the contract Aragog reads inside ``solver.reset()``
     (eos_method=2). This check confirms the file's last r matches
-    ``hf_row['R_int']``, and that the mantle mass matches
-    ``hf_row['M_int'] - hf_row['M_core']``.
+    ``hf_row['R_int']``, its first r matches ``hf_row['R_core']``, and that the mantle
+    mass matches ``hf_row['M_int'] - hf_row['M_core']``.
     Catches file I/O corruption, column-order mistakes, truncation,
     encoding drift, and Aragog/Zalmoxis schema desync at the file
     handover boundary.
 
-    The mantle mass is taken from ``mantle_mass_ref`` when the caller supplies
-    it: the structure's accumulator total ``mass_enclosed[-1]`` minus the exact
-    core-mass target ``cmb_mass``. Re-integrating the coarse output nodes with a
-    grid trapezoid instead diverges from the sub-grid-substepped RK45 integral
-    across the steep interior density profile, reaching ~10% at high planet mass,
-    which would false-reject a structure that actually conserves mass. With the
-    reference supplied, part (b) reduces to a check that the core-mantle split
-    point is well resolved: the residual it measures is the CMB-node snap
-    overshoot ``mass_enclosed[cmb_index] - cmb_mass`` relative to the mantle
-    mass, a fraction of one boundary shell. File-density-column corruption is
-    caught downstream by Aragog's EOS-vs-mesh consistency at ``solver.reset()``;
-    the radius check (part (a)) catches truncation and column swaps directly.
-    When no reference is supplied the check falls back to the grid-trapezoidal
-    shell-sum.
+    The mantle mass is taken from ``mantle_mass_ref`` when the caller supplies it.
+    ``zalmoxis_solver`` passes ``mass_enclosed[-1] - mass_enclosed[cmb_index]``, from the
+    arrays it writes ``M_int`` and ``M_core`` from, so part (b) then checks the row write of
+    these two masses; it does not check the arrays or the choice of the CMB node. Without a
+    reference, part (b) integrates the file nodes with a grid trapezoid; no PROTEUS call
+    path reaches this fallback. Part (c) checks
+    that the file starts at ``hf_row['R_core']`` within the mesh tolerance of Aragog,
+    ``max(1 m, 1e-9 (R_int - R_core))``. File-density-column corruption is caught
+    downstream by Aragog's EOS-vs-mesh consistency at ``solver.reset()``; the radius
+    checks catch truncation and column swaps directly.
 
     Parameters
     ----------
     output_path : str
         Path to the just-written ``zalmoxis_output.dat``.
     hf_row : dict
-        PROTEUS hf_row holding the scalar truth (R_int, M_int, M_core).
+        PROTEUS hf_row holding the scalar truth (R_int, R_core, M_int, M_core).
     rtol_radius : float
         Relative tolerance for the top-of-mantle vs. R_int check.
         Default 1e-6: the file's last r and ``hf_row['R_int']`` come
@@ -291,24 +282,12 @@ def validate_zalmoxis_output_schema(
         catches truncation, last-line corruption, and column-swap
         bugs at the bit level.
     rtol_mass : float
-        Relative tolerance for the integrated mantle mass vs.
-        ``M_int - M_core``. Default 5e-2 (5%) reflects two stacked
-        sources of legitimate mismatch:
-        (a) integrator-method difference: Zalmoxis' ``mass_enclosed``
-        is the ODE state from RK45 with sub-grid substepping, while
-        the schema check re-integrates via a grid-trapezoidal
-        shell-sum. On stiff CHILI density profiles this shows
-        about 0.8 to 2.0 %.
-        (b) ``blend_mesh_files`` post-write modifies the file in
-        place but does not update hf_row scalars. When blending fires
-        with alpha < 1 (capping large R-shifts), the file's integrated
-        mass can drift up to about 5% from the unblended
-        hf_row['M_int'], so this check has to tolerate it.
-        5e-2 keeps a >2x margin over the worst legitimate noise
-        while still catching gross corruption (column swap,
-        truncation, byte-flip) at >>5 %. **The tight mass-conservation
-        contract (<0.1 %) lives in the wrapper-level mass-anchor
-        check on hf_row['M_int'] / hf_row['M_int_target']**, not here.
+        Relative tolerance for the mantle mass vs. ``M_int - M_core``. Default 5e-2. With
+        ``mantle_mass_ref`` part (b) is an identity check of the row write, so the tolerance
+        acts only in the trapezoid fallback, where it stops gross corruption (column swap,
+        truncation). ``blend_mesh_files`` runs after this check and does not change the
+        checked file. The mass contract of the coupling is the mass-anchor check of the
+        wrapper, ``|M_int / M_int_target - 1| < _ZALMOXIS_MASS_ANCHOR_TOL`` (3e-3).
 
     Raises
     ------
@@ -347,16 +326,9 @@ def validate_zalmoxis_output_schema(
                 f'(rel={r_rel:.3e} > {rtol_radius:.1e})'
             )
 
-    # (b) mantle integrated mass == hf_row['M_int'] - hf_row['M_core'].
-    # Prefer the structure's own RK45 accumulator mantle mass when the
-    # caller supplies it (mantle_mass_ref). That value is the sub-grid
-    # substepped ODE integral, exact to the solver tolerance. Re-integrating
-    # the coarse output nodes with a grid trapezoid instead diverges from it
-    # across the steep core-mantle density jump (the CMB-node snap attributes
-    # a whole boundary shell to one side), reaching ~10% at high planet mass,
-    # which would false-reject a structure that actually conserves mass. Only
-    # when no reference is available do we fall back to the grid-trapezoidal
-    # shell-sum (4/3 pi (r2^3 - r1^3) * rho_avg).
+    # (b) mantle mass == hf_row['M_int'] - hf_row['M_core']: with mantle_mass_ref (the
+    # accumulator mass above R_core) an identity check of the row write; without it a
+    # trapezoid sum over the file nodes.
     if mantle_mass_ref is not None:
         mantle_mass = float(mantle_mass_ref)
         mass_source = 'accumulator'
@@ -388,6 +360,17 @@ def validate_zalmoxis_output_schema(
                 'differs from hf_row[M_int - M_core]='
                 f'{expected_mantle:.6e} kg '
                 f'(rel={m_rel:.3e} > {rtol_mass:.1e})'
+            )
+
+    # (c) first radius == hf_row['R_core'] within the mesh tolerance of Aragog
+    r_core_hf = float(hf_row.get('R_core', 0.0))
+    if r_core_hf > 0:
+        atol = float(mesh_radius_tolerance(r_core_hf, r_top))
+        if abs(float(r_file[0]) - r_core_hf) > atol:
+            raise RuntimeError(
+                'zalmoxis_output.dat schema violation: first radius '
+                f'r={r_file[0]:.6e} from file differs from hf_row[R_core]={r_core_hf:.6e} '
+                f'by more than {atol:.1e} m'
             )
 
 
@@ -1947,7 +1930,7 @@ def _build_mushy_zone_factors(layer_eos_config: dict, mzf: float) -> dict:
     }
 
 
-class ZalmoxisMissingEOSFilesError(RuntimeError, MissingReferenceData):
+class ZalmoxisMissingEOSFilesError(RuntimeError):
     """A layer's configured EOS identifier names a table file absent on disk."""
 
 
@@ -3560,30 +3543,19 @@ def zalmoxis_solver(
             model_results.get('miscibility_iterations', 0),
         )
     else:
-        # _tf_effective carries the temperature-source decision hoisted
-        # above: the callable is withheld only when the JAX inner path
-        # will actually consume temperature_arrays (JAX-viable EOS
-        # layout and, on wet solves, an in-envelope VolatileProfile);
-        # on any other configuration the numpy path runs and the
-        # callable passes through. Warm-starts
-        # stay disabled on the JAX path: they drive Anderson into
-        # oscillation and do not help otherwise, because the inner
-        # Picard plateau at diff=0.1 is set by the lever-rule EOS kink,
-        # not by initial density quality, so warm-start cannot collapse
-        # the bail count.
-        # Reuse the cached density profile as a Picard seed only when it
-        # belongs to this same planet; otherwise start cold. Seeding never
-        # changes the converged result, only the iteration count. The seed
-        # and the central-pressure hint follow the temperature-source
-        # dispatch: they are withheld only on the JAX-arrays path (where
-        # warm-starts drive Anderson into oscillation) and applied on the
-        # numpy path, where they cut the Newton iteration count for
-        # repeated re-solves of the same planet.
+        # Seeds of the same planet go to every path except JAX with temperature arrays
+        # (_drop_callable); the adiabat seed can move the result within the mass tolerance
         _seed_match = not _drop_callable and _density_cache.get('key') == _structure_cache_key(
             config
         )
         _seed_density = _density_cache['density'] if _seed_match else None
         _seed_radii = _density_cache['radii'] if _seed_match else None
+        # Zalmoxis uses the adiabat seed only when it computes the adiabat itself (start-up solves)
+        _adiabat_seed = (
+            {k: _density_cache[k] for k in ('radii', 'pressure', 'mass_enclosed')}
+            if _seed_match and _density_cache.get('pressure') is not None
+            else None
+        )
         model_results = main(
             config_params,
             material_dictionaries=mat_dicts,
@@ -3595,6 +3567,7 @@ def zalmoxis_solver(
             p_center_hint=None if _drop_callable else hf_row.get('P_center'),
             initial_density=_seed_density,
             initial_radii=_seed_radii,
+            adiabat_seed=_adiabat_seed,
         )
 
     # Extract results from the model
@@ -3753,6 +3726,10 @@ def zalmoxis_solver(
         raise RuntimeError(diag)
 
     # Extract the index of the core-mantle boundary mass in the mass array
+    if not np.any(mass_enclosed >= cmb_mass):
+        raise RuntimeError(
+            f'Zalmoxis: no node reaches the core mass {cmb_mass:.4e} kg (last node {mass_enclosed[-1]:.4e} kg)'
+        )
     cmb_index = np.argmax(mass_enclosed >= cmb_mass)
 
     # Extract the planet radius and core-mantle boundary radius
@@ -3880,11 +3857,11 @@ def zalmoxis_solver(
         hf_row['struct_mass_desync_frac'],
     )
 
-    # Cache density for next call's Picard seeding. Applied on the numpy path
-    # regardless of use_anderson, and withheld on the JAX-arrays path where
-    # warm-starts drive Anderson into oscillation.
+    # Cache the structure on every path; only the read above is withheld on the JAX-arrays path
     _density_cache['density'] = density.copy()
     _density_cache['radii'] = np.asarray(radii).copy()
+    _density_cache['pressure'] = np.asarray(pressure).copy()
+    _density_cache['mass_enclosed'] = np.asarray(mass_enclosed).copy()
     _density_cache['key'] = _structure_cache_key(config)
 
     # Final results of the Zalmoxis interior model. One summary line at INFO so
@@ -4062,7 +4039,17 @@ def zalmoxis_solver(
     hf_row['R_int'] = planet_radius
     hf_row['R_core'] = cmb_radius
     hf_row['M_int'] = mass_enclosed[-1]
-    hf_row['M_core'] = mass_enclosed[cmb_index]
+    hf_row['M_core'] = float(mass_enclosed[cmb_index])  # the mass inside R_core
+    hf_row['M_core_solve'] = float(cmb_mass)  # the core mass of the solve
+    _mantle = float(mass_enclosed[-1]) - hf_row['M_core']
+    _shell = hf_row['M_core'] - float(cmb_mass)
+    if _mantle > 0 and _shell > 0.05 * _mantle:
+        log.warning(
+            'The shell between M_core_solve and R_core holds %.3g of the mantle mass above R_core '
+            '(M_int - M_core), so M_int - M_core is short of the mantle of the solve by the shell. '
+            'Raise interior_struct.zalmoxis.num_levels to shrink it.',
+            _shell / _mantle,
+        )
     hf_row['gravity'] = gravity[-1]
 
     if seed_boundary_temperatures:
@@ -4076,7 +4063,7 @@ def zalmoxis_solver(
 
     # Self-consistent core density from Zalmoxis structure
     if cmb_radius > 0:
-        hf_row['core_density'] = mass_enclosed[cmb_index] / (4.0 / 3.0 * np.pi * cmb_radius**3)
+        hf_row['core_density'] = hf_row['M_core'] / (4.0 / 3.0 * np.pi * cmb_radius**3)
     else:
         hf_row['core_density'] = 0.0
 
@@ -4149,19 +4136,11 @@ def zalmoxis_solver(
                 f'{mantle_radii[i]:.17e} {mantle_pressure[i]:.17e} {mantle_density[i]:.17e} {mantle_gravity_out[i]:.17e} {mantle_temperature[i]:.17e}\n'
             )
 
-    # Schema check at the Zalmoxis -> Aragog file-handover boundary. On
-    # violation: restore the .prev backup (so Aragog reads consistent
-    # state on the next iteration via the wrapper's fall-back) and raise
-    # RuntimeError.
-    # Pass the structure's accurate mantle mass (accumulator total minus the
-    # exact core-mass target) so the schema check does not re-integrate the
-    # coarse output nodes with a grid trapezoid, which diverges from the RK45
-    # accumulator by ~10% at high planet mass and false-rejects valid runs.
-    mantle_mass_accumulator = float(mass_enclosed[-1]) - float(cmb_mass)
+    # Schema check at the Zalmoxis -> Aragog file handover (a violation restores .prev and raises);
+    # the mantle reference comes from the arrays of the M_int and M_core writes, so part (b)
+    # is an identity check of those writes
     try:
-        validate_zalmoxis_output_schema(
-            output_zalmoxis, hf_row, mantle_mass_ref=mantle_mass_accumulator
-        )
+        validate_zalmoxis_output_schema(output_zalmoxis, hf_row, mantle_mass_ref=_mantle)
     except RuntimeError:
         if os.path.isfile(_output_prev):
             try:

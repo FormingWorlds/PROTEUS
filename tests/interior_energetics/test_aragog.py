@@ -58,6 +58,8 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_struct.core_heatcap = 880.0
     config.interior_energetics.num_levels = 20
     config.interior_energetics.aragog.mass_coordinates = False
+    config.interior_energetics.aragog.cmb_cell_thickness = 1000.0
+    config.interior_energetics.aragog.surface_cell_thickness = 'uniform'
     config.interior_energetics.trans_conduction = True
     config.interior_energetics.trans_convection = True
     config.interior_energetics.trans_grav_sep = False
@@ -596,7 +598,7 @@ def test_setup_solver_stops_with_a_missing_data_error(tmp_path, missing, message
     which start() turns into status 20."""
     from proteus.data import LOOKUP_WOLF_BOWER_2018_1TPA, dataset_dir
     from proteus.interior_energetics.aragog import AragogRunner
-    from proteus.utils.helper import MissingReferenceData
+    from proteus.utils.helper import MissingDataError
 
     config = _make_aragog_config(struct_module='spider')
     hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
@@ -611,7 +613,7 @@ def test_setup_solver_stops_with_a_missing_data_error(tmp_path, missing, message
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        pytest.raises(MissingReferenceData, match=message),
+        pytest.raises(MissingDataError, match=message),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path / 'out'))
 
@@ -3403,6 +3405,7 @@ def test_setup_solver_passes_the_rheology_to_the_solid_phase(tmp_path, enabled):
     config.interior_struct.eos_dir = None
     config.planet.mass_tot = 1.0
     config.interior_energetics.aragog.rheology.enabled = enabled
+    config.interior_energetics.aragog.rheology.mlt_bottom_slope = 0.5
     solid, liquid = tmp_path / 'solid.dat', tmp_path / 'liquid.dat'
     solid.write_text('dummy')
     liquid.write_text('dummy')
@@ -3444,7 +3447,8 @@ def test_setup_solver_passes_the_rheology_to_the_solid_phase(tmp_path, enabled):
     by_phase = {c.kwargs['melt_fraction']: c.kwargs for c in mock_phase.call_args_list}
     assert 'rheology' not in by_phase[1]
     if enabled:
-        assert by_phase[0].get('rheology') == SolidRheologyParams(enabled=True)
+        want = SolidRheologyParams(enabled=True, mlt_bottom_slope=0.5)
+        assert by_phase[0].get('rheology') == want
     else:
         assert 'rheology' not in by_phase[0]
 
@@ -3688,6 +3692,7 @@ class _RestoreSolver:
 
     def __init__(self, n_stag):
         self._n_stag = n_stag
+        self._r_basic_flat = np.linspace(3.5e6, 6.371e6, n_stag + 1)
         self._dSdr_cmb_init = -9.0  # a stale override from before the resume
         self.seen = []
 
@@ -4994,7 +4999,7 @@ def test_core_module_resumed_solver_matches_continuous_frozen_profile(tmp_path):
     mock_solver_res.get_state.return_value = _snapshot_output()
     mock_solver_res.get_current_core_temperature.return_value = 5000.0
     mock_solver_res.get_current_dSdr_cmb.return_value = -2e-11
-    mock_solver_res._r_basic_flat = np.linspace(3.48e6, 6.371e6, 21)
+    mock_solver_res._r_basic_flat = np.linspace(3.5e6, 6.371e6, 7)  # the snapshot mesh
     mock_solver_res._P_stag_flat = np.linspace(136e9, 1e5, 20)
     mock_bc_params_res = {}
     mock_solver_res.parameters.boundary_conditions.core_module_params = mock_bc_params_res

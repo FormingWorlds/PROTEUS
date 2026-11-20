@@ -29,6 +29,7 @@ Without `--validation-plots` the tests write nothing, but each plot test compare
 | Interior energetics | `interior_energetics/adiabat.py` | [Mantle adiabat and melt fraction](interior_energetics/adiabat.md) | |
 | Interior energetics | `interior_energetics/boundary.py` | [Boundary backend on a mantle adiabat](interior_energetics/boundary.md) | |
 | Interior energetics | `interior_energetics/common.py` | [Radiogenic decay and solidification front](interior_energetics/common.md) | |
+| Interior energetics | `interior_energetics/aragog.py` | [Mixing length at the core-mantle boundary](interior_energetics/aragog.md) | [core heat flux](interior_energetics/aragog.md#the-constant-length-keeps-the-heat-flux-out-of-the-core-on-every-mesh) |
 | Interior energetics | `interior_energetics/remelt.py` | [Partial giant-impact re-melt](interior_energetics/remelt.md) | [melt front](interior_energetics/remelt.md#melt-front-against-the-closed-form) |
 | Interior energetics | `interior_energetics/resolved_mantle.py` | [Melt curve and mantle shells](interior_energetics/resolved_mantle.md) | |
 | Interior structure | `interior_struct/zalmoxis.py` | [Liquidus-super IC anchor](interior_struct/zalmoxis.md) | [MgSiO3 liquidus](interior_struct/zalmoxis.md#mgsio3-liquidus-at-135-gpa) |
@@ -42,6 +43,7 @@ Without `--validation-plots` the tests write nothing, but each plot test compare
 | Outgassing | `outgas/burial_ledger.py` | [Burial ledger for remelting](outgas/burial_ledger.md) | [ledger against a fine grid](outgas/burial_ledger.md#the-ledger-against-a-fine-grid) |
 | Outgassing | `outgas/compaction.py` | [Melt drainage across the freezing front](outgas/compaction.md) | [drainage velocity](outgas/compaction.md#drainage-velocity-in-each-regime) |
 | Outgassing | `outgas/lavatmos.py` | [Rock-vapour molar masses](outgas/lavatmos.md) | [molar masses](outgas/lavatmos.md#molar-masses-from-fastchem-formulas) |
+| Outgassing | `outgas/lid_seal.py` | [Volatiles under a closed crust](outgas/lid_seal.md) | [held mass against the exponential at a constant floor](outgas/lid_seal.md#at-a-constant-floor-the-held-mass-relaxes-as-the-exponential-for-any-step-length) |
 | Outgassing | `outgas/trapping.py` | [Solid-phase volatile trapping](outgas/trapping.md) | [interstitial-melt trapping](outgas/trapping.md#trapping-through-the-interstitial-melt) |
 | Star | `star/dummy.py` | [Stellar luminosity and instellation](star/dummy.md) | [solar luminosity](star/dummy.md#luminosity-of-the-sun) |
 | Star | `star/wrapper.py` | [Stellar wrapper dispatch](star/wrapper.md) | [equilibrium temperature](star/wrapper.md#equilibrium-temperature-of-an-earth-like-planet) |

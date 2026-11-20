@@ -1241,7 +1241,7 @@ def test_optional_backends_vulcan_atmodeller_are_extras_not_mandatory():
     assert any(r.startswith('atmodeller>=1.0.2') for r in extras.get('atmodeller', [])), (
         f'atmodeller extra must keep its pin, got {extras.get("atmodeller")!r}'
     )
-    assert any(r.startswith('fwl-vulcan>=26.10.16') for r in extras.get('vulcan', [])), (
+    assert any(r.startswith('fwl-vulcan>=26.11.18') for r in extras.get('vulcan', [])), (
         f'vulcan extra must keep its pin, got {extras.get("vulcan")!r}'
     )
     # The default Aragog interior solver runs on JAX and its modules are
@@ -4823,7 +4823,7 @@ def test_printed_and_documented_conda_var_commands_name_their_env(tmp_path):
         for line in (docs / page).read_text().splitlines()
         if line.startswith('conda env config vars set')
     ]
-    assert len(commands) == 7
+    assert len(commands) == 8
     named = 'conda env config vars set -n proteus '
     assert [c for c in commands if not c[1].startswith(named)] == []
 

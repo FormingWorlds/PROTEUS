@@ -5406,6 +5406,38 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.cmb_cell_thickness",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float or int",
+      "accepts_none": false,
+      "default": "3000.0",
+      "choices": null,
+      "bounds": null,
+      "description": "Radial thickness [m] of the mesh cell at the CMB: 0 (the uniform mesh at that end) or a finite value of at least 2 m. The cells grow away from the CMB with a tanh stretching. A value at or above the bottom cell of the uniform mesh of the same coordinate mode gives no CMB refinement, and aragog logs it: with the 'uniform' or 0 surface cell the mesh keeps that uniform bottom cell. A resume keeps the value its run was written with.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.surface_cell_thickness",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float or str",
+      "accepts_none": false,
+      "default": "\"uniform\"",
+      "choices": null,
+      "bounds": null,
+      "description": "Radial thickness [m] of the mesh cell at the surface: 0 (the uniform mesh at that end), 'uniform' (the top cell of the uniform mesh of the same coordinate mode; with mass_coordinates the top cell of the uniform mass-coordinate mesh), or a finite value of at least 2 m and below the uniform radial cell (R_int - R_core)/(num_levels - 1). It has no fallback: aragog refuses a larger value when it builds the mesh. With cmb_cell_thickness = 0 and 'uniform' the mesh is the uniform mesh. A resume keeps the value its run was written with.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.backend",
       "toml_section": "interior_energetics.aragog",
       "class": "Aragog",
@@ -5498,7 +5530,7 @@
         "mixture"
       ],
       "bounds": null,
-      "description": "Drag viscosity for the gravitational-separation velocity v_rel = |dRho| g F(phi) / eta. 'melt' (fixed single-phase liquid viscosity, SPIDER parity) keeps separation active below the rheological transition in coupled caps-off runs, which collapses the CMB temperature; 'mixture' (rheological-transition-blended bulk viscosity) ties the drag viscosity to the same solid-fraction rise that stiffens the bulk rheology, so separation locks up at the same melt fraction instead, which is why the default here is 'mixture' while Aragog's own default stays 'melt' for SPIDER parity. The regime boundaries are the porosities where adjacent permeability laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c). The melt drainage of front trapping (outgas.trap_mode 'front') takes the melt viscosity whatever this setting.",
+      "description": "Drag viscosity for the gravitational-separation velocity v_rel = |dRho| g F(phi) / eta. 'melt' (fixed single-phase liquid viscosity, SPIDER parity) keeps separation active below the rheological transition in coupled caps-off runs, which collapses the CMB temperature; 'mixture' (rheological-transition-blended bulk viscosity) ties the drag viscosity to the same solid-fraction rise that stiffens the bulk rheology, so separation locks up at the same melt fraction instead, which is why the default here is 'mixture' while Aragog's own default stays 'melt' for SPIDER parity. The regime boundaries are the porosities where adjacent permeability laws cross (Bower et al. (2018)[^cite-bower2018], Section 2.1, Eqs. 13a to 13c). The melt drainage of front trapping (outgas.trap_mode 'front') takes the melt viscosity whatever this setting.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -5533,7 +5565,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Let a resume change separation_viscosity, separation_buoyancy, rheology.enabled or lid_mush_base from the values in the run's init_coupler.toml, with one warning per switched law in the log. False stops such a resume, because the changed law would act from the resume row on. A law the record does not hold must be set in the config file either way; a record that names the Aragog module and lacks separation_viscosity counts as 'melt', one that lacks the rheology or lid_mush_base counts as off, and a record of another interior module holds none of them. A missing record, or one that names no module and holds no Aragog table, leaves the rheology and the lid unchecked. init_coupler.toml records false.",
+      "description": "Let a resume change separation_viscosity, separation_buoyancy, rheology.enabled, lid_mush_base or interior_energetics.mixing_length (also of a SPIDER run) from the values in the run's init_coupler.toml, with one warning per switched law in the log. False stops such a resume, because the changed law would act from the resume row on. A law the record does not hold must be set in the config file either way; a record that names the Aragog module and lacks separation_viscosity counts as 'melt', one that lacks the rheology or lid_mush_base counts as off. A SPIDER record holds only the mixing length, a record that names no module holds the mixing length and the laws of its Aragog table, and a record of another interior module holds none of these laws. A missing record, or one that names no module and holds no Aragog table, leaves the rheology and the lid unchecked. init_coupler.toml records false.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -5569,7 +5601,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Scalar-gravity comparison knob. When True, the external mesh file that Zalmoxis writes has its gravity column overwritten with a uniform scalar (the surface value from ``hf_row['gravity']``) before Aragog reads it, so Aragog's per-node gravity path interpolates to that scalar everywhere. False by default; set True only when running a paired scalar-gravity comparison.",
+      "description": "Scalar-gravity comparison setting. When True, the external mesh file that Zalmoxis writes has its gravity column overwritten with a uniform scalar (the surface value from ``hf_row['gravity']``) before Aragog reads it, so Aragog's per-node gravity path interpolates to that scalar everywhere. False by default; set True only when running a paired scalar-gravity comparison.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -5601,7 +5633,32 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Use the temperature- and pressure-dependent solid viscosity and the stagnant-lid closure of ``aragog.rheology.SolidRheologyParams``, with its defaults for every other parameter. False uses the constant ``solid_log10visc``.",
+      "description": "Use the temperature- and pressure-dependent solid viscosity and the stagnant-lid closure of ``aragog.rheology.SolidRheologyParams``, with its defaults for every other parameter but ``mlt_bottom_slope``. False uses the constant ``solid_log10visc``.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.rheology.mlt_bottom_slope",
+      "toml_section": "interior_energetics.aragog.rheology",
+      "class": "Rheology",
+      "type": "float or int",
+      "accepts_none": false,
+      "default": "1.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 1
+        }
+      ],
+      "description": "Slope of the viscous-branch mixing length above the CMB, l = slope (r - r_cmb), in (0, 1]. The default 1.0 is the slope with which aragog's top slope ``s_top_inf`` was calibrated. Aragog's viscous flux carries a factor 1/18 that the mixing-length flux of Tachinami et al. (2011)[^cite-tachinami2011] (Eq. 13 and 14) does not, so a slope of 1 is a mixing length of 0.49 times the distance in their terms. Read only with ``enabled``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5694,7 +5751,7 @@
         "quadratic"
       ],
       "bounds": null,
-      "description": "'iron' (Anzellini et al. 2013 via PALEOS, with light-element depression) or 'quadratic' (Nimmo 2015 Eq. 6 parameterisation).",
+      "description": "'iron' (Anzellini et al. (2013)[^cite-anzellini2013] via PALEOS, with light-element depression) or 'quadratic' (Nimmo (2015)[^cite-nimmo2015] Eq. 6 parameterisation).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5918,7 +5975,7 @@
           "value": 0
         }
       ],
-      "description": "Core thermal conductivity [W m-1 K-1] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015)[^cite-nimmo2015b] Table 2 value.",
+      "description": "Core thermal conductivity [W m-1 K-1] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015)[^cite-nimmo2015] Table 2 value.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6838,13 +6895,13 @@
       "class": "Interior",
       "type": "str",
       "accepts_none": false,
-      "default": "\"nearest\"",
+      "default": "\"constant\"",
       "choices": [
-        "nearest",
-        "constant"
+        "constant",
+        "nearest"
       ],
       "bounds": null,
-      "description": "Mixing-length scale: 'nearest' (distance to nearest boundary) or 'constant' (a quarter of the mantle depth).",
+      "description": "Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle depth at every node) or 'nearest' (distance to the nearest boundary). A resume that changes the recorded value is refused unless interior_energetics.aragog.allow_resume_law_change is true.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 3,
@@ -7082,7 +7139,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 40K/K at radio_tref [kg/kg]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio.",
+      "description": "Mass ratio 40K/K at radio_tref [kg/kg]. The default is the present-day atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 8,
@@ -7128,7 +7185,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 235U/U at radio_tref [kg/kg]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio.",
+      "description": "Mass ratio 235U/U at radio_tref [kg/kg]. The default is the present-day atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 10,
@@ -7153,7 +7210,7 @@
           "value": 1
         }
       ],
-      "description": "Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio.",
+      "description": "Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund + radio_U238_abund must not exceed 1. The default is the present-day atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a mass ratio.",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 11,
@@ -7715,7 +7772,7 @@
           "value": 1
         }
       ],
-      "description": "Width [fraction] of the mushy-zone transition in Aragog's _PhaseMixedParameters. Sets the width of the phase boundary in Aragog's mixed-phase blending (viscosity, thermal conductivity etc.). Distinct from ``[interior_energetics.spider].matprop_smooth_width`` which is SPIDER's analogous knob for its own solver.",
+      "description": "Width [fraction] of the mushy-zone transition in Aragog's _PhaseMixedParameters. Sets the width of the phase boundary in Aragog's mixed-phase blending (viscosity, thermal conductivity etc.). Distinct from ``[interior_energetics.spider].matprop_smooth_width`` which is SPIDER's corresponding setting for its own solver.",
       "doc_source": "field_docstring",
       "group_order": 7,
       "group_position": 7,
@@ -7736,7 +7793,7 @@
           "value": 0
         }
       ],
-      "description": "Core T_avg / T_cmb ratio from adiabatic gradient (Bower+2018 Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg. SPIDER derives its own internally.",
+      "description": "Core T_avg / T_cmb ratio of an isentropic core (Bower et al. (2018)[^cite-bower2018], Eq. 20 and Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg. SPIDER derives its own internally.",
       "doc_source": "field_docstring",
       "group_order": 8,
       "group_position": 0,
@@ -8948,6 +9005,150 @@
       "group_qualifier": null
     },
     {
+      "path": "outgas.lid_seal.enabled",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Whether a crust can seal the melt inventory from the atmosphere.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.delta_close",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float",
+      "accepts_none": false,
+      "default": "10000.0",
+      "choices": null,
+      "bounds": null,
+      "description": "Crust thickness [m] at or above which the seal can close.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.phi_close",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.3",
+      "choices": null,
+      "bounds": null,
+      "description": "Melt fraction [1] of the top mesh cell below which the seal can close.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.delta_open",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Crust thickness [m] below which a closed seal opens; `none` means `0.5 delta_close`.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.phi_open",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Top-cell melt fraction [1] at or above which a closed seal opens; `none` means `phi_close + 0.05`.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.tau_leak",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float",
+      "accepts_none": false,
+      "default": "inf",
+      "choices": null,
+      "bounds": null,
+      "description": "Relaxation time [yr] of the sealed inventory toward its dissolved equilibrium with the atmosphere, > 0 with a finite rate 1/tau_leak; inf holds it.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.chi_d",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.02",
+      "choices": null,
+      "bounds": null,
+      "description": "Degassing efficiency [1] of the melt that reaches the crust (Schaefer & Sasselov (2015)[^cite-schaefer2015], Table 3).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.crust_rate",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": null,
+      "description": "Mass of melt that reaches the crust per year [kg yr-1].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.lid_seal.phi_solid",
+      "toml_section": "outgas.lid_seal",
+      "class": "LidSeal",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.001",
+      "choices": null,
+      "bounds": null,
+      "description": "Melt fraction [1] below which a mesh cell counts as crust, and below which the mantle makes no crust.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "outgas.vapourise",
       "toml_section": "outgas",
       "class": "Outgas",
@@ -9254,7 +9455,7 @@
       "class": "Agni",
       "type": "bool",
       "accepts_none": false,
-      "default": "false",
+      "default": "true",
       "choices": null,
       "bounds": null,
       "description": "Account for conductive heat transport, using Fourier's law.",
@@ -10510,6 +10711,22 @@
       "group_qualifier": null
     },
     {
+      "path": "atmos_chem.vulcan.escape_bc",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Upper boundary condition. If true, each atom in the network leaves the top layer at the PROTEUS escape rate; requires fix_surf = true. If false, no gas crosses the top.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "atmos_chem.vulcan.network",
       "toml_section": "atmos_chem.vulcan",
       "class": "Vulcan",
@@ -10919,6 +11136,85 @@
       "group_qualifier": null
     },
     {
+      "path": "atmos_chem.vulcan.couple_agni",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Solve the climate again with AGNI while the chemistry runs, from the composition VULCAN computes, until the temperature and the chemistry agree. The eddy diffusion then also comes from AGNI, unless `atmos_chem.Kzz_const` is set. Needs `atmos_clim.module = 'agni'` with `atmos_clim.agni.solve_energy = true`.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.agni_call_frq",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "int",
+      "accepts_none": false,
+      "default": "0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "With `couple_agni`, VULCAN solver steps between climate updates; 0 updates the climate only when the chemistry reaches a steady state.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.agni_T_rtol",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "With `couple_agni`, the run ends when the climate update made at a steady state changes the temperature by at most this fraction in every layer.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.agni_max_calls",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "int",
+      "accepts_none": false,
+      "default": "10",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "With `couple_agni`, climate updates made at steady states before VULCAN stops with the temperature still changing.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "atmos_chem.mode",
       "toml_section": "atmos_chem",
       "class": "AtmosChem",
@@ -10942,12 +11238,12 @@
       "path": "atmos_chem.times",
       "toml_section": "atmos_chem",
       "class": "AtmosChem",
-      "type": "str or list",
+      "type": "str or list or dict",
       "accepts_none": false,
       "default": "\"end\"",
       "choices": null,
       "bounds": null,
-      "description": "Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), or a list of times [yr], each mapped to the nearest atmosphere snapshot.",
+      "description": "Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), a list of times [yr], each selecting the first helpfile row at or after it, or a table of helpfile keys, each with a list of values in the unit of that column, such as `{Time = [1e2, 1e3], Phi_global = [0.01], T_surf = [1500]}`; each value selects every helpfile row at which its column reaches or crosses it, and `end = true` in the table adds the final state. With a list or a table, the run also writes an atmosphere snapshot at each target row; the chemistry of a target uses the latest atmosphere snapshot at or before its row.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12573,6 +12869,17 @@
       "doc": "The Morrigan module requires as many embryo masses as planets, all positive, and a valid selector value when the selector is a semi-major axis or planet id."
     },
     {
+      "validator": "valid_escape_bc",
+      "module": "_atmos_chem.py",
+      "attached_to": [
+        "atmos_chem.vulcan.escape_bc"
+      ],
+      "touches": [
+        "fix_surf"
+      ],
+      "doc": "Refuse `escape_bc = true` unless the surface mixing ratios are fixed."
+    },
+    {
       "validator": "valid_ini_mix",
       "module": "_atmos_chem.py",
       "attached_to": [
@@ -12814,6 +13121,18 @@
       "doc": "Check that required external packages are importable for the selected modules."
     },
     {
+      "validator": "chemistry_climate_needs_agni",
+      "module": "_config.py",
+      "attached_to": [
+        "atmos_chem"
+      ],
+      "touches": [
+        "atmos_clim.agni.solve_energy",
+        "atmos_clim.module"
+      ],
+      "doc": "Refuse coupling the chemistry to AGNI unless AGNI solves the climate."
+    },
+    {
       "validator": "dummy_struct_mantle_eos",
       "module": "_config.py",
       "attached_to": [
@@ -12895,6 +13214,23 @@
         "interior_energetics"
       ],
       "doc": "A live Aragog lid acts on the atmosphere only through the skin of AGNI or the dummy."
+    },
+    {
+      "validator": "lid_seal_requirements",
+      "module": "_config.py",
+      "attached_to": [
+        "outgas"
+      ],
+      "touches": [
+        "escape.reservoir",
+        "interior_energetics.module",
+        "interior_struct.module",
+        "interior_struct.zalmoxis",
+        "outgas.module",
+        "outgas.vapourise",
+        "params.stop.solid.freeze_volatiles"
+      ],
+      "doc": "The lid seal reads the Aragog mesh, freezes the CALLIOPE chemistry while it holds, and applies unfractionated escape."
     },
     {
       "validator": "lowt_extension_requires_aragog",
@@ -13297,6 +13633,39 @@
         "radio_U235_abund"
       ],
       "doc": "Reject 235U/U + 238U/U above 1 (both mass ratios, kg/kg)."
+    },
+    {
+      "validator": "_delta_open",
+      "module": "_outgas.py",
+      "attached_to": [
+        "outgas.lid_seal.delta_open"
+      ],
+      "touches": [
+        "delta_close"
+      ],
+      "doc": "outgas.lid_seal.delta_open [m]: None, or a thickness in (0, delta_close]."
+    },
+    {
+      "validator": "_phi_open",
+      "module": "_outgas.py",
+      "attached_to": [
+        "outgas.lid_seal.phi_open"
+      ],
+      "touches": [
+        "phi_close"
+      ],
+      "doc": "outgas.lid_seal.phi_open [1]: None (then phi_close + 0.05 must be below 1), or a number in [phi_close, 1)."
+    },
+    {
+      "validator": "_phi_solid",
+      "module": "_outgas.py",
+      "attached_to": [
+        "outgas.lid_seal.phi_solid"
+      ],
+      "touches": [
+        "phi_close"
+      ],
+      "doc": "outgas.lid_seal.phi_solid [1]: a real number in (0, phi_close)."
     },
     {
       "validator": "max_bigger_than_min",

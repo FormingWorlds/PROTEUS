@@ -14,7 +14,8 @@ step-by-step guide or the advice below,
 | `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
 | `was written before N column(s) of the current output schema existed` | [Resuming an older run](#resuming-a-run-written-by-an-older-proteus) |
 | `Resume: no Zalmoxis structure file matches the helpfile row` | [Resume stops on the Zalmoxis structure](#resume-stops-no-zalmoxis-structure-file-matches-the-row) |
-| `interior_energetics.aragog.<law> is ... but the run was written with` or `... is not recorded in`, after `Resume refused:` | [Resume stops on a separation law](#resume-stops-on-a-separation-law) |
+| `interior_energetics.aragog.<law>` or `interior_energetics.mixing_length is ... but the run was written with`, or `... is not recorded in`, after `Resume refused:` | [Resume stops on a separation law](#resume-stops-on-a-separation-law) |
+| `Resume refused: the interior snapshot ... holds a mesh of` | [Resume stops on a separation law](#resume-stops-on-a-separation-law) |
 | `Resume: the interior snapshot at t = ... is on an earlier structure` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
 | `Resume: a structure update was pending at the stop` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
 | `the sub-grid lid restarts as the phantom lid` / `Resume: the lid of the snapshot at t = ... yr is refused` | [A resumed run with the sub-grid lid](#a-resumed-run-with-the-sub-grid-lid) |
@@ -27,6 +28,7 @@ step-by-step guide or the advice below,
 | `libudev.so.1` not found | [libudev](#libudevso1-not-found) |
 | `OpenSSL_jll` / Julia error | [Julia compatibility](#julia-compatibility-error) |
 | `PythonCall ... is required but does not seem to be installed` / `failed to find source of parent package` | [Julia depot with no packages](#julia-depot-with-no-packages) |
+| `could not load library ".../.juliaup/bin/../lib/julia/sys.so"`, or pytest exits with code 1 and prints nothing | [Julia system image not found](#julia-system-image-not-found) |
 | PETSc fails on Apple Silicon | [PETSc Apple Silicon](#petsc-compilation-fails-on-apple-silicon) |
 | `x86-pad-for-align` / SOCRATES | [SOCRATES compilation](#errors-during-the-socrates-compilation) |
 | `libcrypto.3.dylib` not found | [netCDF error](#python-netcdf-library-error) |
@@ -108,11 +110,30 @@ Resume refused:
   interior_energetics.aragog.separation_buoyancy is 'mixture' in run.toml, but the run was written with 'solid' (output/run/init_coupler.toml); set it to 'solid' to keep the law, or set interior_energetics.aragog.allow_resume_law_change = true to switch it at the resume
 ```
 
-The run's `init_coupler.toml` records the config of its last start; a resume writes it again only once every resume check has passed, just before the main loop. A resume under another `separation_viscosity` or `separation_buoyancy` would change the drainage of melt from the resume row on, so the resume stops; the refused attempt writes only its own `proteus_NN.log` and status 20. Set the field to the recorded value to continue under the same law, or set `interior_energetics.aragog.allow_resume_law_change = true` to switch the law at the resume: the log records one warning per switched law, and `init_coupler.toml` then records the new law with the switch off, so a run that stops before its first new row needs the switch again to go back to the old law. A resume with `-c` pointing at the run's own `init_coupler.toml` compares that file with itself, so an edit of a law in that file is not detected.
+The run's `init_coupler.toml` records the config of its last start; a resume writes it again only after its first interior step, once every resume check and the mesh check of the interior snapshot have passed. A resume under another `separation_viscosity` or `separation_buoyancy` would change the drainage of melt from the resume row on, so the resume stops; the refused attempt writes only its own `proteus_NN.log` and status 20. Set the field to the recorded value to continue under the same law, or set `interior_energetics.aragog.allow_resume_law_change = true` to switch the law at the resume: the log records one warning per switched law, and `init_coupler.toml` then records the new law with the switch off, so a run that stops before its first new row needs the switch again to go back to the old law. A resume with `-c` pointing at the run's own `init_coupler.toml` compares that file with itself, so an edit of a law in that file is not detected.
 
 A record that names the Aragog module and lacks `separation_viscosity` counts as `'melt'`. Any other law the record does not hold must be set in the config file: a `separation_buoyancy` it lacks, a `separation_viscosity` it lacks when it names no interior module, and both laws when `init_coupler.toml` is missing or unreadable or names another interior module (as after a resume with `interior_energetics.module = 'dummy'`). The allow switch does not cover them. A run without a recorded `separation_buoyancy` ran under `'solid'` with an aragog below 26.10.22 and under `'mixture'` from 26.10.22; each start writes the aragog version to its `proteus_NN.log`.
 
 The same check keeps the solid rheology (`interior_energetics.aragog.rheology.enabled`) and the sub-grid lid (`interior_energetics.aragog.lid_mush_base`) of the run, with the same allow switch. A record that names the Aragog module and lacks either counts as off. A missing record, or one that names no module and holds no Aragog table, leaves both unchecked, with a note in the log.
+
+The same check keeps the mixing length (`interior_energetics.mixing_length`) of an Aragog run and of a SPIDER run. The default is `'constant'`, so a run that was written with `'nearest'` and is resumed with a config file that does not set the field stops with status 20:
+
+```console
+Resume refused:
+  interior_energetics.mixing_length is 'constant' (the default; run.toml does not set it), but the run was written with 'nearest' (output/run/init_coupler.toml); set it to 'nearest' to keep the law, or set interior_energetics.aragog.allow_resume_law_change = true to switch it at the resume
+```
+
+Set `mixing_length = 'nearest'` in the `[interior_energetics]` table of the config file to continue under the law of the run, or set `interior_energetics.aragog.allow_resume_law_change = true` to switch to `'constant'` at the resume row. The switch also covers a SPIDER run.
+
+A resumed Aragog run must also build the mesh of the run, because the snapshot entropy is put back node by node. In its first interior step the resume compares the node radii it builds with the `radius_b` of the interior snapshot, and stops with status 20 and a message such as:
+
+```console
+Resume refused: the interior snapshot output/run/data/5000p000_int.nc holds a mesh of 80 nodes, bottom cell 3000.0 m, top cell 65798.8 m, but the config of the resume builds 80 nodes, bottom cell 35561.0 m, top cell 65798.8 m (num_levels = 80, cmb_cell_thickness = 0.0, surface_cell_thickness = 'uniform'); the snapshot entropy is put back node by node, so the resume must build the mesh of the run: set these fields to the values the run used
+```
+
+Set `num_levels`, `cmb_cell_thickness` and `surface_cell_thickness` to the values the run used; `allow_resume_law_change` does not cover the mesh. When the resume builds the solver on a structure that moved since the snapshot (see the structure update below), the check compares the node count and the 2 end cells: a set cell must keep its length to 1 m, and a uniform cell, scaled with the mantle thickness, must agree to 10 %. It does not compare `mass_coordinates`. An older snapshot without `radius_b` is not checked.
+
+A run on the uniform mesh whose config file sets no cell field builds the default 3000 m cell at the CMB when it is resumed with the same file, and stops with status 20 on the mesh check: the snapshot holds a bottom cell of 35561.0 m on 80 nodes for an Earth-mass planet, the resume builds 3000.0 m. Set `cmb_cell_thickness = 0` in the `[interior_energetics.aragog]` table to resume it. The default `surface_cell_thickness = 'uniform'` builds the top cell of the uniform mesh, so set `surface_cell_thickness` only when the run used another value. If the record of such a run holds `mixing_length = 'nearest'` and the config file does not set the field, the resume stops on the mixing length first, before its first interior step and so before the mesh check; set `mixing_length = 'nearest'` as well.
 
 ### A resumed run and the uninterrupted run {#a-resumed-run-and-the-uninterrupted-run}
 
@@ -125,7 +146,7 @@ Resume: the interior snapshot at t = 3.220037e+02 yr is on an earlier structure 
 Resume: a structure update was pending at the stop. With core_bc = 'core_module' the solver is built on the structure of the row and the update is not replayed from the earlier mesh
 ```
 
-The first appears when no mesh file of the earlier structure is left. The second appears for a core boundary condition other than `energy_balance`, and when a giant impact landed between the snapshot and the row. In both cases, the run continues on the structure of its row: the first resumed step records no compression work, and the entropy is handed over by node. The resumed run then differs from the uninterrupted one from that step on. A structure update that moves both radii by less than 1 m is not detected and is handled in the same way, without a warning. A snapshot with no entropy profile on the node count of the run gives neither warning: the run starts from a fresh initial condition on its row, as on any resume with such a snapshot. If the solver is built on the earlier structure and the snapshot entropy does not fit its cells, the resume stops with an error, and the run must start again from t = 0.
+The first appears when no mesh file of the earlier structure is left. The second appears for a core boundary condition other than `energy_balance`, and when a giant impact landed between the snapshot and the row. In both cases, the run continues on the structure of its row: the first resumed step records no compression work, and the entropy is handed over by node. The resumed run then differs from the uninterrupted one from that step on. A structure update that moves both radii by less than 1 m is not detected and is handled in the same way, without a warning. A snapshot that holds its node radii and another node count stops the resume (see the mesh check below); only an older snapshot without node radii and with another node count starts from a fresh initial condition on its row. If the solver is built on the earlier structure and the snapshot entropy does not fit its cells, the resume stops with an error, and the run must start again from t = 0.
 
 ### A resumed run with the sub-grid lid {#a-resumed-run-with-the-sub-grid-lid}
 
@@ -258,6 +279,28 @@ LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --project=AGNI -e 'using Pkg; Pkg.inst
 ```
 
 A project that you set yourself with `PYTHON_JULIAPKG_PROJECT` needs the same command; the installer leaves it alone.
+
+### Julia system image not found {#julia-system-image-not-found}
+
+`import proteus`, `import juliacall` or a run with AGNI stops with `could not load library ".../.juliaup/bin/../lib/julia/sys.so"`, or pytest exits with code 1 and prints nothing. This happens in some shells, not all. juliapkg has recorded the juliaup launcher (`~/.juliaup/bin/julia`) as the Julia program, and juliacall looks for the Julia system image (`sys.so`) next to it, where there is none. Julia then ends the Python process, so there is no Python traceback.
+
+Point juliacall at the real Julia program and at the Julia project of your Python environment. Set both variables together, because juliacall refuses one without the other, in the shell before any PROTEUS, AGNI or test command:
+
+```console
+export PYTHON_JULIACALL_EXE="$(julia --startup-file=no -e 'print(joinpath(Sys.BINDIR, "julia"))')"
+export PYTHON_JULIACALL_PROJECT="$(python -c 'import juliapkg; print(juliapkg.project())')"
+```
+
+The first line asks Julia, through the launcher, for the path of the program it runs, for example `~/.julia/juliaup/julia-1.13.1+0.x64.linux.gnu/bin/julia`. The second prints the Julia project that juliacall uses for the active Python environment, which is `$CONDA_PREFIX/julia_env` in a conda environment. Run both with the `proteus` environment active.
+
+To keep the values in every new shell, store them in the environment and activate it again:
+
+```console
+conda env config vars set -n proteus PYTHON_JULIACALL_EXE="$PYTHON_JULIACALL_EXE" PYTHON_JULIACALL_PROJECT="$PYTHON_JULIACALL_PROJECT"
+conda deactivate && conda activate proteus
+```
+
+Set them again after a Julia update, since the path of the program changes with the version. Where juliacall starts Julia without them, leave both unset.
 
 ### Julia compatibility error {#julia-compatibility-error}
 

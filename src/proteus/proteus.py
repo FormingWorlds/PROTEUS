@@ -31,9 +31,9 @@ from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import noble_gases, vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
-    MissingReferenceData,
     PrintHalfSeparator,
     PrintSeparator,
+    ReadStatus,
     UpdateStatusfile,
     is_write_snapshot,
     multiple,
@@ -77,15 +77,20 @@ ATMOS_STALL_MAX = 150
 AGNI_DEADLOCK_MAX = 3
 
 
-def _status_on_missing_eos(start):
-    """Write status 20 when missing reference data stops ``start``, wherever it is raised."""
+def _status_on_exit(start):
+    """Record why ``start`` stopped when it raises, so the run does not read as running:
+    25 for an interrupt or a requested exit (KeyboardInterrupt, SystemExit), 20 for any
+    other error. Only a running status is replaced: a stop code the raise site wrote is kept, and
+    a check that stops the run before its first status leaves the output folder alone."""
 
     @functools.wraps(start)
     def wrapper(self, *args, **kwargs):
         try:
             return start(self, *args, **kwargs)
-        except MissingReferenceData:
-            UpdateStatusfile(self.directories, 20)
+        except BaseException as exc:
+            if ReadStatus(self.directories['output']) in (0, 1):
+                stopped = isinstance(exc, (KeyboardInterrupt, SystemExit))
+                UpdateStatusfile(self.directories, 25 if stopped else 20)
             raise
 
     return wrapper
@@ -227,6 +232,7 @@ class Proteus:
         self.crystallized = (
             False  # Mantle solidified, outgassing stopped but evolution continues
         )
+        self.lid_sealed = False  # A crust holds the melt inventory (outgas.lid_seal)
         self.lockfile = '/tmp/none'  # Path to keepalive file
 
         # Default values for mors.spada cases
@@ -491,9 +497,13 @@ class Proteus:
             return False
         PrintHalfSeparator()
         stop = self.config.params.stop.solid
-        frozen = self.crystallized or (
-            stop.freeze_volatiles
-            and float(self.hf_row.get('Phi_global', 1.0)) <= float(stop.phi_crit)
+        frozen = (
+            self.crystallized
+            or self.lid_sealed
+            or (
+                stop.freeze_volatiles
+                and float(self.hf_row.get('Phi_global', 1.0)) <= float(stop.phi_crit)
+            )
         )
         kg_before = readable_total(self.hf_row)
         run_escape(
@@ -598,7 +608,7 @@ class Proteus:
                     self.config.params.stop.solid.phi_crit,
                 )
 
-    @_status_on_missing_eos
+    @_status_on_exit
     def start(self, *, resume: bool = False, offline: bool = False):
         """Start PROTEUS simulation.
 
@@ -646,7 +656,8 @@ class Proteus:
         from proteus.orbit.common import Tides_t
         from proteus.orbit.wrapper import init_orbit, run_orbit
 
-        #   solid-phase volatile trapping
+        #   solid-phase volatile trapping, and the melt held under a closed crust
+        from proteus.outgas.lid_seal import restore_seal_state, run_lid_seal_step, seal_enabled
         from proteus.outgas.trapping import run_trapping
 
         #    outgassing
@@ -709,7 +720,6 @@ class Proteus:
         start_time = datetime.now()
         self.config.params.resume = resume
         self.config.params.offline = offline
-        UpdateStatusfile(self.directories, 0)
 
         # Clean output directory if starting fresh
         if not self.config.params.resume:
@@ -718,6 +728,7 @@ class Proteus:
             CleanDir(self.directories['output/observe'])
             CleanDir(self.directories['output/offchem'])
             CleanDir(self.directories['output/plots'])
+        UpdateStatusfile(self.directories, 0)
 
         # Get next logfile path
         logindex = 1 + GetCurrentLogfileIndex(self.directories['output'])
@@ -758,13 +769,9 @@ class Proteus:
         from proteus.interior_energetics import resume_laws
 
         if self.config.params.resume:
-            try:
-                resume_laws.check_resume_separation_laws(
-                    self.config, self.config_path, self.directories['output']
-                )
-            except resume_laws.ResumeSeparationLawError:
-                UpdateStatusfile(self.directories, 20)
-                raise
+            resume_laws.check_resume_separation_laws(
+                self.config, self.config_path, self.directories['output']
+            )
 
         # Write config to output directory, for future reference. Record the
         # resolved (not raw) step caps. A resolved 0.0 means the cap is off,
@@ -801,8 +808,8 @@ class Proteus:
         from proteus.accretion.wrapper import IMPACT_CONFIG_FIELDS
 
         # The record keeps the loaded values of the fields a giant impact changes; a resume
-        # writes it once every resume check has passed (before the main loop), so an attempt
-        # that stops earlier keeps the record of the laws the run used.
+        # writes it after its first interior step, once the solver has passed the mesh check of
+        # the snapshot, so an attempt that stops earlier keeps the record of the run.
         loaded = {key: attrgetter(key)(self.config) for key in IMPACT_CONFIG_FIELDS}
         record = functools.partial(
             self.config.write,
@@ -974,14 +981,8 @@ class Proteus:
             # Read helpfile from disk. A run written before the output schema
             # gained columns stops here, rather than continuing from a row that
             # is missing those keys. A helpfile that cannot be loaded at all
-            # stops the same way: either leaves the run dead, and a run that
-            # dies without recording it reads as still running to anything
-            # polling the output directory.
-            try:
-                self.hf_all = ReadHelpfileFromCSV(self.directories['output'])
-            except Exception:
-                UpdateStatusfile(self.directories, 20)
-                raise
+            # stops the same way.
+            self.hf_all = ReadHelpfileFromCSV(self.directories['output'])
 
             # Drop any column the stored helpfile carries that the current
             # schema no longer defines. Without this, a row from a retired
@@ -995,7 +996,6 @@ class Proteus:
 
             # Check length
             if len(self.hf_all) <= self.loops['init_loops'] + 1:
-                UpdateStatusfile(self.directories, 20)
                 raise RuntimeError('Simulation is too short to be resumed')
 
             # Extract archived data files before choosing a resume point, so
@@ -1025,7 +1025,6 @@ class Proteus:
                     dropped_snapshots,
                 )
                 if len(self.hf_all) <= self.loops['init_loops'] + 1:
-                    UpdateStatusfile(self.directories, 20)
                     raise RuntimeError(
                         'Simulation is too short to be resumed after dropping '
                         'incomplete trailing snapshots'
@@ -1061,6 +1060,14 @@ class Proteus:
                         'outgassing stays stopped.',
                         self.config.params.stop.solid.phi_crit,
                     )
+
+            # The seal state is in the row; a held remelt reads the rows since closure.
+            self.lid_sealed = restore_seal_state(self.config, self.hf_row)
+            if self.lid_sealed:
+                log.info(
+                    'Resuming with the lid seal closed since t = %.3e yr',
+                    self.hf_row['seal_t_close'],
+                )
 
             # Restore the count of consecutive unresolved atmosphere solves, so
             # a run that stalls is not handed a fresh allowance by every
@@ -1144,11 +1151,7 @@ class Proteus:
                 self.config.interior_struct.module == 'zalmoxis'
                 and self.config.interior_energetics.module == 'aragog'
             ):
-                try:
-                    self._resync_zalmoxis_mesh()
-                except Exception:
-                    UpdateStatusfile(self.directories, 20)
-                    raise
+                self._resync_zalmoxis_mesh()
 
             # Arm the resume-settling structure-re-solve guard. The resumed
             # interior relaxes thermally over the first loops and would
@@ -1182,13 +1185,8 @@ class Proteus:
         # Rebuild the mass and orbit that impacts before a resume point already
         # applied. Runs after the timeline is resolved, so a re-run dynamical
         # model still selects its body against the configured planet.
-        try:
-            restore_accretion_state(self)
-            change = volatile_mass_change(self.hf_row) if resume else 0.0
-        except Exception:
-            # A refused resume records its stop, so the run does not read as running.
-            UpdateStatusfile(self.directories, 20)
-            raise
+        restore_accretion_state(self)
+        change = volatile_mass_change(self.hf_row) if resume else 0.0
         if change != 0.0 and not tracks_volatile_mass(self.config):
             log.info(
                 'M_volatile_change = %.3e kg is carried over but only the Zalmoxis '
@@ -1213,8 +1211,7 @@ class Proteus:
         # advance Time indefinitely.
         self.agni_deadlock_count = 0
 
-        if self.config.params.resume:
-            record()
+        pending_record = record if self.config.params.resume else None
 
         # Main loop
         UpdateStatusfile(self.directories, 1)
@@ -1288,6 +1285,9 @@ class Proteus:
                 atmos_o=self.atmos_o,
                 write_data=is_snapshot,
             )
+            if pending_record is not None:
+                pending_record()
+                pending_record = None
             if _IT_TIMING_ENABLED:
                 _t_mod['interior'] = time.perf_counter() - _t0
 
@@ -1463,10 +1463,24 @@ class Proteus:
             if self.desiccated:
                 # no volatiles
                 run_desiccated(self.directories, self.config, self.hf_row, first_iter)
+                self.lid_sealed = False
 
             elif self.crystallized:
                 # post solidification
                 run_crystallized(self.config, self.hf_row, self.interior_o.dt)
+
+            elif seal_enabled(self.config):
+                self.lid_sealed = run_lid_seal_step(
+                    self.directories,
+                    self.config,
+                    self.hf_row,
+                    self.interior_o,
+                    self.lid_sealed,
+                    hf_all=self.hf_all,
+                    first_iter=first_iter,
+                    init_stage=self.init_stage,
+                    dt=self.interior_o.dt,
+                )
 
             else:
                 run_outgassing_and_vapourisation(
@@ -1498,7 +1512,8 @@ class Proteus:
             assert_mass_conservation(
                 self.hf_row,
                 require_atm_le_planet=not self.config.outgas.vapourise,
-                check_element_closure=trapping_active(self.config),
+                check_element_closure=trapping_active(self.config)
+                or (seal_enabled(self.config) and not self.desiccated),
                 derived_elements=derived_total_elements(self.config),
                 closure_rtol=self.config.outgas.solver_rtol,
             )
@@ -1631,6 +1646,8 @@ class Proteus:
                 if _IT_TIMING_ENABLED:
                     _t_mod['write'] = time.perf_counter() - _t0
                 self.last_write_time = self.hf_row.get('Time', 0.0)
+            else:
+                self._write_chemistry_target_snapshot()
 
             # Print info to terminal and log file
             PrintCurrentState(self.hf_row)
@@ -1806,6 +1823,30 @@ class Proteus:
         from proteus.observe.wrapper import run_observe
 
         run_observe(hf_row, self.config, self.directories)
+
+    def _write_chemistry_target_snapshot(self) -> bool:
+        """Write the atmosphere snapshot of a step that reaches a target of `atmos_chem.times`.
+
+        With a list or a table of targets, offline chemistry then finds a snapshot at each
+        target row, not only the snapshots written every `params.out.write_mod` steps. The
+        init stage, whose rows all hold t = 0, writes none. The helpfile is written with it,
+        so a resume sees the row of the snapshot and treats it like any other row without
+        an interior snapshot. Returns whether one was written.
+        """
+        from proteus.atmos_chem.common import chem_targets_crossed
+        from proteus.atmos_clim.wrapper import write_atmosphere_snapshot
+        from proteus.utils.coupler import WriteHelpfileToCSV
+
+        if self.init_stage or not self.config.atmos_chem.module:
+            return False
+        if not chem_targets_crossed(self.hf_all, self.config.atmos_chem.times):
+            return False
+        logging.getLogger('fwl.' + __name__).info(
+            'Writing the atmosphere snapshot for a chemistry target'
+        )
+        write_atmosphere_snapshot(self.atmos_o, self.config, self.directories, self.hf_row)
+        WriteHelpfileToCSV(self.directories['output'], self.hf_all)
+        return True
 
     def _postprocess_chemistry(self, hf_all):
         """Run atmospheric chemistry at the snapshots set by `atmos_chem.times`.

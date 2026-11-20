@@ -1888,6 +1888,7 @@ def test_get_git_revision_with_mock():
             assert isinstance(result, str)
             mock_check_output.assert_called_once_with(
                 ['git', 'rev-parse', 'HEAD'],
+                cwd=tmpdir,
                 stderr=subprocess.DEVNULL,
                 timeout=5,
             )
@@ -3544,15 +3545,13 @@ def test_assert_surface_pressure_consistency_skips_pre_ic():
 
 
 # ---------------------------------------------------------------------------
-# Edge / error paths in the git-revision and version-validation helpers
-# (lines 50-52, 65-78, 165-166, 201-202 in utils/coupler.py).
+# Edge / error paths in the git-revision and version-validation helpers.
 # ---------------------------------------------------------------------------
 
 
-def test_get_git_revision_returns_unknown_when_chdir_fails():
-    """When the target directory does not exist (or cannot be entered),
-    _get_git_revision must return the literal 'unknown' string and the
-    caller's CWD must be preserved.
+def test_get_git_revision_returns_unknown_when_dir_is_missing():
+    """When the target directory does not exist, _get_git_revision must
+    return the literal 'unknown' string and the caller's CWD must be preserved.
 
     Discriminating: assert the returned value is exactly 'unknown'
     (not None, not the empty string, not a partial git hash). A
@@ -3565,23 +3564,35 @@ def test_get_git_revision_returns_unknown_when_chdir_fails():
     result = _get_git_revision(bogus_dir)
     cwd_after = os.getcwd()
     assert result == 'unknown'
-    # Side-effect guard: the helper must not strand the caller in a
-    # different directory. A regression that returned before the
-    # finally-block chdir-back would leave cwd somewhere else.
+    # Side-effect guard: the helper must not strand the caller in a different directory.
     assert cwd_after == cwd_before
 
 
-def test_get_git_revision_returns_unknown_on_subprocess_failure():
-    """Even if chdir succeeds, a missing git executable or a non-repo
-    directory must surface as 'unknown' rather than raising.
+def test_get_git_revision_works_when_the_working_directory_is_gone(tmp_path):
+    """A process whose working directory was removed (os.getcwd raises
+    FileNotFoundError) still gets the hash of a repository named by path.
+    This stopped a grid case at start-up before it wrote a status file (#778)."""
+    from proteus.utils.coupler import _get_git_revision
 
-    Discriminating: patch subprocess.check_output to raise
-    FileNotFoundError (git absent). The except branch covers
-    CalledProcessError, FileNotFoundError, TimeoutExpired, and the
-    catch-all Exception; this test pins the FileNotFoundError path
-    explicitly so a future tightening that narrowed the except clause
-    would fail loudly.
-    """
+    gone = tmp_path / 'gone'
+    gone.mkdir()
+    cwd_before = os.getcwd()
+    os.chdir(gone)
+    gone.rmdir()
+    try:
+        with pytest.raises(FileNotFoundError):
+            os.getcwd()
+        with patch('subprocess.check_output', return_value=b'0123abcd\n') as git:
+            result = _get_git_revision(str(tmp_path))
+    finally:
+        os.chdir(cwd_before)
+    assert result == '0123abcd'
+    assert git.call_args.kwargs['cwd'] == str(tmp_path)
+
+
+def test_get_git_revision_returns_unknown_on_subprocess_failure():
+    """A missing git executable or a directory that is not a repository
+    returns 'unknown' rather than raising."""
     from proteus.utils.coupler import _get_git_revision
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -3731,7 +3742,7 @@ def test_validate_module_versions_requires_agni_with_load_all_opacities(
         ('26.10.15', None),
     ],
 )
-@pytest.mark.usefixtures('fwl_io_current')
+@pytest.mark.usefixtures('fwl_io_current', 'vulcan_with_networks')
 def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installed, fix):
     """With atmos_chem.module = 'vulcan', a VULCAN missing or below the floor stops the start.
 
@@ -5151,6 +5162,23 @@ def test_a_helpfile_without_m_desiccated_resumes_with_nothing_booked(tmp_path):
 
 
 @pytest.mark.unit
+def test_a_helpfile_without_m_core_solve_resumes_with_zero(tmp_path):
+    """M_core_solve records the core mass of the last structure solve: a helpfile written
+    before the column resumes with it at zero and keeps M_core as written."""
+    from proteus.utils.coupler import GetHelpfileKeys, ReadHelpfileFromCSV
+
+    row = ZeroHelpfileRow()
+    row['M_core'] = 1.95e24  # kg
+    del row['M_core_solve']
+    pd.DataFrame([row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert loaded['M_core_solve'].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+    assert loaded['M_core'].iloc[-1] == pytest.approx(1.95e24, rel=1e-15)
+    assert set(loaded.columns) == set(GetHelpfileKeys())
+
+
+@pytest.mark.unit
 def test_a_helpfile_without_the_skin_conductivity_resumes_with_zero(tmp_path):
     """boundary_layer_conductivity is zero-filled for a helpfile that predates it, so an
     older run resumes; boundary_layer_thickness is kept, and the skin step writes both
@@ -6072,6 +6100,16 @@ def fwl_io_current(monkeypatch):
     monkeypatch.setattr('proteus.utils.coupler.fwl_io_problem', lambda: None)
 
 
+@pytest.fixture
+def vulcan_with_networks(tmp_path_factory, monkeypatch):
+    """A VULCAN whose thermo folder holds the network file, for a start check not about it."""
+    thermo = tmp_path_factory.mktemp('thermo')
+    (thermo / 'CHO_photo_network.txt').touch()
+    paths = types.SimpleNamespace(THERMO_DIR=str(thermo))
+    monkeypatch.setitem(sys.modules, 'vulcan', types.SimpleNamespace(paths=paths))
+    monkeypatch.setitem(sys.modules, 'vulcan.paths', paths)
+
+
 _MISSING = object()
 
 
@@ -6308,6 +6346,32 @@ def test_vulcan_problem_reads_a_real_config_in_every_mode(mode):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('has_network', [False, True])
+@pytest.mark.usefixtures('vulcan_with_networks')
+def test_vulcan_problem_names_the_clone_install_without_network_files(has_network):
+    """A VULCAN at its floor but without its thermo data (the PyPI wheel) fails the start
+    check with the network path and tools/get_vulcan.sh; with the data it passes."""
+    from proteus.doctor import PASS
+    from proteus.utils.coupler import vulcan_problem
+
+    network = os.path.join(sys.modules['vulcan.paths'].THERMO_DIR, 'CHO_photo_network.txt')
+    if not has_network:
+        os.remove(network)
+    config = MagicMock()
+    config.atmos_chem = _real_atmos_chem('vulcan', 'offline')
+    with patch(
+        'proteus.doctor.check_python_package',
+        return_value=types.SimpleNamespace(status=PASS),
+    ):
+        problem = vulcan_problem(config)
+    if has_network:
+        assert problem is None
+    else:
+        assert problem is not None, 'a VULCAN without network files passed the start check'
+        assert network in problem and 'bash tools/get_vulcan.sh' in problem
+
+
+@pytest.mark.unit
 def test_online_chemistry_is_still_refused():
     """The start check covers only mode 'offline'; once 'online' is valid it must check that too."""
     import attrs
@@ -6317,7 +6381,7 @@ def test_online_chemistry_is_still_refused():
 
 
 @pytest.mark.unit
-@pytest.mark.usefixtures('fwl_io_current')
+@pytest.mark.usefixtures('fwl_io_current', 'vulcan_with_networks')
 @pytest.mark.parametrize(
     ('module', 'mode', 'checked'),
     [('vulcan', None, 0), ('vulcan', 'offline', 1), (None, None, 0)],
@@ -6336,3 +6400,38 @@ def test_the_start_checks_vulcan_only_when_the_run_calls_it(tmp_path, module, mo
         mock_check.return_value.status = 'pass'
         validate_module_versions({'rad': str(tmp_path)}, config)
     assert mock_check.call_count == checked
+
+
+@pytest.mark.physics_invariant
+def test_element_closure_counts_the_sealed_reservoir_and_not_the_core():
+    """The per-element closure is total == atm + liquid + solid + condensed +
+    sealed. A row with the melt inventory sealed passes, the same row without
+    its sealed column fails, and a core column does not enter either side."""
+    from proteus.utils.coupler import assert_mass_conservation
+
+    row = {'M_atm': 1e20, 'M_planet': 6e24, 'M_vol_atm': 1e20, 'H2O_kg_atm': 1e20}
+    row.update({'H_kg_total': 4e19, 'H_kg_atm': 1e19, 'H_kg_sealed': 3e19, 'H_kg_core': 7e19})
+    assert assert_mass_conservation(row, check_element_closure=True) is None
+    with pytest.raises(RuntimeError, match='sealed=0.000e\\+00'):
+        assert_mass_conservation(dict(row, H_kg_sealed=0.0), check_element_closure=True)
+    with pytest.raises(RuntimeError, match='closure failed for H'):
+        assert_mass_conservation(dict(row, H_kg_sealed=3.1e19), check_element_closure=True)
+
+
+def test_lid_seal_columns_read_as_zero_on_resume_of_an_older_run(tmp_path):
+    """A helpfile written before the seal columns existed resumes open, with
+    nothing sealed: every seal column reads as zero, and the core columns keep
+    their values."""
+    from proteus.utils.coupler import GetHelpfileLidSealKeys
+
+    seal = GetHelpfileLidSealKeys()
+    assert {'seal_active', 'H2O_kg_sealed', 'H_kg_leak_volc', 'Xe_kg_leak_tau'} <= set(seal)
+    assert set(seal) <= set(GetHelpfileKeys())
+    for core in ('H2O_kg_liquid', 'H_kg_total', 'lid_weight'):
+        assert core not in seal
+    _write_drifted_helpfile(str(tmp_path), seal, n_rows=3)
+    hf = ReadHelpfileFromCSV(str(tmp_path))
+    assert len(hf) == 3
+    for key in seal:
+        assert (hf[key] == 0.0).all(), key
+    assert hf['H2O_kg_solid'].iloc[-1] > 0.0

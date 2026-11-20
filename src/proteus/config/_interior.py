@@ -69,6 +69,28 @@ def _valid_bool(instance, attribute, value):
         raise TypeError(f'`{attribute.name}` must be a bool, got {value!r}')
 
 
+def _valid_number(instance, attribute, value):
+    """Require an int or a float; refuse a bool, which a TOML true would give."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f'`{attribute.name}` must be a number, got {value!r}')
+
+
+def _valid_cell_thickness(instance, attribute, value):
+    """Accept 0 or a finite number of at least 2 m, and "uniform" for the surface cell."""
+    surface = attribute.name == 'surface_cell_thickness'
+    if surface and value == 'uniform':
+        return
+    rule = ('"uniform", 0, or ' if surface else '0 or ') + 'finite and at least 2 m'
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f'`{attribute.name}` must be {rule}, got {value!r}')
+    try:
+        ok = value == 0 or (math.isfinite(value) and value >= 2.0)
+    except OverflowError:  # an int that no float holds
+        ok = False
+    if not ok:
+        raise ValueError(f'`{attribute.name}` must be {rule}, got {value}')
+
+
 def _valid_lid_delta_on(instance, attribute, value):
     """Accept None or a finite number above 0; reject a bool, a string, NaN and the rest."""
     if value is None:
@@ -291,8 +313,8 @@ class AragogCoreModule:
     c_p: float
         Core specific heat capacity [J kg-1 K-1].
     melting_curve: str
-        'iron' (Anzellini et al. 2013 via PALEOS, with light-element
-        depression) or 'quadratic' (Nimmo 2015 Eq. 6 parameterisation).
+        'iron' (Anzellini et al. (2013)[^cite-anzellini2013] via PALEOS, with light-element
+        depression) or 'quadratic' (Nimmo (2015)[^cite-nimmo2015] Eq. 6 parameterisation).
     light_element_fraction: float
         Mole fraction of light elements depressing the iron melting curve.
     depression: float
@@ -324,7 +346,7 @@ class AragogCoreModule:
     k_core: float
         Core thermal conductivity [W m-1 K-1] for conduction in the
         stratified shell and the entropy and dynamo diagnostics; the default is the
-        Nimmo (2015)[^cite-nimmo2015b] Table 2 value.
+        Nimmo (2015)[^cite-nimmo2015] Table 2 value.
     layer_base_fraction: float
         Base of the stratified shell as a fraction of the CMB radius, in (0, 1);
         the inner core must stay below it. Used with the experimental
@@ -392,10 +414,17 @@ class Rheology:
     enabled : bool
         Use the temperature- and pressure-dependent solid viscosity and the stagnant-lid
         closure of ``aragog.rheology.SolidRheologyParams``, with its defaults for every
-        other parameter. False uses the constant ``solid_log10visc``.
+        other parameter but ``mlt_bottom_slope``. False uses the constant ``solid_log10visc``.
+    mlt_bottom_slope : float
+        Slope of the viscous-branch mixing length above the CMB, l = slope (r - r_cmb), in
+        (0, 1]. The default 1.0 is the slope with which aragog's top slope ``s_top_inf`` was
+        calibrated. Aragog's viscous flux carries a factor 1/18 that the mixing-length flux of
+        Tachinami et al. (2011)[^cite-tachinami2011] (Eq. 13 and 14) does not, so a slope of 1
+        is a mixing length of 0.49 times the distance in their terms. Read only with ``enabled``.
     """
 
     enabled: bool = field(default=False, validator=_valid_bool)
+    mlt_bottom_slope: float | int = field(default=1.0, validator=(_valid_number, gt(0), le(1)))
 
 
 @define
@@ -445,6 +474,22 @@ class Aragog:
     """
 
     mass_coordinates: bool = field(default=True)
+    cmb_cell_thickness: float | int = field(default=3000.0, validator=_valid_cell_thickness)
+    """Radial thickness [m] of the mesh cell at the CMB: 0 (the uniform mesh at that end) or a
+    finite value of at least 2 m. The cells grow away from the CMB with a tanh stretching. A
+    value at or above the bottom cell of the uniform mesh of the same coordinate mode gives no
+    CMB refinement, and aragog logs it: with the 'uniform' or 0 surface cell the mesh keeps that
+    uniform bottom cell. A resume keeps the value its run was written with."""
+    surface_cell_thickness: float | str = field(
+        default='uniform', validator=_valid_cell_thickness
+    )
+    """Radial thickness [m] of the mesh cell at the surface: 0 (the uniform mesh at that end),
+    'uniform' (the top cell of the uniform mesh of the same coordinate mode; with
+    mass_coordinates the top cell of the uniform mass-coordinate mesh), or a finite value of at
+    least 2 m and below the uniform radial cell (R_int - R_core)/(num_levels - 1). It has no
+    fallback: aragog refuses a larger value when it builds the mesh. With cmb_cell_thickness = 0
+    and 'uniform' the mesh is the uniform mesh. A resume keeps the value its run was written
+    with."""
     backend: str = field(default='jax', validator=in_(('numpy', 'jax')))
     atol_temperature_equivalent: float = field(default=1.0e-8, validator=gt(0))
     """Effective temperature-scale absolute tolerance [K] for Aragog's ODE integrator.
@@ -476,7 +521,7 @@ class Aragog:
     melt fraction instead, which is why the default here is 'mixture'
     while Aragog's own default stays 'melt' for SPIDER parity. The
     regime boundaries are the porosities where adjacent permeability
-    laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c). The melt
+    laws cross (Bower et al. (2018)[^cite-bower2018], Section 2.1, Eqs. 13a to 13c). The melt
     drainage of front trapping (outgas.trap_mode 'front') takes the melt
     viscosity whatever this setting."""
     separation_buoyancy: str = field(
@@ -493,22 +538,24 @@ class Aragog:
     Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5;
     from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2."""
     allow_resume_law_change: bool = field(default=False, validator=_valid_bool)
-    """Let a resume change separation_viscosity, separation_buoyancy, rheology.enabled or
-    lid_mush_base from the values in the run's init_coupler.toml, with one warning per
+    """Let a resume change separation_viscosity, separation_buoyancy, rheology.enabled,
+    lid_mush_base or interior_energetics.mixing_length (also of a SPIDER run) from the
+    values in the run's init_coupler.toml, with one warning per
     switched law in the log. False stops such a resume, because the changed law would act
     from the resume row on. A law the record does not hold must be set in the config file
     either way; a record that names the Aragog module and lacks separation_viscosity counts
-    as 'melt', one that lacks the rheology or lid_mush_base counts as off, and a record of
-    another interior module holds none of them. A missing record, or one that names no module
-    and holds no Aragog table, leaves the rheology and the lid unchecked. init_coupler.toml
-    records false."""
+    as 'melt', one that lacks the rheology or lid_mush_base counts as off. A SPIDER record
+    holds only the mixing length, a record that names no module holds the mixing length and
+    the laws of its Aragog table, and a record of another interior module holds none of these
+    laws. A missing record, or one that names no module and holds no Aragog table, leaves the
+    rheology and the lid unchecked. init_coupler.toml records false."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),
     )
     """ODE solver: 'cvode' (SUNDIALS, SPIDER parity; needs scikits-odes-sundials and stops the run at setup without it), 'radau' (scipy), 'bdf' (scipy)."""
     scalar_gravity_override: bool = field(default=False)
-    """Scalar-gravity comparison knob. When True, the external mesh file that
+    """Scalar-gravity comparison setting. When True, the external mesh file that
     Zalmoxis writes has its gravity column overwritten with a uniform scalar
     (the surface value from ``hf_row['gravity']``) before Aragog reads it, so
     Aragog's per-node gravity path interpolates to that scalar everywhere.
@@ -941,16 +988,19 @@ class Interior:
         Total potassium concentration in the mantle at radio_tref [ppmw].
     radio_K40_abund: float
         Mass ratio 40K/K at radio_tref [kg/kg]. The default is the present-day
-        atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio.
+        atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a
+        mass ratio.
     radio_U: float
         Total uranium concentration in the mantle at radio_tref [ppmw].
     radio_U235_abund: float
         Mass ratio 235U/U at radio_tref [kg/kg]. The default is the present-day
-        atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio.
+        atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a
+        mass ratio.
     radio_U238_abund: float
         Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund +
         radio_U238_abund must not exceed 1. The default is the present-day
-        atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017] as a mass ratio.
+        atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a
+        mass ratio.
     radio_Th: float
         Total thorium concentration in the mantle at radio_tref [ppmw].
     radio_Th232_abund: float
@@ -985,8 +1035,9 @@ class Interior:
     trans_mixing: bool
         Include the chemical mixing flux.
     mixing_length: str
-        Mixing-length scale: 'nearest' (distance to nearest boundary) or
-        'constant' (a quarter of the mantle depth).
+        Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle depth at
+        every node) or 'nearest' (distance to the nearest boundary). A resume that changes the recorded value is
+        refused unless interior_energetics.aragog.allow_resume_law_change is true.
     kappah_floor: float
         Eddy diffusivity floor [m2 s-1]; prevents mixing-length transport
         from freezing out.
@@ -1075,7 +1126,7 @@ class Interior:
         factory=InteriorBoundary, validator=valid_interiorboundary
     )
 
-    mixing_length: str = field(default='nearest', validator=in_(('nearest', 'constant')))
+    mixing_length: str = field(default='constant', validator=in_(('constant', 'nearest')))
     grain_size: float = field(default=1e-3, validator=gt(0))
     flux_guess: float = field(default=-1)
     tmagma_atol: float = field(default=20.0, validator=ge(0))
@@ -1224,12 +1275,12 @@ class Interior:
     _PhaseMixedParameters. Sets the width of the phase boundary in
     Aragog's mixed-phase blending (viscosity, thermal conductivity
     etc.). Distinct from ``[interior_energetics.spider].matprop_smooth_width``
-    which is SPIDER's analogous knob for its own solver."""
+    which is SPIDER's corresponding setting for its own solver."""
 
-    # Core thermal model (Bower+2018 Table 2).
+    # Core thermal model (Bower et al. 2018, Eq. 20 and Table 2).
     core_tfac_avg: float = field(default=1.147, validator=gt(0))
-    """Core T_avg / T_cmb ratio from adiabatic gradient (Bower+2018
-    Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg.
+    """Core T_avg / T_cmb ratio of an isentropic core (Bower et al. (2018)[^cite-bower2018],
+    Eq. 20 and Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg.
     SPIDER derives its own internally."""
 
     # Diagnostic flag for T_core investigations.

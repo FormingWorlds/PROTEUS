@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import re
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -505,6 +506,25 @@ def test_validate_zalmoxis_output_schema_radius_mismatch(tmp_path):
     hf_row_under = {'R_int': R_int * (1 + 5e-7), 'M_int': M_int, 'M_core': M_core}
     result = validate_zalmoxis_output_schema(output_path, hf_row_under)
     assert result is None
+
+
+@pytest.mark.unit
+def test_validate_zalmoxis_output_schema_first_radius_is_r_core(tmp_path):
+    """The file's first radius must equal hf_row['R_core'] within the mesh tolerance of
+    Aragog, max(1 m, 1e-9 (R_int - R_core)): 1 m here."""
+    from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema
+
+    output_path = str(tmp_path / 'zalmoxis_output.dat')
+    R_int, M_mantle = _write_synthetic_zalmoxis_output(output_path, r_cmb=3.48e6)
+    row = {'R_int': R_int, 'M_int': M_mantle + 1.94e24, 'M_core': 1.94e24}
+    for gap in (0.0, 0.9, -0.9):
+        assert (
+            validate_zalmoxis_output_schema(output_path, {**row, 'R_core': 3.48e6 + gap})
+            is None
+        )
+    for gap in (1.1, -1.1, 3.48e4):
+        with pytest.raises(RuntimeError, match='first radius'):
+            validate_zalmoxis_output_schema(output_path, {**row, 'R_core': 3.48e6 + gap})
 
 
 @pytest.mark.unit
@@ -2484,6 +2504,97 @@ def test_the_accretion_thermal_state_gets_the_core_fraction_of_the_solve(tmp_pat
     assert hf_row['M_core_target'] == pytest.approx(0.325 * (M_earth - 7.43e20), rel=1e-14)
 
 
+@pytest.mark.physics_invariant
+def test_a_thin_mantle_keeps_the_mass_inside_r_core_and_the_core_of_the_solve(
+    tmp_path, monkeypatch
+):
+    """With the core mass 1e-6 of a shell above node 55 of 60, the first node at or above it
+    holds a mantle shell of about 20 % of the mantle. M_core is the mass inside R_core (node
+    55), M_core_solve the core mass of the solve, core_density M_core over the volume inside
+    R_core. The schema check compares M_int - M_core with the mantle of the same arrays above
+    R_core, so it guards these writes and passes; a mantle above the core of the solve would
+    differ by the 20 % shell and refuse it."""
+    model = _plausible_model_results()
+    mass = model['mass_enclosed']
+    cmb_mass = float(mass[54] + 1e-6 * (mass[55] - mass[54]))
+    model['cmb_mass'] = model['core_mantle_mass'] = cmb_mass
+    assert (float(mass[55]) - cmb_mass) / (float(mass[-1]) - cmb_mass) > 0.15
+
+    _, _, _, hf_row, _, cmb_radius, _ = _run_gate_solver(
+        tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
+    )
+    assert hf_row['M_core'] == pytest.approx(float(mass[55]), rel=1e-15)
+    assert hf_row['M_core_solve'] == pytest.approx(cmb_mass, rel=1e-15)
+    assert hf_row['M_int'] - hf_row['M_core'] == pytest.approx(
+        float(mass[-1]) - float(mass[55]), rel=1e-12
+    )
+    assert cmb_radius == pytest.approx(float(model['radii'][55]), rel=1e-15)
+    core_volume = 4.0 / 3.0 * np.pi * cmb_radius**3
+    assert hf_row['core_density'] * core_volume == pytest.approx(float(mass[55]), rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('share', [0.04, 0.04995, 0.05005, 0.06])
+def test_a_shell_above_5_percent_of_the_mantle_above_r_core_is_logged_once(
+    tmp_path, monkeypatch, caplog, share
+):
+    """The shell between the core mass of the solve and R_core holds `share` of the mantle
+    mass above R_core (M_int - M_core). Above 0.05 the solve logs one warning with the share;
+    it accepts the structure in all cases. At 0.05005 a share of M_int - M_core_solve is 0.0477."""
+    model = _plausible_model_results()
+    mass = model['mass_enclosed']
+    cmb_mass = float(mass[55] - share * (mass[-1] - mass[55]))
+    assert mass[54] < cmb_mass
+    model['cmb_mass'] = model['core_mantle_mass'] = cmb_mass
+    with caplog.at_level(logging.WARNING):
+        _, _, _, hf_row, _, _, _ = _run_gate_solver(
+            tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
+        )
+    lines = [r.getMessage() for r in caplog.records if 'between M_core_solve' in r.getMessage()]
+    assert hf_row['M_core'] == pytest.approx(float(mass[55]), rel=1e-15)
+    assert len(lines) == (share > 0.05)
+    assert all('Raise interior_struct.zalmoxis.num_levels' in m for m in lines)
+    logged = [
+        float(re.search(r'holds (\S+) of the mantle mass above R_core', m)[1]) for m in lines
+    ]
+    assert logged == pytest.approx([share] * len(lines), rel=2e-3)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_core_mass_in_the_last_cell_logs_no_mantle_shell_warning(
+    tmp_path, monkeypatch, caplog
+):
+    """A core mass between the masses of the last 2 nodes puts the CMB on the last node, so no
+    mantle mass lies above R_core: the solve logs no shell warning (its share would divide by
+    zero) and then stops with a ValueError in scale_temperature_profile_for_aragog, after the
+    warning block, on the 1-node mantle."""
+    model = _plausible_model_results()
+    mass = model['mass_enclosed']
+    model['cmb_mass'] = model['core_mantle_mass'] = float(0.5 * (mass[-2] + mass[-1]))
+    with caplog.at_level(logging.WARNING), pytest.raises(ValueError) as err:
+        _run_gate_solver(
+            tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
+        )
+    assert any(e.name == 'scale_temperature_profile_for_aragog' for e in err.traceback)
+    assert not [r for r in caplog.records if 'M_core_solve' in r.getMessage()]
+
+
+@pytest.mark.unit
+def test_a_core_mass_above_every_node_stops_the_structure_solve(tmp_path, monkeypatch):
+    """A core mass of the solve above the mass at the last node (an accepted mass error larger
+    than the mantle fraction) leaves no node for the CMB and raises with both masses."""
+    model = _plausible_model_results()
+    top = float(model['mass_enclosed'][-1])
+    model['cmb_mass'] = model['core_mantle_mass'] = top * (1.0 + 1e-3)
+    with pytest.raises(RuntimeError, match='no node reaches the core mass') as err:
+        _run_gate_solver(
+            tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
+        )
+    assert f'{top:.4e}' in str(err.value)
+
+
 def test_zalmoxis_solver_passes_callable_when_jax_path_not_viable(tmp_path, monkeypatch):
     """Non-viable-mantle re-solves hand the evolved T(r) callable to the solve.
 
@@ -2790,6 +2901,108 @@ def test_zalmoxis_solver_seeds_only_from_the_same_planet(tmp_path, monkeypatch, 
     assert kwargs['p_center_hint'] == pytest.approx(2.9e11, rel=1e-15)
     assert kwargs['initial_density'] is expected[0]
     assert kwargs['initial_radii'] is expected[1]
+
+
+def _structure_seed(key):
+    """Cache entry with density seed and adiabat seed (pressure, mass) for the planet ``key``."""
+    r = np.linspace(0.0, 6.4e6, 4)
+    return {
+        **_density_seed(key),
+        'radii': r,
+        'pressure': np.array([3.6e11, 2.0e11, 5.0e10, 1.0e5]),
+        'mass_enclosed': 5.97e24 * (r / 6.4e6) ** 3,
+    }
+
+
+@pytest.mark.parametrize(
+    'case, passed',
+    [
+        ('same_planet', True),
+        ('other_planet', False),
+        ('cache_without_pressure', False),
+        ('jax_arrays', False),
+    ],
+)
+def test_zalmoxis_solver_passes_the_adiabat_seed_of_the_same_planet(
+    tmp_path, monkeypatch, case, passed
+):
+    """The cached radii, pressure and mass_enclosed reach Zalmoxis as ``adiabat_seed`` only for
+    the same planet, on the numpy path, from a cache that holds them; otherwise the call passes
+    ``adiabat_seed=None``."""
+    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
+
+    owner = _gate_config('PALEOS:MgSiO3')
+    if case == 'other_planet':
+        owner.planet.mass_tot += 0.1
+    seed = _structure_seed(zalmoxis_wrapper._structure_cache_key(owner))
+    if case == 'cache_without_pressure':
+        seed['pressure'] = None
+    r_arr, t_arr = _cooled_mantle_arrays(_plausible_model_results())
+    cached = {k: seed[k] for k in ('radii', 'pressure', 'mass_enclosed')}
+
+    main_mock, *_ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        lambda r, P: float(np.interp(r, r_arr, t_arr)),
+        use_jax=case == 'jax_arrays',
+        density_cache=seed,
+    )
+
+    kwargs = main_mock.call_args.kwargs
+    assert (kwargs['adiabat_seed'] is not None) is passed
+    if passed:
+        assert kwargs['adiabat_seed'].keys() == cached.keys()
+        assert all(kwargs['adiabat_seed'][k] is cached[k] for k in cached)
+
+
+@pytest.mark.parametrize('retry', [False, True], ids=['primary', 'relaxed_retry'])
+def test_the_installed_zalmoxis_main_takes_every_keyword_proteus_passes(
+    tmp_path, monkeypatch, retry
+):
+    """Contract with the installed zalmoxis.solver.main: the primary call and the relaxed retry
+    each bind to its signature, so a renamed or dropped parameter fails here and not first in a
+    coupled run. The primary passes adiabat_seed; the retry does not."""
+    from zalmoxis.solver import main as real_main
+
+    results = _plausible_model_results()
+    r_arr, t_arr = _cooled_mantle_arrays(results)
+    main_mock, *_ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        lambda r, P: float(np.interp(r, r_arr, t_arr)),
+        main_results=[{**results, 'converged': False}, results] if retry else results,
+        use_jax=False,
+    )
+    calls = main_mock.call_args_list
+    assert len(calls) == (2 if retry else 1)
+    for call in calls:
+        inspect.signature(real_main).bind(*call.args, **call.kwargs)  # TypeError if not taken
+    assert ['adiabat_seed' in c.kwargs for c in calls] == ([True, False] if retry else [True])
+
+
+def test_zalmoxis_solver_caches_the_structure_for_the_next_seed(tmp_path, monkeypatch):
+    """After a solve the cache holds copies of the returned radii, pressure, mass_enclosed and
+    density under this planet's key."""
+    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
+
+    r_arr, t_arr = _cooled_mantle_arrays(_plausible_model_results())
+    _, _, _, _, model_results, *_ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        lambda r, P: float(np.interp(r, r_arr, t_arr)),
+        use_jax=False,
+    )
+    cache = zalmoxis_wrapper._density_cache
+    assert cache['key'] == zalmoxis_wrapper._structure_cache_key(_gate_config('PALEOS:MgSiO3'))
+    for k in ('radii', 'pressure', 'mass_enclosed', 'density'):
+        np.testing.assert_array_equal(cache[k], model_results[k])
+        assert cache[k] is not model_results[k]
 
 
 def test_zalmoxis_solver_withholds_callable_on_wet_in_envelope_profile(tmp_path, monkeypatch):

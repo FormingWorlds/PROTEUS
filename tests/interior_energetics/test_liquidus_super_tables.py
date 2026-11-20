@@ -1368,7 +1368,7 @@ def test_last_anchor_fallback_is_keyed_on_superheat_and_mantle_eos(monkeypatch, 
     assert all('using tcmb_init' in m for m in msgs[1:])
 
 
-def test_proteus_start_clears_the_superliquidus_caches(monkeypatch):
+def test_proteus_start_clears_the_superliquidus_caches(monkeypatch, tmp_path):
     """Proteus.start clears the anchor memo, failure memo and last anchor
     before anything else, so a second run in one process starts clean.
     """
@@ -1382,8 +1382,10 @@ def test_proteus_start_clears_the_superliquidus_caches(monkeypatch):
 
     # Stop start() at its first import after the cache clear.
     monkeypatch.setitem(sys.modules, 'proteus.accretion.common', None)
+    runner = object.__new__(Proteus)
+    runner.directories = {'output': str(tmp_path)}
     with pytest.raises(ImportError):
-        Proteus.start(object.__new__(Proteus))
+        runner.start()
     assert zal._SUPERLIQ_LAST_ANCHOR is None
     assert zal._SUPERLIQ_LAST_SURFACE is None
     assert zal._SUPERLIQ_LAST_ANCHOR_FOR is None
