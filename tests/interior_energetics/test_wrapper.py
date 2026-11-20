@@ -29,6 +29,8 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.wrapper import (
@@ -2052,6 +2054,31 @@ def test_the_routine_ceiling_decides_when_the_recovery_time_is_not_below_it(
         if r.getMessage().startswith('Updating structure')
     ]
     assert len(msgs) == 1 and f'(trigger: {reason}' in msgs[0]
+
+
+@pytest.mark.unit
+@settings(
+    max_examples=150, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(
+    stale=st.booleans(),
+    elapsed=st.floats(min_value=0.0, max_value=1e5),
+    recovery_time=st.sampled_from([0.0, 1.0, 2.5e4, 5e4, 6e4]) | st.floats(0.0, 1e5),
+    interval=st.floats(min_value=1.0, max_value=1e5),
+)
+def test_the_solver_runs_exactly_when_the_ceiling_or_the_recovery_is_due(
+    tmp_path, stale, elapsed, recovery_time, interval
+):
+    """With no Phi or T_magma change and no floor, a re-solve runs exactly when the
+    routine ceiling is due or a stale structure has reached a recovery time above 0."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=stale)
+    config.interior_struct.zalmoxis.update_interval = interval
+    config.interior_struct.zalmoxis.update_stale_ceiling = recovery_time
+    last = hf_row['Time'] - elapsed
+    _, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, last)
+    elapsed_seen = hf_row['Time'] - last
+    due = elapsed_seen >= interval or (stale and 0 < recovery_time <= elapsed_seen)
+    assert solver.call_count == int(due)
 
 
 @pytest.mark.unit
