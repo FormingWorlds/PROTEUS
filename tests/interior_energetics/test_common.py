@@ -24,8 +24,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from hypothesis import HealthCheck, given, settings
-from hypothesis import strategies as st
 
 from proteus.interior_energetics.common import Interior_t
 
@@ -577,31 +575,35 @@ def test_write_structure_stale_survives_resume_roundtrip(tmp_path):
     assert resumed_false.structure_stale is False, 'cleared flag must survive the resume'
 
 
-@settings(
-    max_examples=60, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
-)
-@given(
-    stale=st.booleans(),
-    last_success=st.one_of(
-        st.just(float('-inf')),
-        st.floats(min_value=0.0, max_value=1e11, allow_nan=False, allow_infinity=False),
-    ),
-)
-def test_structure_stale_sidecar_restores_flag_and_last_success(tmp_path, stale, last_success):
+def test_structure_stale_sidecar_restores_flag_and_last_success(tmp_path):
     """The sidecar carries the stale flag and the time of the last successful re-solve
     through a resume, bit for bit, onto an Interior_t seeded with the opposite state."""
+    hypothesis = pytest.importorskip('hypothesis')
+    st = hypothesis.strategies
     (tmp_path / 'data').mkdir(exist_ok=True)
-    before = Interior_t(5)
-    before.structure_stale = stale
-    before.last_successful_struct_time = last_success
-    before.write_structure_stale(str(tmp_path))
 
-    resumed = Interior_t(5)
-    resumed.structure_stale = not stale
-    resumed.last_successful_struct_time = 123.0
-    resumed.resume_structure_stale(str(tmp_path))
-    assert resumed.structure_stale is stale
-    assert resumed.last_successful_struct_time == last_success
+    @hypothesis.settings(max_examples=60, deadline=None)
+    @hypothesis.given(
+        stale=st.booleans(),
+        last_success=st.one_of(
+            st.just(float('-inf')),
+            st.floats(min_value=0.0, max_value=1e11, allow_nan=False, allow_infinity=False),
+        ),
+    )
+    def roundtrip(stale, last_success):
+        before = Interior_t(5)
+        before.structure_stale = stale
+        before.last_successful_struct_time = last_success
+        before.write_structure_stale(str(tmp_path))
+
+        resumed = Interior_t(5)
+        resumed.structure_stale = not stale
+        resumed.last_successful_struct_time = 123.0
+        resumed.resume_structure_stale(str(tmp_path))
+        assert resumed.structure_stale is stale
+        assert resumed.last_successful_struct_time == last_success
+
+    roundtrip()
 
 
 def test_resume_structure_stale_reads_a_flag_only_file(tmp_path):
