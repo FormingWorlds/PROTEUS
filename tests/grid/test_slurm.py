@@ -356,9 +356,12 @@ def test_dispatch_script_starts_no_case_after_the_last_start_time(tmp_path):
     assert done.stdout.decode().count('not started') == 3
 
 
-def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp_path):
+@pytest.mark.parametrize('ending', [False, True], ids=['early-signal', 'scancel'])
+def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp_path, ending):
     """A SIGTERM to the batch shell, as the early signal or a scancel sends it, is
-    logged with its UTC time and sent on with scancel to the job steps. The two running
+    logged with its UTC time and the seconds since the job started, and sent on with scancel to the job steps. After a scancel
+    of the job, Slurm signals the steps itself and the forward fails: the log says so
+    instead of showing the scancel error. The two running
     cases get it, write status 25 and exit 143, as PROTEUS does. The two queued cases
     don't start, and the shell waits for the running cases and exits non-zero."""
     bindir = tmp_path / 'bin'
@@ -369,9 +372,11 @@ def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp
         f'#!/bin/sh\necho $$ >> "{pids}"\n'
         'while [ "${1#-}" != "$1" ]; do shift; done\nexec "$@"\n'
     )
-    # scancel stand-in: signal every step, not the batch shell
+    # scancel stand-in: signal every step, not the batch shell; on a job that is ending,
+    # Slurm has signalled the steps and scancel fails
+    fail = 'echo "scancel: error: Invalid job id specified" >&2; exit 1' if ending else 'exit 0'
     (bindir / 'scancel').write_text(
-        f'#!/bin/sh\necho "$@" > "{calls}"\nkill -TERM $(cat "{pids}") 2>/dev/null\nexit 0\n'
+        f'#!/bin/sh\necho "$@" > "{calls}"\nkill -TERM $(cat "{pids}") 2>/dev/null\n{fail}\n'
     )
     (bindir / 'fakecase').write_text(
         '#!/bin/sh\n'
@@ -393,7 +398,11 @@ def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp
         SLURM_JOB_ID='4242',
     )
     job = subprocess.Popen(
-        ['bash', str(script)], env=env, stdout=subprocess.PIPE, start_new_session=True
+        ['bash', str(script)],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
     )
     try:
         for _ in range(100):
@@ -408,8 +417,12 @@ def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp
             os.killpg(job.pid, signal.SIGKILL)
 
     assert job.returncode != 0
-    assert re.search(r'^SIGTERM at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ: ', out, re.M)
+    assert re.search(
+        r'^SIGTERM at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ, \d+ s into the job: ', out, re.M
+    )
     assert calls.read_text().split() == ['--signal=TERM', '4242']
+    assert ('already ending' in out) is ending
+    assert 'Invalid job id' not in out
     status = {
         i: (tmp_path / 'my grid' / f'case_{i:06d}' / 'status').read_text().split('\n')[0]
         for i in (0, 1)

@@ -154,11 +154,13 @@ def dispatch_script(
 {env}export cfgs={shlex.quote(cfgdir)} logs={shlex.quote(logdir)} cases={shlex.quote(casedir or '')}
 export stop_at=$(( $(date +%s) + {last_start_s} )) stop="${{TMPDIR:-/tmp}}/${{SLURM_JOB_ID}}_stop"
 
-# The early signal or a scancel: start no new case, send SIGTERM on to the running ones
+# The early signal or a scancel: start no new case, send SIGTERM on to the running ones.
+# A scancel or the walltime has already signalled the cases; the forward then fails.
 on_term() {{
-    echo "SIGTERM at $(date -u +%Y-%m-%dT%H:%M:%SZ): no new case starts, and the running cases get SIGTERM"
+    echo "SIGTERM at $(date -u +%Y-%m-%dT%H:%M:%SZ), $SECONDS s into the job: no new case starts, and the running cases get SIGTERM"
     touch "$stop"
-    scancel --signal=TERM "$SLURM_JOB_ID"
+    scancel --signal=TERM "$SLURM_JOB_ID" 2>/dev/null ||
+        echo "The job is already ending, so Slurm sends SIGTERM to the cases itself"
 }}
 trap on_term TERM
 
