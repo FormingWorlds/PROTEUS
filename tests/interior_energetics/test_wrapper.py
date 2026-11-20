@@ -2018,10 +2018,10 @@ def test_a_zero_recovery_time_disables_the_recovery(tmp_path):
 
 @pytest.mark.unit
 def test_a_mock_interior_flag_does_not_fire_the_recovery(tmp_path):
-    """Only a stale flag that is True fires the recovery: a MagicMock interior, whose
-    ``structure_stale`` is a truthy mock, stays silent 30 kyr after its last attempt."""
-    config, dirs, _, hf_row = _stale_ceiling_case(tmp_path, stale=True)
-    interior_o = MagicMock()
+    """Only a stale flag that is True fires the recovery: an interior whose
+    ``structure_stale`` is a truthy MagicMock stays silent 30 kyr after its last attempt."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    interior_o.structure_stale = MagicMock()
     assert bool(interior_o.structure_stale) and interior_o.structure_stale is not True
     out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
     solver.assert_not_called()
