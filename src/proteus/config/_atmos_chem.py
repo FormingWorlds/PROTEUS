@@ -45,6 +45,15 @@ def valid_mode(instance, attribute, value):
         raise ValueError("atmos_chem.mode = 'offline' requires atmos_chem.module != 'none'")
 
 
+def valid_photo_on(instance, attribute, value):
+    """Refuse VULCAN's SNCHO network without photochemistry, which VULCAN does not have."""
+    if instance.module == 'vulcan' and instance.vulcan.network == 'SNCHO' and not value:
+        raise ValueError(
+            "atmos_chem.photo_on = false is not available with the VULCAN network 'SNCHO', "
+            'which VULCAN has only with photochemistry; use CHO or NCHO without it'
+        )
+
+
 def _number(value) -> float:
     """A chemistry time or target value as a float; true and false are refused."""
     if isinstance(value, bool):
@@ -244,7 +253,7 @@ class AtmosChem:
     times : str | list[float] | dict[str, list[float] | bool]
         Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), a list of times [yr], each selecting the first helpfile row at or after it, or a table of helpfile keys, each with a list of values in the unit of that column, such as `{Time = [1e2, 1e3], Phi_global = [0.01], T_surf = [1500]}`; each value selects every helpfile row at which its column reaches or crosses it, and `end = true` in the table adds the final state. With a list or a table, the run also writes an atmosphere snapshot at each target row; the chemistry of a target uses the latest atmosphere snapshot at or before its row.
     photo_on : bool
-        Use photochemistry.
+        Use photochemistry. Required with the VULCAN network SNCHO, which VULCAN has only with photochemistry.
     Kzz_on : bool
         Use Kzz.
     Kzz_const : float
@@ -270,7 +279,7 @@ class AtmosChem:
     times: str | list[float] | dict[str, list[float] | bool] = field(
         default='end', validator=valid_times, converter=times_to_floats
     )
-    photo_on: bool = field(default=True)
+    photo_on: bool = field(default=True, validator=valid_photo_on)
     Kzz_on: bool = field(default=True)
     Kzz_const: float | str | None = field(default=None, converter=none_if_none)
     moldiff_on: bool = field(default=True)

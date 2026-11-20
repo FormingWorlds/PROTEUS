@@ -438,22 +438,14 @@ def test_run_vulcan_network_selection(tmp_path, network, expected_elements):
         ('NCHO', True, 'NCHO_photo_network.txt'),
         ('NCHO', False, 'NCHO_thermo_network.txt'),
         ('SNCHO', True, 'SNCHO_photo_network.txt'),
-        ('SNCHO', False, 'SNCHO_photo_network.txt'),
     ],
-    ids=[
-        'CHO_photo',
-        'CHO_thermo',
-        'NCHO_photo',
-        'NCHO_thermo',
-        'SNCHO_photo',
-        'SNCHO_has_no_thermo_network',
-    ],
+    ids=['CHO_photo', 'CHO_thermo', 'NCHO_photo', 'NCHO_thermo', 'SNCHO_photo'],
 )
 def test_network_settings_selects_the_file_and_species_of_each_network(
     network, photo_on, expected_file
 ):
-    """Each network maps to its own file, photochemical or thermochemical, and
-    SNCHO has only the photochemical one. Every species to plot or to scatter
+    """Each network maps to its own file, photochemical or thermochemical; SNCHO has
+    only the photochemical one. Every species to plot or to scatter
     is made of elements of the network, which VULCAN requires."""
     from proteus.utils.helper import mol_to_ele
 
@@ -468,15 +460,21 @@ def test_network_settings_selects_the_file_and_species_of_each_network(
 
 
 @pytest.mark.unit
-def test_network_settings_refuses_an_unknown_network():
-    """An unrecognised network gives None and logs an error, rather than
-    falling back to a default network."""
+@pytest.mark.parametrize(
+    'network,photo_on,named',
+    [('INVALID', True, 'INVALID'), ('SNCHO', False, 'SNCHO')],
+    ids=['unknown_network', 'SNCHO_without_photochemistry'],
+)
+def test_network_settings_refuses_a_network_vulcan_does_not_have(network, photo_on, named):
+    """An unrecognised network, and SNCHO without photochemistry, which VULCAN has no
+    file for, give None and log an error naming the network, rather than falling back
+    to another network."""
     with patch('proteus.atmos_chem.vulcan.log') as mock_log:
-        settings = network_settings(_make_mock_config(network='INVALID'))
+        settings = network_settings(_make_mock_config(network=network, photo_on=photo_on))
 
     assert settings is None
     mock_log.error.assert_called_once()
-    assert 'INVALID' in mock_log.error.call_args.args[0]
+    assert named in mock_log.error.call_args.args[0]
 
 
 @pytest.mark.unit

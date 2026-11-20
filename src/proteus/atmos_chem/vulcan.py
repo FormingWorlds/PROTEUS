@@ -204,6 +204,9 @@ def network_settings(config: Config) -> tuple[str, list, list, list] | None:
                 network_file = 'NCHO_thermo_network.txt'
 
         case 'SNCHO':
+            if not config.atmos_chem.photo_on:
+                log.error('VULCAN has no SNCHO network without photochemistry')
+                return None
             plt_arr = [
                 'H2',
                 'H',

@@ -1382,12 +1382,15 @@ def test_offchem_refuses_a_wrong_combination_of_options(monkeypatch, tmp_path, a
 @pytest.mark.unit
 @pytest.mark.parametrize('slurm', [False, True], ids=['local', 'slurm'])
 def test_offchem_grid_runs_the_grid_folder_with_its_log_there(monkeypatch, tmp_path, slurm):
-    """-g hands the resolved grid folder and --slurm to offchem_grid, logs to
-    offchem.log in that folder, and builds no single-run Proteus."""
+    """-g hands the resolved grid folder and --slurm to offchem_grid, appends to
+    offchem.log in that folder, so that -g on a run folder by mistake keeps that log,
+    and builds no single-run Proteus."""
     calls, logs = [], []
     _FakeProteusPost.instances = []
     monkeypatch.setattr(cli, 'Proteus', _FakeProteusPost)
-    monkeypatch.setattr(cli, 'setup_logger', lambda **k: logs.append(k['logpath']))
+    monkeypatch.setattr(
+        cli, 'setup_logger', lambda **k: logs.append((k['logpath'], k['append']))
+    )
     monkeypatch.setattr(
         'proteus.grid.offchem.offchem_grid', lambda g, s: calls.append((g, s)) or []
     )
@@ -1396,7 +1399,7 @@ def test_offchem_grid_runs_the_grid_folder_with_its_log_there(monkeypatch, tmp_p
 
     assert res.exit_code == 0
     assert calls == [(tmp_path.resolve(), slurm)]
-    assert logs == [os.path.join(tmp_path.resolve(), 'offchem.log')]
+    assert logs == [(os.path.join(tmp_path.resolve(), 'offchem.log'), True)]
     assert _FakeProteusPost.instances == []
 
 
@@ -1406,12 +1409,16 @@ def test_offchem_grid_runs_the_grid_folder_with_its_log_there(monkeypatch, tmp_p
     [
         (['case_000001', 'case_000004'], 'Chemistry failed for case_000001, case_000004'),
         (ValueError('case_000002: atmos_chem.module is none'), 'case_000002: atmos_chem'),
+        (EnvironmentError('VULCAN module is missing. Fix: x'), 'VULCAN module is missing'),
+        (FileNotFoundError('VULCAN network file not found'), 'network file not found'),
     ],
-    ids=['failed_cases', 'refused_grid'],
+    ids=['failed_cases', 'refused_grid', 'vulcan_missing', 'network_file_missing'],
 )
-def test_offchem_grid_exits_non_zero_naming_the_cases(monkeypatch, tmp_path, outcome, expected):
-    """Failed cases, and a grid refused before any case runs, end the command with exit
-    code 1 and the case names, as a CLI error rather than a traceback."""
+def test_offchem_grid_exits_non_zero_naming_the_cases(
+    monkeypatch, tmp_path, caplog, outcome, expected
+):
+    """Failed cases, a refused grid and a VULCAN install problem end the command with
+    exit code 1 and an error on the log that names the problem, not a traceback."""
 
     def fake_grid(grid, slurm):
         if isinstance(outcome, Exception):
@@ -1421,11 +1428,14 @@ def test_offchem_grid_exits_non_zero_naming_the_cases(monkeypatch, tmp_path, out
     monkeypatch.setattr(cli, 'setup_logger', lambda **k: None)
     monkeypatch.setattr('proteus.grid.offchem.offchem_grid', fake_grid)
 
-    res = runner.invoke(cli.offchem, ['-g', str(tmp_path)])
+    with caplog.at_level(logging.ERROR, logger='fwl'):
+        res = runner.invoke(cli.offchem, ['-g', str(tmp_path)])
 
     assert res.exit_code == 1
-    assert expected in res.output
     assert isinstance(res.exception, SystemExit)
+    errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 1
+    assert expected in errors[0]
 
 
 @pytest.mark.unit

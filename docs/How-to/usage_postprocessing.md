@@ -167,7 +167,7 @@ proteus offchem -g output/<grid folder> --slurm   # write a Slurm job array inst
 
 The chemistry behaviour is further controlled by settings under `[atmos_chem]` and `[atmos_chem.vulcan]` in the configuration file. Key options include:
 
-- `atmos_chem.vulcan.network`: Chemical network to use (`"CHO"`, `"NCHO"`, or `"SNCHO"`)
+- `atmos_chem.vulcan.network`: Chemical network to use (`"CHO"`, `"NCHO"`, or `"SNCHO"`; VULCAN has SNCHO only with photochemistry)
 - `atmos_chem.photo_on`: Enable photochemistry
 - `atmos_chem.Kzz_on`: Enable eddy diffusion mixing
 

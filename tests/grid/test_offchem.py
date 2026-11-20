@@ -14,6 +14,8 @@ Contract clauses checked:
 
 from __future__ import annotations
 
+import importlib
+import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -23,6 +25,20 @@ import pytest
 from proteus.grid import offchem
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+@pytest.fixture
+def vulcan_module(monkeypatch):
+    """The real proteus.atmos_chem.vulcan, in sys.modules for this test only.
+
+    tests/atmos_chem/test_atmos_chem.py leaves a mock under that name, which check_cases
+    would import instead, so the result would depend on the order of the test files.
+    """
+    import proteus.atmos_chem as chem
+
+    monkeypatch.delitem(sys.modules, 'proteus.atmos_chem.vulcan', raising=False)
+    monkeypatch.setattr(chem, 'vulcan', None, raising=False)
+    return importlib.import_module('proteus.atmos_chem.vulcan')
 
 
 @pytest.fixture
@@ -110,23 +126,23 @@ def test_find_cases_keeps_cases_with_a_helpfile_and_a_config(grid, monkeypatch, 
     assert 'case_000001' not in caplog.text
 
 
-def test_check_cases_compiles_a_shared_vulcan_network_once(grid, monkeypatch):
+def test_check_cases_compiles_a_shared_vulcan_network_once(grid, monkeypatch, vulcan_module):
     """Three VULCAN cases with the CHO photochemical network compile it once, and the
     function says so, so that the cases skip compiling it."""
     names = ['case_000000', 'case_000001', 'case_000005']
     _add_cases(grid, monkeypatch, {n: _fake_config(n, module='vulcan') for n in names})
     compiled = []
     monkeypatch.setattr(offchem, 'vulcan_problem', lambda config: None)
-    monkeypatch.setattr(
-        'proteus.atmos_chem.vulcan.compile_network', lambda c: compiled.append(c) or 'f'
-    )
+    monkeypatch.setattr(vulcan_module, 'compile_network', lambda c: compiled.append(c) or 'f')
 
     assert offchem.check_cases(grid, offchem.find_cases(grid)) is True
     assert len(compiled) == 1
     assert compiled[0].atmos_chem.vulcan.network == 'CHO'
 
 
-def test_check_cases_compiles_nothing_when_every_case_reuses_its_network(grid, monkeypatch):
+def test_check_cases_compiles_nothing_when_every_case_reuses_its_network(
+    grid, monkeypatch, vulcan_module
+):
     """With make_funs = false in every case, the cases use the network compiled before,
     as their configs ask, even with different networks."""
     configs = {
@@ -136,7 +152,7 @@ def test_check_cases_compiles_nothing_when_every_case_reuses_its_network(grid, m
     _add_cases(grid, monkeypatch, configs)
     compiled = []
     monkeypatch.setattr(offchem, 'vulcan_problem', lambda config: None)
-    monkeypatch.setattr('proteus.atmos_chem.vulcan.compile_network', compiled.append)
+    monkeypatch.setattr(vulcan_module, 'compile_network', compiled.append)
 
     assert offchem.check_cases(grid, offchem.find_cases(grid)) is False
     assert compiled == []

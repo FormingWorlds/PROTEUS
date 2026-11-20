@@ -748,13 +748,15 @@ def offchem(config_path: Path, grid_path: Path, slurm: bool, network_compiled: b
     if grid_path is not None:
         from proteus.grid.offchem import offchem_grid
 
-        setup_logger(logpath=os.path.join(grid_path, 'offchem.log'), logterm=True)
+        setup_logger(logpath=os.path.join(grid_path, 'offchem.log'), logterm=True, append=True)
         try:
             failed = offchem_grid(grid_path, slurm)
-        except ValueError as exc:
-            raise click.ClickException(str(exc)) from exc
+        except (ValueError, OSError) as exc:
+            log.error('%s', exc)
+            sys.exit(1)
         if failed:
-            raise click.ClickException(f'Chemistry failed for {", ".join(failed)}')
+            log.error('Chemistry failed for %s', ', '.join(failed))
+            sys.exit(1)
         return
     runner = Proteus(config_path=config_path)
     setup_logger(

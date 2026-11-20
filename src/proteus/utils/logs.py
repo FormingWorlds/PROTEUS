@@ -101,13 +101,14 @@ def setup_logger(
     logterm: bool = True,
     fmt: str | None = None,
     datefmt: str | None = None,
+    append: bool = False,
 ):
     """Configure the top-level 'fwl' logger with terminal and file handlers.
 
     Parameters
     ----------
     logpath : str
-        Path of the logfile to (re)create.
+        Path of the logfile, created again unless ``append`` is set.
     level : str
         Log level name: 'INFO', 'DEBUG', 'ERROR', or 'WARNING'.
     logterm : bool
@@ -120,6 +121,8 @@ def setup_logger(
         CustomFormatter and the file uses the '[ LEVEL ] message' layout.
     datefmt : str | None
         Date format for %(asctime)s, applied only when ``fmt`` is given.
+    append : bool
+        Whether to add to an existing logfile instead of starting it again.
     """
     logger_name = 'fwl'
 
@@ -130,7 +133,7 @@ def setup_logger(
     # (e.g., when CLI command groups are invoked multiple times in tests)
     custom_logger.handlers.clear()
 
-    if os.path.exists(logpath):
+    if os.path.exists(logpath) and not append:
         os.remove(logpath)
 
     level_code = _resolve_level(level)

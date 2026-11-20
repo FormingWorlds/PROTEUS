@@ -337,6 +337,23 @@ class TestSetupLogger:
         assert logger.name == 'fwl'  # FormingWorlds standard logger
 
     @pytest.mark.unit
+    def test_setup_logger_append_keeps_the_existing_log(self, tmpdir_that_closes_logger_files):
+        """With append, the lines of an earlier log stay and the new ones follow them;
+        without it, the earlier lines are gone."""
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'offchem.log')
+        pathlib.Path(logpath).write_text('[ INFO  ] earlier run\n')
+
+        setup_logger(logpath=logpath, logterm=False, append=True).info('grid run')
+        logging.getLogger('fwl').handlers[0].flush()
+        assert pathlib.Path(logpath).read_text().splitlines() == [
+            '[ INFO  ] earlier run',
+            '[ INFO  ] grid run',
+        ]
+
+        setup_logger(logpath=logpath, logterm=False).info('new run')
+        logging.getLogger('fwl').handlers[0].flush()
+        assert pathlib.Path(logpath).read_text().splitlines() == ['[ INFO  ] new run']
+
     def test_setup_logger_removes_existing_file(self, tmpdir_that_closes_logger_files):
         """setup_logger removes pre-existing logfile."""
         logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
