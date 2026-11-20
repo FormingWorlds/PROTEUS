@@ -418,3 +418,33 @@ def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp
     assert 'case_000000 failed with exit code 143' in out
     assert not (tmp_path / 'my grid' / 'case_000002').exists()
     assert out.count('not started: the job got SIGTERM') == 2
+
+
+def test_error_status_fails_the_job_also_after_exit_code_0(tmp_path):
+    """A case that writes an error status (20 to 28) and exits with code 0 keeps its
+    status and fails its job, so sacct doesn't show the job as completed."""
+    bindir = tmp_path / 'bin'
+    bindir.mkdir()
+    (bindir / 'srun').write_text(
+        '#!/bin/sh\nwhile [ "${1#-}" != "$1" ]; do shift; done\nexec "$@"\n'
+    )
+    (bindir / 'fakecase').write_text(
+        '#!/bin/sh\nout="$(dirname "$(dirname "$1")")/$(basename "$1" .toml)"\n'
+        'mkdir -p "$out"; printf "21\\nError\\n" > "$out/status"\n'
+    )
+    for tool in ('srun', 'fakecase'):
+        os.chmod(bindir / tool, 0o755)
+    os.makedirs(tmp_path / 'my grid' / 'logs')
+    script = tmp_path / 'slurm_dispatch.sh'
+    script.write_text(_script(tmp_path, n_cases=1, cores=1, jobs=1, command='fakecase'))
+    env = dict(
+        os.environ,
+        PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}',
+        TMPDIR=str(tmp_path),
+        SLURM_ARRAY_TASK_ID='0',
+        SLURM_JOB_ID='7',
+    )
+    done = subprocess.run(['bash', str(script)], env=env, capture_output=True, timeout=20)
+    assert done.returncode != 0
+    assert 'case_000000 ended with error status 21' in done.stdout.decode()
+    assert (tmp_path / 'my grid' / 'case_000000' / 'status').read_text().startswith('21\n')

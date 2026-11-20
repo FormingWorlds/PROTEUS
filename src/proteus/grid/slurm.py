@@ -181,7 +181,9 @@ srun --job-name="$1" --ntasks=1 --cpus-per-task=1 --mem-per-cpu={mem_per_case_mb
 code=$?
 rm -rf "$TMPDIR"
 if [ -n "$cases" ]; then
-    case "$(head -n 1 "$cases/$1/status" 2>/dev/null)" in
+    status=$(head -n 1 "$cases/$1/status" 2>/dev/null)
+    case "$status" in
+        2?) [ "$code" -ne 0 ] || {{ echo "$1 ended with error status $status"; exit 1; }} ;;
         ""|0|1)
             echo "$1 ended without a final status"
             mkdir -p "$cases/$1"
