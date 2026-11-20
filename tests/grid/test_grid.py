@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 from helpers import PROTEUS_ROOT
 
+from proteus.atmos_chem.dummy import _ALL_SPECIES
 from proteus.grid.analyse import analyse_grid
 from proteus.grid.manage import grid_from_config
 from proteus.grid.offchem import find_cases, offchem_grid
@@ -161,8 +162,8 @@ def test_grid_post_process(grid_run):
 def test_grid_offchem(grid_run):
     """``proteus offchem --grid`` runs the dummy chemistry of base.toml on each of the four
     cases, and the table of a case equals the one ``proteus offchem -c`` writes for that
-    case alone. The cases differ in hydrogen budget and core, so their tables differ, and
-    the mixing ratios of every level sum to 1 within the rounding of the written digits:
+    case alone. The cases differ in hydrogen budget and core, so their tables differ; each
+    holds the species of the dummy module, and the mixing ratios of every level sum to 1 within the rounding of the written digits:
     at most 5e-9 relative per value, so about 5e-9 on a sum of 1 (tolerance 1e-8).
     """
     assert offchem_grid(OUT_DIR) == []
@@ -181,5 +182,5 @@ def test_grid_offchem(grid_run):
 
     for table in tables.values():
         vmr = pd.read_csv(io.BytesIO(table), sep=r'\s+').drop(columns=['tmp', 'p', 'z', 'Kzz'])
-        assert vmr.shape[1] == 17
+        assert sorted(vmr.columns) == sorted(_ALL_SPECIES)
         np.testing.assert_allclose(vmr.sum(axis=1), 1.0, rtol=0, atol=1e-8)

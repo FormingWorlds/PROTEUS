@@ -69,7 +69,7 @@ def check_cases(grid: Path, cases: list[tuple[str, Path]]) -> bool:
     ------
     ValueError
         Naming each case without a chemistry module or whose config writes to another
-        folder, or if the VULCAN cases that compile their network use different networks.
+        folder, or if the VULCAN cases use different networks.
     EnvironmentError
         If VULCAN is missing or out of date.
     """
@@ -89,8 +89,6 @@ def check_cases(grid: Path, cases: list[tuple[str, Path]]) -> bool:
         return False
     if problem := vulcan_problem(vulcan_cfgs[0]):
         raise EnvironmentError(problem)
-    if not any(c.atmos_chem.vulcan.make_funs for c in vulcan_cfgs):
-        return False  # every case uses the network compiled before, as its config asks
     from proteus.atmos_chem.vulcan import compile_network, network_settings
 
     networks = sorted({network_settings(c)[0] for c in vulcan_cfgs})
@@ -99,6 +97,8 @@ def check_cases(grid: Path, cases: list[tuple[str, Path]]) -> bool:
             f'The VULCAN cases use the networks {", ".join(networks)}, but VULCAN holds one '
             'compiled network at a time; run them with `proteus offchem -c` instead'
         )
+    if not any(c.atmos_chem.vulcan.make_funs for c in vulcan_cfgs):
+        return False  # every case uses the network compiled before, as its config asks
     log.info('Compiling the VULCAN network %s for all cases', compile_network(vulcan_cfgs[0]))
     return True
 

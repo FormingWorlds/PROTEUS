@@ -7,9 +7,15 @@ Contract clauses checked:
     numbering included.
   - The VULCAN network is compiled once when the cases share it, and not at all when
     every case reuses the compiled one.
+  - A case without a chemistry module or writing to another folder, VULCAN cases with
+    different networks (compiled or reused) and a missing VULCAN are refused before
+    anything runs: the error names the cases or the networks, nothing is compiled and
+    no logs folder is made.
   - Local runs never exceed the grid's `max_jobs` at once, do run that many together,
     and a failed case is reported without stopping the others; a grid without cases
     is refused.
+  - The Slurm array packs the selected cases as the grid run does, under a job name of
+    its own.
 """
 
 from __future__ import annotations
@@ -58,13 +64,13 @@ def _write_grid_file(folder, **limits):
     (folder / 'copy.grid.toml').write_text('\n'.join(lines) + '\n')
 
 
-def _fake_config(name, module='dummy', path=None, network='CHO', photo_on=True, make=True):
+def _fake_config(name, module='dummy', path=None, network='CHO', make=True):
     """Config with the fields offchem reads; path defaults to the case in grid 'g1'."""
     return SimpleNamespace(
         params=SimpleNamespace(out=SimpleNamespace(path=path or f'g1/{name}/')),
         atmos_chem=SimpleNamespace(
             module=module,
-            photo_on=photo_on,
+            photo_on=True,
             vulcan=SimpleNamespace(network=network, make_funs=make),
         ),
     )
@@ -143,12 +149,10 @@ def test_check_cases_compiles_a_shared_vulcan_network_once(grid, monkeypatch, vu
 def test_check_cases_compiles_nothing_when_every_case_reuses_its_network(
     grid, monkeypatch, vulcan_module
 ):
-    """With make_funs = false in every case, the cases use the network compiled before,
-    as their configs ask, even with different networks."""
-    configs = {
-        'case_000000': _fake_config('case_000000', module='vulcan', make=False),
-        'case_000001': _fake_config('case_000001', module='vulcan', network='NCHO', make=False),
-    }
+    """With make_funs = false in every case of one network, the cases use the network
+    compiled before, as their configs ask."""
+    names = ['case_000000', 'case_000001']
+    configs = {n: _fake_config(n, module='vulcan', network='NCHO', make=False) for n in names}
     _add_cases(grid, monkeypatch, configs)
     compiled = []
     monkeypatch.setattr(offchem, 'vulcan_problem', lambda config: None)
@@ -156,6 +160,69 @@ def test_check_cases_compiles_nothing_when_every_case_reuses_its_network(
 
     assert offchem.check_cases(grid, offchem.find_cases(grid)) is False
     assert compiled == []
+
+
+# Case 1 is the bad one, so that the error must name it and not case 0
+_REFUSALS = {
+    'module_none': (
+        {'case_000001': {'module': None}},
+        ValueError,
+        ['case_000001: atmos_chem.module is none'],
+    ),
+    'other_output_folder': (
+        {'case_000001': {'path': 'g2/case_000001/'}},
+        ValueError,
+        ['case_000001: its config writes to', 'g2/case_000001'],
+    ),
+    'cho_with_ncho': (
+        {
+            'case_000000': {'module': 'vulcan'},
+            'case_000001': {'module': 'vulcan', 'network': 'NCHO'},
+        },
+        ValueError,
+        ['CHO_photo_network.txt, NCHO_photo_network.txt'],
+    ),
+    'cho_with_ncho_reused': (
+        {
+            'case_000000': {'module': 'vulcan', 'make': False},
+            'case_000001': {'module': 'vulcan', 'network': 'NCHO', 'make': False},
+        },
+        ValueError,
+        ['CHO_photo_network.txt, NCHO_photo_network.txt'],
+    ),
+    'vulcan_missing': (
+        {'case_000000': {'module': 'vulcan'}, 'case_000001': {'module': 'vulcan'}},
+        OSError,
+        ['VULCAN module is missing'],
+    ),
+}
+
+
+@pytest.mark.parametrize('scenario', list(_REFUSALS))
+def test_offchem_grid_refuses_a_bad_grid_before_anything_runs(
+    grid, monkeypatch, vulcan_module, scenario
+):
+    """A grid with one bad case, VULCAN cases with two networks (also when every case
+    reuses its network, since VULCAN holds one at a time) or no VULCAN is refused: the
+    error names the bad case or the networks, nothing is compiled and no logs are made."""
+    changes, error, expected = _REFUSALS[scenario]
+    names = ['case_000000', 'case_000001']
+    _add_cases(grid, monkeypatch, {n: _fake_config(n, **changes.get(n, {})) for n in names})
+    missing = 'VULCAN module is missing. Fix: run tools/get_vulcan.sh'
+    problem = missing if scenario == 'vulcan_missing' else None
+    monkeypatch.setattr(offchem, 'vulcan_problem', lambda config: problem)
+    compiled = []
+    monkeypatch.setattr(vulcan_module, 'compile_network', compiled.append)
+    monkeypatch.setattr(offchem, '_run_case', lambda *a: pytest.fail('a case ran'))
+
+    with pytest.raises(error) as err:
+        offchem.offchem_grid(grid)
+
+    for text in expected:
+        assert text in str(err.value)
+    assert 'case_000000' not in str(err.value)
+    assert compiled == []
+    assert not (grid / 'logs').exists()
 
 
 def test_offchem_grid_runs_max_jobs_cases_at_once_and_reports_failures(grid, monkeypatch):
