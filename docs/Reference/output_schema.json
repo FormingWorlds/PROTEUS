@@ -1188,7 +1188,7 @@
     {
       "name": "lid_F_resid",
       "unit": "W m-2",
-      "description": "residual (F_atm - B) / (1 - w) of the open-part start value against the skin balance B of the call, per open area; 0 without a lid; a call above 1 W m-2 logs a warning",
+      "description": "residual (F_atm - B) / (1 - w) of the open-part start value against the skin balance B of the call, per open area; 0 without a lid; a call above 1 W m-2 or not finite logs a warning",
       "group": "Temperatures",
       "origin": "literal",
       "producers": [

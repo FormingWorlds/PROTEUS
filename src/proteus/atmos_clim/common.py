@@ -511,7 +511,7 @@ def lid_flux_secant(hf_all, hf_row: dict) -> tuple[float, float | None]:
 
 
 def lid_flux_slope(hf_all, hf_row: dict) -> float:
-    """Slope ``F'`` [W m-2 K-1] of :func:`lid_flux_secant`, for the lid cap."""
+    """Slope ``F'`` [W m-2 K-1] of :func:`lid_flux_secant`, without the other end of its secant."""
     return lid_flux_secant(hf_all, hf_row)[0]
 
 

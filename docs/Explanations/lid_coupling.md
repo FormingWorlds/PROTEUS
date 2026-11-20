@@ -86,7 +86,7 @@ $C$ is the lid term of the last atmosphere balance (see the next section). At $w
 
 - In the atmosphere call, `lid_boundary` caps $G_\mathrm{lid}$ at $G_\mathrm{skin}$, so a lid never conducts more than the open surface. The open part reads its melt at $T_m \ge T_b$, so with $T_\mathrm{surf} \le T_m$ the lid part never loses more than the open part would at the same surface temperature.
 - `lid_flux_cap` computes $C$ from the row after the atmosphere step. `_set_lid_surface` passes it to Aragog as `lid_surface_flux_cap`; the held surface is the `surface_temperature` of the solver boundary, the `T_surf` of the row. Without a lid, or for a surface at or above $T_b$ ($C \le 0$), no cap is set.
-- `lid_flux_slope` takes $F'$ from the last 2 rows, $\Delta F_\mathrm{atm} / \Delta T_\mathrm{surf}$, and sets it to 0 for a surface step below 0.01 K, a slope of 0 or below, or a slope that is not finite. `_set_lid_surface` passes it with the cap as `lid_surface_flux_slope`. The cut of [the slope guard](#the-open-part-within-a-step), at the slope of a bare grey surface of emissivity 1 over the same 2 rows, acts on $G_\mathrm{eff}$ of the open part only; the cap takes the uncut slope.
+- `lid_flux_secant` takes $F'$ from the last 2 rows, $\Delta F_\mathrm{atm} / \Delta T_\mathrm{surf}$, and sets it to 0 for a surface step below 0.01 K, a slope of 0 or below, or a slope that is not finite. `_set_lid_surface` passes it with the cap as `lid_surface_flux_slope`. The cut of [the slope guard](#the-open-part-within-a-step), at the slope of a bare grey surface of emissivity 1 over the same 2 rows, acts on $G_\mathrm{eff}$ of the open part only; the cap takes the uncut slope.
 - After the step, where the lid surface ends above the held one, `_correct_lid_cap` takes the secant of the atmosphere flux between the held and the end surface, $(F_\mathrm{atm}(T_\mathrm{end}) - F_\mathrm{atm}) / (T_\mathrm{end} - T_\mathrm{surf})$, at least 0, and runs the step again from its start with the secant as $F'$, once. A secant within $10^{-3}$ of $F'$ changes nothing, so that re-solve is skipped. The log names each re-solve with its wall time and the running total. The flux at $T_\mathrm{end}$ comes from the atmosphere module: the dummy without `fixed_flux` has it as a formula; the other modules have no corrector and take the slope of the rows alone.
 
 Aragog applies the cap: where the lid held at $T_\mathrm{surf}$ would conduct more than $C$, its surface carries $C + F' (T_s - T_\mathrm{surf})$ at a warmer surface. With $G_\mathrm{lid} \le G_\mathrm{skin}$ the cap is close to the flux of the held lid at the start of the step, so it acts where the held lid would conduct more than at that start. The two are not equal: $C$ takes $G_\mathrm{lid}$ from the profile shape at the end surface of the last step, and the held lid has another shape at the new `T_surf` (in the first dummy row under a flux ceiling the held lid conducted 24 % less than $C$). The held lid conducts $k f_s'(0) (T_b - T_\mathrm{surf}) / \delta$, and $f_s'(0)$ rises with the shape parameter $s$ of the profile, so the cap acts while the lid thins and while $s$ rises. Near the onset, where $G_\mathrm{lid} > G_\mathrm{skin}$, the cap lies below the flux of the held lid and can act from the start of the step.
@@ -133,7 +133,7 @@ and `F_atm` where no lid acts. $L$ is the flux of the lid part in the call, with
 
 The start value has these limits:
 
-- A call whose share is above 1 W m$^{-2}$ per open area logs a warning with the value and the model time; the run goes on.
+- A call whose share is above 1 W m$^{-2}$ per open area, or is not finite, logs a warning with the value and the model time; the run goes on.
 - Where $1 - w$ is $10^{-9}$ or less, $F_\mathrm{open,0}$ is `F_atm`. $F_\mathrm{open,0}$ tends to `F_atm` as $w$ goes to 0.
 - An `F_atm`, $T_\mathrm{surf}$ or $T_b$ that is not finite stops the run with status 22.
 
@@ -167,7 +167,7 @@ $$G_\mathrm{eff} = \frac{G_\mathrm{skin}\,F'}{F' + w\,G_\mathrm{lid}' + (1 - w)\
 
 $G_\mathrm{eff}$ is the change of the shared surface balance. It does not depend on how far `F_atm` is from the skin balance of the call; that difference sits in $F_\mathrm{open,0}$.
 
-**The slope guard.** `lid_flux_slope` gives $F'$ from the last 2 rows. The column `lid_slope_guard` records what the guard did:
+**The slope guard.** `lid_flux_secant` gives $F'$ from the last 2 rows, with the surface temperature of the row before as the other end of the secant. The column `lid_slope_guard` records what the guard did:
 
 - 1: no earlier row, a slope of 0 or below, a non-finite slope, or one from a surface step below 0.01 K. Then $G_\mathrm{eff} = 0$, and the open part keeps $F_\mathrm{open,0}$ for the step, an inward value included.
 - 2: the slope was cut. The cut is the slope of a bare grey surface of emissivity 1 over the same 2 rows, the secant $\sigma (T_1^4 - T_\mathrm{surf}^4)/(T_1 - T_\mathrm{surf})$, with $\sigma$ the Stefan-Boltzmann constant and $T_1$ the surface temperature of the row before. The same cut applies after a cooling and after a warming step. After a cooling step this secant lies above the tangent $4 \sigma T_\mathrm{surf}^3$, so the cut is looser than the slope of a grey surface at $T_\mathrm{surf}$ itself.

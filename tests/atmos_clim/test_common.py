@@ -1061,11 +1061,13 @@ def _rows(T, F):
 
 def test_flux_slope_is_the_slope_of_the_last_two_rows():
     """F' of the lid cap: (F_atm - F_atm before) / (T_surf - T_surf before), with hf_all holding
-    the current row or only the rows before it."""
+    the current row or only the rows before it; the secant pairs it with the surface of the row
+    before."""
     hf_all = _rows([700.0, 701.0], [15000.0, 15087.0])
     row = {'Time': 20.0, 'T_surf': 701.0, 'F_atm': 15087.0}
-    assert lid_flux_slope(hf_all, row) == pytest.approx(87.0, rel=1e-12)
-    assert lid_flux_slope(hf_all.iloc[:1], row) == pytest.approx(87.0, rel=1e-12)
+    for frame in (hf_all, hf_all.iloc[:1]):
+        assert lid_flux_slope(frame, row) == pytest.approx(87.0, rel=1e-12)
+        assert lid_flux_secant(frame, row) == (pytest.approx(87.0, rel=1e-12), 700.0)
 
 
 @pytest.mark.parametrize(
@@ -1083,26 +1085,14 @@ def test_flux_slope_is_zero_without_a_usable_slope(T, F):
     assert lid_flux_slope(hf_all, row) == 0.0
 
 
-def test_flux_secant_pairs_the_slope_with_the_surface_of_its_row_before():
-    """The secant of the slope cut is one pair: F' and the surface of the row it was taken
-    from, with hf_all holding the current row or only the rows before it; (0, None) without
-    a row before."""
-    hf_all = _rows([700.0, 701.0], [15000.0, 15087.0])
-    row = {'Time': 20.0, 'T_surf': 701.0, 'F_atm': 15087.0}
-    for frame in (hf_all, hf_all.iloc[:1]):
-        slope, T_other = lid_flux_secant(frame, row)
-        assert (slope, T_other) == (pytest.approx(87.0, rel=1e-12), 700.0)
-        assert slope == lid_flux_slope(frame, row)
-    assert lid_flux_secant(None, row) == (0.0, None)
-
-
 def test_flux_slope_is_zero_without_a_row_before():
     """No row before the current one (no frame, an empty frame, or only the current row) gives
-    F' = 0 and no row before."""
+    F' = 0 and no row before, (0, None) from the secant."""
     row = {'Time': 10.0, 'T_surf': 700.0, 'F_atm': 15000.0}
     empty = _rows([700.0], [15000.0]).iloc[:0]
     for hf_all in (None, empty, _rows([700.0], [15000.0])):
         assert lid_flux_slope(hf_all, row) == 0.0
+        assert lid_flux_secant(hf_all, row) == (0.0, None)
     assert lid_prev_row(None, row) is None and lid_prev_row(empty, row) is None
 
 

@@ -23,7 +23,6 @@ Functions tested:
 from __future__ import annotations
 
 import logging
-import math
 import os
 import sys
 import warnings
@@ -920,7 +919,7 @@ def _lid_stop(site, then_exit, dirs):
             if site == 'open flux':
                 from proteus.atmos_clim.wrapper import lid_open_flux_or_stop
 
-                lid_open_flux_or_stop(dirs, _row(0.3, T_surf=900.0, F_atm=math.nan))
+                lid_open_flux_or_stop(dirs, _row(0.3, T_surf=900.0, F_atm=np.nan))
             else:
                 from proteus.interior_energetics.wrapper import guard_t_magma_clip
 
