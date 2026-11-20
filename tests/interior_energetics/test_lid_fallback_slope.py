@@ -115,7 +115,7 @@ def test_the_fallback_is_the_newest_usable_secant_of_any_age(T, F, tiny):
         grey = 4.0 * const_sigma * T[-1] ** 3
         assert bc.lid_surface_flux_slope == pytest.approx(want[0], rel=1e-12)
         assert bc.open_surface_slope == pytest.approx(min(want[0], grey), rel=1e-12)
-        assert row['lid_slope_guard'] == (2 if want[0] > grey else 3)
+        assert row['lid_slope_guard'] == (5 if want[0] > grey else 3)
 
 
 def test_the_fallback_passes_over_an_earlier_pair_with_a_short_step(caplog):
@@ -128,6 +128,20 @@ def test_the_fallback_passes_over_an_earlier_pair_with_a_short_step(caplog):
     assert bc.lid_surface_flux_slope == pytest.approx(40.0, rel=1e-12)
     assert row['lid_slope_guard'] == 3
     assert any('2 rows back' in r.getMessage() for r in caplog.records)
+
+
+def test_a_fallback_above_the_grey_tangent_is_cut_with_its_own_code():
+    """A fallback secant above the grey tangent of the current surface keeps its value for the
+    cap and is cut to the tangent for the open part; the column records code 5, not the code 2
+    of a cut last secant."""
+    T = [1150.0, 1160.0, 1170.0, 1170.004]
+    F = [14000.0, 14400.0, 24400.0, 24400.5]  # earlier secant 1000 W m-2 K-1
+    bc, row = _update(T, F)
+    grey = 4.0 * const_sigma * T[-1] ** 3
+    assert grey < 1000.0
+    assert bc.lid_surface_flux_slope == pytest.approx(1000.0, rel=1e-12)
+    assert bc.open_surface_slope == pytest.approx(grey, rel=1e-12)
+    assert row['lid_slope_guard'] == 5
 
 
 def test_the_fallback_is_cut_at_the_grey_tangent_not_at_the_last_secant():

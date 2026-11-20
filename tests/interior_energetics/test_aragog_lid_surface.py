@@ -625,6 +625,23 @@ def test_a_resolve_keeps_one_stall_window_entry_per_step():
     assert io.aragog_step_progress == full[1:] + [(2.0, 2.0)]
 
 
+def test_an_unusable_resolve_secant_keeps_the_first_solve():
+    """Where the atmosphere flux at the end surface is not above the held flux, the secant of
+    the re-solve is 0: the first solve, with its slope and guard code, stands, so a live lid
+    never runs as a pure flux cap."""
+    runner, solver, io, seen = _corrector([710.0, 705.0], 14000.0, tangent=40.0)
+    bc = solver.parameters.boundary_conditions
+    bc.open_surface_slope = 40.0
+    row = {'F_atm': 15000.0, 'T_surf': 700.0, 'lid_slope_guard': 3}
+    snap = _call_start(solver)
+    out = runner._solve_with_retry({}, io, 'S0')
+    assert AragogRunner._correct_lid_cap(runner, row, io, 'S0', out, snap) is out
+    assert len(seen) == 1
+    assert (bc.lid_surface_flux_slope, bc.open_surface_slope) == (40.0, 40.0)
+    assert row['lid_slope_guard'] == 3
+    assert getattr(io, 'lid_cap_resolves', 0) == 0
+
+
 def test_resolve_is_skipped_or_off_without_a_provider():
     """A secant equal to the tangent, or no flux provider, keeps the first solve."""
     for kw in (dict(tangent=87.0), dict(tangent=0.0, flux_at=False)):

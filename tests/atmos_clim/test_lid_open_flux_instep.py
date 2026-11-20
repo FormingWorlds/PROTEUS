@@ -20,6 +20,7 @@ from hypothesis import strategies as st  # noqa: E402
 
 from proteus.atmos_clim.common import (  # noqa: E402
     LID_OPEN_AREA_FLOOR,
+    LID_RESID_WARN,
     LID_SLOPE_GUARD_SIGN,
     LID_SLOPE_GUARD_SIZE,
     lid_acts,
@@ -140,8 +141,9 @@ def test_the_weighted_parts_sum_to_f_atm_on_both_sides_of_the_lid_base(
 )
 @settings(max_examples=200, deadline=None)
 def test_the_residual_is_the_start_value_less_the_skin_flux(w, T_node, T_b, T_surf, gap):
-    """The residual part ``(F_atm - B) / (1 - w)`` is the start value less the skin flux
-    ``G_skin (T_m - T_surf)`` of the floored node; relative 1e-9 of the larger term."""
+    """The residual ``F_atm - B`` per total area, divided by ``1 - w``, is the start value less
+    the skin flux ``G_skin (T_m - T_surf)`` of the floored node; relative 1e-9 of the larger
+    term."""
     row = _row(w, T_b=T_b, T_node=T_node, T_surf=T_surf)
     d, k, T_melt = lid_boundary(row)
     B = k / d * (T_melt - T_surf)
@@ -149,18 +151,30 @@ def test_the_residual_is_the_start_value_less_the_skin_flux(w, T_node, T_b, T_su
     S = 200.0 * (max(T_node, T_b) - T_surf)
     resid = lid_open_residual(row)
     # B is a difference of terms of size G T: its round-off sets the absolute tolerance
-    tol = 1e-12 * 200.0 * max(T_node, T_b, T_surf) / (1.0 - w)
-    assert resid == pytest.approx(gap / (1.0 - w), rel=1e-9, abs=tol)
-    assert lid_open_flux(row) - S == pytest.approx(resid, rel=1e-9, abs=tol + 1e-12 * abs(S))
+    tol = 1e-12 * 200.0 * max(T_node, T_b, T_surf)
+    assert resid == pytest.approx(gap, rel=1e-9, abs=tol)
+    per_open = resid / (1.0 - w)
+    assert lid_open_flux(row) - S == pytest.approx(
+        per_open, rel=1e-9, abs=tol / (1.0 - w) + 1e-12 * abs(S)
+    )
 
 
-@pytest.mark.parametrize('w', [0.0, 1.0, 1.0 - 0.5 * LID_OPEN_AREA_FLOOR, 1.0 - 1e-10])
-def test_the_residual_is_0_without_a_lid_and_at_the_floor(w):
-    """Without a lid, and where the open area is at the floor, the open part takes ``F_atm``
-    and carries no residual part."""
-    row = _row(w, T_surf=900.0, F_atm=-3.0)
-    assert lid_open_residual(row) == 0.0
+def test_the_residual_is_0_without_a_lid():
+    """Without a lid the call has no skin balance of its own: the residual is 0."""
+    assert lid_open_residual(_row(0.0, T_surf=900.0, F_atm=-3.0)) == 0.0
     assert lid_open_residual({'F_atm': 5.0}) == 0.0
+
+
+@pytest.mark.parametrize('w', [1.0 - 1e-10, 1.0 - 0.5 * LID_OPEN_AREA_FLOOR, 0.5])
+def test_the_residual_per_total_area_does_not_grow_near_a_full_lid(w):
+    """The residual is ``F_atm - B`` per total area: a call 0.01 W m-2 off its skin balance
+    records 0.01 at any lid weight, also next to a full lid, where a share per open area would
+    reach 0.01 / (1 - w)."""
+    row = _row(w, T_surf=900.0)
+    d, k, T_melt = lid_boundary(row)
+    row['F_atm'] = k / d * (T_melt - 900.0) + 0.01
+    assert lid_open_residual(row) == pytest.approx(0.01, abs=1e-8)
+    assert abs(lid_open_residual(row)) < LID_RESID_WARN
 
 
 @pytest.mark.physics_invariant
