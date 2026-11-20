@@ -11167,7 +11167,7 @@
       "default": "true",
       "choices": null,
       "bounds": null,
-      "description": "Use photochemistry.",
+      "description": "Use photochemistry. Required with the VULCAN network SNCHO, which VULCAN has only with photochemistry.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12808,6 +12808,18 @@
         "module"
       ],
       "doc": "Refuse coupled chemistry, and automatic chemistry without a module."
+    },
+    {
+      "validator": "valid_photo_on",
+      "module": "_atmos_chem.py",
+      "attached_to": [
+        "atmos_chem.photo_on"
+      ],
+      "touches": [
+        "module",
+        "vulcan.network"
+      ],
+      "doc": "Refuse VULCAN's SNCHO network without photochemistry, which VULCAN does not have."
     },
     {
       "validator": "valid_aerosols_enabled",

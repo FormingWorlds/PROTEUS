@@ -223,3 +223,22 @@
 
 /* focus */
 :focus-visible { outline: 2px solid var(--pt-magma); outline-offset: 2px; }
+
+/* ---------- grid layout explorer (javascripts/grid-explorer.js) ---------- */
+.grid-explorer { margin: 1em 0; padding: 0.8em; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 4px; }
+.grid-explorer .gx-controls { display: grid; grid-template-columns: repeat(auto-fill, minmax(14em, 1fr)); gap: 0.3em 1.2em; }
+.grid-explorer .gx-controls label { display: grid; grid-template-columns: 1fr 2.5em; font-size: 0.75rem; }
+.grid-explorer .gx-controls label span { grid-column: 1 / -1; font-family: var(--md-code-font); }
+.grid-explorer .gx-controls output { text-align: right; }
+.grid-explorer .gx-stats { display: flex; flex-wrap: wrap; gap: 0.4em 1.4em; margin: 0.8em 0; font-size: 0.75rem; }
+.grid-explorer .gx-stats dt { color: var(--md-default-fg-color--light); }
+.grid-explorer .gx-stats dd { margin: 0; font-weight: 600; }
+.grid-explorer .gx-warnings { margin: 0 0 0.8em; font-size: 0.75rem; color: var(--pt-warning); }
+.grid-explorer .gx-jobs { display: flex; flex-wrap: wrap; gap: 0.6em; align-items: flex-start; }
+.grid-explorer .gx-job { margin: 0; padding: 0.3em; border: 1px solid var(--md-typeset-a-color); border-radius: 3px; }
+.grid-explorer .gx-caption { font-size: 0.65rem; margin: 0 0 0.2em; text-align: left; }
+.grid-explorer .gx-queued { border-style: dashed; border-color: var(--md-default-fg-color--lighter); opacity: 0.55; }
+.grid-explorer .gx-cells { display: grid; gap: 2px; }
+.grid-explorer .gx-cell { min-width: 1.9em; padding: 0.1em 0.2em; font-family: var(--md-code-font); font-size: 0.6rem; text-align: center; background: var(--md-code-bg-color); }
+.grid-explorer .gx-idle { background: transparent; outline: 1px dashed var(--pt-warning); outline-offset: -1px; }
+.grid-explorer .gx-more { align-self: center; font-size: 0.75rem; }
