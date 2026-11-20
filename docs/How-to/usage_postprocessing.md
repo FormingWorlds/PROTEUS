@@ -149,6 +149,20 @@ Run nothing automatically, then postprocess three chosen times with `proteus off
     times  = [1e3, 1e5, 1e7]   # yr
 ```
 
+### Grids
+
+`proteus offchem --grid` (or `-g`) runs the chemistry on every case of a [grid](usage_grids.md) that has a helpfile:
+
+```console
+proteus offchem -g output/<grid folder>           # run the cases here
+proteus offchem -g output/<grid folder> --slurm   # write a Slurm job array instead
+```
+
+- Each case runs `proteus offchem` with its own config, so `atmos_chem.module` must be set in every case.
+- `max_jobs` of the grid file sets how many cases run at once. The command writes `slurm_offchem.sh` to submit with `sbatch`.
+- VULCAN compiles one chemical network file per local installation, so this command compiles it once, before any case runs, and refuses cases that use different networks. 
+- The log of the command is `offchem.log` in the grid output folder.
+
 ### Chemistry configuration
 
 The chemistry behaviour is further controlled by settings under `[atmos_chem]` and `[atmos_chem.vulcan]` in the configuration file. Key options include:

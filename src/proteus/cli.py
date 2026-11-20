@@ -721,16 +721,48 @@ cli.add_command(extract_archives)
 
 
 @click.command()
-@config_option
-def offchem(config_path: Path):
-    """Run offline chemistry on PROTEUS output files"""
+@click.option(
+    '-c',
+    '--config',
+    'config_path',
+    type=click.Path(exists=True, dir_okay=False, path_type=Path, resolve_path=True),
+    help='Path to config file',
+)
+@click.option(
+    '-g',
+    '--grid',
+    'grid_path',
+    type=click.Path(exists=True, file_okay=False, path_type=Path, resolve_path=True),
+    help='Grid output folder: run the chemistry on each of its cases',
+)
+@click.option(
+    '--slurm', is_flag=True, help='With -g, write a Slurm job array instead of running here'
+)
+@click.option('--network-compiled', is_flag=True, hidden=True)
+def offchem(config_path: Path, grid_path: Path, slurm: bool, network_compiled: bool):
+    """Run offline chemistry on the output of one run (-c) or of each case of a grid (-g)"""
+    if (config_path is None) == (grid_path is None):
+        raise click.UsageError('Give the config file with -c, or the grid folder with -g.')
+    if slurm and grid_path is None:
+        raise click.UsageError('--slurm needs the grid folder, -g.')
+    if grid_path is not None:
+        from proteus.grid.offchem import offchem_grid
+
+        setup_logger(logpath=os.path.join(grid_path, 'offchem.log'), logterm=True)
+        try:
+            failed = offchem_grid(grid_path, slurm)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+        if failed:
+            raise click.ClickException(f'Chemistry failed for {", ".join(failed)}')
+        return
     runner = Proteus(config_path=config_path)
     setup_logger(
         logpath=os.path.join(runner.directories['output'], 'offchem.log'),
         logterm=True,
         level=runner.config.params.out.logging,
     )
-    runner.offline_chemistry()
+    runner.offline_chemistry(network_compiled=network_compiled)
 
 
 @click.command()

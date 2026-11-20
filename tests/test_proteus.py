@@ -3371,7 +3371,7 @@ def test_offline_chemistry_runs_once_after_the_main_loop(
 
     chem_calls = []
 
-    def _record_chem(dirs, config, hf_all):
+    def _record_chem(dirs, config, hf_all, network_compiled=False):
         chem_calls.append((p.loops['total'], p.finished_both, hf_all))
 
     mock_extract = MagicMock()

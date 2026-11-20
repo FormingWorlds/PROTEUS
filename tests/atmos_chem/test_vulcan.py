@@ -81,6 +81,7 @@ from proteus.atmos_chem.vulcan import (  # noqa: E402
     _find_previous_chem,
     _warn_dropped_gases,
     _write_ini_table,
+    compile_network,
     network_condensation,
     network_settings,
     read_vulcan_netcdf,
@@ -371,6 +372,39 @@ def test_run_vulcan_without_the_network_file_names_the_clone_install(tmp_path, m
 
     assert missing in str(err.value)
     mock_vulcan_package.run_vulcan.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    'network,photo_on,expected',
+    [('NCHO', False, 'NCHO_thermo_network.txt'), ('SNCHO', True, 'SNCHO_photo_network.txt')],
+    ids=['ncho_without_photochemistry', 'sncho_photochemical'],
+)
+def test_compile_network_compiles_the_network_file_the_runs_use(network, photo_on, expected):
+    """compile_network hands VULCAN the network file that run_vulcan would use, with the
+    photochemistry switch; NCHO without photochemistry is its thermo file, which the
+    photochemical file would get wrong. It compiles once and names the file."""
+    make_all = MagicMock()
+    with patch.dict(sys.modules, {'vulcan.make_chem_funs': MagicMock(make_all=make_all)}):
+        name = compile_network(_make_mock_config(network=network, photo_on=photo_on))
+
+    assert name == expected
+    make_all.assert_called_once()
+    vcfg = make_all.call_args.args[0]
+    assert vcfg.network == str(Path(mock_vulcan_package.paths.THERMO_DIR) / expected)
+    assert vcfg.use_photo is photo_on
+
+
+def test_compile_network_without_the_network_file_compiles_nothing(tmp_path, monkeypatch):
+    """A VULCAN without the network file of its clone stops before compiling, with the
+    error that names the clone install, as run_vulcan does."""
+    monkeypatch.setattr(mock_vulcan_package.paths, 'THERMO_DIR', str(tmp_path))
+    make_all = MagicMock()
+    with patch.dict(sys.modules, {'vulcan.make_chem_funs': MagicMock(make_all=make_all)}):
+        with pytest.raises(FileNotFoundError, match='tools/get_vulcan.sh') as err:
+            compile_network(_make_mock_config())
+
+    assert str(tmp_path / 'CHO_photo_network.txt') in str(err.value)
+    make_all.assert_not_called()
 
 
 @pytest.mark.unit

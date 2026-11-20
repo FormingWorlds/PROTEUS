@@ -1888,20 +1888,21 @@ class Proteus:
         WriteHelpfileToCSV(self.directories['output'], self.hf_all)
         return True
 
-    def _postprocess_chemistry(self, hf_all):
+    def _postprocess_chemistry(self, hf_all, network_compiled: bool = False):
         """Run atmospheric chemistry at the snapshots set by `atmos_chem.times`.
 
         The one chemistry stage for the end of a run and for `proteus offchem`.
         Snapshots in the data archive are unpacked first, and snapshots without
         an atmosphere (after desiccation) are left out by `run_chemistry`.
+        With ``network_compiled``, VULCAN uses the network compiled already.
         """
         from proteus.atmos_chem.wrapper import run_chemistry
 
         if archive.archive_exists(self.directories['output/data'], ignore_warnings=True):
             self.extract_archives()
-        return run_chemistry(self.directories, self.config, hf_all)
+        return run_chemistry(self.directories, self.config, hf_all, network_compiled)
 
-    def offline_chemistry(self):
+    def offline_chemistry(self, network_compiled: bool = False):
         # Load data from helpfile. Read it before unpacking the archive, so a
         # run this cannot postprocess is left archived as it was found.
         from proteus.utils.coupler import (
@@ -1922,7 +1923,7 @@ class Proteus:
             raise Exception('Simulation is too short to be postprocessed')
 
         # Run offline chemistry at atmos_chem.times, whatever atmos_chem.mode is
-        result = self._postprocess_chemistry(hf_all)
+        result = self._postprocess_chemistry(hf_all, network_compiled)
 
         # Refresh the chemistry plot
         if result is not None:
