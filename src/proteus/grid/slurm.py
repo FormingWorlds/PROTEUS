@@ -152,7 +152,7 @@ def dispatch_script(
 #SBATCH --array=0-{jobs - 1}%{throttle}
 
 {env}export cfgs={shlex.quote(cfgdir)} logs={shlex.quote(logdir)} cases={shlex.quote(casedir or '')}
-export stop_at=$(( $(date +%s) + {last_start_s} )) stop="${{TMPDIR:-/tmp}}/proteus-stop-$$"
+export stop_at=$(( $(date +%s) + {last_start_s} )) stop="${{TMPDIR:-/tmp}}/${{SLURM_JOB_ID}}_stop"
 
 # The early signal or a scancel: start no new case, send SIGTERM on to the running ones
 on_term() {{
@@ -173,7 +173,7 @@ if [ "$(date +%s)" -ge "$stop_at" ]; then
     exit 1
 fi
 echo "running $1"
-TMPDIR="${{TMPDIR:-/tmp}}/$1"
+TMPDIR="${{TMPDIR:-/tmp}}/${{SLURM_JOB_ID}}_$1"
 export TMPDIR
 mkdir -p "$TMPDIR"
 srun --job-name="$1" --ntasks=1 --cpus-per-task=1 --mem-per-cpu={mem_per_case_mb}M --exact \\

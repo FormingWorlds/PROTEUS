@@ -249,7 +249,8 @@ def test_dispatch_script_runs_each_case_once_and_gives_killed_cases_a_status(tmp
     a space, each with its own temporary folder that is gone afterwards.
 
     Task 0 has a case that exits 255 and task 1 a case killed by SIGKILL; either stops
-    a bare xargs, yet the case queued behind it runs. Both get status 25. Task 2's
+    a bare xargs, yet the case queued behind it runs. Both get status 25. Each case's
+    temporary folder carries its job id, so two jobs on one node don't share one. Task 2's
     only failure is a case that returns 0 while its status still says running: it gets
     status 25 and fails its job. In task 3 one case writes the error status 22 and
     exits 1, as PROTEUS does on a model error, and one writes 22 and exits 255, which
@@ -297,7 +298,7 @@ def test_dispatch_script_runs_each_case_once_and_gives_killed_cases_a_status(tmp
     tasks = [
         subprocess.Popen(
             ['bash', str(script)],
-            env={**env, 'SLURM_ARRAY_TASK_ID': str(task)},
+            env={**env, 'SLURM_ARRAY_TASK_ID': str(task), 'SLURM_JOB_ID': str(100 + task)},
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -308,7 +309,9 @@ def test_dispatch_script_runs_each_case_once_and_gives_killed_cases_a_status(tmp
     # strided: task t runs cases t, t + 5 and t + 10, the last after a core frees up
     assert (jobs, waves) == (5, 2)
     ran = sorted(line.split(' ', 1) for line in record.read_text().splitlines())
-    assert ran == [[f'case_{i:06d}', f'{scratch}/case_{i:06d}'] for i in range(n_cases)]
+    assert ran == [
+        [f'case_{i:06d}', f'{scratch}/{100 + i % jobs}_case_{i:06d}'] for i in range(n_cases)
+    ]
     assert list(scratch.iterdir()) == []
     assert [code != 0 for code in codes.values()] == [True, True, True, True, False]
     log10 = (tmp_path / 'my grid' / 'logs' / 'case_000010.log').read_text()
