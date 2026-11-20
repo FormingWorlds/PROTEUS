@@ -188,6 +188,23 @@ def test_max_array_size_falls_back_to_the_slurm_default(outcome):
     assert slurm.DEFAULT_MAX_ARRAY_SIZE == 1001
 
 
+# srun stand-in: drop the options, run the command
+_SRUN = 'while [ "${1#-}" != "$1" ]; do shift; done\nexec "$@"\n'
+
+
+def _fake_tools(tmp_path, **tools):
+    """Write each stand-in shell tool to tmp_path/bin and return an environment that
+    finds them first, with TMPDIR at tmp_path."""
+    bindir = tmp_path / 'bin'
+    bindir.mkdir()
+    for name, text in tools.items():
+        (bindir / name).write_text('#!/bin/sh\n' + text)
+        (bindir / name).chmod(0o755)
+    return dict(
+        os.environ, PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}', TMPDIR=str(tmp_path)
+    )
+
+
 def _script(tmp_path, n_cases, cores, jobs, command, days=1.0):
     return slurm.dispatch_script(
         cfgdir=str(tmp_path / 'my grid' / 'cfgs'),
@@ -256,17 +273,10 @@ def test_dispatch_script_runs_each_case_once_and_gives_killed_cases_a_status(tmp
     exits 1, as PROTEUS does on a model error, and one writes 22 and exits 255, which
     stops a bare xargs: both keep 22 and the case queued behind them runs. Task 4 has no
     failure and exits 0."""
-    bindir = tmp_path / 'bin'
-    bindir.mkdir()
-    # srun stand-in: drop the options, run the command
-    (bindir / 'srun').write_text(
-        '#!/bin/sh\nwhile [ "${1#-}" != "$1" ]; do shift; done\nexec "$@"\n'
-    )
     record = tmp_path / 'ran.txt'
     # Normal cases sleep, so a failing case beside them ends first and the next case
     # of its job starts only after the failure
-    (bindir / 'fakecase').write_text(
-        '#!/bin/sh\n'
+    fakecase = (
         'n=$(basename "$1" .toml); out="$(dirname "$(dirname "$1")")/$n"\n'
         f'[ -d "$TMPDIR" ] && echo "$n $TMPDIR" >> "{record}"\n'
         'mkdir -p "$out"\n'
@@ -281,8 +291,6 @@ def test_dispatch_script_runs_each_case_once_and_gives_killed_cases_a_status(tmp
         'printf "10\\nCompleted\\n" > "$out/status"\n'
         'echo "output of $1"\n'
     )
-    for tool in ('srun', 'fakecase'):
-        os.chmod(bindir / tool, 0o755)
     os.makedirs(tmp_path / 'my grid' / 'logs')
     scratch = tmp_path / 'scratch'
     scratch.mkdir()
@@ -290,9 +298,7 @@ def test_dispatch_script_runs_each_case_once_and_gives_killed_cases_a_status(tmp
     jobs, waves = slurm.array_layout(n_cases, cores, max_array=5)
     script = tmp_path / 'slurm_dispatch.sh'
     script.write_text(_script(tmp_path, n_cases, cores, jobs, command='fakecase'))
-    env = dict(
-        os.environ, PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}', TMPDIR=str(scratch)
-    )
+    env = {**_fake_tools(tmp_path, srun=_SRUN, fakecase=fakecase), 'TMPDIR': str(scratch)}
 
     # The array tasks run at the same time, as on a cluster
     tasks = [
@@ -329,27 +335,22 @@ def test_dispatch_script_starts_no_case_after_the_last_start_time(tmp_path):
     """Once the clock passes the last start time, the job starts none of its remaining
     cases, also without a signal: they keep no status folder, as not started, and the
     job exits non-zero."""
-    bindir = tmp_path / 'bin'
-    bindir.mkdir()
-    marker = tmp_path / 'started'
-    (bindir / 'srun').write_text(f'#!/bin/sh\ntouch "{marker}"\n')
+    marker, calls = tmp_path / 'started', tmp_path / 'date_called'
     # date stand-in: the job starts at t = 1000 s, every later reading is two days on
-    calls = tmp_path / 'date_called'
-    (bindir / 'date').write_text(
-        f'#!/bin/sh\nif [ -e "{calls}" ]; then echo 173800; else touch "{calls}"; echo 1000; fi\n'
+    env = _fake_tools(
+        tmp_path,
+        srun=f'touch "{marker}"\n',
+        date=f'if [ -e "{calls}" ]; then echo 173800; else touch "{calls}"; echo 1000; fi\n',
     )
-    for tool in ('srun', 'date'):
-        os.chmod(bindir / tool, 0o755)
     os.makedirs(tmp_path / 'my grid' / 'logs')
     script = tmp_path / 'slurm_dispatch.sh'
     script.write_text(_script(tmp_path, n_cases=3, cores=2, jobs=1, command='x', days=1.0))
-    env = dict(
-        os.environ,
-        PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}',
-        TMPDIR=str(tmp_path),
-        SLURM_ARRAY_TASK_ID='0',
+    done = subprocess.run(
+        ['bash', str(script)],
+        env={**env, 'SLURM_ARRAY_TASK_ID': '0'},
+        capture_output=True,
+        timeout=20,
     )
-    done = subprocess.run(['bash', str(script)], env=env, capture_output=True, timeout=20)
     assert done.returncode != 0
     assert not marker.exists()
     assert not any((tmp_path / 'my grid').glob('case_*'))
@@ -366,47 +367,31 @@ def _default_sigterm() -> None:
 @pytest.mark.parametrize('ending', [False, True], ids=['early-signal', 'scancel'])
 def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp_path, ending):
     """A SIGTERM to the batch shell, as the early signal or a scancel sends it, is
-    logged with its UTC time and the seconds since the job started, and sent on with scancel to the job steps. After a scancel
-    of the job, Slurm signals the steps itself and the forward fails: the log says so
-    instead of showing the scancel error. The two running
-    cases get it, write status 25 and exit 143, as PROTEUS does. The two queued cases
-    don't start, and the shell waits for the running cases and exits non-zero."""
-    bindir = tmp_path / 'bin'
-    bindir.mkdir()
+    logged with its UTC time and the seconds since the job started, and sent on with
+    scancel to the job steps. After a scancel of the job, Slurm signals the steps itself
+    and the forward fails; its error stays in the log, so a forward that fails for
+    another reason shows too. The two running cases get the signal, write status 25 and
+    exit 143, as PROTEUS does. The two queued cases don't start, and the shell waits for
+    the running cases and exits non-zero."""
     pids, calls, ready = tmp_path / 'pids', tmp_path / 'scancel_args', tmp_path / 'ready'
-    # srun stand-in: record the step's pid, drop the options, run the command
-    (bindir / 'srun').write_text(
-        f'#!/bin/sh\necho $$ >> "{pids}"\n'
-        'while [ "${1#-}" != "$1" ]; do shift; done\nexec "$@"\n'
-    )
     # scancel stand-in: signal every step, not the batch shell; on a job that is ending,
     # Slurm has signalled the steps and scancel fails
     fail = 'echo "scancel: error: Invalid job id specified" >&2; exit 1' if ending else 'exit 0'
-    (bindir / 'scancel').write_text(
-        f'#!/bin/sh\necho "$@" > "{calls}"\nkill -TERM $(cat "{pids}") 2>/dev/null\n{fail}\n'
-    )
-    (bindir / 'fakecase').write_text(
-        '#!/bin/sh\n'
-        'out="$(dirname "$(dirname "$1")")/$(basename "$1" .toml)"\n'
+    env = _fake_tools(
+        tmp_path,
+        srun=f'echo $$ >> "{pids}"\n' + _SRUN,
+        scancel=f'echo "$@" > "{calls}"\nkill -TERM $(cat "{pids}") 2>/dev/null\n{fail}\n',
+        fakecase='out="$(dirname "$(dirname "$1")")/$(basename "$1" .toml)"\n'
         'mkdir -p "$out"; echo 1 > "$out/status"\n'
         'trap \'kill $!; sleep 0.2; printf "25\\nError\\n" > "$out/status"; exit 143\' TERM\n'
-        f'sleep 30 & echo >> "{ready}"; wait $!\n'
+        f'sleep 30 & echo >> "{ready}"; wait $!\n',
     )
-    for tool in ('srun', 'scancel', 'fakecase'):
-        os.chmod(bindir / tool, 0o755)
     os.makedirs(tmp_path / 'my grid' / 'logs')
     script = tmp_path / 'slurm_dispatch.sh'
     script.write_text(_script(tmp_path, n_cases=4, cores=2, jobs=1, command='fakecase'))
-    env = dict(
-        os.environ,
-        PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}',
-        TMPDIR=str(tmp_path),
-        SLURM_ARRAY_TASK_ID='0',
-        SLURM_JOB_ID='4242',
-    )
     job = subprocess.Popen(
         ['bash', str(script)],
-        env=env,
+        env={**env, 'SLURM_ARRAY_TASK_ID': '0', 'SLURM_JOB_ID': '4242'},
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         start_new_session=True,
@@ -428,8 +413,7 @@ def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp
         r'^SIGTERM at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ, \d+ s into the job: ', out, re.M
     )
     assert calls.read_text().split() == ['--signal=TERM', '4242']
-    assert ('already ending' in out) is ending
-    assert 'Invalid job id' not in out
+    assert ('Invalid job id' in out) is ending
     status = {
         i: (tmp_path / 'my grid' / f'case_{i:06d}' / 'status').read_text().split('\n')[0]
         for i in (0, 1)
@@ -443,28 +427,21 @@ def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp
 def test_error_status_fails_the_job_also_after_exit_code_0(tmp_path):
     """A case that writes an error status (20 to 28) and exits with code 0 keeps its
     status and fails its job, so sacct doesn't show the job as completed."""
-    bindir = tmp_path / 'bin'
-    bindir.mkdir()
-    (bindir / 'srun').write_text(
-        '#!/bin/sh\nwhile [ "${1#-}" != "$1" ]; do shift; done\nexec "$@"\n'
+    env = _fake_tools(
+        tmp_path,
+        srun=_SRUN,
+        fakecase='out="$(dirname "$(dirname "$1")")/$(basename "$1" .toml)"\n'
+        'mkdir -p "$out"; printf "21\\nError\\n" > "$out/status"\n',
     )
-    (bindir / 'fakecase').write_text(
-        '#!/bin/sh\nout="$(dirname "$(dirname "$1")")/$(basename "$1" .toml)"\n'
-        'mkdir -p "$out"; printf "21\\nError\\n" > "$out/status"\n'
-    )
-    for tool in ('srun', 'fakecase'):
-        os.chmod(bindir / tool, 0o755)
     os.makedirs(tmp_path / 'my grid' / 'logs')
     script = tmp_path / 'slurm_dispatch.sh'
     script.write_text(_script(tmp_path, n_cases=1, cores=1, jobs=1, command='fakecase'))
-    env = dict(
-        os.environ,
-        PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}',
-        TMPDIR=str(tmp_path),
-        SLURM_ARRAY_TASK_ID='0',
-        SLURM_JOB_ID='7',
+    done = subprocess.run(
+        ['bash', str(script)],
+        env={**env, 'SLURM_ARRAY_TASK_ID': '0', 'SLURM_JOB_ID': '7'},
+        capture_output=True,
+        timeout=20,
     )
-    done = subprocess.run(['bash', str(script)], env=env, capture_output=True, timeout=20)
     assert done.returncode != 0
     assert 'case_000000 ended with error status 21' in done.stdout.decode()
     assert (tmp_path / 'my grid' / 'case_000000' / 'status').read_text().startswith('21\n')
