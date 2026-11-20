@@ -653,6 +653,14 @@ def test_resume_structure_stale_keeps_the_anchor_at_or_before_the_resume_time(
     assert resumed.last_successful_struct_time == want
 
 
+def _resume_never_raises(interior, outdir, time=None):
+    """resume_structure_stale on a malformed file; an escaping ValueError fails the test."""
+    try:
+        interior.resume_structure_stale(outdir, time)
+    except ValueError as exc:
+        raise AssertionError(f'a malformed sidecar raised {exc!r}') from exc
+
+
 @pytest.mark.parametrize('content', ['1 nan\n', '1 inf\n'])
 def test_resume_structure_stale_refuses_a_non_finite_anchor(tmp_path, caplog, content):
     """A stored last-success time of NaN or +inf would keep the ceiling silent for good;
@@ -664,7 +672,7 @@ def test_resume_structure_stale_refuses_a_non_finite_anchor(tmp_path, caplog, co
         hdl.write(content)
     resumed = Interior_t(5)
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
-        resumed.resume_structure_stale(str(tmp_path), 8.2e4)
+        _resume_never_raises(resumed, str(tmp_path), 8.2e4)
     assert resumed.structure_stale is False
     assert any('stale-structure flag' in r.message for r in caplog.records)
 
@@ -701,7 +709,7 @@ def test_resume_structure_stale_missing_or_malformed_file_defaults_fresh(tmp_pat
         corrupt.structure_stale = True
         corrupt.last_successful_struct_time = 5e4
         with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
-            corrupt.resume_structure_stale(str(tmp_path))
+            _resume_never_raises(corrupt, str(tmp_path))
         assert corrupt.structure_stale is False, 'malformed file must fall back to not-stale'
         assert corrupt.last_successful_struct_time == float('-inf')
     assert any('stale-structure flag' in r.message for r in caplog.records), (

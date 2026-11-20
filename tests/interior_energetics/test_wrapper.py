@@ -2245,13 +2245,14 @@ def test_stale_ceiling_fires_from_exactly_the_ceiling(tmp_path, last_success, fi
 @pytest.mark.unit
 def test_stale_ceiling_without_an_anchor_stays_silent(tmp_path):
     """A stale flag with no time of a last success (-inf) gives the ceiling no anchor,
-    so it does not fire, even 1e5 yr into the run."""
+    so it does not fire, even 1e5 yr into the run and 30 kyr after the last attempt (past
+    the ceiling, before the routine ceiling)."""
     config, dirs, interior_o, hf_row = _stale_ceiling_case(
         tmp_path, stale=True, last_success=float('-inf')
     )
-    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 9e4)
+    out, solver = _call_with_success_solver(tmp_path, config, dirs, interior_o, hf_row, 7e4)
     solver.assert_not_called()
-    assert out == (9e4, 3000.0, 0.8)
+    assert out == (7e4, 3000.0, 0.8)
 
 
 @pytest.mark.unit

@@ -841,6 +841,21 @@ def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(
 
 
 @pytest.mark.unit
+def test_resume_passes_the_resumed_row_time_to_the_stale_sidecar_read(tmp_path):
+    """A resume reads the stale sidecar with the time of the resumed row, the anchor that a
+    flag without a stored last success takes (see test_common for the read itself)."""
+    p = _make_proteus_instance(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    hf_df = _make_hf_df()
+
+    _resume_with_patches(p, hf_df)
+
+    p.interior_o.resume_structure_stale.assert_called_once_with(
+        p.directories['output'], float(hf_df['Time'].iloc[-1])
+    )
+
+
+@pytest.mark.unit
 def test_proteus_resume_no_mesh_file(tmp_path):
     """start(resume=True) skips mesh restoration when mesh file absent."""
     p = _make_proteus_instance(tmp_path)
