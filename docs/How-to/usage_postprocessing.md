@@ -159,9 +159,9 @@ proteus offchem -g output/<grid folder> --slurm   # write a Slurm job array inst
 ```
 
 - Each case runs `proteus offchem` with its own config, so `atmos_chem.module` must be set in every case.
-- `max_jobs` of the grid file sets how many cases run at once. With `--slurm`, the command writes `slurm_offchem.sh` to submit with `sbatch`, which packs the cases into jobs by `cores_per_job`, with `max_days` and `max_mem` per case, as the grid run does.
-- VULCAN compiles one chemical network file per local installation, so this command compiles it once, before any case runs, and refuses cases that use different networks. 
-- The log of the command is `offchem.log` in the grid output folder, and the output of each case is in `logs/offchem/`.
+- `max_jobs` of the grid file sets how many cases run at once, at most one per CPU core of the machine. With `--slurm`, the command writes `slurm_offchem.sh` to submit with `sbatch`, which packs the cases into jobs by `cores_per_job`, with `max_days` and `max_mem` per case, as the grid run does. Its jobs are named `proteusoffchem.grid.array`, so `scancel -n` stops them apart from those of the grid run.
+- VULCAN compiles one chemical network file per local installation, so this command compiles it once, before any case runs, and refuses cases that use different networks.
+- The command adds its log to `offchem.log` in the grid output folder, and the output of each case is in `logs/offchem/`.
 
 ### Chemistry configuration
 

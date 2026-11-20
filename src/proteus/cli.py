@@ -267,8 +267,8 @@ cli.add_command(start)
 @click.group()
 def get():
     """Get data and modules"""
-    # Scope the name to the calling user: a shared sticky temp directory
-    # refuses removal of another user's logfile.
+    # Scope the name to the calling user: in a shared temp directory, another
+    # user's logfile cannot be written.
     log_path = Path(tempfile.gettempdir()) / f'proteus_get_{os.getuid()}.log'
     try:
         setup_logger(
@@ -748,11 +748,14 @@ def offchem(config_path: Path, grid_path: Path, slurm: bool, network_compiled: b
     if grid_path is not None:
         from proteus.grid.offchem import offchem_grid
 
-        setup_logger(logpath=os.path.join(grid_path, 'offchem.log'), logterm=True, append=True)
+        setup_logger(logpath=os.path.join(grid_path, 'offchem.log'), logterm=True)
         try:
             failed = offchem_grid(grid_path, slurm)
         except (ValueError, OSError) as exc:
             log.error('%s', exc)
+            sys.exit(1)
+        except Exception as exc:
+            log.exception('Chemistry of the grid stopped: %s', exc)
             sys.exit(1)
         if failed:
             log.error('Chemistry failed for %s', ', '.join(failed))
