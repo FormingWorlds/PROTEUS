@@ -75,15 +75,18 @@ class TrappingStep:
     n_exited : int
         Mush nodes that reached the porosity floor over the step (``layers``).
     frac_bound : float
-        Mass share of those nodes held at the no-drainage bound [1]; NaN when
+        Mass share of those nodes held at the no-drainage bound [1]; 0 when
         none reached the floor.
     n_substeps : int
         Drainage sub-steps the layer scheme took over the step.
     n_mush : float
-        Mush nodes of the whole mesh (``layers``); NaN otherwise.
+        Mush nodes of the whole mesh (``layers``); 0 otherwise.
     phi_ocean : float
         Melt of the liquid nodes as a fraction of the mantle mass [1], the melt
-        the chemistry dissolves into in ``layers``; NaN otherwise.
+        the chemistry dissolves into in ``layers``; 0 otherwise.
+    returned : dict or None
+        Mass of each species returned to the melt [kg], when the scheme counts
+        its returns apart from its burials; ``None`` takes them from the net moves.
     """
 
     mode: str
@@ -104,10 +107,11 @@ class TrappingStep:
     w_matrix_over_vf: float = float('nan')
     guard_reason: str = ''
     n_exited: int = 0
-    frac_bound: float = float('nan')
+    frac_bound: float = 0.0
     n_substeps: int = 0
-    n_mush: float = float('nan')
-    phi_ocean: float = float('nan')
+    n_mush: float = 0.0
+    phi_ocean: float = 0.0
+    returned: dict[str, float] | None = None
 
     @property
     def total_trapped(self) -> float:
@@ -119,11 +123,14 @@ class TrappingStep:
 
     @property
     def returned_kg(self) -> dict[str, float]:
-        """Mass of each species the step returned to the melt [kg], from its net move.
+        """Mass of each species the step returned to the melt [kg].
 
-        A species is returned when its net move is negative, by remelting or,
-        in ``layers``, by melt draining back to the ocean.
+        ``returned`` where the scheme counted its returns, as ``layers`` does for
+        melt draining back to the ocean and for remelting nodes, whatever it
+        buried in the same step; otherwise the species whose net move is negative.
         """
+        if self.returned is not None:
+            return {sp: kg for sp, kg in self.returned.items() if kg > 0.0}
         return {sp: -kg for sp, kg in self.trapped_kg.items() if kg < 0.0}
 
 

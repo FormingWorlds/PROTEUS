@@ -17,10 +17,12 @@ and the solid reservoirs of the helpfile row. These tests exercise:
   mantle, without the front scheme's burial ledger,
 * node masses rescaled to the mantle mass, the ocean melt the chemistry
   dissolves into, the layer diagnostics, and a user-set mush viscosity,
-* returns capped at the trapped reservoir,
-* the per-node record written into the interior snapshot and read back on a
-  resume, trapped mass from before the record assigned to the nodes, and the
-  same trapped mass whether a run continues, resumes or changes its mesh.
+* returns capped at the trapped reservoir, and every return reported, also on
+  a step that buries more,
+* drainage under the configured separation buoyancy, and a concentration on
+  the previous solve's mantle mass.
+
+The resume path of the record is tested in ``test_layer_trapping_resume.py``.
 
 See ``docs/How-to/testing.md`` and ``docs/Explanations/test_framework.md``
 for the test framework.
@@ -29,10 +31,8 @@ for the test framework.
 from __future__ import annotations
 
 import logging
-import os
 from types import SimpleNamespace
 
-import netCDF4 as nc
 import numpy as np
 import pandas as pd
 import pytest
@@ -42,12 +42,9 @@ from proteus.outgas.layer_drainage import PHASE_LIQUID, PHASE_MUSH, node_geometr
 from proteus.outgas.layer_trapping import (
     _capped_moves,
     layer_profiles,
-    persist_node_record,
-    restore_node_record,
 )
 from proteus.outgas.trapping import run_trapping, trapped_mass, trapping_returned_mass
 from proteus.utils.constants import secs_per_year
-from proteus.utils.helper import snapshot_path_for_time
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -133,17 +130,6 @@ def _hf_all(time: float = 1.0e4, phi: float = _PHI_PREV) -> pd.DataFrame:
     return pd.DataFrame([{'Time': time, 'M_mantle': _M_MANTLE, 'Phi_global': phi}])
 
 
-def _snapshot(output: str, time: float) -> str:
-    """Bare interior snapshot with the staggered dimension the solver writes."""
-    data = os.path.join(output, 'data')
-    os.makedirs(data, exist_ok=True)
-    path = snapshot_path_for_time(data, time, '_int.nc')
-    with nc.Dataset(path, mode='w') as ds:
-        ds.createDimension('staggered', _N)
-        ds.createVariable('phi', 'f8', ('staggered',))[:] = np.ones(_N)
-    return path
-
-
 # The two upper nodes in the mush at melt fractions of 0.2 and 0.4, the rest
 # liquid; the asymmetry keeps a per-node remelt apart from a global one.
 _X_FREEZE = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.4])
@@ -213,7 +199,8 @@ def test_a_first_freezing_step_buries_the_pore_melt_of_the_mush_it_finds():
     assert int(hf_row['trap_n_front']) == 2
     assert int(hf_row['trap_n_exited']) == 0
     assert hf_row['trap_kg_step'] == pytest.approx(expected, rel=1e-12)
-    assert np.isnan(hf_row['trap_frac_bound'])
+    # No node reached the floor; the share is 0, not NaN, so the helpfile stays quiet.
+    assert hf_row['trap_frac_bound'] == pytest.approx(0.0, abs=0.0)
     record = interior.trap_record
     assert list(np.flatnonzero(record.phase == PHASE_MUSH)) == [6, 7]
     assert record.trapped('H2O') == pytest.approx(hf_row['H2O_kg_trapped'], rel=1e-12)
@@ -275,7 +262,7 @@ def test_without_profiles_the_step_traps_without_the_burial_ledger():
     assert hf_row['trap_branch'] == float(BRANCH_FALLBACK)
     assert hf_row['H2O_kg_solid'] == pytest.approx(_D_H2O * _C_H2O * dm_rm, rel=1e-12)
     assert blind.trap_record is None
-    assert np.isnan(hf_row['trap_Phi_ocean'])
+    assert hf_row['trap_Phi_ocean'] == pytest.approx(0.0, abs=0.0)
 
     flat = dict(hf_row, Time=2.5e4)
     still = run_trapping(config, flat, pd.DataFrame([hf_row]), blind)
@@ -314,120 +301,6 @@ def test_a_return_is_capped_at_the_trapped_reservoir():
     assert moves == {'H2O': -1.0e18, 'CO2': 2.0e17}
     # A return within the reservoir passes unchanged.
     assert _capped_moves({'H2O_kg_trapped': 1.0e18}, {'H2O': -4.0e17}) == {'H2O': -4.0e17}
-
-
-@pytest.mark.physics_invariant
-def test_the_record_survives_a_resume_through_the_interior_snapshot(tmp_path):
-    """The step writes the per-node record into its interior snapshot. A
-    resumed run reads it back and continues exactly as the run that kept it in
-    memory, so a node that remelts after the resume returns what it held."""
-    output = str(tmp_path)
-    dirs = {'output': output}
-    hf_row = _hf_row(_X_FREEZE)
-    path = _snapshot(output, hf_row['Time'])
-    stiff = _config(melt_log10visc=30.0)
-    run_trapping(stiff, hf_row, _hf_all(), _interior(_X_FREEZE), dirs=dirs)
-    with nc.Dataset(path) as ds:
-        stored = np.array(ds.variables['trap_pore_H2O_s'][:])
-        stored += np.array(ds.variables['trap_crystal_H2O_s'][:])
-    assert stored[6] > 0.0
-
-    x = _X_FREEZE.copy()
-    x[6] = 1.0
-    hf_all = pd.DataFrame([hf_row])
-    row = dict(hf_row, Time=3.0e4, Phi_global=float(np.mean(x)))
-    kept = _interior(_X_FREEZE)
-    run_trapping(stiff, _hf_row(_X_FREEZE), _hf_all(), kept)
-    kept.phi = x
-    in_memory = run_trapping(stiff, dict(row), hf_all, kept)
-
-    resume = _config(resume=True, melt_log10visc=30.0)
-    restarted = _interior(x)
-    restore_node_record(resume, dirs, hf_row, restarted)
-    assert restarted.trap_record.trapped('H2O') == pytest.approx(stored.sum(), rel=1e-12)
-    resumed = run_trapping(resume, row, hf_all, restarted, dirs=dirs)
-    assert resumed.trapped_kg['H2O'] == pytest.approx(in_memory.trapped_kg['H2O'], rel=1e-12)
-    assert resumed.trapped_kg['H2O'] == pytest.approx(-stored[6], rel=1e-12)
-    assert resumed.remelted
-
-
-@pytest.mark.physics_invariant
-def test_a_resume_without_a_record_assigns_the_trapped_mass_to_the_nodes(tmp_path, caplog):
-    """A run resumed without a stored record holds trapped mass on the helpfile
-    that no node holds. It is assigned to the nodes that are not liquid, so the
-    record matches the helpfile and that mass remelts with its nodes; the mush
-    the new record finds holds that mass and buries nothing new."""
-    caplog.set_level(logging.WARNING, logger='fwl.proteus.outgas.layer_trapping')
-    trapped = 4.0e19
-    hf_row = _hf_row(
-        _X_FREEZE,
-        H2O_kg_liquid=_H2O_LIQUID - trapped,
-        H2O_kg_solid=trapped,
-        H2O_kg_trapped=trapped,
-    )
-    interior = _interior(_X_FREEZE)
-    dirs = {'output': str(tmp_path)}
-    restore_node_record(_config(resume=True), dirs, {'Time': 1.0e4}, interior)
-    assert any('no per-node record' in r.getMessage() for r in caplog.records)
-    assert interior.trap_record is None
-    run_trapping(_config(resume=True), hf_row, _hf_all(), interior, dirs=dirs)
-    assert interior.trap_record.trapped('H2O') == pytest.approx(trapped, rel=1e-9)
-    # Discrimination: burying the mush it finds again would add C (0.2 + 0.4) m.
-    assert hf_row['H2O_kg_trapped'] == pytest.approx(trapped, rel=1e-12)
-
-    # Every node liquid again: everything trapped returns, the adopted mass included.
-    hf_all = pd.DataFrame([hf_row])
-    interior.phi = np.ones(_N)
-    row = dict(hf_row, Time=3.0e4, Phi_global=1.0)
-    run_trapping(_config(), row, hf_all, interior)
-    assert row['H2O_kg_trapped'] == pytest.approx(0.0, abs=1e-6 * trapped)
-    assert row['H2O_kg_liquid'] == pytest.approx(_H2O_LIQUID, rel=1e-12)
-
-
-@pytest.mark.physics_invariant
-def test_continuous_resumed_and_resized_runs_trap_the_same_mass():
-    """After a first step that buries the mush, an unchanged step with a melt
-    that cannot drain keeps the trapped mass, whether the run continues with
-    its record, resumes without one, or finds one sized for another mesh."""
-    config = _config(melt_log10visc=30.0)
-    interior = _interior(_X_FREEZE)
-    first = _hf_row(_X_FREEZE)
-    run_trapping(config, first, _hf_all(), interior)
-    held = first['H2O_kg_trapped']
-    assert held == pytest.approx(_C_H2O * 0.6 * _M_NODE, rel=1e-10)
-    hf_all = pd.DataFrame([first])
-    from proteus.outgas.node_record import NodeRecord
-
-    records = {
-        'continuous': interior.trap_record,
-        'resumed': None,
-        'resized': NodeRecord.initial(np.zeros(5, dtype=int), np.ones(5), np.ones(5), 0.0),
-    }
-    for name, record in records.items():
-        row = dict(first, Time=3.0e4)
-        again = _interior(_X_FREEZE, trap_record=record)
-        run_trapping(config, row, hf_all, again)
-        assert row['H2O_kg_trapped'] == pytest.approx(held, rel=1e-12), name
-        assert again.trap_record.size == _N, name
-        assert again.trap_record.trapped('H2O') == pytest.approx(held, rel=1e-9), name
-
-
-def test_persisting_without_a_record_or_a_snapshot_writes_nothing(tmp_path):
-    """The end-of-run write skips a run that kept no record and a time that
-    has no snapshot, and creates no file."""
-    output = str(tmp_path)
-    persist_node_record({'output': output}, {'Time': 2.0e4}, SimpleNamespace(trap_record=None))
-    assert not os.path.exists(os.path.join(output, 'data'))
-
-    interior = _interior(_X_FREEZE)
-    run_trapping(_config(), _hf_row(_X_FREEZE), _hf_all(), interior)
-    persist_node_record({'output': output}, {'Time': 2.0e4}, interior)
-    assert not os.path.exists(os.path.join(output, 'data'))
-    path = _snapshot(output, 2.0e4)
-    persist_node_record({'output': output}, {'Time': 2.0e4}, interior)
-    with nc.Dataset(path) as ds:
-        assert 'trap_phase_s' in ds.variables
-        assert int(ds.variables['trap_phase_s'][7]) == PHASE_MUSH
 
 
 def _freeze_bottom_up(config, step_yr: float = 1.0e4):
@@ -481,8 +354,9 @@ def test_undrained_mush_traps_the_front_schemes_no_drainage_bound(validation_plo
     scheme buries the pore melt as each node enters and the front scheme traps
     it as it crystallises, so the two agree once every node has frozen. With a
     melt of 0.1 Pa s the pore melt drains in the step each node freezes, whose
-    solver porosity falls from that of x = 0.3 to zero and caps the flowing
-    melt, and less is trapped, never below the crystals' share D C M_mantle.
+    solver porosity falls from that of x = 0.3 to zero: only the melt within
+    the mean of the two drains, the rest crystallises in place with its water,
+    and less is trapped, never below the crystals' share D C M_mantle.
     """
     x_stiff, stiff, bound = _freeze_bottom_up(_config(melt_log10visc=30.0))
     x_drain, drained, _ = _freeze_bottom_up(_config(melt_log10visc=-1.0))
@@ -567,6 +441,14 @@ def test_the_chemistry_dissolves_into_the_ocean_melt_alone():
     unset = dict(hf_row, trap_Phi_ocean=float('nan'))
     with ocean_melt_for_chemistry(config, unset):
         assert unset['Phi_global'] == pytest.approx(0.825, rel=1e-12)
+    # A fresh row holds 0 in both columns, which no layer step wrote, and leaves the
+    # solve the global melt; a step whose melt is all in the mush gives it none.
+    fresh_row = dict(hf_row, trap_Phi_ocean=0.0, trap_n_mush=0.0)
+    with ocean_melt_for_chemistry(config, fresh_row):
+        assert fresh_row['Phi_global'] == pytest.approx(0.825, rel=1e-12)
+    all_mush = dict(hf_row, trap_Phi_ocean=0.0, trap_n_mush=8.0)
+    with ocean_melt_for_chemistry(config, all_mush):
+        assert all_mush['Phi_global'] == pytest.approx(0.0, abs=0.0)
 
     # The next step's concentration is the dissolved mass over the ocean melt:
     # node 5 enters the mush and buries C' F m with C' = liquid / (0.75 M).
@@ -632,7 +514,7 @@ def test_the_layer_diagnostics_describe_the_floor_exits_and_the_thickest_mush_la
     assert row['trap_frac_bound'] == pytest.approx(0.0, abs=0.0)
     assert row['trap_v_front'] == pytest.approx(v, rel=1e-3)
     assert row['trap_front_courant'] == pytest.approx(v * dt_s / (r[8] - r[7]), rel=1e-3)
-    assert np.isnan(row['trap_w_matrix_over_vf'])
+    assert row['trap_w_matrix_over_vf'] == pytest.approx(0.0, abs=0.0)
     assert row['trap_n_substeps'] >= 1.0
     locked = interior.trap_record.crystal['H2O'][6]
     assert row['trap_F_tl'] == pytest.approx(locked / (_C_H2O * _M_NODE), rel=1e-9)
@@ -658,25 +540,63 @@ def test_a_set_mush_viscosity_sets_the_matrix_time_of_the_mush_layer():
     assert abs(hf_row['trap_tau_s'] - 0.01 * expected) > 0.5 * expected
 
 
-def test_an_unreadable_snapshot_restarts_the_record_with_a_warning(tmp_path, caplog):
-    """A snapshot the record cannot be read from, or written into, is reported
-    and the step goes on: on a resume the record restarts and adopts the
-    trapped mass, and a failed write leaves the step's moves in place."""
-    caplog.set_level(logging.WARNING, logger='fwl.proteus.outgas.layer_trapping')
-    output = str(tmp_path)
-    hf_row = _hf_row(_X_FREEZE)
-    path = _snapshot(output, hf_row['Time'])
-    with open(path, 'wb') as handle:
-        handle.write(b'not a netCDF file')
-    run_trapping(_config(), hf_row, _hf_all(), _interior(_X_FREEZE), dirs={'output': output})
-    assert any('could not write' in r.getMessage() for r in caplog.records)
-    assert hf_row['H2O_kg_trapped'] == pytest.approx(_C_H2O * 0.6 * _M_NODE, rel=1e-10)
+@pytest.mark.physics_invariant
+def test_a_step_that_buries_more_than_it_returns_still_reports_the_return():
+    """Nodes 4 and 5 enter the mush while nodes 6 and 7 drain back to the
+    ocean: the step buries more than it returns, and ``trap_kg_returned`` holds
+    the return, which escape and the desiccation check read. A return taken
+    from the net move would be 0 on this step."""
+    config = _config()
+    first = _hf_row(_X_FREEZE)
+    interior = _interior(_X_FREEZE)
+    run_trapping(config, first, _hf_all(), interior)
+    x = _X_FREEZE.copy()
+    x[4:6] = 0.3
+    interior.phi = x
+    row = dict(first, Time=3.0e4, Phi_global=float(np.mean(x)))
+    step = run_trapping(config, row, pd.DataFrame([first]), interior)
+    assert row['trap_kg_step'] > 0.0
+    assert row['trap_kg_returned'] > 0.0
+    assert row['trap_kg_returned'] == pytest.approx(sum(step.returned_kg.values()), rel=1e-12)
+    assert trapping_returned_mass(row)
+    # Discrimination: no species has a negative net move.
+    assert all(kg > 0.0 for kg in step.trapped_kg.values())
 
-    prev = pd.DataFrame([dict(hf_row)])
-    row = dict(hf_row, Time=3.0e4)
-    restarted = _interior(_X_FREEZE)
-    restore_node_record(_config(resume=True), {'output': output}, dict(hf_row), restarted)
-    assert any('could not read' in r.getMessage() for r in caplog.records)
-    assert restarted.trap_record is None
-    run_trapping(_config(resume=True), row, prev, restarted, dirs={'output': output})
-    assert row['H2O_kg_trapped'] == pytest.approx(hf_row['H2O_kg_trapped'], rel=1e-6)
+
+@pytest.mark.physics_invariant
+def test_the_mush_drains_under_the_solvers_separation_buoyancy():
+    """The step takes ``separation_buoyancy`` from the Aragog config. Under
+    'solid' the melt rises on the whole density contrast and under 'mixture'
+    on (1 - phi) of it, so over the same step the mush keeps less water under
+    'solid'. A buoyancy fixed in the code would keep the same under both."""
+    kept = {}
+    for buoyancy in ('mixture', 'solid'):
+        config = _config()
+        config.interior_energetics.aragog.separation_buoyancy = buoyancy
+        interior = _interior(_X_FREEZE)
+        first = _hf_row(_X_FREEZE)
+        run_trapping(config, first, _hf_all(), interior)
+        row = dict(first, Time=3.0e4)
+        run_trapping(config, row, pd.DataFrame([first]), interior)
+        kept[buoyancy] = row['H2O_kg_trapped'] / first['H2O_kg_trapped']
+    assert 0.0 < kept['solid'] < kept['mixture'] < 1.0
+    assert (1.0 - kept['solid']) > 1.2 * (1.0 - kept['mixture'])
+
+
+@pytest.mark.physics_invariant
+def test_the_concentration_takes_the_mantle_mass_of_the_previous_solve():
+    """The previous solve dissolved the water into its ocean melt, the previous
+    row's mantle mass times its ocean fraction, so a mantle mass that changed
+    since then does not change the concentration the burial takes. With the
+    previous mantle at half the current mass, the burial is twice what the
+    current mantle mass gives."""
+    config = _config(melt_log10visc=30.0)
+    prev = dict(_hf_row(_X_FREEZE, time=1.0e4), M_mantle=0.5 * _M_MANTLE)
+    prev.update(trap_Phi_ocean=0.95, trap_n_mush=1.0)
+    row = _hf_row(_X_FREEZE)
+    run_trapping(config, row, pd.DataFrame([prev]), _interior(_X_FREEZE))
+    c_prev = _H2O_LIQUID / (0.5 * _M_MANTLE * 0.95)
+    assert row['H2O_kg_trapped'] == pytest.approx(c_prev * 0.6 * _M_NODE, rel=1e-12)
+    # Discrimination: the current mantle mass gives half the burial.
+    c_now = _H2O_LIQUID / (_M_MANTLE * 0.95)
+    assert abs(row['H2O_kg_trapped'] - c_now * 0.6 * _M_NODE) > 0.4 * row['H2O_kg_trapped']

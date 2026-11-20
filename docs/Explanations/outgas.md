@@ -356,11 +356,15 @@ $A_k$ \[m$^2$\] is the area of the node's upper face and $V_k$ \[m$^3$\] its vol
 
 A single node with $L = V/A$ follows the front scheme's drainage equation exactly on the percolation branch. On the matrix branch it does not: its matrix time uses the depth of its centre, $L/2$, so it is twice the front's $\mu_s / (|\Delta\rho|\,g\,L)$.
 
-The flowing melt is $\psi$ capped at the solver's own porosity, the mean of its values at the start and end of the step. Pore melt the record holds beyond it has crystallised in place, keeps its volatiles and does not flow.
+The solver's own porosity of the node, the mean of its values at the start and end of the step, bounds the melt that flows. Pore melt the record holds beyond it has crystallised in place. It stays at the node with its share of the volatiles, and only the rest of the pore melt drains.
+
+A node receives from below no more than it passes on plus its free pore space: its solver porosity less its flowing pore melt. A node whose pores are full passes on what it receives, so no node fills beyond the melt the solver gives it.
+
+**Example.** A node holds $\psi = 0.3$ while its solver porosity is 0.1. The 0.2 beyond it has crystallised: it stays, with two thirds of the node's volatiles. Drained for long enough, the node keeps $\psi = 0.2$ and those two thirds.
 
 Melt leaving the top of a mush layer rejoins the magma ocean, or leaves through the surface when the layer reaches the top of the mesh. A mush layer with a solid node above it is sealed and keeps its melt. A node whose tables put the melt at or above the solid density cannot drive its melt upward. It takes the front scheme's no-drainage bound and keeps its pore melt, and so do the mush nodes below it in the same mush layer. In Miyazaki and Korenaga (2019) such melt sinks instead; the layer scheme does not move melt downward.
 
-The code integrates the fluxes with a second-order Runge-Kutta scheme. Each sub-step is a tenth (`SUBSTEP_FRACTION = 0.1`) of the shortest time any node takes to pass on what it holds.
+The code integrates the fluxes with a second-order Runge-Kutta scheme. Each sub-step is a tenth (`SUBSTEP_FRACTION = 0.1`) of the shortest time any node takes to pass on what it holds, or to fill its pore space with what it receives.
 
 ### Volatiles
 
@@ -374,17 +378,17 @@ Each step moves the net mass, new burials minus returns, between `{sp}_kg_liquid
 
 ### The chemistry sees the ocean melt
 
-The pore melt of the mush and solid nodes is cut off from the ocean. So with `"layers"` the chemistry solver dissolves volatiles into the melt of the liquid nodes alone. For the length of the solve, `Phi_global` reads `trap_Phi_ocean`: the liquid nodes' share of the melt times the global melt fraction. A step without a value, which the helpfile stores as 0, leaves `Phi_global` as it is. It is restored after the solve. The next step takes its melt concentration on that same ocean melt.
+The pore melt of the mush and solid nodes is cut off from the ocean. So with `"layers"` the chemistry solver dissolves volatiles into the melt of the liquid nodes alone. For the length of the solve, `Phi_global` reads `trap_Phi_ocean`: the liquid nodes' share of the melt times the global melt fraction. A layer step writes `trap_Phi_ocean` together with its count of mush nodes, `trap_n_mush`. A row that no layer step wrote holds 0 in both, the value the helpfile stores for an unset column, and leaves `Phi_global` as it is. A value of 0 with mush nodes means that all the melt is in the mush, and the solve then dissolves nothing. It is restored after the solve. The next step takes its melt concentration on that same ocean melt.
 
 ### Remelting node by node
 
 A node that becomes liquid again returns everything trapped at it to the melt. A liquid or mush node whose melt fraction rises from $x_0$ to $x$ melts the share $(x - x_0)/(1 - x_0)$ of its crystals. That share of its crystal store goes with the new melt. A liquid node returns it to the ocean, so a liquid node at $x = 1$ holds nothing. A mush node puts it into its pore melt, which drains. Nodes that stay solid keep theirs, even when the global melt fraction rises. The burial ledger of the next section is not used in this mode.
 
-Every return reaches escape and desiccation through `trap_kg_returned`, whether a node remelted or melt drained back to the ocean. On a step with a return, the escape floor is off and a desiccated planet is checked again. `trap_branch = 7` marks a net return by remelting nodes, as a diagnostic only.
+Every return reaches escape and desiccation through `trap_kg_returned`, whether a node remelted or melt drained back to the ocean. It holds the returned mass also on a step that buries more than it returns. On a step with a return, the escape floor is off and a desiccated planet is checked again. `trap_branch = 7` marks a net return by remelting nodes, as a diagnostic only.
 
 ### Resume, mesh changes and missing profiles
 
-The per-node record lives on the interior object between steps. It is saved in each interior snapshot as `trap_*_s` variables, and a resumed run reads it back. Without a saved record, or with one sized for another mesh, the trapped mass on the helpfile is assigned to the nodes that are not liquid, in proportion to their mass. The mush the new record finds then buries nothing new, since it already holds that mass.
+The per-node record lives on the interior object between steps. It is saved in each interior snapshot as `trap_*_s` variables, and a resumed run reads it back. Without a saved record, or with one sized for another mesh, the record restarts on the melt fraction of the snapshot the run resumes from, taken onto the current mesh by radius. The trapped mass on the helpfile is assigned to the nodes that were not liquid there, in proportion to their mass. Those nodes bury nothing new, since they already hold that mass. A node that leaves the ocean in the first step buries its pore melt, as in a run that kept its record. Without that snapshot, the new record starts on the current profiles, and the mush it finds buries nothing new.
 
 A step without the interior profiles traps at $D_Z\,C_Z\,\Delta M$ alone when the mantle freezes. When it remelts, the step returns the remelted share of the solid and takes the same share out of the record. It does not use the burial ledger, so nothing is returned twice.
 
@@ -396,9 +400,9 @@ The trapping columns have one meaning in both modes. For `"layers"` they read as
 - `trap_n_front`, `trap_L_front` \[m\], `trap_tau_D` and `trap_tau_s` \[yr\]: the node count, thickness, percolation time and matrix time of the thickest mush layer, which stands for the front.
 - `trap_v_front` \[m s$^{-1}$\] and `trap_front_courant` \[1\]: the front speed from the mass that froze, at the base of the thickest mush layer, and its advance in that layer's thicknesses. `trap_w_matrix_over_vf` is not computed, since no single front top exists, and the helpfile stores it as 0.
 - `trap_t_res` \[yr\]: the mass-weighted time the nodes that froze spent in the mush.
-- `trap_n_mush`: the mush nodes of the whole mesh. `trap_n_exited`: nodes that froze in the step.
-- `trap_frac_bound` \[1\]: the mass share of the nodes that froze on the no-drainage bound. It includes nodes that drained before their mush layer was sealed, so it is not the share that kept their entry pore melt.
-- `trap_kg_returned` \[kg\]: the mass returned to the melt this step. `trap_Phi_ocean` \[1\]: the ocean melt the chemistry dissolves into. `trap_n_substeps`: the drainage sub-steps of the step.
+- `trap_n_mush`: the mush nodes of the whole mesh; 0 with `"front"`. `trap_n_exited`: nodes that froze in the step.
+- `trap_frac_bound` \[1\]: the mass share of the nodes that froze on the no-drainage bound; 0 when none froze. It includes nodes that drained before their mush layer was sealed, so it is not the share that kept their entry pore melt.
+- `trap_kg_returned` \[kg\]: the mass returned to the melt this step. `trap_Phi_ocean` \[1\]: the ocean melt the chemistry dissolves into; 0 with `"front"`. `trap_n_substeps`: the drainage sub-steps of the step.
 
 ### Limits
 

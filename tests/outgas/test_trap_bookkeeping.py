@@ -4,7 +4,7 @@ The bookkeeping both trapping schemes share. These tests exercise:
 
 * the mass a step returns to the melt, taken per species from its net moves,
   and the ``trap_kg_returned`` column escape reads,
-* the defaults of the layer-only columns, written as NaN by a front step,
+* the defaults of the layer-only columns, written as 0 by a front step,
 * the front speed from the crystallised mass, its closed form and its guards.
 
 The reservoir moves themselves are tested in ``test_trapping.py``.
@@ -46,14 +46,14 @@ def test_the_returned_mass_is_the_negative_part_of_the_net_moves():
     assert row['trap_kg_returned'] == pytest.approx(0.0, abs=0.0)
 
 
-def test_a_front_step_writes_the_layer_only_columns_as_nan():
-    """The mush-node count and the ocean melt fraction belong to the layer
-    scheme; a front step leaves them NaN, which the chemistry reads as no
-    ocean melt to substitute."""
+def test_a_front_step_writes_the_layer_only_columns_as_zero():
+    """The mush-node count, the ocean melt fraction and the bound share belong
+    to the layer scheme; a front step writes them as 0, which the helpfile
+    stores without a NaN warning and the chemistry reads as no ocean melt."""
     row = {}
     record_step(row, TrappingStep(mode='front', dm_rm=0.0, f_tl=0.0, melt_mass=0.0))
-    assert np.isnan(row['trap_n_mush'])
-    assert np.isnan(row['trap_Phi_ocean'])
+    for key in ('trap_n_mush', 'trap_Phi_ocean', 'trap_frac_bound'):
+        assert row[key] == pytest.approx(0.0, abs=0.0), key
     step = TrappingStep(mode='layers', dm_rm=0.0, f_tl=0.0, melt_mass=0.0)
     step.n_mush, step.phi_ocean = 12.0, 0.4
     record_step(row, step)

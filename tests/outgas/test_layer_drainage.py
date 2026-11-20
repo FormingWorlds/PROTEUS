@@ -269,31 +269,57 @@ def test_mixture_buoyancy_retains_more_than_the_solid_one():
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_compaction_limited_node_decays_exponentially():
+def test_compaction_limited_node_decays_exponentially(validation_plot):
     """Where the matrix controls, a node loses melt at 1/tau_s: psi0 exp(-t/tau_s).
 
     Analytic limit. The permeability is made so large that it never binds, and
-    three e-folds are integrated at the production ``SUBSTEP_FRACTION = 0.1``.
-    The second-order error, 30 sub-steps of ``h^3 / 6`` at ``h = 0.1``, is
-    5.0e-3, and the measured 5.4e-3 sits within the tolerance of 7e-3.
+    up to three e-folds are integrated at the production ``SUBSTEP_FRACTION =
+    0.1``. The second-order error, 30 sub-steps of ``h^3 / 6`` at ``h = 0.1``,
+    is 5.0e-3 at three e-folds, and the measured 5.4e-3 sits within the
+    tolerance of 7e-3.
     """
     volume, area = np.array([1.0e15]), np.array([1.0e10])
     psi0, tau = 0.3, 1.0e10
-    decay = drain_mush_layers(
-        np.array([psi0]),
-        [np.array([0])],
-        volume,
-        area,
-        lambda p, idx: np.ones(np.size(idx)),
-        np.array([tau]),
-        3.0 * tau,
-    )
+
+    def drain(t):
+        return drain_mush_layers(
+            np.array([psi0]),
+            [np.array([0])],
+            volume,
+            area,
+            lambda p, idx: np.ones(np.size(idx)),
+            np.array([tau]),
+            t * tau,
+        )
+
+    times = np.linspace(0.3, 3.0, 10)
+    kept = np.array([drain(t).psi[0] for t in times]) / psi0
+    np.testing.assert_allclose(kept, np.exp(-times), rtol=7e-3)
+    decay = drain(3.0)
     assert decay.n_substeps == 30
-    assert decay.psi[0] == pytest.approx(psi0 * np.exp(-3.0), rel=7e-3)
+    assert decay.psi[0] == pytest.approx(psi0 * kept[-1], rel=1e-15)
     # A forward-Euler scheme at the same sub-step would land 15 percent low.
-    assert abs(decay.psi[0] - psi0 * 0.9**30) / decay.psi[0] > 0.1
+    euler = 0.9 ** (10.0 * times)
+    assert abs(kept[-1] - euler[-1]) / kept[-1] > 0.1
     assert decay.t_matrix[0] == pytest.approx(3.0 * tau, rel=1e-12)
     assert decay.t_darcy[0] == pytest.approx(0.0, abs=0.0)
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fine = np.linspace(0.0, 3.0, 200)
+        fig, ax = plt.subplots(figsize=(5.2, 3.6))
+        ax.plot(fine, np.exp(-fine), '-', label='exp(-t / tau_s)')
+        ax.plot(times, kept, 'o', mfc='none', label='layer drainage')
+        ax.plot(times, euler, 'x', color='0.5', label='forward Euler, same sub-steps')
+        ax.set_xlabel('t / tau_s')
+        ax.set_ylabel('psi / psi0')
+        ax.set_yscale('log')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'layer_drainage_compaction_limited_node')
 
 
 @pytest.mark.reference_pinned
@@ -530,3 +556,56 @@ def test_a_dense_melt_node_seals_itself_and_the_mush_below_it():
     drho[8] = -1.0
     held, draining = split_at_dense(layer, drho)
     assert held.tolist() == layer.tolist() and draining.size == 0
+
+
+@pytest.mark.physics_invariant
+def test_pore_melt_beyond_the_solver_porosity_stays_with_its_share_of_the_volatiles():
+    """A node holding psi = 0.3 at a solver porosity of 0.1, drained for a
+    hundred of its drainage times, keeps the 0.2 that crystallised in place and
+    two thirds of its volatiles; only the flowing 0.1 leaves. A rate taken off
+    the whole psi would empty the node and take every volatile with it."""
+    volume, area = np.array([1.0]), np.array([1.0])
+    out = drain_mush_layers(
+        np.array([0.3]),
+        [np.array([0])],
+        volume,
+        area,
+        lambda p, idx: np.full(np.size(idx), 1.0e-2),
+        np.array([0.0]),
+        1.0e4,
+        tracer=np.array([[0.3]]),
+        porosity=np.array([0.1]),
+    )
+    assert out.psi[0] == pytest.approx(0.2, rel=1e-9)
+    assert out.tracer[0, 0] == pytest.approx(0.2, rel=1e-9)
+    assert out.returned == pytest.approx(0.1, rel=1e-9)
+    # Discrimination: an emptied node would hold less than a tenth of this.
+    assert out.psi[0] > 0.19
+
+
+@pytest.mark.physics_invariant
+def test_a_node_receives_no_more_than_its_free_pore_space():
+    """A fast-draining node below a slow one with little pore space fills the
+    upper node up to its solver porosity and no further; the rest stays below.
+    Melt and tracer are conserved and the upper node's concentration is the
+    mix of what it held and what arrived. Without the limit the upper node
+    fills far past its porosity, as it does when its pore space is not given."""
+    volume, area = np.array([1.0, 1.0]), np.array([1.0, 1.0])
+    psi0 = np.array([0.4, 0.05])
+    porosity = np.array([0.4, 0.1])
+
+    def speed_of(p, idx):
+        return np.where(np.asarray(idx) == 0, 1.0, 1.0e-6)
+
+    kwargs = dict(tracer=np.array([[0.4, 0.0]]))
+    args = (psi0, [np.arange(2)], volume, area, speed_of, np.zeros(2), 50.0)
+    out = drain_mush_layers(*args, porosity=porosity, **kwargs)
+    assert out.psi[1] <= porosity[1] * (1.0 + 1e-12)
+    assert out.psi[1] == pytest.approx(porosity[1], rel=1e-3)
+    assert float(np.sum(out.psi * volume)) + out.returned == pytest.approx(0.45, rel=1e-12)
+    left = 0.4 - float(np.sum(out.tracer * volume))
+    assert left == pytest.approx(0.0, abs=1e-4)  # almost nothing leaves the slow top node
+    assert out.tracer[0, 1] / out.psi[1] < 1.0
+    # Discrimination: given the whole node as pore space, the upper node fills past 0.3.
+    loose = drain_mush_layers(*args, porosity=np.array([0.4, 1.0]), **kwargs)
+    assert loose.psi[1] > 0.3

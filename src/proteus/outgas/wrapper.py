@@ -533,11 +533,8 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
     hf_row['fO2_shift_IW_derived'] = float(config.outgas.fO2_shift_IW)
     hf_row['O_res'] = 0.0
 
-    # The chemistry partitions a whole-planet inventory and rewrites every
-    # `_kg_solid` column (0.0 in CALLIOPE and atmodeller; atmodeller writes its
-    # condensates to `_kg_condensed`), so the trapped mass is hidden for the solve
-    # and put back after it. Condensed mass is handled the same way when it is kept
-    # from re-vapourising. With the layer scheme the solve sees the ocean melt alone.
+    # The solve rewrites every `_kg_solid` column, so trapped and kept condensed mass
+    # are withheld and put back; with the layer scheme it sees the ocean melt alone.
     with (
         condensed_mass_withheld(config, hf_row, initial=initial),
         trapped_mass_withheld(hf_row),

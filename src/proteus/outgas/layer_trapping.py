@@ -34,8 +34,13 @@ from proteus.outgas.compaction import (
     DEFAULT_MUSH_LOG10VISC,
 )
 from proteus.outgas.layer_drainage import node_geometry
-from proteus.outgas.node_record import RECORD_SPECIES, adopt_unrecorded, advance_record
-from proteus.outgas.node_record_io import read_record, write_record
+from proteus.outgas.node_record import (
+    RECORD_SPECIES,
+    adopt_unrecorded,
+    advance_record,
+    seed_record,
+)
+from proteus.outgas.node_record_io import read_melt_profile, read_record, write_record
 from proteus.outgas.trap_bookkeeping import (
     TrappingStep,
     apply_to_reservoirs,
@@ -163,8 +168,8 @@ def _restore_record(dirs: dict | None, row: dict, n: int | None = None):
     if record is None:
         log.warning(
             'Trapping: no per-node record for t = %.6g yr to resume from; the layer '
-            'drainage restarts from the current mush, and the trapped mass on the '
-            'helpfile is assigned to the nodes that are not liquid.',
+            'drainage restarts on the melt fraction of that snapshot, and the trapped '
+            'mass on the helpfile is assigned to the nodes that are not liquid.',
             time,
         )
         return None
@@ -204,6 +209,40 @@ def restore_node_record(config, dirs: dict | None, hf_row: dict, interior_o) -> 
     interior_o.trap_record = _restore_record(dirs, hf_row)
 
 
+def _seed_from_snapshot(dirs, prev: dict, profiles: dict, rfront_loc: float, phi_min: float):
+    """A record on the previous step's melt fraction, from its snapshot, or ``None``.
+
+    The profile is taken onto this step's nodes by radius, so a mesh that
+    changed size since that snapshot still gets one.
+    """
+    path = _snapshot_for(dirs, float(prev.get('Time', 0.0)))
+    if path is None:
+        return None
+    try:
+        found = read_melt_profile(path)
+    except (OSError, RuntimeError, ValueError) as exc:
+        log.warning('Trapping: could not read the melt fraction from %s (%s).', path, exc)
+        return None
+    if found is None:
+        return None
+    x_prev, r_prev = found
+    if x_prev.size != profiles['n']:
+        _, _, centre = node_geometry(profiles['r_basic'])
+        x_prev = np.interp(centre, r_prev, x_prev)
+    log.info(
+        'Trapping: the per-node record restarts on the melt fraction of t = %.6g yr',
+        float(prev['Time']),
+    )
+    return seed_record(
+        x_prev,
+        profiles['rho_solid'],
+        profiles['rho_melt'],
+        rfront_loc,
+        phi_min,
+        float(prev['Time']),
+    )
+
+
 def persist_node_record(dirs: dict | None, hf_row: dict, interior_o) -> None:
     """Write the per-node record into the snapshot for ``hf_row['Time']``.
 
@@ -231,10 +270,11 @@ def _describe(step: TrappingStep, layers, hf_row: dict, prev: dict, mass) -> Non
     nodes that drained. The node count, thickness, timescales and speed
     describe the thickest mush layer, which stands for the front of the front
     scheme. The matrix speed over the front speed has no single front top here
-    and stays NaN.
+    and is written as 0.
     """
     exited = layers.exited
     m_exit = mass[exited]
+    step.w_matrix_over_vf = 0.0
     step.n_exited = int(exited.size)
     step.n_mush = float(layers.n_mush)
     step.n_front = layers.layer_nodes
@@ -285,7 +325,7 @@ def _log(step: TrappingStep, layers) -> None:
             'solid; they and the mush nodes below them hold their pore melt',
             layers.n_dense,
         )
-    if layers.held and np.isfinite(step.frac_bound) and step.frac_bound > 0.0:
+    if layers.held and step.frac_bound > 0.0:
         # Held nodes keep the pore melt they had when drainage stopped, which can
         # trap far more than draining would, so each such step reports its causes.
         log.warning(
@@ -328,6 +368,21 @@ def ocean_melt_fraction(phi_global: float, melt_fraction, mass, rfront_loc: floa
     return float(phi_global) * ocean / melt
 
 
+def ocean_melt_written(row: dict) -> float | None:
+    """The ocean melt fraction a layer step wrote into ``row`` [1], or ``None``.
+
+    A layer step writes ``trap_Phi_ocean`` together with its mush-node count
+    ``trap_n_mush``. A row no layer step wrote holds 0 in both, the value the
+    helpfile stores for an unset column, so the fraction counts only when one
+    of the two is positive: 0 then means every node with melt is in the mush.
+    """
+    ocean = float(row.get('trap_Phi_ocean', 0.0))
+    n_mush = float(row.get('trap_n_mush', 0.0))
+    if not np.isfinite(ocean) or not (ocean > 0.0 or (np.isfinite(n_mush) and n_mush > 0.0)):
+        return None
+    return max(ocean, 0.0)
+
+
 @contextmanager
 def ocean_melt_for_chemistry(config, hf_row: dict):
     """Hand the chemistry only the ocean melt for one solve, in ``layers``.
@@ -335,15 +390,15 @@ def ocean_melt_for_chemistry(config, hf_row: dict):
     The pore melt of the mush and solid nodes is cut off from the ocean, so in
     ``layers`` the solve dissolves volatiles into the liquid nodes' melt alone:
     ``Phi_global`` reads ``trap_Phi_ocean`` while the context is open and is
-    restored after it. Outside ``layers``, or before a layer step has written
-    the column, it changes nothing.
+    restored after it. Outside ``layers``, or on a row no layer step wrote
+    (:func:`ocean_melt_written`), it changes nothing.
     """
-    ocean = float(hf_row.get('trap_Phi_ocean', float('nan')))
-    if getattr(config.outgas, 'trap_mode', 'none') != 'layers' or not np.isfinite(ocean):
+    ocean = ocean_melt_written(hf_row)
+    if getattr(config.outgas, 'trap_mode', 'none') != 'layers' or ocean is None:
         yield
         return
     saved = hf_row['Phi_global']
-    hf_row['Phi_global'] = min(max(ocean, 0.0), float(saved))
+    hf_row['Phi_global'] = min(ocean, float(saved))
     try:
         yield
     finally:
@@ -430,13 +485,15 @@ def run_layer_trapping(
         return _fallback(config, hf_row, prev, interior_o, dm_rm, melt_mass)
     tr = config.outgas
     rfront_loc = critical_melt_fraction(config)
-    # The previous solve dissolved into the previous step's ocean melt alone. The
-    # helpfile stores an unset value as 0, which then means no layer step wrote it.
-    ocean_prev = float(prev.get('trap_Phi_ocean', float('nan')))
-    if np.isfinite(ocean_prev) and ocean_prev > 0.0:
+    # The previous solve dissolved into the previous step's ocean melt alone.
+    ocean_prev = ocean_melt_written(prev)
+    if ocean_prev is not None:
         melt_mass = float(prev.get('M_mantle', hf_row.get('M_mantle', 0.0))) * ocean_prev
     record = _usable_record(interior_o, profiles['n'])
     trapped = {sp: trapped_kg(hf_row, sp) for sp in RECORD_SPECIES}
+    if record is None and any(kg > 0.0 for kg in trapped.values()):
+        # The run trapped before this record: restart it on the previous step.
+        record = _seed_from_snapshot(dirs, prev, profiles, rfront_loc, float(tr.trap_phi_min))
     if record is not None:
         adopt_unrecorded(record, profiles['mass'], trapped)
     # The melt concentrations of the previous chemistry solve, on the melt it
@@ -479,6 +536,8 @@ def run_layer_trapping(
         rfront_loc,
     )
     step.trapped_kg = _capped_moves(hf_row, layers.moved_kg)
+    # Every return counts, also on a step whose burials outweigh it.
+    step.returned = dict(layers.released_kg)
     step.supply_capped = list(layers.capped)
     if sum(layers.remelt_kg.values()) > 0.0 and step.total_trapped < 0.0:
         # Diagnostic only: escape and desiccation read the returned mass itself.

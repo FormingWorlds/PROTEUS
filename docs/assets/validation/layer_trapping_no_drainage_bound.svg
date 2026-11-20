@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:description>test: tests/outgas/test_layer_trapping.py::test_undrained_mush_traps_the_front_schemes_no_drainage_bound; command: pytest tests/outgas/test_layer_trapping.py::test_undrained_mush_traps_the_front_schemes_no_drainage_bound --validation-plots; summary: {"v": 1, "axes": [{"scales": ["linear", "linear"], "categories": [null, null], "lines": [[10, 0.0, 1.0, 0.52, 0.21666666666666665, 0.0, 0.50085, 0.260442, 0.10851749999999998], [10, 0.0, 1.0, 0.52, 0.21666666666666665, 0.0, 0.50085, 0.27546750000000003, 0.10851749999999998], [10, 0.0, 1.0, 0.52, 0.21666666666666665, 0.0, 0.19902441354742326, 0.11939392387305318, 0.03392083389189125], [2, 0.0, 1.0, 0.5, 0.5, 0.0, 0.0017, 0.00085, 0.00085]], "collections": [], "values": [], "value_scales": [], "patches": [], "images": [], "image_scales": [], "extents": []}]}</dc:description>
+    <dc:description>test: tests/outgas/test_layer_trapping.py::test_undrained_mush_traps_the_front_schemes_no_drainage_bound; command: pytest tests/outgas/test_layer_trapping.py::test_undrained_mush_traps_the_front_schemes_no_drainage_bound --validation-plots; summary: {"v": 1, "axes": [{"scales": ["linear", "linear"], "categories": [null, null], "lines": [[10, 0.0, 1.0, 0.52, 0.21666666666666665, 0.0, 0.50085, 0.260442, 0.10851749999999998], [10, 0.0, 1.0, 0.52, 0.21666666666666665, 0.0, 0.50085, 0.27546750000000003, 0.10851749999999998], [10, 0.0, 1.0, 0.52, 0.21666666666666665, 0.0, 0.43000597037668153, 0.23898667315580138, 0.09098275909654206], [2, 0.0, 1.0, 0.5, 0.5, 0.0, 0.0017, 0.00085, 0.00085]], "collections": [], "values": [], "value_scales": [], "patches": [], "images": [], "image_scales": [], "extents": []}]}</dc:description>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -1212,14 +1212,14 @@ z
     <g clip-path="url(#p398126b0a3)">
      <use xlink:href="#mc2ce9ab628" x="71.752482" y="184.856529" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
      <use xlink:href="#mc2ce9ab628" x="94.991903" y="163.706942" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="128.191077" y="157.478846" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="161.390251" y="151.13529" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="194.589424" y="144.674072" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="227.788598" y="138.092524" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="260.987771" y="131.390015" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="294.186945" y="124.566587" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="327.386118" y="117.622281" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="337.34587" y="131.706729" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="128.191077" y="145.997218" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="161.390251" y="128.279343" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="194.589424" y="110.554171" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="227.788598" y="92.822377" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="260.987771" y="75.08451" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="294.186945" y="57.341023" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="327.386118" y="39.592301" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="337.34587" y="42.988257" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
     </g>
    </g>
    <g id="line2d_28">

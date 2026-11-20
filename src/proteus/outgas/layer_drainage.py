@@ -51,10 +51,14 @@ passes; the second is the melt that compaction of the node and of the nodes
 beneath it supplies; the smaller controls, as in the front integral. A single
 node with ``L = V / A`` and the same matrix time obeys the front integral's
 equation exactly. The contrast enters as its magnitude, as in the solver's
-separation velocity. The flowing pore melt is ``psi`` capped at the solver's
-own melt volume fraction, the mean of its values at the start and the end of
-the step: pore melt the record holds beyond it has crystallised in place,
-keeps its volatiles and no longer flows.
+separation velocity.
+
+The solver's own melt volume fraction, the mean of its values at the start
+and the end of the step, bounds the pore melt that flows. Pore melt the record
+holds beyond it has crystallised in place: it stays at its node with its share
+of the volatiles, and only the rest drains. A node receives no more from below
+than it passes on plus its free pore space, the solver porosity less its
+flowing pore melt, so no node fills beyond the melt the solver gives it.
 
 A node whose tables put the melt at or above the solid density cannot drive
 its melt upward; the solver's separation velocity sinks it. Such a node takes
@@ -64,9 +68,10 @@ mush nodes below it in the same mush layer, whose melt it would have to pass.
 Melt that leaves the top of a mush layer rejoins the magma ocean, or leaves
 through the surface when the layer reaches the top of the mesh. A mush layer
 capped by a solid node is sealed: nothing leaves it. :func:`split_at_dense`
-seals the part of a mush layer at and below its uppermost dense-melt node. The fluxes are integrated
-with a second-order Runge-Kutta scheme, on sub-steps short enough that no node
-passes on more than :data:`SUBSTEP_FRACTION` of what it holds in one of them.
+seals the part of a mush layer at and below its uppermost dense-melt node.
+The fluxes are integrated with a second-order Runge-Kutta scheme, on sub-steps
+short enough that no node passes on more than :data:`SUBSTEP_FRACTION` of what
+it holds, nor receives more than that share of what it can hold, in one of them.
 """
 
 from __future__ import annotations
@@ -265,39 +270,72 @@ def mush_layer_fluxes(
     return flux, capacity <= inflow + supply
 
 
-def _rates(psi, tracer, layers, volume, area_top, speed_of, tau_s, cap):
-    """Rates of change of the pore melt and what it carries, and the step limit.
+def _layer_fluxes(psi, layers, volume, area_top, speed_of, tau_s):
+    """Face fluxes of every open layer and which nodes their permeability limits."""
+    out = []
+    for layer in layers:
+        p = psi[layer]
+        out.append(
+            mush_layer_fluxes(
+                p, volume[layer], area_top[layer], speed_of(p, layer), tau_s[layer]
+            )
+        )
+    return out
 
-    The fluxes see the pore melt capped at ``cap``, the solver porosity; the
-    rate applies to ``psi`` itself. The limit is the shortest time any node
-    takes to pass on what it holds, ``psi V / q``, which keeps every node's
-    melt and carried mass positive and the upwind transport monotone.
+
+def _step_limit(psi, layers, fluxes, volume, room) -> float:
+    """The shortest time any node takes to pass on what it holds, or to fill.
+
+    A node passes on ``psi V / q_out``; one receiving melt fills its pore space
+    in ``max(psi, room - psi) V / q_in``. A tenth of the shorter keeps every
+    node's melt and carried mass positive and the upwind transport monotone.
+    """
+    span = np.inf
+    for layer, (q, _) in zip(layers, fluxes):
+        p, v = psi[layer], volume[layer]
+        inflow = np.concatenate(([0.0], q[:-1]))
+        holds = np.maximum(p, room[layer] - p)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            passing = np.where(q > 0.0, p * v / q, np.inf)
+            filling = np.where((inflow > 0.0) & (holds > 0.0), holds * v / inflow, np.inf)
+        span = min(span, float(np.min(passing)), float(np.min(filling)))
+    return span
+
+
+def _limit_inflow(q, p, room, volume, dt):
+    """Cap what each node receives at what it passes on plus its free pore space.
+
+    Taken from the top of the layer down, so a node whose outflow was cut
+    passes the cut on to the node below it. The top flux leaves the layer.
+    """
+    q = q.copy()
+    free = np.maximum(room - p, 0.0) * volume / dt
+    for k in range(q.size - 2, -1, -1):
+        q[k] = min(q[k], q[k + 1] + free[k + 1])
+    return q
+
+
+def _rates(psi, tracer, layers, fluxes, volume, room, dt):
+    """Rates of change of the flowing pore melt and what it carries over ``dt``.
+
+    The fluxes leave each node at the concentration of the melt it holds.
     """
     rate = np.zeros_like(psi)
     t_rate = None if tracer is None else np.zeros_like(tracer)
-    limited = np.zeros(psi.size, dtype=bool)
     returned = 0.0
-    span = np.inf
-    for layer in layers:
+    for layer, (q, _) in zip(layers, fluxes):
         p = psi[layer]
-        flowing = np.minimum(p, cap[layer])
-        q, perc = mush_layer_fluxes(
-            flowing, volume[layer], area_top[layer], speed_of(flowing, layer), tau_s[layer]
-        )
+        q = _limit_inflow(q, p, room[layer], volume[layer], dt)
         inflow = np.concatenate(([0.0], q[:-1]))
         rate[layer] = (inflow - q) / volume[layer]
-        limited[layer] = perc
         returned += float(q[-1])
         if tracer is not None:
-            held = tracer[:, layer]
-            conc = np.divide(held, p, out=np.zeros_like(held), where=p > 0.0)
+            carried = tracer[:, layer]
+            conc = np.divide(carried, p, out=np.zeros_like(carried), where=p > 0.0)
             out = q * conc
-            into = np.concatenate((np.zeros((held.shape[0], 1)), out[:, :-1]), axis=1)
+            into = np.concatenate((np.zeros((carried.shape[0], 1)), out[:, :-1]), axis=1)
             t_rate[:, layer] = (into - out) / volume[layer]
-        with np.errstate(divide='ignore', invalid='ignore'):
-            turnover = np.where(q > 0.0, p * volume[layer] / q, np.inf)
-        span = min(span, float(np.min(turnover)))
-    return rate, t_rate, returned, limited, span
+    return rate, t_rate, returned
 
 
 def drain_mush_layers(
@@ -317,9 +355,11 @@ def drain_mush_layers(
 
     ``speed_of(psi, index)`` returns the drainage speed of the nodes ``index``
     at pore-melt volume fractions ``psi`` [m s-1]. ``porosity``, the solver's
-    melt volume fraction of every node over the step [1], caps the pore melt the
-    permeability and the compaction supply see: pore melt the record holds
-    beyond it has crystallised in place and does not flow. Every flux is counted once
+    melt volume fraction of every node over the step [1], bounds the pore melt
+    that flows: pore melt the record holds beyond it has crystallised in place,
+    stays at its node with its share of ``tracer``, and only the rest drains. It
+    is also the pore space a node can fill with melt from below; without it, a
+    node can fill to 1. Every flux is counted once
     leaving one node and once entering the next, so the melt of the layers plus
     what left through their tops is conserved to rounding. ``tracer``, of shape
     ``(quantities, nodes)``, is anything the melt carries per unit node volume,
@@ -334,9 +374,17 @@ def drain_mush_layers(
     if not 0.0 < substep_fraction <= 1.0:
         raise ValueError(f'substep_fraction must lie in (0, 1], got {substep_fraction!r}')
     psi = np.array(psi, dtype=float, copy=True)
-    cap = np.full(psi.size, np.inf) if porosity is None else np.asarray(porosity, dtype=float)
+    room = np.ones(psi.size) if porosity is None else np.asarray(porosity, dtype=float)
+    room = np.clip(room, 0.0, 1.0)
+    # Pore melt beyond the solver porosity has crystallised in place and stays.
+    stuck = np.where(np.isfinite(psi), np.maximum(psi - room, 0.0), 0.0)
+    share = np.divide(stuck, psi, out=np.zeros_like(psi), where=np.isfinite(psi) & (psi > 0.0))
+    psi = psi - stuck
+    t_stuck = None
     if tracer is not None:
         tracer = np.array(tracer, dtype=float, copy=True)
+        t_stuck = tracer * share[None, :]
+        tracer = tracer - t_stuck
     t_darcy = np.zeros_like(psi)
     t_matrix = np.zeros_like(psi)
     members = np.zeros(psi.size, dtype=bool)
@@ -354,17 +402,19 @@ def drain_mush_layers(
                 duration,
             )
             break
-        rate1, t_rate1, out1, limit1, span = _rates(
-            psi, tracer, layers, volume, area_top, speed_of, tau_s, cap
-        )
+        fluxes1 = _layer_fluxes(psi, layers, volume, area_top, speed_of, tau_s)
+        span = _step_limit(psi, layers, fluxes1, volume, room)
         dt = min(duration - elapsed, substep_fraction * span)
         if not dt > 0.0:
             break
+        rate1, t_rate1, out1 = _rates(psi, tracer, layers, fluxes1, volume, room, dt)
+        limit1 = np.zeros(psi.size, dtype=bool)
+        for layer, (_, perc) in zip(layers, fluxes1):
+            limit1[layer] = perc
         trial = np.clip(psi + dt * rate1, 0.0, 1.0)
         t_trial = None if tracer is None else np.maximum(tracer + dt * t_rate1, 0.0)
-        rate2, t_rate2, out2, _, _ = _rates(
-            trial, t_trial, layers, volume, area_top, speed_of, tau_s, cap
-        )
+        fluxes2 = _layer_fluxes(trial, layers, volume, area_top, speed_of, tau_s)
+        rate2, t_rate2, out2 = _rates(trial, t_trial, layers, fluxes2, volume, room, dt)
         psi = np.clip(psi + 0.5 * dt * (rate1 + rate2), 0.0, 1.0)
         if tracer is not None:
             tracer = np.maximum(tracer + 0.5 * dt * (t_rate1 + t_rate2), 0.0)
@@ -375,12 +425,13 @@ def drain_mush_layers(
         steps += 1
 
     matrix_speed = 0.0
-    for layer in layers:
-        flowing = np.minimum(psi[layer], cap[layer])
-        q, _ = mush_layer_fluxes(
-            flowing, volume[layer], area_top[layer], speed_of(flowing, layer), tau_s[layer]
-        )
+    for layer, (q, _) in zip(
+        layers, _layer_fluxes(psi, layers, volume, area_top, speed_of, tau_s)
+    ):
         matrix_speed = max(matrix_speed, float(np.max(q / area_top[layer])))
+    psi = psi + stuck
+    if tracer is not None:
+        tracer = tracer + t_stuck
     return Drainage(
         psi=psi,
         t_darcy=t_darcy,

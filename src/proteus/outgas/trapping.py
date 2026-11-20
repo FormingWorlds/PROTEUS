@@ -323,9 +323,10 @@ def escapable_inventory(hf_row: dict, element: str, config: Config | None = None
 def trapping_returned_mass(hf_row: dict) -> bool:
     """Whether this step's trapping returned trapped mass to the melt.
 
-    Reads ``trap_kg_returned``, the mass the step's net moves returned, which a
+    Reads ``trap_kg_returned``, the mass the step returned to the melt, which a
     remelt in either scheme and melt draining back to the ocean in ``layers``
-    both produce. ``trap_branch`` is a diagnostic and is not read here.
+    both produce, also on a step that buries more than it returns.
+    ``trap_branch`` is a diagnostic and is not read here.
     """
     returned = float(hf_row.get('trap_kg_returned', 0.0))
     return bool(np.isfinite(returned) and returned > 0.0)
@@ -649,7 +650,8 @@ def run_trapping(
         return None
     if mode == 'layers':
         # Only a layer step of this iteration may hand the chemistry an ocean melt.
-        hf_row['trap_Phi_ocean'] = float('nan')
+        hf_row['trap_Phi_ocean'] = 0.0
+        hf_row['trap_n_mush'] = 0.0
     if init_stage:
         # The initialisation iterations advance the clock but not the mantle,
         # and the time is reset to zero after each, so there is nothing to bury.

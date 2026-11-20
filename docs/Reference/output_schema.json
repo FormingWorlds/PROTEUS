@@ -3834,9 +3834,15 @@
         {
           "file": "src/proteus/outgas/trap_bookkeeping.py",
           "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "outgas"
+      ],
       "consumers_possible": []
     },
     {

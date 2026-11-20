@@ -63,8 +63,11 @@ returns exactly the species that went in.
 Trapped mass that the record does not hold, as after resuming a run whose
 snapshot carries no record, is assigned to the nodes that are not liquid in
 proportion to their mass (:func:`adopt_unrecorded`), so it remelts with them.
-A record started on a run that has trapped mass already buries nothing new at
-first sight, since the mush it finds holds that mass.
+Such a record starts on the melt fraction of the previous step
+(:func:`seed_record`): the mush found there holds the assigned mass, and a
+node that leaves the ocean in the step buries its pore melt as in a run that
+kept its record. A record started on a run that has trapped mass already,
+without that profile, buries nothing new at first sight.
 """
 
 from __future__ import annotations
@@ -182,6 +185,32 @@ class NodeRecord:
             crystal={s: np.zeros(n) for s in RECORD_SPECIES},
             pore={s: np.zeros(n) for s in RECORD_SPECIES},
         )
+
+
+def seed_record(
+    melt_fraction_prev: np.ndarray,
+    rho_solid: np.ndarray,
+    rho_melt: np.ndarray,
+    rfront_loc: float,
+    phi_min: float,
+    time_prev: float,
+) -> NodeRecord:
+    """A record with nothing trapped on the melt fraction of the previous step.
+
+    For a run that has trapped mass but no record to continue: the nodes are
+    classified on ``melt_fraction_prev`` [1] with this step's phase-boundary
+    densities [kg m-3], so the step that follows tells the nodes that were
+    already in the mush, which hold the trapped mass the caller assigns with
+    :func:`adopt_unrecorded`, from those that leave the ocean in it and bury
+    their pore melt. ``time_prev`` [yr] is the time of that profile.
+    """
+    x = np.clip(np.asarray(melt_fraction_prev, dtype=float).ravel(), 0.0, 1.0)
+    n = x.size
+    phi = melt_volume_fraction(
+        x, node_array(rho_solid, n, 'rho_solid'), node_array(rho_melt, n, 'rho_melt')
+    )
+    phase = classify_nodes(x, phi, rfront_loc, phi_min)
+    return NodeRecord.initial(phase, phi, x, time_prev)
 
 
 @dataclass

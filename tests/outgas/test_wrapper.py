@@ -1736,7 +1736,8 @@ def test_run_outgassing_dissolves_into_the_ocean_melt_of_the_layer_scheme():
     """With ``trap_mode = 'layers'`` the backend sees the ocean melt fraction
     the trapping step wrote in place of ``Phi_global`` for its solve, and the
     row keeps the global value after it; the front scheme and a row without
-    an ocean melt fraction leave ``Phi_global`` to the backend unchanged."""
+    an ocean melt fraction, NaN or the 0 of a fresh row, leave ``Phi_global``
+    to the backend unchanged."""
     seen = []
 
     def dummy(*args, **kwargs):
@@ -1747,6 +1748,8 @@ def test_run_outgassing_dissolves_into_the_ocean_melt_of_the_layer_scheme():
         ('layers', 0.25, 0.25),
         ('front', 0.25, 0.6),
         ('layers', float('nan'), 0.6),
+        # A fresh row stores 0 for a column no layer step wrote: not an empty ocean.
+        ('layers', 0.0, 0.6),
     ):
         config = MagicMock()
         config.outgas.module = 'dummy'

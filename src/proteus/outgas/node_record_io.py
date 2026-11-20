@@ -116,3 +116,23 @@ def read_record(path: str, n: int | None = None) -> NodeRecord | None:
         crystal=stores['crystal'],
         pore=stores['pore'],
     )
+
+
+def read_melt_profile(path: str) -> tuple[np.ndarray, np.ndarray] | None:
+    """The solver melt fraction [1] and radius [m] of every node in a snapshot.
+
+    Read from the Aragog fields ``phi_s`` and ``radius_s`` [km] on the
+    ``staggered`` dimension, ordered by radius; ``None`` when either is missing,
+    mis-sized or not finite.
+    """
+    import netCDF4 as nc
+
+    with nc.Dataset(path) as ds:
+        if 'phi_s' not in ds.variables or 'radius_s' not in ds.variables:
+            return None
+        x = np.ma.filled(ds.variables['phi_s'][:].astype(float), np.nan).ravel()
+        r = 1.0e3 * np.ma.filled(ds.variables['radius_s'][:].astype(float), np.nan).ravel()
+    if x.size < 2 or x.size != r.size or not np.all(np.isfinite(x) & np.isfinite(r)):
+        return None
+    order = np.argsort(r)
+    return np.clip(x[order], 0.0, 1.0), r[order]
