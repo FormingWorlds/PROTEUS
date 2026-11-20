@@ -136,6 +136,7 @@ def write_slurm(
             mem_per_case_mb=int(limits['max_mem'] * 1024),
             command=' '.join(['proteus', 'offchem', *flag, '--config']),
             case_list=str(listing),
+            job_name='proteusoffchem.grid.array',
         )
     )
     return script

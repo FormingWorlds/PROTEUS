@@ -206,8 +206,9 @@ def test_offchem_grid_refuses_a_grid_without_cases(grid):
 def test_offchem_grid_slurm_packs_the_selected_cases_as_the_grid_run(grid, monkeypatch):
     """Cases 0, 2 and 5 with cores_per_job = 2 and max_jobs = 2 give two jobs of two
     cores, one job at a time (max_jobs // cores_per_job), the 1.5 days in minutes and
-    4 GB per case; the listing holds the selected case names and the command passes
-    the compiled network on. No case runs here."""
+    4 GB per case; the listing holds the selected case names, the command passes the
+    compiled network on, and the job name differs from the grid run's, so that
+    `scancel -n` stops only one of them. No case runs here."""
     _write_grid_file(grid, max_jobs=2, max_days=1.5, max_mem=4, cores_per_job=2)
     names = ['case_000000', 'case_000002', 'case_000005']
     _add_cases(grid, monkeypatch, {n: _fake_config(n) for n in names})
@@ -218,6 +219,7 @@ def test_offchem_grid_slurm_packs_the_selected_cases_as_the_grid_run(grid, monke
     assert offchem.offchem_grid(grid, slurm=True) == []
 
     script = (grid / 'slurm_offchem.sh').read_text()
+    assert '#SBATCH -J proteusoffchem.grid.array\n' in script
     assert '#SBATCH --array=0-1%1\n' in script
     assert '#SBATCH --cpus-per-task=2\n' in script
     assert '#SBATCH --time=2160\n' in script  # 1.5 days
