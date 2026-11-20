@@ -596,17 +596,19 @@ def check_lid_inputs(hf_row: dict) -> None:
     ------
     LidOpenFluxError
         For a ``lid_weight`` that is not finite, a ``lid_conductance`` that is not finite under
-        a weight above 0, or a ``lid_T_node`` that is not finite under a live lid
-        (:func:`lid_acts`).
+        a weight above 0, or a ``lid_T_node`` or ``lid_T_base`` that is not finite under a live
+        lid (:func:`lid_acts`).
     """
     w = float(hf_row.get('lid_weight', 0.0))
     G = float(hf_row.get('lid_conductance', 0.0)) if w > 0.0 else 0.0
-    T = float(hf_row['lid_T_node']) if w > 0.0 and G > 0.0 else 0.0
-    if not (math.isfinite(w) and math.isfinite(G) and math.isfinite(T)):
+    live = w > 0.0 and G > 0.0
+    T = float(hf_row['lid_T_node']) if live else 0.0
+    T_b = float(hf_row['lid_T_base']) if live else 0.0
+    if not all(math.isfinite(x) for x in (w, G, T, T_b)):
         raise LidOpenFluxError(
             f'Lid columns: lid_weight {hf_row.get("lid_weight")}, lid_conductance '
-            f'{hf_row.get("lid_conductance")} or lid_T_node {hf_row.get("lid_T_node")} is '
-            'not finite'
+            f'{hf_row.get("lid_conductance")}, lid_T_node {hf_row.get("lid_T_node")} or '
+            f'lid_T_base {hf_row.get("lid_T_base")} is not finite'
         )
 
 
