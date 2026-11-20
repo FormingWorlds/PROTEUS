@@ -10,6 +10,8 @@ coverage:
       nightly:
         target: auto
         flags: [nightly]
+        # A commit without its own nightly upload carries a stale value forward; pass it.
+        flag_coverage_not_uploaded_behavior: pass
     patch:
       default:
         target: 80%
