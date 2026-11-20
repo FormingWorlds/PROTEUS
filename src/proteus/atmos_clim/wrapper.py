@@ -17,6 +17,7 @@ from proteus.atmos_clim.common import (
     Atmos_t,
     LevelsSource,
     LidOpenFluxError,
+    check_lid_inputs,
     clip_radius_to_hill,
     lid_open_flux,
     lid_open_residual,
@@ -224,6 +225,15 @@ def realign_xuv_gravity(hf_row: dict, radius: float):
         hf_row['g_xuv'] = gravity * (r_int / radius) ** 2
 
 
+def lid_inputs_or_stop(dirs: dict, hf_row: dict) -> None:
+    """:func:`check_lid_inputs` of the row; its stop writes status 22."""
+    try:
+        check_lid_inputs(hf_row)
+    except LidOpenFluxError:
+        UpdateStatusfile(dirs, 22)
+        raise
+
+
 def lid_open_flux_or_stop(dirs: dict, hf_row: dict) -> float:
     """:func:`lid_open_flux` of the row; its stop for an input that is not finite writes status 22."""
     try:
@@ -276,6 +286,7 @@ def run_atmosphere(
     """
 
     log.info('Solving atmosphere...')
+    lid_inputs_or_stop(dirs, hf_row)
 
     # Update bond albedo
     if config.atmos_clim.albedo_pl > 1.0e-9:

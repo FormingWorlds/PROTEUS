@@ -551,6 +551,32 @@ class LidOpenFluxError(RuntimeError):
     """The open part of a live lid has no start value: an input of it is not finite."""
 
 
+def check_lid_inputs(hf_row: dict) -> None:
+    """Refuse a lid column that is not finite where the coupling reads it.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row, with the lid columns of the interior step.
+
+    Raises
+    ------
+    LidOpenFluxError
+        For a ``lid_weight`` that is not finite, a ``lid_conductance`` that is not finite under
+        a weight above 0, or a ``lid_T_node`` that is not finite under a live lid
+        (:func:`lid_acts`).
+    """
+    w = float(hf_row.get('lid_weight', 0.0))
+    G = float(hf_row.get('lid_conductance', 0.0)) if w > 0.0 else 0.0
+    T = float(hf_row['lid_T_node']) if w > 0.0 and G > 0.0 else 0.0
+    if not (math.isfinite(w) and math.isfinite(G) and math.isfinite(T)):
+        raise LidOpenFluxError(
+            f'Lid columns: lid_weight {hf_row.get("lid_weight")}, lid_conductance '
+            f'{hf_row.get("lid_conductance")} or lid_T_node {hf_row.get("lid_T_node")} is '
+            'not finite'
+        )
+
+
 def lid_open_flux(hf_row: dict) -> float:
     """Flux [W m-2] of the surface without a lid, the boundary value of the interior.
 
@@ -569,7 +595,8 @@ def lid_open_flux(hf_row: dict) -> float:
     Raises
     ------
     LidOpenFluxError
-        For an ``F_atm``, ``T_surf`` or ``lid_T_base`` that is not finite under a live lid.
+        For an ``F_atm``, ``T_surf`` or ``lid_T_base`` that is not finite under a live lid, and
+        for a lid column that :func:`check_lid_inputs` refuses.
 
     Notes
     -----
@@ -577,6 +604,7 @@ def lid_open_flux(hf_row: dict) -> float:
     ``T_b - T_surf``. The value tends to ``F_atm`` as the lid weight goes to 0. It is the start
     of the step; inside it the open part follows its node with :func:`lid_open_conductance`.
     """
+    check_lid_inputs(hf_row)
     if not lid_acts(hf_row):
         return float(hf_row['F_atm'])
     G = min(float(hf_row['lid_conductance']), _lid_skin_conductance(hf_row))

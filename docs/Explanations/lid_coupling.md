@@ -135,7 +135,7 @@ The start value has these limits:
 
 - A call whose share is above 1 W m$^{-2}$ per open area, or is not finite, logs a warning with the value and the model time; the run goes on.
 - Where $1 - w$ is $10^{-9}$ or less, $F_\mathrm{open,0}$ is `F_atm`. $F_\mathrm{open,0}$ tends to `F_atm` as $w$ goes to 0.
-- An `F_atm`, $T_\mathrm{surf}$ or $T_b$ that is not finite stops the run with status 22.
+- An `F_atm`, $T_\mathrm{surf}$ or $T_b$ that is not finite stops the run with status 22. The same stop comes before the atmosphere call for a lid weight that is not finite, a lid conductance that is not finite under a weight above 0, or a node temperature that is not finite under a live lid.
 
 **Inside the step.** Aragog takes `lid_F_open` as the start flux of the part $1 - w$ and holds the lid surface at $T_\mathrm{surf}$. Aragog sets the lid weight from its own state at each evaluation, so the sum closes at the weight of the row only: inside the step the open part carries the residual with its own area, $(1 - w_\mathrm{step})(F_\mathrm{atm} - B)/(1 - w)$. The lid part loses its own conduction, not $L$. Aragog holds the lid surface at least 1 K below $T_b$, so near $T_b$ the lid part loses at least $G_\mathrm{lid}$ times 1 K. Where the held lid would conduct more than the cap of [Rule 3](#rule-3-the-atmosphere-flux-is-the-largest-loss), its surface carries $C + F'(T_s - T_\mathrm{surf})$. What the step loses is `F_int`, and `lid_F_diff` records `F_int - F_atm` ([Rule 2](#rule-2-the-lid-ledger)).
 
