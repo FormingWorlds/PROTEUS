@@ -409,6 +409,27 @@ def test_the_response_is_the_change_of_the_shared_surface(validation_plot):
     validation_plot(figure, 'atmos_clim_lid_open_response')
 
 
+@pytest.mark.parametrize('value', [math.nan, math.inf, -math.inf])
+def test_a_lid_base_that_is_not_finite_stops_before_the_atmosphere_call(value):
+    """A lid base that is not finite under a live lid stops the check that runs before the
+    atmosphere call, with status 22 and the column named; without a live lid it is not read."""
+    from unittest.mock import patch
+
+    from proteus.atmos_clim.common import LidOpenFluxError, check_lid_inputs
+    from proteus.atmos_clim.wrapper import lid_inputs_or_stop
+
+    row = _row(0.3, T_surf=900.0, F_atm=5.0)
+    row['lid_T_base'] = value
+    with patch('proteus.atmos_clim.wrapper.UpdateStatusfile') as status:
+        with pytest.raises(LidOpenFluxError, match='not finite') as err:
+            lid_inputs_or_stop({'output': 'x'}, row)
+    assert f'lid_T_base {value}' in str(err.value)
+    status.assert_called_once_with({'output': 'x'}, 22)
+    off = _row(0.0, T_surf=900.0, F_atm=5.0)
+    off['lid_T_base'] = value
+    assert check_lid_inputs(off) is None
+
+
 def test_only_the_open_flux_stop_writes_the_atmosphere_status():
     """Another error from the open-part flux passes up without status 22."""
     from unittest.mock import patch

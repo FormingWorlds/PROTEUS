@@ -28,7 +28,7 @@ FIELDS = (
 UNSET = object()
 
 
-def _update(w, lid=True, T=(1150.0, 1160.0, 1170.0), F=(14000.0, 14400.0, 14900.0)):
+def _update(w, lid=True, T=(1150.0, 1160.0, 1170.0), F=(14000.0, 14400.0, 14900.0), G=21.9):
     bc = SimpleNamespace(
         outer_boundary_condition=4,
         subgrid_lid=lid,
@@ -46,7 +46,7 @@ def _update(w, lid=True, T=(1150.0, 1160.0, 1170.0), F=(14000.0, 14400.0, 14900.
         aragog_solver=SimpleNamespace(parameters=params, solution=None), tides=np.zeros(3)
     )
     hf_all = pd.DataFrame({'Time': [10.0, 20.0, 30.0], 'T_surf': T, 'F_atm': F})
-    row = _row(w, G=21.9, T_b=1440.0, T_surf=T[-1], F_atm=F[-1], lid_F_open=165000.0)
+    row = _row(w, G=G, T_b=1440.0, T_surf=T[-1], F_atm=F[-1], lid_F_open=165000.0)
     row.update(Time=30.0, T_eqm=255.0)
     AragogRunner.update_solver(25.0, row, interior_o, hf_all=hf_all)
     return bc, row
@@ -64,6 +64,15 @@ def test_a_live_lid_passes_f_atm_and_the_four_fields_of_the_call(w):
     assert got['open_surface_slope'] == pytest.approx(50.0, rel=1e-12)
     assert got['open_skin_conductance'] == pytest.approx(2.0 / 0.01, rel=1e-14)
     assert got['open_lid_conductance'] == pytest.approx(21.9, rel=1e-14)
+
+
+def test_the_lid_conductance_is_capped_at_the_skin_conductance():
+    """With G_lid (300) above the skin conductance G = k/d (200), the lid part conducts at most
+    as the skin: G_l = 200 and L = 200 (T_b - T_surf)."""
+    bc, row = _update(0.4, G=300.0)
+    assert bc.open_lid_conductance == pytest.approx(200.0, rel=1e-14)
+    assert bc.open_lid_flux == pytest.approx(200.0 * (1440.0 - 1170.0), rel=1e-14)
+    assert bc.open_skin_conductance == pytest.approx(200.0, rel=1e-14)
 
 
 def test_the_slope_field_is_cut_at_the_grey_secant():

@@ -98,7 +98,7 @@ def test_a_usable_secant_is_kept():
     """A usable secant of the last 2 rows is passed unchanged, with no fallback code."""
     bc, row = _update([1150.0, 1160.0, 1170.0], [14000.0, 14400.0, 14900.0])
     assert bc.lid_surface_flux_slope == pytest.approx(50.0, rel=1e-12)
-    assert row['lid_slope_guard'] not in (3, 4)
+    assert row['lid_slope_guard'] == 0
 
 
 def test_without_a_live_lid_no_fallback_acts():
@@ -127,5 +127,35 @@ def test_the_fallback_is_the_newest_usable_secant_of_any_age(T, F, tiny):
         assert bc.lid_surface_flux_slope == pytest.approx(4.0 * const_sigma * T[-1] ** 3)
         assert row['lid_slope_guard'] == 4
     else:
+        # the open part cuts the fallback at the grey tangent of the current surface
+        grey = 4.0 * const_sigma * T[-1] ** 3
         assert bc.lid_surface_flux_slope == pytest.approx(want[0], rel=1e-12)
-        assert row['lid_slope_guard'] in (2, 3)
+        assert bc.open_surface_slope == pytest.approx(min(want[0], grey), rel=1e-12)
+        assert row['lid_slope_guard'] == (2 if want[0] > grey else 3)
+
+
+def test_the_fallback_passes_over_an_earlier_pair_with_a_short_step(caplog):
+    """An earlier pair whose surface step is below LID_SLOPE_DT_MIN is not usable either: the
+    fallback goes on to the pair before it (40 W m-2 K-1, 2 rows back)."""
+    T = [1150.0, 1160.0, 1160.005, 1160.008]
+    F = [14000.0, 14400.0, 15400.0, 15400.5]
+    with caplog.at_level(logging.INFO):
+        bc, row = _update(T, F)
+    assert bc.lid_surface_flux_slope == pytest.approx(40.0, rel=1e-12)
+    assert row['lid_slope_guard'] == 3
+    assert any('2 rows back' in r.getMessage() for r in caplog.records)
+
+
+def test_the_fallback_is_cut_at_the_grey_tangent_not_at_the_last_secant():
+    """After a fallback the open part cuts at the grey tangent of the current surface: a slope
+    between the grey secant of the last 2 rows and that tangent stays as it is (code 3)."""
+    T0, T1 = 1170.0, 1171.0
+    g_sec = const_sigma * (T0**2 + T1**2) * (T0 + T1)
+    g_tan = 4.0 * const_sigma * T1**3
+    s = 0.5 * (g_sec + g_tan)
+    F = [14000.0, 14400.0, 14400.0 + 10.0 * s, 14390.0 + 10.0 * s]  # last secant below 0
+    bc, row = _update([1150.0, 1160.0, T0, T1], F)
+    assert g_sec < s < g_tan
+    assert bc.lid_surface_flux_slope == pytest.approx(s, rel=1e-12)
+    assert bc.open_surface_slope == pytest.approx(s, rel=1e-12)
+    assert row['lid_slope_guard'] == 3
