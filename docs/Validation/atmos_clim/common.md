@@ -9,7 +9,7 @@ The right answer comes from 3 sources:
 
 - algebra, for the first 2 cases: two conductors in parallel, and a sum of two fluxes, have closed forms;
 - a numerical derivative of the surface balance, for the third case;
-- stored coupled runs with a fixed open flux and with the lid off, for the fourth case.
+- stored coupled runs with the response off, on the same code version, for the fourth case.
 
 If this part of the code were wrong, the atmosphere would solve for the wrong surface temperature, or the interior would lose more or less heat than the atmosphere takes.
 Each case below says why the check exists, what it tests, how we know the right answer and why it matters; the box "Test details" at the end of each case gives the reference, the tolerance, the test id and the command.
@@ -28,7 +28,7 @@ The physics of the lid in the coupling is on the page [Sub-grid lid and the surf
 | `tests/atmos_clim/test_common.py::test_the_call_flux_is_the_parallel_sum_of_the_lid_and_the_open_surface` | Analytical limit: two conductors in parallel at one surface temperature | `lid_boundary` at 110 surface temperatures, 4 weights, 3 lid conductances | 2026-11-08 |
 | `tests/atmos_clim/test_common.py::test_the_weighted_parts_sum_to_f_atm` | Analytical limit: the sum of the two weighted parts | `lid_flux_cap` and `lid_open_flux` at 21 weights, 3 ratios $r$ and 2 lid conductances | 2026-11-19 |
 | `tests/atmos_clim/test_lid_open_flux_instep.py::test_the_response_is_the_change_of_the_shared_surface` | Derivative of the shared surface balance (central difference) | `lid_open_conductance` at 19 weights and 3 slopes $F'$ | 2026-11-18 |
-| `tests/interior_energetics/test_lid_open_flux_coupled.py::test_the_open_part_keeps_the_coupled_runs_from_swinging` | Stored coupled runs with the fixed open flux and with the lid off | 2 segments of 1 Earth-mass runs through the lid onset | 2026-11-19 |
+| `tests/interior_energetics/test_lid_open_flux_coupled.py::test_the_open_part_carries_the_coupled_runs_through_the_live_lid_step` | Stored coupled runs with the response off | 2 segments of 1 Earth-mass runs through the lid onset | 2026-11-20 |
 
 ## The atmosphere call sees the lid and the open surface in parallel
 
@@ -110,29 +110,28 @@ A property test, `test_the_weighted_parts_sum_to_f_atm_on_both_sides_of_the_lid_
 
 ## Coupled runs through the lid onset
 
-**Why this check exists.** The response of the previous case must also work in a coupled run. Without it, one stored 1 Earth-mass run stops at its first step with a live lid, because the magma temperature jumps to 1763 K, and in a second run the interior takes up heat at the surface in that step. The test fails if a stored run with the response does either, by the bounds in the list below.
+**Why this check exists.** The response of the previous case must also work in a coupled run. Without it, one 1 Earth-mass run stops in its first step with a live lid at a clip of the magma temperature, and in a second run that step moves the surface temperature by 25 K. The test fails if a stored run with the response does either, by the bounds in the list below.
 
-**What it tests.** Two segments of 1 Earth-mass runs, each from a stored state shortly before the lid forms, all on one code version. The first segment runs from 9.226 to 10 Myr on a mesh with a 1500 m bottom cell at the core-mantle boundary, the second from 7.897 to 8.82 Myr on a mesh with a 3000 m bottom cell. Each segment is run from its state with the response and with the response off, so that the open flux is fixed through each step. In the first segment the run with the response off stops at 9.44 Myr, so that segment also has a run with the lid off from the same state. The lid is live on 1 row of each run with the response, so the response acts on 1 step of each run, the step after that row. After that step the lid weight is 0, and the runs differ only because they took different paths from it. The `provenance` entry of `tests/data/lid_open_flux/coupled_rows.json` gives the code version, the mesh, the settings and how the response is switched off. The test reads the rows of these runs from that file; it does not run PROTEUS. It asserts:
+**What it tests.** Two segments of 1 Earth-mass runs, each from a stored state shortly before the lid forms, all on one code version. The first segment runs from 9.226 to 10 Myr on a mesh with a 1500 m bottom cell at the core-mantle boundary, the second from 7.897 to 8.82 Myr on a mesh with a 3000 m bottom cell. Each segment is run from its state with the response and with the response off, so that the open flux is fixed through each step. The lid is live (its weight is above 0) on 1 row of each run, so the response acts on 1 step of each run, the step after that row. The runs with and without the response agree up to that row. After that step the lid weight is 0, and the runs differ only because they took different paths from it. The `provenance` entry of `tests/data/lid_open_flux/coupled_rows.json` gives the code version, the mesh, the settings and how the response is switched off. The test reads the rows of these runs from that file; it does not run PROTEUS. It asserts:
 
-- the runs of each segment start from the same row, and in the second segment the runs with and without the response agree up to the live row at 8.056 Myr;
-- in the second segment, in the step from 8.056 to 8.184 Myr, the surface temperature changes by less than half as much with the response as without it (4.1 K against 25.3 K), the interior gives off heat at the surface where without the response it takes up 0.92 W m$^{-2}$, and the magma temperature is lower (1538 K against 1559 K);
-- in the first segment, the largest step of $T_\mathrm{surf}$ between rows is below that of the run with the lid off (17.2 K against 43.3 K), and the interior takes up at most 1 W m$^{-2}$ at the surface (0.50 W m$^{-2}$, against 2.14 W m$^{-2}$ with the lid off);
+- in the first segment, the run without the response stops in the step after the live row, at a clip from 1763 K at 9.44 Myr (status 21), and the run with the response ends that step with no clip and the magma at 1537 K;
+- in the second segment, in the step from 8.056 to 8.184 Myr, the surface temperature changes by less than half as much with the response as without it (4.1 K against 25.3 K), and the magma temperature is lower (1538 K against 1559 K);
 - in each run with the response, no clip of $T_\mathrm{magma}$ and a magma temperature below 1600 K;
 - in every run, an energy residual of at most $10^{-5}$ of the content, a sanity bound (the largest stored residual is $7.0 \times 10^{-6}$).
 
-**How we know the right answer.** A surface under a thin crust over a cooling magma ocean should change smoothly from step to step, and the interior should give off heat at the surface. In the second segment the 2 runs are the same up to the live row, so the step after it shows the effect of the response alone. In the first segment the run with the lid off, which has no lid onset, gives the scale of the steps of the atmosphere alone.
+**How we know the right answer.** A surface under a thin crust over a cooling magma ocean should change smoothly from step to step, and a coupled step should not stop the run. In each segment the 2 runs are the same up to the live row, so the step after it shows the effect of the response alone.
 
 **Why it matters.** The surface temperature sets the outgassing and the next atmosphere step. Swings and a jump of the magma temperature give wrong outgassing and can stop a run.
 
-![Surface temperature against time in 2 coupled segments, with the lid off, with the response off and with the in-step open part](../../assets/validation/atmos_clim_lid_open_coupled.svg#only-light){ width="80%" }
-![Surface temperature against time in 2 coupled segments, with the lid off, with the response off and with the in-step open part](../../assets/validation/atmos_clim_lid_open_coupled_dark.svg#only-dark){ width="80%" }
+![Surface temperature against time in 2 coupled segments, with the response off and with the in-step open part](../../assets/validation/atmos_clim_lid_open_coupled.svg#only-light){ width="80%" }
+![Surface temperature against time in 2 coupled segments, with the response off and with the in-step open part](../../assets/validation/atmos_clim_lid_open_coupled_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** Both panels show the surface temperature in K against time in Myr, one mark per coupled step. The top panel is the first segment, with the run with the lid off (dashed) and the run with the response (solid). The bottom panel is the second segment, with the run with the response off (dotted) and the run with the response (solid); the 2 lines lie on each other up to 8.056 Myr. A pass is a solid line that moves less than the other line in the step after the live row.
+**How to read the plot.** Both panels show the surface temperature in K against time in Myr, one mark per coupled step, for the run with the response off (dotted) and the run with the response (solid). The top panel is the first segment: the dotted line ends at a cross (stop) after 2 marks, because that run stops in the step after its second row. The bottom panel is the second segment. In each panel the 2 lines lie on each other up to the live row. A pass is a solid line that goes on where the dotted line stops, or moves less than the dotted line in the step after the live row.
 
-**Known limit.** The test checks stored rows of 2 segments, and the response acts on 1 step of each. The later rows show the paths of the runs, not the response. The test does not run PROTEUS, so a change of the code after the stored runs is not seen here; the response itself is checked by the case above and by the Aragog tests of the open part.
+**Known limit.** The test checks stored rows of 2 segments, and the response acts on 1 step of each. The later rows show the paths of the runs, not the response. In the runs with the response, in the step it acts on, the interior loses more heat than the atmosphere flux at either end of the step, and the lid melts back within the step. The column `lid_F_diff`, the interior flux of the step less the atmosphere flux at its start, is 3.78 W m$^{-2}$ against $-0.61$ W m$^{-2}$ without the response in the second segment, and 2.32 W m$^{-2}$ in the first. The test does not run PROTEUS, so a change of the code after the stored runs is not seen here; the response itself is checked by the case above and by the Aragog tests of the open part.
 
 ??? info "Test details"
-    - Reference: the stored runs with the response off and with the lid off, on the same code version.
+    - Reference: the stored runs with the response off, on the same code version, and the stop of the first of them.
     - Tolerance: the bounds in the list above.
-    - Test id: `tests/interior_energetics/test_lid_open_flux_coupled.py::test_the_open_part_keeps_the_coupled_runs_from_swinging`; the page numbers: `test_the_page_states_the_numbers_of_the_stored_coupled_rows`
+    - Test id: `tests/interior_energetics/test_lid_open_flux_coupled.py::test_the_open_part_carries_the_coupled_runs_through_the_live_lid_step`; the test that ties each number of this case to the stored rows: `tests/interior_energetics/test_lid_open_flux_coupled.py::test_the_page_states_the_numbers_of_the_stored_coupled_rows`
     - Command: `pytest tests/interior_energetics/test_lid_open_flux_coupled.py` (add `--validation-plots` to write the plot pair)
