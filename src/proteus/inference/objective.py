@@ -10,6 +10,7 @@ import toml
 import torch
 from numpy import log10
 
+from proteus.grid.summarise import status_category
 from proteus.inference.correlation import CorrelationWhitener, is_element_ratio
 from proteus.inference.failures import (
     ABORT_ON_FAILURE_ENV,
@@ -655,7 +656,7 @@ def J(
 
     # A clean exit on an error status (e.g. 25, stopped via the keepalive file),
     # one that never reached the main loop (0, 1), or with no readable status.
-    failed = (20 <= sim_status <= 28) or (sim_status in (0, 1, STATUS_MISSING))
+    failed = status_category(sim_status) == 'Error' or sim_status in (0, 1, STATUS_MISSING)
 
     # Runs that completed normally on an outcome this study does not fit
     # against, in `failure_codes` or in ALWAYS_EXCLUDED_STATUSES.

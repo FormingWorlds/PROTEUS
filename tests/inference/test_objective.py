@@ -1068,7 +1068,7 @@ def test_J_aborts_on_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp
 
 
 def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
-    """The failure range covers the error statuses the simulator can record."""
+    """The failure range covers the error statuses the simulator and the job script record."""
     monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
     monkeypatch.setattr(
         objective_mod, 'get_proteus_directories', lambda _path: {'output': str(tmp_path)}
@@ -1096,7 +1096,13 @@ def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
     assert _score(21) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
     # An evaporated planet is kept out of the fit with no `failure_codes` entry.
     assert _score(29, worker=1) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    # The Slurm job script writes 30 for a case killed for memory: a failure, not excluded.
+    assert _score(30, worker=2) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
     recorded = {r['worker']: r for r in failures_mod.read_failure_records(tmp_path)}
+    assert (recorded[2]['status'], recorded[2]['category']) == (
+        30,
+        objective_mod.CATEGORY_FAILURE,
+    )
     assert (recorded[1]['status'], recorded[1]['category']) == (
         29,
         objective_mod.CATEGORY_EXCLUDED,

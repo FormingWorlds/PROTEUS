@@ -466,13 +466,14 @@ def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp
 
 @pytest.mark.parametrize(
     ('status', 'fails'),
-    [(20, True), (28, True), (29, False)],
-    ids=['first-error', 'last-error', 'planet-evaporated'],
+    [(20, True), (28, True), (29, False), (30, True)],
+    ids=['first-error', 'last-error', 'planet-evaporated', 'killed-for-memory'],
 )
 def test_error_status_fails_the_job_also_after_exit_code_0(tmp_path, status, fails):
-    """A case that writes an error status (20 to 28) and exits with code 0 keeps its
-    status and fails its job, so sacct doesn't show the job as completed. Status 29,
-    "Completed (planet evaporated)", is no error: that case and its job succeed."""
+    """A case that writes an error status (20 to 28, or 30 for a memory kill) and exits
+    with code 0 keeps its status and fails its job, so sacct doesn't show the job as
+    completed. Status 29, "Completed (planet evaporated)", is no error: that case and its
+    job succeed."""
     env = _fake_tools(
         tmp_path,
         srun=_SRUN,
