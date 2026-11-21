@@ -594,7 +594,9 @@ def test_run_atmosphere_writes_status_22_before_the_call_for_a_lid_column_not_fi
     janus = MagicMock(return_value=(object(), {'albedo': 0.2, 'F_atm': 7.0}))
     with pytest.raises(LidOpenFluxError, match='not finite'):
         _janus_lid_call(tmp_path, 7.0, janus=janus, **{key: value})
-    assert (tmp_path / 'out' / 'status').read_text().splitlines()[0] == '22'
+    status = tmp_path / 'out' / 'status'
+    assert status.is_file()
+    assert status.read_text().splitlines()[0] == '22'
     assert janus.call_count == 0
 
 

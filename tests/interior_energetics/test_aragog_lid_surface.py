@@ -853,7 +853,7 @@ def test_the_resolve_gives_the_open_part_the_secant_too():
     G_sec, code = lid_open_slope(row, 87.0, 710.0)
     assert seen_G == [G_tan, pytest.approx(G_sec, rel=1e-12)]
     assert G_sec != pytest.approx(G_tan, rel=1e-3)
-    assert row['lid_slope_guard'] == code
+    assert row.get('lid_slope_guard') == code
 
 
 def test_the_resolve_records_the_guard_of_its_secant():
