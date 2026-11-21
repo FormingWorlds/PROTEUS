@@ -163,10 +163,29 @@ def test_the_page_states_the_numbers_of_the_stored_coupled_rows():
 
 @pytest.mark.physics_invariant
 def test_the_reference_states_the_lid_onset_of_the_stored_rows():
-    """The Reference page gives the onset of the stored segments: in the step that switches
-    the lid on, the held surface (the row before) lies above the lid base, and at its end the
-    top node lies below it; the later live row of the first segment has its own weight and
-    node. The numbers come from the stored rows."""
+    """The Reference page gives the onset of the stored segments: the weight of the step that
+    switches the lid on, its largest weight in the second segment, the fall back to 0 in the
+    next step (with the unconverged AGNI row of the first segment), the held surface (the row
+    before) above the lid base, the top node at the end below it, and the later live row of
+    the first segment. The numbers come from the stored rows."""
+    text = REFERENCE.read_text()
+    w1, w2 = (RUNS[f'{seg}_response']['lid_weight'][LIVE] for seg in ('seg1', 'seg2'))
+    assert all(
+        RUNS[n]['lid_weight'][LIVE - 1] == 0.0 < RUNS[n]['lid_weight'][LIVE] for n in NAMES
+    )
+    assert f'rose from 0 to {w1:.2f} in the first segment and to {w2:.2f} in the second' in text
+    w_max = RUNS['seg2_response']['lid_weight_max'][LIVE]
+    assert (
+        w_max > w2 and f'reached {w_max:.2f} at the largest (column `lid_weight_max`)' in text
+    )
+    assert all(RUNS[n]['lid_weight'][LIVE + 1] == 0.0 for n in NAMES) and len(NAMES) == 4
+    assert 'In the next step it fell back to 0 in all 4 runs' in text
+    t_end = RUNS['seg1_response']['Time'][LIVE + 1] / 1e6
+    assert f'{t_end:.6f} Myr in seg1_response' in RUNS['provenance']['note']
+    assert (
+        'in the first segment with the response the AGNI solve of that row did not converge'
+        in (text)
+    )
     held, node = [], []
     for name in ('seg1_response', 'seg2_response'):
         run = RUNS[name]
@@ -174,7 +193,6 @@ def test_the_reference_states_the_lid_onset_of_the_stored_rows():
         assert run['T_surf'][LIVE - 1] > T_b > run['lid_T_node'][LIVE]
         held.append(run['T_surf'][LIVE - 1] - T_b)
         node.append(T_b - run['lid_T_node'][LIVE])
-    text = REFERENCE.read_text()
     assert f'held surface lay {held[0]:.1f} and {held[1]:.1f} K above $T_b$' in text
     assert f'top node lay {node[0]:.1f} and {node[1]:.1f} K below $T_b$' in text
     run, i = RUNS['seg1_response'], LIVE + 2
