@@ -163,7 +163,7 @@ def test_a_t_magma_clip_stops_only_with_a_live_lid_in_the_step(prev_w, w, w_max,
 
 
 def test_a_row_without_lid_columns_counts_the_clip():
-    """A row without lid columns counts a clip and does not stop."""
+    """A row without lid columns flags the clip and does not stop."""
     row = {'Time': 1.0, 'T_magma': 3000.0}
     with patch('proteus.interior_energetics.wrapper.UpdateStatusfile') as status:
         guard_t_magma_clip({}, row, float('nan'), 3100.0)

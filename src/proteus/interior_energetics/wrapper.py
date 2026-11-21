@@ -2000,7 +2000,7 @@ def _partial_remelt_profile(solver, S_end: np.ndarray, S_molten: np.ndarray, f: 
 def guard_t_magma_clip(
     dirs: dict, hf_row: dict, prev_weight: float, clipped_from: float
 ) -> None:
-    """Stop a run whose step clipped a rise of ``T_magma`` while a lid acted, else count it.
+    """Stop a run whose step clipped a rise of ``T_magma`` while a lid acted, else flag the row.
 
     Parameters
     ----------

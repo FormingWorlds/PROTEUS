@@ -3,6 +3,7 @@
 This tutorial shows how a crust that closes over the magma ocean holds the volatiles of the melt, and how they then leak out down to a floor.
 You run the same planet twice, once with the lid seal and once without it.
 Then you read when the seal closed, check when each volatile starts to leak, and compare the 2 atmospheres.
+The last section needs no run: it builds helpfile rows by hand to show what the interior takes from the atmosphere under a sub-grid lid, and writes them to `output/tutorial_lid_slope/`.
 
 When the seal closes, the volatiles dissolved in the melt move to the `{x}_kg_sealed` columns, and the chemistry stops.
 While the seal holds, the held volatiles reach the atmosphere only by a leak with the relaxation time `tau_leak`, and by volcanism if `crust_rate` is above 0.

@@ -56,7 +56,7 @@ $$F = w \min(G_\mathrm{lid}, G_\mathrm{skin}) (T_b - T_\mathrm{surf}) + (1 - w)\
 
 ## The two parts of the surface sum to the atmosphere flux
 
-**Why this check exists.** After the atmosphere step the interior takes two start fluxes, the lid part and the open part $F_\mathrm{open}$, and their weighted sum must not count a flux twice or lose one. The test fails for 2 wrong forms of the open part:
+**Why this check exists.** After the atmosphere step the coupling splits `F_atm` into two start fluxes, the lid part and the open part $F_\mathrm{open}$ (the column `lid_F_open`), and their weighted sum must not count a flux twice or lose one. The test fails for 2 wrong forms of the open part:
 
 - an open part equal to $F_\mathrm{atm}$ counts the lid part twice, because $F_\mathrm{atm}$ already holds it;
 - an open part equal to the skin flux scaled by $r$, the ratio of $F_\mathrm{atm}$ to the skin balance of the call, loses the share $w C (r - 1)$ of the gap that falls on the lid.
