@@ -727,8 +727,10 @@ def lid_open_slope(
 def lid_open_fields(
     hf_row: dict, slope: float, T_other: float | None = None
 ) -> tuple[dict, int]:
-    """Fields of the call balance for the open part of a live lid: ``L`` and ``G_l`` per lid
-    area, ``G`` per area of the open skin, ``F'`` per total area.
+    """Fields of the call balance for the open part of a live lid.
+
+    ``L`` and ``G_l`` are per lid area, ``G`` per area of the open skin and ``F'`` per total
+    area.
 
     Parameters
     ----------
