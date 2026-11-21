@@ -142,7 +142,7 @@ with $T_{m,0}$ the value of $T_m$ at the start of the step. The response per ope
 
 $$G_\mathrm{eff}(w) = \frac{G_\mathrm{skin}\,F'}{F' + w\,G_\mathrm{lid}' + (1 - w)\,G_\mathrm{skin}}.$$
 
-The surface loses $w F_s + A_\mathrm{open}$. With $F_s = L$ and no rise of $T_m$ that is exactly `F_atm`. The form has no division by $1 - w$, so $A_\mathrm{open}$ stays finite at $w = 1$.
+The surface loses $w F_s + A_\mathrm{open}$. With $F_s = L$ and no rise of $T_m$ that is exactly `F_atm`. At the start of a step the held lid loses $F_{s,0} \neq L$, so the step starts $w\,(F_{s,0} - L)$ away from `F_atm`; the coupling keeps this start gap as a measured term ([Lid onset within a step](../Reference/lid_coupling.md#lid-onset-within-a-step)). The form has no division by $1 - w$, so $A_\mathrm{open}$ stays finite at $w = 1$.
 
 **Where $G_\mathrm{eff}$ comes from.** A rise $dT_m$ of the open melt warms the surface of the call balance by $dT_\mathrm{surf} = (1 - w)\,G_\mathrm{skin}\,dT_m / (F' + w\,G_\mathrm{lid}' + (1 - w)\,G_\mathrm{skin})$. The atmosphere then takes $F'\,dT_\mathrm{surf}$ more. Aragog holds the lid surface, so the open part alone carries that extra flux: $(1 - w)\,G_\mathrm{eff}(w)\,dT_m = F'\,dT_\mathrm{surf}$. At $w = 0$ this is the skin and the atmosphere in series. The [Aragog page](https://proteus-framework.org/aragog/Explanations/surface_lid.html#the-open-part-within-a-call) describes the same term from the solver side.
 
