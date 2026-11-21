@@ -304,5 +304,5 @@ rows with a fallback slope: [4]
 
 The code on a row belongs to the step that ends at that row: the fallback of the step from 40 yr is on the row at 50 yr.
 The first step of a new run starts without a slope, so the row at 20 yr has code 0, and code 0 also means that the secant of the last 2 rows was used as it is.
-A code 3 slope above the grey tangent is cut for the open part and records code 5.
+A code 3 slope above the grey tangent is cut for the cap and the open part and records code 5.
 [Slope guard codes](../Reference/lid_coupling.md#slope-guard-codes) lists all 5 codes, and [What the interior takes](../Explanations/lid_coupling.md#what-the-interior-takes) explains why the open part starts from $F_\mathrm{atm} - w L$.

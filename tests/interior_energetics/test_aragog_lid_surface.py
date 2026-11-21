@@ -881,7 +881,24 @@ def test_the_resolve_records_the_guard_of_its_secant():
     grey = const_sigma * (710.0**4 - 700.0**4) / 10.0
     assert seen_G[0] == G_tan
     assert seen_G[1] == pytest.approx(lid_open_slope(row, grey, 710.0)[0], rel=1e-12)
+    assert seen[1][0] == seen_G[1]  # the cap takes the cut secant too
     assert row['lid_slope_guard'] == LID_SLOPE_GUARD_SIZE
+
+
+def test_a_resolve_secant_cut_to_the_slope_of_the_call_is_skipped():
+    """A re-solve secant of 200 W/m2/K whose cut, the grey secant over 700 to 710 K, equals the
+    slope of the call changes nothing: the first solve stands. Without the open part the
+    uncut secant differs from that slope, so the call runs again."""
+    grey = const_sigma * (710.0**4 - 700.0**4) / 10.0
+    row = _row(0.4, G=21.9, T_b=1440.0, T_surf=700.0, F_atm=15000.0, lid_F_open=165000.0)
+    for open_slope, n in ((grey, 1), (None, 2)):
+        runner, solver, io, seen = _corrector([710.0, 705.0], 17000.0, tangent=grey)
+        solver.parameters.boundary_conditions.open_surface_slope = open_slope
+        snap = _call_start(solver)
+        out = runner._solve_with_retry(row, io, 'S0')
+        AragogRunner._correct_lid_cap(runner, row, io, 'S0', out, snap)
+        assert len(seen) == n
+    assert seen[1][0] == pytest.approx(200.0, rel=1e-12)
 
 
 def test_the_resolve_sets_no_open_response_where_the_step_had_none():

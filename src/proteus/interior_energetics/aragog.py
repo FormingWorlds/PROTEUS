@@ -2343,9 +2343,16 @@ class AragogRunner:
         bc = solver.parameters.boundary_conditions
         live = getattr(bc, 'subgrid_lid', False) and lid_acts(hf_row)
         bc.outer_boundary_value = hf_row['F_atm']
+        _set_lid_surface(bc, hf_row)
+        bc.surface_temperature = _surface_temperature_of_row(hf_row)
+        # in flux mode with the mush base the open part of a live lid follows its node in the
+        # step, as a total-area term at the in-step lid weight
+        open_part = (
+            live and bc.outer_boundary_condition == 4 and getattr(bc, 'lid_mush_base', False)
+        )
         slope, T_other = lid_flux_secant(hf_all, hf_row)
         fallback = 0
-        if live and slope == 0.0:
+        if live and slope == 0.0 and (open_part or bc.lid_surface_flux_cap is not None):
             # an unusable secant would leave the held lid a pure flux cap
             slope, rows_back, fallback = lid_fallback_slope(hf_all, hf_row)
             T_other = None
@@ -2356,16 +2363,11 @@ class AragogRunner:
                 rows_back,
                 '' if rows_back == 1 else 's',
             )
-        _set_lid_surface(bc, hf_row, slope)
-        bc.surface_temperature = _surface_temperature_of_row(hf_row)
-        # in flux mode with the mush base the open part of a live lid follows its node in the
-        # step, as a total-area term at the in-step lid weight
-        open_part = (
-            live and bc.outer_boundary_condition == 4 and getattr(bc, 'lid_mush_base', False)
-        )
         fields, code = lid_open_fields(hf_row, slope, T_other) if open_part else ({}, 0)
         for name in OPEN_PART_FIELDS:  # None without a live lid
             setattr(bc, name, fields.get(name))
+        if bc.lid_surface_flux_cap is not None:  # one slope: the cut one of the open part
+            bc.lid_surface_flux_slope = fields.get('open_surface_slope', slope)
         # a cut fallback keeps its source in its own code; the grey tangent is the cut itself
         if fallback == LID_SLOPE_GUARD_FALLBACK and code == LID_SLOPE_GUARD_SIZE:
             hf_row['lid_slope_guard'] = LID_SLOPE_GUARD_FALLBACK_CUT
@@ -2602,10 +2604,11 @@ class AragogRunner:
         """Solve the call once more with the secant slope where the cap acted at its end.
 
         The cap acts at the end where the lid surface ends above the held one. The secant of the
-        atmosphere flux between the held and the end surface (``self._lid_flux_at``) replaces
-        the slope of the call for the lid part and, through ``lid_open_slope``, for the open
-        part, and the call runs again from its start; a secant of 0 (unusable), a secant equal
-        to the slope (:func:`lid_resolve_skip`) or no flux provider keeps the first solve. The count
+        atmosphere flux between the held and the end surface (``self._lid_flux_at``), cut by
+        ``lid_open_slope`` where the step has an open part, replaces the slope of the call for
+        the lid part and the open part, and the call runs again from its start; a secant of 0
+        (unusable), a secant equal to the slope (:func:`lid_resolve_skip`) or no flux provider
+        keeps the first solve. The count
         and the wall time of the re-solves are kept on ``interior_o``.
 
         Returns
@@ -2635,16 +2638,17 @@ class AragogRunner:
                 tangent,
             )
             return out
+        code = None
+        if getattr(bc, 'open_surface_slope', None) is not None:
+            # the open part and the cap take one slope: the secant with its guard cut
+            secant, code = lid_open_slope(hf_row, secant, T_end)
         if lid_resolve_skip(tangent, secant):
             return out
         t0 = time.perf_counter()
         _restore_call_start(solver, snap, interior_o)
         bc.lid_surface_flux_slope = secant
-        if getattr(bc, 'open_surface_slope', None) is not None:
-            # the open part follows the same secant, with the guard of that slope
-            bc.open_surface_slope, hf_row['lid_slope_guard'] = lid_open_slope(
-                hf_row, secant, T_end
-            )
+        if code is not None:
+            bc.open_surface_slope, hf_row['lid_slope_guard'] = secant, code
         out2 = self._solve_with_retry(hf_row, interior_o, S0_entry)
         wall = time.perf_counter() - t0
         interior_o.lid_cap_resolves = getattr(interior_o, 'lid_cap_resolves', 0) + 1

@@ -27,10 +27,11 @@ from tests.interior_energetics.test_lid_open_flux_guards import _runner_bc  # no
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(60)]
 
 
-def _update(T, F, w=1.0):
+def _update(T, F, w=1.0, mush=True):
     """Run update_solver on a history with surfaces ``T`` and fluxes ``F``, the last entry being
-    the current row; return the boundary parameters and the row."""
+    the current row; return the boundary parameters and the row. ``mush`` False: no open part."""
     bc, interior_o = _runner_bc()
+    bc.lid_mush_base = mush
     hf_all = pd.DataFrame(
         {'Time': [10.0 * (i + 1) for i in range(len(T))], 'T_surf': T, 'F_atm': F}
     )
@@ -111,10 +112,10 @@ def test_the_fallback_is_the_newest_usable_secant_of_any_age(T, F, tiny):
         assert bc.lid_surface_flux_slope == pytest.approx(4.0 * const_sigma * T[-1] ** 3)
         assert row['lid_slope_guard'] == 4
     else:
-        # the open part cuts the fallback at the grey tangent of the current surface
+        # the cap and the open part take the fallback cut at the grey tangent of the surface
         grey = 4.0 * const_sigma * T[-1] ** 3
-        assert bc.lid_surface_flux_slope == pytest.approx(want[0], rel=1e-12)
         assert bc.open_surface_slope == pytest.approx(min(want[0], grey), rel=1e-12)
+        assert bc.lid_surface_flux_slope == bc.open_surface_slope
         assert row['lid_slope_guard'] == (5 if want[0] > grey else 3)
 
 
@@ -131,15 +132,15 @@ def test_the_fallback_passes_over_an_earlier_pair_with_a_short_step(caplog):
 
 
 def test_a_fallback_above_the_grey_tangent_is_cut_with_its_own_code():
-    """A fallback secant above the grey tangent of the current surface keeps its value for the
-    cap and is cut to the tangent for the open part; the column records code 5, not the code 2
-    of a cut last secant."""
+    """A fallback secant above the grey tangent of the current surface is cut to the tangent
+    for the cap and the open part; the column records code 5, not the code 2 of a cut last
+    secant."""
     T = [1150.0, 1160.0, 1170.0, 1170.004]
     F = [14000.0, 14400.0, 24400.0, 24400.5]  # earlier secant 1000 W m-2 K-1
     bc, row = _update(T, F)
     grey = 4.0 * const_sigma * T[-1] ** 3
     assert grey < 1000.0
-    assert bc.lid_surface_flux_slope == pytest.approx(1000.0, rel=1e-12)
+    assert bc.lid_surface_flux_slope == pytest.approx(grey, rel=1e-12)
     assert bc.open_surface_slope == pytest.approx(grey, rel=1e-12)
     assert row['lid_slope_guard'] == 5
 
@@ -156,4 +157,32 @@ def test_the_fallback_is_cut_at_the_grey_tangent_not_at_the_last_secant():
     assert g_sec < s < g_tan
     assert bc.lid_surface_flux_slope == pytest.approx(s, rel=1e-12)
     assert bc.open_surface_slope == pytest.approx(s, rel=1e-12)
+    assert row['lid_slope_guard'] == 3
+
+
+def test_a_cut_last_secant_is_the_slope_of_the_cap_and_the_open_part():
+    """A last secant of 1000 W m-2 K-1, above the grey secant over the same 2 rows, is cut to
+    that grey secant for the cap and for the open part (code 2): both take one slope."""
+    T0, T1 = 1160.0, 1170.0
+    bc, row = _update([T0, T1], [14000.0, 24000.0])
+    grey = const_sigma * (T0**2 + T1**2) * (T0 + T1)
+    assert grey < 1000.0
+    assert bc.open_surface_slope == pytest.approx(grey, rel=1e-12)
+    assert bc.lid_surface_flux_slope == pytest.approx(grey, rel=1e-12)
+    assert row['lid_slope_guard'] == 2
+
+
+def test_no_fallback_is_recorded_for_a_slope_that_no_field_takes(caplog):
+    """A live lid with its surface above the lid base has no cap; without the open part no
+    field takes the slope, so no fallback is logged and the column records 0. With the open
+    part the same rows take the fallback (code 3)."""
+    T = [1440.0, 1450.0, 1450.005]  # above the lid base 1440 K
+    F = [14000.0, 14400.0, 14400.0]
+    with caplog.at_level(logging.INFO):
+        bc, row = _update(T, F, mush=False)
+    assert bc.lid_surface_flux_cap is None and bc.lid_surface_flux_slope is None
+    assert row['lid_slope_guard'] == 0
+    assert not any('Lid slope' in r.getMessage() for r in caplog.records)
+    bc, row = _update(T, F)
+    assert bc.open_surface_slope == pytest.approx(40.0, rel=1e-12)
     assert row['lid_slope_guard'] == 3
