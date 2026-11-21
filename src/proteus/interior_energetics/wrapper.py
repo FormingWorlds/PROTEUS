@@ -268,6 +268,9 @@ def get_nlevb(config: Config):
         case 'aragog':
             return int(config.interior_energetics.num_levels)
         case 'boundary':
+            # The adiabat melt model hands the tides modules num_levels - 1 shells.
+            if config.interior_energetics.boundary.melt_model == 'adiabat':
+                return int(config.interior_energetics.num_levels)
             return 2
         case 'dummy':
             return 2
@@ -1917,10 +1920,13 @@ def _remelt_scalar_backend(
     if config.interior_energetics.module == 'boundary':
         hf_row['T_surf'] = t_reset
 
-    # Refresh the single-cell interior arrays the orbit/tides block reads later
-    # in this same iteration, so tidal heating uses the re-melted melt fraction.
-    interior_o.phi = np.array([state['Phi_global']])
-    interior_o.temp = np.array([t_reset])
+    # Refresh the layer arrays the orbit/tides block reads later in this same iteration,
+    # uniform over the layers (one, or the boundary backend's adiabat shells).
+    n_layers = int(getattr(interior_o, 'nlev_s', 1))
+    interior_o.phi = np.full(n_layers, state['Phi_global'])
+    interior_o.temp = np.full(n_layers, t_reset)
+    # The adiabat published before the impact no longer describes the mantle.
+    interior_o.temp_profile = None
 
     if f == 1.0 and state['Phi_global'] < 1.0:
         log.warning(
@@ -2914,6 +2920,68 @@ def _eos_grid_extent_up_step(eos_path: str, hf_row: dict) -> bool:
     return float(er[-1]) > outer + atol
 
 
+def interior_temperature_handoff(config: Config, interior_o: Interior_t) -> tuple:
+    """Mantle temperature profile handed from the interior to a structure re-solve.
+
+    With a resolved adiabat published by the boundary backend
+    (`interior_o.temp_profile`, read only when that backend runs), the callable follows that adiabat on pressure:
+    the top of the mantle sits at T_p and every level at its own adiabatic
+    temperature wherever the re-solve moves its radius, and the core region,
+    beyond the deepest mantle pressure, at T_cmb. Otherwise it interpolates the
+    layer temperatures `interior_o.temp` on the mid-radii of `interior_o.radius`,
+    sorted by radius (SPIDER stores surface first, Aragog CMB first), and holds
+    T_cmb inside the core.
+
+    Parameters
+    ----------
+    config : Config
+        Model configuration.
+    interior_o : Interior_t
+        Interior state after the energetics step.
+
+    Returns
+    -------
+    r_asc, T_asc : np.ndarray
+        Radius [m], strictly ascending, and temperature [K] of the profile, the
+        r-indexed form the Zalmoxis JAX path takes.
+    temperature_function : callable
+        Maps radius [m] and pressure [Pa] to temperature [K].
+    """
+    profile = None
+    if config.interior_energetics.module == 'boundary':
+        profile = getattr(interior_o, 'temp_profile', None)
+    if profile is not None:
+        radius, pressure, temp = (np.asarray(a, dtype=float).ravel() for a in profile)
+        order = np.argsort(pressure)
+        p_by_p = np.ascontiguousarray(pressure[order])
+        t_by_p = np.ascontiguousarray(temp[order])
+
+        def temperature_function(r, P):
+            return float(np.interp(P, p_by_p, t_by_p))
+
+        order_r = np.argsort(radius)
+        return (
+            np.ascontiguousarray(radius[order_r]),
+            np.ascontiguousarray(temp[order_r]),
+            temperature_function,
+        )
+
+    r_stag = 0.5 * (interior_o.radius[:-1] + interior_o.radius[1:])
+    _r_unsorted = np.asarray(r_stag, dtype=float).ravel()
+    _T_unsorted = np.asarray(interior_o.temp, dtype=float).ravel()
+    _order = np.argsort(_r_unsorted)
+    r_asc = np.ascontiguousarray(_r_unsorted[_order])
+    T_asc = np.ascontiguousarray(_T_unsorted[_order])
+    r_cmb, t_cmb = float(r_asc[0]), float(T_asc[0])
+
+    def temperature_function(r, P):
+        if r <= r_cmb:
+            return t_cmb
+        return float(np.interp(r, r_asc, T_asc))
+
+    return r_asc, T_asc, temperature_function
+
+
 def update_structure_from_interior(
     dirs: dict,
     config: Config,
@@ -3116,24 +3184,7 @@ def update_structure_from_interior(
 
     outdir = dirs['output']
 
-    # Build the mantle T(r) hand-off from the live interior profile.
-    # interior_o.radius holds basic nodes and interior_o.temp staggered-node
-    # temperatures, but the node ordering is module-dependent: SPIDER stores
-    # surface-first descending radius (spider.py:1308, T_cmb = temp[-1]),
-    # Aragog stores CMB-first ascending radius (aragog.py:1776, r_basic[0]
-    # at the CMB). Sort explicitly by radius rather than assuming either
-    # convention: np.interp requires monotonically increasing xp, and the
-    # CMB anchor below must be the innermost node.
-    r_stag = 0.5 * (interior_o.radius[:-1] + interior_o.radius[1:])
-    _r_unsorted = np.asarray(r_stag, dtype=float).ravel()
-    _T_unsorted = np.asarray(interior_o.temp, dtype=float).ravel()
-    _order = np.argsort(_r_unsorted)
-    _r_asc = np.ascontiguousarray(_r_unsorted[_order])
-    _T_asc = np.ascontiguousarray(_T_unsorted[_order])
-
-    # The interior profile covers only the mantle (CMB to surface), so hold
-    # T constant at the CMB value for the core region.
-    _R_cmb = float(_r_asc[0])
+    _r_asc, _T_asc, temperature_function = interior_temperature_handoff(config, interior_o)
     _T_cmb = float(_T_asc[0])
 
     # Diagnostic: trace the temperature profile actually fed to the structure
@@ -3152,11 +3203,6 @@ def update_structure_from_interior(
         float(hf_row.get('Phi_global', 0.0)),
         float(hf_row.get('R_int', 0.0)),
     )
-
-    def temperature_function(r, P):
-        if r <= _R_cmb:
-            return _T_cmb
-        return float(np.interp(r, _r_asc, _T_asc))
 
     from proteus.interior_struct.zalmoxis import zalmoxis_solver
 
@@ -3250,6 +3296,7 @@ def update_structure_from_interior(
             num_spider_nodes=num_spider_nodes,
             temperature_function=temperature_function,
             temperature_arrays=(_r_asc, _T_asc),
+            seed_boundary_temperatures=False,
         )
         _zalmoxis_wall = _zalmoxis_time.monotonic() - _zalmoxis_wall_t0
         # Mass-anchor check: enforce |M_int / M_int_target - 1| <
@@ -3438,7 +3485,7 @@ def update_structure_from_interior(
                 dirs['spider_mesh'] = prev_path
             dirs['mesh_shift_active'] = False
             dirs['mesh_convergence_steps'] = 0
-            del r_stag, _r_unsorted, _T_unsorted
+            del _r_asc, _T_asc, temperature_function
             gc.collect()
             # The structure is unchanged: advance the trigger clock and sentinels and record a
             # zero radius change, so a recurring cross-table up-step neither re-fires a re-solve
@@ -3668,7 +3715,7 @@ def update_structure_from_interior(
         dirs['mesh_convergence_steps'] = 0
 
     # Clean up temporary arrays
-    del r_stag, _r_unsorted, _T_unsorted
+    del _r_asc, _T_asc, temperature_function
     gc.collect()
 
     # Regenerate P-S EOS tables when volatile shifts exceed 5%.

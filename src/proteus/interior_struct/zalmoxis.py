@@ -3264,6 +3264,34 @@ def compute_structure_mass_desync(radii, density, mass_enclosed) -> float:
     return abs(shell_mass_trapezoid - accumulator_total) / accumulator_total
 
 
+def _seed_boundary_temperatures(config: Config, hf_row: dict, temperature) -> None:
+    """Set the boundary backend's initial temperatures from a solved structure.
+
+    The boundary backend takes its initial potential temperature from the
+    uppermost mantle node [K] and its surface temperature from the surface
+    node [K], rather than from the [interior_energetics.boundary] block. Any
+    other energetics module leaves `hf_row` unchanged. Called for the
+    initial-condition solves only: on an evolution re-solve the structure was
+    solved on the backend's own profile, and the top node of a profile that
+    warms with depth lies above T_p, so writing it back would heat the mantle
+    on every re-solve.
+
+    Parameters
+    ----------
+    config : Config
+        Model configuration.
+    hf_row : dict
+        Current runtime variables; T_magma and T_surf [K] are written.
+    temperature : array_like
+        Temperature of the solved structure on its radial grid, ascending from
+        the centre, the last node at the surface [K].
+    """
+    if config.interior_energetics.module != 'boundary':
+        return
+    hf_row['T_magma'] = float(temperature[-2])
+    hf_row['T_surf'] = float(temperature[-1])
+
+
 def zalmoxis_solver(
     config: Config,
     outdir: str,
@@ -3272,6 +3300,7 @@ def zalmoxis_solver(
     temperature_function=None,
     temperature_mode_override: str | None = None,
     temperature_arrays=None,
+    seed_boundary_temperatures: bool = True,
 ):
     """Run the Zalmoxis solver to compute the interior structure of a planet.
 
@@ -3313,6 +3342,10 @@ def zalmoxis_solver(
         the Config value is used. Currently used by
         ``determine_interior_radius_with_zalmoxis`` to force ``adiabatic``
         for SPIDER coupling with a T-dependent mantle EOS.
+    seed_boundary_temperatures : bool, optional
+        Whether the solved structure sets the boundary backend's T_magma and
+        T_surf (see `_seed_boundary_temperatures`). True for the
+        initial-condition solves; the evolution re-solve passes False.
 
     Returns
     -------
@@ -4019,14 +4052,8 @@ def zalmoxis_solver(
         )
     hf_row['gravity'] = gravity[-1]
 
-    if config.interior_energetics.module == 'boundary':
-        # Boundary backend reads its initial potential and surface
-        # temperatures off the freshly solved structure rather than off
-        # the [interior_energetics.boundary] config block. Take the
-        # uppermost-mantle node for T_magma and the radial surface
-        # node for T_surf.
-        hf_row['T_magma'] = temperature[-2]
-        hf_row['T_surf'] = temperature[-1]
+    if seed_boundary_temperatures:
+        _seed_boundary_temperatures(config, hf_row, temperature)
     hf_row['P_center'] = model_results.get('p_center')
     hf_row['P_cmb'] = float(pressure[cmb_index])
     # The mass target of this solve. The energetics wrapper treats a structure with
