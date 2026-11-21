@@ -885,6 +885,7 @@ def test_the_resolve_records_the_guard_of_its_secant():
     assert row['lid_slope_guard'] == LID_SLOPE_GUARD_SIZE
 
 
+@pytest.mark.physics_invariant
 def test_a_resolve_secant_cut_to_the_slope_of_the_call_is_skipped():
     """A re-solve secant of 200 W/m2/K whose cut, the grey secant over 700 to 710 K, equals the
     slope of the call changes nothing: the first solve stands. Without the open part the

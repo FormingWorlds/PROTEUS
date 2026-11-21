@@ -160,6 +160,7 @@ def test_the_fallback_is_cut_at_the_grey_tangent_not_at_the_last_secant():
     assert row['lid_slope_guard'] == 3
 
 
+@pytest.mark.physics_invariant
 def test_a_cut_last_secant_is_the_slope_of_the_cap_and_the_open_part():
     """A last secant of 1000 W m-2 K-1, above the grey secant over the same 2 rows, is cut to
     that grey secant for the cap and for the open part (code 2): both take one slope."""
@@ -172,6 +173,7 @@ def test_a_cut_last_secant_is_the_slope_of_the_cap_and_the_open_part():
     assert row['lid_slope_guard'] == 2
 
 
+@pytest.mark.physics_invariant
 def test_no_fallback_is_recorded_for_a_slope_that_no_field_takes(caplog):
     """Without the open part (no mush base) a live lid has no cap and no field takes the slope,
     so no fallback is logged and the column records 0. With the open part the same rows take
