@@ -344,7 +344,9 @@ def test_update_solver_passes_the_lid_boundary_of_the_row(w, lid):
 )
 def test_the_surface_temperature_of_a_row_is_its_positive_finite_t_surf(row, want):
     """The CMB law takes the row surface when it is a finite number above 0, else None."""
-    assert _surface_temperature_of_row(row) == want
+    got = _surface_temperature_of_row(row)
+    assert got == want
+    assert type(got) is (type(None) if want is None else float)
 
 
 @pytest.mark.parametrize(('obc', 'lid'), [(4, True), (4, False), (1, False)])

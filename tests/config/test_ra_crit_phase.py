@@ -40,6 +40,7 @@ def test_a_band_inside_zero_to_one_is_accepted(loc, wid):
     """A band inside [0, 1], its edges included, is accepted."""
     ie = _interior(loc=loc, wid=wid)
     assert ie.aragog.core_module.ra_crit_cmb == 'phase'
+    assert (ie.rfront_loc, ie.rfront_wid) == pytest.approx((loc, wid))
 
 
 @pytest.mark.unit
@@ -47,8 +48,9 @@ def test_a_band_inside_zero_to_one_is_accepted(loc, wid):
 def test_a_band_that_leaves_zero_to_one_is_refused(loc, wid):
     """The law by phase blends across [rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2];
     that band must lie inside [0, 1]."""
-    with pytest.raises(ValueError, match='rfront_wid'):
+    with pytest.raises(ValueError, match='rfront_wid') as err:
         _interior(loc=loc, wid=wid)
+    assert f'[{loc - 0.5 * wid:g}, {loc + 0.5 * wid:g}]' in str(err.value)
 
 
 @pytest.mark.unit
@@ -64,6 +66,7 @@ def test_a_band_that_leaves_zero_to_one_is_refused(loc, wid):
 def test_the_band_is_checked_only_where_the_law_by_phase_acts(kw):
     """A band outside [0, 1] passes where the law by phase does not act."""
     ie = _interior(loc=0.05, wid=0.2, **kw)
+    assert ie.rfront_loc - 0.5 * ie.rfront_wid < 0.0
     # the same band is refused once the law by phase acts on this object
     ie.module, ie.aragog.core_bc, ie.aragog.core_module.ra_crit_cmb = (
         'aragog',
@@ -91,3 +94,9 @@ def test_the_law_by_phase_reaches_aragog_as_phase():
         config, {'M_core': 1.93e24, 'P_center': 3.6e11}, SimpleNamespace(), '.'
     )
     assert params['ra_crit_cmb'] == 'phase'
+    # eq. 16 reaches aragog as its selector None, so 'phase' is not mapped the same way
+    config.interior_energetics.aragog.core_module = AragogCoreModule(ra_crit_cmb='eq16')
+    eq16 = core_module_params(
+        config, {'M_core': 1.93e24, 'P_center': 3.6e11}, SimpleNamespace(), '.'
+    )
+    assert eq16['ra_crit_cmb'] is None

@@ -627,7 +627,7 @@ def test_run_atmosphere_writes_the_open_part_and_its_residual_under_a_live_lid(
         second.mkdir()
         hf_row = _janus_lid_call(second, B + 0.5)
     assert hf_row['lid_F_resid'] == pytest.approx(0.5, rel=1e-6)
-    assert LID_RESID_WARN == 1.0
+    assert LID_RESID_WARN == pytest.approx(1.0)
     assert not any('atmosphere residual' in r.getMessage() for r in caplog.records)
 
 

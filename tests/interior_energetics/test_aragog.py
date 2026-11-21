@@ -895,6 +895,7 @@ def test_setup_solver_asks_aragog_to_raise_on_an_accepted_state_out_of_the_table
     config = _make_aragog_config(struct_module='spider')
     with patch('proteus.interior_energetics.aragog._SolverParameters') as sp:
         _run_setup_solver(tmp_path, config, lambda **rest: MagicMock())
+    assert sp.call_count == 1
     assert sp.call_args.kwargs['strict_accepted_range'] is True
 
 
