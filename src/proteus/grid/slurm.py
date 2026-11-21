@@ -7,6 +7,8 @@ import math
 import shlex
 import subprocess
 
+from proteus.utils.helper import STATUS_COMMENTS
+
 log = logging.getLogger('fwl.' + __name__)
 
 # Slurm's own default when slurm.conf sets no MaxArraySize
@@ -196,11 +198,15 @@ rm -rf "$TMPDIR"
 if [ -n "$cases" ]; then
     status=$(head -n 1 "$cases/$1/status" 2>/dev/null)
     case "$status" in
-        2[0-8]) [ "$code" -ne 0 ] || {{ echo "$1 ended with error status $status"; exit 1; }} ;;
+        2[0-8]|30) [ "$code" -ne 0 ] || {{ echo "$1 ended with error status $status"; exit 1; }} ;;
         ""|0|1)
             echo "$1 ended without a final status"
             mkdir -p "$cases/$1"
-            printf "25\\nError (died, or exit requested by user)\\n" > "$cases/$1/status"
+            if grep -q "^srun: error: .*: task [0-9]*: Out Of Memory" "$logs/$1.log"; then
+                printf "30\\n{STATUS_COMMENTS[30]}\\n" > "$cases/$1/status"
+            else
+                printf "25\\n{STATUS_COMMENTS[25]}\\n" > "$cases/$1/status"
+            fi
             exit 1 ;;
     esac
 fi

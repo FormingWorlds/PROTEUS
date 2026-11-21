@@ -58,6 +58,7 @@ from proteus.utils.helper import (
     parse_subyear_time,
     snapshot_path_for_time,
 )
+from proteus.utils.sigterm import exit_if_terminated
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -2720,6 +2721,8 @@ class AragogRunner:
             for attempt in range(1, max_attempts_stiff + 1):
                 _t0 = time.perf_counter()
                 solver.solve()
+                # Workaround for bmcage/odes#99: a SIGTERM in a CVODE callback can be lost.
+                exit_if_terminated()
                 _solve_wall = time.perf_counter() - _t0
                 out = solver.get_state()
                 if _diag_on:
