@@ -265,18 +265,20 @@ lid_F_open 20726.4 W m-2 per open area
 - These rows are built by hand, not by an atmosphere call, so they do not close the skin balance: the skin of the open part conducts $G_\mathrm{skin} (T_m - T_\mathrm{surf})$ = 65999 W m$^{-2}$ per open area here, not 20726. A run records the residual of the atmosphere call per total area, $F_\mathrm{atm} - B$ with $B$ the skin balance of the call, in `lid_F_resid` (here -27163.6 W m$^{-2}$) and logs a warning where its size is above 1 W m$^{-2}$.
 
 A run writes `lid_weight`, `lid_slope_guard` and `lid_F_open` on every row of `runtime_helpfile.csv`.
-The block writes the 4 rows in that format, with the same lid columns on each row and the codes that a run gives them, and reads them back as you would read a run:
+The block writes these rows and 1 more in that format, with the same lid columns on each row and the codes that a run gives them, and reads them back as you would read a run:
 
 ```python
 import os
 
-# lid_slope_guard of these rows, from the blocks above: the first row has no row
-# before it (code 4), the next 2 take their secant as it is (code 0), the last
-# one the secant 1 row back (code 3)
-rows = [{**hf_all.iloc[i].to_dict(), **lid} for i in range(len(hf_all))]
-hf = hf_all.assign(
+# a row records the code of the step that ends at it: the step from the first
+# row has no slope (code 0), the steps from 20 and 30 yr take their secant as it
+# is (code 0), the step from 40 yr the secant 1 row back (code 3, on the row at 50 yr)
+steps = pd.concat([hf_all, pd.DataFrame({'Time': [50.0], 'T_surf': [1180.0], 'F_atm': [15200.0]})])
+steps = steps.reset_index(drop=True)
+rows = [{**steps.iloc[i].to_dict(), **lid} for i in range(len(steps))]
+hf = steps.assign(
     lid_weight=lid['lid_weight'],
-    lid_slope_guard=[4, 0, 0, 3],
+    lid_slope_guard=[0, 0, 0, 0, 3],
     lid_F_open=[lid_open_flux(r) for r in rows],
 )
 os.makedirs('output/tutorial_lid_slope', exist_ok=True)
@@ -291,14 +293,15 @@ The block printed:
 
 ```text
  Time   T_surf  lid_weight  lid_slope_guard   lid_F_open
- 10.0 1150.000         0.4                4 19099.333333
+ 10.0 1150.000         0.4                0 19099.333333
  20.0 1160.000         0.4                0 19912.000000
  30.0 1170.000         0.4                0 20724.666667
- 40.0 1170.005         0.4                3 20726.406333
-rows with a fallback slope: [0, 3]
+ 40.0 1170.005         0.4                0 20726.406333
+ 50.0 1180.000         0.4                3 21537.333333
+rows with a fallback slope: [4]
 ```
 
-The first row has no row before it, so it takes the grey tangent (code 4).
-Code 0 means the secant of the last 2 rows was used as it is.
+The code on a row belongs to the step that ends at that row: the fallback of the step from 40 yr is on the row at 50 yr.
+The first step of a new run starts without a slope, so the row at 20 yr has code 0, and code 0 also means that the secant of the last 2 rows was used as it is.
 A code 3 slope above the grey tangent is cut for the open part and records code 5.
 [Slope guard codes](../Reference/lid_coupling.md#slope-guard-codes) lists all 5 codes, and [What the interior takes](../Explanations/lid_coupling.md#what-the-interior-takes) explains why the open part starts from $F_\mathrm{atm} - w L$.

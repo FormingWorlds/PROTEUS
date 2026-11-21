@@ -29,7 +29,7 @@ Every lid branch acts only for $w > 0$. With $w = 0$:
 
 ## Slope guard codes
 
-`lid_flux_secant` gives $F'$ from the last 2 rows. The secant is unusable for a surface step below 0.01 K (`LID_SLOPE_DT_MIN`), for a slope of 0 or below, or for one that is not finite; it is then 0. Under a live lid, `lid_fallback_slope` replaces it. `lid_open_slope` cuts the slope of the open part at the slope of a bare grey surface of emissivity 1. The column `lid_slope_guard` records the result:
+`lid_flux_secant` gives $F'$ from the last 2 rows. The secant is unusable for a surface step below 0.01 K (`LID_SLOPE_DT_MIN`), for a slope of 0 or below, or for one that is not finite; it is then 0. Under a live lid, `lid_fallback_slope` replaces it. `lid_open_slope` cuts the slope of the open part at the slope of a bare grey surface of emissivity 1. The column `lid_slope_guard` records the result on the row where the step ends, not on the row it starts from; the first step of a new run has no slope, so its row has code 0:
 
 | Code | When | Slope of the cap | Slope of the open part |
 |---|---|---|---|
