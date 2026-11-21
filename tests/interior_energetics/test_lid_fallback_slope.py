@@ -173,9 +173,9 @@ def test_a_cut_last_secant_is_the_slope_of_the_cap_and_the_open_part():
 
 
 def test_no_fallback_is_recorded_for_a_slope_that_no_field_takes(caplog):
-    """A live lid with its surface above the lid base has no cap; without the open part no
-    field takes the slope, so no fallback is logged and the column records 0. With the open
-    part the same rows take the fallback (code 3)."""
+    """Without the open part (no mush base) a live lid has no cap and no field takes the slope,
+    so no fallback is logged and the column records 0. With the open part the same rows take
+    the fallback (code 3)."""
     T = [1440.0, 1450.0, 1450.005]  # above the lid base 1440 K
     F = [14000.0, 14400.0, 14400.0]
     with caplog.at_level(logging.INFO):

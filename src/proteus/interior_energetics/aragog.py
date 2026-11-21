@@ -2285,7 +2285,8 @@ class AragogRunner:
         hf_all: pd.DataFrame | None = None,
     ):
         """Update solver for next coupling step (entropy formulation); ``hf_all`` gives the
-        slope of the lid cap from the last 2 rows."""
+        slope of the lid cap and the open part: the secant of the last 2 rows, or a fallback
+        from earlier rows, cut at the grey slope."""
         solver = interior_o.aragog_solver
         solver.parameters.solver.start_time = hf_row['Time']
         solver.parameters.solver.end_time = hf_row['Time'] + dt
@@ -2343,7 +2344,6 @@ class AragogRunner:
         bc = solver.parameters.boundary_conditions
         live = getattr(bc, 'subgrid_lid', False) and lid_acts(hf_row)
         bc.outer_boundary_value = hf_row['F_atm']
-        _set_lid_surface(bc, hf_row)
         bc.surface_temperature = _surface_temperature_of_row(hf_row)
         # in flux mode with the mush base the open part of a live lid follows its node in the
         # step, as a total-area term at the in-step lid weight
@@ -2352,7 +2352,7 @@ class AragogRunner:
         )
         slope, T_other = lid_flux_secant(hf_all, hf_row)
         fallback = 0
-        if live and slope == 0.0 and (open_part or bc.lid_surface_flux_cap is not None):
+        if open_part and slope == 0.0:
             # an unusable secant would leave the held lid a pure flux cap
             slope, rows_back, fallback = lid_fallback_slope(hf_all, hf_row)
             T_other = None
@@ -2366,8 +2366,7 @@ class AragogRunner:
         fields, code = lid_open_fields(hf_row, slope, T_other) if open_part else ({}, 0)
         for name in OPEN_PART_FIELDS:  # None without a live lid
             setattr(bc, name, fields.get(name))
-        if bc.lid_surface_flux_cap is not None:  # one slope: the cut one of the open part
-            bc.lid_surface_flux_slope = fields.get('open_surface_slope', slope)
+        _set_lid_surface(bc, hf_row, fields.get('open_surface_slope', slope))  # one cut slope
         # a cut fallback keeps its source in its own code; the grey tangent is the cut itself
         if fallback == LID_SLOPE_GUARD_FALLBACK and code == LID_SLOPE_GUARD_SIZE:
             hf_row['lid_slope_guard'] = LID_SLOPE_GUARD_FALLBACK_CUT
@@ -2607,9 +2606,9 @@ class AragogRunner:
         atmosphere flux between the held and the end surface (``self._lid_flux_at``), cut by
         ``lid_open_slope`` where the step has an open part, replaces the slope of the call for
         the lid part and the open part, and the call runs again from its start; a secant of 0
-        (unusable), a secant equal to the slope (:func:`lid_resolve_skip`) or no flux provider
-        keeps the first solve. The count
-        and the wall time of the re-solves are kept on ``interior_o``.
+        (unusable), a cut secant equal to the slope of the call (:func:`lid_resolve_skip`) or no
+        flux provider keeps the first solve. The count and the wall time of the re-solves are
+        kept on ``interior_o``.
 
         Returns
         -------
