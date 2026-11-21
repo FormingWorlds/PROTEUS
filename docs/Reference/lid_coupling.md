@@ -29,7 +29,7 @@ Every lid branch acts only for $w > 0$. With $w = 0$:
 
 ## Slope guard codes
 
-`lid_flux_secant` gives $F'$ from the last 2 rows. The secant is unusable for a surface step below 0.01 K (`LID_SLOPE_DT_MIN`), for a slope of 0 or below, or for one that is not finite; it is then 0. Under a live lid, `lid_fallback_slope` replaces it. `lid_open_slope` cuts the slope of the open part at the slope of a bare grey surface of emissivity 1. The column `lid_slope_guard` records the result on the row where the step ends, not on the row it starts from; the first step of a new run has no slope, so its row has code 0:
+`lid_flux_secant` gives $F'$ from the last 2 rows. The secant is unusable for a surface step below 0.01 K (`LID_SLOPE_DT_MIN`), for a slope of 0 or below, or for one that is not finite; it is then 0. Under a live lid, `lid_fallback_slope` replaces it. `lid_open_slope` then cuts the slope at the slope of a bare grey surface of emissivity 1, and the cap and the open part take the result. The column `lid_slope_guard` records the code on the row where the step ends, not on the row it starts from. The first step of a new run starts without a slope, so the row where it ends has code 0:
 
 | Code | When | Slope of the cap and the open part |
 |---|---|---|
@@ -143,4 +143,13 @@ Two runs, not stored in the repository, start from one state at 50828.99 yr: one
 
 The table is the run at the normal step. In every step of the table `F_int` lies below the band. Over the steps that start from 50890 to 51300 yr, the time integral of the gap is $-1.32 \times 10^{13}$ J m$^{-2}$ at the normal step (mean step 35.1 yr). The time integral of `F_atm` over the same steps, by the trapezoid rule, is $2.28 \times 10^{14}$ J m$^{-2}$, so the gap is 5.8 % of it. At half the step (mean step 17.5 yr) the two integrals are $-6.34 \times 10^{12}$ and $2.15 \times 10^{14}$ J m$^{-2}$, 3.0 %. In that run the largest relative gap of a step was 10.7 %.
 
-**The start gap.** At the start of a step the surface loses $F_\mathrm{atm} + w\,(F_{s,0} - L)$, with $F_{s,0}$ the loss of the held lid at the start state. $F_{s,0}$ differs from $L$ for 4 reasons: Aragog holds the lid surface at least 1 K below $T_b$; $L$ takes the smaller of $G_\mathrm{lid}$ and $G_\mathrm{skin}$; Aragog solves the lid profile again at the held surface; and above the cap the lid surface carries $F_s$ of Rule 3. The coupling keeps this gap as a measured term, and the Aragog test `test_the_start_gap_is_the_lid_weight_times_the_lid_flux_gap` asserts $F_\mathrm{top} - F_\mathrm{atm} = w\,(F_{s,0} - L)$ at the start state for $L$ of either sign. In the run of the table, the start gap of each step, held over that step, sums to $+9.52 \times 10^{12}$ J m$^{-2}$ over the steps that start from 50890 to 51300 yr: 4.2 % of the time integral of `F_atm` over those steps. Over all 25 steps from 50828.99 yr it sums to $+9.62 \times 10^{12}$ J m$^{-2}$: 2.0 % of the time integral of `F_atm` over those 25 steps.
+**The start gap.** At the start of a step the surface loses $F_\mathrm{top} = F_\mathrm{atm} + w\,(F_{s,0} - L)$ per total area. Here $F_\mathrm{top}$ is the heat flux that Aragog takes out at its top node, and $F_{s,0}$ is the loss of the held lid at the start state. A positive start gap means that the interior loses more than `F_atm` at the start of the step. $F_{s,0}$ differs from $L$ for 4 reasons:
+
+- Aragog holds the lid surface at least 1 K below $T_b$.
+- $L$ takes the smaller of $G_\mathrm{lid}$ and $G_\mathrm{skin}$.
+- Aragog solves the lid profile again at the held surface.
+- Above the cap, the lid surface carries $F_s$ of [Rule 3](../Explanations/lid_coupling.md#rule-3-the-atmosphere-flux-is-the-largest-loss).
+
+The coupling keeps this gap as a measured term. The Aragog test `test_the_start_gap_is_the_lid_weight_times_the_lid_flux_gap` asserts $F_\mathrm{top} - F_\mathrm{atm} = w\,(F_{s,0} - L)$ at the start state, for $L$ of either sign.
+
+In the run of the table, take the start gap of each step times the length of that step. Over the steps that start from 50890 to 51300 yr, this sums to $+9.52 \times 10^{12}$ J m$^{-2}$: 4.2 % of the time integral of `F_atm` over those steps. Over all 25 steps from 50828.99 yr it sums to $+9.62 \times 10^{12}$ J m$^{-2}$: 2.0 % of the time integral of `F_atm` over those 25 steps. The start gap is positive, while the gap to the band above is negative ($-1.32 \times 10^{13}$ J m$^{-2}$ over the same steps).

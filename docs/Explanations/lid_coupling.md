@@ -8,7 +8,7 @@ This page assumes you know the [coupling loop](coupling_loop.md): the interior r
 
 ## The skin and the lid
 
-**The skin.** With the default `atmos_clim.surf_state = "skin"`, a thin conductive layer sits between the melt and the surface. It stands for the boundary layer at the top of a molten surface. Its thickness $d$ is `atmos_clim.surface_d` (default 0.01 m) and its conductivity $k$ is `atmos_clim.surface_k`; [atmosphere settings](../Reference/config/atmosphere.md) gives the defaults. The skin conductance is
+**The skin.** With the default `atmos_clim.surf_state = "skin"`, a thin conductive layer sits between the melt and the surface. It stands for the boundary layer at the top of a molten surface. Its thickness $d$ is `atmos_clim.surface_d` (default 0.01 m) and its conductivity $k$ is `atmos_clim.surface_k` (default 2 W m$^{-1}$ K$^{-1}$); [atmosphere settings](../Reference/config/atmosphere.md) lists both. The skin conductance is
 
 $$G_\mathrm{skin} = \frac{k}{d},$$
 
@@ -35,7 +35,7 @@ The arrow in the atmosphere is the flux $F_\mathrm{atm}$ of the atmosphere call.
 
 Right: temperature $T$ against depth $z$ in each part; dotted lines: the melt of the top cell. The lid profile uses the shape parameter $s = 1$ of the Aragog lid ([The onset thickness](#the-onset-thickness)), for illustration.
 
-The lid is 1 cm thick at its onset and can grow to tens of metres, while the top cell of the mesh is tens of kilometres thick (65.8 km in the [lid seal tutorial](../Tutorials/lid_seal.md)). Thicknesses are not to scale.
+The lid enters at 1 cm, half the onset thickness $\delta_\mathrm{on} = 0.02$ m of the default skin ([The onset thickness](#the-onset-thickness)), while the top cell of the mesh is tens of kilometres thick (65.8 km in the [lid seal tutorial](../Tutorials/lid_seal.md)). Thicknesses are not to scale.
 
 ## Three energy rules
 
