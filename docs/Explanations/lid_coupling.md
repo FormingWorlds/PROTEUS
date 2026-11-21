@@ -8,7 +8,7 @@ This page assumes you know the [coupling loop](coupling_loop.md): the interior r
 
 ## The skin and the lid
 
-**The skin.** With the default `atmos_clim.surf_state = "skin"`, a thin conductive layer sits between the melt and the surface. It stands for the boundary layer at the top of a molten surface. Its thickness $d$ is `atmos_clim.surface_d` (default 0.01 m) and its conductivity $k$ is `atmos_clim.surface_k` (default 2 W m$^{-1}$ K$^{-1}$). Each iteration writes them into the helpfile columns `boundary_layer_thickness` and `boundary_layer_conductivity`. The skin conductance is
+**The skin.** With the default `atmos_clim.surf_state = "skin"`, a thin conductive layer sits between the melt and the surface. It stands for the boundary layer at the top of a molten surface. Its thickness $d$ is `atmos_clim.surface_d` (default 0.01 m) and its conductivity $k$ is `atmos_clim.surface_k`; [atmosphere settings](../Reference/config/atmosphere.md) gives the defaults. The skin conductance is
 
 $$G_\mathrm{skin} = \frac{k}{d},$$
 
@@ -113,7 +113,7 @@ What does the interior take from the atmosphere step under a lid, and why does i
 
 Under a live lid in flux mode with the mush base, `lid_open_fields` (in `atmos_clim/common.py`) builds the 4 terms, and `AragogRunner.update_solver` sets them on the boundary of the Aragog solver:
 
-- `open_lid_flux`, $L = G_\mathrm{lid}'\,(T_b - T_\mathrm{surf})$ in W m$^{-2}$: the flux of the lid part in the call, with its sign, inward for a surface above $T_b$;
+- `open_lid_flux`, $L = G_\mathrm{lid}'\,(T_b - T_\mathrm{surf})$ in W m$^{-2}$ per lid area: the flux of the lid part in the call, with its sign, inward for a surface above $T_b$;
 - `open_surface_slope`, $F'$ in W m$^{-2}$ K$^{-1}$, after [the slope guard](#the-open-part-within-a-step);
 - `open_skin_conductance`, $G_\mathrm{skin}$ in W m$^{-2}$ K$^{-1}$;
 - `open_lid_conductance`, $G_\mathrm{lid}'$ in W m$^{-2}$ K$^{-1}$.
@@ -177,6 +177,6 @@ The interior writes every column except `lid_F_open` and `lid_F_resid` at each s
 - **The cap.** Rule 3 caps the flux of the lid part only. The open part takes `F_atm` less the lid term and follows its melt with $G_\mathrm{eff}(w)$, a first-order response with the slope of the rows.
 - **The floor.** $T_m = \max(T_\mathrm{node}, T_b)$ is a model construct of the coupling. The mesh keeps its own top node below $T_b$; only the call, the open flux and the row `T_magma` read the floored value. With `lid_mush_base` the row `T_magma` is floored at every lid weight, $w = 0$ included. It can lie above the `T_magma` of a run without the lid by up to $T_b - T_\mathrm{node}$: 5.8 and 10.6 K on the 2 stored live-lid rows at lid weights 0.97 and 0.70.
 - **The slope with AGNI.** With AGNI the cap takes $F'$ from the rows alone, and `_correct_lid_cap` does not act. Where `F_atm` levels off with the surface temperature within one step, a slope from the rows before lies above the slope across the step. The lid part can then lose more than the atmosphere at the end surface. This case is tested only on the dummy flux with a soft ceiling; [Lid coupling details](../Reference/lid_coupling.md#the-slope-with-agni) gives the size of an AGNI secant error.
-- **Lid onset within a step.** Each step takes the atmosphere of its start, while the crust grows within it, so the interior lags the atmosphere. In a 1 Earth-mass run, not stored in the repository, `F_int` lay below the smaller `F_atm` at the 2 ends of its step in 7 steps, by 5 to 13 % of the `F_atm` at its start. From 50890 to 51300 yr, the energy outside that band was 5.8 % of the energy the atmosphere took at the normal step of about 35 yr, and 3.0 % at half that step. The gap scales with the step. [Lid onset within a step](../Reference/lid_coupling.md#lid-onset-within-a-step) gives the steps.
+- **Lid onset within a step.** Each step takes the atmosphere of its start, while the crust grows within it, so the interior lags the atmosphere. In a 1 Earth-mass run, not stored in the repository, `F_int` lay below the smaller `F_atm` at the 2 ends of its step in 7 steps, by 5 to 13 % of the `F_atm` at its start; the gap scales with the step ([Lid onset within a step](../Reference/lid_coupling.md#lid-onset-within-a-step)).
 
 For the config keys, see [Aragog](../Reference/config/interior.md#aragog-interior_energeticsaragog) and [Atmosphere climate](../Reference/config/atmosphere.md#atmosphere-climate-atmos_clim).
