@@ -188,3 +188,5 @@ def test_no_fallback_is_recorded_for_a_slope_that_no_field_takes(caplog):
     bc, row = _update(T, F)
     assert bc.open_surface_slope == pytest.approx(40.0, rel=1e-12)
     assert row['lid_slope_guard'] == 3
+    # the wrong slopes: the unusable last secant (0) and the grey tangent at the last row
+    assert (F[2] - F[1]) / (T[2] - T[1]) == 0.0 and 4.0 * const_sigma * T[2] ** 3 > 2.0 * 40.0

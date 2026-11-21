@@ -891,6 +891,7 @@ def test_a_resolve_secant_cut_to_the_slope_of_the_call_is_skipped():
     slope of the call changes nothing: the first solve stands. Without the open part the
     uncut secant differs from that slope, so the call runs again."""
     grey = const_sigma * (710.0**4 - 700.0**4) / 10.0
+    assert grey < 0.5 * 200.0  # the cut differs from the uncut secant beyond any tolerance
     row = _row(0.4, G=21.9, T_b=1440.0, T_surf=700.0, F_atm=15000.0, lid_F_open=165000.0)
     for open_slope, n in ((grey, 1), (None, 2)):
         runner, solver, io, seen = _corrector([710.0, 705.0], 17000.0, tangent=grey)
