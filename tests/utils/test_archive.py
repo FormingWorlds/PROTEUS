@@ -392,22 +392,21 @@ def test_archive_old_then_extract_restores_every_snapshot(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_snapshot_time_recognizes_only_integer_prefixed_nc_json():
-    """`_snapshot_time` returns the integer simulated time only for names
-    ending in .nc/.json whose leading token parses as an integer, and None
-    for everything else. This predicate is the single source of truth
-    used by archive_old, so its boundary
-    behaviour is pinned here.
+def test_snapshot_time_recognizes_only_time_prefixed_snapshot_names():
+    """`_snapshot_time` returns the simulated time [yr] for names ending in
+    .nc, .json or _zalmoxis.dat whose leading token parses as a time (whole
+    year, `p` or dot form), and None for everything else. archive_old relies
+    on it, so its boundary behaviour is pinned here.
 
     Edge cases: the age-0 boundary snapshot parses to 0 (falsy but not
     None, so a naive truthiness check would misclassify it); the
     fixed-name runtime files, the EOS table directory name, and the
     integer-prefixed stellar flux file (.sflux, wrong extension) all
-    return None; a .nc/.json name with a non-integer prefix returns None
+    return None; a .nc/.json name whose prefix is not a time returns None
     via the ValueError branch rather than raising.
     """
     st = archive_mod._snapshot_time
-    # Recognised snapshots -> integer time
+    # Recognised snapshots -> simulated time [yr]
     assert st('1000_int.nc') == 1000
     assert st('1000_atm.nc') == 1000
     assert st('5000.json') == 5000
