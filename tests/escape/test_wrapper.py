@@ -2338,7 +2338,7 @@ def _molten_row_with_trapped_n(n_trapped: float, **values) -> dict:
     hf.update(N_kg_atm=1.2e16, N_kg_solid=n_trapped, N_kg_trapped=n_trapped)
     hf.update(N_kg_total=1.2e16 + n_trapped, N2_kg_atm=1.2e16)
     hf.update(M_atm=4.12e17, P_surf=1.0, esc_kg_cumulative=0.0, M_vol_initial=4.12e17)
-    hf.update(trap_branch=0.0, trap_kg_step=0.0)
+    hf.update(trap_branch=0.0, trap_kg_step=0.0, trap_kg_returned=0.0)
     hf.update(values)
     return hf
 
@@ -2393,31 +2393,33 @@ def test_the_escape_floor_reads_the_reachable_mass_whatever_is_trapped():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_the_escape_floor_is_off_on_a_step_a_remelt_returned_mass():
-    """A remelt that returns buried N to the melt resupplies it. Flooring the
-    reachable remainder on that step would delete the release whenever it is
-    small, so a slow remelt would keep less than a fast one; on such a step the
-    floor is off and escape only debits its quarter. A step that released
-    nothing keeps the floor, however its branch code reads."""
+def test_the_escape_floor_is_off_on_a_step_trapping_returned_mass():
+    """Trapped N returned to the melt, by a remelt or by melt draining back to
+    the ocean, resupplies it. Flooring the reachable remainder on that step
+    would delete the return whenever it is small, so on such a step the floor
+    is off and escape only debits its quarter. The returned mass decides, not
+    the branch code: a drainage return on a Darcy step turns the floor off, and
+    a remelt branch that returned nothing keeps it."""
     from proteus.escape.wrapper import run_escape
-    from proteus.outgas.compaction import BRANCH_REMELT
-    from proteus.outgas.trapping import remelt_returned_mass
+    from proteus.outgas.compaction import BRANCH_DARCY, BRANCH_REMELT
+    from proteus.outgas.trapping import trapping_returned_mass
 
     config = _quarter_loss_config()
-    remelt = _molten_row_with_trapped_n(5.0e14, trap_branch=float(BRANCH_REMELT))
-    remelt['trap_kg_step'] = -2.0e14
-    assert remelt_returned_mass(remelt)
-    run_escape(config, remelt, dt=1.0e4, atmosphere_only=False)
-    assert remelt['N_kg_total'] == pytest.approx(9.0e15 + 5.0e14, rel=1e-9)
+    for branch in (BRANCH_REMELT, BRANCH_DARCY):
+        hf = _molten_row_with_trapped_n(5.0e14, trap_branch=float(branch))
+        hf['trap_kg_returned'] = 2.0e14
+        assert trapping_returned_mass(hf)
+        run_escape(config, hf, dt=1.0e4, atmosphere_only=False)
+        assert hf['N_kg_total'] == pytest.approx(9.0e15 + 5.0e14, rel=1e-9)
 
-    # Error contract: a remelt branch that released nothing, a burial step, and
-    # an unreadable branch code all keep the floor.
+    # Error contract: nothing returned, a remelt branch with nothing returned,
+    # and an unreadable return all keep the floor.
     for values in (
-        {'trap_branch': float(BRANCH_REMELT), 'trap_kg_step': 0.0},
-        {'trap_branch': 1.0, 'trap_kg_step': 3.0e14},
-        {'trap_branch': float('nan'), 'trap_kg_step': -2.0e14},
+        {'trap_kg_returned': 0.0},
+        {'trap_branch': float(BRANCH_REMELT), 'trap_kg_returned': 0.0, 'trap_kg_step': -2.0e14},
+        {'trap_kg_returned': float('nan')},
     ):
         hf = _molten_row_with_trapped_n(5.0e14, **values)
-        assert not remelt_returned_mass(hf)
+        assert not trapping_returned_mass(hf)
         run_escape(config, hf, dt=1.0e4, atmosphere_only=False)
         assert hf['N_kg_total'] == pytest.approx(5.0e14, rel=1e-12)

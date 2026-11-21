@@ -5530,7 +5530,7 @@
         "mixture"
       ],
       "bounds": null,
-      "description": "Drag viscosity for the gravitational-separation velocity v_rel = |dRho| g F(phi) / eta. 'melt' (fixed single-phase liquid viscosity, SPIDER parity) keeps separation active below the rheological transition in coupled caps-off runs, which collapses the CMB temperature; 'mixture' (rheological-transition-blended bulk viscosity) ties the drag viscosity to the same solid-fraction rise that stiffens the bulk rheology, so separation locks up at the same melt fraction instead, which is why the default here is 'mixture' while Aragog's own default stays 'melt' for SPIDER parity. The regime boundaries are the porosities where adjacent permeability laws cross (Bower et al. (2018)[^cite-bower2018], Section 2.1, Eqs. 13a to 13c). The melt drainage of front trapping (outgas.trap_mode 'front') takes the melt viscosity whatever this setting.",
+      "description": "Drag viscosity for the gravitational-separation velocity v_rel = |dRho| g F(phi) / eta. 'melt' (fixed single-phase liquid viscosity, SPIDER parity) keeps separation active below the rheological transition in coupled caps-off runs, which collapses the CMB temperature; 'mixture' (rheological-transition-blended bulk viscosity) ties the drag viscosity to the same solid-fraction rise that stiffens the bulk rheology, so separation locks up at the same melt fraction instead, which is why the default here is 'mixture' while Aragog's own default stays 'melt' for SPIDER parity. The regime boundaries are the porosities where adjacent permeability laws cross (Bower et al. (2018)[^cite-bower2018], Section 2.1, Eqs. 13a to 13c). The melt drainage of front and layer trapping (outgas.trap_mode 'front' or 'layers') takes the melt viscosity whatever this setting.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -5549,7 +5549,7 @@
         "solid"
       ],
       "bounds": null,
-      "description": "Buoyancy of the gravitational-separation velocity. 'mixture' takes it against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie (1984)[^cite-mckenzie1984], Eq. 3.7), on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes (rho_s - rho_l) g on every regime (Abe (1995)[^cite-abe1995], Eq. 40), as SPIDER does, so 'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy. Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5; from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2.",
+      "description": "Buoyancy of the gravitational-separation velocity. 'mixture' takes it against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie (1984)[^cite-mckenzie1984], Eq. 3.7), on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes (rho_s - rho_l) g on every regime (Abe (1995)[^cite-abe1995], Eq. 40), as SPIDER does, so 'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt drainage of front and layer trapping (outgas.trap_mode 'front' or 'layers') takes the same buoyancy. Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5; from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -7894,10 +7894,11 @@
       "default": "\"none\"",
       "choices": [
         "none",
-        "front"
+        "front",
+        "layers"
       ],
       "bounds": null,
-      "description": "Solid-phase volatile trapping during mantle crystallisation. Choices: 'none' (off) and 'front' (F_tl from the drainage of melt across the freezing front the interior solver resolves; needs `interior_energetics.module = 'aragog'`). The disaggregation melt fraction that tops the front is `interior_energetics.rfront_loc`, the melt fraction of the solver's own rheological transition, not a separate field.",
+      "description": "Solid-phase volatile trapping during mantle crystallisation. Choices: 'none' (off), 'front' (F_tl from the drainage of melt across the freezing front the interior solver resolves) and 'layers' (every node buries the volatiles of its pore melt when it enters the mush, drains that melt through the nodes above it, and locks what is left when it reaches `trap_phi_min`; the chemistry then dissolves into the melt of the liquid nodes alone, and a node that melts returns what it holds). Both schemes need `interior_energetics.module = 'aragog'`. The disaggregation melt fraction that tops the front is `interior_energetics.rfront_loc`, the melt fraction of the solver's own rheological transition, not a separate field.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -13062,18 +13063,6 @@
       "doc": "Require a PALEOS or temperature-dependent energetics key for SPIDER or Aragog."
     },
     {
-      "validator": "front_trapping_requires_aragog",
-      "module": "_config.py",
-      "attached_to": [
-        "outgas"
-      ],
-      "touches": [
-        "interior_energetics.module",
-        "outgas"
-      ],
-      "doc": "Front trapping reads the freezing front the Aragog interior resolves."
-    },
-    {
       "validator": "instmethod_dummy",
       "module": "_config.py",
       "attached_to": [
@@ -13137,7 +13126,7 @@
         "outgas.vapourise",
         "params.stop.solid.freeze_volatiles"
       ],
-      "doc": "The lid seal reads the Aragog mesh, freezes the CALLIOPE chemistry while it holds, and applies unfractionated escape."
+      "doc": "The lid seal reads the Aragog mesh, freezes the CALLIOPE chemistry while it holds, and applies unfractionated escape; it handles front trapping but not the layer scheme."
     },
     {
       "validator": "lowt_extension_requires_aragog",
@@ -13369,6 +13358,18 @@
         "orbit.module"
       ],
       "doc": "Interior tidal heating requires an tides module to be enabled."
+    },
+    {
+      "validator": "trapping_requires_aragog",
+      "module": "_config.py",
+      "attached_to": [
+        "outgas"
+      ],
+      "touches": [
+        "interior_energetics.module",
+        "outgas"
+      ],
+      "doc": "The front and layer trapping schemes read the profiles the Aragog interior exports."
     },
     {
       "validator": "valid_escapedummy",
