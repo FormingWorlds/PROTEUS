@@ -200,7 +200,11 @@ if [ -n "$cases" ]; then
         ""|0|1)
             echo "$1 ended without a final status"
             mkdir -p "$cases/$1"
-            printf "25\\nError (died, or exit requested by user)\\n" > "$cases/$1/status"
+            if grep -q "^srun: error: .*: task [0-9]*: Out Of Memory" "$logs/$1.log"; then
+                printf "30\\nError (killed for memory)\\n" > "$cases/$1/status"
+            else
+                printf "25\\nError (died, or exit requested by user)\\n" > "$cases/$1/status"
+            fi
             exit 1 ;;
     esac
 fi

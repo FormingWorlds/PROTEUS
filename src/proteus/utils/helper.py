@@ -580,6 +580,7 @@ STATUS_COMMENTS = {
     26: 'Error (Tides/orbit model)',
     27: 'Error (Outgassing model)',
     28: 'Error (Escape model)',
+    30: 'Error (killed for memory)',
 }
 
 

@@ -45,6 +45,7 @@ from proteus.utils.logs import (
     GetLogfilePath,
     setup_logger,
 )
+from proteus.utils.sigterm import exit_if_terminated, stop_on_sigterm
 
 
 def _timing_enabled(environ: Mapping[str, str]) -> bool:
@@ -647,6 +648,7 @@ class Proteus:
                     self.config.params.stop.solid.phi_crit,
                 )
 
+    @stop_on_sigterm
     @_run_temp_dir
     @_status_on_exit
     def start(self, *, resume: bool = False, offline: bool = False):
@@ -1262,6 +1264,7 @@ class Proteus:
             _initstr = ' '.join(f'{k}={v:.3f}' for k, v in _t_init.items())
             log.info('[INIT_TIMING] %s', _initstr)
         while not self.finished_both:
+            exit_if_terminated()
             # Determine whether this iteration is a data-write snapshot.
             # Conditions that are individually sufficient:
             #   1. iteration count matches write_mod, or

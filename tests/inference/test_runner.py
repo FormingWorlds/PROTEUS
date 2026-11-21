@@ -27,6 +27,7 @@ import pytest
 from proteus.inference.runner import ProteusRunner, handle_job, serve
 from proteus.proteus import _status_on_exit
 from proteus.utils.helper import ReadStatus, UpdateStatusfile
+from proteus.utils.sigterm import stop_on_sigterm
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -357,9 +358,9 @@ def test_serve_answers_each_request_in_order_until_the_pipe_closes(monkeypatch, 
 
 
 def test_serve_records_status_25_when_sigterm_stops_a_run(monkeypatch, tmp_path):
-    """SLURM sends SIGTERM at the time limit. In the reused process it ends the run through
-    the status guard of `Proteus.start`, which records status 25, and the process exits
-    with code 143; without the handler the run would keep status 1 (running). The stub
+    """SLURM sends SIGTERM at the time limit. In the reused process the handler that
+    `Proteus.start` installs records status 25, and the process exits with code 143;
+    without the handler the run would keep status 1 (running). The stub
     calls the installed handler instead of sending a real SIGTERM, because with
     PYTHON_JULIACALL_HANDLE_SIGNALS=yes (as in CI) Julia takes the signal and ends pytest."""
 
@@ -367,6 +368,7 @@ def test_serve_records_status_25_when_sigterm_stops_a_run(monkeypatch, tmp_path)
         def __init__(self, config_path):
             self.directories = {'output': str(tmp_path)}
 
+        @stop_on_sigterm
         @_status_on_exit
         def start(self, offline):
             UpdateStatusfile(self.directories, 1)

@@ -2826,6 +2826,43 @@ def test_solve_with_retry_stiff_mode_ramps_maxsteps_and_rtol_then_halves_dt(monk
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('signalled', [True, False], ids=['sigterm-lost-in-cvode', 'no-signal'])
+def test_solve_with_retry_stops_on_a_sigterm_lost_in_a_cvode_callback(monkeypatch, signalled):
+    """A SIGTERM that arrives in a CVODE callback can be lost there: CVODE reports a
+    failed Jacobian setup and the solve returns a plain failure. The ladder then raises
+    SystemExit with code 143 after that attempt instead of starting the next one, which
+    would keep the run going until the walltime kill. Without a signal the same failure
+    still climbs the ladder. Either way the base controls are restored.
+    """
+    from proteus.utils import sigterm
+
+    monkeypatch.setattr(sigterm, '_received', None)
+    failed = [_retry_out(-1, cvode_flag=-6, cvode_flag_name='LSETUP_FAIL')] * 8
+    solver, calls = _retry_solver(failed)
+    record = solver.solve.side_effect
+
+    def _solve_with_sigterm():
+        record()
+        if signalled:
+            monkeypatch.setattr(sigterm, '_received', 15)
+
+    solver.solve.side_effect = _solve_with_sigterm
+    runner, interior_o, hf_row = _retry_runner(solver, monkeypatch)
+
+    if signalled:
+        with pytest.raises(SystemExit) as stop:
+            runner._solve_with_retry(hf_row, interior_o)
+        assert stop.value.code == 143
+        assert len(calls) == 1
+    else:
+        with pytest.raises(RuntimeError, match='exhausted'):
+            runner._solve_with_retry(hf_row, interior_o)
+        assert len(calls) == 6
+    np.testing.assert_allclose(solver.parameters.solver.rtol, _RETRY_BASE_RTOL)
+    assert solver._max_steps == _RETRY_BASE_MAX_STEPS
+
+
+@pytest.mark.unit
 def test_solve_with_retry_other_mode_caps_at_six_and_only_halves_dt(monkeypatch):
     """A non-stiff CVODE failure keeps the six-attempt dt-halving ladder.
 

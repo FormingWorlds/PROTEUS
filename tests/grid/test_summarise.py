@@ -308,7 +308,7 @@ def test_summarise_counts_a_case_with_a_config_but_no_folder_as_not_started(tmp_
 
 def test_status_category_bins_codes_by_documented_ranges():
     """status_category maps codes to Running (0-9), Completed (10-19 and 29) and
-    Error (20-28).
+    Error (20-28 and 30, which the Slurm job script writes for a case killed for memory).
 
     Uses boundary codes so an off-by-one range bound is caught. Code 29 is
     'Completed (planet evaporated)', so binning it by its decade as an Error would
@@ -325,6 +325,8 @@ def test_status_category_bins_codes_by_documented_ranges():
     assert status_category(28) == 'Error'
     assert status_category(29) == 'Completed'
     assert CommentFromStatus(29).startswith('Completed')
+    assert status_category(30) == 'Error'
+    assert status_category(31) == 'Unknown'
 
 
 def test_status_category_agrees_with_every_status_comment():
