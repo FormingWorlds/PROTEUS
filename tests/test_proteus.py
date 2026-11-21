@@ -3306,10 +3306,12 @@ def test_the_main_loop_stops_at_the_next_iteration_after_a_lost_sigterm(tmp_path
     seen = []
 
     def _lose_sigterm_in_iteration_5(handler):
+        # Ends the run at iteration 7, so a loop without the check fails fast.
         seen.append(handler.loops['total'])
         if handler.loops['total'] == 5:
             sigterm._received = 15  # SIGTERM
-        return False
+        handler.finished_both = handler.loops['total'] >= 7
+        return handler.finished_both
 
     with pytest.raises(SystemExit) as stop:
         _run_main_loop_capturing_plots(
@@ -3318,7 +3320,7 @@ def test_the_main_loop_stops_at_the_next_iteration_after_a_lost_sigterm(tmp_path
                 'proteus.utils.terminate.check_termination',
                 side_effect=_lose_sigterm_in_iteration_5,
             ),
-            stop_at_loop=99,
+            stop_at_loop=7,
         )
     assert stop.value.code == 143
     assert seen == [4, 5]
