@@ -472,13 +472,13 @@ def lid_boundary(hf_row: dict) -> tuple[float, float, float]:
 LID_SLOPE_DT_MIN = 0.01
 
 
-def lid_prev_row(hf_all, hf_row: dict):
-    """The helpfile row before ``hf_row`` in ``hf_all`` (with or without ``hf_row`` as the last
-    row), or None; the other end of the secant of :func:`lid_flux_secant`."""
+def _earlier_rows(hf_all, hf_row: dict):
+    """The rows of ``hf_all`` before ``hf_row`` (which may be its last row), or None if none."""
     if hf_all is None or len(hf_all) == 0:
         return None
-    k = -2 if float(hf_all['Time'].iloc[-1]) == float(hf_row['Time']) else -1
-    return hf_all.iloc[k] if len(hf_all) >= -k else None
+    if float(hf_all['Time'].iloc[-1]) == float(hf_row['Time']):
+        hf_all = hf_all.iloc[:-1]
+    return hf_all if len(hf_all) else None
 
 
 def _usable_secant(T0: float, T1: float, F0: float, F1: float) -> float:
@@ -509,9 +509,10 @@ def lid_flux_secant(hf_all, hf_row: dict) -> tuple[float, float | None]:
         ``T_surf`` before [K]. The slope is 0 for a surface step below ``LID_SLOPE_DT_MIN``,
         for a slope of 0 or below, or a non-finite one; ``(0, None)`` without a row before.
     """
-    prev = lid_prev_row(hf_all, hf_row)
-    if prev is None:
+    rows = _earlier_rows(hf_all, hf_row)
+    if rows is None:
         return 0.0, None
+    prev = rows.iloc[-1]
     T_other = float(prev['T_surf'])
     F_prev, F_now = float(prev['F_atm']), float(hf_row['F_atm'])
     return _usable_secant(T_other, float(hf_row['T_surf']), F_prev, F_now), T_other
@@ -535,9 +536,7 @@ def lid_fallback_slope(hf_all, hf_row: dict) -> tuple[float, int, int]:
         current one, and ``LID_SLOPE_GUARD_FALLBACK``; without one in the run, the grey tangent
         ``4 sigma T_surf^3``, 0 and ``LID_SLOPE_GUARD_GREY``.
     """
-    rows = hf_all
-    if rows is not None and len(rows) and float(rows['Time'].iloc[-1]) == float(hf_row['Time']):
-        rows = rows.iloc[:-1]
+    rows = _earlier_rows(hf_all, hf_row)
     if rows is not None and len(rows) >= 2:
         T = rows['T_surf'].to_numpy(dtype=float)
         F = rows['F_atm'].to_numpy(dtype=float)
@@ -721,8 +720,7 @@ def lid_open_slope(
     if not (math.isfinite(F_p) and F_p > 0.0):
         return 0.0, LID_SLOPE_GUARD_SIGN
     T_s = float(hf_row['T_surf'])
-    usable = T_other is not None and math.isfinite(T_other) and T_other > 0.0
-    T_e = float(T_other) if usable else T_s
+    T_e = float(T_other) if T_other is not None and 0.0 < T_other < math.inf else T_s
     F_grey = const_sigma * (T_e**2 + T_s**2) * (T_e + T_s)
     return (F_grey, LID_SLOPE_GUARD_SIZE) if F_p > F_grey else (F_p, 0)
 
@@ -751,13 +749,12 @@ def lid_open_fields(
     G = _lid_skin_conductance(hf_row)
     G_l = min(float(hf_row['lid_conductance']), G)
     L = G_l * (float(hf_row['lid_T_base']) - float(hf_row['T_surf']))
-    fields = {
+    return {
         'open_lid_flux': L,
         'open_surface_slope': F_p,
         'open_skin_conductance': G,
         'open_lid_conductance': G_l,
-    }
-    return fields, code
+    }, code
 
 
 def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:

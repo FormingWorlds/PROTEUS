@@ -917,9 +917,10 @@ def _lid_stop(site, then_exit, dirs):
 
         try:
             if site == 'open flux':
-                from proteus.atmos_clim.wrapper import lid_open_flux_or_stop
+                from proteus.atmos_clim.common import lid_open_flux
+                from proteus.atmos_clim.wrapper import lid_or_stop
 
-                lid_open_flux_or_stop(dirs, _row(0.3, T_surf=900.0, F_atm=np.nan))
+                lid_or_stop(dirs, lid_open_flux, _row(0.3, T_surf=900.0, F_atm=np.nan))
             else:
                 from proteus.interior_energetics.wrapper import guard_t_magma_clip
 

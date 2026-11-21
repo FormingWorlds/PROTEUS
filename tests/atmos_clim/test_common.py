@@ -38,7 +38,6 @@ from proteus.atmos_clim.common import (  # noqa: E402
     lid_flux_cap,
     lid_flux_secant,
     lid_open_flux,
-    lid_prev_row,
     list_atmosphere_times,
     ncdf_flag_to_bool,
     read_atmosphere_data,
@@ -1112,7 +1111,6 @@ def test_flux_slope_is_zero_without_a_row_before():
     for hf_all in (None, empty, _rows([700.0], [15000.0])):
         assert lid_flux_secant(hf_all, row)[0] == 0.0
         assert lid_flux_secant(hf_all, row) == (0.0, None)
-    assert lid_prev_row(None, row) is None and lid_prev_row(empty, row) is None
 
 
 @pytest.mark.reference_pinned

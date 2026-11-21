@@ -373,14 +373,14 @@ def test_the_open_flux_stop_writes_the_atmosphere_status():
     from unittest.mock import patch
 
     from proteus.atmos_clim.common import LidOpenFluxError
-    from proteus.atmos_clim.wrapper import lid_open_flux_or_stop
+    from proteus.atmos_clim.wrapper import lid_or_stop
 
     with patch('proteus.atmos_clim.wrapper.UpdateStatusfile') as status:
         with pytest.raises(LidOpenFluxError, match='not finite'):
-            lid_open_flux_or_stop({}, _row(0.3, T_surf=900.0, F_atm=math.nan))
+            lid_or_stop({}, lid_open_flux, _row(0.3, T_surf=900.0, F_atm=math.nan))
         assert [c.args[1] for c in status.call_args_list] == [22]
         for row in (_balanced(_row(0.3, T_surf=900.0)), _row(0.3, T_surf=900.0, F_atm=-5.0)):
-            assert lid_open_flux_or_stop({}, row) == lid_open_flux(row)
+            assert lid_or_stop({}, lid_open_flux, row) == lid_open_flux(row)
         assert status.call_count == 1
 
 
@@ -446,13 +446,13 @@ def test_a_lid_base_that_is_not_finite_stops_before_the_atmosphere_call(value):
     from unittest.mock import patch
 
     from proteus.atmos_clim.common import LidOpenFluxError, check_lid_inputs
-    from proteus.atmos_clim.wrapper import lid_inputs_or_stop
+    from proteus.atmos_clim.wrapper import lid_or_stop
 
     row = _row(0.3, T_surf=900.0, F_atm=5.0)
     row['lid_T_base'] = value
     with patch('proteus.atmos_clim.wrapper.UpdateStatusfile') as status:
         with pytest.raises(LidOpenFluxError, match='not finite') as err:
-            lid_inputs_or_stop({'output': 'x'}, row)
+            lid_or_stop({'output': 'x'}, check_lid_inputs, row)
     assert f'lid_T_base {value}' in str(err.value)
     status.assert_called_once_with({'output': 'x'}, 22)
     off = _row(0.0, T_surf=900.0, F_atm=5.0)
@@ -464,7 +464,8 @@ def test_only_the_open_flux_stop_writes_the_atmosphere_status():
     """Another error from the open-part flux passes up without status 22."""
     from unittest.mock import patch
 
-    from proteus.atmos_clim.wrapper import lid_open_flux_or_stop
+    from proteus.atmos_clim import wrapper
+    from proteus.atmos_clim.wrapper import lid_or_stop
 
     with (
         patch(
@@ -473,7 +474,7 @@ def test_only_the_open_flux_stop_writes_the_atmosphere_status():
         patch('proteus.atmos_clim.wrapper.UpdateStatusfile') as status,
     ):
         with pytest.raises(RuntimeError, match='zero skin'):
-            lid_open_flux_or_stop({}, _row(0.3, T_surf=900.0, F_atm=1.0))
+            lid_or_stop({}, wrapper.lid_open_flux, _row(0.3, T_surf=900.0, F_atm=1.0))
         status.assert_not_called()
 
 

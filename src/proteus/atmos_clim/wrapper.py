@@ -225,19 +225,10 @@ def realign_xuv_gravity(hf_row: dict, radius: float):
         hf_row['g_xuv'] = gravity * (r_int / radius) ** 2
 
 
-def lid_inputs_or_stop(dirs: dict, hf_row: dict) -> None:
-    """:func:`check_lid_inputs` of the row; its stop writes status 22."""
+def lid_or_stop(dirs: dict, fn, hf_row: dict):
+    """``fn(hf_row)`` for :func:`check_lid_inputs` or :func:`lid_open_flux`; a refusal writes status 22."""
     try:
-        check_lid_inputs(hf_row)
-    except LidOpenFluxError:
-        UpdateStatusfile(dirs, 22)
-        raise
-
-
-def lid_open_flux_or_stop(dirs: dict, hf_row: dict) -> float:
-    """:func:`lid_open_flux` of the row; its stop for an input that is not finite writes status 22."""
-    try:
-        return lid_open_flux(hf_row)
+        return fn(hf_row)
     except LidOpenFluxError:
         UpdateStatusfile(dirs, 22)
         raise
@@ -286,7 +277,7 @@ def run_atmosphere(
     """
 
     log.info('Solving atmosphere...')
-    lid_inputs_or_stop(dirs, hf_row)
+    lid_or_stop(dirs, check_lid_inputs, hf_row)
 
     # Update bond albedo
     if config.atmos_clim.albedo_pl > 1.0e-9:
@@ -455,7 +446,7 @@ def run_atmosphere(
     # Copy special cases
     hf_row['rho_obs'] = 3 * hf_row['M_planet'] / (4 * pi * hf_row['R_obs'] ** 3)
     hf_row['F_net'] = hf_row['F_int'] - hf_row['F_atm']
-    hf_row['lid_F_open'] = lid_open_flux_or_stop(dirs, hf_row)
+    hf_row['lid_F_open'] = lid_or_stop(dirs, lid_open_flux, hf_row)
     hf_row['lid_F_resid'] = lid_open_residual(hf_row)
     if not abs(hf_row['lid_F_resid']) <= LID_RESID_WARN:  # 0 without a live lid; NaN warns
         log.warning(
