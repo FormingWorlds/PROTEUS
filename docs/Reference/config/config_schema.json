@@ -4579,7 +4579,7 @@
           "value": 0
         }
       ],
-      "description": "Minimum time between structure updates [yr]; prevents thrashing.",
+      "description": "Minimum time between structure updates [yr]; prevents thrashing. Every trigger waits for it, the recovery of `update_stale_ceiling` included. Only mesh convergence skips it: the extra re-solves, spaced by `mesh_convergence_interval`, that follow an update whose mesh shift was limited to `mesh_max_shift`.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 4,
@@ -4675,7 +4675,7 @@
           "value": 0
         }
       ],
-      "description": "Time since the last successful re-solve after which a trigger refires [yr]; 0 disables.",
+      "description": "Recovery after a failed re-solve [yr]: if no other trigger fires, a new re-solve starts once this time has passed since the last attempt. The other triggers can start one sooner, after `update_min_interval`. On resume the resumed time counts as the last attempt. Has an effect only if smaller than `update_interval`, and only while the last re-solve has failed; 0 disables.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 5,
@@ -9363,7 +9363,7 @@
       "class": "Agni",
       "type": "bool",
       "accepts_none": false,
-      "default": "false",
+      "default": "true",
       "choices": null,
       "bounds": null,
       "description": "Account for conductive heat transport, using Fourier's law.",
@@ -10619,6 +10619,22 @@
       "group_qualifier": null
     },
     {
+      "path": "atmos_chem.vulcan.escape_bc",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Upper boundary condition. If true, each atom in the network leaves the top layer at the PROTEUS escape rate; requires fix_surf = true. If false, no gas crosses the top.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "atmos_chem.vulcan.network",
       "toml_section": "atmos_chem.vulcan",
       "class": "Vulcan",
@@ -11151,7 +11167,7 @@
       "default": "true",
       "choices": null,
       "bounds": null,
-      "description": "Use photochemistry.",
+      "description": "Use photochemistry. Required with the VULCAN network SNCHO, which VULCAN has only with photochemistry.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12761,6 +12777,17 @@
       "doc": "The Morrigan module requires as many embryo masses as planets, all positive, and a valid selector value when the selector is a semi-major axis or planet id."
     },
     {
+      "validator": "valid_escape_bc",
+      "module": "_atmos_chem.py",
+      "attached_to": [
+        "atmos_chem.vulcan.escape_bc"
+      ],
+      "touches": [
+        "fix_surf"
+      ],
+      "doc": "Refuse `escape_bc = true` unless the surface mixing ratios are fixed."
+    },
+    {
       "validator": "valid_ini_mix",
       "module": "_atmos_chem.py",
       "attached_to": [
@@ -12781,6 +12808,18 @@
         "module"
       ],
       "doc": "Refuse coupled chemistry, and automatic chemistry without a module."
+    },
+    {
+      "validator": "valid_photo_on",
+      "module": "_atmos_chem.py",
+      "attached_to": [
+        "atmos_chem.photo_on"
+      ],
+      "touches": [
+        "module",
+        "vulcan.network"
+      ],
+      "doc": "Refuse VULCAN's SNCHO network without photochemistry, which VULCAN does not have."
     },
     {
       "validator": "valid_aerosols_enabled",

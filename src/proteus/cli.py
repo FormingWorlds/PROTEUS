@@ -4,6 +4,7 @@ import importlib.util
 import logging
 import os
 import shlex
+import signal
 import sys
 from difflib import get_close_matches
 from pathlib import Path
@@ -244,6 +245,8 @@ cli.add_command(plot)
 )
 def start(config_path: Path, resume: bool, offline: bool, deterministic: bool):
     """Start proteus run"""
+    # SLURM ends a job with SIGTERM; as SystemExit it lets Proteus.start record status 25.
+    signal.signal(signal.SIGTERM, lambda signum, _: sys.exit(128 + signum))
     if deterministic and os.environ.get(_PROTEUS_DETERMINISTIC_SENTINEL) != '1':
         click.secho(
             '[!] --deterministic was requested but the env-var re-exec did not '
@@ -264,8 +267,8 @@ cli.add_command(start)
 @click.group()
 def get():
     """Get data and modules"""
-    # Scope the name to the calling user: a shared sticky temp directory
-    # refuses removal of another user's logfile.
+    # Scope the name to the calling user: in a shared temp directory, another
+    # user's logfile cannot be written.
     log_path = Path(tempfile.gettempdir()) / f'proteus_get_{os.getuid()}.log'
     try:
         setup_logger(
@@ -718,16 +721,53 @@ cli.add_command(extract_archives)
 
 
 @click.command()
-@config_option
-def offchem(config_path: Path):
-    """Run offline chemistry on PROTEUS output files"""
+@click.option(
+    '-c',
+    '--config',
+    'config_path',
+    type=click.Path(exists=True, dir_okay=False, path_type=Path, resolve_path=True),
+    help='Path to config file',
+)
+@click.option(
+    '-g',
+    '--grid',
+    'grid_path',
+    type=click.Path(exists=True, file_okay=False, path_type=Path, resolve_path=True),
+    help='Grid output folder: run the chemistry on each of its cases',
+)
+@click.option(
+    '--slurm', is_flag=True, help='With -g, write a Slurm job array instead of running here'
+)
+@click.option('--network-compiled', is_flag=True, hidden=True)
+def offchem(config_path: Path, grid_path: Path, slurm: bool, network_compiled: bool):
+    """Run offline chemistry on the output of one run (-c) or of each case of a grid (-g)"""
+    if (config_path is None) == (grid_path is None):
+        raise click.UsageError('Give the config file with -c, or the grid folder with -g.')
+    if slurm and grid_path is None:
+        raise click.UsageError('--slurm needs the grid folder, -g.')
+    if grid_path is not None:
+        from proteus.grid.offchem import offchem_grid
+
+        setup_logger(logpath=os.path.join(grid_path, 'offchem.log'), logterm=True)
+        try:
+            failed = offchem_grid(grid_path, slurm)
+        except (ValueError, OSError) as exc:
+            log.error('%s', exc)
+            sys.exit(1)
+        except Exception as exc:
+            log.exception('Chemistry of the grid stopped: %s', exc)
+            sys.exit(1)
+        if failed:
+            log.error('Chemistry failed for %s', ', '.join(failed))
+            sys.exit(1)
+        return
     runner = Proteus(config_path=config_path)
     setup_logger(
         logpath=os.path.join(runner.directories['output'], 'offchem.log'),
         logterm=True,
         level=runner.config.params.out.logging,
     )
-    runner.offline_chemistry()
+    runner.offline_chemistry(network_compiled=network_compiled)
 
 
 @click.command()
@@ -884,7 +924,7 @@ cli.add_command(infer)
     default=None,
     type=str,
     help='List cases with this status. '
-    "For example: 'completed', 'running', 'error', or 'code=x' for some error code x.",
+    "For example: 'completed', 'running', 'error', 'unknown', or 'code=x' for some error code x.",
 )
 def grid_summarise(output_path: Path, status: str):
     """

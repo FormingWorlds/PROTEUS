@@ -1917,173 +1917,303 @@ def test_zalmoxis_output_restored_from_prev_on_wrapper_raise(tmp_path):
 
 
 # ============================================================================
-# Stale-aware re-trigger via last_successful_struct_time
+# Recovery after a failed structure re-solve (update_stale_ceiling)
 # ============================================================================
 
 
-@pytest.mark.unit
-def test_stale_aware_ceiling_fires_after_failure_window(tmp_path):
-    """Stale-aware ceiling fires after update_stale_ceiling regardless of
-    intervening failed re-solves.
-
-    Contract: the standard ceiling trigger uses elapsed time since the
-    last *call*, which a fall-back re-anchors; a failed call therefore
-    keeps the trigger silent for a full ``update_interval`` afterwards
-    and lets Aragog evolve on a frozen mesh. The stale-aware ceiling
-    fires after ``update_stale_ceiling`` has elapsed since the last
-    *successful* re-solve, tracked on ``Interior_t`` via
-    ``last_successful_struct_time``. It is independent of
-    ``last_struct_time`` and so survives failures.
-    """
-
-    # Configure a 50 kyr normal ceiling and a 25 kyr stale ceiling.
-    # Test point: elapsed=30 kyr since LAST CALL (under normal ceiling)
-    # but 30 kyr since LAST SUCCESS (over stale ceiling).
+def _stale_ceiling_case(tmp_path, *, stale):
+    """Real Interior_t at 1e5 yr under a 25 kyr recovery time and a 50 kyr routine ceiling,
+    with no Phi or T_magma change; ``stale`` is the flag of a failed last re-solve."""
     config = _mock_config(update_interval=5e4, update_min_interval=0.0)
     config.interior_struct.zalmoxis.update_stale_ceiling = 2.5e4
     dirs = _mock_dirs()
-    # Real Interior_t persists the stale flag under output/data; point at
-    # tmp_path so the sidecar write lands in the auto-cleaned test dir.
     dirs['output'] = str(tmp_path)
     (tmp_path / 'data').mkdir(exist_ok=True)
-
-    # Real Interior_t so last_successful_struct_time attribute lookup works
     interior_o = Interior_t(50)
-    interior_o.last_successful_struct_time = float('-inf')
-    # Decorate with the arrays the wrapper requires.
     interior_o.radius = np.linspace(6.371e6, 3.504e6, 50)
     interior_o.temp = np.full(49, 3000.0)
-
-    # Simulate state: time has advanced 3e4 yr since the last call,
-    # but no successful re-solve yet.
-    last_struct_time = 7e4  # last call was at 7e4 yr (a failed one)
-    current_time = 1e5  # now at 1e5 yr; elapsed = 3e4 (< 5e4 ceiling)
+    interior_o.structure_stale = stale
     hf_row = {
-        'Time': current_time,
-        'T_magma': 3000.0,
-        'Phi_global': 0.8,  # no Phi/T trigger (no change)
-        'R_int': 6.371e6,
-        'gravity': 9.81,
-        'M_int': 5.972e24,
-    }
-    # Last *success* is at -inf, so stale-aware ceiling should NOT fire
-    # for last_success=-inf (no anchor yet). Verify: trigger should NOT
-    # fire because elapsed=3e4 < normal ceiling=5e4 and no success anchor
-    # exists.
-    with patch(
-        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
-        side_effect=AssertionError('zalmoxis_solver should not be called'),
-    ):
-        out = update_structure_from_interior(
-            dirs,
-            config,
-            hf_row,
-            interior_o,
-            last_struct_time,
-            hf_row['T_magma'],
-            hf_row['Phi_global'],
-        )
-    # Returned tuple unchanged (no_update path).
-    assert out == (last_struct_time, hf_row['T_magma'], hf_row['Phi_global'])
-
-    # Now seed a successful past re-solve at t=7e4 (= 30 kyr ago).
-    interior_o.last_successful_struct_time = 7e4
-
-    # Same hf_row, same elapsed; this time stale-aware ceiling SHOULD
-    # fire (3e4 yr >= 2.5e4 yr).
-    def _success_side(config, outdir, hf_row, **kwargs):
-        hf_row['M_int'] = 5.972e24
-        hf_row['M_int_target'] = 5.972e24
-        hf_row['R_int'] = 6.371e6
-        return (3.504e6, str(tmp_path / 'mesh.dat'))
-
-    with (
-        patch(
-            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
-            side_effect=_success_side,
-        ),
-        patch('proteus.interior_energetics.wrapper.np.savetxt'),
-        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
-        patch(
-            'proteus.interior_energetics.spider.blend_mesh_files',
-            return_value=0.0,
-        ),
-    ):
-        out = update_structure_from_interior(
-            dirs,
-            config,
-            hf_row,
-            interior_o,
-            last_struct_time,
-            hf_row['T_magma'],
-            hf_row['Phi_global'],
-        )
-    # Trigger fired and updated last_struct_time to current_time.
-    assert out[0] == current_time, (
-        'stale-aware ceiling must trigger; got last_struct_time=%r' % out[0]
-    )
-    # Successful tracker advanced.
-    assert interior_o.last_successful_struct_time == current_time, (
-        'last_successful_struct_time must advance on success'
-    )
-
-    interior_o.zalmoxis_fail_count = 0
-
-
-@pytest.mark.unit
-def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
-    """A Zalmoxis fall-back must NOT advance last_successful_struct_time.
-
-    Otherwise the stale-aware ceiling becomes equivalent to the normal
-    ceiling and the stale-aware path would have no effect.
-    """
-
-    config = _mock_config(update_interval=1e3, update_min_interval=0.0)
-    config.interior_struct.zalmoxis.update_stale_ceiling = 0.0  # disable stale-aware ceiling
-    dirs = _mock_dirs()
-    # Real Interior_t persists the stale flag under output/data; point at
-    # tmp_path so the sidecar write lands in the auto-cleaned test dir.
-    dirs['output'] = str(tmp_path)
-    (tmp_path / 'data').mkdir(exist_ok=True)
-
-    interior_o = Interior_t(50)
-    interior_o.last_successful_struct_time = 5e4
-    interior_o.radius = np.linspace(6.371e6, 3.504e6, 50)
-    interior_o.temp = np.full(49, 3000.0)
-
-    hf_row = {
-        'Time': 7e4,
+        'Time': 1e5,
         'T_magma': 3000.0,
         'Phi_global': 0.8,
         'R_int': 6.371e6,
         'gravity': 9.81,
         'M_int': 5.972e24,
     }
-    # Call triggers ceiling, zalmoxis_solver raises -> fall-back.
+    return config, dirs, interior_o, hf_row
+
+
+def _call_with_success_solver(config, dirs, interior_o, hf_row, last_struct_time):
+    """Run update_structure_from_interior with a converging solver stub; return the
+    output tuple and the solver mock."""
+
+    def _success_side(config, outdir, hf_row, **kwargs):
+        hf_row['M_int'] = 5.972e24
+        hf_row['M_int_target'] = 5.972e24
+        hf_row['R_int'] = 6.371e6
+        return (3.504e6, 'mesh.dat')
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=_success_side
+        ) as solver,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+        patch('proteus.interior_energetics.spider.blend_mesh_files', return_value=0.0),
+    ):
+        out = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, last_struct_time, 3000.0, 0.8
+        )
+    return out, solver
+
+
+def _call_with_failing_solver(config, dirs, interior_o, hf_row, last_struct_time):
+    """Run update_structure_from_interior with a solver stub that always raises; return
+    the output tuple and the solver mock."""
     with patch(
         'proteus.interior_struct.zalmoxis.zalmoxis_solver',
         side_effect=RuntimeError('mock failure'),
-    ) as mock_solver:
-        update_structure_from_interior(
-            dirs,
-            config,
-            hf_row,
-            interior_o,
-            0.0,
-            3000.0,
-            0.8,
+    ) as solver:
+        out = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, last_struct_time, 3000.0, 0.8
         )
-    assert interior_o.last_successful_struct_time == pytest.approx(5e4, rel=1e-12), (
-        'fall-back must NOT advance last_successful_struct_time '
-        '(got %r, expected 5e4)' % interior_o.last_successful_struct_time
-    )
-    # Fall-back discrimination: the solver was actually invoked (the test
-    # exercises the failure branch, not the no-trigger branch). A
-    # regression that bypassed the solver entirely would also leave
-    # last_successful_struct_time at 5e4 and fool the primary assert.
-    mock_solver.assert_called_once()
+    return out, solver
 
-    interior_o.zalmoxis_fail_count = 0
+
+def _sidecar(tmp_path):
+    from proteus.interior_energetics.common import get_file_structure_stale
+
+    with open(get_file_structure_stale(str(tmp_path))) as hdl:
+        return hdl.read()
+
+
+@pytest.mark.unit
+def test_the_recovery_fires_after_a_failed_attempt_and_only_then(tmp_path):
+    """30 kyr after the last attempt (past the 25 kyr recovery time, before the 50 kyr
+    routine ceiling) a stale structure is re-solved, the flag clears and the sidecar says
+    so; the same state without the flag stays silent."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_not_called()
+    assert out == (7e4, 3000.0, 0.8)
+
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_called_once()
+    assert out[0] == hf_row['Time'] and interior_o.structure_stale is False
+    assert _sidecar(tmp_path) == '0\n'
+
+
+@pytest.mark.unit
+def test_a_zero_recovery_time_disables_the_recovery(tmp_path):
+    """update_stale_ceiling = 0 switches the recovery off: a stale structure 30 kyr after
+    its failed attempt waits for the routine ceiling."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    config.interior_struct.zalmoxis.update_stale_ceiling = 0.0
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_not_called()
+    assert out == (7e4, 3000.0, 0.8) and interior_o.structure_stale is True
+
+
+@pytest.mark.unit
+def test_a_mock_interior_flag_does_not_fire_the_recovery(tmp_path):
+    """Only a stale flag that is True fires the recovery: an interior whose
+    ``structure_stale`` is a truthy MagicMock stays silent 30 kyr after its last attempt."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    interior_o.structure_stale = MagicMock()
+    assert bool(interior_o.structure_stale) and interior_o.structure_stale is not True
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_not_called()
+    assert out == (7e4, 3000.0, 0.8)
+
+
+@pytest.mark.unit
+def test_another_trigger_re_solves_a_stale_structure_before_the_recovery_time(tmp_path):
+    """A melt-fraction change past update_dphi_abs re-solves a stale structure 10 kyr
+    after its last attempt, before the 25 kyr recovery time; without the change it waits."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 9e4)
+    solver.assert_not_called()
+    hf_row['Phi_global'] = 0.8 - 0.06
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 9e4)
+    solver.assert_called_once()
+    assert out[0] == hf_row['Time'] and interior_o.structure_stale is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'recovery_time, time, reason',
+    [(2.5e4, 1e5, 'recovery ('), (6e4, 1.25e5, 'ceiling ('), (6e4, 1.3e5, 'ceiling (')],
+)
+def test_the_routine_ceiling_decides_when_the_recovery_time_is_not_below_it(
+    tmp_path, caplog, recovery_time, time, reason
+):
+    """Under a 50 kyr routine ceiling a 25 kyr recovery re-solves a stale structure 30 kyr
+    after its last attempt; a 60 kyr recovery never decides: at 55 and 60 kyr the ceiling
+    re-solves it."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    config.interior_struct.zalmoxis.update_stale_ceiling = recovery_time
+    hf_row['Time'] = time
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.wrapper'):
+        _, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_called_once()
+    msgs = [
+        r.getMessage()
+        for r in caplog.records
+        if r.getMessage().startswith('Updating structure')
+    ]
+    assert len(msgs) == 1 and f'(trigger: {reason}' in msgs[0]
+
+
+@pytest.mark.unit
+def test_a_failed_resolve_leaves_the_stale_flag_for_a_resume(tmp_path):
+    """A failed re-solve returns its own time as the last attempt and writes the stale
+    flag, so a resume restores it."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
+    hf_row['Time'] = 1.3e5
+    out, solver = _call_with_failing_solver(config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_called_once()
+    assert out[0] == hf_row['Time'] and interior_o.structure_stale is True
+    assert _sidecar(tmp_path) == '1\n'
+    resumed = Interior_t(50)
+    resumed.resume_structure_stale(str(tmp_path))
+    assert resumed.structure_stale is True
+
+
+@pytest.mark.unit
+def test_a_lost_sidecar_write_delays_the_recovery_to_the_next_failure(tmp_path, caplog):
+    """A failed re-solve whose sidecar write fails (no data folder) is logged and the run goes
+    on; a resume then reads no failure, so the recovery stays off 30 kyr later. The next
+    failed re-solve writes the flag, and the recovery fires 30 kyr after it."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
+    lost = tmp_path / 'no_data_folder'
+    lost.mkdir()
+    dirs['output'] = str(lost)
+    hf_row['Time'] = 1.3e5  # the routine ceiling fires; the solver fails
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        out, _ = _call_with_failing_solver(config, dirs, interior_o, hf_row, 8e4)
+    assert interior_o.structure_stale is True
+    assert any('Could not persist' in r.getMessage() for r in caplog.records)
+
+    resumed = Interior_t(50)
+    resumed.radius, resumed.temp = interior_o.radius, interior_o.temp
+    resumed.resume_structure_stale(str(lost))
+    assert resumed.structure_stale is False
+    hf_row['Time'] = 1.6e5  # 3e4 after the failed attempt: the recovery is lost
+    out2, solver = _call_with_success_solver(config, dirs, resumed, hf_row, out[0])
+    solver.assert_not_called()
+    assert out2[0] == out[0]
+
+    dirs['output'] = str(tmp_path)  # writable again; the next failure (ceiling) is saved
+    hf_row['Time'] = 1.8e5
+    out3, _ = _call_with_failing_solver(config, dirs, resumed, hf_row, out2[0])
+    assert resumed.structure_stale is True and _sidecar(tmp_path) == '1\n'
+    hf_row['Time'] = 2.1e5
+    _, solver = _call_with_success_solver(config, dirs, resumed, hf_row, out3[0])
+    solver.assert_called_once()
+    assert resumed.structure_stale is False
+
+
+@pytest.mark.unit
+def test_resume_after_a_failure_keeps_the_pending_recovery(tmp_path):
+    """A run that stopped after a failed re-solve resumes with the stale flag, so the
+    recovery fires once the recovery time has passed since the resumed attempt time."""
+    config, dirs, before, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    before.write_structure_stale(str(tmp_path))
+    resumed = Interior_t(50)
+    resumed.radius, resumed.temp = before.radius, before.temp
+    resumed.resume_structure_stale(str(tmp_path))
+    assert resumed.structure_stale is True
+    out, solver = _call_with_success_solver(config, dirs, resumed, hf_row, 7e4)
+    solver.assert_called_once()
+    assert out[0] == hf_row['Time'] and resumed.structure_stale is False
+
+
+@pytest.mark.unit
+def test_stale_ceiling_spaces_its_retries_by_the_ceiling(tmp_path):
+    """After a failed recovery re-solve the next attempt waits update_stale_ceiling from
+    that attempt: 8 steps of 10 yr make 1 solver call, not 8 (which would reach the abort
+    count), and a step 25 kyr after the failed attempt retries."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    last_struct_time, calls, aborted = 7e4, 0, False
+    for k in range(8):
+        hf_row['Time'] = 1e5 + 10.0 * k
+        try:
+            out, solver = _call_with_failing_solver(
+                config, dirs, interior_o, hf_row, last_struct_time
+            )
+        except RuntimeError:
+            aborted, calls = True, calls + 1
+            break
+        last_struct_time, calls = out[0], calls + solver.call_count
+    assert (calls, aborted) == (1, False)
+    assert interior_o.structure_stale is True
+
+    hf_row['Time'] = 1e5 + 2.5e4
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, last_struct_time)
+    solver.assert_called_once()
+    assert interior_o.structure_stale is False and out[0] == hf_row['Time']
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(('last_attempt', 'fires'), [(7.5e4, True), (7.5e4 + 1.0, False)])
+def test_stale_ceiling_fires_from_exactly_the_ceiling(tmp_path, last_attempt, fires):
+    """At 1e5 yr the recovery (2.5e4 yr) fires for a failed attempt at 7.5e4 yr and stays
+    silent 1 yr later."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, last_attempt)
+    assert solver.call_count == int(fires)
+    assert out[0] == (hf_row['Time'] if fires else last_attempt)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(('floor', 'calls'), [(4e4, 0), (0.0, 1)], ids=['floor', 'no-floor'])
+def test_the_update_floor_also_spaces_the_recovery(tmp_path, floor, calls):
+    """update_min_interval holds off every trigger but mesh convergence, the recovery
+    included: 30 kyr after the failed attempt, a 40 kyr floor keeps the solver idle, and
+    without the floor the recovery fires."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    config.interior_struct.zalmoxis.update_min_interval = floor
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
+    assert solver.call_count == calls
+    assert out[0] == (7e4 if calls == 0 else hf_row['Time'])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('sidecar', ['0\n', None], ids=['flag-off', 'missing'])
+def test_a_resumed_run_recovers_after_a_later_failure(tmp_path, sidecar):
+    """A run resumed from a flag-off sidecar (the format main writes) or from none, whose
+    next re-solve fails, re-solves again once the recovery time has passed since that
+    attempt: the recovery does not depend on what the sidecar held."""
+    from proteus.interior_energetics.common import get_file_structure_stale
+
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
+    if sidecar is not None:
+        with open(get_file_structure_stale(str(tmp_path)), 'w') as hdl:
+            hdl.write(sidecar)
+    interior_o.resume_structure_stale(str(tmp_path))
+    hf_row['Time'] = 1.3e5  # the routine ceiling (5e4 since 8e4) fires; the solver fails
+    out, _ = _call_with_failing_solver(config, dirs, interior_o, hf_row, 8e4)
+    assert interior_o.structure_stale is True and out[0] == hf_row['Time']
+    hf_row['Time'] = 1.6e5  # 3e4 after the failed attempt: only the recovery can fire
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, out[0])
+    solver.assert_called_once()
+    assert interior_o.structure_stale is False
+
+
+@pytest.mark.unit
+def test_a_fresh_run_recovers_after_a_failed_first_resolve(tmp_path):
+    """A fresh run whose first re-solve (routine ceiling, 5e4 yr after the start) fails
+    re-solves again 30 kyr later through the recovery, before the next routine ceiling."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
+    hf_row['Time'] = 5e4
+    out, _ = _call_with_failing_solver(config, dirs, interior_o, hf_row, 0.0)
+    assert interior_o.structure_stale is True and out[0] == hf_row['Time']
+    hf_row['Time'] = 8e4
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, out[0])
+    solver.assert_called_once()
+    assert out[0] == hf_row['Time'] and interior_o.structure_stale is False
 
 
 # ============================================================================
@@ -2158,7 +2288,6 @@ def test_an_accepted_resolve_frees_the_compiled_jax_programs(tmp_path, caplog):
     with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
         interior_o = _resolve_call(tmp_path, _success_side(tmp_path))
     assert interior_o.structure_stale is False  # written on the success path only
-    assert interior_o.last_successful_struct_time == pytest.approx(7e4)
     assert program._cache_size() == 0
     assert sum('JAX caches cleared' in r.getMessage() for r in caplog.records) == 1
     assert float(program(1.0)) == pytest.approx(3.0)  # it compiles again on its next call
@@ -3696,7 +3825,7 @@ def test_provide_spider_eos_tables_hard_failure_when_no_source(tmp_path, monkeyp
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import _provide_spider_eos_tables
-    from proteus.utils.helper import MissingReferenceData
+    from proteus.utils.helper import MissingDataError
 
     _configured_melting_curve(tmp_path, monkeypatch)
     config = SimpleNamespace(
@@ -3714,7 +3843,7 @@ def test_provide_spider_eos_tables_hard_failure_when_no_source(tmp_path, monkeyp
     # would not raise at all.
     assert 'proteus get interiordata --config-path' in str(exc.value)
     assert '`fwl-io relocate`' in str(exc.value)
-    assert isinstance(exc.value, MissingReferenceData)  # start() writes status 20
+    assert isinstance(exc.value, MissingDataError)
 
 
 # ============================================================================
@@ -4041,7 +4170,7 @@ def test_dummy_structure_without_tables_raises_named_error(tmp_path):
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
-    from proteus.utils.helper import MissingReferenceData
+    from proteus.utils.helper import MissingDataError
 
     config = MagicMock()
     config.interior_energetics.module = 'aragog'
@@ -4058,7 +4187,7 @@ def test_dummy_structure_without_tables_raises_named_error(tmp_path):
             side_effect=FileNotFoundError('no P-S tables'),
         ),
         _patch('proteus.interior_energetics.wrapper.Interior_t') as interior_t,
-        pytest.raises(MissingReferenceData) as excinfo,
+        pytest.raises(MissingDataError) as excinfo,
     ):
         determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
 
