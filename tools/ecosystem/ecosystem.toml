@@ -1,0 +1,25 @@
+# Settings of the ecosystem graph and its notification drafts (tools/ecosystem).
+org = "FormingWorlds"
+home = "FormingWorlds/PROTEUS"
+# Repositories outside the organisation. The git URLs of [tool.proteus.modules] and the
+# repositories of tools/digest/repos.toml are added automatically.
+extra_repos = [
+    "ExoInteriors/BOREAS",
+    "nichollsh/AGNI",
+    "nichollsh/LovePy",
+]
+# Months of history read for the pin decisions and the recent committers.
+months = 6
+# People tagged per action or check item; FYI items tag nobody.
+tag_limit = 2
+
+# Edges that no manifest, pin or import shows, each with the place that states it.
+[[declared]]
+from = "nichollsh/AGNI"
+to = "FormingWorlds/SOCRATES"
+source = "PROTEUS pyproject.toml, [tool.proteus.modules.socrates]: AGNI and JANUS link against the SOCRATES build at runtime"
+
+[[declared]]
+from = "FormingWorlds/JANUS"
+to = "FormingWorlds/SOCRATES"
+source = "PROTEUS pyproject.toml, [tool.proteus.modules.socrates]: AGNI and JANUS link against the SOCRATES build at runtime"

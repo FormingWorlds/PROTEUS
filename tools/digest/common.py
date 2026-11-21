@@ -187,6 +187,11 @@ class GitHub:
             raise DigestError(f'GraphQL error: {out["errors"]}')
         return out['data']
 
+    def get_json(self, path: str):
+        """Return the decoded JSON of a REST path such as ``repos/o/r``, or None on 404."""
+        raw = self._request(f'{API}/{path}')
+        return None if raw is None else json.loads(raw)
+
     def raw_file(self, repo: str, path: str, ref: str | None) -> str | None:
         """Return a file's text at ``ref`` (None: the default branch), or None when it is absent."""
         query = f'?ref={ref}' if ref else ''
