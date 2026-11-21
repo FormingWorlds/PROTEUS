@@ -470,19 +470,14 @@ def test_a_lid_base_that_is_not_finite_stops_before_the_atmosphere_call(value):
 
 def test_only_the_open_flux_stop_writes_the_atmosphere_status():
     """Another error from the open-part flux passes up without status 22."""
-    from unittest.mock import patch
+    from unittest.mock import MagicMock, patch
 
-    from proteus.atmos_clim import wrapper
     from proteus.atmos_clim.wrapper import lid_or_stop
 
-    with (
-        patch(
-            'proteus.atmos_clim.wrapper.lid_open_flux', side_effect=RuntimeError('zero skin')
-        ),
-        patch('proteus.atmos_clim.wrapper.UpdateStatusfile') as status,
-    ):
+    fn = MagicMock(side_effect=RuntimeError('zero skin'))
+    with patch('proteus.atmos_clim.wrapper.UpdateStatusfile') as status:
         with pytest.raises(RuntimeError, match='zero skin'):
-            lid_or_stop({}, wrapper.lid_open_flux, _row(0.3, T_surf=900.0, F_atm=1.0))
+            lid_or_stop({}, fn, _row(0.3, T_surf=900.0, F_atm=1.0))
         status.assert_not_called()
 
 
