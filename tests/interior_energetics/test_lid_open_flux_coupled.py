@@ -21,7 +21,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(60)]
 
 DATA = Path(__file__).parents[1] / 'data' / 'lid_open_flux' / 'coupled_rows.json'
 PAGE = Path(__file__).parents[2] / 'docs' / 'Validation' / 'atmos_clim' / 'common.md'
-EXPLANATION = Path(__file__).parents[2] / 'docs' / 'Explanations' / 'lid_coupling.md'
+REFERENCE = Path(__file__).parents[2] / 'docs' / 'Reference' / 'lid_coupling.md'
 RUNS = json.loads(DATA.read_text())
 PAIRS = (('seg1_response', 'seg1_off'), ('seg2_response', 'seg2_off'))
 NAMES = tuple(n for pair in PAIRS for n in pair)
@@ -162,10 +162,11 @@ def test_the_page_states_the_numbers_of_the_stored_coupled_rows():
 
 
 @pytest.mark.physics_invariant
-def test_the_explanation_states_the_lid_onset_of_the_stored_rows():
-    """The Explanation page gives the onset of the stored segments: in the step that switches
+def test_the_reference_states_the_lid_onset_of_the_stored_rows():
+    """The Reference page gives the onset of the stored segments: in the step that switches
     the lid on, the held surface (the row before) lies above the lid base, and at its end the
-    top node lies below it; the numbers come from the stored rows."""
+    top node lies below it; the later live row of the first segment has its own weight and
+    node. The numbers come from the stored rows."""
     held, node = [], []
     for name in ('seg1_response', 'seg2_response'):
         run = RUNS[name]
@@ -173,6 +174,12 @@ def test_the_explanation_states_the_lid_onset_of_the_stored_rows():
         assert run['T_surf'][LIVE - 1] > T_b > run['lid_T_node'][LIVE]
         held.append(run['T_surf'][LIVE - 1] - T_b)
         node.append(T_b - run['lid_T_node'][LIVE])
-    text = EXPLANATION.read_text()
+    text = REFERENCE.read_text()
     assert f'held surface lay {held[0]:.1f} and {held[1]:.1f} K above $T_b$' in text
-    assert f'top node lay {node[0]:.1f} and {node[1]:.1f} K below it' in text
+    assert f'top node lay {node[0]:.1f} and {node[1]:.1f} K below $T_b$' in text
+    run, i = RUNS['seg1_response'], LIVE + 2
+    w, d = run['lid_weight'][i], run['lid_T_base'][i] - run['lid_T_node'][i]
+    assert 0.0 < w < 1.0 and RUNS['seg1_off']['lid_weight'][i] == 0.0
+    assert (
+        f'rose again 2 rows later, to {w:.2f}, with the top node {d:.1f} K below $T_b$' in text
+    )
