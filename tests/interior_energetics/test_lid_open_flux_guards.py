@@ -142,6 +142,9 @@ def test_a_live_lid_without_any_usable_slope_takes_the_grey_tangent():
         (0.0, 0.3, 0.3, True),
         (0.0, 0.3, 0.0, True),
         (0.0, 0.0, 0.05, True),
+        (0.0, 1e-9, 0.0, True),
+        (1e-9, 0.0, 0.0, True),
+        (0.0, 0.0, 1e-9, True),
     ],
 )
 def test_a_t_magma_clip_stops_only_with_a_live_lid_in_the_step(prev_w, w, w_max, stops):
@@ -296,6 +299,24 @@ def test_a_state_out_of_the_tables_on_every_attempt_stops_the_run(monkeypatch):
         runner._solve_with_retry(hf_row, interior_o)
     assert [round(c['dt'], 6) for c in calls] == [100.0, 50.0, 25.0, 12.5, 6.25, 3.125]
     solver.get_state.assert_not_called()
+
+
+def test_a_state_out_of_the_tables_after_a_stiff_failure_stops_on_the_widened_ladder(
+    monkeypatch,
+):
+    """After a stiff first attempt the ladder has 8 attempts; when every later attempt leaves
+    the tables the error of the 8th reaches the caller."""
+    from aragog.solver.entropy_solver import AcceptedStateRangeError
+
+    from tests.interior_energetics.test_aragog import _retry_out, _retry_runner
+
+    solver, calls = _range_solver(set(range(2, 20)), 12)
+    stiff = _retry_out(-1, cvode_flag=-1, cvode_flag_name='TOO_MUCH_WORK')
+    solver.get_state.side_effect = [stiff] + [_retry_out(0)] * 12
+    runner, interior_o, hf_row = _retry_runner(solver, monkeypatch)
+    with pytest.raises(AcceptedStateRangeError, match='attempt 8'):
+        runner._solve_with_retry(hf_row, interior_o)
+    assert len(calls) == 8
 
 
 @pytest.mark.parametrize(
