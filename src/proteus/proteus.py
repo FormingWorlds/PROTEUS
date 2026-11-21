@@ -1264,6 +1264,7 @@ class Proteus:
             _initstr = ' '.join(f'{k}={v:.3f}' for k, v in _t_init.items())
             log.info('[INIT_TIMING] %s', _initstr)
         while not self.finished_both:
+            # Workaround for bmcage/odes#99: a SIGTERM in a CVODE callback can be lost.
             exit_if_terminated()
             # Determine whether this iteration is a data-write snapshot.
             # Conditions that are individually sufficient:

@@ -12,6 +12,7 @@ PYTHON_JULIACALL_HANDLE_SIGNALS=yes (as in CI) Julia takes the signal and ends p
 
 from __future__ import annotations
 
+import contextlib
 import signal
 
 import pytest
@@ -85,10 +86,8 @@ def test_exit_if_terminated_stops_a_run_whose_first_systemexit_was_lost(tmp_path
     def _lost_then_checked():
         sigterm.exit_if_terminated()
         checked.append('before')
-        try:
+        with contextlib.suppress(SystemExit):  # what CVODE does with it
             _deliver_sigterm()
-        except SystemExit:
-            pass  # what CVODE does with it
         checked.append('after')
         sigterm.exit_if_terminated()
         checked.append('never')

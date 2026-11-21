@@ -11,9 +11,8 @@ from proteus.utils.helper import CommentFromStatus, ReadStatus
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Broad status categories of the codes in `CommentFromStatus` (proteus.utils.helper),
-# shared by `summarise` and the grid analysis. Code 29 is 'Completed (planet evaporated)';
-# the Slurm job script writes 30 for a case killed for memory.
+# Status categories of the codes in `CommentFromStatus` (proteus.utils.helper), shared by
+# `summarise` and the grid analysis. 29 is a completion; the Slurm job script writes 30.
 STATUS_CATEGORIES = {
     'Running': tuple(range(0, 10)),
     'Completed': (*range(10, 20), 29),

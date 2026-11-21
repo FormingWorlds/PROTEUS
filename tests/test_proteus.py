@@ -3294,6 +3294,38 @@ def _run_main_loop_capturing_plots(p, *extra, stop_at_loop):
     return plot_calls
 
 
+def test_the_main_loop_stops_at_the_next_iteration_after_a_lost_sigterm(tmp_path, monkeypatch):
+    """A SIGTERM whose SystemExit a solver callback lost leaves only the flag set. The
+    main loop then raises SystemExit 143 at the start of the next iteration: no further
+    iteration runs, and the run ends with status 25, not 1 (running)."""
+    from proteus.utils import sigterm
+    from proteus.utils.helper import ReadStatus
+
+    monkeypatch.setattr(sigterm, '_received', None)
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    seen = []
+
+    def _lose_sigterm_in_iteration_5(handler):
+        seen.append(handler.loops['total'])
+        if handler.loops['total'] == 5:
+            sigterm._received = 15  # SIGTERM
+        return False
+
+    with pytest.raises(SystemExit) as stop:
+        _run_main_loop_capturing_plots(
+            p,
+            patch(
+                'proteus.utils.terminate.check_termination',
+                side_effect=_lose_sigterm_in_iteration_5,
+            ),
+            stop_at_loop=99,
+        )
+    assert stop.value.code == 143
+    assert seen == [4, 5]
+    assert ReadStatus(p.directories['output']) == 25
+    assert sigterm._received is None
+
+
 def test_plot_cadence_is_independent_of_write_snapshot_gate(tmp_path):
     """Plots must be generated on every `plot_mod`-multiple iteration,
     even on iterations that are NOT a write/archive snapshot.
