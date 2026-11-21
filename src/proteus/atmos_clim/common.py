@@ -630,8 +630,8 @@ def lid_open_flux(hf_row: dict) -> float:
     Raises
     ------
     LidOpenFluxError
-        For an ``F_atm``, ``T_surf`` or ``lid_T_base`` that is not finite under a live lid, and
-        for a lid column that :func:`check_lid_inputs` refuses.
+        For an ``F_atm``, ``T_surf`` or ``lid_T_base`` that is not finite under a live lid. The
+        other lid columns are those that :func:`check_lid_inputs` passed before the solve.
 
     Notes
     -----
@@ -639,7 +639,6 @@ def lid_open_flux(hf_row: dict) -> float:
     ``T_b - T_surf``. The value tends to ``F_atm`` as the lid weight goes to 0. It is a
     diagnostic: the interior takes ``F_atm`` and the fields of :func:`lid_open_fields`.
     """
-    check_lid_inputs(hf_row)
     if not lid_acts(hf_row):
         return float(hf_row['F_atm'])
     G = min(float(hf_row['lid_conductance']), _lid_skin_conductance(hf_row))

@@ -521,26 +521,30 @@ def test_a_surface_or_lid_base_that_is_not_finite_stops_under_a_live_lid(key, va
 )
 def test_a_lid_column_that_is_not_finite_stops_where_it_is_read(key, value, w):
     """A lid weight that is not finite, a lid conductance that is not finite under a weight
-    above 0, and a node temperature that is not finite under a live lid stop the call, with a
-    finite ``F_atm``, surface and lid base."""
-    from proteus.atmos_clim.common import LidOpenFluxError
+    above 0, and a node temperature that is not finite under a live lid stop the atmosphere
+    step at its check, with a finite ``F_atm``, surface and lid base."""
+    from proteus.atmos_clim.common import LidOpenFluxError, check_lid_inputs
 
     row = _row(w, T_surf=900.0, F_atm=5.0)
     row[key] = value
     with pytest.raises(LidOpenFluxError, match='not finite') as err:
-        lid_open_flux(row)
+        check_lid_inputs(row)
     assert f'{key} {value}' in str(err.value)
 
 
 def test_a_lid_column_that_is_not_read_passes_when_not_finite():
     """Without a lid weight the conductance and the node are not read, and with a conductance
-    of 0 the node is not read: a NaN there passes ``F_atm`` through."""
+    of 0 the node is not read: a NaN there passes the check and ``F_atm`` through."""
+    from proteus.atmos_clim.common import check_lid_inputs
+
     for key in ('lid_conductance', 'lid_T_node'):
         row = _row(0.0, T_surf=900.0, F_atm=5.0)
         row[key] = math.nan
+        check_lid_inputs(row)
         assert lid_open_flux(row) == row['F_atm']
     row = _row(0.3, G=0.0, T_surf=900.0, F_atm=5.0)
     row['lid_T_node'] = math.nan
+    check_lid_inputs(row)
     assert lid_open_flux(row) == row['F_atm']
 
 
@@ -553,3 +557,16 @@ def test_an_atmosphere_flux_that_is_not_finite_stops_under_a_live_lid(F_atm, T_s
     with pytest.raises(LidOpenFluxError, match='not finite') as err:
         lid_open_flux(_row(0.3, T_surf=T_surf, F_atm=F_atm))
     assert f'F_atm {F_atm}' in str(err.value)
+
+
+def test_the_open_flux_does_not_check_the_lid_columns_again():
+    """The atmosphere step checks the lid columns once, before the solve (the interior writes
+    them, the atmosphere does not); the open flux after the solve does not check them again."""
+    from unittest.mock import patch
+
+    row = _row(0.3, T_surf=900.0, F_atm=5.0)
+    with patch('proteus.atmos_clim.common.check_lid_inputs') as check:
+        F_open = lid_open_flux(row)
+    check.assert_not_called()
+    L = 4.0 * (1400.0 - 900.0)
+    assert F_open == pytest.approx((5.0 - 0.3 * L) / 0.7, rel=1e-12)
