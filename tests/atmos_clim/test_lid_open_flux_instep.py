@@ -88,6 +88,9 @@ def test_the_start_value_takes_the_floored_skin():
     floored node."""
     row = _balanced(_row(0.3, T_node=1350.0, T_surf=900.0))
     assert lid_open_flux(row) == pytest.approx(200.0 * (1400.0 - 900.0), rel=1e-14)
+    assert 0.3 * 4.0 * 500.0 + 0.7 * lid_open_flux(row) == pytest.approx(
+        row['F_atm'], rel=1e-14
+    )
 
 
 @pytest.mark.physics_invariant
@@ -97,6 +100,8 @@ def test_the_floored_start_value_goes_to_f_atm_at_the_onset(w, T_node):
     """The start value tends to ``F_atm`` as the weight goes to 0, floored or not."""
     row = _balanced(_row(w, T_node=T_node, T_surf=1300.0), gap=0.97)
     assert lid_open_flux(row) == pytest.approx(row['F_atm'], rel=1e-10)
+    L = 4.0 * (1400.0 - 1300.0)
+    assert lid_open_flux(row) == pytest.approx((row['F_atm'] - w * L) / (1.0 - w), rel=1e-14)
 
 
 def _lid_flux(row):
@@ -204,6 +209,7 @@ def test_an_atmosphere_flux_at_or_below_zero_gives_the_open_part_the_rest(F_atm)
     row = _row(0.3, T_surf=900.0, F_atm=F_atm)
     L = 4.0 * 500.0
     assert lid_open_flux(row) == (F_atm - 0.3 * L) / 0.7
+    assert 0.3 * L + 0.7 * lid_open_flux(row) == pytest.approx(F_atm, rel=1e-14, abs=1e-12)
 
 
 @pytest.mark.physics_invariant
@@ -352,6 +358,8 @@ def test_no_response_without_a_live_lid():
     """Without a live lid there is no open response and no guard code."""
     for row in (_row(0.0, T_surf=900.0, F_atm=1.0), {'F_atm': 1.0, 'T_surf': 900.0}):
         assert _g_eff(row, 0.3) == (None, 0)
+    G_eff, _ = _g_eff(_row(1e-9, T_surf=900.0, F_atm=1.0), 0.3)
+    assert G_eff is not None and math.isfinite(G_eff)
 
 
 @pytest.mark.physics_invariant
@@ -495,8 +503,9 @@ def test_a_surface_or_lid_base_that_is_not_finite_stops_under_a_live_lid(key, va
 
     row = _row(w, T_surf=900.0, F_atm=5.0)
     row[key] = value
-    with pytest.raises(LidOpenFluxError, match='not finite'):
+    with pytest.raises(LidOpenFluxError, match='not finite') as err:
         lid_open_flux(row)
+    assert f'{key} {value}' in str(err.value)
 
 
 @pytest.mark.parametrize(
@@ -541,5 +550,6 @@ def test_an_atmosphere_flux_that_is_not_finite_stops_under_a_live_lid(F_atm, T_s
     """A flux that is not finite stops under a positive skin balance and under one at or below 0."""
     from proteus.atmos_clim.common import LidOpenFluxError
 
-    with pytest.raises(LidOpenFluxError, match='not finite'):
+    with pytest.raises(LidOpenFluxError, match='not finite') as err:
         lid_open_flux(_row(0.3, T_surf=T_surf, F_atm=F_atm))
+    assert f'F_atm {F_atm}' in str(err.value)
