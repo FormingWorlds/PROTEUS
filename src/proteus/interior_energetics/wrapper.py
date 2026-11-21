@@ -2023,8 +2023,8 @@ def guard_t_magma_clip(
     Notes
     -----
     Aragog sets ``lid_weight_max`` in its energy replay of the step. Where it runs no replay (a
-    failed solve, fewer than 2 stored points, or no entropy table), the column is NaN and reads
-    as 0 here, so the guard sees only the weights at the start and the end of the step.
+    failed solve, fewer than 2 stored points, or no entropy table), Aragog gives NaN and the row
+    stores 0, so the guard sees only the weights at the start and the end of the step.
     """
     weights = (prev_weight, hf_row.get('lid_weight', 0.0), hf_row.get('lid_weight_max', 0.0))
     w = max(float(np.nan_to_num(float(x))) for x in weights)

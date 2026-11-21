@@ -1082,7 +1082,7 @@ def GetHelpfileKeys():
         'lid_F_resid',      # residual F_atm - B of the atmosphere solve against the skin balance B of the call, per total area; 0 without a lid; a call with a size above 1 W m-2 or not finite logs a warning [W m-2]
         'lid_F_diff',       # F_int of the step minus the F_atm it started from; 0 in grey_body mode [W m-2]
         'lid_weight_max',   # largest weight of the Aragog sub-grid lid over the accepted states of the step [1]
-        'lid_slope_guard',  # slope guard of the open lid part in the step that ends at this row: 0 none, 2 slope cut at the grey secant of the 2 rows, 3 a live lid took the newest usable earlier secant, 4 a live lid took the grey tangent (no usable secant in the run), 5 as 3 with that secant cut at the grey tangent; a cap re-solve records the code of its own secant [1]
+        'lid_slope_guard',  # slope guard of the lid slope (cap and open part) in the step that ends at this row: 0 none, 2 slope cut at the grey secant of the 2 rows, 3 a live lid took the newest usable earlier secant, 4 a live lid took the grey tangent (no usable secant in the run), 5 as 3 with that secant cut at the grey tangent; a cap re-solve records the code of its own secant [1]
         'T_magma_clipped',  # 1 where the step clipped a rise of T_magma, else 0 [1]
         'T_cmb',           # core temperature: the bottom mantle cell, or the core state with core_bc = core_module or bower2018 [K]
         'T_cmb_node',      # mantle temperature at the core-mantle boundary basic node; with core_bc = core_module the temperature of the bottom-cell entropy at P_cmb, so the CMB contrast is T_cmb - T_cmb_node, or core_T_top - T_cmb_node with stratification [K]
