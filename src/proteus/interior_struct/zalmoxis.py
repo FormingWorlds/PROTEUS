@@ -3266,17 +3266,17 @@ def compute_structure_mass_desync(radii, density, mass_enclosed) -> float:
     return abs(shell_mass_trapezoid - accumulator_total) / accumulator_total
 
 
-def _core_table_excess(model_results, table, accepted=True):
+def _core_table_excess(model_results, table):
     """Return ``core_T_max_excess`` of a Zalmoxis result (0.0 when absent).
 
     Raises
     ------
     RuntimeError
-        When an ``accepted`` result of a solve given a core temperature ``table`` has no
-        ``core_T_used`` or ``core_T_max_excess``, or when the core nodes lie beyond the table by
-        more than ``MAX_CORE_T_EXCESS`` of its pressure range, or by NaN.
+        When a solve given a core temperature ``table`` has no ``core_T_used`` or
+        ``core_T_max_excess`` in its result, or when the core nodes lie beyond the table by more
+        than ``MAX_CORE_T_EXCESS`` of its pressure range, or by NaN.
     """
-    if accepted and table is not None:
+    if table is not None:
         for key in ('core_T_used', 'core_T_max_excess'):
             if key not in model_results:
                 raise RuntimeError(
@@ -3600,7 +3600,7 @@ def zalmoxis_solver(
     # skipped entirely: at the structural-Picard plateau (7-10 %) looser
     # tolerance does not rescue a structurally-unsupported configuration.
     # Retry remains useful for transient flickers near the tolerance edge.
-    _core_table_excess(model_results, core_temperature_arrays, accepted=False)  # no retry
+    _core_table_excess(model_results, core_temperature_arrays)  # no retry
     primary_best_mass_error = model_results.get('best_mass_error')
     skip_retry_high_error = (
         primary_best_mass_error is not None and primary_best_mass_error > 0.05
