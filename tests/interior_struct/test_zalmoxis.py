@@ -2796,7 +2796,7 @@ _CORE_TABLE = (np.linspace(1.0e11, 3.0e11, 5), np.linspace(4000.0, 6000.0, 5))
 
 def _table_model(excess=0.0):
     """Plausible model results of a solve that used ``_CORE_TABLE``: core array T on the table."""
-    from proteus.interior_struct.core_temperature import table_temperature
+    from zalmoxis.structure_model import core_temperature as table_temperature
 
     model = _plausible_model_results()
     model.update(core_T_used=True, core_T_max_excess=excess)
@@ -2812,7 +2812,7 @@ def test_the_core_table_reaches_zalmoxis_and_sets_the_rebuilt_core_temperature(
     """The core temperature table goes to the Zalmoxis solve; the row takes its flags; the JAX
     rebuild evaluates every core node (below node 20, the CMB) at the table temperature of its
     pressure, past the table ends too, and every mantle node at the hand-off temperature."""
-    from proteus.interior_struct.core_temperature import table_temperature
+    from zalmoxis.structure_model import core_temperature as table_temperature
 
     model = _table_model(0.02)
     r_arr, t_arr = _cooled_mantle_arrays(model)
@@ -2839,7 +2839,7 @@ def test_the_core_table_reaches_zalmoxis_and_sets_the_rebuilt_core_temperature(
 def test_the_jax_rebuild_takes_the_core_nodes_of_the_zalmoxis_layer_rule(tmp_path, monkeypatch):
     """A node whose enclosed mass lies within the 1e-12 band below the core mass is mantle in
     Zalmoxis (``is_core``); the JAX rebuild gives it the mantle temperature, not the core table."""
-    from proteus.interior_struct.core_temperature import table_temperature
+    from zalmoxis.structure_model import core_temperature as table_temperature
 
     model = _table_model()
     cmb_i = 20
@@ -2939,8 +2939,7 @@ def test_core_arrays_off_the_core_table_stop_the_run(tmp_path, monkeypatch, faul
     the table T at the core array P, finite, positive and not rising outward; a miss raises
     StructureInvariantError, which no re-solve fallback catches."""
     from zalmoxis.invariants import StructureInvariantError
-
-    from proteus.interior_struct.core_temperature import table_temperature
+    from zalmoxis.structure_model import core_temperature as table_temperature
 
     model = _table_model()
     core = model['core']

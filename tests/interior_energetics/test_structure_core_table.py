@@ -11,7 +11,6 @@ from proteus.interior_energetics.wrapper import _structure_core_table
 from proteus.interior_struct.core_temperature import (
     core_temperature_table,
     structure_core_table,
-    table_temperature,
 )
 
 pytestmark = pytest.mark.unit
@@ -97,33 +96,6 @@ def test_the_row_fit_is_used_with_an_anchor_or_without_core_module(case):
         anchor = 4300.0
     pr, tr = structure_core_table(_config(), dict(ROW), anchor)
     assert np.array_equal(p, pr) and np.array_equal(t, tr)
-
-
-def test_table_temperature_is_linear_inside_and_extends_with_the_end_slopes():
-    """Inside the table the temperature is linear in P between pairs; beyond either end it
-    continues with the slope of the end interval, continuous at the end. Hypothesis over P from
-    half the lowest pair pressure to twice the highest."""
-    hypothesis = pytest.importorskip('hypothesis')
-    st = pytest.importorskip('hypothesis.strategies')
-    table = core_temperature_table(_gaussian(), 4300.0)
-    pt, tt = table
-    lo, hi = (tt[1] - tt[0]) / (pt[1] - pt[0]), (tt[-1] - tt[-2]) / (pt[-1] - pt[-2])
-    assert table_temperature(pt, table) == pytest.approx(tt, rel=1e-15)
-
-    @hypothesis.settings(max_examples=200, deadline=None)
-    @hypothesis.given(st.floats(0.5 * pt[0], 2.0 * pt[-1]))
-    def _check(p):
-        got = float(table_temperature(p, table))
-        if p < pt[0]:
-            want = tt[0] + lo * (p - pt[0])
-        elif p > pt[-1]:
-            want = tt[-1] + hi * (p - pt[-1])
-        else:
-            want = float(np.interp(p, pt, tt))
-        assert got == pytest.approx(want, rel=1e-12)
-
-    _check()
-    assert lo > 0 and hi > 0
 
 
 @pytest.mark.physics_invariant

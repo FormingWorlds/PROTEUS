@@ -2,8 +2,8 @@
 
 Zalmoxis applies a core temperature T(P) to every node of the core. PROTEUS gives it as
 ``(P, T)`` pairs on the adiabat of an Aragog core profile through an anchor temperature at the CMB:
-the live Aragog core with ``core_bc = "core_module"``, and a Gaussian profile fitted to the last
-structure with ``core_bc = "energy_balance"``.
+the live Aragog core with ``core_bc = "core_module"``, else (any other ``core_bc``, or SPIDER) a
+Gaussian profile fitted to the last structure.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import numbers
 
 import numpy as np
 from zalmoxis.invariants import StructureInvariantError
+from zalmoxis.structure_model import core_temperature
 
 # Pairs per table: uniform in radius from the centre to the CMB of the profile
 CORE_T_POINTS = 161
@@ -70,30 +71,6 @@ def core_temperature_table(profiles, t_anchor, n=CORE_T_POINTS):
     return p, t
 
 
-def table_temperature(p, table):
-    """Temperature [K] of a core table at pressure ``p`` [Pa], as Zalmoxis reads the table.
-
-    Linear in P inside the table and linear with the slope of the end interval outside it.
-
-    Parameters
-    ----------
-    p : float or array_like
-        Pressure [Pa].
-    table : tuple of numpy.ndarray
-        ``(P, T)`` pairs of :func:`core_temperature_table`, P ascending.
-
-    Returns
-    -------
-    numpy.ndarray
-        Temperature [K], the shape of ``p``.
-    """
-    pt, tt = table
-    p = np.asarray(p, dtype=float)
-    lo = (tt[1] - tt[0]) / (pt[1] - pt[0]) * np.minimum(p - pt[0], 0.0)
-    hi = (tt[-1] - tt[-2]) / (pt[-1] - pt[-2]) * np.maximum(p - pt[-1], 0.0)
-    return np.interp(p, pt, tt) + lo + hi
-
-
 def check_core_arrays(core, table):
     """Raise unless the core arrays of a solve that used ``table`` lie on it.
 
@@ -111,7 +88,7 @@ def check_core_arrays(core, table):
         table temperature at ``P`` by more than a relative 1e-9.
     """
     t = np.asarray(core.get('T', []), dtype=float)
-    want = table_temperature(np.asarray(core['P'], dtype=float), table)
+    want = core_temperature(np.asarray(core['P'], dtype=float), table)
     if not (
         t.shape == want.shape
         and np.all(np.isfinite(t))
@@ -136,7 +113,8 @@ def structure_core_table(config, hf_row, t_anchor, profiles=None):
     hf_row : dict
         Row with the last structure: ``M_core`` [kg], ``P_center``, ``P_cmb`` [Pa], ``R_core`` [m].
     t_anchor : float
-        Temperature at the CMB [K]: the Aragog core temperature, else the row ``T_cmb``.
+        Temperature at the CMB [K]: the Aragog core temperature, else the row ``T_cmb``, else
+        (a row without a positive ``T_cmb``) the deepest mantle temperature of the solve.
     profiles : aragog core profiles or None, optional
         Profiles of the live Aragog core (``core_bc = "core_module"``); None fits a Gaussian core
         to the row structure.

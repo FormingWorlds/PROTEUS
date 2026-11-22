@@ -18,7 +18,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 from zalmoxis.mixing import _PALEOS_UNIFIED_NAMES
 from zalmoxis.solver import main
-from zalmoxis.structure_model import is_core
+from zalmoxis.structure_model import core_temperature, is_core
 
 from proteus.config import Config
 from proteus.data import (
@@ -33,11 +33,7 @@ from proteus.data import (
     dataset_dir,
 )
 from proteus.interior_struct.common import solvus_radius, stored_core_target
-from proteus.interior_struct.core_temperature import (
-    MAX_CORE_T_EXCESS,
-    check_core_arrays,
-    table_temperature,
-)
+from proteus.interior_struct.core_temperature import MAX_CORE_T_EXCESS, check_core_arrays
 from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
     PALEOS_EOS_PREFIXES,
@@ -3817,7 +3813,7 @@ def zalmoxis_solver(
             # r-indexed T: below r_ref[0] (= first Aragog staggered node
             # near CMB), clamp to T_cmb; else interp along the Aragog grid.
             if core_temperature_arrays is not None and _core[_i]:
-                _T = float(table_temperature(_P, core_temperature_arrays))
+                _T = float(core_temperature(_P, core_temperature_arrays))
             elif _r <= float(_r_ref[0]):
                 _T = _T_ref_cmb
             else:

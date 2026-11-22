@@ -79,9 +79,8 @@ def _fixed_point(table):
     """Zalmoxis main wrapped in the reference rule: no core table, the core T given by radius,
     from the table at the core node pressures of the previous pass, for FIXED_PASSES passes."""
     from zalmoxis.solver import main
+    from zalmoxis.structure_model import core_temperature as table_temperature
     from zalmoxis.structure_model import is_core
-
-    from proteus.interior_struct.core_temperature import table_temperature
 
     def fixed(*a, **k):
         r_m, t_m = (np.asarray(x, float) for x in k['temperature_arrays'])
