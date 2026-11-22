@@ -40,7 +40,8 @@ def core_temperature_table(profiles, t_anchor, n=CORE_T_POINTS):
     ------
     ValueError
         When ``t_anchor`` is not a finite positive number (a bool is refused), or the pairs are
-        not finite, not strictly ascending in P or not positive in T.
+        not finite, not strictly ascending in P, not positive in T, or fall in T with P (the
+        Zalmoxis rule).
     """
     if not (
         isinstance(t_anchor, numbers.Real)
@@ -59,9 +60,11 @@ def core_temperature_table(profiles, t_anchor, n=CORE_T_POINTS):
         and np.all(np.isfinite(t))
         and np.all(np.diff(p) > 0)
         and np.all(t > 0)
+        and np.all(np.diff(t) >= 0)
     ):
         raise ValueError(
-            'core temperature pairs are not finite, ascending in P and positive in T'
+            'core temperature pairs are not finite, ascending in P and positive in T, '
+            'or T falls with P'
         )
     return p, t
 
