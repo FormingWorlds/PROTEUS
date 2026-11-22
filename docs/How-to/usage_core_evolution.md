@@ -60,15 +60,15 @@ default `energy_balance` mode.
   content, which is not available for a stratified core. The default
   `update_interval = 1e9` keeps the update triggers active, so a stratified
   core needs `update_interval = 0` written in the config.
-- **The Gaussian core profile.** The core profile is a Gaussian density fitted
-  to the structure. `profile_source = "paleos"` selects an isentrope of the
-  PALEOS liquid iron table on the core arrays of the structure instead, with its
-  secular heat capacity `core_cp_override` and its temperature step
-  `core_t_cmb_step`
+- **The Gaussian core profile.** PROTEUS runs the core on a Gaussian density
+  profile fitted to the structure. The other value, `profile_source = "paleos"`,
+  puts the core arrays of the structure on an isentrope of the PALEOS liquid iron
+  table, with its secular heat capacity `core_cp_override` and its temperature
+  step `core_t_cmb_step`
   ([how it works](../Explanations/model.md#the-core-profile-from-the-paleos-liquid-iron-table)).
-  It needs a 2-phase iron core in the Zalmoxis structure (a liquid outer core
-  over a solid inner core), which PROTEUS does not build, so PROTEUS refuses
-  `profile_source = "paleos"` when it reads the config.
+  That profile needs a 2-phase iron core in the Zalmoxis structure (a liquid
+  outer core over a solid inner core). PROTEUS does not build such a core, so it
+  refuses `profile_source = "paleos"` when it reads the config.
 
 ## What happens in a run
 
@@ -89,7 +89,8 @@ from the interior snapshot. A snapshot without a core temperature restarts the
 core from `T_cmb` of the resumed row.
 
 A structure update moves the CMB radius and pressure. Each structure solve gives
-the Zalmoxis core the adiabat of this core through its temperature
+the core nodes of the Zalmoxis structure the temperatures of the Aragog core
+adiabat, which goes through the core temperature at the CMB
 ([the core temperature in the structure solve](../Explanations/model.md#the-core-temperature-in-the-structure-solve)).
 The structure is updated
 during the run when `interior_struct.zalmoxis.update_interval > 0` (the

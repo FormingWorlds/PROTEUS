@@ -30,17 +30,17 @@ Solves 2 and 3 must give the core radius $R_\mathrm{core}$, the planet radius $R
 
 **Why it matters.** With the table, the core radius is 0.74 % larger and the central pressure 4.4 % lower than with the core at the deepest mantle temperature (measured on this state). PROTEUS gives the table to every Zalmoxis solve that has a mantle temperature profile, which includes every structure update of a run.
 
-**Known limit.** The fixed point uses the same table values at the core node pressures, so a wrong table (a wrong adiabat or anchor) moves all 3 solves the same way. This test does not check the table values themselves. The checks in the next section do: one compares the Gaussian table with a separate integration of the adiabat, and the others check which core and which temperature each solve takes.
-
 ![Temperature against radius in the core and the lower mantle for the 4 solves](../../assets/validation/structure_core_table_temperature.svg#only-light){ width="80%" }
 ![Temperature against radius in the core and the lower mantle for the 4 solves](../../assets/validation/structure_core_table_temperature_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the radius from the centre and the y-axis the temperature. The dotted line is solve 4: the core is at one temperature. The other 3 lines are solves 1, 2 and 3: the core temperature rises to the centre along the adiabat. A pass means that these 3 lines lie on each other.
+**How to read the plot.** The x-axis is the radius from the centre in km and the y-axis the temperature in K. The dotted line is solve 4: the whole core is at one temperature. The other 3 lines are solves 1, 2 and 3: the core temperature rises to the centre along the adiabat. A pass means that these 3 lines lie on each other.
 
 ![Upper limit 1e-5 for solves 2 and 3 and the measured difference of solve 4, for 4 structure values, on a log axis](../../assets/validation/structure_core_table_paths.svg#only-light){ width="80%" }
 ![Upper limit 1e-5 for solves 2 and 3 and the measured difference of solve 4, for 4 structure values, on a log axis](../../assets/validation/structure_core_table_paths_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis names 4 structure values and the y-axis is the relative difference to solve 1, on a log axis. Circles are solve 4, the core at the temperature of the deepest mantle node, rounded to 2 digits. The test asserts that the highest circle lies above 1e-2. Triangles stand for solves 2 and 3 and are drawn at the pass mark of 1e-5: they mark an upper limit, not a measured value, and a pass means that the measured difference is below the triangle. The measured differences of solves 2 and 3 come from 2 different numerical methods and change between Linux and macOS, so the stored plot shows the pass mark. The table gives the measured values.
+**How to read the plot.** The x-axis names 4 structure values. The y-axis is the relative difference to solve 1, on a log axis. Circles are solve 4, the core at the temperature of the deepest mantle node, rounded to 2 digits. The test asserts that the highest circle lies above 1e-2. Triangles stand for solves 2 and 3 and are drawn at the pass mark of 1e-5. They mark an upper limit, not a measured value: a pass means that the measured difference is below the triangle.
+
+The measured differences of solves 2 and 3 come from 2 different numerical methods and change between Linux and macOS, so the stored plot shows the pass mark. The table gives the measured values.
 
 | Value | Solve 2, numpy path | Solve 3, fixed point | Solve 4, deepest mantle temperature |
 |---|---|---|---|
@@ -49,7 +49,9 @@ Solves 2 and 3 must give the core radius $R_\mathrm{core}$, the planet radius $R
 | $P_\mathrm{center}$ | 3.3e-8 | 5.5e-7 | 4.6e-2 |
 | $P_\mathrm{cmb}$ | 4.8e-7 | 4.5e-8 | 1.8e-2 |
 
-The values are the relative differences to solve 1, measured on macOS arm64. The percentages under "Why it matters" divide by solve 4 instead. With `--junitxml=<file>`, as in the nightly run, the test also writes the 12 values to the JUnit XML report.
+The values are the relative differences to solve 1, measured on macOS arm64. The percentages under **Why it matters** (0.74 % and 4.4 %) are relative to solve 4, so they differ a little from the solve 4 column, which is relative to solve 1. With `--junitxml=<file>`, as in the nightly run, the test also writes the 12 values to the JUnit XML report.
+
+**Known limit.** The fixed point uses the same table values at the core node pressures, so a wrong table (a wrong adiabat or anchor) moves all 3 solves the same way. This test does not check the table values themselves. The checks in the next section do: one compares the Gaussian table with a separate integration of the adiabat, and the others check which core and which temperature each solve takes.
 
 ??? info "Test details"
     - Reference: cross-check against the numpy path and a fixed point without the table, on the stored state `tests/interior_struct/fixtures/structure_core_table/state_eb_102yr.npz`.

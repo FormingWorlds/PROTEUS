@@ -2,13 +2,14 @@
 
 ## What this page checks
 
-This page checks how PROTEUS gives a core on the PALEOS profile its new temperature after a structure update (`src/proteus/interior_energetics/aragog_core_tabulated.py`).
-With `profile_source = "paleos"`, the core of the Aragog `core_module` boundary lies on an isentrope of the PALEOS liquid iron table, a line of constant specific entropy through the temperature at the core-mantle boundary (CMB).
-PROTEUS refuses this profile when it reads the config. The profile needs a 2-phase iron core in the Zalmoxis structure, which PROTEUS does not build. The tests below therefore run the code on 2 stored structures.
+This page checks what PROTEUS does to a core on the PALEOS profile at a structure update (`src/proteus/interior_energetics/aragog_core_tabulated.py`).
+With `profile_source = "paleos"`, the core of the Aragog `core_module` boundary lies on an isentrope of the PALEOS liquid iron table: a line of constant specific entropy through the temperature at the core-mantle boundary (CMB).
+PROTEUS refuses this profile when it reads the config, because the profile needs a 2-phase iron core in the Zalmoxis structure, which PROTEUS does not build. The tests below therefore run the code on 2 stored structures.
 When the structure solver changes the core, PROTEUS gives the core the CMB temperature that keeps its mass and its total entropy, and books the change of the core heat content in `step_dE_struct_core_J`.
-Validation here means that we run the code on a case where another source gives the right answer, and the test checks that the code gives that answer within a stated tolerance.
+The second case checks the default Gaussian profile, which every `core_module` run uses.
 If this part is wrong, the core starts too hot or too cold after each structure update, or the core energy ledger books a heat that depends on the table and not on the planet.
-Each case below says why the check exists, what it tests, how we know the right answer and why it matters; the box "Test details" gives the reference, the tolerance, the test id and the command.
+
+Validation here means that we run the code on a case where another source gives the right answer, and the test checks that the code gives that answer within a stated tolerance. Each case below says why the check exists, what it tests, how we know the right answer and why it matters; the box "Test details" gives the reference, the tolerance, the test id and the command.
 
 ## Terms and tests on this page
 
@@ -17,10 +18,13 @@ Each case below says why the check exists, what it tests, how we know the right 
 - $C_s(T)$: the secular heat capacity of the core in J K$^{-1}$, the heat per kelvin of CMB cooling at a fixed structure.
 - Heat content: $T\,C_s(T) - R(T)$ in J, with $T$ the CMB temperature and $R$ the latent and gravitational energy that the inner core released below its onset (0 above it).
 - Table floor: the lowest CMB temperature for which Aragog tabulates the isentropes of a structure. It follows from the lowest temperature of the table.
+- Carried temperature: the CMB temperature on the second structure of the pair that keeps the mass and the total entropy of the core on the first structure at a given CMB temperature. "Carried from 5000 K" means that the core on the first structure is at 5000 K.
+- Structure term: the change of the core heat content across the update, from the first structure at its CMB temperature to the second structure at the carried temperature. PROTEUS books it in `step_dE_struct_core_J`.
+- The 3 TPa cut: the part of the PALEOS liquid iron table that the tests read (`tests/interior_energetics/fixtures/core_tabulated/paleos_iron_liquid_cut_3tpa.npz`): 74 pressures from 44.8 GPa to 3 TPa and 41 temperatures from 1996 to 20000 K.
 
 | Test id | Reference | Scope | Last compared |
 |---|---|---|---|
-| `tests/interior_energetics/test_aragog_core_tabulated.py::test_the_structure_term_does_not_see_the_table_floor` | Analytical invariant: a content counted from 0 K does not change with the table floor | The structure pair at 5000 K on 2 cuts of one table. The carried temperature and the structure term agree to `rel=1e-12`; the difference of Aragog's own heat contents moves by more than 1e27 J. | 2026-11-17 |
+| `tests/interior_energetics/test_aragog_core_tabulated.py::test_the_structure_term_does_not_see_the_table_floor` | Analytical invariant: a heat content counted from 0 K does not change with the table floor | The structure pair at 5000 K on 2 cuts of one table. The carried temperature and the structure term agree to `rel=1e-12`; the difference of Aragog's own heat contents moves by more than 1e27 J. | 2026-11-17 |
 | `tests/interior_energetics/test_aragog_core_tabulated.py::test_the_content_of_a_gaussian_budget_is_its_heat_content` | Identity: on the Gaussian profile $T\,C_s - R$ is Aragog's heat content | 4 CMB temperatures above and below the onset, `rel=1e-12` | 2026-11-17 |
 | `tests/interior_energetics/test_aragog_core_tabulated.py::test_the_update_keeps_the_entropy_and_books_the_parcel_heat` | Thermodynamics: at constant entropy the heat content of a parcel changes by $c_p\,\Delta T$ | The structure pair at 7 CMB temperatures from 4600 to 6400 K. Entropy at the CMB kept to `rel=1e-10`, structure term against the parcel sum to `rtol=1e-5`. | 2026-11-17 |
 
@@ -37,8 +41,8 @@ Each case below says why the check exists, what it tests, how we know the right 
 This case has no plot: it compares 2 values of one quantity, and the plot of the third case shows that quantity over the temperature range.
 
 ??? info "Test details"
-    - Reference: analytical invariant of the content counted from 0 K.
-    - Tolerance: `rel=1e-12` for the carried temperature and the term (measured 4.4e-16 and 9.6e-14); the difference of Aragog's own contents moves by more than 1e27 J.
+    - Reference: analytical invariant of the heat content counted from 0 K.
+    - Tolerance: `rel=1e-12` for the carried temperature and the term (measured 4.4e-16 and 9.6e-14); the difference of Aragog's own heat contents moves by more than 1e27 J.
     - Test id: `tests/interior_energetics/test_aragog_core_tabulated.py::test_the_structure_term_does_not_see_the_table_floor`
     - Command: `pytest -m reference_pinned tests/interior_energetics/test_aragog_core_tabulated.py`
 
@@ -46,11 +50,11 @@ This case has no plot: it compares 2 values of one quantity, and the plot of the
 
 **Why this check exists.** PROTEUS uses one heat-content formula, $T\,C_s - R$, for both core profiles. On the Gaussian profile, the core energy ledger uses this formula for the jump of the heat content at a structure update or an impact. If the formula did not reduce to Aragog's own heat content, that jump would not match the booked term, and the ledger of a `core_module` run on the default Gaussian profile would not close.
 
-**What it tests.** An iron-alloy core on the Gaussian profile at 3800, 4100, 4500 and 5200 K, below and above its onset near 4149 K. The content of PROTEUS must equal Aragog's `heat_content`, and below the onset it must differ from $T\,C_s$ alone.
+**What it tests.** An iron-alloy core on the Gaussian profile at 3800, 4100, 4500 and 5200 K, below and above its onset near 4149 K. The heat content that PROTEUS computes must equal Aragog's `heat_content`, and below the onset it must differ from $T\,C_s$ alone.
 
 **How we know the right answer.** On the Gaussian profile $C_s$ does not depend on temperature, so Aragog's heat content is $T\,C_s - R(T)$ by its own definition.
 
-**Why it matters.** The Gaussian profile is the default, so every `core_module` run reads this content in its core energy ledger.
+**Why it matters.** The Gaussian profile is the default, so every `core_module` run reads this heat content in its core energy ledger.
 
 This case has no plot: it checks an identity of the code.
 
