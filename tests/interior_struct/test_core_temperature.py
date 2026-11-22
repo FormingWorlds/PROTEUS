@@ -42,7 +42,6 @@ def test_gaussian_pairs_run_from_the_cmb_to_the_centre_on_the_adiabat():
     assert np.all(np.diff(t) > 0)
 
 
-@pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_gaussian_pairs_follow_an_independent_integration_of_the_adiabat():
     """Inside the core the pairs lie on the adiabat dT/dP = alpha T / (rho c_p), integrated in P
@@ -139,12 +138,7 @@ def test_pairs_that_are_not_ascending_finite_and_positive_are_refused(pressure, 
     prof = SimpleNamespace(r_cmb=3.0e6, pressure=pressure, adiabat=adiabat)
     with pytest.raises(ValueError, match='ascending in P and positive in T'):
         core_temperature_table(prof, 3000.0)
-    good = SimpleNamespace(
-        r_cmb=3.0e6, pressure=lambda r: 1.0e11 - r, adiabat=lambda r, t: t + 0.0 * r
-    )
-    assert (
-        core_temperature_table(good, 3000.0)[0].size == CORE_T_POINTS
-    )  # a valid profile passes
+    assert core_temperature_table(_gaussian(), 5600.0)[0].size == CORE_T_POINTS  # valid passes
 
 
 def test_pairs_whose_temperature_falls_with_pressure_are_refused():
