@@ -47,8 +47,9 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 @pytest.fixture(autouse=True)
 def _no_core_table(monkeypatch):
-    """The re-solve tests use rows without a structure or T_cmb, so the core temperature table
-    is None here; tests/interior_energetics/test_structure_core_table.py tests the table."""
+    """The rows here have no structure (M_core, P_center, R_core, P_cmb), on which the real core
+    temperature table builder raises; these trigger tests stub it out and hand the solve no
+    table. tests/interior_energetics/test_structure_core_table.py tests the real builder."""
     import proteus.interior_energetics.wrapper as wrapper_mod
 
     monkeypatch.setattr(wrapper_mod, '_structure_core_table', lambda *a, **k: None)

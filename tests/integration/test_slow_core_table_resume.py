@@ -3,8 +3,8 @@
 A run of ``tests/integration/zalmoxis_aragog_calliope.toml`` with ``core_bc = 'core_module'``,
 ``temperature_mode = 'liquidus_super'`` and a structure update every 100 yr stops at 250 yr and
 resumes. PROTEUS keeps no state of the core table: each solve builds it from the row and the
-live core. The table that the resumed run builds from its restored row and core must therefore
-equal, bit for bit, the table of the stopped run at its last row.
+live core. A table built from the restored row and core of the resumed run must therefore
+equal, bit for bit, the table built from the stopped run at its last row.
 """
 
 from __future__ import annotations
@@ -55,14 +55,16 @@ def _equal(a, b):
 
 @pytest.mark.physics_invariant
 def test_the_resumed_run_builds_the_core_table_of_the_stopped_run(tmp_path, monkeypatch):
-    """At the first Aragog solve after the resume, before it integrates, the live-core table
-    (restored start T_core, restored core budget) and the row-fit table (restored row T_cmb
-    and structure) equal bit for bit those of the stopped run at its last row, 250 yr. A
-    1-ulp change of the restored T_core or T_cmb changes its table, so the comparison can see
-    a restore that is off by round-off."""
+    """On the stopped run at its last row (250 yr), the table of the production dispatch
+    _structure_core_table is the live-core table. At the first Aragog solve after the resume,
+    before it integrates, the live-core table (restored start T_core, restored core budget) and
+    the row-fit table (restored row T_cmb and structure) equal those of the stopped run bit for
+    bit. A 1-ulp change of the restored T_core or T_cmb changes its table, so the comparison can
+    see a restore that is off by round-off."""
     import aragog.solver as aragog_solver
 
     from proteus.interior_energetics.aragog_core import start_core_temperature
+    from proteus.interior_energetics.wrapper import _structure_core_table
 
     outdir = tmp_path / 'run'
     first = _runner(outdir, 250.0)
@@ -70,6 +72,9 @@ def test_the_resumed_run_builds_the_core_table_of_the_stopped_run(tmp_path, monk
     solver = first.interior_o.aragog_solver
     t_end = solver.get_current_core_temperature()
     end = _tables(first.config, dict(first.hf_row), t_end, solver._core_module_budget.profiles)
+    assert _equal(
+        _structure_core_table(first.config, first.interior_o, dict(first.hf_row)), end[0]
+    )
 
     second = _runner(outdir, 260.0)
     seen = {}
