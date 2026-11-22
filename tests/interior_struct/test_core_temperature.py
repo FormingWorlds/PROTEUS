@@ -115,3 +115,34 @@ def test_pairs_that_are_not_ascending_finite_and_positive_are_refused(pressure, 
     prof = SimpleNamespace(r_cmb=3.0e6, pressure=pressure, adiabat=adiabat)
     with pytest.raises(ValueError, match='ascending in P and positive in T'):
         core_temperature_table(prof, 3000.0)
+
+
+def test_pairs_whose_temperature_falls_with_pressure_are_refused():
+    """Hypothesis over one dip of size d at pair k of a table rising in T with P: the table is
+    refused exactly when T falls with P somewhere (the Zalmoxis rule); a flat step passes."""
+    hypothesis = pytest.importorskip('hypothesis')
+    st = pytest.importorskip('hypothesis.strategies')
+    r = np.linspace(0.0, 3.0e6, CORE_T_POINTS)
+    rise = np.linspace(2000.0, 1000.0, CORE_T_POINTS)  # T falls outward: rises with P
+
+    @hypothesis.settings(max_examples=80, deadline=None)
+    @hypothesis.given(
+        st.integers(0, CORE_T_POINTS - 1),
+        st.one_of(st.just(0.0), st.floats(0.0, 50.0), st.just(1000.0 / (CORE_T_POINTS - 1))),
+    )
+    def _dip(k, d):
+        shape = rise.copy()
+        shape[k] -= d
+        prof = SimpleNamespace(
+            r_cmb=3.0e6,
+            pressure=lambda x: 1.0e11 + 2.0e11 * (1.0 - x / 3.0e6),
+            adiabat=lambda x, t: t / 1000.0 * np.interp(x, r, shape),
+        )
+        falls = np.any(np.diff(shape[::-1]) < 0)
+        if falls:
+            with pytest.raises(ValueError, match='falls with P'):
+                core_temperature_table(prof, 1000.0)
+        else:
+            assert np.all(np.diff(core_temperature_table(prof, 1000.0)[1]) >= 0)
+
+    _dip()
