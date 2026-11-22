@@ -355,7 +355,7 @@ When `interior_struct.module = 'zalmoxis'` and `interior_struct.zalmoxis.update_
 Structure updates are governed by a hybrid trigger that combines physics-based criteria with timing constraints:
 
 - **Floor** (`update_min_interval`): minimum time between updates, preventing excessive recomputation during rapid cooling. Every trigger below waits for it, the recovery included. Only mesh convergence skips it: the extra re-solves, spaced by `mesh_convergence_interval`, that follow an update whose mesh shift was limited to `mesh_max_shift`.
-- **Ceiling** (`update_interval`): maximum time between updates, guaranteeing periodic recomputation.
+- **Ceiling** (`update_interval`): the time since the last update after which PROTEUS starts a new update. PROTEUS checks it once per time step, so the gap between 2 updates can exceed the ceiling by up to 1 time step.
 - **Temperature trigger** (`update_dtmagma_frac`): fires when the relative change in mantle surface temperature since the last update exceeds the threshold.
 - **Melt fraction trigger** (`update_dphi_abs`): fires when the absolute change in global melt fraction since the last update exceeds the threshold.
 - **Recovery** (`update_stale_ceiling`): a failed re-solve keeps the previous structure, which is then called stale. If no other trigger fires, a new re-solve starts once this time has passed since the last re-solve attempt; the other triggers can start one sooner, after the floor. On resume the resumed time counts as the last attempt. It has an effect only when `update_stale_ceiling` is smaller than `update_interval`, because the ceiling re-solves first otherwise. It does nothing while no re-solve has failed.

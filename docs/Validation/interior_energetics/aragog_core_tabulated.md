@@ -17,6 +17,7 @@ Validation here means that we run the code on a case where another source gives 
 - Structure pair: the cores of 2 stored Zalmoxis planets of 1 Earth mass, with the same core mass, 1.9409e24 kg, and CMB pressures of 127.7 and 141.3 GPa. They come from 2 structure solves at surface temperatures of 3000 and 2510 K, so they stand for one core before and after a structure update. Zalmoxis solved them with an iron-sulfur outer core; the tests use their radius, mass, pressure, density and gravity on the pure-iron liquid table.
 - $C_s(T)$: the secular heat capacity of the core in J K$^{-1}$, the heat per kelvin of CMB cooling at a fixed structure.
 - Heat content: $T\,C_s(T) - R(T)$ in J, with $T$ the CMB temperature and $R$ the latent and gravitational energy that the inner core released below its onset (0 above it).
+- Aragog's own heat content: the `heat_content` of the Aragog core budget. On the Gaussian profile it equals the heat content above; on the PALEOS profile it counts from the table floor, not from 0 K.
 - Table floor: the lowest CMB temperature for which Aragog tabulates the isentropes of a structure. It follows from the lowest temperature of the table.
 - Carried temperature: the CMB temperature on the second structure of the pair that keeps the mass and the total entropy of the core on the first structure at a given CMB temperature. "Carried from 5000 K" means that the core on the first structure is at 5000 K.
 - Structure term: the change of the core heat content across the update, from the first structure at its CMB temperature to the second structure at the carried temperature. PROTEUS books it in `step_dE_struct_core_J`.
@@ -30,7 +31,7 @@ Validation here means that we run the code on a case where another source gives 
 
 ## The structure term does not depend on the lowest table temperature
 
-**Why this check exists.** Aragog counts the heat content of a tabulated core from the table floor, a temperature that differs between 2 structures and between 2 cuts of one table. A structure term built from that content would carry this constant: 4.4e27 J on the structure pair.
+**Why this check exists.** Aragog's own heat content of a tabulated core counts from the table floor, a temperature that differs between 2 structures and between 2 cuts of one table. A structure term built from Aragog's own heat content depends on that floor: on the structure pair it moves by 4.4e27 J between the 2 cuts.
 
 **What it tests.** The structure pair is carried from 5000 K on the 3 TPa cut of the table and on the same cut without its lowest temperature column. The test compares the carried temperature and the structure term on the 2 cuts.
 

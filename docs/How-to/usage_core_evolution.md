@@ -88,7 +88,7 @@ fitted core profile and, with `stratification = true`, the shell temperatures
 from the interior snapshot. A snapshot without a core temperature restarts the
 core from `T_cmb` of the resumed row.
 
-A structure update moves the CMB radius and pressure. Each structure solve gives
+A structure update moves the CMB radius and pressure. Each structure update gives
 the core nodes of the Zalmoxis structure the temperatures of the Aragog core
 adiabat, which goes through the core temperature at the CMB
 ([the core temperature in the structure solve](../Explanations/model.md#the-core-temperature-in-the-structure-solve)).
