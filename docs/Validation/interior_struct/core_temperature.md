@@ -7,6 +7,8 @@ This page checks the core temperature that PROTEUS gives the Zalmoxis structure 
 - The first case takes the right answer from 2 other ways to solve the same structure. It is a cross-check, not a published value.
 - The second case checks that a resumed run builds the same table as the run before the stop.
 
+After the 2 cases, a measured comparison shows what the table leaves out; no test checks it. A table at the end lists the other tests of the core table.
+
 If the table or its use were wrong, the core radius, the central pressure and the pressure at the core-mantle boundary (CMB) of every Zalmoxis run would be wrong. Each case says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends each case.
 
 ## Source under test
@@ -83,13 +85,19 @@ This case has no plot: it checks an exact identity of 2 tables.
 
 The table is the adiabat of a core with a constant expansion coefficient and heat capacity. No case on this page compares it with the isentrope of the PALEOS liquid iron table, which the structure solve and the core energy budget do not use. A single measurement gives its size. The run is `tests/integration/zalmoxis_aragog_calliope.toml` with `planet.temperature_mode = "liquidus_super"`, `core_bc = "energy_balance"`, `update_interval = 100.0` yr, `update_min_interval = 0.0` and a time step of at most 50 yr, at 1, 3 and 4 Earth masses. Its first structure update (102 yr) is solved once more with the isentrope through the same CMB temperature in place of the table.
 
-| Planet mass | Centre temperature, table against isentrope | $R_\mathrm{int}$, isentrope against table | $R_\mathrm{core}$ | $P_\mathrm{center}$ |
+In the table, a negative value means that the first of the 2 named quantities is smaller.
+
+| Planet mass | Centre temperature, table relative to isentrope | Planet radius $R_\mathrm{int}$, isentrope solve relative to table solve | Core radius $R_\mathrm{core}$, isentrope solve relative to table solve | Central pressure $P_\mathrm{center}$, isentrope solve relative to table solve |
 |---|---|---|---|---|
 | 1 Earth mass | -20 % | +0.18 % | +0.60 % | -2.8 % |
 | 3 Earth masses | +30 % | -0.01 % | -0.03 % | +1.0 % |
 | 4 Earth masses | +73 % | -0.10 % | -0.34 % | +2.8 % |
 
-The same run with the table and a relative change of 1e-12 in the super-liquidus temperature offset of the start (`planet.delta_T_super`) gives differences of 1.3e-6 or less, so each value in the table lies far above the round-off of the run. The limits of the table, also after a giant impact, are in [Limits of the core temperature table](../../Explanations/model.md#limits-of-the-core-temperature-table).
+The same run with the table and a relative change of 1e-12 in the super-liquidus temperature offset of the start (`planet.delta_T_super`) gives relative differences of 1.3e-6 or less, so each value in the table lies far above the round-off of the run.
+
+A second measurement gives the size of the limit after a giant impact. It uses the same configuration at 1 Earth mass, with 1 dry impact of 0.05 Earth masses at 150 yr. A full re-melt of the mantle raises the core temperature of the energy budget by 58 K with `core_bc = "core_module"` and by 153 K with `"energy_balance"`. A structure solve at the raised temperature gives a core radius 0.04 % and 0.10 % larger. In a run of the same configuration with a re-melt fraction of 0.3, the core temperature did not rise.
+
+These measurements have no test and no committed script. The limits of the table are in [Limits of the core temperature table](../../Explanations/model.md#limits-of-the-core-temperature-table).
 
 ## Other checks of the core table
 

@@ -83,9 +83,10 @@ A structure update moves the CMB radius and pressure. Each structure update give
 the core nodes of the Zalmoxis structure the temperatures of the Aragog core
 adiabat, which goes through the core temperature at the CMB
 ([the core temperature in the structure solve](../Explanations/model.md#the-core-temperature-in-the-structure-solve)).
-That adiabat has a constant expansion coefficient and heat capacity. Against the
-PALEOS liquid iron isentrope it moves the planet radius by up to 0.18 % and the
-central pressure by up to 2.8 % at 1 to 4 Earth masses
+That adiabat has a constant expansion coefficient and heat capacity. At the first
+structure update of a run with `core_bc = "energy_balance"`, a solve on the PALEOS
+liquid iron isentrope through the same CMB temperature moved the planet radius by
+up to 0.18 % and the central pressure by up to 2.8 % at 1 to 4 Earth masses
 ([limits](../Explanations/model.md#limits-of-the-core-temperature-table)).
 The structure is updated
 during the run when `interior_struct.zalmoxis.update_interval > 0` (the
