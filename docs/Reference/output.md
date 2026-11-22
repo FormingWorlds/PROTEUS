@@ -144,8 +144,8 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `core_heatcap` | `J kg-1 K-1` | core heat capacity | `interior_energetics/wrapper.py`<br>`interior_struct/dummy.py`<br>`interior_struct/zalmoxis.py` | always; interior_struct.module = "dummy"; interior_struct.module = "zalmoxis" | interior_energetics |
 | `X_H2_int` | `1` | H2 mass fraction in interior (sub-Neptune mode) | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct |
 | `struct_mass_desync_frac` | `1` | \|trapezoid - ODE accumulator\| / accumulator structure mass self-consistency | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct |
-| `struct_core_T_used` | `1` | 1 when the last Zalmoxis solve set its core temperature from the core adiabat table, else 0 | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_energetics |
-| `struct_core_T_excess` | `1` | largest distance of a core node of that solve beyond the core temperature table, as a fraction of its pressure range | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_energetics, interior_struct |
+| `struct_core_T_used` | `1` | 1 when the last Zalmoxis solve set its core temperature from the core adiabat table, else 0 | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_energetics, interior_struct |
+| `struct_core_T_excess` | `1` | largest distance of a core node of that solve beyond the core temperature table, as a fraction of its pressure range | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_energetics |
 
 ### Temperatures
 
