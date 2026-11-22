@@ -349,7 +349,7 @@ Which temperature does Zalmoxis give the core when it solves the structure? The 
 PROTEUS gives every Zalmoxis solve that has a mantle temperature profile a core temperature table: pressure and temperature pairs on a core adiabat. The mantle keeps the temperature profile of the interior module. The table follows one of 2 cores:
 
 - The live core: the Aragog core with `interior_energetics.aragog.core_bc = "core_module"`, at its own core temperature.
-- A Gaussian core: a core density profile fitted to the core mass, core radius, central pressure and CMB pressure of the last structure, with `interior_energetics.aragog.core_module.alpha` and `.c_p`, also with `core_bc = "energy_balance"`.
+- A Gaussian core: a core density profile fitted to the core mass, core radius, central pressure and CMB pressure of the last structure. Its constant expansion coefficient and heat capacity come from `interior_energetics.aragog.core_module.alpha` and `.c_p`; PROTEUS reads these 2 values for every `core_bc` and also with SPIDER.
 
 | Solve | Core | Temperature of the adiabat at the CMB |
 |---|---|---|
@@ -358,7 +358,7 @@ PROTEUS gives every Zalmoxis solve that has a mantle temperature profile a core 
 | Start of the run | Gaussian core | the deepest mantle temperature |
 | After a giant impact | Gaussian core | `T_cmb` of the last output row (the core temperature before the impact) |
 
-When that row has no positive `T_cmb`, these 2 solves take the deepest mantle temperature.
+When the last output row has no positive `T_cmb`, the 2 solves that read it, a structure update with the Gaussian core and the solve after a giant impact, take the deepest mantle temperature. When the previous structure cannot be sampled, the start-up solve and the solve after an impact without a positive `T_cmb` get no core table.
 
 The solves at the start of the run and after a giant impact have a mantle temperature profile, and so a core table, only with `planet.temperature_mode = "liquidus_super"` and an interior module other than SPIDER.
 
@@ -368,8 +368,11 @@ For example, at the first structure update (102 yr) of a 1 Earth-mass planet wit
 
 ### When the core table stops a solve or a run, and when it is ignored
 
-- A core node that lies past the table by more than 0.1 of its pressure range stops the solve. A Zalmoxis result without its 2 core table outputs, `core_T_used` and `core_T_max_excess`, also stops the solve. At a structure update, PROTEUS then keeps the previous structure; after 8 failed structure updates in a row the run stops. At the start of the run and after a giant impact, PROTEUS keeps the structure of the first pass of that solve, which Zalmoxis solves without a core table.
-- A core temperature that differs from the table temperature at the node pressure by more than a relative 1e-9, or that is not finite, not positive or rises outward, stops the run.
+- A solve stops when a core node lies past the table by more than 0.1 of the table pressure range. It also stops when the Zalmoxis result lacks one of its 2 core table outputs, `core_T_used` and `core_T_max_excess`. What PROTEUS does next depends on the solve:
+    - At a structure update, PROTEUS keeps the previous structure. After 8 failed structure updates in a row, the run stops.
+    - At the start of the run and after a giant impact, Zalmoxis solves the structure twice: first with its own temperature guess and no core table, then on the mantle temperature profile with the core table. When the second solve stops, PROTEUS keeps a structure solved without the core table: the first solve or, in the start-up loop that iterates the structure with the outgassing, a new solve on the temperature guess.
+- The run stops when PROTEUS cannot build the core table, for example when the Gaussian core cannot be fitted to the last structure. PROTEUS builds the table before the solve, so this error keeps no earlier structure.
+- The run stops when a core temperature of an accepted solve differs from the table temperature at the node pressure by more than a relative 1e-9, or is not finite, not positive or rises outward.
 - A core equation of state (EOS) that does not depend on temperature ignores the table; `struct_core_T_used` is then 0.
 
 ### Limits of the core temperature table

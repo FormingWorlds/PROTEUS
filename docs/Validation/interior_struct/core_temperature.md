@@ -85,7 +85,7 @@ This case has no plot: it checks an exact identity of 2 tables.
 
 The core table is the adiabat of a core with a constant expansion coefficient and heat capacity. No case on this page compares it with the isentrope of the PALEOS liquid iron table, which the structure solve and the core energy budget do not use. A single measurement gives the size of the difference. The run is `tests/integration/zalmoxis_aragog_calliope.toml` with `planet.temperature_mode = "liquidus_super"`, `core_bc = "energy_balance"`, `update_interval = 100.0` yr, `update_min_interval = 0.0` and a time step of at most 50 yr, at 1, 3 and 4 Earth masses. Its first structure update (102 yr) is solved once more with the isentrope through the same CMB temperature in place of the core table.
 
-In the results below, the first column gives the centre temperature of the core table relative to the isentrope. The other 3 columns give the isentrope solve relative to the core table solve. A negative value means that the first of the 2 named quantities is smaller.
+In the results below, the column "Centre temperature" gives the centre temperature of the core table relative to the isentrope: a negative value means that the core table is colder at the centre. The columns $R_\mathrm{int}$, $R_\mathrm{core}$ and $P_\mathrm{center}$ give the isentrope solve relative to the core table solve: a negative value means that the isentrope solve gives the smaller value.
 
 | Planet mass | Centre temperature | Planet radius $R_\mathrm{int}$ | Core radius $R_\mathrm{core}$ | Central pressure $P_\mathrm{center}$ |
 |---|---|---|---|---|
