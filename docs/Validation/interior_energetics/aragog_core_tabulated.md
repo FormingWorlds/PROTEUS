@@ -44,7 +44,7 @@ This case has no plot: it compares 2 values of one quantity, and the plot of the
 
 ## On the Gaussian profile the content is Aragog's heat content
 
-**Why this check exists.** PROTEUS uses one heat-content formula, $T\,C_s - R$, for both core profiles. On the Gaussian profile, the core energy ledger uses this formula for the jump of the heat content at a structure update or an impact. If the formula did not reduce to Aragog's own heat content, that jump would not match the booked term, and the ledger of a default run would not close.
+**Why this check exists.** PROTEUS uses one heat-content formula, $T\,C_s - R$, for both core profiles. On the Gaussian profile, the core energy ledger uses this formula for the jump of the heat content at a structure update or an impact. If the formula did not reduce to Aragog's own heat content, that jump would not match the booked term, and the ledger of a `core_module` run on the default Gaussian profile would not close.
 
 **What it tests.** An iron-alloy core on the Gaussian profile at 3800, 4100, 4500 and 5200 K, below and above its onset near 4149 K. The content of PROTEUS must equal Aragog's `heat_content`, and below the onset it must differ from $T\,C_s$ alone.
 

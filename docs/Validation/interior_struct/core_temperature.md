@@ -2,7 +2,12 @@
 
 ## What this page checks
 
-This page checks the core temperature that PROTEUS gives the Zalmoxis structure solve. PROTEUS builds a table of pressure and temperature pairs on the core adiabat, and Zalmoxis reads it at each core node. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance: the first case takes the right answer from 2 other ways to solve the same structure, a cross-check and not a published value, and the second checks that a resumed run builds the same table as the run before the stop. If the table or its use were wrong, the core radius, the central pressure and the pressure at the core-mantle boundary (CMB) of every Zalmoxis run would be wrong. Each case below says why the check exists, what it tests, how we know the right answer and why it matters, and ends with a box "Test details".
+This page checks the core temperature that PROTEUS gives the Zalmoxis structure solve. PROTEUS builds a table of pressure and temperature pairs on the core adiabat, and Zalmoxis reads it at each core node. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. The page has 2 cases:
+
+- The first case takes the right answer from 2 other ways to solve the same structure. It is a cross-check, not a published value.
+- The second case checks that a resumed run builds the same table as the run before the stop.
+
+If the table or its use were wrong, the core radius, the central pressure and the pressure at the core-mantle boundary (CMB) of every Zalmoxis run would be wrong. Each case says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends each case.
 
 ## Source under test
 
@@ -25,7 +30,7 @@ Solves 2 and 3 must give the core radius $R_\mathrm{core}$, the planet radius $R
 
 **Why it matters.** With the table, the core radius is 0.74 % larger and the central pressure 4.4 % lower than with the core at the deepest mantle temperature (measured on this state). PROTEUS gives the table to every Zalmoxis solve that has a mantle temperature profile, which includes every structure update of a run.
 
-**Known limit.** The fixed point uses the same table values at the core node pressures, so a wrong table (a wrong adiabat or anchor) moves all 3 solves the same way. The test does not check the table values themselves; the check of this file below does.
+**Known limit.** The fixed point uses the same table values at the core node pressures, so a wrong table (a wrong adiabat or anchor) moves all 3 solves the same way. This test does not check the table values themselves. The checks in the next section do: one compares the Gaussian table with a separate integration of the adiabat, and the others check which core and which temperature each solve takes.
 
 ![Temperature against radius in the core and the lower mantle for the 4 solves](../../assets/validation/structure_core_table_temperature.svg#only-light){ width="80%" }
 ![Temperature against radius in the core and the lower mantle for the 4 solves](../../assets/validation/structure_core_table_temperature_dark.svg#only-dark){ width="80%" }
@@ -63,11 +68,15 @@ This case has no plot: it checks an exact identity of 2 tables.
     - Test id: `tests/integration/test_slow_core_table_resume.py::test_the_resumed_run_builds_the_core_table_of_the_stopped_run`
     - Command: `pytest tests/integration/test_slow_core_table_resume.py`
 
-## Other checks of this file
+## Other checks of the core table
 
 | Test id | Reference | Scope | Last compared |
 |---|---|---|---|
-| `tests/interior_struct/test_core_temperature.py::test_gaussian_pairs_follow_an_independent_integration_of_the_adiabat` | Analytical adiabat $dT/dP = \alpha T / (\rho c_p)$, integrated in pressure from the CMB with `solve_ivp` on the density of the Gaussian profile | 5 interior pairs of an Earth-like core at 5600 K, `rtol=1e-6` (measured 6.1e-12) | 2026-11-22 |
+| `tests/interior_struct/test_core_temperature.py::test_gaussian_pairs_follow_an_independent_integration_of_the_adiabat` | The adiabat equation $dT/dP = \alpha T / (\rho c_p)$, integrated numerically in pressure from the CMB with `solve_ivp` on the density of the Gaussian profile | 5 interior pairs of an Earth-like core at 5600 K, `rtol=1e-6` (measured 6.1e-12) | 2026-11-22 |
+| `tests/interior_energetics/test_structure_core_table.py::test_energy_balance_fits_a_gaussian_core_to_the_row_through_t_cmb` | The table of `core_bc = "energy_balance"` is the Gaussian fit to the row through the row `T_cmb` | An Earth-like row at 4300 K, bit for bit | 2026-11-22 |
+| `tests/interior_energetics/test_structure_core_table.py::test_a_live_aragog_core_sets_the_table_through_its_own_temperature` | With `core_bc = "core_module"` the table is the adiabat of the live core through its temperature | A live core at 5100 K, bit for bit | 2026-11-22 |
+| `tests/interior_energetics/test_structure_core_table.py::test_a_re_solve_anchors_the_table_at_the_row_t_cmb_or_the_deepest_mantle_t` | A structure update takes the row `T_cmb`, else the deepest mantle temperature | Rows with `T_cmb` 4300 K, 0 and missing, `rel=1e-12` | 2026-11-22 |
+| `tests/interior_energetics/test_wrapper_adiabat_ic.py::test_an_impact_solve_anchors_the_core_table_at_the_row_t_cmb` | A solve after a giant impact takes the row `T_cmb`, else the deepest mantle temperature; a start-up solve the deepest mantle temperature | Row `T_cmb` 5700 K, 0, NaN, negative; start-up | 2026-11-22 |
 
 ## Last verified
 2026-11-22

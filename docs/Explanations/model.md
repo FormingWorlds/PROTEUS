@@ -59,7 +59,7 @@ Each module is maintained in its own repository and can be used as a standalone 
 
 [Zalmoxis](https://proteus-framework.org/Zalmoxis/) computes the hydrostatic equilibrium structure of a differentiated planet (metallic core + silicate mantle + volatile envelope). Given a total planet mass, bulk composition, and surface temperature, Zalmoxis integrates the equations of hydrostatic equilibrium inward from the surface using a tabulated equation of state (EOS), returning radial profiles of pressure, density, temperature, and gravitational acceleration. It also computes the core radius, mantle mass, and surface gravity.
 
-Zalmoxis supports several EOS backends, including the PALEOS MgSiO$_3$ tables and the Wolf & Bower (2018) [^cite-wolf2018] parameterisation. The PALEOS mantle EOS comes in two forms: `PALEOS:MgSiO3` solves the structure on the unified table and derives the solidus from the liquidus with a fixed mushy-zone factor (by default the Stixrude 2014 solidus-to-liquidus ratio, applied to the PALEOS liquidus), while `PALEOS-2phase:MgSiO3` uses separate solid and liquid tables for the latent-heat entropy gap across the melting curve and derives the solidus from the liquidus with the same mushy-zone factor. Both are detailed in the [interior configuration reference](../Reference/config/interior.md). The structure solution is used by PROTEUS to initialise the planet's radius and to dynamically update the structure during the simulation when the interior thermal state changes (see [Structure-interior coupling](#structure-interior-coupling) below).
+Zalmoxis supports several EOS backends, including the PALEOS MgSiO$_3$ tables and the Wolf & Bower (2018) [^cite-wolf2018] parameterisation. The PALEOS mantle EOS comes in two forms: `PALEOS:MgSiO3` solves the structure on the unified table and derives the solidus from the liquidus with a fixed mushy-zone factor (by default the solidus-to-liquidus ratio of Stixrude (2014)[^cite-stixrude2014], applied to the PALEOS liquidus), while `PALEOS-2phase:MgSiO3` uses separate solid and liquid tables for the latent-heat entropy gap across the melting curve and derives the solidus from the liquidus with the same mushy-zone factor. Both are detailed in the [interior configuration reference](../Reference/config/interior.md). The structure solution is used by PROTEUS to initialise the planet's radius and to dynamically update the structure during the simulation when the interior thermal state changes (see [Structure-interior coupling](#structure-interior-coupling) below).
 
 Config section: `[interior_struct]`. Reference: [Interior configuration](../Reference/config/interior.md).
 
@@ -366,14 +366,19 @@ Setting `update_interval = 0` disables dynamic updates entirely; the structure i
 
 Which temperature does Zalmoxis give the core when it solves the structure? The core follows an adiabat through the core-mantle boundary (CMB) temperature. A hotter core is less dense, so this temperature sets part of the core radius and the central pressure.
 
-PROTEUS gives every Zalmoxis solve that has a mantle temperature profile a core temperature table: pressure and temperature pairs on that adiabat. A Gaussian core is a core density profile fitted to the core mass and the central pressure of the last structure, with `core_module.alpha` and `core_module.c_p`. Which adiabat the table follows depends on the solve:
+PROTEUS gives every Zalmoxis solve that has a mantle temperature profile a core temperature table: pressure and temperature pairs on a core adiabat. The mantle keeps the temperature profile of the interior module. The table follows one of 2 cores:
 
-- A structure update during the run with `interior_energetics.aragog.core_bc = "core_module"`: the adiabat of the live Aragog core, through its core temperature.
-- A structure update during the run with any other `core_bc`: the adiabat of a Gaussian core through the CMB temperature `T_cmb` of the last output row, or through the deepest mantle temperature when that row has no positive `T_cmb`.
-- A solve at the start of the run: the adiabat of a Gaussian core through the deepest mantle temperature.
-- The solve after a giant impact: the adiabat of a Gaussian core through the `T_cmb` of the last output row, the core temperature before the impact heats it.
+- The live core: the Aragog core with `interior_energetics.aragog.core_bc = "core_module"`, at its own core temperature.
+- A Gaussian core: a core density profile fitted to the core mass, core radius, central pressure and CMB pressure of the last structure, with `core_module.alpha` and `core_module.c_p`.
 
-The mantle keeps the Aragog temperature profile.
+| Solve | Core | Temperature of the adiabat at the CMB |
+|---|---|---|
+| Structure update, Aragog with `core_bc = "core_module"` | live core | the live core temperature |
+| Structure update, any other `core_bc`, or SPIDER | Gaussian core | `T_cmb` of the last output row, or the deepest mantle temperature when that row has no positive `T_cmb` |
+| Start of the run | Gaussian core | the deepest mantle temperature |
+| After a giant impact | Gaussian core | `T_cmb` of the last output row (the core temperature before the impact), or the deepest mantle temperature when that row has no positive `T_cmb` |
+
+The solves at the start of the run and after a giant impact have a mantle temperature profile only with `planet.temperature_mode = "liquidus_super"` and an interior module other than SPIDER.
 
 Zalmoxis reads the table at the pressure of each core node. Past the ends of the table it extrapolates linearly from the end interval.
 
@@ -406,7 +411,8 @@ Only the interior and star modules have an explicit notion of time-evolution. Al
 
  [^cite-lichtenberg2021]: Lichtenberg, T., Bower, D.J., Hammond, M., et al., *[Vertically resolved magma ocean-protoatmosphere evolution: H2, H2O, CO2, CH4, CO, O2, and N2 as primary absorbers](https://doi.org/10.1029/2020JE006711)*, Journal of Geophysical Research: Planets, 126, e2020JE006711, 2021. [SciX](https://scixplorer.org/abs/2021JGRE..12606711L/abstract).
 
- [^cite-wolf2018]: Wolf, A.S. & Bower, D.J., *[An equation of state for high pressure-temperature liquids (RTpress) with application to MgSiO3 melt](https://doi.org/10.1016/j.pepi.2018.02.004)*, Physics of the Earth and Planetary Interiors, 278, 59-74, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..278...59W/abstract).
+ [^cite-stixrude2014]: L. Stixrude, *[Melting in super-earths](https://doi.org/10.1098/rsta.2013.0076)*, Philosophical Transactions of the Royal Society A, 372, 20130076, 2014. [SciX](https://scixplorer.org/abs/2014RSPTA.37230076S/abstract).
+[^cite-wolf2018]: Wolf, A.S. & Bower, D.J., *[An equation of state for high pressure-temperature liquids (RTpress) with application to MgSiO3 melt](https://doi.org/10.1016/j.pepi.2018.02.004)*, Physics of the Earth and Planetary Interiors, 278, 59-74, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..278...59W/abstract).
 
  [^cite-bower2018]: Bower, D.J., Sanan, P. & Wolf, A.S., *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49-62, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..274...49B/abstract).
 
