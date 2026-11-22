@@ -1500,9 +1500,7 @@ def _solve_structure_with_adiabat_or_rollback(
     # The core takes the adiabat through core_t_anchor, else the deepest mantle T of the previous
     # pass, fitted to the row; a table that cannot be built stops the run, as in a re-solve
     anchor = adiabat_arrays[1][0] if core_t_anchor is None and adiabat_arrays else core_t_anchor
-    core_table = (
-        None if adiabat_arrays is None else _structure_core_table(config, None, hf_row, anchor)
-    )
+    core_table = None if anchor is None else _structure_core_table(config, None, hf_row, anchor)
     try:
         _cmb_radius, adiabat_mesh_file = zalmoxis_solver(
             config,
@@ -1664,7 +1662,9 @@ def determine_interior_radius_with_zalmoxis(
     thermal_solve : bool, optional
         Whether to run an interior thermal solve or update mechanical mass and
         structure only (default is True). False is the structure solve after a giant
-        impact: its core temperature table goes through the row ``T_cmb``.
+        impact: with the super-liquidus start-up re-solve (``temperature_mode =
+        "liquidus_super"``, not SPIDER) its core temperature table goes through the row
+        ``T_cmb``, else the deepest mantle T; other modes give that solve no core table.
     """
 
     log.info('Using Zalmoxis to solve for interior structure')
