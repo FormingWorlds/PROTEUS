@@ -3600,8 +3600,7 @@ def zalmoxis_solver(
     # skipped entirely: at the structural-Picard plateau (7-10 %) looser
     # tolerance does not rescue a structurally-unsupported configuration.
     # Retry remains useful for transient flickers near the tolerance edge.
-    # a core beyond the table: no retry, the tolerance cannot help
-    _core_table_excess(model_results, core_temperature_arrays, accepted=False)
+    _core_table_excess(model_results, core_temperature_arrays, accepted=False)  # no retry
     primary_best_mass_error = model_results.get('best_mass_error')
     skip_retry_high_error = (
         primary_best_mass_error is not None and primary_best_mass_error > 0.05
