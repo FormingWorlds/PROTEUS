@@ -80,6 +80,7 @@ nav:
           - PALEOS core across a structure update (aragog_core_tabulated.py): Validation/interior_energetics/aragog_core_tabulated.md
           - Partial giant-impact re-melt (remelt.py): Validation/interior_energetics/remelt.md
       - Interior structure:
+          - Core temperature in the structure solve (core_temperature.py): Validation/interior_struct/core_temperature.md
           - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
       - Orbit:
           - Orbital evolution (orbit.py): Validation/orbit/orbit.md

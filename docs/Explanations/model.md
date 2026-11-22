@@ -358,6 +358,24 @@ Structure updates are governed by a hybrid trigger that combines physics-based c
 
 Setting `update_interval = 0` disables dynamic updates entirely; the structure is computed only at initialisation.
 
+### The core temperature in the structure solve
+
+Which temperature does Zalmoxis give the core when it solves the structure? The core follows an adiabat through the core-mantle boundary (CMB) temperature. A hotter core is less dense, so this temperature sets part of the core radius and the central pressure.
+
+PROTEUS gives every Zalmoxis solve a table of pressure and temperature pairs on that adiabat. With `interior_energetics.aragog.core_bc = "core_module"` the adiabat is that of the live Aragog core, through its core temperature. Otherwise it is the adiabat of a Gaussian core density profile fitted to the last structure, with `core_module.alpha` and `core_module.c_p`, through the CMB temperature `T_cmb`. The mantle keeps the Aragog temperature profile.
+
+Zalmoxis reads the table at the pressure of each core node. Past the ends of the table it continues the line of the end interval.
+
+For example, a 1 Earth-mass planet with `core_bc = "energy_balance"` and a structure update every 100 yr has, after 450 yr, a core radius 0.73 % larger and a central pressure 4.4 % lower than with the whole core at the temperature of the deepest mantle node.
+
+Limits:
+
+- A core node that lies past the table by more than 0.1 of its pressure range stops the solve. In a run, PROTEUS then keeps the previous structure.
+- A core equation of state (EOS) that does not depend on temperature ignores the table; `struct_core_T_used` is then 0.
+- **Known limit.** With a `core_bc` other than `"core_module"`, the table takes the `T_cmb` of the row before the update. The update then changes the core heat content, and no output column books that change (`step_dE_struct_core_J` is 0). In the example above this is 6 to 11 K of core temperature per update.
+
+**Where this is checked.** [The core table gives the structure of 2 independent paths](../Validation/interior_struct/core_temperature.md).
+
 ## Time evolution vs equilibrium
 
 Only the interior and star modules have an explicit notion of time-evolution. All other modules are applied at equilibrium, such that the quantities calculated by these modules are effectively updated instantaneously at each time-step. This assumes that the physical processes handled by these equilibrium modules reach steady-state on time-scales shorter than the physics considered by interior and stellar evolution modules.
