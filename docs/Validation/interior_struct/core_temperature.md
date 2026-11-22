@@ -42,5 +42,25 @@ Solves 2 and 3 must give the core radius $R_\mathrm{core}$, the planet radius $R
     - Test id: `tests/interior_struct/test_slow_structure_core_table.py::test_the_core_table_gives_the_structure_of_two_independent_paths`
     - Command: `pytest tests/interior_struct/test_slow_structure_core_table.py --validation-plots`
 
+## The core table is the same after a resume
+
+**Why this check exists.** A resumed run must continue the physics of the stopped run. If the core table depended on a state that a resume loses or rounds, the first structure update after a resume would build another core than the stopped run.
+
+**What it tests.** A run with `core_bc = "core_module"` stops at 250 yr and resumes. At the first solve of the core after the resume, before it advances, the test builds the 2 tables PROTEUS uses: the adiabat of the live core through its restored temperature, and the Gaussian fit to the restored row through the restored `T_cmb`. Both must equal, bit for bit, the tables of the stopped run at its last row. A change of the restored temperature by 1 unit in the last place must change each table, so the comparison can see a restore that is off by round-off.
+
+**How we know the right answer.** PROTEUS keeps no state of the core table: each solve builds it from the row and the live core. With an exact restore, the 2 builds see the same inputs and give the same numbers.
+
+**Why it matters.** A long run that the queue stops and resumes must give the same structure updates as one run.
+
+**Known limit.** The resumed run is not the same trajectory as one run without a stop: the stop adds a row at 250 yr, and the time step starts small again after the resume. For information only, from a single sample at 450 yr (`core_module`, resumed against not stopped): $P_\mathrm{cmb}$ differs by 5.3e-4 with the table and by 6.5e-4 without it, $R_\mathrm{core}$ by 3.0e-5 and 8.1e-5. In this sample the difference is not larger with the table.
+
+This case has no plot: it checks an exact identity of 2 tables.
+
+??? info "Test details"
+    - Reference: the tables of the stopped run at its last row (250 yr).
+    - Tolerance: bit for bit; a 1-ulp change of the restored temperature must change the table.
+    - Test id: `tests/integration/test_slow_core_table_resume.py::test_the_resumed_run_builds_the_core_table_of_the_stopped_run`
+    - Command: `pytest tests/integration/test_slow_core_table_resume.py`
+
 ## Last verified
 2026-11-22

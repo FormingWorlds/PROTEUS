@@ -272,12 +272,14 @@ jobs:
             files: >-
               tests/integration/test_slow_zalmoxis_aragog_calliope.py
               tests/interior_struct/test_slow_structure_core_table.py
+              tests/integration/test_slow_core_table_resume.py
           - shard: zalmoxis-coupled
             tier: critical
             os: macos-latest
             files: >-
               tests/integration/test_slow_zalmoxis_aragog_calliope.py
               tests/interior_struct/test_slow_structure_core_table.py
+              tests/integration/test_slow_core_table_resume.py
           # ---- shard: agni (real AGNI grey-gas + real Aragog;
           # Linux-only because macOS arm64 path is not yet validated) ----
           - shard: agni
