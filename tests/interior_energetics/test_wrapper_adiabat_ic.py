@@ -1654,6 +1654,31 @@ def test_a_core_table_error_at_start_up_stops_the_run(tmp_path, monkeypatch, err
 
 
 @pytest.mark.unit
+def test_a_broken_structure_invariant_stops_the_start_up_solve(tmp_path):
+    """A StructureInvariantError of an accepted solve stops the start-up solve with that error:
+    no rollback restores the row, as a RuntimeError of the solve does."""
+    from zalmoxis.invariants import StructureInvariantError
+
+    _write_structure_file(tmp_path)
+    hf_row = _linear_hf_row()
+
+    def solve(cfg, outdir, row, **kw):
+        row.update(R_int=1.2746e7)
+        raise StructureInvariantError('core arrays off the core table')
+
+    with patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solve):
+        with pytest.raises(StructureInvariantError, match='off the core table'):
+            _solve_structure_with_adiabat_or_rollback(
+                _config(),
+                str(tmp_path),
+                hf_row,
+                num_spider_nodes=0,
+                temperature_function=_adiabat_closure(),
+            )
+    assert hf_row['R_int'] == 1.2746e7
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(
     ('thermal_solve', 't_cmb', 'anchor'),

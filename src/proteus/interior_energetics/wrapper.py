@@ -1434,7 +1434,7 @@ def _solve_structure_with_adiabat_or_rollback(
     :func:`_sample_adiabat_temperature_arrays`), then enforces the
     mass-anchor contract
     (``|M_int / M_int_target - 1| < _ZALMOXIS_MASS_ANCHOR_TOL``) and a finite,
-    positive ``R_int``. On any failure it restores BOTH the saved ``hf_row``
+    positive ``R_int``. On a failed solve or check it restores BOTH the saved ``hf_row``
     keys AND ``zalmoxis_output.dat`` from its ``.prev`` snapshot, so the
     immediately-following ``run_interior`` (Aragog ``ic = 1``) never sees the
     failed adiabat geometry against a linear-guess EOS mesh.
@@ -1471,6 +1471,15 @@ def _solve_structure_with_adiabat_or_rollback(
         and ``None`` on failure; ``ok`` is True only when the solve passed both
         the mass anchor and the ``R_int`` validity check. The caller decides
         what to do with the linear-guess mesh on failure.
+
+    Raises
+    ------
+    ValueError
+        When the core temperature table cannot be built. The table is built before the solve,
+        so this and every other error of the table builder stop the run with no rollback.
+    zalmoxis.invariants.StructureInvariantError
+        When the accepted structure breaks an invariant, such as core arrays off the core
+        temperature table. It stops the run with no rollback.
     """
     from proteus.interior_struct.zalmoxis import zalmoxis_solver
 
@@ -1578,8 +1587,8 @@ def _resolve_adiabatic_ic_structure(
     Two-pass: the linear-guess solve has already populated ``hf_row`` (R_int,
     P_cmb, masses, mesh file). This builds the adiabat ``T(P)`` over the
     converged pressure range and re-solves the structure with it via
-    :func:`_solve_structure_with_adiabat_or_rollback`. On any failure (adiabat
-    unavailable, solver raises, mass-anchor violation) the linear-guess
+    :func:`_solve_structure_with_adiabat_or_rollback`. On a failure (adiabat
+    unavailable, solver error, mass-anchor violation) the linear-guess
     structure (both ``hf_row`` and the on-disk ``zalmoxis_output.dat``) is
     restored and its mesh file returned, so the IC is never made worse than the
     existing behaviour.
@@ -1605,6 +1614,14 @@ def _resolve_adiabatic_ic_structure(
     -------
     str or None
         Mesh file path from the accepted solve.
+
+    Raises
+    ------
+    ValueError
+        When the core temperature table cannot be built: no rollback, the run stops, as on
+        every other error of the table builder.
+    zalmoxis.invariants.StructureInvariantError
+        When the accepted structure breaks an invariant: no rollback, the run stops.
     """
     P_cmb_linear = float(hf_row.get('P_cmb', 0.0) or 0.0)
     if P_cmb_linear <= 0.0:
