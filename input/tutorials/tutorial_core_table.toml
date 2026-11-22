@@ -1,5 +1,5 @@
 # Tutorial docs/Tutorials/core_table.md: an Earth-mass planet from a molten start, with Zalmoxis,
-# Aragog and CALLIOPE and a structure update every 100 yr, to 450 yr; star, orbit, atmosphere,
+# Aragog and CALLIOPE, a 100 yr ceiling for the structure updates, to 450 yr; star, orbit, atmosphere,
 # escape and chemistry are dummy modules.
 config_version = "3.0"
 
@@ -63,7 +63,7 @@ core_frac = 0.55
 core_frac_mode = "radius"
 
 [interior_struct.zalmoxis]
-update_interval = 100.0  # a structure update every 100 yr [yr]
+update_interval = 100.0  # ceiling of the structure update triggers [yr]
 update_dphi_abs = 0.999
 update_dtmagma_frac = 0.999
 update_dw_comp_abs = 0.999

@@ -390,7 +390,7 @@ For example, at the first structure update (102 yr) of a 1 Earth-mass planet wit
 - A core node that lies past the table by more than 0.1 of its pressure range stops the solve. In a run, PROTEUS then keeps the previous structure; after 8 failed structure updates in a row the run stops.
 - Core arrays that do not lie on the table, or that are not finite, not positive or rising outward, stop the run.
 - A core equation of state (EOS) that does not depend on temperature ignores the table; `struct_core_T_used` is then 0.
-- **Known limit.** With a `core_bc` other than `"core_module"`, the table takes the `T_cmb` of the row before the update. The update then changes the core heat content, and no output column books that change (`step_dE_struct_core_J` is 0). In the same planet with an update every 100 yr, this is 6 to 11 K of core temperature per update.
+- **Known limit.** With a `core_bc` other than `"core_module"`, the table takes the `T_cmb` of the row before the update. The update then changes the core heat content, and no output column books that change (`step_dE_struct_core_J` is 0). In the same planet with `update_interval = 100.0` yr, this is 6 to 11 K of core temperature per update.
 
 **Where this is checked.** [The core table gives the structure of 2 independent paths](../Validation/interior_struct/core_temperature.md).
 

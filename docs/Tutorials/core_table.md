@@ -16,7 +16,7 @@ A hotter core is less dense, so it is larger and the central pressure is lower.
 ## Prerequisites
 
 - PROTEUS installed with `bash install.sh` (see the [installation guide](../How-to/installation.md)), with the Aragog interior and the Zalmoxis structure, and its environment active (`conda activate proteus`).
-- `FWL_DATA` set; the first run downloads the equation of state (EOS) tables.
+- `FWL_DATA` set, and the interior data on disk: the equation of state (EOS) tables and the melting curves. Both runs below use `--offline`, which downloads nothing, so get the data first with `proteus get interiordata --config-path input/tutorials/tutorial_core_table.toml`.
 - `tomlkit` and `pandas`; both come with `pip install -e ".[develop]"`.
 
 Run the commands from the PROTEUS folder. Run the Python blocks in one Python session, in the order of the steps.
@@ -27,7 +27,7 @@ Each run took 6 to 8 minutes on a workstation.
 The configuration is `input/tutorials/tutorial_core_table.toml`.
 An Earth-mass planet starts fully molten, on the coolest adiabat above the liquidus (`temperature_mode = "liquidus_super"`).
 Zalmoxis solves the structure with a PALEOS mantle and an iron core, Aragog evolves the interior, and CALLIOPE the outgassing; the star, orbit, atmosphere, escape and chemistry are dummy modules.
-The structure is updated every 100 yr, and the run stops at 450 yr:
+The run stops at 450 yr. `update_interval = 100.0` is the ceiling of the structure update triggers ([Structure-interior coupling](../Explanations/model.md#structure-interior-coupling)). PROTEUS checks it once per time step, so an update falls at the first step that ends 100 yr or more after the last update: in this run at 102, 246 and 371 yr (Step 4).
 
 ```toml
 [interior_struct.zalmoxis]
