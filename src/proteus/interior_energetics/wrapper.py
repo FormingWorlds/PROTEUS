@@ -1496,12 +1496,11 @@ def _solve_structure_with_adiabat_or_rollback(
     # or malformed previous structure) degrades to the callable-only call.
     adiabat_arrays = _sample_adiabat_temperature_arrays(outdir, temperature_function)
 
-    # The core takes the adiabat through the deepest mantle T, fitted to the previous pass; a
-    # table that cannot be built stops the run, as in a re-solve
+    # The core takes the adiabat through core_t_anchor, else the deepest mantle T of the previous
+    # pass, fitted to the row; a table that cannot be built stops the run, as in a re-solve
+    anchor = adiabat_arrays[1][0] if core_t_anchor is None and adiabat_arrays else core_t_anchor
     core_table = (
-        None
-        if adiabat_arrays is None
-        else _structure_core_table(config, None, hf_row, core_t_anchor or adiabat_arrays[1][0])
+        None if adiabat_arrays is None else _structure_core_table(config, None, hf_row, anchor)
     )
     try:
         _cmb_radius, adiabat_mesh_file = zalmoxis_solver(
