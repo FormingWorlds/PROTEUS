@@ -287,7 +287,7 @@ as a cluster node, run `proteus get reference` once before the first offline run
 
 ## Equations of state 
 
-The interior structure solver of PROTEUS, Zalmoxis, uses equation-of-state tables by [Seager et al. (2007)](https://iopscience.iop.org/article/10.1086/521346), and from [PALEOS](https://github.com/maraattia/PALEOS) by [Attia et al. (2026)](https://ui.adsabs.harvard.edu/abs/2026arXiv260503741A/abstract). An overview of equation of state tables can be found [here](https://proteus-framework.org/Zalmoxis/Reference/data.html#data-inventory).
+The interior structure solver of PROTEUS, Zalmoxis, uses equation-of-state tables by [Seager et al. (2007)](https://iopscience.iop.org/article/10.1086/521346), and from [PALEOS](https://github.com/maraattia/PALEOS) by Attia et al. (2026)[^cite-attia2026]. An overview of equation of state tables can be found [here](https://proteus-framework.org/Zalmoxis/Reference/data.html#data-inventory).
 
 All equation-of-state tables are fetched through fwl-io into `$FWL_DATA/<dataset directory>/r<record-id>/`, on the same terms as the datasets above. Only the files that the selected equations of state read are fetched.
 
@@ -340,3 +340,5 @@ before an offline run. A local table takes precedence: SPIDER reads
 `$FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/P-T/`. SPIDER uses the
 table bundled with it (`lookup_data/1TPa-dK09-elec-free/`) when neither the
 local nor a complete fetched table is available.
+
+[^cite-attia2026]: M. Attia, T. Lichtenberg, E. Jungová, M. Sastre, *[PALEOS: Multiphase equations of state and mass–radius relations for exoplanet interiors](https://doi.org/10.1051/0004-6361/202660790)*, Astronomy & Astrophysics, 713, A225, 2026.
