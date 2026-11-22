@@ -1334,10 +1334,11 @@ def _structure_core_table(
 ):
     """Core temperature table ``(P, T)`` of a structure solve.
 
-    With a live Aragog core (``core_bc = "core_module"``) the adiabat of its profiles through
-    its temperature; otherwise a Gaussian core fitted to the row structure through ``t_anchor``,
-    or the row ``T_cmb`` when ``t_anchor`` is None, or ``t_fallback`` [K] when the row has no
-    positive ``T_cmb`` (a dummy interior writes none).
+    A given ``t_anchor`` [K] gives the Gaussian core fitted to the row structure through it,
+    also with a live core. Without it: the adiabat of the live Aragog core through its
+    temperature (``core_bc = "core_module"``), else the Gaussian fit through the row ``T_cmb``,
+    or through ``t_fallback`` [K] when the row has no positive ``T_cmb`` (a dummy interior
+    writes none).
     """
     from proteus.interior_energetics.aragog_core import core_temperature_state
     from proteus.interior_struct.core_temperature import structure_core_table
@@ -1662,7 +1663,8 @@ def determine_interior_radius_with_zalmoxis(
         Output directory path.
     thermal_solve : bool, optional
         Whether to run an interior thermal solve or update mechanical mass and
-        structure only (default is True).
+        structure only (default is True). False is the structure solve after a giant
+        impact: its core temperature table goes through the row ``T_cmb``.
     """
 
     log.info('Using Zalmoxis to solve for interior structure')

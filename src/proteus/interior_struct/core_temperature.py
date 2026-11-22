@@ -2,7 +2,8 @@
 
 Zalmoxis applies a core temperature T(P) to every node of the core. PROTEUS gives it as
 ``(P, T)`` pairs on the adiabat of an Aragog core profile through an anchor temperature at the CMB:
-the live Aragog core with ``core_bc = "core_module"``, else (any other ``core_bc``, or SPIDER) a
+the live Aragog core with ``core_bc = "core_module"`` in a structure update of the run, else
+(any other ``core_bc``, SPIDER, the start-up passes and the solve after a giant impact) a
 Gaussian profile fitted to the last structure.
 """
 
