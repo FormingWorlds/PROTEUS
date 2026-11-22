@@ -48,7 +48,7 @@ dependencies = [
     "fwl-mors>=26.10.6",
     "fwl-calliope>=26.10.05",
     "fwl-zephyrus>=26.10.10",
-    "fwl-aragog>=26.11.15",
+    "fwl-aragog>=26.11.23",
 
     # 26.11.14: zalmoxis.solver.main takes adiabat_seed, which the primary structure call passes,
     # and in an adiabatic mode accepts only a full-adiabat start-up structure (#133). It includes
