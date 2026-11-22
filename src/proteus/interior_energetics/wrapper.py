@@ -1423,6 +1423,7 @@ def _solve_structure_with_adiabat_or_rollback(
     hf_row: dict,
     num_spider_nodes: int,
     temperature_function,
+    core_t_anchor: float | None = None,
 ) -> tuple[str | None, bool]:
     """Run one structure solve against ``temperature_function`` with rollback.
 
@@ -1457,6 +1458,9 @@ def _solve_structure_with_adiabat_or_rollback(
         Adiabat ``f(r, P) -> T`` closure. Passed to the solver together
         with the sampled r-indexed arrays; the solver's temperature-source
         dispatch then decides which one the solve consumes.
+    core_t_anchor : float or None, optional
+        CMB temperature [K] of the core temperature table: the core temperature of the run for a
+        solve after a giant impact; None takes the deepest mantle T of the sampled adiabat.
 
     Returns
     -------
@@ -1497,7 +1501,7 @@ def _solve_structure_with_adiabat_or_rollback(
     core_table = (
         None
         if adiabat_arrays is None
-        else _structure_core_table(config, None, hf_row, adiabat_arrays[1][0])
+        else _structure_core_table(config, None, hf_row, core_t_anchor or adiabat_arrays[1][0])
     )
     try:
         _cmb_radius, adiabat_mesh_file = zalmoxis_solver(
@@ -1568,6 +1572,7 @@ def _resolve_adiabatic_ic_structure(
     hf_row: dict,
     num_spider_nodes: int,
     linear_mesh_file: str | None,
+    core_t_anchor: float | None = None,
 ) -> str | None:
     """Re-solve the IC structure against the super-liquidus adiabat.
 
@@ -1593,6 +1598,9 @@ def _resolve_adiabatic_ic_structure(
         SPIDER basic-node count forwarded to the solver (0 for Aragog).
     linear_mesh_file : str or None
         Mesh file path from the linear-guess solve, returned on fallback.
+    core_t_anchor : float or None, optional
+        CMB temperature [K] of the core temperature table, see
+        :func:`_solve_structure_with_adiabat_or_rollback`.
 
     Returns
     -------
@@ -1620,6 +1628,7 @@ def _resolve_adiabatic_ic_structure(
         hf_row,
         num_spider_nodes,
         temperature_function,
+        core_t_anchor=core_t_anchor,
     )
     if not ok:
         return linear_mesh_file
@@ -1704,8 +1713,15 @@ def determine_interior_radius_with_zalmoxis(
     # converged pressure range with a small margin. SPIDER provides its own T(r)
     # through entropy evolution and is intentionally excluded.
     if _use_superliquidus_adiabat_ic(config):
+        # after a giant impact (no thermal solve) the core keeps the core temperature of the run
+        t_row = float(hf_row.get('T_cmb', 0.0) or 0.0)
         spider_mesh_file = _resolve_adiabatic_ic_structure(
-            config, outdir, hf_row, num_spider_nodes, spider_mesh_file
+            config,
+            outdir,
+            hf_row,
+            num_spider_nodes,
+            spider_mesh_file,
+            core_t_anchor=None if thermal_solve or not t_row > 0 else t_row,
         )
 
     # Store mesh file path for subsequent SPIDER calls
