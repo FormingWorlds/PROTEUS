@@ -1888,6 +1888,7 @@ def test_get_git_revision_with_mock():
             assert isinstance(result, str)
             mock_check_output.assert_called_once_with(
                 ['git', 'rev-parse', 'HEAD'],
+                cwd=tmpdir,
                 stderr=subprocess.DEVNULL,
                 timeout=5,
             )
@@ -3544,15 +3545,13 @@ def test_assert_surface_pressure_consistency_skips_pre_ic():
 
 
 # ---------------------------------------------------------------------------
-# Edge / error paths in the git-revision and version-validation helpers
-# (lines 50-52, 65-78, 165-166, 201-202 in utils/coupler.py).
+# Edge / error paths in the git-revision and version-validation helpers.
 # ---------------------------------------------------------------------------
 
 
-def test_get_git_revision_returns_unknown_when_chdir_fails():
-    """When the target directory does not exist (or cannot be entered),
-    _get_git_revision must return the literal 'unknown' string and the
-    caller's CWD must be preserved.
+def test_get_git_revision_returns_unknown_when_dir_is_missing():
+    """When the target directory does not exist, _get_git_revision must
+    return the literal 'unknown' string and the caller's CWD must be preserved.
 
     Discriminating: assert the returned value is exactly 'unknown'
     (not None, not the empty string, not a partial git hash). A
@@ -3565,23 +3564,35 @@ def test_get_git_revision_returns_unknown_when_chdir_fails():
     result = _get_git_revision(bogus_dir)
     cwd_after = os.getcwd()
     assert result == 'unknown'
-    # Side-effect guard: the helper must not strand the caller in a
-    # different directory. A regression that returned before the
-    # finally-block chdir-back would leave cwd somewhere else.
+    # Side-effect guard: the helper must not strand the caller in a different directory.
     assert cwd_after == cwd_before
 
 
-def test_get_git_revision_returns_unknown_on_subprocess_failure():
-    """Even if chdir succeeds, a missing git executable or a non-repo
-    directory must surface as 'unknown' rather than raising.
+def test_get_git_revision_works_when_the_working_directory_is_gone(tmp_path):
+    """A process whose working directory was removed (os.getcwd raises
+    FileNotFoundError) still gets the hash of a repository named by path.
+    This stopped a grid case at start-up before it wrote a status file (#778)."""
+    from proteus.utils.coupler import _get_git_revision
 
-    Discriminating: patch subprocess.check_output to raise
-    FileNotFoundError (git absent). The except branch covers
-    CalledProcessError, FileNotFoundError, TimeoutExpired, and the
-    catch-all Exception; this test pins the FileNotFoundError path
-    explicitly so a future tightening that narrowed the except clause
-    would fail loudly.
-    """
+    gone = tmp_path / 'gone'
+    gone.mkdir()
+    cwd_before = os.getcwd()
+    os.chdir(gone)
+    gone.rmdir()
+    try:
+        with pytest.raises(FileNotFoundError):
+            os.getcwd()
+        with patch('subprocess.check_output', return_value=b'0123abcd\n') as git:
+            result = _get_git_revision(str(tmp_path))
+    finally:
+        os.chdir(cwd_before)
+    assert result == '0123abcd'
+    assert git.call_args.kwargs['cwd'] == str(tmp_path)
+
+
+def test_get_git_revision_returns_unknown_on_subprocess_failure():
+    """A missing git executable or a directory that is not a repository
+    returns 'unknown' rather than raising."""
     from proteus.utils.coupler import _get_git_revision
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -4203,8 +4214,8 @@ def test_set_directories_errors_without_fwl_data(monkeypatch):
 
 
 @pytest.mark.unit
-def test_set_directories_auto_path_and_debug_temp(monkeypatch):
-    """Cover set_directories auto-output branch and DEBUG temp-dir behavior."""
+def test_set_directories_auto_path(monkeypatch):
+    """An 'auto' output path resolves to a timestamped run name."""
     cfg = types.SimpleNamespace(
         params=types.SimpleNamespace(out=types.SimpleNamespace(path='auto', logging='DEBUG')),
         atmos_clim=types.SimpleNamespace(module='dummy'),
@@ -4217,7 +4228,7 @@ def test_set_directories_auto_path_and_debug_temp(monkeypatch):
 
     assert cfg.params.out.path.startswith('run_')
     assert cfg.params.out.path.endswith('_beef')
-    assert dirs['temp'] == dirs['output']
+    assert dirs['output'].endswith(f'/output/{cfg.params.out.path}/')
     assert dirs['fwl'].endswith('/tmp/fwl_data/')
 
 
@@ -4231,7 +4242,6 @@ def test_set_directories_requires_rad_dir_for_agni(monkeypatch):
     monkeypatch.setattr('proteus.utils.coupler.get_proteus_dir', lambda: '/tmp/proteus')
     monkeypatch.setenv('FWL_DATA', '/tmp/fwl_data')
     monkeypatch.delenv('RAD_DIR', raising=False)
-    monkeypatch.setattr('proteus.utils.coupler.create_tmp_folder', lambda: '/tmp/tmpwork')
 
     with patch('proteus.utils.coupler.UpdateStatusfile') as mock_update:
         with pytest.raises(EnvironmentError, match='RAD_DIR'):
@@ -4240,8 +4250,13 @@ def test_set_directories_requires_rad_dir_for_agni(monkeypatch):
 
 
 @pytest.mark.unit
-def test_set_directories_sets_rad_and_temp_for_non_debug(monkeypatch):
-    """Cover set_directories success path with AGNI and non-DEBUG temp folder."""
+def test_set_directories_sets_rad_and_creates_no_temp_folder(monkeypatch, system_tmp):
+    """Resolving directories for AGNI sets RAD_DIR and allocates no temporary folder.
+
+    The temporary folder belongs to a run (`Proteus.start`), so a runner that is
+    only constructed, or whose config is refused, leaves nothing in TMPDIR. A
+    script that calls a module outside a run gets the output folder as 'temp'.
+    """
     cfg = types.SimpleNamespace(
         params=types.SimpleNamespace(out=types.SimpleNamespace(path='run3', logging='INFO')),
         atmos_clim=types.SimpleNamespace(module='agni'),
@@ -4249,12 +4264,12 @@ def test_set_directories_sets_rad_and_temp_for_non_debug(monkeypatch):
     monkeypatch.setattr('proteus.utils.coupler.get_proteus_dir', lambda: '/tmp/proteus')
     monkeypatch.setenv('FWL_DATA', '/tmp/fwl_data')
     monkeypatch.setenv('RAD_DIR', '/tmp/rad_dir')
-    monkeypatch.setattr('proteus.utils.coupler.create_tmp_folder', lambda: '/tmp/tmpwork')
 
     dirs = set_directories(cfg)
 
     assert dirs['rad'].endswith('/tmp/rad_dir/')
-    assert dirs['temp'].endswith('/tmp/tmpwork/')
+    assert dirs['temp'] == dirs['output']
+    assert os.listdir(system_tmp) == []
     assert dirs['output'].endswith('/tmp/proteus/output/run3/')
 
 

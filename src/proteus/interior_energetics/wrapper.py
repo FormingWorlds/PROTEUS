@@ -124,27 +124,9 @@ _ARAGOG_CALL_ENERGY_KEYS = (
 # Values outside this range indicate initial conditions dominate collision energy.
 _REMELT_RETAINED_BAND = (0.01, 1.0)
 
-# Resume-settling guard for the dynamic structure re-solve. After a resume the
-# interior relaxes thermally over the first loops, swinging T_magma enough to
-# fire the dT/T structure-re-solve trigger every loop. The structure radius,
-# however, converges after the first couple of re-solves and then no longer
-# moves (R_int tracks melt fraction, not temperature), so subsequent
-# dT/T-triggered re-solves recompute the same radius at a large wall cost. Once
-# the structure has converged (relative R_int change below the tolerance), the
-# guard suppresses further dT/T-only-triggered re-solves for the remainder of
-# the settling window; the mesh-convergence, ceiling, stale-ceiling and Phi
-# triggers are left intact, and a Phi move beyond the backstop forces a re-solve
-# so genuine solidification during the window is never frozen. The window is
-# armed only on resume, so a fresh run never enters the guard.
-#
-# The backstop is the SMALLER of the config's own melt-fraction trigger
-# (update_dphi_abs) and the cap below. A dT/T-triggered re-solve only happens
-# when the melt-fraction trigger did NOT fire, i.e. when the Phi change is
-# already below update_dphi_abs, so tying the backstop to update_dphi_abs means
-# the guard never blocks a re-solve the melt-fraction trigger would have let
-# through. The cap supplies a finite floor for configs that disable the
-# melt-fraction trigger (update_dphi_abs set very high), so a large Phi move in
-# the window still forces a re-solve there.
+# Resume-settling guard: for this many loops after a resume, a re-solve triggered by dT/T alone
+# is skipped while the last relative R_int change is below the tolerance and Phi moved less
+# than min(update_dphi_abs, the cap) since the last re-solve (update_structure_from_interior).
 _RESUME_STRUCT_SETTLE_LOOPS = 50
 _RESUME_STRUCT_DR_REL_TOL = 1e-4
 _RESUME_STRUCT_DPHI_BACKSTOP_CAP = 0.10
@@ -3057,30 +3039,17 @@ def update_structure_from_interior(
         triggered = True
         reason = f'ceiling ({elapsed:.1f} yr >= {config.interior_struct.zalmoxis.update_interval:.1f} yr)'
 
-    # Stale-aware ceiling: trigger if elapsed time since the LAST
-    # SUCCESSFUL structure refresh (not the last call) exceeds
-    # update_stale_ceiling. Without this, a sequence of failed
-    # re-solves resets `last_struct_time` to the failure time and
-    # the next ceiling waits a full update_interval, meaning Aragog
-    # can integrate through an entire window with a frozen mesh
-    # (tens of kyr). Bypasses the
-    # update_min_interval floor for the same reason as the
-    # mesh-converging trigger: this is a recovery path, not a
-    # routine refresh.
-    if not triggered:
-        stale_ceiling = config.interior_struct.zalmoxis.update_stale_ceiling
-        if stale_ceiling > 0:
-            last_success = float(
-                getattr(interior_o, 'last_successful_struct_time', float('-inf'))
-            )
-            if last_success > float('-inf'):
-                stale_elapsed = current_time - last_success
-                if stale_elapsed >= stale_ceiling:
-                    triggered = True
-                    reason = (
-                        f'stale-aware ceiling ({stale_elapsed:.1f} yr since '
-                        f'last successful re-solve >= {stale_ceiling:.1f} yr)'
-                    )
+    # Recovery after a failed re-solve (structure_stale): re-solve once update_stale_ceiling
+    # has passed since the last attempt, unless another trigger fired first.
+    stale_ceiling = config.interior_struct.zalmoxis.update_stale_ceiling
+    if (
+        not triggered
+        and stale_ceiling > 0
+        and interior_o.structure_stale is True
+        and elapsed >= stale_ceiling
+    ):
+        triggered = True
+        reason = f'recovery ({elapsed:.1f} yr since the last attempt >= {stale_ceiling:.1f} yr)'
 
     # Phi_global absolute change (primary trigger: directly reflects rheological state)
     if not triggered:
@@ -3503,20 +3472,9 @@ def update_structure_from_interior(
             dirs['mesh_convergence_steps'] = 0
             del r_stag, _r_unsorted, _T_unsorted
             gc.collect()
-            # Advance the trigger clock and the stale-aware anchor so a
-            # persistent cross-table artifact does not re-fire an expensive
-            # re-solve every timestep: the retained previous structure is the
-            # current best structure, so this state is "checked at current_time".
-            # The sentinels advance like the success path (current Phi/T_magma),
-            # but the structure itself is unchanged.
-            try:
-                interior_o.last_successful_struct_time = float(current_time)
-            except AttributeError:
-                pass
-            # The previous structure was retained, so the accepted radius did
-            # not change: record zero so the resume-settling guard treats this
-            # as converged and suppresses further spurious dT/T re-solves (a
-            # rejected cross-table up-step recurs every step otherwise).
+            # The structure is unchanged: advance the trigger clock and sentinels and record a
+            # zero radius change, so a recurring cross-table up-step neither re-fires a re-solve
+            # every step nor keeps the resume-settling guard from treating it as converged.
             dirs['_last_resolve_dR_rel'] = 0.0
             # Advance the dissolved-volatile composition sentinels exactly as the
             # success path does. This reject path returns before the success-path
@@ -3563,14 +3521,6 @@ def update_structure_from_interior(
         _R_int_post = float(hf_row.get('R_int', 0.0) or 0.0)
         if R_int_prev > 0.0:
             dirs['_last_resolve_dR_rel'] = abs(_R_int_post - R_int_prev) / R_int_prev
-        # Anchor the stale-aware ceiling on the last SUCCESSFUL
-        # re-solve (vs `last_struct_time` which is reset on every
-        # call regardless of success).
-        try:
-            interior_o.last_successful_struct_time = float(current_time)
-        except AttributeError:
-            # Mock callers without Interior_t: best-effort no-op.
-            pass
         # Per-re-solve wall-time trace logged at INFO so the
         # convergence cadence cost can be read from proteus_00.log.
         log.info(

@@ -22,7 +22,9 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 
-def run_chemistry(dirs: dict, config: Config, hf_all: pd.DataFrame) -> pd.DataFrame | None:
+def run_chemistry(
+    dirs: dict, config: Config, hf_all: pd.DataFrame, network_compiled: bool = False
+) -> pd.DataFrame | None:
     """
     Post-process atmosphere snapshots with the atmospheric chemistry model.
 
@@ -42,6 +44,8 @@ def run_chemistry(dirs: dict, config: Config, hf_all: pd.DataFrame) -> pd.DataFr
         Configuration object.
     hf_all : pd.DataFrame
         Helpfile of the run. Each run uses the latest row at or before its snapshot time.
+    network_compiled : bool
+        Whether the VULCAN network is compiled already.
 
     Returns
     ----------
@@ -103,12 +107,14 @@ def run_chemistry(dirs: dict, config: Config, hf_all: pd.DataFrame) -> pd.DataFr
 
     for i, time in enumerate(times):
         log.info('    Chemistry snapshot %d of %d, t=%.3e yr' % (i + 1, len(times), time))
+
         # Snapshot file names hold the time to 1e-3 yr, so the row takes that time
         snapshot = helpfile_row_at(hf_all, time)
         snapshot['Time'] = time
         hf_row = HelpfileRow(snapshot, helpfile_path(dirs['output']))
+
         # A failed run stops the sequence, so a later run follows a success
-        extra = {'network_compiled': i > 0} if module == 'vulcan' else {}
+        extra = {'network_compiled': network_compiled or i > 0} if module == 'vulcan' else {}
         if not _run(dirs, config, hf_row, **extra):
             raise RuntimeError('%s chemistry failed at t=%.3e yr' % (module, time))
 

@@ -317,7 +317,7 @@ def test_write_summary_csvs_filters_by_status_category(tmp_path):
         _case(0, 'Completed', 'Completed (solidified)'),
         _case(1, 'Running', 'Running'),
         _case(2, 'Error', 'Error (Atmosphere model)'),
-        _case(3, 'Unknown', 'Missing status file'),
+        _case(3, 'Unknown', 'Unknown (no readable status file)'),
     ]
     paths = write_summary_csvs(build_summary_dataframe(cases, []), tmp_path)
     read = {mode: pd.read_csv(path, sep='\t') for mode, path in paths.items()}
@@ -450,6 +450,7 @@ def test_load_grid_cases_skips_stray_entries_and_tolerates_missing_files(tmp_pat
     assert [c['index'] for c in cases] == [0, 2]
     assert [c['category'] for c in cases] == ['Completed', 'Unknown']
     assert cases[0]['status'] == 'Completed (solidified)'
+    assert cases[1]['status'] == 'Unknown (no readable status file)'
     assert cases[0]['init_params']['planet']['mass_tot'] == pytest.approx(1.0)
     assert cases[0]['final_row']['P_surf'] == pytest.approx(5.0)
     assert cases[1]['final_row'] == {}
