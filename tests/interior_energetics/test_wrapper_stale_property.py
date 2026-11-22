@@ -15,17 +15,11 @@ from tests.interior_energetics.test_wrapper import (  # noqa: E402
     _stale_ceiling_case,
 )
 
-pytestmark = pytest.mark.unit
-
-
-@pytest.fixture(autouse=True)
-def _no_core_table(monkeypatch):
-    """The rows here have no structure (M_core, P_center, R_core, P_cmb), on which the real core
-    temperature table builder raises; these trigger tests stub it out and hand the solve no
-    table. tests/interior_energetics/test_structure_core_table.py tests the real builder."""
-    import proteus.interior_energetics.wrapper as wrapper_mod
-
-    monkeypatch.setattr(wrapper_mod, '_structure_core_table', lambda *a, **k: None)
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.timeout(30),
+    pytest.mark.usefixtures('_no_core_table'),
+]
 
 
 @pytest.mark.unit
