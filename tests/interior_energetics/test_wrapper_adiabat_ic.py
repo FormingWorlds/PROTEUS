@@ -1651,3 +1651,63 @@ def test_a_core_table_error_at_start_up_stops_the_run(tmp_path, monkeypatch, err
                 temperature_function=lambda r, P: 5000.0,
             )
     assert solver.call_count == 0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('thermal_solve', 't_cmb', 'anchor'),
+    [(False, 5700.0, 5700.0), (False, 0.0, None), (True, 5700.0, None)],
+    ids=['impact', 'impact without T_cmb', 'start-up'],
+)
+def test_an_impact_solve_anchors_the_core_table_at_the_live_core(thermal_solve, t_cmb, anchor):
+    """A structure solve after a giant impact (thermal_solve False) anchors the core table at the
+    row T_cmb, the core temperature of the run before the impact; a start-up solve, or a row
+    without a positive T_cmb, leaves the anchor to the deepest mantle T of the adiabat."""
+    from proteus.interior_energetics import wrapper as wmod
+
+    config = _gate_config('aragog', 'liquidus_super')
+    hf_row = {'P_cmb': 1.456e12, 'R_int': 1.2e7, 'T_cmb': t_cmb, 'M_int': 6e24, 'M_core': 2e24}
+    with (
+        patch.object(wmod, 'get_nlevb', return_value=80),
+        patch.object(wmod, 'Interior_t', return_value=MagicMock(ic=1)),
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(6.0e6, None)),
+        patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
+        patch.object(wmod, '_provide_spider_eos_tables'),
+        patch.object(wmod, 'run_interior'),
+        patch.object(wmod, 'update_planet_mass'),
+        patch.object(wmod, '_resolve_adiabatic_ic_structure', return_value=None) as resolve,
+    ):
+        wmod.determine_interior_radius_with_zalmoxis(
+            {'output': '/tmp/out', 'spider': '/tmp/spider'},
+            config,
+            MagicMock(),
+            hf_row,
+            '/tmp/out',
+            thermal_solve=thermal_solve,
+        )
+    assert resolve.call_args.kwargs.get('core_t_anchor') == anchor
+
+
+@pytest.mark.unit
+def test_the_adiabat_solve_takes_a_given_core_anchor(tmp_path, core_table_calls):
+    """With a core anchor given, the adiabat solve builds the core table through it, not through
+    the deepest sampled mantle T."""
+    _write_structure_file(tmp_path)
+    hf_row = _linear_hf_row()
+
+    def solve(cfg, outdir, row, **kw):
+        row.update(R_int=1.2746e7, M_int=row['M_int_target'])
+        return 6.0e6, str(tmp_path / 'adiabat_mesh.dat')
+
+    with patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solve):
+        _mesh, ok = _solve_structure_with_adiabat_or_rollback(
+            _config(),
+            str(tmp_path),
+            hf_row,
+            num_spider_nodes=0,
+            temperature_function=_adiabat_closure(),
+            core_t_anchor=5700.0,
+        )
+    assert ok is True
+    assert core_table_calls == [(None, 5700.0)]
