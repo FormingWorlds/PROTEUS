@@ -160,10 +160,13 @@ def test_a_re_solve_anchors_the_table_at_the_row_t_cmb_or_the_deepest_mantle_t(
     assert p[0] == pytest.approx(ROW['P_cmb'], rel=1e-9)
 
 
-@pytest.mark.parametrize('error', [ValueError('bad anchor'), KeyError('M_core')])
+@pytest.mark.parametrize(
+    'error', [ValueError('bad anchor'), KeyError('M_core'), RuntimeError('fit')]
+)
 def test_a_core_table_error_in_a_re_solve_stops_the_run(tmp_path, monkeypatch, error):
     """A core temperature table that cannot be built stops a structure re-solve with that error,
-    before the solver runs, instead of the fallback to the previous structure."""
+    before the solver runs, instead of the fallback to the previous structure; a RuntimeError,
+    which the fallback catches from the solve, also stops the run when the builder raises it."""
     from unittest.mock import MagicMock, patch
 
     import proteus.interior_energetics.wrapper as wrapper_mod

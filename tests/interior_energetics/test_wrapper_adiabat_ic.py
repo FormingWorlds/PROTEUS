@@ -1691,9 +1691,10 @@ def test_an_impact_solve_anchors_the_core_table_at_the_live_core(thermal_solve, 
 
 
 @pytest.mark.unit
-def test_the_adiabat_solve_takes_a_given_core_anchor(tmp_path, core_table_calls):
+@pytest.mark.parametrize('anchor', [5700.0, 0.0])
+def test_the_adiabat_solve_takes_a_given_core_anchor(tmp_path, core_table_calls, anchor):
     """With a core anchor given, the adiabat solve builds the core table through it, not through
-    the deepest sampled mantle T."""
+    the deepest sampled mantle T; a given anchor of 0 reaches the builder, which refuses it."""
     _write_structure_file(tmp_path)
     hf_row = _linear_hf_row()
 
@@ -1708,10 +1709,10 @@ def test_the_adiabat_solve_takes_a_given_core_anchor(tmp_path, core_table_calls)
             hf_row,
             num_spider_nodes=0,
             temperature_function=_adiabat_closure(),
-            core_t_anchor=5700.0,
+            core_t_anchor=anchor,
         )
     assert ok is True
-    assert core_table_calls == [(None, 5700.0)]
+    assert core_table_calls == [(None, anchor)]
 
 
 @pytest.mark.unit
