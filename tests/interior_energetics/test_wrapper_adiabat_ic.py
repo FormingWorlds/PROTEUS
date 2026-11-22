@@ -1621,3 +1621,33 @@ def test_adiabat_tp_passes_a_missing_table_stop_through():
         side_effect=RuntimeError('numerical'),
     ):
         assert _build_superliquidus_adiabat_tp(_config(), {}, P_cmb_target=1.4e12) is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('error', [ValueError('bad anchor'), KeyError('M_core')])
+def test_a_core_table_error_at_start_up_stops_the_run(tmp_path, monkeypatch, error):
+    """A core temperature table that cannot be built (a refused anchor or fit, a row without a
+    structure) stops the start-up solve with that error, as in a re-solve, instead of rolling
+    back to the previous structure; the solver is not called."""
+    import proteus.interior_energetics.wrapper as wrapper_mod
+
+    def broken(*a, **k):
+        raise error
+
+    monkeypatch.setattr(wrapper_mod, '_structure_core_table', broken)
+    monkeypatch.setattr(
+        wrapper_mod,
+        '_sample_adiabat_temperature_arrays',
+        lambda outdir, tf: (np.linspace(3.5e6, 6.3e6, 5), np.linspace(4000.0, 2000.0, 5)),
+    )
+    (tmp_path / 'data').mkdir()
+    with patch('proteus.interior_struct.zalmoxis.zalmoxis_solver') as solver:
+        with pytest.raises(type(error)):
+            _solve_structure_with_adiabat_or_rollback(
+                _config(),
+                str(tmp_path),
+                _linear_hf_row(),
+                num_spider_nodes=0,
+                temperature_function=lambda r, P: 5000.0,
+            )
+    assert solver.call_count == 0
