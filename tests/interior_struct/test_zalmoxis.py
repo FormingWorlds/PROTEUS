@@ -2866,6 +2866,48 @@ def test_core_nodes_beyond_the_table_by_more_than_the_limit_stop_the_solve(
         assert run()[3]['struct_core_T_excess'] == excess
 
 
+@pytest.mark.unit
+def test_a_result_refused_for_the_core_table_stops_without_the_relaxed_retry(
+    tmp_path, monkeypatch
+):
+    """Zalmoxis refuses a result whose core nodes lie beyond the core temperature table by more
+    than the limit (converged False); the excess does not depend on the tolerance, so the solve
+    stops on the excess at once, with no relaxed-tolerance retry (a second call would raise
+    StopIteration from the one-result mock)."""
+    model = _plausible_model_results()
+    model.update(
+        converged=False,
+        converged_mass=False,
+        accepted_on=None,
+        core_T_used=True,
+        core_T_max_excess=0.25,
+    )
+    with pytest.raises(RuntimeError, match='core temperature table range beyond it'):
+        _run_gate_solver(
+            tmp_path,
+            monkeypatch,
+            'Seager2007:silicate',
+            None,
+            None,
+            main_results=[model],
+            core_table=_CORE_TABLE,
+        )
+
+
+@pytest.mark.unit
+def test_the_core_table_limit_equals_the_limit_of_zalmoxis():
+    """PROTEUS stops on the same core table excess at which Zalmoxis refuses a result."""
+    import zalmoxis.solver as zs
+
+    from proteus.interior_struct.core_temperature import MAX_CORE_T_EXCESS
+
+    assert hasattr(zs, '_CORE_T_MAX_EXCESS'), (
+        'zalmoxis.solver._CORE_T_MAX_EXCESS is gone: find the core table excess limit of the '
+        'installed Zalmoxis and set MAX_CORE_T_EXCESS to it'
+    )
+    assert MAX_CORE_T_EXCESS == zs._CORE_T_MAX_EXCESS
+
+
 @pytest.mark.parametrize('mantle_eos', ['PALEOS-2phase:MgSiO3', 'PALEOS:MgSiO3'])
 def test_zalmoxis_solver_passes_callable_on_jax_viable_eos_without_jax(
     tmp_path, monkeypatch, mantle_eos
