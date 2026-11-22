@@ -18,6 +18,15 @@ from tests.interior_energetics.test_wrapper import (  # noqa: E402
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(autouse=True)
+def _no_core_table(monkeypatch):
+    """The rows here have no structure or T_cmb, so the re-solve gets no core table;
+    tests/interior_energetics/test_structure_core_table.py tests the table."""
+    import proteus.interior_energetics.wrapper as wrapper_mod
+
+    monkeypatch.setattr(wrapper_mod, '_structure_core_table', lambda *a, **k: None)
+
+
 @pytest.mark.unit
 @settings(
     max_examples=150, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]

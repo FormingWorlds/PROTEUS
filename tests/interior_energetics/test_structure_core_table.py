@@ -124,3 +124,64 @@ def test_table_temperature_is_linear_inside_and_extends_with_the_end_slopes():
 
     _check()
     assert lo > 0 and hi > 0
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('row_t_cmb', 'anchor'), [(0.0, 'deepest'), (None, 'deepest'), (4300.0, 4300.0)]
+)
+def test_a_re_solve_anchors_the_table_at_the_row_t_cmb_or_the_deepest_mantle_t(
+    tmp_path, row_t_cmb, anchor
+):
+    """A structure re-solve anchors the core table at the row T_cmb; a row without a positive
+    T_cmb (a dummy interior writes none) takes the deepest temperature of the mantle profile
+    it hands to Zalmoxis, as the start-up passes do."""
+    from unittest.mock import MagicMock, patch
+
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.interior_energetics.wrapper import update_structure_from_interior
+
+    config = MagicMock()
+    z = config.interior_struct.zalmoxis
+    z.update_interval, z.update_min_interval, z.update_stale_ceiling = 100.0, 0.0, 0.0
+    z.update_dtmagma_frac, z.update_dphi_abs, z.num_levels = 0.03, 0.05, 50
+    z.mesh_max_shift, z.mesh_convergence_interval = 0.05, 10.0
+    config.planet.temperature_mode = 'isothermal'
+    config.interior_energetics.module = 'spider'
+    config.interior_energetics.aragog = _config().interior_energetics.aragog
+    (tmp_path / 'data').mkdir()
+    dirs = {'output': str(tmp_path), 'spider': str(tmp_path), 'mesh_shift_active': False}
+    interior_o = Interior_t(50)
+    interior_o.radius = np.linspace(6.371e6, 3.504e6, 50)
+    interior_o.temp = np.linspace(2000.0, 3600.0, 49)  # surface-first, as SPIDER stores it
+    row = {
+        **ROW,
+        'Time': 500.0,
+        'T_magma': 2000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    row['M_int'] = row['M_int_target'] = 5.972e24
+    if row_t_cmb is None:
+        del row['T_cmb']
+    else:
+        row['T_cmb'] = row_t_cmb
+
+    def solve(config, outdir, hf_row, **kwargs):
+        hf_row['M_int'] = hf_row['M_int_target'] = 5.972e24
+        return (3.504e6, 'mesh.dat')
+
+    with (
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solve) as solver,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+        patch('proteus.interior_energetics.spider.blend_mesh_files', return_value=0.0),
+    ):
+        update_structure_from_interior(dirs, config, row, interior_o, 0.0, 2000.0, 0.8)
+    kw = solver.call_args.kwargs
+    want = kw['temperature_arrays'][1][0] if anchor == 'deepest' else anchor
+    assert want == pytest.approx(3600.0 if anchor == 'deepest' else 4300.0, rel=1e-12)
+    p, t = kw['core_temperature_arrays']
+    assert t[0] == pytest.approx(want, rel=1e-12)
+    assert p[0] == pytest.approx(ROW['P_cmb'], rel=1e-9)
