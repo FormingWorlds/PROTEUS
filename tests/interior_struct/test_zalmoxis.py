@@ -2995,6 +2995,53 @@ def test_a_result_refused_for_the_core_table_stops_without_the_relaxed_retry(
 
 
 @pytest.mark.unit
+def test_the_relaxed_retry_passes_the_core_table_again(tmp_path, monkeypatch):
+    """A first solve that does not converge (within the core table) is retried with relaxed
+    tolerances; the retry gets the same core temperature table."""
+    first = _table_model()
+    first.update(converged=False, converged_mass=False, best_mass_error=1e-3)
+    main_mock, _, _, hf_row, _, _, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'Seager2007:silicate',
+        None,
+        None,
+        main_results=[first, _table_model()],
+        core_table=_CORE_TABLE,
+    )
+    assert main_mock.call_count == 2
+    assert all(
+        c.kwargs.get('core_temperature_arrays') is _CORE_TABLE for c in main_mock.call_args_list
+    )
+    assert hf_row['struct_core_T_used'] == 1.0
+
+
+@pytest.mark.unit
+def test_the_miscible_solve_gets_the_core_table(tmp_path, monkeypatch):
+    """With global miscibility the structure comes from solve_miscible_interior, which gets the
+    core temperature table as the plain solve does."""
+    from unittest.mock import MagicMock
+
+    miscible = MagicMock(return_value=_table_model())
+    monkeypatch.setattr('zalmoxis.solver.solve_miscible_interior', miscible)
+
+    def miscibility(config):
+        config.interior_struct.zalmoxis.global_miscibility = True
+
+    main_mock, _, _, _, _, _, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'Seager2007:silicate',
+        None,
+        None,
+        config_edit=miscibility,
+        core_table=_CORE_TABLE,
+    )
+    assert main_mock.call_count == 0
+    assert miscible.call_args.kwargs.get('core_temperature_arrays') is _CORE_TABLE
+
+
+@pytest.mark.unit
 def test_the_core_table_limit_equals_the_limit_of_zalmoxis():
     """PROTEUS stops on the same core table excess at which Zalmoxis refuses a result."""
     import zalmoxis.solver as zs

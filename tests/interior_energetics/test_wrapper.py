@@ -1711,16 +1711,18 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize('path', ['raise', 'mass_anchor', 'up_step'])
 def test_a_rejected_structure_update_restores_the_core_keys_of_the_row(path):
-    """A solve that writes M_core, M_core_solve and core_density and then fails (a schema
-    violation raises after the writes), misses the mass anchor, or makes a rejected radius
-    up-step leaves the 3 keys at their values before the call."""
+    """A solve that writes M_core, M_core_solve, core_density and the core temperature table
+    flags and then fails (a schema violation raises after the writes), misses the mass anchor,
+    or makes a rejected radius up-step leaves the 5 keys at their values before the call."""
     config, hf_row, lt, lT, lP = _dtmagma_scenario()  # cooling, so an up-step is rejected
     before = {'M_core': 1.95e24, 'M_core_solve': 1.94e24, 'core_density': 1.1e4}
+    before.update(struct_core_T_used=0.0, struct_core_T_excess=0.0)
     hf_row.update(before)
     interior_o = _mock_interior_o()
 
     def solver(cfg, outdir, row, *a, **k):
         row.update(M_core=2.1e24, M_core_solve=2.0e24, core_density=1.2e4)
+        row.update(struct_core_T_used=1.0, struct_core_T_excess=0.05)
         if path == 'raise':
             raise RuntimeError('zalmoxis_output.dat schema violation')
         if path == 'mass_anchor':
