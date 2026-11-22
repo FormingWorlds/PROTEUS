@@ -42,6 +42,30 @@ def test_gaussian_pairs_run_from_the_cmb_to_the_centre_on_the_adiabat():
     assert np.all(np.diff(t) > 0)
 
 
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_gaussian_pairs_follow_an_independent_integration_of_the_adiabat():
+    """Inside the core the pairs lie on the adiabat dT/dP = alpha T / (rho c_p), integrated in P
+    from the CMB with solve_ivp on the density of the profile (rel 1e-6 at 5 interior pairs). The
+    integration shares no code with the profile's own adiabat, so a pair of P and T from 2
+    different radii, or a T with another alpha or c_p, falls outside."""
+    from scipy.integrate import solve_ivp
+
+    prof = _gaussian()
+    p, t = core_temperature_table(prof, 5600.0)
+    r = np.linspace(0.0, 3.48e6, 20001)
+    p_r, rho_r = np.asarray(prof.pressure(r))[::-1], np.asarray(prof.density(r))[::-1]
+
+    def rhs(pres, temp):
+        return 1.35e-5 * temp / (np.interp(pres, p_r, rho_r) * 840.0)
+
+    idx = [20, 60, 80, 120, 150]
+    sol = solve_ivp(rhs, (p[0], p[-1]), [5600.0], t_eval=p[idx], rtol=1e-11, atol=1e-9)
+    assert sol.success
+    np.testing.assert_allclose(t[idx], sol.y[0], rtol=1e-6, atol=0.0)
+    assert t[idx[-1]] / t[0] > 1.2  # the adiabat rises well above the anchor
+
+
 @pytest.mark.physics_invariant
 def test_tabulated_pairs_start_at_the_cmb_of_the_stored_core():
     """A PALEOS tabulated core from stored Zalmoxis core arrays (1 M_E, 2510 K): the pairs start at
