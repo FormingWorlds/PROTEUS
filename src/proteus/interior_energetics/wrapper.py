@@ -1492,13 +1492,14 @@ def _solve_structure_with_adiabat_or_rollback(
     # or malformed previous structure) degrades to the callable-only call.
     adiabat_arrays = _sample_adiabat_temperature_arrays(outdir, temperature_function)
 
+    # The core takes the adiabat through the deepest mantle T, fitted to the previous pass; a
+    # table that cannot be built stops the run, as in a re-solve
+    core_table = (
+        None
+        if adiabat_arrays is None
+        else _structure_core_table(config, None, hf_row, adiabat_arrays[1][0])
+    )
     try:
-        # The core takes the adiabat through the deepest mantle T, fitted to the previous pass
-        core_table = (
-            None
-            if adiabat_arrays is None
-            else _structure_core_table(config, None, hf_row, adiabat_arrays[1][0])
-        )
         _cmb_radius, adiabat_mesh_file = zalmoxis_solver(
             config,
             outdir,
@@ -3275,6 +3276,8 @@ def update_structure_from_interior(
     # above, as jnp.interp requires monotonically increasing xp; a
     # descending [surface, ..., CMB] array would produce ``Final M=0``
     # failures in JAX.
+    # A core table that cannot be built stops the run; the fallback below is for the solve
+    core_table = _structure_core_table(config, interior_o, hf_row, t_fallback=_T_cmb)
     try:
         import time as _zalmoxis_time
 
@@ -3286,9 +3289,7 @@ def update_structure_from_interior(
             num_spider_nodes=num_spider_nodes,
             temperature_function=temperature_function,
             temperature_arrays=(_r_asc, _T_asc),
-            core_temperature_arrays=_structure_core_table(
-                config, interior_o, hf_row, t_fallback=_T_cmb
-            ),
+            core_temperature_arrays=core_table,
         )
         _zalmoxis_wall = _zalmoxis_time.monotonic() - _zalmoxis_wall_t0
         # Mass-anchor check: enforce |M_int / M_int_target - 1| <
