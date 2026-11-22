@@ -2975,8 +2975,8 @@ def test_a_result_refused_for_the_core_table_stops_without_the_relaxed_retry(
 ):
     """Zalmoxis refuses a result whose core nodes lie beyond the core temperature table by more
     than the limit (converged False); the excess does not depend on the tolerance, so the solve
-    stops on the excess at once, with no relaxed-tolerance retry (a second call would raise
-    StopIteration from the one-result mock)."""
+    stops on the excess at once, with no relaxed-tolerance retry (a second call raises an
+    AssertionError from the mock)."""
     model = _plausible_model_results()
     model.update(
         converged=False,
@@ -2992,7 +2992,7 @@ def test_a_result_refused_for_the_core_table_stops_without_the_relaxed_retry(
             'Seager2007:silicate',
             None,
             None,
-            main_results=[model],
+            main_results=[model, AssertionError('the relaxed-tolerance retry ran')],
             core_table=_CORE_TABLE,
         )
     assert '0.25 of the core temperature table' in str(exc.value)  # the excess of the result

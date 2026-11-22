@@ -295,3 +295,44 @@ def test_the_gaussian_source_gives_aragog_the_parameters_of_main():
         config, {'M_core': 1.94e24, 'P_center': 3.6e11}, SimpleNamespace(), ''
     )
     assert set(paleos) - main == {'profile_source', 'core_cp_override', 'core_t_cmb_step'}
+
+
+class _Moved:
+    """A budget seen through its profiles with one attribute replaced."""
+
+    def __init__(self, inner, **over):
+        self._inner, self._over = inner, over
+
+    def __getattr__(self, name):
+        return self._over[name] if name in self._over else getattr(self._inner, name)
+
+
+def test_a_core_whose_mass_changes_across_the_update_is_refused(pair):
+    """The carried temperature needs the same core mass on both structures: a new core heavier
+    by 2e-9 of its mass is refused; 5e-10 lies inside the 1e-9 tolerance and gives the
+    temperature of the unchanged core."""
+    old, new = pair
+    m = float(new.profiles.m_core)
+
+    def moved(rel):
+        return _Moved(new, profiles=_Moved(new.profiles, m_core=m * (1.0 + rel)))
+
+    with pytest.raises(ValueError, match='core mass changes across the update'):
+        carried_temperature(old, moved(2e-9), 5000.0)
+    assert carried_temperature(old, moved(5e-10), 5000.0) == carried_temperature(
+        old, new, 5000.0
+    )
+
+
+def test_a_carried_temperature_off_the_entropy_is_refused(pair, monkeypatch):
+    """A root that misses the core entropy by more than 1e-9 relative (here a root 1e-6 off)
+    stops the update instead of carrying the core at a wrong temperature."""
+    import scipy.optimize
+
+    old, new = pair
+    exact = carried_temperature(old, new, 5000.0)[0]
+    real = scipy.optimize.brentq
+    monkeypatch.setattr(scipy.optimize, 'brentq', lambda *a, **k: real(*a, **k) * (1.0 + 1e-6))
+    with pytest.raises(ValueError, match='misses the entropy'):
+        carried_temperature(old, new, 5000.0)
+    assert exact > 5000.0  # the unchanged root carries the compressed core warmer
