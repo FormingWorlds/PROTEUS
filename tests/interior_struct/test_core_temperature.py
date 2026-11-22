@@ -139,6 +139,12 @@ def test_pairs_that_are_not_ascending_finite_and_positive_are_refused(pressure, 
     prof = SimpleNamespace(r_cmb=3.0e6, pressure=pressure, adiabat=adiabat)
     with pytest.raises(ValueError, match='ascending in P and positive in T'):
         core_temperature_table(prof, 3000.0)
+    good = SimpleNamespace(
+        r_cmb=3.0e6, pressure=lambda r: 1.0e11 - r, adiabat=lambda r, t: t + 0.0 * r
+    )
+    assert (
+        core_temperature_table(good, 3000.0)[0].size == CORE_T_POINTS
+    )  # a valid profile passes
 
 
 def test_pairs_whose_temperature_falls_with_pressure_are_refused():

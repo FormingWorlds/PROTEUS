@@ -127,7 +127,8 @@ def test_the_core_table_gives_the_structure_of_two_independent_paths(
         tmp_path, monkeypatch, 'fix', arrays, None, main=_fixed_point(table)
     )
     row_iso, res_iso = _solve(tmp_path, monkeypatch, 'iso', arrays, None)
-    assert row_jax['struct_core_T_used'] == row_np['struct_core_T_used'] == 1.0
+    for row in (row_jax, row_np):
+        assert row['struct_core_T_used'] == pytest.approx(1.0, abs=0.0)
     for other in (row_np, row_fix):
         for key in KEYS:
             assert other[key] == pytest.approx(row_jax[key], rel=1e-4), key

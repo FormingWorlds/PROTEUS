@@ -1686,6 +1686,7 @@ def test_an_impact_solve_anchors_the_core_table_at_the_live_core(thermal_solve, 
             '/tmp/out',
             thermal_solve=thermal_solve,
         )
+    assert resolve.call_count == 1
     assert resolve.call_args.kwargs.get('core_t_anchor') == anchor
 
 

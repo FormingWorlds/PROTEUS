@@ -2527,10 +2527,12 @@ def test_a_cmb_point_with_no_mantle_node_above_it_stops_the_solve(tmp_path, monk
     else:
         _with_core_arrays(model, 0.5)
         model['core']['r'][-1] = model['radii'][55] + 10.0
-    with pytest.raises(RuntimeError, match='no mantle node above it'):
+    cmb = float(model['core']['r'][-1])
+    with pytest.raises(RuntimeError, match='no mantle node above it') as exc:
         _run_gate_solver(
             tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
         )
+    assert f'{cmb:.6e} m' in str(exc.value)  # the message names the CMB point
 
 
 @pytest.mark.unit
@@ -2633,10 +2635,11 @@ def test_a_structure_without_core_arrays_stops_the_solve(tmp_path, monkeypatch):
         model.pop('core')
         if core is None:
             model['core'] = None
-        with pytest.raises(RuntimeError, match='no core arrays'):
+        with pytest.raises(RuntimeError, match='no core arrays') as exc:
             _run_gate_solver(
                 tmp_path, monkeypatch, 'Seager2007:silicate', None, None, main_results=model
             )
+        assert 'no CMB point' in str(exc.value)
 
 
 @pytest.mark.unit
@@ -2953,7 +2956,7 @@ def test_core_arrays_off_the_core_table_stop_the_run(tmp_path, monkeypatch, faul
         core['T'] = table_temperature(core['P'], _CORE_TABLE)
     else:
         del core['T']
-    with pytest.raises(StructureInvariantError, match='core array'):
+    with pytest.raises(StructureInvariantError, match='core array') as exc:
         _run_gate_solver(
             tmp_path,
             monkeypatch,
@@ -2963,6 +2966,7 @@ def test_core_arrays_off_the_core_table_stop_the_run(tmp_path, monkeypatch, faul
             main_results=model,
             core_table=_CORE_TABLE,
         )
+    assert 'relative 1e-9' in str(exc.value)  # the message names the tolerance
 
 
 @pytest.mark.unit
@@ -2981,7 +2985,7 @@ def test_a_result_refused_for_the_core_table_stops_without_the_relaxed_retry(
         core_T_used=True,
         core_T_max_excess=0.25,
     )
-    with pytest.raises(RuntimeError, match='core temperature table range beyond it'):
+    with pytest.raises(RuntimeError, match='core temperature table range beyond it') as exc:
         _run_gate_solver(
             tmp_path,
             monkeypatch,
@@ -2991,6 +2995,7 @@ def test_a_result_refused_for_the_core_table_stops_without_the_relaxed_retry(
             main_results=[model],
             core_table=_CORE_TABLE,
         )
+    assert '0.25 of the core temperature table' in str(exc.value)  # the excess of the result
 
 
 @pytest.mark.unit
@@ -3012,7 +3017,7 @@ def test_the_relaxed_retry_passes_the_core_table_again(tmp_path, monkeypatch):
     assert all(
         c.kwargs.get('core_temperature_arrays') is _CORE_TABLE for c in main_mock.call_args_list
     )
-    assert hf_row['struct_core_T_used'] == 1.0
+    assert hf_row['struct_core_T_used'] == pytest.approx(1.0, abs=0.0)
 
 
 @pytest.mark.unit

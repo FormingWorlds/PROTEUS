@@ -96,6 +96,7 @@ def test_the_row_fit_is_used_with_an_anchor_or_without_core_module(case):
         anchor = 4300.0
     pr, tr = structure_core_table(_config(), dict(ROW), anchor)
     assert np.array_equal(p, pr) and np.array_equal(t, tr)
+    assert t[0] == pytest.approx(anchor, rel=1e-12)  # the table starts at its anchor
 
 
 @pytest.mark.physics_invariant
