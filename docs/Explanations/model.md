@@ -366,7 +366,7 @@ For example, at the first structure update (102 yr) of a 1 Earth-mass planet wit
 
 ### When the core table stops a solve or a run
 
-- A core node that lies past the table by more than 0.1 of its pressure range stops the solve. In a run, PROTEUS then keeps the previous structure; after 8 failed structure updates in a row the run stops.
+- A core node that lies past the table by more than 0.1 of its pressure range stops the solve, and so does a Zalmoxis result without its 2 core table flags (`core_T_used` and `core_T_max_excess`). In a run, PROTEUS then keeps the previous structure; after 8 failed structure updates in a row the run stops.
 - A core temperature that differs from the table temperature at the node pressure by more than a relative 1e-9, or that is not finite, not positive or rises outward, stops the run.
 - A core equation of state (EOS) that does not depend on temperature ignores the table; `struct_core_T_used` is then 0.
 
