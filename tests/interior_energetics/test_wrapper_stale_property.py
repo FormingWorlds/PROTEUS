@@ -23,6 +23,8 @@ pytestmark = [
 
 
 @pytest.mark.unit
+# 150 Hypothesis examples: 21 s on the Linux and macOS runners
+@pytest.mark.timeout(60)
 @settings(
     max_examples=150, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
