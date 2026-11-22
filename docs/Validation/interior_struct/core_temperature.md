@@ -83,19 +83,19 @@ This case has no plot: it checks an exact identity of 2 tables.
 
 ## What the table does not include
 
-The table is the adiabat of a core with a constant expansion coefficient and heat capacity. No case on this page compares it with the isentrope of the PALEOS liquid iron table, which the structure solve and the core energy budget do not use. A single measurement gives its size. The run is `tests/integration/zalmoxis_aragog_calliope.toml` with `planet.temperature_mode = "liquidus_super"`, `core_bc = "energy_balance"`, `update_interval = 100.0` yr, `update_min_interval = 0.0` and a time step of at most 50 yr, at 1, 3 and 4 Earth masses. Its first structure update (102 yr) is solved once more with the isentrope through the same CMB temperature in place of the table.
+The core table is the adiabat of a core with a constant expansion coefficient and heat capacity. No case on this page compares it with the isentrope of the PALEOS liquid iron table, which the structure solve and the core energy budget do not use. A single measurement gives the size of the difference. The run is `tests/integration/zalmoxis_aragog_calliope.toml` with `planet.temperature_mode = "liquidus_super"`, `core_bc = "energy_balance"`, `update_interval = 100.0` yr, `update_min_interval = 0.0` and a time step of at most 50 yr, at 1, 3 and 4 Earth masses. Its first structure update (102 yr) is solved once more with the isentrope through the same CMB temperature in place of the core table.
 
-In the table, a negative value means that the first of the 2 named quantities is smaller.
+In the results below, the first column gives the centre temperature of the core table relative to the isentrope. The other 3 columns give the isentrope solve relative to the core table solve. A negative value means that the first of the 2 named quantities is smaller.
 
-| Planet mass | Centre temperature, table relative to isentrope | Planet radius $R_\mathrm{int}$, isentrope solve relative to table solve | Core radius $R_\mathrm{core}$, isentrope solve relative to table solve | Central pressure $P_\mathrm{center}$, isentrope solve relative to table solve |
+| Planet mass | Centre temperature | Planet radius $R_\mathrm{int}$ | Core radius $R_\mathrm{core}$ | Central pressure $P_\mathrm{center}$ |
 |---|---|---|---|---|
 | 1 Earth mass | -20 % | +0.18 % | +0.60 % | -2.8 % |
 | 3 Earth masses | +30 % | -0.01 % | -0.03 % | +1.0 % |
 | 4 Earth masses | +73 % | -0.10 % | -0.34 % | +2.8 % |
 
-The same run with the table and a relative change of 1e-12 in the super-liquidus temperature offset of the start (`planet.delta_T_super`) gives relative differences of 1.3e-6 or less, so each value in the table lies far above the round-off of the run.
+The same run with the core table and a relative change of 1e-12 in the super-liquidus temperature offset of the initial condition (`planet.delta_T_super`) gives relative differences of 1.3e-6 or less, so each result lies far above the round-off of the run.
 
-A second measurement gives the size of the limit after a giant impact. It uses the same configuration at 1 Earth mass, with 1 dry impact of 0.05 Earth masses at 150 yr. A full re-melt of the mantle raises the core temperature of the energy budget by 58 K with `core_bc = "core_module"` and by 153 K with `"energy_balance"`. A structure solve at the raised temperature gives a core radius 0.04 % and 0.10 % larger. In a run of the same configuration with a re-melt fraction of 0.3, the core temperature did not rise.
+A second measurement gives the size of a limit after a giant impact: the structure solve after an impact takes the core temperature from before the impact. It uses the same configuration at 1 Earth mass, once with `core_bc = "core_module"` and once with `"energy_balance"`, with 1 dry impact of 0.05 Earth masses at 150 yr. A full re-melt of the mantle raises the core temperature of the energy budget by 58 K with `"core_module"` and by 153 K with `"energy_balance"`. A structure solve at the raised temperature gives a core radius 0.04 % and 0.10 % larger. With a re-melt fraction of 0.3, the core temperature did not rise with either `core_bc`.
 
 These measurements have no test and no committed script. The limits of the table are in [Limits of the core temperature table](../../Explanations/model.md#limits-of-the-core-temperature-table).
 
