@@ -77,26 +77,6 @@ By default the core below the Aragog mantle is a heat reservoir of fixed heat ca
 
 Config section: `[interior_energetics]`. Reference: [Interior configuration](../Reference/config/interior.md).
 
-### The core profile from the PALEOS liquid iron table
-
-How warm is a core after compression by a structure solve? With `core_module.profile_source = "paleos"`, the core follows an isentrope of the PALEOS liquid iron table of Attia et al. (2026)[^cite-attia2026]: a line of constant specific entropy $s_c$ through the core-mantle boundary (CMB) temperature $T$. A structure update keeps the core mass $M$ and total entropy, so the core warms.
-
-PROTEUS does not run this profile. It needs a 2-phase iron core in the Zalmoxis structure (a liquid outer core over a solid inner core), which PROTEUS does not build, so the configuration check refuses `profile_source = "paleos"`. The tests run the profile on stored structures.
-
-The total entropy is $M\,s_c - \Delta s_f\,M_{ic}$, with $\Delta s_f$ the entropy of fusion (J kg$^{-1}$ K$^{-1}$) and $M_{ic}$ the inner-core mass (kg). The heat content is $T\,C_s(T) - R(T)$ in J, with $C_s$ the secular heat capacity (J K$^{-1}$) and $R$ the latent and gravitational energy released below the onset of the inner core. It counts from 0 K, as on the Gaussian profile, and an update books its change in `step_dE_struct_core_J`.
-
-For example, the core of a 1 Earth-mass planet at 5000 K warms to 5195 K when its CMB pressure rises from 127.7 to 141.3 GPa; the update books 6.0e29 J.
-
-#### Limits of the PALEOS core profile
-
-
-- The configuration check refuses `profile_source = "paleos"` with the Aragog interior. Where another `core_bc`, `stratification = true` or a giant-impact module is set, its message names that setting instead.
-- `core_dynamo_margin` and `core_B_rms` are 0: Aragog has no entropy budget here.
-- Above a centre pressure of 3.8 TPa the core temperature rises outward from the centre ([Aragog limits](https://proteus-framework.org/aragog/Explanations/core_tabulated.html#limits-of-the-model)).
-
-**Where this is checked.** [The PALEOS core across a structure update](../Validation/interior_energetics/aragog_core_tabulated.md).
-
-
 ## Atmosphere climate: AGNI, JANUS
 
 The atmosphere climate module solves the radiative-convective equilibrium structure of the atmosphere given the surface temperature, surface pressure, atmospheric composition, and incoming stellar spectrum.

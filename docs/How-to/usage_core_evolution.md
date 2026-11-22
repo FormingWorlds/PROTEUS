@@ -60,15 +60,6 @@ default `energy_balance` mode.
   content, which is not available for a stratified core. The default
   `update_interval = 1e9` keeps the update triggers active, so a stratified
   core needs `update_interval = 0` written in the config.
-- **The Gaussian core profile.** PROTEUS runs the core on a Gaussian density
-  profile fitted to the structure. The other value, `profile_source = "paleos"`,
-  puts the core arrays of the structure on an isentrope of the PALEOS liquid iron
-  table, with its secular heat capacity `core_cp_override` and its temperature
-  step `core_t_cmb_step`
-  ([how it works](../Explanations/model.md#the-core-profile-from-the-paleos-liquid-iron-table)).
-  That profile needs a 2-phase iron core in the Zalmoxis structure (a liquid
-  outer core over a solid inner core). PROTEUS does not build such a core, so it
-  refuses `profile_source = "paleos"` when it reads the config.
 
 ## What happens in a run
 

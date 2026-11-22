@@ -12,7 +12,6 @@ from proteus.interior_energetics.aragog_core import (
     profile_key,
     start_core_temperature,
 )
-from proteus.interior_energetics.aragog_core_tabulated import core_content
 from proteus.utils.constants import secs_per_year
 
 log = logging.getLogger('fwl.' + __name__)
@@ -161,9 +160,7 @@ def core_call_heat(out, interior_o, lift: float = 0.0) -> float:
     budget_prev = getattr(interior_o, '_core_budget_end', budget)
     moved = budget_prev is not budget and profile_key(budget_prev) != profile_key(budget)
     jump = 0.0
-    if t_prev is not None and moved:
-        jump = core_content(budget, t_start) - core_content(budget_prev, t_prev)
-    elif t_prev is not None and abs(t_start - t_prev) > 1e-9:
+    if t_prev is not None and (moved or abs(t_start - t_prev) > 1e-9):
         jump = budget.heat_content(t_start) - budget_prev.heat_content(t_prev)
     if jump or lift:
         log.debug(

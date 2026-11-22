@@ -75,30 +75,6 @@ def _valid_number(instance, attribute, value):
         raise TypeError(f'`{attribute.name}` must be a number, got {value!r}')
 
 
-def _positive_finite(value) -> bool:
-    """True for an int or float above 0 that a float holds finite; False for a bool."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return False
-    try:
-        return math.isfinite(value) and value > 0
-    except OverflowError:  # an int that no float holds
-        return False
-
-
-def _valid_core_cp_override(instance, attribute, value):
-    """Accept a positive finite number or the string "table"."""
-    if value != 'table' and not _positive_finite(value):
-        raise ValueError(
-            f'`{attribute.name}` must be a positive finite number or "table", got {value!r}'
-        )
-
-
-def _valid_positive_finite(instance, attribute, value):
-    """Accept a positive finite number; refuse a bool, a string, NaN and infinity."""
-    if not _positive_finite(value):
-        raise ValueError(f'`{attribute.name}` must be a positive finite number, got {value!r}')
-
-
 def _valid_cell_thickness(instance, attribute, value):
     """Accept 0 or a finite number of at least 2 m, and "uniform" for the surface cell."""
     surface = attribute.name == 'surface_cell_thickness'
@@ -386,17 +362,6 @@ class AragogCoreModule:
         Critical Rayleigh number of the mantle-side boundary layer that sets
         the CMB heat flux from the core-mantle temperature contrast; the
         default is the theoretical value of Thiriet et al. (2019)[^cite-thiriet2019], Table 2.
-    profile_source: str
-        Core profile: 'gaussian' (the density profile fitted to the core mass and the central
-        pressure of the structure) or 'paleos' (the core arrays of the Zalmoxis structure on
-        an isentrope of the PALEOS liquid iron table). The configuration check refuses
-        'paleos': it needs a 2-phase iron core in the Zalmoxis structure.
-    core_cp_override: float or str
-        Secular specific heat capacity [J kg-1 K-1] of the 'paleos' profile, a positive
-        number, or 'table' for the table value at the CMB; the PALEOS liquid has no electronic
-        heat capacity, so the default is 840.
-    core_t_cmb_step: float
-        Spacing [K] of the CMB temperatures on which the 'paleos' isentropes are tabulated.
     flux_geometry: str
         Which printed Earth-core efficiency factor converts the
         superadiabatic flux into the field-strength scaling's F:
@@ -425,9 +390,6 @@ class AragogCoreModule:
     flux_geometry: str = field(
         default='const_flux', validator=in_(('const_flux', 'zero_outer'))
     )
-    profile_source: str = field(default='gaussian', validator=in_(('gaussian', 'paleos')))
-    core_cp_override: float | str = field(default=840.0, validator=_valid_core_cp_override)
-    core_t_cmb_step: float | int = field(default=10.0, validator=_valid_positive_finite)
 
     def __attrs_post_init__(self):
         # The iron melting curve scales with 1 - depression * light_element_fraction.

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pathlib
 from types import SimpleNamespace
 
 import numpy as np
@@ -11,8 +10,6 @@ import pytest
 from proteus.interior_struct.core_temperature import CORE_T_POINTS, core_temperature_table
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
-
-TAB = pathlib.Path(__file__).parents[1] / 'interior_energetics' / 'fixtures' / 'core_tabulated'
 
 
 def _gaussian():
@@ -63,31 +60,6 @@ def test_gaussian_pairs_follow_an_independent_integration_of_the_adiabat():
     assert sol.success
     np.testing.assert_allclose(t[idx], sol.y[0], rtol=1e-6, atol=0.0)
     assert t[idx[-1]] / t[0] > 1.2  # the adiabat rises well above the anchor
-
-
-@pytest.mark.physics_invariant
-def test_tabulated_pairs_start_at_the_cmb_of_the_stored_core():
-    """A PALEOS tabulated core from stored Zalmoxis core arrays (1 M_E, 2510 K): the pairs start at
-    the CMB pressure of the arrays with the anchor and rise in P and T to the centre."""
-    from aragog.core.module import build_core_module_budget, load_core_arrays
-
-    a = load_core_arrays(TAB / 'zalmoxis_core_arrays_1me_2510K.npz')
-    params = {
-        'profile_source': 'paleos',
-        'core_liquid_table': str(TAB / 'paleos_iron_liquid_cut_3tpa.npz'),
-        'core_profile_file': str(TAB / 'zalmoxis_core_arrays_1me_2510K.npz'),
-    }
-    budget = build_core_module_budget(
-        params,
-        r_cmb=float(a['r'][-1]),
-        p_cmb_fallback=float(a['P'][-1]),
-        m_core=float(a['m'][-1]),
-    )
-    p, t = core_temperature_table(budget.profiles, 4200.0)
-    assert p[0] == pytest.approx(float(a['P'][-1]), rel=1e-9)
-    assert t[0] == pytest.approx(4200.0, rel=1e-9)
-    assert p[-1] == pytest.approx(float(a['P'][0]), rel=1e-6)
-    assert np.all(np.diff(t) > 0)
 
 
 def test_anchors_outside_the_positive_reals_are_refused():

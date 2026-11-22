@@ -27,7 +27,7 @@ def core_temperature_table(profiles, t_anchor, n=CORE_T_POINTS):
 
     Parameters
     ----------
-    profiles : aragog.core.profiles.GaussianCoreProfiles or TabulatedCoreProfiles
+    profiles : aragog.core.profiles.GaussianCoreProfiles
         Core profiles with ``r_cmb`` [m], ``pressure(r)`` [Pa] and ``adiabat(r, t_cmb)`` [K].
     t_anchor : float
         Temperature at the CMB of the adiabat [K], finite and positive.

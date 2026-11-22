@@ -432,9 +432,6 @@ from the running mesh.
 | `f_ohm` | float | `1.0` | Ohmic fraction of the dissipation in the field-strength scaling, in (0, 1\]; Christensen et al. (2009)[^cite-christensen2009] adopt 1 for planets. Must be > 0 and <= 1. |
 | `ra_crit_cmb` | float | `450.0` | Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast; the default is the theoretical value of Thiriet et al. (2019)[^cite-thiriet2019], Table 2. Must be > 0 and < inf. |
 | `flux_geometry` | str | `"const_flux"` | Which printed Earth-core efficiency factor converts the superadiabatic flux into the field-strength scaling's F: 'const_flux' or 'zero_outer'. Choices: `"const_flux"`, `"zero_outer"`. |
-| `profile_source` | str | `"gaussian"` | Core profile: 'gaussian' (the density profile fitted to the core mass and the central pressure of the structure) or 'paleos' (the core arrays of the Zalmoxis structure on an isentrope of the PALEOS liquid iron table). The configuration check refuses 'paleos': it needs a 2-phase iron core in the Zalmoxis structure. Choices: `"gaussian"`, `"paleos"`. |
-| `core_cp_override` | float or str | `840.0` | Secular specific heat capacity \[J kg-1 K-1\] of the 'paleos' profile, a positive number, or 'table' for the table value at the CMB; the PALEOS liquid has no electronic heat capacity, so the default is 840. |
-| `core_t_cmb_step` | float or int | `10.0` | Spacing \[K\] of the CMB temperatures on which the 'paleos' isentropes are tabulated. |
 <!-- END GENERATED: config-table [interior_energetics.aragog.core_module] -->
 
 When this mode is active, per-step diagnostics are written to the helpfile
