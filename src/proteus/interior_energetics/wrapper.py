@@ -1329,12 +1329,15 @@ _ADIABAT_IC_RESTORE_KEYS = (
 )
 
 
-def _structure_core_table(config: Config, interior_o, hf_row: dict, t_anchor=None):
+def _structure_core_table(
+    config: Config, interior_o, hf_row: dict, t_anchor=None, t_fallback=None
+):
     """Core temperature table ``(P, T)`` of a structure solve.
 
     With a live Aragog core (``core_bc = "core_module"``) the adiabat of its profiles through
     its temperature; otherwise a Gaussian core fitted to the row structure through ``t_anchor``,
-    or the row ``T_cmb`` when ``t_anchor`` is None.
+    or the row ``T_cmb`` when ``t_anchor`` is None, or ``t_fallback`` [K] when the row has no
+    positive ``T_cmb`` (a dummy interior writes none).
     """
     from proteus.interior_energetics.aragog_core import core_temperature_state
     from proteus.interior_struct.core_temperature import structure_core_table
@@ -1345,8 +1348,10 @@ def _structure_core_table(config: Config, interior_o, hf_row: dict, t_anchor=Non
         t_core = core_temperature_state(solver, config.interior_energetics.aragog.core_bc)
         if t_core is not None:
             return structure_core_table(config, hf_row, t_core, budget.profiles)
-    t = float(hf_row['T_cmb']) if t_anchor is None else float(t_anchor)
-    return structure_core_table(config, hf_row, t)
+    if t_anchor is not None:
+        return structure_core_table(config, hf_row, float(t_anchor))
+    t_row = float(hf_row.get('T_cmb', 0.0))
+    return structure_core_table(config, hf_row, t_row if t_row > 0 else t_fallback)
 
 
 def _sample_adiabat_temperature_arrays(outdir: str, temperature_function):
@@ -3281,7 +3286,9 @@ def update_structure_from_interior(
             num_spider_nodes=num_spider_nodes,
             temperature_function=temperature_function,
             temperature_arrays=(_r_asc, _T_asc),
-            core_temperature_arrays=_structure_core_table(config, interior_o, hf_row),
+            core_temperature_arrays=_structure_core_table(
+                config, interior_o, hf_row, t_fallback=_T_cmb
+            ),
         )
         _zalmoxis_wall = _zalmoxis_time.monotonic() - _zalmoxis_wall_t0
         # Mass-anchor check: enforce |M_int / M_int_target - 1| <

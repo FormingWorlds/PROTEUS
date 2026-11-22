@@ -834,13 +834,13 @@ def test_handoff_callable_anchors_cmb_for_aragog_ascending_profile():
 def test_resolve_hands_the_core_table_of_the_live_state(monkeypatch):
     """A structure re-solve passes zalmoxis_solver the core temperature table built from the run
     config, the interior object and the row of this step, with no anchor, so the live Aragog
-    core or the row T_cmb sets it."""
+    core or the row T_cmb sets it, and the deepest mantle T as the fallback anchor."""
     import proteus.interior_energetics.wrapper as wrapper_mod
 
     calls = []
 
-    def stub(config, interior_o, hf_row, t_anchor=None):
-        calls.append((config, interior_o, hf_row, t_anchor))
+    def stub(config, interior_o, hf_row, t_anchor=None, t_fallback=None):
+        calls.append((config, interior_o, hf_row, t_anchor, t_fallback))
         return ('core table',)
 
     monkeypatch.setattr(wrapper_mod, '_structure_core_table', stub)
@@ -868,6 +868,7 @@ def test_resolve_hands_the_core_table_of_the_live_state(monkeypatch):
     assert mock_solver.call_args.kwargs['core_temperature_arrays'] == ('core table',)
     assert len(calls) == 1
     assert calls[0][0] is config and calls[0][1] is interior_o and calls[0][3] is None
+    assert calls[0][4] == pytest.approx(7740.0, rel=1e-12)  # the deepest mantle T
 
 
 @pytest.mark.unit

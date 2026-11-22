@@ -88,7 +88,7 @@ def core_table_calls(monkeypatch):
 
     calls = []
 
-    def stub(config, interior_o, hf_row, t_anchor=None):
+    def stub(config, interior_o, hf_row, t_anchor=None, t_fallback=None):
         calls.append((interior_o, t_anchor))
         return ('core table', t_anchor)
 
