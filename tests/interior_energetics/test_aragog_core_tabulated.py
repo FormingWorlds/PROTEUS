@@ -25,7 +25,7 @@ from proteus.interior_energetics.aragog_core_tabulated import (
     core_content,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(600)]
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 DATA = pathlib.Path(__file__).parent / 'fixtures' / 'core_tabulated'
 CUT = DATA / 'paleos_iron_liquid_cut_3tpa.npz'
@@ -79,6 +79,8 @@ def _inner_mass(budget, t):
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
+# 2 more budgets on a second table cut: 18 s on the Linux runner, 26 s on macOS
+@pytest.mark.timeout(90)
 def test_the_structure_term_does_not_see_the_table_floor(pair, high_cut):
     """The carried temperature and the structure term on 2 cuts of one table that differ only
     in the lowest temperature column agree to 1e-12 (measured 4.4e-16 and 9.6e-14 at 5000 K),

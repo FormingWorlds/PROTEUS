@@ -10,7 +10,7 @@ import pytest
 
 from proteus.interior_struct.core_temperature import CORE_T_POINTS, core_temperature_table
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 TAB = pathlib.Path(__file__).parents[1] / 'interior_energetics' / 'fixtures' / 'core_tabulated'
 

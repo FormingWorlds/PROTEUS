@@ -22,7 +22,7 @@ from hypothesis import strategies as st  # noqa: E402
 from proteus.config import read_config_object  # noqa: E402
 from proteus.config._interior import AragogCoreModule  # noqa: E402
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(120)]
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 def _kept(name, value):

@@ -13,7 +13,7 @@ from proteus.interior_struct.core_temperature import (
     structure_core_table,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 ROW = {
     'M_core': 1.94e24,
