@@ -33,7 +33,11 @@ from proteus.data import (
     dataset_dir,
 )
 from proteus.interior_struct.common import solvus_radius, stored_core_target
-from proteus.interior_struct.core_temperature import MAX_CORE_T_EXCESS, table_temperature
+from proteus.interior_struct.core_temperature import (
+    MAX_CORE_T_EXCESS,
+    check_core_arrays,
+    table_temperature,
+)
 from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
     PALEOS_EOS_PREFIXES,
@@ -3748,6 +3752,8 @@ def zalmoxis_solver(
     cmb_tol = float(mesh_radius_tolerance(cmb_radius, planet_radius))
     hf_row['struct_core_T_used'] = float(bool(model_results.get('core_T_used', False)))
     hf_row['struct_core_T_excess'] = _core_table_excess(model_results)
+    if hf_row['struct_core_T_used']:
+        check_core_arrays(core, core_temperature_arrays)
     if radii[cmb_index] < cmb_radius - cmb_tol or cmb_index + 1 >= len(radii):
         raise RuntimeError(
             f'Zalmoxis: node {cmb_index} ({radii[cmb_index]:.6e} m) is the first at the core mass '

@@ -12,6 +12,7 @@ import math
 import numbers
 
 import numpy as np
+from zalmoxis.invariants import StructureInvariantError
 
 # Pairs per table: uniform in radius from the centre to the CMB of the profile
 CORE_T_POINTS = 161
@@ -91,6 +92,37 @@ def table_temperature(p, table):
     lo = (tt[1] - tt[0]) / (pt[1] - pt[0]) * np.minimum(p - pt[0], 0.0)
     hi = (tt[-1] - tt[-2]) / (pt[-1] - pt[-2]) * np.maximum(p - pt[-1], 0.0)
     return np.interp(p, pt, tt) + lo + hi
+
+
+def check_core_arrays(core, table):
+    """Raise unless the core arrays of a solve that used ``table`` lie on it.
+
+    Parameters
+    ----------
+    core : dict
+        Zalmoxis core arrays with ``r`` [m] ascending, ``P`` [Pa] and ``T`` [K].
+    table : tuple of numpy.ndarray
+        ``(P, T)`` core temperature table of the solve.
+
+    Raises
+    ------
+    StructureInvariantError
+        When ``T`` is missing, not finite, not positive, rises outward, or differs from the
+        table temperature at ``P`` by more than a relative 1e-9.
+    """
+    t = np.asarray(core.get('T', []), dtype=float)
+    want = table_temperature(np.asarray(core['P'], dtype=float), table)
+    if not (
+        t.shape == want.shape
+        and np.all(np.isfinite(t))
+        and np.all(t > 0)
+        and np.all(np.diff(t) <= 0)
+        and np.allclose(t, want, rtol=1e-9, atol=0.0)
+    ):
+        raise StructureInvariantError(
+            'the core array temperature is not the core table temperature at the core array '
+            'pressure (finite, positive, not rising outward, relative 1e-9)'
+        )
 
 
 def structure_core_table(config, hf_row, t_anchor, profiles=None):
