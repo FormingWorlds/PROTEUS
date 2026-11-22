@@ -25,7 +25,8 @@ STATE = (
 CONFIG = pathlib.Path(__file__).parents[1] / 'integration' / 'zalmoxis_aragog_calliope.toml'
 KEYS = ('R_core', 'R_int', 'P_center', 'P_cmb')
 FIXED_PASSES = 4
-LIMIT = 1e-5  # pass mark of the cross-path agreement
+LIMIT_TEXT = '1e-5'  # pass mark of the cross-path agreement
+LIMIT = float(LIMIT_TEXT)
 
 
 def _config(use_jax):
@@ -116,9 +117,9 @@ def test_the_core_table_gives_the_structure_of_two_independent_paths(
     solves of the same state: the numpy path with the same table (other integrator, other
     temperature code) and a fixed point without the table (the core T given by radius,
     iterated on the core node pressures). R_core, R_int, P_center and P_cmb agree within 1e-5
-    (measured at most 5.5e-7; the values go to the junit file). The table moves the structure
-    against a core at the temperature of the deepest mantle node by more than 1e-2 (measured
-    4.6 % in P_center)."""
+    (measured at most 5.5e-7; with --junitxml the values go to the report). The table moves the
+    largest of the 4 values against a core at the temperature of the deepest mantle node by more
+    than 1e-2 (measured 4.6 % in P_center)."""
     state = np.load(STATE)
     arrays = (state['r'], state['T'])
     table = (state['table_P'], state['table_T'])
@@ -128,8 +129,8 @@ def test_the_core_table_gives_the_structure_of_two_independent_paths(
         tmp_path, monkeypatch, 'fix', arrays, None, main=_fixed_point(table)
     )
     row_iso, res_iso = _solve(tmp_path, monkeypatch, 'iso', arrays, None)
-    for row in (row_jax, row_np):
-        assert row['struct_core_T_used'] == pytest.approx(1.0, abs=0.0)
+    for row, used in ((row_jax, 1.0), (row_np, 1.0), (row_fix, 0.0), (row_iso, 0.0)):
+        assert row['struct_core_T_used'] == pytest.approx(used, abs=0.0)
     rel = {
         path: [abs(row[k] / row_jax[k] - 1.0) for k in KEYS]
         for path, row in (('numpy', row_np), ('fixed_point', row_fix), ('deepest_T', row_iso))
@@ -137,9 +138,10 @@ def test_the_core_table_gives_the_structure_of_two_independent_paths(
     for path, values in rel.items():
         for key, value in zip(KEYS, values):
             record_testsuite_property(f'core_table_rel_{path}_{key}', f'{value:.6e}')
-    assert max(rel['numpy'] + rel['fixed_point']) < LIMIT
+            assert np.isfinite(value), (path, key)
+            assert path == 'deepest_T' or value < LIMIT, (path, key, value)
     assert max(rel['deepest_T']) > 1e-2
-    # 2 digits keep the plotted shift equal on Linux and macOS
+    # 2 digits: each shift lies >= 2e-3 from a rounding step, far above platform differences
     shown = [float(f'{v:.2g}') for v in rel['deepest_T']]
 
     def temperature_figure():
@@ -171,7 +173,9 @@ def test_the_core_table_gives_the_structure_of_two_independent_paths(
         fig, ax = plt.subplots(figsize=(7, 4))
         x = np.arange(len(KEYS))
         for k, label in enumerate(('numpy', 'fixed point')):
-            ax.semilogy(x + 0.2 * (k - 1), [LIMIT] * len(KEYS), 'v', label=f'{label}: < 1e-5')
+            ax.semilogy(
+                x + 0.2 * (k - 1), [LIMIT] * len(KEYS), 'v', label=f'{label}: < {LIMIT_TEXT}'
+            )
         ax.semilogy(x + 0.2, shown, 'o', label='deepest mantle T')
         ax.set_xticks(x, ['R_core', 'R_int', 'P_center', 'P_cmb'], fontsize='small')
         ax.set_ylim(1e-6, 1e-1)
