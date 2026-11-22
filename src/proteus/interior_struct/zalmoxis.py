@@ -3267,7 +3267,7 @@ def compute_structure_mass_desync(radii, density, mass_enclosed) -> float:
 
 
 def _core_table_excess(model_results, table):
-    """Return ``core_T_max_excess`` of a Zalmoxis result (0.0 when absent).
+    """Return ``core_T_max_excess`` of a Zalmoxis result (0.0 when absent without a ``table``).
 
     Raises
     ------

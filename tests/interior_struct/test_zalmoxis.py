@@ -2934,15 +2934,37 @@ def test_core_nodes_beyond_the_table_by_more_than_the_limit_stop_the_solve(
         assert run()[3]['struct_core_T_excess'] == excess
 
 
+def _spy_excess(monkeypatch):
+    """Record the results that ``_core_table_excess`` sees, in call order."""
+    import proteus.interior_struct.zalmoxis as zmod
+
+    seen, real = [], zmod._core_table_excess
+    monkeypatch.setattr(
+        zmod, '_core_table_excess', lambda res, table: seen.append(res) or real(res, table)
+    )
+    return seen
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize('key', ['core_T_used', 'core_T_max_excess'])
+@pytest.mark.parametrize('where', ['converged', 'primary', 'retry'])
 def test_a_result_without_the_core_table_flags_stops_a_solve_with_a_table(
-    tmp_path, monkeypatch, key
+    tmp_path, monkeypatch, key, where
 ):
-    """A solve given a core table needs both core table flags in the Zalmoxis result; without
-    one, the run cannot tell whether the table set the core or how far the core lies beyond it."""
-    model = _table_model()
-    del model[key]
+    """A solve given a core table needs both core table flags in each Zalmoxis result; without
+    one, the run cannot tell whether the table set the core or how far the core lies beyond it.
+    A primary result that does not converge raises before the relaxed retry; a retry result
+    without a flag raises at its own check."""
+    model, first = _table_model(), _table_model()
+    first.update(converged=False, converged_mass=False, best_mass_error=1e-3)
+    if where == 'retry':
+        del model[key]
+        results = [first, model]
+    else:
+        del (first if where == 'primary' else model)[key]
+        retry = AssertionError('the relaxed-tolerance retry ran')
+        results = [first, retry] if where == 'primary' else model
+    seen = _spy_excess(monkeypatch)
     with pytest.raises(RuntimeError, match=f'no {key}'):
         _run_gate_solver(
             tmp_path,
@@ -2950,9 +2972,31 @@ def test_a_result_without_the_core_table_flags_stops_a_solve_with_a_table(
             'Seager2007:silicate',
             None,
             None,
-            main_results=model,
+            main_results=results,
             core_table=_CORE_TABLE,
         )
+    assert len(seen) == (2 if where == 'retry' else 1)
+    assert key not in seen[-1]
+
+
+@pytest.mark.unit
+def test_a_retry_result_beyond_the_core_table_stops_the_solve(tmp_path, monkeypatch):
+    """The accepted retry result gets the same core table check as a converged primary: a core
+    0.2 of the table range beyond it raises at the final check."""
+    first = _table_model()
+    first.update(converged=False, converged_mass=False, best_mass_error=1e-3)
+    seen = _spy_excess(monkeypatch)
+    with pytest.raises(RuntimeError, match='core temperature table range'):
+        _run_gate_solver(
+            tmp_path,
+            monkeypatch,
+            'Seager2007:silicate',
+            None,
+            None,
+            main_results=[first, _table_model(0.2)],
+            core_table=_CORE_TABLE,
+        )
+    assert [r['core_T_max_excess'] for r in seen] == [0.0, 0.2]
 
 
 @pytest.mark.unit

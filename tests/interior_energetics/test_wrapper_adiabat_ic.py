@@ -1654,7 +1654,7 @@ def test_a_core_table_error_at_start_up_stops_the_run(tmp_path, monkeypatch, err
 
 
 @pytest.mark.unit
-def test_a_broken_structure_invariant_stops_the_start_up_solve(tmp_path):
+def test_a_broken_structure_invariant_stops_the_start_up_solve(tmp_path, caplog):
     """A StructureInvariantError of an accepted solve stops the start-up solve with that error:
     no rollback restores the row, as a RuntimeError of the solve does."""
     from zalmoxis.invariants import StructureInvariantError
@@ -1666,7 +1666,10 @@ def test_a_broken_structure_invariant_stops_the_start_up_solve(tmp_path):
         row.update(R_int=1.2746e7)
         raise StructureInvariantError('core arrays off the core table')
 
-    with patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solve):
+    with (
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solve),
+        caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
         with pytest.raises(StructureInvariantError, match='off the core table'):
             _solve_structure_with_adiabat_or_rollback(
                 _config(),
@@ -1675,7 +1678,8 @@ def test_a_broken_structure_invariant_stops_the_start_up_solve(tmp_path):
                 num_spider_nodes=0,
                 temperature_function=_adiabat_closure(),
             )
-    assert hf_row['R_int'] == 1.2746e7
+    assert hf_row['R_int'] == pytest.approx(1.2746e7, rel=1e-12)
+    assert 'restored the linear-guess structure' not in caplog.text
 
 
 @pytest.mark.unit
