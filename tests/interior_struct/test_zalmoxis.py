@@ -2794,6 +2794,16 @@ def test_the_jax_rebuild_looks_up_a_padded_surface_node_at_the_target_pressure(
 _CORE_TABLE = (np.linspace(1.0e11, 3.0e11, 5), np.linspace(4000.0, 6000.0, 5))
 
 
+def _table_model(excess=0.0):
+    """Plausible model results of a solve that used ``_CORE_TABLE``: core array T on the table."""
+    from proteus.interior_struct.core_temperature import table_temperature
+
+    model = _plausible_model_results()
+    model.update(core_T_used=True, core_T_max_excess=excess)
+    model['core']['T'] = table_temperature(model['core']['P'], _CORE_TABLE)
+    return model
+
+
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_the_core_table_reaches_zalmoxis_and_sets_the_rebuilt_core_temperature(
@@ -2804,8 +2814,7 @@ def test_the_core_table_reaches_zalmoxis_and_sets_the_rebuilt_core_temperature(
     pressure, past the table ends too, and every mantle node at the hand-off temperature."""
     from proteus.interior_struct.core_temperature import table_temperature
 
-    model = _plausible_model_results()
-    model.update(core_T_used=True, core_T_max_excess=0.02)
+    model = _table_model(0.02)
     r_arr, t_arr = _cooled_mantle_arrays(model)
     main_mock, rho_mock, _, hf_row, _, _, _ = _run_gate_solver(
         tmp_path,
@@ -2832,10 +2841,9 @@ def test_the_jax_rebuild_takes_the_core_nodes_of_the_zalmoxis_layer_rule(tmp_pat
     Zalmoxis (``is_core``); the JAX rebuild gives it the mantle temperature, not the core table."""
     from proteus.interior_struct.core_temperature import table_temperature
 
-    model = _plausible_model_results()
+    model = _table_model()
     cmb_i = 20
     model['cmb_mass'] = float(model['mass_enclosed'][cmb_i]) * (1.0 + 5.0e-13)
-    model.update(core_T_used=True, core_T_max_excess=0.0)
     r_arr, t_arr = _cooled_mantle_arrays(model)
     _, rho_mock, _, _, _, _, _ = _run_gate_solver(
         tmp_path,
@@ -2906,8 +2914,7 @@ def test_core_nodes_beyond_the_table_by_more_than_the_limit_stop_the_solve(
 ):
     """A Zalmoxis result whose core nodes lie beyond the core temperature table by more than
     0.1 of its pressure range, or by a non-finite amount, raises; 0.1 and less pass."""
-    model = _plausible_model_results()
-    model.update(core_T_used=True, core_T_max_excess=excess)
+    model = _table_model(excess)
     run = lambda: _run_gate_solver(  # noqa: E731
         tmp_path,
         monkeypatch,
@@ -2922,6 +2929,41 @@ def test_core_nodes_beyond_the_table_by_more_than_the_limit_stop_the_solve(
             run()
     else:
         assert run()[3]['struct_core_T_excess'] == excess
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('fault', ['off the table', 'NaN', 'rising outward', 'no T'])
+def test_core_arrays_off_the_core_table_stop_the_run(tmp_path, monkeypatch, fault):
+    """When Zalmoxis used the core table, the core array T (nodes and the CMB point) must be
+    the table T at the core array P, finite, positive and not rising outward; a miss raises
+    StructureInvariantError, which no re-solve fallback catches."""
+    from zalmoxis.invariants import StructureInvariantError
+
+    from proteus.interior_struct.core_temperature import table_temperature
+
+    model = _table_model()
+    core = model['core']
+    if fault == 'off the table':
+        core['T'] = core['T'] * (1.0 + 1.0e-8)
+    elif fault == 'NaN':
+        core['T'][3] = np.nan
+    elif fault == 'rising outward':
+        core['P'] = core['P'].copy()
+        core['P'][-1] = core['P'][-2] * (1.0 + 1.0e-3)
+        core['T'] = table_temperature(core['P'], _CORE_TABLE)
+    else:
+        del core['T']
+    with pytest.raises(StructureInvariantError, match='core array'):
+        _run_gate_solver(
+            tmp_path,
+            monkeypatch,
+            'Seager2007:silicate',
+            None,
+            None,
+            main_results=model,
+            core_table=_CORE_TABLE,
+        )
 
 
 @pytest.mark.unit
