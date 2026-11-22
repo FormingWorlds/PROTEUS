@@ -358,8 +358,6 @@ PROTEUS gives every Zalmoxis solve that has a mantle temperature profile a core 
 | Start of the run | Gaussian core | the deepest mantle temperature |
 | After a giant impact | Gaussian core | `T_cmb` of the last output row (the core temperature before the impact), or the deepest mantle temperature when that row has no positive `T_cmb` |
 
-The solves at the start of the run and after a giant impact have a mantle temperature profile only with `planet.temperature_mode = "liquidus_super"` and an interior module other than SPIDER.
-
 Zalmoxis reads the table at the pressure of each core node. Past the ends of the table it extrapolates linearly from the end interval.
 
 For example, at the first structure update (102 yr) of a 1 Earth-mass planet with `core_bc = "energy_balance"`, the table makes the core radius 0.74 % larger and the central pressure 4.4 % lower than with the whole core at the temperature of the deepest mantle node.
@@ -370,7 +368,10 @@ For example, at the first structure update (102 yr) of a 1 Earth-mass planet wit
 - A core node that lies past the table by more than 0.1 of its pressure range stops the solve. In a run, PROTEUS then keeps the previous structure; after 8 failed structure updates in a row the run stops.
 - Core arrays that do not lie on the table, or that are not finite, not positive or rising outward, stop the run.
 - A core equation of state (EOS) that does not depend on temperature ignores the table; `struct_core_T_used` is then 0.
-- **Known limit.** With a `core_bc` other than `"core_module"`, the table takes the `T_cmb` of the row before the update. The update then changes the core heat content, and no output column books that change (`step_dE_struct_core_J` is 0). In the same planet with `update_interval = 100.0` yr, this is 6 to 11 K of core temperature per update.
+- **Heat content at an update.** With a `core_bc` other than `"core_module"`, the table takes the `T_cmb` of the row before the update. The update then changes the core heat content, and no output column books that change (`step_dE_struct_core_J` is 0). In the same planet with `update_interval = 100.0` yr, this is 6 to 11 K of core temperature per update.
+- **Constant expansion coefficient.** The table is the adiabat of a core with a constant expansion coefficient and heat capacity (`core_module.alpha` and `core_module.c_p`). Against the isentrope of the PALEOS liquid iron table of Attia et al. (2026)[^cite-attia2026] through the same CMB temperature, its centre is 20 % colder at 1 Earth mass and 30 % hotter at 3 Earth masses; a solve on the isentrope moves the planet radius by up to 0.18 % and the central pressure by up to 2.8 % at 1 to 4 Earth masses ([measured values](../Validation/interior_struct/core_temperature.md#what-the-table-does-not-include)). The structure solve and the core energy budget do not use the PALEOS isentrope.
+- **After a giant impact.** The structure solve after an impact takes the core temperature before the impact. A full re-melt of the mantle then raises the core temperature of the energy budget, and the structure keeps the colder core until the next structure solve. For a dry impact of 0.05 Earth masses on 1 Earth mass at 150 yr, the rise is 58 K with `core_bc = "core_module"` and 153 K with `"energy_balance"`; a solve at the raised temperature gives a core radius 0.04 % and 0.10 % larger. A partial re-melt (re-melt fraction 0.3) does not raise the core temperature.
+- **Start of the run.** The solves at the start of the run and after a giant impact have a core table only with `planet.temperature_mode = "liquidus_super"` and an interior module other than SPIDER. Without a mantle temperature profile, these solves get no core table.
 
 **Where this is checked.** [The core table gives the structure of 2 independent paths](../Validation/interior_struct/core_temperature.md).
 

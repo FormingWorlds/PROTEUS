@@ -79,6 +79,18 @@ This case has no plot: it checks an exact identity of 2 tables.
     - Test id: `tests/integration/test_slow_core_table_resume.py::test_the_resumed_run_builds_the_core_table_of_the_stopped_run`
     - Command: `pytest tests/integration/test_slow_core_table_resume.py`
 
+## What the table does not include
+
+The table is the adiabat of a core with a constant expansion coefficient and heat capacity. No case on this page compares it with the isentrope of the PALEOS liquid iron table, which the structure solve and the core energy budget do not use. A single measurement gives its size: the same run solved once more at its first structure update (102 yr, `core_bc = "energy_balance"`) with the isentrope through the same CMB temperature in place of the table.
+
+| Planet mass | Centre temperature, table against isentrope | $R_\mathrm{int}$, isentrope against table | $R_\mathrm{core}$ | $P_\mathrm{center}$ |
+|---|---|---|---|---|
+| 1 Earth mass | -20 % | +0.18 % | +0.60 % | -2.8 % |
+| 3 Earth masses | +30 % | -0.01 % | -0.03 % | +1.0 % |
+| 4 Earth masses | +73 % | -0.10 % | -0.34 % | +2.8 % |
+
+The same run with the table and a relative change of 1e-12 in the super-liquidus temperature offset of the start (`planet.delta_T_super`) gives differences of 1.3e-6 or less, so each value in the table lies far above the round-off of the run. The limits of the table, also after a giant impact, are in [Limits of the core temperature table](../../Explanations/model.md#limits-of-the-core-temperature-table).
+
 ## Other checks of the core table
 
 | Test id | Reference | Scope | Last compared |
