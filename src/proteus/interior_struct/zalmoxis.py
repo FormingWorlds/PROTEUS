@@ -18,6 +18,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 from zalmoxis.mixing import _PALEOS_UNIFIED_NAMES
 from zalmoxis.solver import main
+from zalmoxis.structure_model import is_core
 
 from proteus.config import Config
 from proteus.data import (
@@ -3800,20 +3801,23 @@ def zalmoxis_solver(
         _p_surface = float(config_params['target_surface_pressure'])
         _rho_fixed = np.zeros(len(radii))
         _T_fixed = np.zeros(len(radii))
+        _core = is_core(
+            np.asarray(mass_enclosed, dtype=float), cmb_mass
+        )  # the Zalmoxis layer rule
         for _i in range(len(radii)):
             _r = float(radii[_i])
             # a padded node (P = 0 past a surface stop) is the surface, at the target pressure
             _P = float(pressure[_i]) if pressure[_i] != 0.0 else _p_surface
             # r-indexed T: below r_ref[0] (= first Aragog staggered node
             # near CMB), clamp to T_cmb; else interp along the Aragog grid.
-            if core_temperature_arrays is not None and _i < cmb_index:
+            if core_temperature_arrays is not None and _core[_i]:
                 _T = float(table_temperature(_P, core_temperature_arrays))
             elif _r <= float(_r_ref[0]):
                 _T = _T_ref_cmb
             else:
                 _T = float(np.interp(_r, _r_ref, _T_ref))
             _T_fixed[_i] = _T
-            if _mantle_mixture is not None and _i >= cmb_index:
+            if _mantle_mixture is not None and not _core[_i]:
                 # Wet mantle node: same evaluation as the numpy solver's
                 # density update. calculate_mixed_density computes the
                 # local melt fraction from the melting curves at this
@@ -3837,7 +3841,7 @@ def zalmoxis_solver(
                 if _rho is not None and not np.isfinite(_rho):
                     _rho = None
             else:
-                _eos_here = _core_eos if _i < cmb_index else _mantle_eos
+                _eos_here = _core_eos if _core[_i] else _mantle_eos
                 _rho = _calc_rho(
                     _P,
                     mat_dicts,
