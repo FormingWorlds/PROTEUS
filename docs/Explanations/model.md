@@ -411,7 +411,7 @@ Only the interior and star modules have an explicit notion of time-evolution. Al
 
  [^cite-lichtenberg2021]: Lichtenberg, T., Bower, D.J., Hammond, M., et al., *[Vertically resolved magma ocean-protoatmosphere evolution: H2, H2O, CO2, CH4, CO, O2, and N2 as primary absorbers](https://doi.org/10.1029/2020JE006711)*, Journal of Geophysical Research: Planets, 126, e2020JE006711, 2021. [SciX](https://scixplorer.org/abs/2021JGRE..12606711L/abstract).
 
- [^cite-stixrude2014]: L. Stixrude, *[Melting in super-earths](https://doi.org/10.1098/rsta.2013.0076)*, Philosophical Transactions of the Royal Society A, 372, 20130076, 2014. [SciX](https://scixplorer.org/abs/2014RSPTA.37230076S/abstract).
+[^cite-stixrude2014]: L. Stixrude, *[Melting in super-earths](https://doi.org/10.1098/rsta.2013.0076)*, Philosophical Transactions of the Royal Society A, 372, 20130076, 2014. [SciX](https://scixplorer.org/abs/2014RSPTA.37230076S/abstract).
 [^cite-wolf2018]: Wolf, A.S. & Bower, D.J., *[An equation of state for high pressure-temperature liquids (RTpress) with application to MgSiO3 melt](https://doi.org/10.1016/j.pepi.2018.02.004)*, Physics of the Earth and Planetary Interiors, 278, 59-74, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..278...59W/abstract).
 
  [^cite-bower2018]: Bower, D.J., Sanan, P. & Wolf, A.S., *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49-62, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..274...49B/abstract).
