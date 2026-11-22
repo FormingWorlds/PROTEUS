@@ -4,7 +4,7 @@ This tutorial shows how the core temperature sets the core of the Zalmoxis struc
 You run the same planet twice: once with the core as part of the mantle energy balance, and once with its own energy budget.
 Then you read which temperature each structure update gave the core, and how the core radius and the central pressure follow it.
 
-Each Zalmoxis solve with a mantle temperature profile takes the temperature of its core nodes from a core temperature table: pressure and temperature pairs on the core adiabat. The adiabat goes through `T_cmb`, the core-mantle boundary (CMB) temperature of the run, or through the temperature of the live core with its own energy budget.
+Each Zalmoxis solve with a mantle temperature profile takes the temperature of its core nodes from a core temperature table: pressure and temperature pairs on the core adiabat. At each structure update the adiabat goes through `T_cmb`, the core-mantle boundary (CMB) temperature of the run, or through the temperature of the live core with its own energy budget. The solve at the start (the rows at 0 yr) uses the deepest mantle temperature instead.
 A hotter core is less dense, so it is larger and the central pressure is lower.
 [The core temperature in the structure solve](../Explanations/model.md#the-core-temperature-in-the-structure-solve) explains the rule.
 

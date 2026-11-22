@@ -71,11 +71,17 @@ The interior energetics module evolves the mantle temperature and melt fraction 
 
 By default the core below the Aragog mantle is a heat reservoir of fixed heat capacity. With `interior_energetics.aragog.core_bc = "core_module"` the core has its own energy budget instead: secular cooling along the core adiabat, the latent heat of a growing inner core, the gravitational energy of the light elements it rejects, and radiogenic heat. The core temperature is then a state of the solver, and the heat flux through the core-mantle boundary follows from the temperature contrast between the core and the base of the mantle across a boundary layer. See [Core evolution](../How-to/usage_core_evolution.md).
 
+**[SPIDER](https://proteus-framework.org/SPIDER/)** (C) uses the temperature-entropy (T-S) formulation [^cite-bower2018]. It discretises the mantle on a staggered radial grid and solves the entropy equation using PETSc's implicit time integrator. SPIDER provides an independent cross-check on Aragog for the same physical problem formulated in a different thermodynamic variable. It requires PETSc and is an optional installation component.
+
+**Boundary** solves a simplified single-node energy balance ODE for the mantle surface temperature, treating the mantle as a single thermal reservoir with Arrhenius or aggregate viscosity. It is useful for rapid exploration of parameter space and for configurations where the full radial resolution of Aragog or SPIDER is not needed.
+
+Config section: `[interior_energetics]`. Reference: [Interior configuration](../Reference/config/interior.md).
+
 ### The core profile from the PALEOS liquid iron table
 
 How warm is a core after compression by a structure solve? With `core_module.profile_source = "paleos"`, the core follows an isentrope of the PALEOS liquid iron table of Attia et al. (2026)[^cite-attia2026]: a line of constant specific entropy $s_c$ through the core-mantle boundary (CMB) temperature $T$. A structure update keeps the core mass $M$ and total entropy, so the core warms.
 
-PROTEUS cannot run this profile yet. It needs a 2-phase iron core in the Zalmoxis structure (a liquid outer core over a solid inner core), which PROTEUS does not build, so the configuration check refuses `profile_source = "paleos"`. The tests run the profile on stored structures.
+PROTEUS does not run this profile. It needs a 2-phase iron core in the Zalmoxis structure (a liquid outer core over a solid inner core), which PROTEUS does not build, so the configuration check refuses `profile_source = "paleos"`. The tests run the profile on stored structures.
 
 The total entropy is $M\,s_c - \Delta s_f\,M_{ic}$, with $\Delta s_f$ the entropy of fusion (J kg$^{-1}$ K$^{-1}$) and $M_{ic}$ the inner-core mass (kg). The heat content is $T\,C_s(T) - R(T)$ in J, with $C_s$ the secular heat capacity (J K$^{-1}$) and $R$ the latent and gravitational energy released below the onset of the inner core. It counts from 0 K, as on the Gaussian profile, and an update books its change in `step_dE_struct_core_J`.
 
@@ -84,17 +90,12 @@ For example, the core of a 1 Earth-mass planet at 5000 K warms to 5195 K when it
 #### Limits of the PALEOS core profile
 
 
-- With the Aragog interior, the configuration check refuses `profile_source = "paleos"`. Where another `core_bc`, `stratification = true` or a giant-impact module is set, its message names that setting instead.
+- The configuration check refuses `profile_source = "paleos"` with the Aragog interior. Where another `core_bc`, `stratification = true` or a giant-impact module is set, its message names that setting instead.
 - `core_dynamo_margin` and `core_B_rms` are 0: Aragog has no entropy budget here.
 - Above a centre pressure of 3.8 TPa the core temperature rises outward from the centre ([Aragog limits](https://proteus-framework.org/aragog/Explanations/core_tabulated.html#limits-of-the-model)).
 
 **Where this is checked.** [The PALEOS core across a structure update](../Validation/interior_energetics/aragog_core_tabulated.md).
 
-**[SPIDER](https://proteus-framework.org/SPIDER/)** (C) uses the temperature-entropy (T-S) formulation [^cite-bower2018]. It discretises the mantle on a staggered radial grid and solves the entropy equation using PETSc's implicit time integrator. SPIDER provides an independent cross-check on Aragog for the same physical problem formulated in a different thermodynamic variable. It requires PETSc and is an optional installation component.
-
-**Boundary** solves a simplified single-node energy balance ODE for the mantle surface temperature, treating the mantle as a single thermal reservoir with Arrhenius or aggregate viscosity. It is useful for rapid exploration of parameter space and for configurations where the full radial resolution of Aragog or SPIDER is not needed.
-
-Config section: `[interior_energetics]`. Reference: [Interior configuration](../Reference/config/interior.md).
 
 ## Atmosphere climate: AGNI, JANUS
 
@@ -345,7 +346,7 @@ so the planet keeps the mass its initial condition gives it; add an
 
 ---
 
-### Structure-interior coupling
+## Structure-interior coupling
 
 The structure and interior modules serve complementary roles.
 The *interior* module (SPIDER or Aragog) evolves the mantle temperature and melt fraction in time, while the *structure* module (Zalmoxis) solves for the hydrostatic equilibrium of the planet given a temperature profile and equation of state.
@@ -361,17 +362,24 @@ Structure updates are governed by a hybrid trigger that combines physics-based c
 
 Setting `update_interval = 0` disables dynamic updates entirely; the structure is computed only at initialisation.
 
-### The core temperature in the structure solve
+## The core temperature in the structure solve
 
 Which temperature does Zalmoxis give the core when it solves the structure? The core follows an adiabat through the core-mantle boundary (CMB) temperature. A hotter core is less dense, so this temperature sets part of the core radius and the central pressure.
 
-PROTEUS gives every Zalmoxis solve that has a mantle temperature profile a core temperature table: pressure and temperature pairs on that adiabat. This includes every structure update of a run. With `interior_energetics.aragog.core_bc = "core_module"` the adiabat is that of the live Aragog core, through its core temperature. Otherwise it is the adiabat of a Gaussian core: a core density profile fitted to the core mass and the central pressure of the last structure, with `core_module.alpha` and `core_module.c_p`. It goes through the CMB temperature `T_cmb`, or through the deepest mantle temperature when the row has no positive `T_cmb`. The mantle keeps the Aragog temperature profile.
+PROTEUS gives every Zalmoxis solve that has a mantle temperature profile a core temperature table: pressure and temperature pairs on that adiabat. A Gaussian core is a core density profile fitted to the core mass and the central pressure of the last structure, with `core_module.alpha` and `core_module.c_p`. Which adiabat the table follows depends on the solve:
+
+- A structure update during the run with `interior_energetics.aragog.core_bc = "core_module"`: the adiabat of the live Aragog core, through its core temperature.
+- A structure update during the run with any other `core_bc`: the adiabat of a Gaussian core through the CMB temperature `T_cmb` of the last output row, or through the deepest mantle temperature when that row has no positive `T_cmb`.
+- A solve at the start of the run: the adiabat of a Gaussian core through the deepest mantle temperature.
+- The solve after a giant impact: the adiabat of a Gaussian core through the `T_cmb` of the last output row, the core temperature before the impact heats it.
+
+The mantle keeps the Aragog temperature profile.
 
 Zalmoxis reads the table at the pressure of each core node. Past the ends of the table it extrapolates linearly from the end interval.
 
 For example, at the first structure update (102 yr) of a 1 Earth-mass planet with `core_bc = "energy_balance"`, the table makes the core radius 0.74 % larger and the central pressure 4.4 % lower than with the whole core at the temperature of the deepest mantle node.
 
-#### Limits of the core temperature table
+### Limits of the core temperature table
 
 
 - A core node that lies past the table by more than 0.1 of its pressure range stops the solve. In a run, PROTEUS then keeps the previous structure; after 8 failed structure updates in a row the run stops.

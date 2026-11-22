@@ -2,9 +2,9 @@
 
 ## What this page checks
 
-This page checks how PROTEUS carries a core on the PALEOS profile across a structure update (`src/proteus/interior_energetics/aragog_core_tabulated.py`).
+This page checks how PROTEUS gives a core on the PALEOS profile its new temperature after a structure update (`src/proteus/interior_energetics/aragog_core_tabulated.py`).
 With `profile_source = "paleos"`, the core of the Aragog `core_module` boundary lies on an isentrope of the PALEOS liquid iron table, a line of constant specific entropy through the temperature at the core-mantle boundary (CMB).
-PROTEUS refuses this profile when it reads the config, because it needs a 2-phase iron core in the Zalmoxis structure that PROTEUS does not build; the tests below run the code on 2 stored structures.
+PROTEUS refuses this profile when it reads the config. The profile needs a 2-phase iron core in the Zalmoxis structure, which PROTEUS does not build. The tests below therefore run the code on 2 stored structures.
 When the structure solver changes the core, PROTEUS gives the core the CMB temperature that keeps its mass and its total entropy, and books the change of the core heat content in `step_dE_struct_core_J`.
 Validation here means that we run the code on a case where another source gives the right answer, and the test checks that the code gives that answer within a stated tolerance.
 If this part is wrong, the core starts too hot or too cold after each structure update, or the core energy ledger books a heat that depends on the table and not on the planet.
@@ -44,7 +44,7 @@ This case has no plot: it compares 2 values of one quantity, and the plot of the
 
 ## On the Gaussian profile the content is Aragog's heat content
 
-**Why this check exists.** PROTEUS uses one heat-content formula, $T\,C_s - R$, for both core profiles. If that formula did not reduce to Aragog's own heat content on the Gaussian profile, the default profile would book a wrong structure term.
+**Why this check exists.** PROTEUS uses one heat-content formula, $T\,C_s - R$, for both core profiles. On the Gaussian profile, the core energy ledger uses this formula for the jump of the heat content at a structure update or an impact. If the formula did not reduce to Aragog's own heat content, that jump would not match the booked term, and the ledger of a default run would not close.
 
 **What it tests.** An iron-alloy core on the Gaussian profile at 3800, 4100, 4500 and 5200 K, below and above its onset near 4149 K. The content of PROTEUS must equal Aragog's `heat_content`, and below the onset it must differ from $T\,C_s$ alone.
 
