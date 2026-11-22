@@ -47,6 +47,31 @@ def _gaussian(alpha=1.35e-5, c_p=840.0, **row):
     )
 
 
+def _re_solve_case(tmp_path):
+    """Config, dirs, SPIDER-ordered interior object and row of a due structure re-solve at 500 yr
+    (deepest mantle T 3600 K, row T_cmb 4300 K)."""
+    from unittest.mock import MagicMock
+
+    from proteus.interior_energetics.common import Interior_t
+
+    config = MagicMock()
+    z = config.interior_struct.zalmoxis
+    z.update_interval, z.update_min_interval, z.update_stale_ceiling = 100.0, 0.0, 0.0
+    z.update_dtmagma_frac, z.update_dphi_abs, z.num_levels = 0.03, 0.05, 50
+    z.mesh_max_shift, z.mesh_convergence_interval = 0.05, 10.0
+    config.planet.temperature_mode = 'isothermal'
+    config.interior_energetics.module = 'spider'
+    config.interior_energetics.aragog = _config().interior_energetics.aragog
+    (tmp_path / 'data').mkdir()
+    dirs = {'output': str(tmp_path), 'spider': str(tmp_path), 'mesh_shift_active': False}
+    interior_o = Interior_t(50)
+    interior_o.radius = np.linspace(6.371e6, 3.504e6, 50)
+    interior_o.temp = np.linspace(2000.0, 3600.0, 49)  # surface-first, as SPIDER stores it
+    row = {**ROW, 'Time': 500.0, 'T_magma': 2000.0, 'Phi_global': 0.8, 'R_int': 6.371e6}
+    row.update(gravity=9.81, M_int=5.972e24, M_int_target=5.972e24)
+    return config, dirs, interior_o, row
+
+
 def _live(t_core, profiles):
     """Interior object with an Aragog solver holding a core budget at ``t_core``."""
     solver = SimpleNamespace(
@@ -109,33 +134,11 @@ def test_a_re_solve_anchors_the_table_at_the_row_t_cmb_or_the_deepest_mantle_t(
     """A structure re-solve anchors the core table at the row T_cmb; a row without a positive
     T_cmb (a dummy interior writes none) takes the deepest temperature of the mantle profile
     it hands to Zalmoxis, as the start-up passes do."""
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import patch
 
-    from proteus.interior_energetics.common import Interior_t
     from proteus.interior_energetics.wrapper import update_structure_from_interior
 
-    config = MagicMock()
-    z = config.interior_struct.zalmoxis
-    z.update_interval, z.update_min_interval, z.update_stale_ceiling = 100.0, 0.0, 0.0
-    z.update_dtmagma_frac, z.update_dphi_abs, z.num_levels = 0.03, 0.05, 50
-    z.mesh_max_shift, z.mesh_convergence_interval = 0.05, 10.0
-    config.planet.temperature_mode = 'isothermal'
-    config.interior_energetics.module = 'spider'
-    config.interior_energetics.aragog = _config().interior_energetics.aragog
-    (tmp_path / 'data').mkdir()
-    dirs = {'output': str(tmp_path), 'spider': str(tmp_path), 'mesh_shift_active': False}
-    interior_o = Interior_t(50)
-    interior_o.radius = np.linspace(6.371e6, 3.504e6, 50)
-    interior_o.temp = np.linspace(2000.0, 3600.0, 49)  # surface-first, as SPIDER stores it
-    row = {
-        **ROW,
-        'Time': 500.0,
-        'T_magma': 2000.0,
-        'Phi_global': 0.8,
-        'R_int': 6.371e6,
-        'gravity': 9.81,
-    }
-    row['M_int'] = row['M_int_target'] = 5.972e24
+    config, dirs, interior_o, row = _re_solve_case(tmp_path)
     if row_t_cmb is None:
         del row['T_cmb']
     else:
@@ -167,29 +170,15 @@ def test_a_core_table_error_in_a_re_solve_stops_the_run(tmp_path, monkeypatch, e
     """A core temperature table that cannot be built stops a structure re-solve with that error,
     before the solver runs, instead of the fallback to the previous structure; a RuntimeError,
     which the fallback catches from the solve, also stops the run when the builder raises it."""
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import patch
 
     import proteus.interior_energetics.wrapper as wrapper_mod
-    from proteus.interior_energetics.common import Interior_t
 
     def broken(*a, **k):
         raise error
 
     monkeypatch.setattr(wrapper_mod, '_structure_core_table', broken)
-    config = MagicMock()
-    z = config.interior_struct.zalmoxis
-    z.update_interval, z.update_min_interval, z.update_stale_ceiling = 100.0, 0.0, 0.0
-    z.update_dtmagma_frac, z.update_dphi_abs, z.num_levels = 0.03, 0.05, 50
-    z.mesh_max_shift, z.mesh_convergence_interval = 0.05, 10.0
-    config.planet.temperature_mode = 'isothermal'
-    config.interior_energetics.module = 'spider'
-    (tmp_path / 'data').mkdir()
-    dirs = {'output': str(tmp_path), 'spider': str(tmp_path), 'mesh_shift_active': False}
-    interior_o = Interior_t(50)
-    interior_o.radius = np.linspace(6.371e6, 3.504e6, 50)
-    interior_o.temp = np.linspace(2000.0, 3600.0, 49)
-    row = {**ROW, 'Time': 500.0, 'T_magma': 2000.0, 'Phi_global': 0.8, 'R_int': 6.371e6}
-    row.update(gravity=9.81, M_int=5.972e24, M_int_target=5.972e24)
+    config, dirs, interior_o, row = _re_solve_case(tmp_path)
     with (
         patch('proteus.interior_struct.zalmoxis.zalmoxis_solver') as solver,
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
