@@ -119,3 +119,16 @@ def test_apply_noise_refuses_bad_settings_without_changing_the_config(kw, match)
         apply_noise(cfg)
     assert cfg['observables'] == before['observables']
     assert cfg['sigma'] == before['sigma']
+
+
+def test_noise_leaves_upper_limits_unchanged():
+    """An upper limit keeps its value and sigma under noise, and stays an upper limit, while the
+    measured observables get their draw."""
+    obs = {'R_obs': 7.0e6, 'C/O_atm': 0.1}
+    sigma = validate_sigma(
+        obs, {'R_obs': 1.0e5, 'C/O_atm': '0.3 dex'}, upper_limits=['C/O_atm']
+    )
+    noisy, out = noisy_observables(obs, sigma, None, 7)
+    assert noisy['C/O_atm'] == obs['C/O_atm'] and out['C/O_atm'] == sigma['C/O_atm']
+    assert out.upper == {'C/O_atm'}
+    assert noisy['R_obs'] != obs['R_obs']

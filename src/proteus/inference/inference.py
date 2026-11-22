@@ -394,7 +394,9 @@ def run_inference(config):
     validate_reference_config(config['ref_config'], config['parameters'], spectral_cache)
 
     # Optional uncertainty of each observable, in the observable's own units
-    config['sigma'] = validate_sigma(config['observables'], config.get('sigma'))
+    config['sigma'] = validate_sigma(
+        config['observables'], config.get('sigma'), config.get('upper_limits')
+    )
 
     # Optional correlations between the observable uncertainties
     config['correlation'] = validate_correlation(

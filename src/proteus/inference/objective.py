@@ -461,11 +461,21 @@ def log_warp(sq_dist):
 
 class Sigma(dict):
     """Sigma of each observable in its own units, as `validate_sigma` returns it. `log` names
-    the observables compared in log10 only because their sigma was given in dex."""
+    the observables compared in log10 only because their sigma was given in dex, and `upper`
+    those whose value is an upper limit."""
 
-    def __init__(self, values=(), log=()):
+    def __init__(self, values=(), log=(), upper=()):
         super().__init__(values)
         self.log = frozenset(log)
+        self.upper = frozenset(upper)
+
+
+def upper_mask(names, sigma) -> torch.Tensor | None:
+    """Which of the observables `names` are upper limits, shape (m,), or None if none is."""
+    upper = getattr(sigma, 'upper', frozenset())
+    if not upper:
+        return None
+    return torch.tensor([k in upper for k in names])
 
 
 def compared_in_log(k: str, sigma=None) -> bool:
@@ -500,25 +510,37 @@ def observable_space(sim_dict, tru_dict, sigma=None):
     return sim_vals, tru_vals, sig_vals
 
 
-def squared_distance(diff, names, whitener=None, loss=None):
+def _loss_terms(diff, name, param):
+    """Loss of each normalised difference: squared, Student-t or Huber."""
+    if name == 'student-t':
+        return (param + 1.0) * torch.log1p(diff**2 / param)
+    if name == 'huber':
+        return torch.where(diff.abs() <= param, diff**2, 2.0 * param * diff.abs() - param**2)
+    return diff**2
+
+
+def squared_distance(diff, names, whitener=None, loss=None, upper=None):
     """Sum over observables `names` of the loss of each row of normalised differences diff
     (m, len(names)), shape (m, 1): squared, correlated through whitener, or robust `loss`.
-    With both, the robust loss applies to the whitened residuals, so it keeps the correlation."""
+    With both, the robust loss applies to the whitened residuals, so it keeps the correlation.
+
+    An observable in the boolean mask `upper` (shape (len(names),)) is an upper limit: its term
+    is -2 ln Phi(-diff), the censored Gaussian, which is 0 far below the limit, 2 ln 2 at it,
+    and tends to diff**2 above it. Upper limits take no correlation.
+    """
     name, param = loss if loss is not None else (None, None)
+    if upper is not None and bool(upper.any()):
+        if whitener is not None:
+            raise ValueError('upper limits cannot be correlated with other observables')
+        terms = torch.where(
+            upper, -2.0 * torch.special.log_ndtr(-diff), _loss_terms(diff, name, param)
+        )
+        return terms.sum(dim=1, keepdim=True)
     if name is not None and whitener is not None:
         diff = whitener.whiten(names, diff)
-    if name == 'student-t':
-        terms = (param + 1.0) * torch.log1p(diff**2 / param)
-        sq_dist = terms.sum(dim=1, keepdim=True)
-    elif name == 'huber':
-        terms = torch.where(diff.abs() <= param, diff**2, 2.0 * param * diff.abs() - param**2)
-        sq_dist = terms.sum(dim=1, keepdim=True)
-    elif whitener is None:
-        sq_dist = (diff**2).sum(dim=1, keepdim=True)
-    else:
-        sq_dist = whitener.chi_squared(names, diff)
-
-    return sq_dist
+    if name is None and whitener is not None:
+        return whitener.chi_squared(names, diff)
+    return _loss_terms(diff, name, param).sum(dim=1, keepdim=True)
 
 
 def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None, loss=None):
@@ -567,10 +589,13 @@ def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None, loss=None):
     sim = torch.tensor(sim_vals, dtype=dtype).reshape(1, -1)
     true_y = torch.tensor(tru_vals, dtype=dtype)
     sig = torch.tensor(sig_vals, dtype=dtype) if sigma is not None else None
-    return objective_from_observables(sim, true_y, sig, list(sim_dict.keys()), whitener, loss)
+    names = list(sim_dict.keys())
+    return objective_from_observables(
+        sim, true_y, sig, names, whitener, loss, upper_mask(names, sigma)
+    )
 
 
-def objective_from_observables(sim, tru, sig, names, whitener=None, loss=None):
+def objective_from_observables(sim, tru, sig, names, whitener=None, loss=None, upper=None):
     """Objective of each row of simulated observables, in the space `observable_space` gives.
 
     Parameters
@@ -582,11 +607,14 @@ def objective_from_observables(sim, tru, sig, names, whitener=None, loss=None):
     - names (list[str]): Observable names, in column order.
     - whitener (CorrelationWhitener | None): Observable correlations.
     - loss (tuple[str, float] | None): Robust loss; None for chi-squared.
+    - upper (torch.Tensor | None): Boolean mask (m,) of the observables that are upper limits.
 
     Returns
     ----------
     - torch.Tensor: Objective, shape (..., 1).
     """
+    if sig is None and upper is not None:
+        raise ValueError('upper limits need sigma: sigma sets how sharply the limit cuts off')
     if sig is None:
         # reproduces the original objective function
         denom = torch.where(tru >= 0, tru + EPS_CLIP, tru - EPS_CLIP)
@@ -594,7 +622,7 @@ def objective_from_observables(sim, tru, sig, names, whitener=None, loss=None):
     else:
         diff = (sim - tru) / sig
     flat = diff.reshape(-1, diff.shape[-1])
-    sq_dist = squared_distance(flat, names, whitener, loss)
+    sq_dist = squared_distance(flat, names, whitener, loss, upper)
     return log_warp(sq_dist).reshape(*diff.shape[:-1], 1)
 
 
@@ -624,7 +652,7 @@ def observable_row(sim_dict, tru_dict, sigma=None) -> torch.Tensor:
     )
 
 
-def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
+def validate_sigma(observables: dict, sigma: dict | None, upper_limits=None) -> dict | None:
     """Check the observable uncertainties given in the inference config.
 
     Parameters
@@ -634,6 +662,8 @@ def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
       units as the observable, or None to use the relative-difference objective.
       Any observable also takes a string such as '0.1 dex', which makes the
       objective compare it in log10.
+    - upper_limits (list[str] | None): Observables whose value in `observables` is an upper
+      limit, with sigma the 1-sigma uncertainty of that limit.
 
     Returns
     ----------
@@ -643,9 +673,15 @@ def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
     Raises:
         ValueError: If an entry is missing, names no observable, is not a positive
             finite number or '<number> dex', or belongs to a log-compared
-            observable whose value is not positive.
+            observable whose value is not positive, or if `upper_limits` is not a list of
+            distinct observable names or is given without sigma.
     """
+    upper = _validate_upper_limits(observables, upper_limits)
     if sigma is None:
+        if upper:
+            raise ValueError(
+                'upper_limits need [sigma]: sigma sets how sharply a limit cuts off'
+            )
         return None
 
     missing = sorted(set(observables) - set(sigma))
@@ -685,7 +721,23 @@ def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
                     "is first order, so give it in dex instead (e.g. '0.1 dex')"
                 )
         out[k] = v
-    return Sigma(out, dex_log)
+    return Sigma(out, dex_log, upper)
+
+
+def _validate_upper_limits(observables: dict, upper_limits) -> list[str]:
+    """Names in the config's `upper_limits` list, checked against the observables."""
+    if upper_limits is None:
+        return []
+    if not isinstance(upper_limits, list) or not all(isinstance(k, str) for k in upper_limits):
+        raise ValueError(
+            f'upper_limits must be a list of observable names, got {upper_limits!r}'
+        )
+    unknown = sorted(set(upper_limits) - set(observables))
+    if unknown:
+        raise ValueError(f'upper_limits names that are not observables: {unknown}')
+    if len(set(upper_limits)) != len(upper_limits):
+        raise ValueError(f'upper_limits names an observable twice: {upper_limits}')
+    return list(upper_limits)
 
 
 def J(

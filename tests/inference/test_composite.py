@@ -173,3 +173,19 @@ def test_validate_bo_per_observable():
         comp.validate_bo_per_observable('yes', 'LogEI')
     with pytest.raises(ValueError, match='acqf'):
         comp.validate_bo_per_observable(True, 'TS')
+
+
+def test_observable_objective_reproduces_eval_obj_with_an_upper_limit():
+    """With o3 an upper limit, J of the observable rows equals eval_obj of the raw observables,
+    and points below the limit differ from the two-sided objective."""
+    sigma = Sigma(dict(SIGMA), log=SIGMA.log, upper=['o3'])
+    objective = comp.ObservableObjective(TARGET, sigma)
+    u = np.array([[0.4, 0.6], [0.42, 0.55], [0.1, 0.9], [0.8, 0.2]])
+    obs = _observables(u)
+    raw = [{k: v[i] for k, v in obs.items()} for i in range(len(u))]
+    rows = torch.cat([observable_row(r, TARGET, sigma) for r in raw])
+    ref = torch.tensor([float(eval_obj(r, TARGET, sigma)) for r in raw], dtype=torch.double)
+    torch.testing.assert_close(objective(rows), ref, rtol=1e-12, atol=1e-12)
+    assert objective(rows)[0] > objective(rows)[2] + 1
+    two_sided = comp.ObservableObjective(TARGET, SIGMA)(rows)
+    assert (objective(rows) - two_sided).abs().max() > 0.1

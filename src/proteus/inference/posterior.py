@@ -24,6 +24,7 @@ from proteus.inference.objective import (
     objective_from_observables,
     observable_space,
     observable_values,
+    upper_mask,
 )
 from proteus.inference.plot_fit import case_parameters
 from proteus.inference.transforms import normalize_parameters, unnormalize_parameters
@@ -124,10 +125,12 @@ def observables_objective(config: dict, directory, cases: pd.DataFrame):
     tru, sig = torch.tensor(tru, dtype=dtype), torch.tensor(sig, dtype=dtype)
     corr = config.get('correlation')
     whitener = None if corr is None else CorrelationWhitener(keys, corr)
+    upper = upper_mask(keys, sigma)
 
     def objective(U):
         P = torch.stack([gp_mean(gp, U) for gp in gps], dim=1)
-        return objective_from_observables(P, tru, sig, keys, whitener, config.get('loss'))[:, 0]
+        J = objective_from_observables(P, tru, sig, keys, whitener, config.get('loss'), upper)
+        return J[:, 0]
 
     return objective
 

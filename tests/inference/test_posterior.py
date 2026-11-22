@@ -404,3 +404,30 @@ def test_validate_posterior_per_observable_rejects(flag, n, match):
     with pytest.raises(ValueError, match=match) as err:
         post.validate_posterior_per_observable(flag, n)
     assert str(err.value).startswith('posterior_per_observable ')
+
+
+def test_observables_objective_applies_upper_limits(monkeypatch, no_hyperfit):
+    """With C/O an upper limit, J from the observable GPs follows eval_obj with that limit:
+    a point whose C/O lies far below the target scores like a match on C/O."""
+    from proteus.inference.objective import Sigma
+
+    config = _observable_config()
+    config['sigma'] = Sigma(config['sigma'], upper=['C/O_atm'])
+    objective = post.observables_objective(config, 'unused', _observable_cases(monkeypatch))
+    # C/O is 10**(2 (u0 - u1)): one decade below the 0.126 target here, R and T near it
+    U = torch.tensor([[0.3, 0.75], [0.28, 0.98]], dtype=torch.double)
+    true = _observables(U.numpy())
+    ref = [
+        float(
+            eval_obj({k: v[i] for k, v in true.items()}, config['observables'], config['sigma'])
+        )
+        for i in range(len(U))
+    ]
+    two_sided = float(
+        eval_obj(
+            {k: v[1] for k, v in true.items()}, config['observables'], dict(config['sigma'])
+        )
+    )
+    chi2, chi2_ref = 10 ** -objective(U).numpy(), 10 ** -np.array(ref)
+    assert chi2[1] == pytest.approx(chi2_ref[1], rel=0.05)
+    assert chi2_ref[1] < 0.1 * 10**-two_sided

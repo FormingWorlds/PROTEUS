@@ -20,6 +20,7 @@ from proteus.inference.objective import (
     BAD_OBJ_VALUE,
     objective_from_observables,
     observable_space,
+    upper_mask,
 )
 from proteus.inference.posterior import fit_gp
 
@@ -53,11 +54,12 @@ class ObservableObjective:
             None if correlation is None else CorrelationWhitener(self.names, correlation)
         )
         self.loss = loss
+        self.upper = upper_mask(self.names, sigma)
 
     def __call__(self, S: torch.Tensor) -> torch.Tensor:
         """Objective of each row of S, shape (..., m), as shape (...)."""
         J = objective_from_observables(
-            S, self.tru, self.sig, self.names, self.whitener, self.loss
+            S, self.tru, self.sig, self.names, self.whitener, self.loss, self.upper
         )
         return J[..., 0]
 

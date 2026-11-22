@@ -98,6 +98,10 @@ def validate_correlation(
     if sigma is None:
         raise ValueError('correlation is given but sigma is not: correlations scale sigma')
     CorrelationWhitener(list(observables), correlation)
+    upper = getattr(sigma, 'upper', frozenset())
+    paired = sorted({k for a, row in correlation.items() for b in row for k in (a, b)} & upper)
+    if paired:
+        raise ValueError(f'upper limits cannot be correlated with other observables: {paired}')
     return {a: {b: float(rho) for b, rho in row.items()} for a, row in correlation.items()}
 
 

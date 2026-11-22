@@ -92,6 +92,28 @@ J = -log10( sum( ((sim - true) / sigma)^2 ) + 1e-10 )
 
 Observables that span orders of magnitude (e.g. `atm_kg_per_mol`) are compared as `log10` values, and so are element mass ratios such as `C/O_atm` when `[sigma]` is given. Their uncertainty can be given in linear space, e.g. `"C/O_atm" = 0.1`; in this case, it is converted to dex to first order via `sigma / (true * ln 10)`. Optionally, it can be given in dex directly as a string, for example `"C/O_atm" = "0.1 dex"`. Any other positive observable also takes a sigma in dex, for example `"g_obs" = "0.05 dex"`, which makes the study compare it in log10 instead of linearly; this suits large relative errors, where linear noise could make the value negative.
 
+### Upper limits
+
+A species that was not detected gives an upper limit rather than a value. List such observables in `upper_limits`; their value in `[observables]` is then the limit, and their `[sigma]` its 1-sigma uncertainty:
+
+```toml
+upper_limits = ["S/O_atm"]
+
+[observables]
+"S/O_atm" = 0.01
+
+[sigma]
+"S/O_atm" = "0.2 dex"
+```
+
+Instead of `u^2`, an upper limit adds the censored Gaussian term
+
+```
+-2 ln Phi(-u),    u = (sim - limit) / sigma
+```
+
+where `Phi` is the standard normal cumulative distribution. It is 0 well below the limit, `2 ln 2` at it, and approaches `u^2` above it, so any simulated value well below the limit fits equally well. It applies with every `objective`. An upper limit cannot appear in `[correlation]` or with `correlate_ratios`, and `noise = true` leaves it unchanged, because a limit is a reported value, not a measurement.
+
 !!! warning "Do not compare `J` when using different objectives"
     The two objectives are on different scales, so compare `J` only between inference runs that use the same one. The objective in use is reported at start-up.
 

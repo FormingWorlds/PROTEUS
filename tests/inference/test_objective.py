@@ -1889,3 +1889,69 @@ def test_J_with_observables_appends_the_compared_observables(monkeypatch, tmp_pa
     failed = objective_mod.J(**kwargs, with_observables=True)
     assert failed[0, 0].item() == pytest.approx(objective_mod.BAD_OBJ_VALUE)
     assert torch.isnan(failed[0, 1:]).all()
+
+
+@pytest.mark.physics_invariant
+def test_upper_limit_term_is_the_censored_gaussian():
+    """An upper limit adds -2 ln Phi(-u): 0 far below the limit, 2 ln 2 at it and about u^2 far
+    above. A two-sided u^2 (100 at u = -10) or a hinge max(u, 0)^2 (0 at u = 0) both miss."""
+    from scipy.stats import norm
+
+    u = torch.tensor([[-10.0], [-1.0], [0.0], [1.0], [5.0]], dtype=torch.double)
+    upper = torch.tensor([True])
+    got = objective_mod.squared_distance(u, ['C/O_atm'], None, None, upper)[:, 0].numpy()
+    ref = -2.0 * norm.logcdf(-u[:, 0].numpy())
+    assert got == pytest.approx(ref, rel=1e-10)
+    assert got[0] < 1e-20
+    assert got[2] == pytest.approx(2.0 * math.log(2.0), rel=1e-12)
+    assert got[4] > 25.0  # above the limit it costs at least the two-sided u^2
+    # The other observables keep their loss: a two-column row adds the plain u^2 of the first
+    both = objective_mod.squared_distance(
+        torch.tensor([[2.0, -10.0]], dtype=torch.double),
+        ['R_obs', 'C/O_atm'],
+        None,
+        ('huber', 1.5),
+        torch.tensor([False, True]),
+    )
+    assert both.item() == pytest.approx(2 * 1.5 * 2.0 - 1.5**2, rel=1e-10)
+
+
+def test_eval_obj_scores_values_below_an_upper_limit_as_a_match():
+    """With C/O an upper limit of 0.1 at 0.1 dex, any C/O well below it scores as a perfect
+    match, while the same distance above the limit is a poor fit."""
+    obs = {'R_obs': 7.0e6, 'C/O_atm': 0.1}
+    sigma = objective_mod.validate_sigma(
+        obs, {'R_obs': 1.0e5, 'C/O_atm': '0.1 dex'}, upper_limits=['C/O_atm']
+    )
+    assert sigma.upper == {'C/O_atm'}
+
+    def chi2(co):
+        return 10 ** -objective_mod.eval_obj({'R_obs': 7.0e6, 'C/O_atm': co}, obs, sigma).item()
+
+    assert chi2(1e-4) < 1e-9 and chi2(1e-8) < 1e-9
+    assert chi2(0.1) == pytest.approx(2.0 * math.log(2.0), rel=1e-6)
+    assert chi2(0.1 * 10**0.5) > 25.0
+
+
+def test_validate_sigma_checks_upper_limits():
+    """upper_limits must be a list of distinct observables and needs [sigma]."""
+    obs = {'R_obs': 7.0e6, 'C/O_atm': 0.1}
+    sig = {'R_obs': 1.0e5, 'C/O_atm': '0.1 dex'}
+    assert objective_mod.validate_sigma(obs, sig).upper == frozenset()
+    for bad, match in (
+        (['S/O_atm'], 'not observables'),
+        ('C/O_atm', 'must be a list'),
+        (['C/O_atm', 'C/O_atm'], 'twice'),
+    ):
+        with pytest.raises(ValueError, match=match):
+            objective_mod.validate_sigma(obs, sig, upper_limits=bad)
+    with pytest.raises(ValueError, match='need \\[sigma\\]'):
+        objective_mod.validate_sigma(obs, None, upper_limits=['C/O_atm'])
+    with pytest.raises(ValueError, match='correlated'):
+        objective_mod.squared_distance(
+            torch.zeros((1, 2), dtype=torch.double),
+            ['R_obs', 'C/O_atm'],
+            CorrelationWhitener(['R_obs', 'C/O_atm'], {'R_obs': {'C/O_atm': 0.3}}),
+            None,
+            torch.tensor([False, True]),
+        )

@@ -14,16 +14,23 @@ def noisy_observables(
 ) -> tuple[dict, dict]:
     """One draw of the observables with Gaussian noise of standard deviation sigma, in the space
     the objective compares each in (log10 or linear), correlated as in `correlation`. Returns
-    the noisy observables and sigma rescaled so that the error in dex stays the same."""
+    the noisy observables and sigma rescaled so that the error in dex stays the same. An upper
+    limit is a reported value, not a measurement, so it keeps its value and sigma."""
     keys = list(observables)
     _, x, s = observable_space(observables, observables, sigma)
     z = np.random.default_rng(seed).standard_normal(len(keys))
     if correlation:
         z = CorrelationWhitener(keys, correlation).correlate(z)
+    upper = getattr(sigma, 'upper', frozenset())
+    z = np.where([k in upper for k in keys], 0.0, z)
     y = np.asarray(x) + np.asarray(s) * z
     noisy = {k: float(10**v if compared_in_log(k, sigma) else v) for k, v in zip(keys, y)}
     scale = {k: noisy[k] / observables[k] if compared_in_log(k, sigma) else 1.0 for k in keys}
-    return noisy, Sigma({k: sigma[k] * scale[k] for k in keys}, getattr(sigma, 'log', ()))
+    noisy.update({k: observables[k] for k in upper})
+    scale.update({k: 1.0 for k in upper})
+    return noisy, Sigma(
+        {k: sigma[k] * scale[k] for k in keys}, getattr(sigma, 'log', ()), upper
+    )
 
 
 def apply_noise(config: dict) -> None:
