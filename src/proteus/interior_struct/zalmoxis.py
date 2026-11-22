@@ -3265,6 +3265,24 @@ def compute_structure_mass_desync(radii, density, mass_enclosed) -> float:
     return abs(shell_mass_trapezoid - accumulator_total) / accumulator_total
 
 
+def _core_table_excess(model_results):
+    """Return ``core_T_max_excess`` of a Zalmoxis result (0.0 when absent).
+
+    Raises
+    ------
+    RuntimeError
+        When the core nodes lie beyond the core temperature table by more than
+        ``MAX_CORE_T_EXCESS`` of its pressure range, or by NaN.
+    """
+    excess = float(model_results.get('core_T_max_excess', 0.0))
+    if not excess <= MAX_CORE_T_EXCESS:  # NaN refused too
+        raise RuntimeError(
+            f'Zalmoxis: core nodes lie {excess:.3g} of the core temperature table range '
+            f'beyond it (limit {MAX_CORE_T_EXCESS})'
+        )
+    return excess
+
+
 def zalmoxis_solver(
     config: Config,
     outdir: str,
@@ -3579,6 +3597,9 @@ def zalmoxis_solver(
     # skipped entirely: at the structural-Picard plateau (7-10 %) looser
     # tolerance does not rescue a structurally-unsupported configuration.
     # Retry remains useful for transient flickers near the tolerance edge.
+    _core_table_excess(
+        model_results
+    )  # a core beyond the table: no retry, the tolerance cannot help
     primary_best_mass_error = model_results.get('best_mass_error')
     skip_retry_high_error = (
         primary_best_mass_error is not None and primary_best_mass_error > 0.05
@@ -3725,12 +3746,7 @@ def zalmoxis_solver(
     cmb_radius, cmb_pressure, cmb_gravity = (float(core[k][-1]) for k in ('r', 'P', 'g'))
     cmb_tol = float(mesh_radius_tolerance(cmb_radius, planet_radius))
     hf_row['struct_core_T_used'] = float(bool(model_results.get('core_T_used', False)))
-    hf_row['struct_core_T_excess'] = float(model_results.get('core_T_max_excess', 0.0))
-    if not hf_row['struct_core_T_excess'] <= MAX_CORE_T_EXCESS:  # NaN refused too
-        raise RuntimeError(
-            f'Zalmoxis: core nodes lie {hf_row["struct_core_T_excess"]:.3g} of the core '
-            f'temperature table range beyond it (limit {MAX_CORE_T_EXCESS})'
-        )
+    hf_row['struct_core_T_excess'] = _core_table_excess(model_results)
     if radii[cmb_index] < cmb_radius - cmb_tol or cmb_index + 1 >= len(radii):
         raise RuntimeError(
             f'Zalmoxis: node {cmb_index} ({radii[cmb_index]:.6e} m) is the first at the core mass '
