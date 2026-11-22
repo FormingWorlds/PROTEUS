@@ -2826,6 +2826,35 @@ def test_the_core_table_reaches_zalmoxis_and_sets_the_rebuilt_core_temperature(
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_jax_rebuild_takes_the_core_nodes_of_the_zalmoxis_layer_rule(tmp_path, monkeypatch):
+    """A node whose enclosed mass lies within the 1e-12 band below the core mass is mantle in
+    Zalmoxis (``is_core``); the JAX rebuild gives it the mantle temperature, not the core table."""
+    from proteus.interior_struct.core_temperature import table_temperature
+
+    model = _plausible_model_results()
+    cmb_i = 20
+    model['cmb_mass'] = float(model['mass_enclosed'][cmb_i]) * (1.0 + 5.0e-13)
+    model.update(core_T_used=True, core_T_max_excess=0.0)
+    r_arr, t_arr = _cooled_mantle_arrays(model)
+    _, rho_mock, _, _, _, _, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        lambda r, P: float(np.interp(r, r_arr, t_arr)),
+        main_results=model,
+        core_table=_CORE_TABLE,
+    )
+    temps = np.array([c.args[3] for c in rho_mock.call_args_list])
+    p = model['pressure']
+    assert temps[:cmb_i] == pytest.approx(table_temperature(p[:cmb_i], _CORE_TABLE), rel=1e-12)
+    want = np.interp(model['radii'][cmb_i], r_arr, t_arr)
+    assert temps[cmb_i] == pytest.approx(want, rel=1e-12)
+    assert abs(temps[cmb_i] - float(table_temperature(p[cmb_i], _CORE_TABLE))) > 1.0
+
+
+@pytest.mark.unit
 def test_a_solve_without_a_core_table_gives_zalmoxis_no_table_and_zero_flags(
     tmp_path, monkeypatch
 ):
