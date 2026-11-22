@@ -2855,6 +2855,35 @@ def test_the_jax_rebuild_takes_the_core_nodes_of_the_zalmoxis_layer_rule(tmp_pat
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ('mantle_eos', 'use_jax'),
+    [('PALEOS:MgSiO3', True), ('PALEOS:MgSiO3', False)],
+)
+def test_a_solve_with_a_core_table_gives_zalmoxis_a_mantle_source(
+    tmp_path, monkeypatch, mantle_eos, use_jax
+):
+    """Zalmoxis takes a core table only with a mantle temperature source: the callable, or the
+    arrays on the JAX path. Every forwarded call with the table carries one of them."""
+    model = _plausible_model_results()
+    r_arr, t_arr = _cooled_mantle_arrays(model)
+    main_mock, _, _, _, _, _, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        mantle_eos,
+        (r_arr, t_arr),
+        lambda r, P: float(np.interp(r, r_arr, t_arr)),
+        main_results=model,
+        use_jax=use_jax,
+        core_table=_CORE_TABLE,
+    )
+    kw = main_mock.call_args.kwargs
+    params = main_mock.call_args.args[0] if main_mock.call_args.args else kw['config_params']
+    assert kw['core_temperature_arrays'] is _CORE_TABLE
+    jax_arrays = bool(params.get('use_jax')) and kw.get('temperature_arrays') is not None
+    assert kw.get('temperature_function') is not None or jax_arrays
+
+
+@pytest.mark.unit
 def test_a_solve_without_a_core_table_gives_zalmoxis_no_table_and_zero_flags(
     tmp_path, monkeypatch
 ):
