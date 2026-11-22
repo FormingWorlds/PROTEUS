@@ -363,7 +363,7 @@ def check_accretion_core_stratification_compatibility(instance, attribute, value
 
 
 def check_core_profile_source_requirements(instance, attribute, value):
-    """Reject the PALEOS core profile where it does not apply.
+    """Reject the PALEOS core profile, which needs a 2-phase iron core that PROTEUS does not build.
 
     Only core_module reads the profile; Aragog builds no stratified shell on it; a giant
     impact refits the Gaussian profile to the grown core, which the PALEOS profile does not

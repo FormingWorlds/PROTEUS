@@ -220,7 +220,7 @@ Cross-field constraints enforced when the config file loads:
 - Reject accretion.remelt = 'computed' without a module that reports a melt fraction.
 - Reject accretion runs that also vapourise rock into the atmosphere.
 - Reject an Aragog core_module core that its structure or solver cannot serve.
-- Reject the PALEOS core profile where it does not apply.
+- Reject the PALEOS core profile, which needs a 2-phase iron core that PROTEUS does not build.
 - Check that required external packages are importable for the selected modules.
 - The maximum must exceed the minimum on the same section.
 - Reject giant impacts with the parameterized star-planet model.

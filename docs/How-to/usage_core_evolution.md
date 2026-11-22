@@ -40,15 +40,6 @@ nothing. The inner core releases no gravitational energy (`alpha_c = 0`,
 A config without `core_bc` and without the `core_module` table runs the
 default `energy_balance` mode.
 
-The core profile is a Gaussian density fitted to the structure by default.
-`profile_source = "paleos"` selects an isentrope of the PALEOS liquid iron
-table on the core arrays of the structure instead, with its secular heat
-capacity `core_cp_override` and its temperature step `core_t_cmb_step`
-([how it works](../Explanations/model.md#the-core-profile-from-the-paleos-liquid-iron-table)).
-The profile needs a 2-phase iron core in the Zalmoxis structure (a liquid outer
-core over a solid inner core), which PROTEUS does not build, so PROTEUS refuses
-`profile_source = "paleos"` when it reads the config.
-
 ## What it needs
 
 - **The Zalmoxis structure.** The density profile of the core is fitted to
@@ -69,6 +60,15 @@ core over a solid inner core), which PROTEUS does not build, so PROTEUS refuses
   content, which is not available for a stratified core. The default
   `update_interval = 1e9` keeps the update triggers active, so a stratified
   core needs `update_interval = 0` written in the config.
+- **The Gaussian core profile.** The core profile is a Gaussian density fitted
+  to the structure. `profile_source = "paleos"` selects an isentrope of the
+  PALEOS liquid iron table on the core arrays of the structure instead, with its
+  secular heat capacity `core_cp_override` and its temperature step
+  `core_t_cmb_step`
+  ([how it works](../Explanations/model.md#the-core-profile-from-the-paleos-liquid-iron-table)).
+  It needs a 2-phase iron core in the Zalmoxis structure (a liquid outer core
+  over a solid inner core), which PROTEUS does not build, so PROTEUS refuses
+  `profile_source = "paleos"` when it reads the config.
 
 ## What happens in a run
 
@@ -88,7 +88,10 @@ fitted core profile and, with `stratification = true`, the shell temperatures
 from the interior snapshot. A snapshot without a core temperature restarts the
 core from `T_cmb` of the resumed row.
 
-A structure update moves the CMB radius and pressure. The structure is updated
+A structure update moves the CMB radius and pressure. Each structure solve gives
+the Zalmoxis core the adiabat of this core through its temperature
+([the core temperature in the structure solve](../Explanations/model.md#the-core-temperature-in-the-structure-solve)).
+The structure is updated
 during the run when `interior_struct.zalmoxis.update_interval > 0` (the
 default), and once after the start for every initial condition except
 `planet.temperature_mode = "liquidus_super"`. The core keeps its mass and its

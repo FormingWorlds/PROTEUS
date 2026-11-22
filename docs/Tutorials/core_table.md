@@ -4,7 +4,7 @@ This tutorial shows how the core temperature sets the core of the Zalmoxis struc
 You run the same planet twice: once with the core as part of the mantle energy balance, and once with its own energy budget.
 Then you read which temperature each structure update gave the core, and how the core radius and the central pressure follow it.
 
-Each Zalmoxis solve takes the core temperature from an adiabat through the core temperature of the run, as a table of pressure and temperature pairs.
+Each Zalmoxis solve with a mantle temperature profile takes the temperature of its core nodes from a core temperature table: pressure and temperature pairs on the core adiabat. The adiabat goes through `T_cmb`, the core-mantle boundary (CMB) temperature of the run, or through the temperature of the live core with its own energy budget.
 A hotter core is less dense, so it is larger and the central pressure is lower.
 [The core temperature in the structure solve](../Explanations/model.md#the-core-temperature-in-the-structure-solve) explains the rule.
 
@@ -32,7 +32,7 @@ update_interval = 100.0
 core_bc = "energy_balance"
 ```
 
-With `core_bc = "energy_balance"` the core is part of the energy balance at the base of the mantle, and the table goes through the core-mantle boundary (CMB) temperature `T_cmb` of the run.
+With `core_bc = "energy_balance"` the core is part of the energy balance at the base of the mantle, and the table goes through the `T_cmb` of the run.
 
 ## Step 2: run the planet
 
@@ -76,25 +76,25 @@ for name in ('tutorial_core_table', 'tutorial_core_table_cm'):
     for _, row in pd.concat([updates, h.tail(1)]).iterrows():
         print(
             f'{row["Time"]:8.0f} {row["T_cmb"]:10.1f} {row["R_core"] / 1e3:12.1f} '
-            f'{row["P_center"] / 1e9:15.1f} {row["struct_core_T_used"]:5.0f} {row["struct_core_T_excess"]:7.4f}'
+            f'{row["P_center"] / 1e9:15.2f} {row["struct_core_T_used"]:5.0f} {row["struct_core_T_excess"]:7.4f}'
         )
 ```
 
 ```text
 tutorial_core_table
   t [yr]  T_cmb [K]  R_core [km]  P_center [GPa]  used  excess
-       0     5726.1       4076.8           434.4     1  0.0000
-     102     5619.2       4074.1           435.7     1  0.0036
-     246     5492.6       4069.2           438.0     1  0.0066
-     371     5402.1       4065.4           439.9     1  0.0051
-     450     5351.1       4065.4           439.9     1  0.0051
+       0     5726.1       4076.8          434.40     1  0.0000
+     102     5619.2       4074.1          435.69     1  0.0036
+     246     5492.6       4069.2          438.04     1  0.0066
+     371     5402.1       4065.4          439.86     1  0.0051
+     450     5351.1       4065.4          439.86     1  0.0051
 tutorial_core_table_cm
   t [yr]  T_cmb [K]  R_core [km]  P_center [GPa]  used  excess
-       0     5727.1       4076.8           434.4     1  0.0000
-     102     5725.4       4077.0           434.6     1  0.0007
-     246     5718.2       4075.4           435.8     1  0.0032
-     371     5709.1       4074.0           436.7     1  0.0027
-     450     5701.2       4074.0           436.7     1  0.0027
+       0     5727.1       4076.8          434.40     1  0.0000
+     102     5725.4       4077.0          434.64     1  0.0007
+     246     5718.2       4075.4          435.76     1  0.0032
+     371     5709.1       4074.0          436.72     1  0.0027
+     450     5701.2       4074.0          436.72     1  0.0027
 ```
 
 ## Step 5: compare the 2 cores

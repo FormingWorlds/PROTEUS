@@ -1,10 +1,11 @@
-# core_temperature.py Validation
+# Validation: the core temperature of the structure solve
 
 ## What this page checks
 
 This page checks the core temperature that PROTEUS gives the Zalmoxis structure solve. PROTEUS builds a table of pressure and temperature pairs on the core adiabat, and Zalmoxis reads it at each core node. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. Here the right answer comes from 2 other ways to solve the same structure, so the case is a cross-check, not a published value. If the table or its use were wrong, the core radius, the central pressure and the pressure at the core-mantle boundary (CMB) of every Zalmoxis run would be wrong. The case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends the case.
 
 ## Source under test
+
 `src/proteus/interior_struct/core_temperature.py` (the table and its checks) and the call in `src/proteus/interior_struct/zalmoxis.py` that passes the table to Zalmoxis as `core_temperature_arrays`.
 
 ## The core table gives the structure of 2 independent paths

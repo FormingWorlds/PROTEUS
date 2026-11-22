@@ -75,13 +75,16 @@ By default the core below the Aragog mantle is a heat reservoir of fixed heat ca
 
 How warm is a core after compression by a structure solve? With `core_module.profile_source = "paleos"`, the core follows an isentrope of the PALEOS liquid iron table of Attia et al. (2026)[^cite-attia2026]: a line of constant specific entropy $s_c$ through the core-mantle boundary (CMB) temperature $T$. A structure update keeps the core mass $M$ and total entropy, so the core warms.
 
+PROTEUS cannot run this profile yet. It needs a 2-phase iron core in the Zalmoxis structure (a liquid outer core over a solid inner core), which PROTEUS does not build, so the configuration check refuses `profile_source = "paleos"`. The tests run the profile on stored structures.
+
 The total entropy is $M\,s_c - \Delta s_f\,M_{ic}$, with $\Delta s_f$ the entropy of fusion (J kg$^{-1}$ K$^{-1}$) and $M_{ic}$ the inner-core mass (kg). The heat content is $T\,C_s(T) - R(T)$ in J, with $C_s$ the secular heat capacity (J K$^{-1}$) and $R$ the latent and gravitational energy released below the onset of the inner core. It counts from 0 K, as on the Gaussian profile, and an update books its change in `step_dE_struct_core_J`.
 
 For example, the core of a 1 Earth-mass planet at 5000 K warms to 5195 K when its CMB pressure rises from 127.7 to 141.3 GPa; the update books 6.0e29 J.
 
-Limits:
+#### Limits of the PALEOS core profile
 
-- Another `core_bc`, `stratification = true` or a giant-impact module is refused.
+
+- With the Aragog interior, the configuration check refuses `profile_source = "paleos"`. Where another `core_bc`, `stratification = true` or a giant-impact module is set, its message names that setting instead.
 - `core_dynamo_margin` and `core_B_rms` are 0: Aragog has no entropy budget here.
 - Above a centre pressure of 3.8 TPa the core temperature rises outward from the centre ([Aragog limits](https://proteus-framework.org/aragog/Explanations/core_tabulated.html#limits-of-the-model)).
 
@@ -362,17 +365,19 @@ Setting `update_interval = 0` disables dynamic updates entirely; the structure i
 
 Which temperature does Zalmoxis give the core when it solves the structure? The core follows an adiabat through the core-mantle boundary (CMB) temperature. A hotter core is less dense, so this temperature sets part of the core radius and the central pressure.
 
-PROTEUS gives every Zalmoxis solve a table of pressure and temperature pairs on that adiabat. With `interior_energetics.aragog.core_bc = "core_module"` the adiabat is that of the live Aragog core, through its core temperature. Otherwise it is the adiabat of a Gaussian core density profile fitted to the last structure, with `core_module.alpha` and `core_module.c_p`, through the CMB temperature `T_cmb`. The mantle keeps the Aragog temperature profile.
+PROTEUS gives every Zalmoxis solve that has a mantle temperature profile a core temperature table: pressure and temperature pairs on that adiabat. This includes every structure update of a run. With `interior_energetics.aragog.core_bc = "core_module"` the adiabat is that of the live Aragog core, through its core temperature. Otherwise it is the adiabat of a Gaussian core: a core density profile fitted to the core mass and the central pressure of the last structure, with `core_module.alpha` and `core_module.c_p`. It goes through the CMB temperature `T_cmb`, or through the deepest mantle temperature when the row has no positive `T_cmb`. The mantle keeps the Aragog temperature profile.
 
-Zalmoxis reads the table at the pressure of each core node. Past the ends of the table it continues the line of the end interval.
+Zalmoxis reads the table at the pressure of each core node. Past the ends of the table it extrapolates linearly from the end interval.
 
-For example, a 1 Earth-mass planet with `core_bc = "energy_balance"` and a structure update every 100 yr has, after 450 yr, a core radius 0.73 % larger and a central pressure 4.4 % lower than with the whole core at the temperature of the deepest mantle node.
+For example, at the first structure update (102 yr) of a 1 Earth-mass planet with `core_bc = "energy_balance"`, the table makes the core radius 0.74 % larger and the central pressure 4.4 % lower than with the whole core at the temperature of the deepest mantle node.
 
-Limits:
+#### Limits of the core temperature table
 
-- A core node that lies past the table by more than 0.1 of its pressure range stops the solve. In a run, PROTEUS then keeps the previous structure.
+
+- A core node that lies past the table by more than 0.1 of its pressure range stops the solve. In a run, PROTEUS then keeps the previous structure; after 8 failed structure updates in a row the run stops.
+- Core arrays that do not lie on the table, or that are not finite, not positive or rising outward, stop the run.
 - A core equation of state (EOS) that does not depend on temperature ignores the table; `struct_core_T_used` is then 0.
-- **Known limit.** With a `core_bc` other than `"core_module"`, the table takes the `T_cmb` of the row before the update. The update then changes the core heat content, and no output column books that change (`step_dE_struct_core_J` is 0). In the example above this is 6 to 11 K of core temperature per update.
+- **Known limit.** With a `core_bc` other than `"core_module"`, the table takes the `T_cmb` of the row before the update. The update then changes the core heat content, and no output column books that change (`step_dE_struct_core_J` is 0). In the same planet with an update every 100 yr, this is 6 to 11 K of core temperature per update.
 
 **Where this is checked.** [The core table gives the structure of 2 independent paths](../Validation/interior_struct/core_temperature.md).
 

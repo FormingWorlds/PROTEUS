@@ -13074,7 +13074,7 @@
         "accretion.module",
         "interior_energetics"
       ],
-      "doc": "Reject the PALEOS core profile where it does not apply."
+      "doc": "Reject the PALEOS core profile, which needs a 2-phase iron core that PROTEUS does not build."
     },
     {
       "validator": "check_module_dependencies",

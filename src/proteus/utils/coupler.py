@@ -1066,7 +1066,7 @@ def GetHelpfileKeys():
         'core_heatcap',     # core heat capacity [J kg-1 K-1]
         'X_H2_int',         # H2 mass fraction in interior (sub-Neptune mode) [1]
         'struct_mass_desync_frac',  # |trapezoid - ODE accumulator| / accumulator structure mass self-consistency [1]
-        'struct_core_T_used',       # 1 when the last Zalmoxis solve set its core temperature from the core adiabat table, else 0 [1]
+        'struct_core_T_used',       # 1 when the last Zalmoxis solve set its core temperature from the core temperature table, else 0 [1]
         'struct_core_T_excess',     # largest distance of a core node of that solve beyond the core temperature table, as a fraction of its pressure range [1]
 
         # Temperatures

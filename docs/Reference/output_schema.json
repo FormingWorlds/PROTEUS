@@ -925,7 +925,7 @@
     {
       "name": "struct_core_T_used",
       "unit": "1",
-      "description": "1 when the last Zalmoxis solve set its core temperature from the core adiabat table, else 0",
+      "description": "1 when the last Zalmoxis solve set its core temperature from the core temperature table, else 0",
       "group": "Planet structure",
       "origin": "literal",
       "producers": [

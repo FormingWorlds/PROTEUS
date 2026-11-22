@@ -4,12 +4,14 @@
 
 This page checks how PROTEUS carries a core on the PALEOS profile across a structure update (`src/proteus/interior_energetics/aragog_core_tabulated.py`).
 With `profile_source = "paleos"`, the core of the Aragog `core_module` boundary lies on an isentrope of the PALEOS liquid iron table, a line of constant specific entropy through the temperature at the core-mantle boundary (CMB).
+PROTEUS refuses this profile when it reads the config, because it needs a 2-phase iron core in the Zalmoxis structure that PROTEUS does not build; the tests below run the code on 2 stored structures.
 When the structure solver changes the core, PROTEUS gives the core the CMB temperature that keeps its mass and its total entropy, and books the change of the core heat content in `step_dE_struct_core_J`.
 Validation here means that we run the code on a case where another source gives the right answer, and the test checks that the code gives that answer within a stated tolerance.
 If this part is wrong, the core starts too hot or too cold after each structure update, or the core energy ledger books a heat that depends on the table and not on the planet.
 Each case below says why the check exists, what it tests, how we know the right answer and why it matters; the box "Test details" gives the reference, the tolerance, the test id and the command.
 
-**Terms of this page.**
+## Terms and tests on this page
+
 
 - Structure pair: the cores of 2 stored Zalmoxis planets of 1 Earth mass, with the same core mass, 1.9409e24 kg, and CMB pressures of 127.7 and 141.3 GPa. They come from 2 structure solves at surface temperatures of 3000 and 2510 K, so they stand for one core before and after a structure update. Zalmoxis solved them with an iron-sulfur outer core; the tests use their radius, mass, pressure, density and gravity on the pure-iron liquid table.
 - $C_s(T)$: the secular heat capacity of the core in J K$^{-1}$, the heat per kelvin of CMB cooling at a fixed structure.
@@ -42,13 +44,13 @@ This case has no plot: it compares 2 values of one quantity, and the plot of the
 
 ## On the Gaussian profile the content is Aragog's heat content
 
-**Why this check exists.** The Gaussian profile must keep the heat content and the ledger it had before the PALEOS profile was added.
+**Why this check exists.** PROTEUS uses one heat-content formula, $T\,C_s - R$, for both core profiles. If that formula did not reduce to Aragog's own heat content on the Gaussian profile, the default profile would book a wrong structure term.
 
 **What it tests.** An iron-alloy core on the Gaussian profile at 3800, 4100, 4500 and 5200 K, below and above its onset near 4149 K. The content of PROTEUS must equal Aragog's `heat_content`, and below the onset it must differ from $T\,C_s$ alone.
 
 **How we know the right answer.** On the Gaussian profile $C_s$ does not depend on temperature, so Aragog's heat content is $T\,C_s - R(T)$ by its own definition.
 
-**Why it matters.** A default run must give the same core temperatures and the same ledger as before.
+**Why it matters.** The Gaussian profile is the default, so every `core_module` run reads this content in its core energy ledger.
 
 This case has no plot: it checks an identity of the code.
 
