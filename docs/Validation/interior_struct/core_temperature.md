@@ -81,7 +81,7 @@ This case has no plot: it checks an exact identity of 2 tables.
 
 ## What the table does not include
 
-The table is the adiabat of a core with a constant expansion coefficient and heat capacity. No case on this page compares it with the isentrope of the PALEOS liquid iron table, which the structure solve and the core energy budget do not use. A single measurement gives its size: the same run solved once more at its first structure update (102 yr, `core_bc = "energy_balance"`) with the isentrope through the same CMB temperature in place of the table.
+The table is the adiabat of a core with a constant expansion coefficient and heat capacity. No case on this page compares it with the isentrope of the PALEOS liquid iron table, which the structure solve and the core energy budget do not use. A single measurement gives its size. The run is `tests/integration/zalmoxis_aragog_calliope.toml` with `planet.temperature_mode = "liquidus_super"`, `core_bc = "energy_balance"`, `update_interval = 100.0` yr, `update_min_interval = 0.0` and a time step of at most 50 yr, at 1, 3 and 4 Earth masses. Its first structure update (102 yr) is solved once more with the isentrope through the same CMB temperature in place of the table.
 
 | Planet mass | Centre temperature, table against isentrope | $R_\mathrm{int}$, isentrope against table | $R_\mathrm{core}$ | $P_\mathrm{center}$ |
 |---|---|---|---|---|
