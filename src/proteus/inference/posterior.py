@@ -21,9 +21,9 @@ from gpytorch.mlls import ExactMarginalLogLikelihood
 from proteus.inference.correlation import CorrelationWhitener
 from proteus.inference.objective import (
     BAD_OBJ_VALUE,
-    compared_in_log,
     objective_from_observables,
     observable_space,
+    observable_values,
 )
 from proteus.inference.plot_fit import case_parameters
 from proteus.inference.transforms import normalize_parameters, unnormalize_parameters
@@ -105,14 +105,13 @@ def observables_objective(config: dict, directory, cases: pd.DataFrame):
     obs, sigma, keys = config['observables'], config['sigma'], list(config['observables'])
     ok = cases[~cases['excluded'] & (cases['J'] > BAD_OBJ_VALUE)]
     ok = ok[np.isfinite(ok[keys]).all(axis=1)]
-    ok = ok[(ok[[k for k in keys if compared_in_log(k, sigma)]] > 0).all(axis=1)]
     pars = list(config['parameters'])
     bounds = torch.tensor([config['parameters'][k] for k in pars], dtype=dtype).T
     X = normalize_parameters(
         torch.tensor(case_parameters(directory, ok, pars), dtype=dtype), bounds, pars
     )
     S = torch.tensor(
-        [observable_space(dict(zip(keys, r)), obs, sigma)[0] for r in ok[keys].to_numpy()],
+        [observable_values(dict(zip(keys, r)), obs, sigma) for r in ok[keys].to_numpy()],
         dtype=dtype,
     )
     log.info(f'    fitting one GP per observable to {len(X)} scored cases')

@@ -35,6 +35,8 @@ from proteus.utils.helper import ReadStatus
 dtype = torch.double
 EPS_CLIP = 1e-10
 LOG_CLIP = 1e-20
+# Lowest value, in dex below the target, at which the observable GPs fit an observable compared in log10
+LOG_FLOOR_DEX = 3.0
 BAD_OBJ_VALUE = -20.0
 # Above this fraction of the value, a linear sigma converts poorly to dex
 SIGMA_LINEAR_MAX_FRAC = 0.3
@@ -596,18 +598,30 @@ def objective_from_observables(sim, tru, sig, names, whitener=None, loss=None):
     return log_warp(sq_dist).reshape(*diff.shape[:-1], 1)
 
 
-def observable_row(sim_dict, tru_dict, sigma=None) -> torch.Tensor:
-    """Simulated observables of one run in the space eval_obj compares them in, shape (1, m).
+def observable_values(sim_dict, tru_dict, sigma=None) -> list[float]:
+    """Simulated observables in the space eval_obj compares them in, as the observable GPs fit them.
 
-    An observable compared in log10 whose value is not positive is NaN, as is any non-finite
-    value, so the GPs of the observables leave that run out instead of fitting the clip value.
+    An observable compared in log10 enters at no less than LOG_FLOOR_DEX below its target, so a
+    run without that species (a ratio of 0) counts as far off rather than as missing; the clip
+    value LOG_CLIP would dominate the GP fit. A non-finite value is NaN, and the GP leaves it out.
     """
-    sim_vals, _, _ = observable_space(sim_dict, tru_dict, sigma)
-    row = torch.tensor(sim_vals, dtype=dtype).reshape(1, -1)
-    raw = torch.tensor([float(sim_dict[k]) for k in sim_dict.keys()], dtype=dtype)
-    logged = torch.tensor([compared_in_log(k, sigma) for k in sim_dict.keys()])
-    bad = ~torch.isfinite(raw) | (logged & (raw <= 0))
-    return row.masked_fill(bad.reshape(1, -1), float('nan'))
+    sim_vals, tru_vals, _ = observable_space(sim_dict, tru_dict, sigma)
+    out = []
+    for k, s, t in zip(sim_dict.keys(), sim_vals, tru_vals):
+        if not math.isfinite(float(sim_dict[k])):
+            out.append(float('nan'))
+        elif compared_in_log(k, sigma):
+            out.append(max(s, t - LOG_FLOOR_DEX))
+        else:
+            out.append(s)
+    return out
+
+
+def observable_row(sim_dict, tru_dict, sigma=None) -> torch.Tensor:
+    """observable_values of one run, shape (1, m)."""
+    return torch.tensor(observable_values(sim_dict, tru_dict, sigma), dtype=dtype).reshape(
+        1, -1
+    )
 
 
 def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:

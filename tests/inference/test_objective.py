@@ -1829,18 +1829,26 @@ def test_J_reports_a_clean_exit_failure_with_only_the_swept_values(
 
 
 @pytest.mark.physics_invariant
-def test_observable_row_marks_unusable_values_and_keeps_the_compared_space():
-    """A log10-compared observable that is zero (an escaped atmosphere) or non-finite becomes
-    NaN; usable values sit in the space eval_obj compares them in."""
+def test_observable_row_floors_log_values_and_keeps_the_compared_space():
+    """A log10-compared observable that is zero (an escaped species) or far below its target
+    enters at LOG_FLOOR_DEX below the target, a non-finite one is NaN, and usable values sit in
+    the space eval_obj compares them in."""
     tru = {'R_obs': 9.25e6, 'H2O_vmr': 0.3, 'P_surf': 100.0}
+    floor = math.log10(0.3) - objective_mod.LOG_FLOOR_DEX
     row = objective_mod.observable_row({'R_obs': 9.0e6, 'H2O_vmr': 0.0, 'P_surf': 50.0}, tru)
     assert row.shape == (1, 3)
     # R_obs linear, P_surf in log10 (a logarithmic variable), H2O_vmr zero
     assert row[0, 0].item() == pytest.approx(9.0e6, rel=1e-12)
     assert row[0, 2].item() == pytest.approx(math.log10(50.0), rel=1e-12)
-    assert math.isnan(row[0, 1].item())
+    assert row[0, 1].item() == pytest.approx(floor, rel=1e-12)
     # Not the clipped log10 that eval_obj uses for the objective itself
     assert objective_mod.observable_space({'H2O_vmr': 0.0}, tru)[0][0] == pytest.approx(-20.0)
+    tiny = objective_mod.observable_row({'R_obs': 9.0e6, 'H2O_vmr': 1e-9, 'P_surf': 50.0}, tru)
+    assert tiny[0, 1].item() == pytest.approx(floor, rel=1e-12)
+    # Just above the floor the value is kept, so the floor only cuts off the far tail
+    above = 0.3 * 10 ** (-objective_mod.LOG_FLOOR_DEX + 0.5)
+    kept = objective_mod.observable_row({'R_obs': 9.0e6, 'H2O_vmr': above, 'P_surf': 50.0}, tru)
+    assert kept[0, 1].item() == pytest.approx(math.log10(above), rel=1e-12)
     bad = objective_mod.observable_row(
         {'R_obs': float('inf'), 'H2O_vmr': 0.1, 'P_surf': 1.0}, tru
     )

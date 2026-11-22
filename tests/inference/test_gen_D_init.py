@@ -8,6 +8,7 @@ References:
 
 from __future__ import annotations
 
+import math
 import threading
 
 import numpy as np
@@ -24,6 +25,7 @@ pytest.importorskip('gpytorch')
 
 import proteus.inference.gen_D_init as init_mod  # noqa: E402
 from proteus.inference.failures import ProteusRunFailure  # noqa: E402
+from proteus.inference.objective import LOG_FLOOR_DEX  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -509,7 +511,8 @@ def test_real_halton_accepts_rng_keyword_and_is_deterministic():
 
 def test_sample_from_grid_writes_the_compared_observables(monkeypatch, tmp_path):
     """With with_observables, init.csv gains one s_* column per observable, in the space the
-    objective compares it in: R_obs linear, P_surf in log10, and NaN for a zero P_surf."""
+    objective compares it in: R_obs linear, P_surf in log10, and a zero P_surf at the floor
+    LOG_FLOOR_DEX below its target."""
     grid_dir = tmp_path / 'grid'
     output_dir = tmp_path / 'output'
     output_dir.mkdir(parents=True)
@@ -538,4 +541,4 @@ def test_sample_from_grid_writes_the_compared_observables(monkeypatch, tmp_path)
     assert list(data.columns) == ['x_0', 'y', 's_0', 's_1']
     assert data['s_0'].tolist() == pytest.approx([9.0e6, 9.5e6], rel=1e-12)
     assert data['s_1'][0] == pytest.approx(2.0, rel=1e-12)  # log10(100), not 100
-    assert np.isnan(data['s_1'][1])
+    assert data['s_1'][1] == pytest.approx(math.log10(50.0) - LOG_FLOOR_DEX, rel=1e-12)

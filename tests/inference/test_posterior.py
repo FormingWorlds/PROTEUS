@@ -327,6 +327,24 @@ def _observable_cases(monkeypatch):
     return cases
 
 
+def test_observables_objective_counts_a_zero_ratio_as_far_off(monkeypatch, no_hyperfit):
+    """Cases around the target without carbon (C/O = 0) enter the C/O GP at the floor below the
+    target, so the target scores a poor fit; leaving them out would interpolate a good one."""
+    config = _observable_config()
+    cases = _observable_cases(monkeypatch)
+    g = np.linspace(0.02, 0.98, 7)
+    u = np.array([[a, b] for a in g for b in g] + [[0.3, 0.75]])
+    near = np.hypot(u[:, 0] - 0.3, u[:, 1] - 0.75) < 0.25
+    near[-1] = False
+    assert near.sum() >= 4
+    cases.loc[near, 'C/O_atm'] = 0.0
+    objective = post.observables_objective(config, 'unused', cases)
+
+    chi2 = 10 ** -objective(torch.tensor([[0.3, 0.75]], dtype=torch.double)).item()
+    # About 0.5 dex below the 0.0217 dex sigma at the floor would already be chi2 > 500
+    assert chi2 > 100
+
+
 def test_observables_objective_matches_eval_obj_of_the_observables(monkeypatch, no_hyperfit):
     """J from one GP per observable equals eval_obj of the true observables between the cases,
     and the failed case, whose values would wreck the GPs, is left out."""
