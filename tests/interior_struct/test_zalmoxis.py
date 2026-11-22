@@ -2875,7 +2875,7 @@ def test_a_solve_with_a_core_table_gives_zalmoxis_a_mantle_source(
 ):
     """Zalmoxis takes a core table only with a mantle temperature source: the callable, or the
     arrays on the JAX path. Every forwarded call with the table carries one of them."""
-    model = _plausible_model_results()
+    model = _table_model()
     r_arr, t_arr = _cooled_mantle_arrays(model)
     main_mock, _, _, _, _, _, _ = _run_gate_solver(
         tmp_path,
@@ -2898,12 +2898,12 @@ def test_a_solve_with_a_core_table_gives_zalmoxis_a_mantle_source(
 def test_a_solve_without_a_core_table_gives_zalmoxis_no_table_and_zero_flags(
     tmp_path, monkeypatch
 ):
-    """Without a core table the Zalmoxis call carries no core_temperature_arrays argument and the
+    """Without a core table the Zalmoxis call carries core_temperature_arrays = None and the
     row flags are 0."""
     main_mock, _, _, hf_row, _, _, _ = _run_gate_solver(
         tmp_path, monkeypatch, 'Seager2007:silicate', None, None
     )
-    assert 'core_temperature_arrays' not in main_mock.call_args.kwargs
+    assert main_mock.call_args.kwargs['core_temperature_arrays'] is None
     assert (hf_row['struct_core_T_used'], hf_row['struct_core_T_excess']) == (0.0, 0.0)
 
 

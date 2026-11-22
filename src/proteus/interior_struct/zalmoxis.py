@@ -3266,15 +3266,22 @@ def compute_structure_mass_desync(radii, density, mass_enclosed) -> float:
     return abs(shell_mass_trapezoid - accumulator_total) / accumulator_total
 
 
-def _core_table_excess(model_results):
+def _core_table_excess(model_results, table, accepted=True):
     """Return ``core_T_max_excess`` of a Zalmoxis result (0.0 when absent).
 
     Raises
     ------
     RuntimeError
-        When the core nodes lie beyond the core temperature table by more than
-        ``MAX_CORE_T_EXCESS`` of its pressure range, or by NaN.
+        When an ``accepted`` result of a solve given a core temperature ``table`` has no
+        ``core_T_used`` or ``core_T_max_excess``, or when the core nodes lie beyond the table by
+        more than ``MAX_CORE_T_EXCESS`` of its pressure range, or by NaN.
     """
+    if accepted and table is not None:
+        for key in ('core_T_used', 'core_T_max_excess'):
+            if key not in model_results:
+                raise RuntimeError(
+                    f'Zalmoxis: a solve with a core temperature table gave no {key}'
+                )
     excess = float(model_results.get('core_T_max_excess', 0.0))
     if not excess <= MAX_CORE_T_EXCESS:  # NaN refused too
         raise RuntimeError(
@@ -3477,11 +3484,6 @@ def zalmoxis_solver(
         _use_jax_active and temperature_arrays is not None and _jax_viable and _wet_jax_viable
     )
     _tf_effective = None if _drop_callable else temperature_function
-    _core_kw = (
-        {}
-        if core_temperature_arrays is None
-        else {'core_temperature_arrays': core_temperature_arrays}
-    )
     if _drop_callable:
         log.debug(
             'Structure-solve T source: temperature_arrays via the Zalmoxis '
@@ -3519,7 +3521,7 @@ def zalmoxis_solver(
             volatile_profile=volatile_profile,
             temperature_function=_tf_effective,
             temperature_arrays=temperature_arrays,
-            **_core_kw,
+            core_temperature_arrays=core_temperature_arrays,
             h2_mass_targets=h2_mass_targets,
             max_iterations=config.interior_struct.zalmoxis.miscibility_max_iter,
             mass_tolerance=config.interior_struct.zalmoxis.miscibility_tol,
@@ -3566,7 +3568,7 @@ def zalmoxis_solver(
             volatile_profile=volatile_profile,
             temperature_function=_tf_effective,
             temperature_arrays=temperature_arrays,
-            **_core_kw,
+            core_temperature_arrays=core_temperature_arrays,
             p_center_hint=None if _drop_callable else hf_row.get('P_center'),
             initial_density=_seed_density,
             initial_radii=_seed_radii,
@@ -3598,9 +3600,8 @@ def zalmoxis_solver(
     # skipped entirely: at the structural-Picard plateau (7-10 %) looser
     # tolerance does not rescue a structurally-unsupported configuration.
     # Retry remains useful for transient flickers near the tolerance edge.
-    _core_table_excess(
-        model_results
-    )  # a core beyond the table: no retry, the tolerance cannot help
+    # a core beyond the table: no retry, the tolerance cannot help
+    _core_table_excess(model_results, core_temperature_arrays, accepted=False)
     primary_best_mass_error = model_results.get('best_mass_error')
     skip_retry_high_error = (
         primary_best_mass_error is not None and primary_best_mass_error > 0.05
@@ -3649,7 +3650,7 @@ def zalmoxis_solver(
             volatile_profile=volatile_profile,
             temperature_function=_tf_effective,
             temperature_arrays=temperature_arrays,
-            **_core_kw,
+            core_temperature_arrays=core_temperature_arrays,
         )
 
         radii = model_results['radii']
@@ -3747,7 +3748,7 @@ def zalmoxis_solver(
     cmb_radius, cmb_pressure, cmb_gravity = (float(core[k][-1]) for k in ('r', 'P', 'g'))
     cmb_tol = float(mesh_radius_tolerance(cmb_radius, planet_radius))
     hf_row['struct_core_T_used'] = float(bool(model_results.get('core_T_used', False)))
-    hf_row['struct_core_T_excess'] = _core_table_excess(model_results)
+    hf_row['struct_core_T_excess'] = _core_table_excess(model_results, core_temperature_arrays)
     if hf_row['struct_core_T_used']:
         check_core_arrays(core, core_temperature_arrays)
     if radii[cmb_index] < cmb_radius - cmb_tol or cmb_index + 1 >= len(radii):
