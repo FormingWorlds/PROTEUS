@@ -25,6 +25,7 @@ STATE = (
 CONFIG = pathlib.Path(__file__).parents[1] / 'integration' / 'zalmoxis_aragog_calliope.toml'
 KEYS = ('R_core', 'R_int', 'P_center', 'P_cmb')
 FIXED_PASSES = 4
+LIMIT = 1e-5  # pass mark of the cross-path agreement
 
 
 def _config(use_jax):
@@ -109,14 +110,14 @@ def _fixed_point(table):
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_the_core_table_gives_the_structure_of_two_independent_paths(
-    tmp_path, monkeypatch, validation_plot
+    tmp_path, monkeypatch, validation_plot, record_testsuite_property
 ):
     """The structure with the core table on the JAX path (the default) against 2 independent
     solves of the same state: the numpy path with the same table (other integrator, other
     temperature code) and a fixed point without the table (the core T given by radius,
-    iterated on the core node pressures). R_core, R_int, P_center and P_cmb agree within 1e-4
-    (measured at most 4.8e-7 and 5.5e-7). The table moves the structure against a core at the
-    temperature of the deepest mantle node by more than 100 times that tolerance (measured
+    iterated on the core node pressures). R_core, R_int, P_center and P_cmb agree within 1e-5
+    (measured at most 5.5e-7; the values go to the junit file). The table moves the structure
+    against a core at the temperature of the deepest mantle node by more than 1e-2 (measured
     4.6 % in P_center)."""
     state = np.load(STATE)
     arrays = (state['r'], state['T'])
@@ -129,11 +130,17 @@ def test_the_core_table_gives_the_structure_of_two_independent_paths(
     row_iso, res_iso = _solve(tmp_path, monkeypatch, 'iso', arrays, None)
     for row in (row_jax, row_np):
         assert row['struct_core_T_used'] == pytest.approx(1.0, abs=0.0)
-    for other in (row_np, row_fix):
-        for key in KEYS:
-            assert other[key] == pytest.approx(row_jax[key], rel=1e-4), key
-    shift = max(abs(row_iso[k] / row_jax[k] - 1.0) for k in KEYS)
-    assert shift > 1e-2
+    rel = {
+        path: [abs(row[k] / row_jax[k] - 1.0) for k in KEYS]
+        for path, row in (('numpy', row_np), ('fixed_point', row_fix), ('deepest_T', row_iso))
+    }
+    for path, values in rel.items():
+        for key, value in zip(KEYS, values):
+            record_testsuite_property(f'core_table_rel_{path}_{key}', f'{value:.6e}')
+    assert max(rel['numpy'] + rel['fixed_point']) < LIMIT
+    assert max(rel['deepest_T']) > 1e-2
+    # 2 digits keep the plotted shift equal on Linux and macOS
+    shown = [float(f'{v:.2g}') for v in rel['deepest_T']]
 
     def temperature_figure():
         import matplotlib.pyplot as plt
@@ -163,17 +170,14 @@ def test_the_core_table_gives_the_structure_of_two_independent_paths(
 
         fig, ax = plt.subplots(figsize=(7, 4))
         x = np.arange(len(KEYS))
-        for k, (row, mark, label) in enumerate(
-            ((row_np, 'o', 'numpy vs JAX'), (row_fix, 's', 'fixed point vs JAX'))
-        ):
-            diff = [max(abs(row[key] / row_jax[key] - 1.0), 1e-10) for key in KEYS]
-            ax.semilogy(x + 0.15 * (2 * k - 1), diff, mark, label=label)
-        ax.axhline(1e-4, ls='--', alpha=0.6, label='tolerance 1e-4', gid='tolerance')
+        for k, label in enumerate(('numpy', 'fixed point')):
+            ax.semilogy(x + 0.2 * (k - 1), [LIMIT] * len(KEYS), 'v', label=f'{label}: < 1e-5')
+        ax.semilogy(x + 0.2, shown, 'o', label='deepest mantle T')
         ax.set_xticks(x, ['R_core', 'R_int', 'P_center', 'P_cmb'], fontsize='small')
-        ax.set_ylim(1e-10, 1e-2)
-        ax.set_yticks([1e-10, 1e-8, 1e-6, 1e-4, 1e-2])
+        ax.set_ylim(1e-6, 1e-1)
+        ax.set_yticks([1e-5, 1e-3, 1e-1])
         ax.minorticks_off()
-        ax.set_ylabel('relative difference')
+        ax.set_ylabel('relative difference to JAX')
         ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1.0), fontsize='small')
         fig.tight_layout()
         return fig
@@ -190,7 +194,7 @@ def test_the_core_table_gives_the_structure_of_two_independent_paths(
             fig = factory()
             fig.canvas.draw()
             ax, renderer = fig.axes[0], fig.canvas.get_renderer()
-            data = [ln for ln in ax.lines if ln.get_gid() != 'tolerance']
+            data = ax.lines
             points = np.vstack(
                 [ax.transData.transform(np.column_stack(ln.get_data())) for ln in data]
             )

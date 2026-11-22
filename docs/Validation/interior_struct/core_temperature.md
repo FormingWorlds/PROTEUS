@@ -24,7 +24,7 @@ If the table or its use were wrong, the core radius, the central pressure and th
 3. without the table, with the core temperature given by radius and iterated 4 times on the core node pressures (a fixed point);
 4. without the table, with the whole core at the temperature of the deepest mantle node.
 
-Solves 2 and 3 must give the core radius $R_\mathrm{core}$, the planet radius $R_\mathrm{int}$, the central pressure $P_\mathrm{center}$ and the CMB pressure $P_\mathrm{cmb}$ of solve 1 within a relative 1e-4. Solve 4 must differ from solve 1 by more than 1e-2, so the test can see a table that has no effect.
+Solves 2 and 3 must give the core radius $R_\mathrm{core}$, the planet radius $R_\mathrm{int}$, the central pressure $P_\mathrm{center}$ and the CMB pressure $P_\mathrm{cmb}$ of solve 1 within a relative 1e-5. Solve 4 must differ from solve 1 by more than 1e-2, so the test can see a table that has no effect.
 
 **How we know the right answer.** Solves 2 and 3 reach the same structure in 2 different ways. A fault in the JAX code of the table, or in the table read, moves solve 1 away from both.
 
@@ -40,11 +40,20 @@ Solves 2 and 3 must give the core radius $R_\mathrm{core}$, the planet radius $R
 ![Relative difference of 4 structure values between the solves, on a log axis](../../assets/validation/structure_core_table_paths.svg#only-light){ width="80%" }
 ![Relative difference of 4 structure values between the solves, on a log axis](../../assets/validation/structure_core_table_paths_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis names 4 structure values and the y-axis is the relative difference to solve 1, on a log axis. Circles are the numpy path (solve 2) and squares the fixed point (solve 3); both are asserted. The dashed line is the tolerance of 1e-4. A pass means that every mark lies below the line. Measured: at most 4.8e-7 for the numpy path and 5.5e-7 for the fixed point.
+**How to read the plot.** The x-axis names 4 structure values and the y-axis is the relative difference to solve 1, on a log axis. Circles are solve 4, the core at the temperature of the deepest mantle node, rounded to 2 digits. Triangles stand for solves 2 and 3 and are drawn at the pass mark of 1e-5: a pass means that the measured difference is below the triangle. The measured differences of solves 2 and 3 are round-off and change between Linux and macOS, so the stored plot shows the pass mark. The table gives the measured values.
+
+| Value | Solve 2, numpy path | Solve 3, fixed point | Solve 4, deepest mantle temperature |
+|---|---|---|---|
+| $R_\mathrm{core}$ | 2.0e-8 | 3.0e-8 | 7.3e-3 |
+| $R_\mathrm{int}$ | 6.8e-9 | 1.6e-7 | 2.2e-3 |
+| $P_\mathrm{center}$ | 3.3e-8 | 5.5e-7 | 4.6e-2 |
+| $P_\mathrm{cmb}$ | 4.8e-7 | 4.5e-8 | 1.8e-2 |
+
+The values are the relative differences to solve 1, measured on macOS arm64; the test writes them to its junit file on every run.
 
 ??? info "Test details"
     - Reference: cross-check against the numpy path and a fixed point without the table, on the stored state `tests/interior_struct/fixtures/structure_core_table/state_eb_102yr.npz`.
-    - Tolerance: relative 1e-4 on $R_\mathrm{core}$, $R_\mathrm{int}$, $P_\mathrm{center}$ and $P_\mathrm{cmb}$; more than 1e-2 against the core at the deepest mantle temperature.
+    - Tolerance: relative 1e-5 on $R_\mathrm{core}$, $R_\mathrm{int}$, $P_\mathrm{center}$ and $P_\mathrm{cmb}$; more than 1e-2 against the core at the deepest mantle temperature.
     - Test id: `tests/interior_struct/test_slow_structure_core_table.py::test_the_core_table_gives_the_structure_of_two_independent_paths`
     - Command: `pytest tests/interior_struct/test_slow_structure_core_table.py --validation-plots`
 
