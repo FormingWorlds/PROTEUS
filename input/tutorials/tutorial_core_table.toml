@@ -1,7 +1,6 @@
-# Tutorial "The core temperature of the structure solve" (docs/Tutorials/core_table.md):
-# an Earth-mass planet from a molten start, with the real Zalmoxis structure, Aragog
-# interior and CALLIOPE outgassing, and a structure update every 100 yr, to 450 yr.
-# Star, orbit, atmosphere, escape and chemistry are dummy modules.
+# Tutorial docs/Tutorials/core_table.md: an Earth-mass planet from a molten start, with Zalmoxis,
+# Aragog and CALLIOPE and a structure update every 100 yr, to 450 yr; star, orbit, atmosphere,
+# escape and chemistry are dummy modules.
 config_version = "3.0"
 
 [params.out]

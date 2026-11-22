@@ -3263,6 +3263,9 @@ def update_structure_from_interior(
     # committed value; the bound stays "last accepted R_int" either way.
     R_int_prev = float(hf_row.get('R_int', 0.0) or 0.0)
 
+    # A core table that cannot be built stops the run; the fallback below is for the solve
+    core_table = _structure_core_table(config, interior_o, hf_row, t_fallback=_T_cmb)
+
     # Also hand the (r, T) arrays to Zalmoxis explicitly. The JAX path
     # needs them in r-indexed form because the default P-indexed
     # tabulation in jax_eos/wrapper.py collapses for this closure
@@ -3276,8 +3279,6 @@ def update_structure_from_interior(
     # above, as jnp.interp requires monotonically increasing xp; a
     # descending [surface, ..., CMB] array would produce ``Final M=0``
     # failures in JAX.
-    # A core table that cannot be built stops the run; the fallback below is for the solve
-    core_table = _structure_core_table(config, interior_o, hf_row, t_fallback=_T_cmb)
     try:
         import time as _zalmoxis_time
 
