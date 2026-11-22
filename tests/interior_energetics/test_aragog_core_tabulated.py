@@ -20,9 +20,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-pytest.importorskip('aragog.core.profiles_tabulated')
-
-from proteus.interior_energetics.aragog_core_tabulated import (  # noqa: E402
+from proteus.interior_energetics.aragog_core_tabulated import (
     carried_temperature,
     core_content,
 )
