@@ -1461,7 +1461,8 @@ def _solve_structure_with_adiabat_or_rollback(
         dispatch then decides which one the solve consumes.
     core_t_anchor : float or None, optional
         CMB temperature [K] of the core temperature table: the core temperature of the run for a
-        solve after a giant impact; None takes the deepest mantle T of the sampled adiabat.
+        solve after a giant impact; None takes the deepest mantle T of the sampled adiabat,
+        and gives no core table when the previous structure cannot be sampled.
 
     Returns
     -------
@@ -1664,7 +1665,8 @@ def determine_interior_radius_with_zalmoxis(
         structure only (default is True). False is the structure solve after a giant
         impact: with the super-liquidus start-up re-solve (``temperature_mode =
         "liquidus_super"``, not SPIDER) its core temperature table goes through the row
-        ``T_cmb``, else the deepest mantle T; other modes give that solve no core table.
+        ``T_cmb``, else the deepest mantle T of a sampled previous structure, else no core
+        table; other modes give that solve no core table.
     """
 
     log.info('Using Zalmoxis to solve for interior structure')
