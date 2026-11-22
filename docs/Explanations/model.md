@@ -376,6 +376,8 @@ Limits:
 
 **Where this is checked.** [The core table gives the structure of 2 independent paths](../Validation/interior_struct/core_temperature.md).
 
+**Try it.** [The core temperature of the structure solve](../Tutorials/core_table.md) runs a planet with both `core_bc` settings and reads the core of each structure update.
+
 ## Time evolution vs equilibrium
 
 Only the interior and star modules have an explicit notion of time-evolution. All other modules are applied at equilibrium, such that the quantities calculated by these modules are effectively updated instantaneously at each time-step. This assumes that the physical processes handled by these equilibrium modules reach steady-state on time-scales shorter than the physics considered by interior and stellar evolution modules.
