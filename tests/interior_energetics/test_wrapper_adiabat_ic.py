@@ -1712,3 +1712,38 @@ def test_the_adiabat_solve_takes_a_given_core_anchor(tmp_path, core_table_calls)
         )
     assert ok is True
     assert core_table_calls == [(None, 5700.0)]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('anchor', [5700.0, None], ids=['impact anchor', 'start-up'])
+def test_the_ic_re_solve_passes_the_core_anchor_to_the_solve(
+    tmp_path, core_table_calls, anchor
+):
+    """The adiabat re-solve hands its core anchor to the solve that builds the core table: the
+    given anchor after an impact, the deepest sampled mantle T without one."""
+    _write_structure_file(tmp_path)
+    hf_row = _linear_hf_row()
+    adiabat = _good_adiabat()
+
+    def solve(cfg, outdir, row, **kw):
+        row.update(R_int=1.2746e7, M_int=row['M_int_target'])
+        return 6.0e6, str(tmp_path / 'adiabat_mesh.dat')
+
+    with (
+        patch(
+            'proteus.interior_energetics.wrapper._build_superliquidus_adiabat_tp',
+            return_value=(_adiabat_closure(), adiabat['P'], adiabat['T']),
+        ),
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solve) as solver,
+    ):
+        _resolve_adiabatic_ic_structure(
+            _config(),
+            str(tmp_path),
+            hf_row,
+            num_spider_nodes=0,
+            linear_mesh_file=None,
+            core_t_anchor=anchor,
+        )
+    assert solver.call_count == 1
+    sampled = solver.call_args.kwargs['temperature_arrays'][1][0]
+    assert core_table_calls == [(None, sampled if anchor is None else anchor)]
