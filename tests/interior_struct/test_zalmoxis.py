@@ -2935,6 +2935,27 @@ def test_core_nodes_beyond_the_table_by_more_than_the_limit_stop_the_solve(
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('key', ['core_T_used', 'core_T_max_excess'])
+def test_a_result_without_the_core_table_flags_stops_a_solve_with_a_table(
+    tmp_path, monkeypatch, key
+):
+    """A solve given a core table needs both core table flags in the Zalmoxis result; without
+    one, the run cannot tell whether the table set the core or how far the core lies beyond it."""
+    model = _table_model()
+    del model[key]
+    with pytest.raises(RuntimeError, match=f'no {key}'):
+        _run_gate_solver(
+            tmp_path,
+            monkeypatch,
+            'Seager2007:silicate',
+            None,
+            None,
+            main_results=model,
+            core_table=_CORE_TABLE,
+        )
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize('fault', ['off the table', 'NaN', 'rising outward', 'no T'])
 def test_core_arrays_off_the_core_table_stop_the_run(tmp_path, monkeypatch, fault):
