@@ -5225,6 +5225,57 @@ def test_a_helpfile_without_f_remelt_resumes_with_no_remelt_recorded(tmp_path):
 
 
 @pytest.mark.unit
+def test_the_core_table_flags_resume_as_zero_or_as_stored():
+    """Hypothesis over helpfiles with or without struct_core_T_used and struct_core_T_excess:
+    an absent column resumes as 0.0 on every row (no core temperature table), a present column
+    keeps its stored values bit for bit."""
+    pytest.importorskip('hypothesis')
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    from proteus.utils.coupler import ReadHelpfileFromCSV
+
+    keys = ('struct_core_T_used', 'struct_core_T_excess')
+    values = {
+        'struct_core_T_used': st.sampled_from([0.0, 1.0]),
+        'struct_core_T_excess': st.floats(0.0, 0.1, allow_nan=False),
+    }
+
+    @settings(max_examples=40, deadline=None)
+    @given(
+        present=st.sets(st.sampled_from(keys)),
+        rows=st.integers(1, 4).flatmap(
+            lambda n: st.lists(st.fixed_dictionaries(values), min_size=n, max_size=n)
+        ),
+    )
+    def check(present, rows):
+        table = []
+        for stored in rows:
+            row = ZeroHelpfileRow()
+            for key in keys:
+                if key in present:
+                    row[key] = stored[key]
+                else:
+                    del row[key]
+            table.append(row)
+        with tempfile.TemporaryDirectory() as tmp:
+            pd.DataFrame(table).to_csv(
+                os.path.join(tmp, 'runtime_helpfile.csv'), sep='\t', index=False
+            )
+            try:
+                loaded = ReadHelpfileFromCSV(tmp)
+            except Exception as exc:
+                pytest.fail(
+                    f'a helpfile with columns {sorted(present)} did not resume: {exc!r}'
+                )
+        for key in keys:
+            want = [r[key] for r in rows] if key in present else [0.0] * len(rows)
+            assert loaded[key].tolist() == want, key
+
+    check()
+
+
+@pytest.mark.unit
 def test_read_helpfile_from_csv_loads_legacy_helpfile_with_zero_filled_columns(tmp_path):
     """A legacy helpfile without n_impacts_applied loads successfully with zero backfill."""
     import shutil

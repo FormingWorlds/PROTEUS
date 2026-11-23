@@ -828,6 +828,7 @@
       ],
       "consumers": [
         "interior_energetics",
+        "interior_struct",
         "utils"
       ],
       "consumers_possible": []
@@ -918,6 +919,41 @@
       ],
       "consumers": [
         "interior_struct"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "struct_core_T_used",
+      "unit": "1",
+      "description": "1 when the last Zalmoxis solve set its core temperature from the core temperature table, else 0",
+      "group": "Planet structure",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_struct/zalmoxis.py",
+          "condition": "interior_struct.module = \"zalmoxis\""
+        }
+      ],
+      "consumers": [
+        "interior_energetics",
+        "interior_struct"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "struct_core_T_excess",
+      "unit": "1",
+      "description": "largest distance of a core node of that solve beyond the core temperature table, as a fraction of its pressure range",
+      "group": "Planet structure",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_struct/zalmoxis.py",
+          "condition": "interior_struct.module = \"zalmoxis\""
+        }
+      ],
+      "consumers": [
+        "interior_energetics"
       ],
       "consumers_possible": []
     },
@@ -1936,7 +1972,7 @@
     {
       "name": "M_core",
       "unit": "kg",
-      "description": "dry mass of core; with Zalmoxis the mass inside R_core, with the mantle silicate between M_core_solve and R_core",
+      "description": "dry mass of core; with Zalmoxis the core mass of the solve, the mass inside R_core",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
@@ -2031,7 +2067,7 @@
     {
       "name": "M_core_solve",
       "unit": "kg",
-      "description": "core mass of the last accepted Zalmoxis solve; 0 with another structure module",
+      "description": "core mass of the last accepted Zalmoxis solve, equal to M_core; 0 with another structure module",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
