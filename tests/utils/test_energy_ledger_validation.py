@@ -134,3 +134,58 @@ def test_energy_balance_leaves_the_core_heat_jump_of_an_update_in_the_remap_clas
         )
 
     validation_plot(figure, 'energy_ledger_core_remap')
+
+
+# steps whose CMB node is in the mush, from the node entropy of the snapshots (the helpfile has no
+# melt fraction of the node); the step ending at 1577 yr starts in a flat table cell at the liquidus
+MUSH_YR = (1787.0, 14101.0)
+
+
+def _core_miss(name):
+    """Per-step core residual over the CMB heat, and the steps of class other in the mush window."""
+    led, _, _ = _case(name, start_row=2)
+    C = np.abs(led.terms['C_cmb'])
+    x = np.divide(led.R_c, C, out=np.full(C.size, np.nan), where=C > 0)
+    c = led.classes
+    other = ~c['update'] & ~c['remap'] & ~c['zero']
+    return led, x, other & (led.time >= MUSH_YR[0]) & (led.time <= MUSH_YR[1])
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_the_slope_closure_of_the_cmb_node_closes_the_core_ledger_in_the_mush(validation_plot):
+    """The same 1 Earth-mass PALEOS run with the c_p/T closure of the CMB node (aragog 3a869bb1) and with
+    the entropy slope of the phase blend (aragog fbf15478, https://github.com/FormingWorlds/aragog/issues/115):
+    per step R_c/|C_cmb|, positive when the core loses less heat than crosses the CMB. In the mush the
+    c_p/T run misses by a median of 0.091 +- 0.01 and the slope run by at most 1e-3, against the core
+    balance of Bower et al. (2018, Eqs. 19-21, https://doi.org/10.1016/j.pepi.2017.11.004)."""
+    led_b, x_b, mush_b = _core_miss('a115_base')
+    led_s, x_s, mush_s = _core_miss('a115_branch')
+    assert np.median(x_b[mush_b]) == pytest.approx(0.091, abs=0.01)
+    assert np.max(np.abs(x_s[mush_s])) <= 1e-3
+    assert mush_b.sum() >= 10 and mush_s.sum() >= 10
+    assert np.min(x_b[mush_b]) > 50 * np.max(
+        np.abs(x_s[mush_s])
+    )  # the 2 closures are told apart
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(6.0, 4.2))
+        for led, x, label in ((led_b, x_b, 'c_p/T'), (led_s, x_s, 'slope')):
+            c = led.classes
+            keep = ~c['update'] & ~c['remap'] & ~c['zero']
+            ax.plot(led.time[keep], x[keep], lw=1.5, label=label)
+        ax.axvspan(*MUSH_YR, alpha=0.08, color='C2')
+        ax.set_xscale('log')
+        ax.set_yscale('symlog', linthresh=1e-4)
+        ticks = [-0.1, -1e-3, 0.0, 1e-3, 0.1]
+        ax.set_yticks(ticks, [f'{v:g}' for v in ticks])
+        ax.yaxis.set_minor_locator(plt.NullLocator())
+        ax.set_xlabel('time [yr]')
+        ax.set_ylabel('R_c / |C_cmb|')
+        fig.legend(loc='lower center', ncol=2, frameon=False)
+        fig.tight_layout(rect=(0.0, 0.12, 1.0, 1.0))
+        return fig
+
+    validation_plot(figure, 'energy_ledger_cmb_closure')
