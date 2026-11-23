@@ -348,16 +348,32 @@ def test_a_column_that_is_not_float_raises(value):
 
 
 @pytest.mark.physics_invariant
-def test_a_window_that_starts_on_an_update_row_classes_its_first_step_as_remap():
-    """A window whose start row holds a new structure: its first step runs on the remapped profile and
-    is in class remap, read from the row before the window, as in the full run."""
+@pytest.mark.parametrize(
+    'key, new', [('R_core', 3.49e6), ('M_core', 2.0002e24), ('R_int', 6.41e6)]
+)
+def test_a_window_that_starts_on_an_update_row_classes_its_first_step_as_remap(key, new):
+    """A window whose start row holds a new structure (a change of R_core, M_core or R_int): its first
+    step runs on the remapped profile and is in class remap, read from the row before the window, as in
+    the full run."""
     hf = _table()
-    hf.loc[4:, 'R_core'] = 3.49e6  # structure update at row 4
-    full = whole_run_ledger(hf, 'energy_balance')
+    hf.loc[4:, key] = new  # structure update at row 4
+    full = _closed_coupling(hf)
     led = whole_run_ledger(hf, 'energy_balance', start_row=4)
     assert led.classes['remap'][0] and not led.classes['update'][0]
     assert led.classes['remap'].tolist() == full.classes['remap'][2:].tolist()
     assert not whole_run_ledger(hf, 'energy_balance', start_row=5).classes['remap'][0]
+
+
+@pytest.mark.parametrize('bad', [math.nan, math.inf], ids=['nan', 'inf'])
+def test_a_non_finite_row_before_the_window_raises(bad):
+    """The row before the window classes its first step, so a non-finite structure value there raises
+    instead of classing the step as remap."""
+    hf = _table()
+    hf.loc[3, 'R_core'] = bad
+    before = hf.copy()
+    with pytest.raises(ValueError, match=r'R_core.*row 3'):
+        whole_run_ledger(hf, 'energy_balance', start_row=4)
+    assert hf.equals(before)
 
 
 def test_a_window_without_an_energy_step_is_refused():
@@ -396,7 +412,18 @@ def test_the_throughput_is_the_sum_of_the_absolute_booked_terms():
     hand += 2e25 + 3e26  # the impact heat and the booked core term
     assert led.throughput == pytest.approx(hand, rel=1e-12)
     assert led.closure == pytest.approx(led.R_p.sum() / hand, rel=1e-12, abs=1e-30)
-    np.testing.assert_allclose(led.R_p, led.R_m + led.R_c - led.G, rtol=0, atol=1e-6)
+    stored = (
+        (  # R_p from the stored columns: S - Q + D_core - B_core + E_atm on the start-row area
+            hf['step_dE_state_heat_J']
+            - hf['step_dE_Q_radio_J']
+            + hf['step_dE_core_J']
+            - hf['step_dE_struct_core_J']
+        )
+        .iloc[3:]
+        .to_numpy()
+        + _loss_to_space(hf)[2:]
+    )
+    np.testing.assert_allclose(led.R_p, stored, rtol=1e-12, atol=1e-9 * led.throughput)
 
 
 @pytest.mark.parametrize(
@@ -486,25 +513,57 @@ def test_a_step_with_no_time_and_any_energy_raises(column):
     assert hf.equals(before)
 
 
-def test_a_helpfile_written_with_11_digits_is_ledgered():
-    """Older helpfiles hold 11 significant digits (format %.10e): the coupling identity and the stored
-    residual then hold only to that precision, and the ledger accepts them; a full-precision file with
-    the same coupling gap of 1e-10 of L_int is refused."""
+def _older_run():
+    """A closed synthetic run at the times of a long run (near 5e4 yr, steps of 25 to 31 yr), with the
+    2 whole-run cumulative columns of which E_residual_cons_J is the difference."""
     hf = _table()
-    hf['Time'] = np.r_[
-        0.0, 0.0, 0.0, np.cumsum(np.arange(10.0, 17.0))
-    ]  # whole years, as such runs write
+    rng = np.random.default_rng(5)
+    hf['Time'] = np.r_[0.0, 0.0, 0.0, 5.08e4 + np.cumsum(rng.uniform(25.0, 31.0, 7))]
     _closed_coupling(hf)
-    hf['E_state_heat_cons_J'] = (
-        -8e31 + np.r_[0.0, 0.0, 0.0, np.cumsum(hf['step_dE_state_heat_J'].iloc[3:])]
-    )
-    hf['dE_predicted_cons_J'] = hf['E_state_heat_cons_J']
-    written = hf.map(lambda v: float(f'{v:.10e}'))
-    written['E_residual_cons_J'] = (
-        written['E_state_heat_cons_J'] - written['dE_predicted_cons_J']
-    )
+    cum = -8e31 + np.r_[0.0, 0.0, 0.0, np.cumsum(hf['step_dE_state_heat_J'].iloc[3:])]
+    hf['E_state_heat_cons_J'] = cum
+    hf['dE_predicted_cons_J'] = cum
+    return hf
+
+
+def _written(hf, rows=slice(None)):
+    """``hf`` with the given rows rounded to 11 significant digits, as the older writer stored them."""
+    out = hf.copy()
+    out.iloc[rows] = out.iloc[rows].map(lambda v: float(f'{v:.10e}'))
+    out['E_residual_cons_J'] = out['E_state_heat_cons_J'] - out['dE_predicted_cons_J']
+    return out
+
+
+def test_a_helpfile_written_with_11_digits_is_ledgered():
+    """Older helpfiles hold 11 significant digits (format %.10e). At t near 5e4 yr and dt near 28 yr the
+    rounding of 2 times alone moves dt by up to 4e-9 of itself, so the coupling identity and the stored
+    residual hold only to that precision, and the ledger accepts them; a gap of 1e-5 of L_int is still
+    refused, and a full-precision file with a gap of 1e-10 is refused."""
+    hf = _older_run()
+    written = _written(hf)
     led = whole_run_ledger(written, 'energy_balance')
-    assert abs(led.G.sum()) <= 1e-9 * led.terms['L_int'].sum()
+    assert abs(led.G.sum()) <= 1e-7 * led.terms['L_int'].sum()
+    assert np.abs(written['Time'] - hf['Time']).max() > 0  # the times are rounded
+    gap = written.copy()
+    gap.loc[6, 'F_atm'] *= 1 - 1e-5
+    with pytest.raises(RuntimeError, match='coupling identity'):
+        whole_run_ledger(gap, 'energy_balance')
     hf.loc[5, 'F_atm'] *= 1 + 1e-10
     with pytest.raises(RuntimeError, match='coupling identity'):
         whole_run_ledger(hf, 'energy_balance')
+
+
+def test_a_helpfile_with_older_and_newer_rows_is_ledgered():
+    """A run started with the 11-digit writer and resumed with the full-precision one holds both kinds of
+    rows: each step is checked to the coarser precision of its 2 rows, and the ledger accepts it."""
+    hf = _older_run()
+    mixed = _written(hf, rows=slice(0, 6))
+    led = whole_run_ledger(mixed, 'energy_balance')
+    assert abs(led.R_m.sum()) <= 1e-9 * led.terms['L_int'].sum()
+    assert mixed.loc[8, 'F_atm'] == hf.loc[8, 'F_atm']  # the later rows keep full precision
+
+
+def _loss_to_space(hf):
+    """F_atm A dt of each step on the area of its start row, from the stored columns [J]."""
+    dt = np.diff(hf['Time'].to_numpy()) * secs_per_year
+    return (hf['F_atm'] * 4.0 * np.pi * hf['R_int'] ** 2).to_numpy()[:-1] * dt

@@ -23,15 +23,13 @@ def _tool():
 
 
 def _run(
-    tmp_path, core_bc='core_module', toml=True, module='aragog', tfac=1.2, table_tfac=1.147
+    tmp_path, core_bc='core_module', toml=True, module='aragog', tfac=1.147, surface='flux'
 ):
-    _table(core_bc, tfac=table_tfac).to_csv(
-        tmp_path / 'runtime_helpfile.csv', sep='\t', index=False
-    )
+    _table(core_bc, tfac=tfac).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
     if toml:
         (tmp_path / 'init_coupler.toml').write_text(
             f'[interior_energetics]\nmodule = "{module}"\ncore_tfac_avg = {tfac}\n'
-            f'[interior_energetics.aragog]\ncore_bc = "{core_bc}"\n'
+            f'surface_bc_mode = "{surface}"\n[interior_energetics.aragog]\ncore_bc = "{core_bc}"\n'
         )
     return tmp_path
 
@@ -39,7 +37,7 @@ def _run(
 def test_the_command_prints_the_closure_of_a_closed_run(tmp_path, capsys):
     """A closed synthetic core_module run: exit 0, the settings of the run folder in the header, and a
     planet residual of 0 to round-off relative to L_int."""
-    rc = _tool().main([str(_run(tmp_path))])
+    rc = _tool().main([str(_run(tmp_path, tfac=1.2))])
     out = capsys.readouterr().out
     assert rc == 0
     assert 'core_bc core_module, core_tfac 1.2' in out
@@ -80,8 +78,16 @@ def test_a_run_without_the_aragog_interior_is_refused(tmp_path, capsys, module):
 def test_the_core_temperature_factor_of_the_config_reaches_the_core_heat(tmp_path, capsys):
     """An energy_balance run booked with core_tfac_avg = 1.3 closes its core with the factor of its
     config; R_c is 0 to round-off relative to L_int."""
-    rc = _tool().main([str(_run(tmp_path, 'energy_balance', tfac=1.3, table_tfac=1.3))])
+    rc = _tool().main([str(_run(tmp_path, 'energy_balance', tfac=1.3))])
     out = capsys.readouterr().out
     assert rc == 0
     line = next(x for x in out.splitlines() if x.startswith('R_c '))
     assert abs(float(line.split('(')[1].split()[0])) < 1e-12
+
+
+def test_a_run_with_the_grey_body_surface_is_refused(tmp_path, capsys):
+    """With surface_bc_mode = 'grey_body' the interior loses heat by its own grey-body law, not by F_atm,
+    so the coupling identity does not hold by design: the command exits 2 and names the mode."""
+    rc = _tool().main([str(_run(tmp_path, 'energy_balance', surface='grey_body'))])
+    assert rc == 2
+    assert 'grey_body' in capsys.readouterr().err
