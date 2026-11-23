@@ -27,7 +27,7 @@ Each run took 6 to 8 minutes on a workstation.
 The configuration is `input/tutorials/tutorial_core_table.toml`.
 An Earth-mass planet starts fully molten, on the coolest adiabat above the liquidus (`temperature_mode = "liquidus_super"`).
 Zalmoxis solves the structure with a PALEOS mantle and an iron core, Aragog evolves the interior, and CALLIOPE the outgassing; the star, orbit, atmosphere, escape and chemistry are dummy modules.
-The run stops at 450 yr. `update_interval = 100.0` is the ceiling of the structure update triggers ([Structure-interior coupling](../Explanations/model.md#structure-interior-coupling)). The configuration sets the other triggers (`update_dphi_abs`, `update_dtmagma_frac`, `update_dw_comp_abs`) to 0.999, so in this run only the ceiling starts an update. PROTEUS checks the triggers once per time step, so an update falls at the first step that ends 100 yr or more after the last update: in this run at 102, 246 and 371 yr (Step 4).
+The run stops at 450 yr. `update_interval = 100.0` is the ceiling of the structure update triggers ([Structure-interior coupling](../Explanations/model.md#structure-interior-coupling)). The configuration sets the other triggers (`update_dphi_abs`, `update_dtmagma_frac`, `update_dw_comp_abs`) to 0.999, so in this run only the ceiling starts an update. PROTEUS checks the triggers once per time step, so an update falls at the first step that ends 100 yr or more after the last structure update (a failed re-solve also counts): in this run at 102, 246 and 371 yr (Step 4).
 
 ```toml
 [interior_struct.zalmoxis]

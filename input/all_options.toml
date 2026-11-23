@@ -543,7 +543,9 @@ config_version = "3.0"
         top_cell_dt_rel_dT            = 0.08     # relative surface-temperature change allowance in the mushy regime (phi_s[-1] >= 0.40); in (0, 0.15]
         top_cell_dt_rel_dT_solid      = 0.08     # relative surface-temperature change allowance at a fully solid top cell (phi_s[-1] = 0); in (0, top_cell_dt_rel_dT]
 
-        # Core evolution, read when core_bc = "core_module": the CMB radius and pressure come
+        # Core evolution, read when core_bc = "core_module". Without a running core module (any
+        # other core_bc, or SPIDER), alpha and c_p also set the Gaussian core that a Zalmoxis solve
+        # with a core temperature table fits to the structure. The CMB radius and pressure come
         # from the mesh and the central density and length scale from fits to the interior
         # structure, so only material and model choices appear here.
         [interior_energetics.aragog.core_module]

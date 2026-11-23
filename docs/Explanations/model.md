@@ -335,7 +335,7 @@ When `interior_struct.module = 'zalmoxis'` and `interior_struct.zalmoxis.update_
 Structure updates are governed by a hybrid trigger that combines physics-based criteria with timing constraints:
 
 - **Floor** (`update_min_interval`): minimum time between updates, preventing excessive recomputation during rapid cooling. Every trigger below waits for it, the recovery included. Only mesh convergence skips it: the extra re-solves, spaced by `mesh_convergence_interval`, that follow an update whose mesh shift was limited to `mesh_max_shift`.
-- **Ceiling** (`update_interval`): the time since the last update after which PROTEUS starts a new update. PROTEUS checks it once per time step, so the gap between 2 updates can exceed the ceiling by up to 1 time step.
+- **Ceiling** (`update_interval`): the time after which PROTEUS starts a new update. It counts from the last structure update time that PROTEUS stores: time 0 after the initial structure, the baseline solve when it converges, the resumed time on resume, and the time of each re-solve in the time loop, also of a failed one. PROTEUS checks it once per time step, so in a run with no failed re-solve the gap between 2 updates can exceed the ceiling by up to 1 time step.
 - **Temperature trigger** (`update_dtmagma_frac`): fires when the relative change in mantle surface temperature since the last update exceeds the threshold.
 - **Melt fraction trigger** (`update_dphi_abs`): fires when the absolute change in global melt fraction since the last update exceeds the threshold.
 - **Recovery** (`update_stale_ceiling`): a failed re-solve keeps the previous structure, which is then called stale. If no other trigger fires, a new re-solve starts once this time has passed since the last re-solve attempt; the other triggers can start one sooner, after the floor. On resume the resumed time counts as the last attempt. It has an effect only when `update_stale_ceiling` is smaller than `update_interval`, because the ceiling re-solves first otherwise. It does nothing while no re-solve has failed.
@@ -423,4 +423,4 @@ Only the interior and star modules have an explicit notion of time-evolution. Al
 
  [^cite-kimura2025]: Kimura, T., Hoshino, H., Kokubo, E., Matsumoto, Y. & Ikoma, M., *[Semi-analytical model for the dynamical evolution of planetary systems via giant impacts](https://doi.org/10.3847/1538-4357/ade992)*, The Astrophysical Journal, 989, 109, 2025.
 
-[^cite-attia2026]: M. Attia, T. Lichtenberg, E. Jungová, M. Sastre, *[PALEOS: Multiphase equations of state and mass–radius relations for exoplanet interiors](https://doi.org/10.1051/0004-6361/202660790)*, Astronomy & Astrophysics, 713, A225, 2026.
+[^cite-attia2026]: M. Attia, T. Lichtenberg, E. Jungová, M. Sastre, *[PALEOS: Multiphase equations of state and mass-radius relations for exoplanet interiors](https://doi.org/10.1051/0004-6361/202660790)*, Astronomy & Astrophysics, 713, A225, 2026.
