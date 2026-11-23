@@ -430,7 +430,7 @@ from the running mesh.
 | `layer_k_mix` | float | `10000000.0` | Eddy diffusivity \[m2 s-1\] of convective mixing in the stratified shell at the reference superadiabatic gradient. Used with the experimental stratification. Must be > 0. |
 | `layer_g_mix` | float | `0.001` | Reference superadiabatic gradient of the shell mixing, as a fraction of the adiabatic gradient at the CMB. Used with the experimental stratification. Must be > 0. |
 | `f_ohm` | float | `1.0` | Ohmic fraction of the dissipation in the field-strength scaling, in (0, 1\]; Christensen et al. (2009)[^cite-christensen2009] adopt 1 for planets. Must be > 0 and <= 1. |
-| `ra_crit_cmb` | float | `450.0` | Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast; the default is the theoretical value of Thiriet et al. (2019)[^cite-thiriet2019], Table 2. Must be > 0 and < inf. |
+| `ra_crit_cmb` | float or str | `"phase"` | Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast. 'phase' (the default) takes 450 while the bottom cell is liquid and eq. 16 while it is solid (the switch of Miyazaki & Korenaga (2019b)[^cite-miyazaki2019b] at the critical melt fraction), blended in the logarithm with the weight (1 + tanh((phi - rfront_loc)/w_s))/2 at the bottom-cell melt fraction phi, w_s = (rfront_wid/2)/atanh(0.9), so the weight is 0.05 and 0.95 at the edges of the band \[rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2\], which must lie inside \[0, 1\]. 'eq16' takes the lower-layer law of Thiriet et al. (2019)[^cite-thiriet2019], eq. 16, from the internal Rayleigh number of the mantle; a positive, finite number fixes it, for example 450, their Table 2 value for the upper boundary layer. |
 | `flux_geometry` | str | `"const_flux"` | Which printed Earth-core efficiency factor converts the superadiabatic flux into the field-strength scaling's F: 'const_flux' or 'zero_outer'. Choices: `"const_flux"`, `"zero_outer"`. |
 <!-- END GENERATED: config-table [interior_energetics.aragog.core_module] -->
 
@@ -561,6 +561,8 @@ Cross-field constraints enforced when the config file loads:
 [^cite-christensen2009]: U. R. Christensen, V. Holzwarth, A. Reiners, *[Energy flux determines magnetic field strength of planets and stars](https://doi.org/10.1038/nature07626)*, Nature, 457, 167-169, 2009.
 
 [^cite-mckenzie1984]: D. McKenzie, *[The generation and compaction of partially molten rock](https://doi.org/10.1093/petrology/25.3.713)*, Journal of Petrology, 25, 713-765, 1984.
+
+[^cite-miyazaki2019b]: Y. Miyazaki, J. Korenaga, *[On the timescale of magma ocean solidification and its chemical consequences: 2. Compositional differentiation under crystal accumulation and matrix compaction](https://doi.org/10.1029/2018JB016928)*, Journal of Geophysical Research: Solid Earth, 124, 3399-3419, 2019. [SciX](https://scixplorer.org/abs/2019JGRB..124.3399M/abstract).
 
 [^cite-nimmo2015]: F. Nimmo, *[Thermal and compositional evolution of the core](https://doi.org/10.1016/b978-0-444-53802-4.00160-3)*, in G. Schubert (ed.), Treatise on Geophysics, 2nd edition, vol. 9, Elsevier, 201-219, 2015.
 
