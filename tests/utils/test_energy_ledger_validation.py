@@ -19,6 +19,7 @@ import pytest
 
 from proteus.utils.constants import secs_per_year
 from proteus.utils.energy_ledger import whole_run_ledger
+from tests.utils._ledger_tables import _loss_to_space
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -127,8 +128,8 @@ def test_energy_balance_leaves_the_core_heat_jump_of_an_update_in_the_remap_clas
 ):
     """energy_balance books no core heat at a structure update, so the jump stays in R_c of the steps
     after an update: 5.948278897938286e-3 of L_int over 3 updates in 450 yr, the value of a separate
-    measurement script on the same rows (same arithmetic, 1e-9). The other steps hold 1e-2 of
-    it, and the planet residual R_p = R_m + R_c - G is 8.526e-3 of L_int."""
+    measurement script on the same rows (same arithmetic, 1e-9). The other steps hold less than
+    1e-2 of it, and the planet residual R_p = R_m + R_c - G is 8.526e-3 of L_int."""
     led, hf, _ = _case('eb_updates', start_row=2)
     L = led.terms['L_int'].sum()
     split = led.split('R_c')
@@ -137,8 +138,7 @@ def test_energy_balance_leaves_the_core_heat_jump_of_an_update_in_the_remap_clas
     assert led.terms['B_core'].sum() == 0.0
     assert led.R_p.sum() / L == pytest.approx(8.525868397324384e-3, rel=1e-9)
     cm, _, _ = _case('cm_updates', start_row=2)  # same setup with core_module, for the plot
-    dt = np.diff(hf['Time'].to_numpy()) * secs_per_year
-    E_atm = (hf['F_atm'] * 4.0 * np.pi * hf['R_int'] ** 2).to_numpy()[:-1] * dt
+    E_atm = _loss_to_space(hf)
     D = (hf['M_core'] * hf['core_heatcap'] * 1.147).to_numpy()[1:] * np.diff(
         hf['T_cmb_node'].to_numpy()
     )

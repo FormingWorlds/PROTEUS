@@ -57,3 +57,9 @@ def _table(core_bc='energy_balance', n_steps=7, seed=3, tfac=1.147):
         d['T_cmb_node'] = 4000.0 - np.cumsum(C) / (M_CORE * CP_CORE * tfac)
     d['E_residual_cons_J'] = np.zeros(n)
     return pd.DataFrame(d)
+
+
+def _loss_to_space(hf):
+    """F_atm A dt of each step on the area of its start row, from the stored columns [J]."""
+    dt = np.diff(hf['Time'].to_numpy()) * secs_per_year
+    return (hf['F_atm'] * 4.0 * np.pi * hf['R_int'] ** 2).to_numpy()[:-1] * dt

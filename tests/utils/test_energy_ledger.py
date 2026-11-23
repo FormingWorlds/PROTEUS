@@ -16,7 +16,7 @@ import pytest
 
 from proteus.utils.constants import secs_per_year
 from proteus.utils.energy_ledger import whole_run_ledger
-from tests.utils._ledger_tables import _table
+from tests.utils._ledger_tables import _loss_to_space, _table
 
 pytest.importorskip('hypothesis')
 from hypothesis import HealthCheck, given, settings  # noqa: E402
@@ -404,17 +404,9 @@ def test_the_throughput_is_the_sum_of_the_absolute_booked_terms():
     )  # plus the impact and booked core heat
     assert led.throughput == pytest.approx(hand, rel=1e-12)
     assert led.closure == pytest.approx(led.R_p.sum() / hand, rel=1e-12, abs=1e-30)
-    stored = (
-        (  # R_p from the stored columns: S - Q + D_core - B_core + E_atm on the start-row area
-            hf['step_dE_state_heat_J']
-            - hf['step_dE_Q_radio_J']
-            + hf['step_dE_core_J']
-            - hf['step_dE_struct_core_J']
-        )
-        .iloc[3:]
-        .to_numpy()
-        + _loss_to_space(hf)[2:]
-    )
+    # R_p from the stored columns: S - Q + D_core - B_core + E_atm on the start-row area
+    booked = hf['step_dE_state_heat_J'] - hf['step_dE_Q_radio_J'] + hf['step_dE_core_J']
+    stored = (booked - hf['step_dE_struct_core_J']).iloc[3:].to_numpy() + _loss_to_space(hf)[2:]
     np.testing.assert_allclose(led.R_p, stored, rtol=1e-12, atol=1e-9 * led.throughput)
 
 
@@ -519,17 +511,18 @@ def _older_run():
 
 
 def _written(hf, rows=slice(None)):
-    """``hf`` with the given rows rounded to 11 significant digits, as the older writer stored them."""
+    """``hf`` with the given rows rounded to 11 significant digits, as the older writer stored them;
+    E_residual_cons_J is the difference of the 2 cumulative columns, rounded in the same rows."""
     out = hf.copy()
+    out['E_residual_cons_J'] = hf['E_state_heat_cons_J'] - hf['dE_predicted_cons_J']
     out.iloc[rows] = out.iloc[rows].map(lambda v: float(f'{v:.10e}'))
-    out['E_residual_cons_J'] = out['E_state_heat_cons_J'] - out['dE_predicted_cons_J']
     return out
 
 
 def test_a_helpfile_written_with_11_digits_is_ledgered():
     """Older helpfiles hold 11 significant digits (format %.10e). At t near 5e4 yr and dt near 28 yr the
-    rounding of 2 times alone moves dt by up to 4e-9 of itself, so the coupling identity and the stored
-    residual hold only to that precision, and the ledger accepts them; a gap of 1e-5 of L_int is still
+    rounding of 2 times alone moves dt by up to 4e-8 of itself, so the coupling identity and the stored
+    residual hold only to that precision, and the ledger accepts them; a gap of 1e-6 of L_int is still
     refused, and a full-precision file with a gap of 1e-10 is refused."""
     hf = _older_run()
     written = _written(hf)
@@ -537,7 +530,7 @@ def test_a_helpfile_written_with_11_digits_is_ledgered():
     assert abs(led.G.sum()) <= 1e-7 * led.terms['L_int'].sum()
     assert np.abs(written['Time'] - hf['Time']).max() > 0  # the times are rounded
     gap = written.copy()
-    gap.loc[6, 'F_atm'] *= 1 - 1e-5
+    gap.loc[6, 'F_atm'] *= 1 - 1e-6  # within 3 times of the rounding bound at this t/dt
     with pytest.raises(RuntimeError, match='coupling identity'):
         whole_run_ledger(gap, 'energy_balance')
     hf.loc[5, 'F_atm'] *= 1 + 1e-10
@@ -553,9 +546,29 @@ def test_a_helpfile_with_older_and_newer_rows_is_ledgered():
     led = whole_run_ledger(mixed, 'energy_balance')
     assert abs(led.R_m.sum()) <= 1e-9 * led.terms['L_int'].sum()
     assert mixed.loc[8, 'F_atm'] == hf.loc[8, 'F_atm']  # the later rows keep full precision
+    gap = mixed.copy()
+    gap.loc[7, 'F_atm'] *= (
+        1 + 1e-10
+    )  # a step between 2 full-precision rows keeps the tight check
+    with pytest.raises(RuntimeError, match='coupling identity'):
+        whole_run_ledger(gap, 'energy_balance')
 
 
-def _loss_to_space(hf):
-    """F_atm A dt of each step on the area of its start row, from the stored columns [J]."""
-    dt = np.diff(hf['Time'].to_numpy()) * secs_per_year
-    return (hf['F_atm'] * 4.0 * np.pi * hf['R_int'] ** 2).to_numpy()[:-1] * dt
+def test_a_resume_from_11_digit_rows_is_allowed_in_the_stored_residual():
+    """A run resumed from an 11-digit helpfile continues both cumulative columns from rounded values, so
+    E_residual_cons_J jumps by up to 2 x 5e-11 of their size (here 4e21 J at 8e31 J); the check allows
+    that jump and refuses one of 1e23 J."""
+    hf = _older_run()
+    hf['dE_predicted_cons_J'] = hf['E_state_heat_cons_J'] + 1e30  # 2 columns of the same size
+    resumed = _written(hf)
+    eleven = lambda v: float(f'{v:.10e}')  # noqa: E731
+    resumed.loc[6:, 'E_residual_cons_J'] = (resumed.loc[6:, 'E_residual_cons_J'] + 4e21).map(
+        eleven
+    )
+    led = whole_run_ledger(resumed, 'energy_balance')
+    assert abs(led.R_m.sum()) <= 1e-7 * led.terms['L_int'].sum()
+    resumed.loc[6:, 'E_residual_cons_J'] = (resumed.loc[6:, 'E_residual_cons_J'] + 1e23).map(
+        eleven
+    )
+    with pytest.raises(RuntimeError, match='E_residual_cons_J'):
+        whole_run_ledger(resumed, 'energy_balance')
