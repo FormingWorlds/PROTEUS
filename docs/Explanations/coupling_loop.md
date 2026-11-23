@@ -403,9 +403,9 @@ The ledger works in the heat frame of `E_residual_cons_J` above: the heat that a
 
 Open terms, which no column books, are reported separately:
 
-- With `core_bc = 'energy_balance'`, nothing books the change of the core heat at a structure update. No heat flow carries it: the CMB node, which sets the core temperature, moves to a new pressure. It shows in $R_c$ of the steps after an update (class `remap`). `core_module` books it.
+- With `core_bc = 'energy_balance'`, nothing books the change of the core heat at a structure update. No heat flow carries it: the CMB node (the lowest mantle node), which sets the core temperature, moves to a new pressure. It shows in $R_c$ of the steps after an update (class `remap`). `core_module` books it.
 - The first step of a run carries a loss to space but no interior heat (class `zero`).
-- With the sub-grid lid, the interior heat loss and the loss to space come from different parts of the code (class `lid`).
+- With the [sub-grid lid](lid_coupling.md), the interior heat loss and the loss to space come from different parts of the code (class `lid`).
 - A structure update can change the mantle mass. The ledger reports it in kg only, as its energy depends on the zero of the equation-of-state energy.
 
 To run it: [Check the energy closure of a run](../How-to/energy_ledger.md).
