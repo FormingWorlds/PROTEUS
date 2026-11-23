@@ -28,6 +28,7 @@ nav:
               - Lid seal: How-to/usage_lid_seal.md
               - Parameter grids: How-to/usage_grids.md
               - Postprocessing and chemistry: How-to/usage_postprocessing.md
+              - Energy closure of a run: How-to/energy_ledger.md
               - Choose stellar spectrum: How-to/switch_spectrum.md
           - Stabilise simulations: How-to/stabilise_run.md
           - Troubleshooting: How-to/troubleshooting.md
@@ -99,6 +100,8 @@ nav:
       - Star:
           - Stellar luminosity and instellation (dummy.py): Validation/star/dummy.md
           - Stellar wrapper dispatch (wrapper.py): Validation/star/wrapper.md
+      - Utilities:
+          - Whole-run energy ledger (energy_ledger.py): Validation/utils/energy_ledger.md
 
   - Reference:
       - Configuration:
@@ -121,6 +124,7 @@ nav:
           - Interior structure (Zalmoxis wrapper): Reference/api/interior_struct_zalmoxis.md
           - Interior structure config: Reference/api/config_struct.md
           - Interior energetics wrapper: Reference/api/interior_energetics_wrapper.md
+          - Whole-run energy ledger: Reference/api/utils_energy_ledger.md
           - Outgassing:
               - Wrapper: Reference/api/outgas_wrapper.md
               - Shared code: Reference/api/outgas_common.md
@@ -251,7 +255,7 @@ plugins:
   - mkdocstrings:
       handlers:
         python:
-          paths: [src]
+          paths: [src, src/proteus/utils]  # utils is a namespace package that griffe cannot resolve
           inventories:
             - https://installer.readthedocs.io/en/stable/objects.inv
             - https://docs.python.org/3/objects.inv

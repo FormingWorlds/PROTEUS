@@ -44,6 +44,7 @@ Without `--validation-plots` the tests write nothing, but each plot test compare
 | Outgassing | `outgas/trapping.py` | [Solid-phase volatile trapping](outgas/trapping.md) | [interstitial-melt trapping](outgas/trapping.md#trapping-through-the-interstitial-melt) |
 | Star | `star/dummy.py` | [Stellar luminosity and instellation](star/dummy.md) | [solar luminosity](star/dummy.md#luminosity-of-the-sun) |
 | Star | `star/wrapper.py` | [Stellar wrapper dispatch](star/wrapper.md) | [equilibrium temperature](star/wrapper.md#equilibrium-temperature-of-an-earth-like-planet) |
+| Utilities | `utils/energy_ledger.py` | [Whole-run energy ledger](utils/energy_ledger.md) | [unbooked core heat of `energy_balance`](utils/energy_ledger.md#the-unbooked-core-heat-of-energy_balance-at-a-structure-update) |
 
 ## Adding a page
 
