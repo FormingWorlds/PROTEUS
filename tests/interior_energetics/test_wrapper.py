@@ -42,7 +42,12 @@ from proteus.interior_energetics.wrapper import (
     update_structure_from_interior,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.timeout(30),
+    pytest.mark.usefixtures('_no_core_table'),
+]
+
 
 PROTEUS_ROOT = Path(__file__).resolve().parents[2]
 
@@ -818,6 +823,47 @@ def test_handoff_callable_anchors_cmb_for_aragog_ascending_profile():
     assert np.all(T_arr > 0.0)
     assert T_arr[0] == pytest.approx(7740.0, rel=1e-12)
     assert T_arr[-1] == pytest.approx(2500.0, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_resolve_hands_the_core_table_of_the_live_state(monkeypatch):
+    """A structure re-solve passes zalmoxis_solver the core temperature table built from the run
+    config, the interior object and the row of this step, with no anchor, so the live Aragog
+    core or the row T_cmb sets it, and the deepest mantle T as the fallback anchor."""
+    import proteus.interior_energetics.wrapper as wrapper_mod
+
+    calls = []
+
+    def stub(config, interior_o, hf_row, t_anchor=None, t_fallback=None):
+        calls.append((config, interior_o, hf_row, t_anchor, t_fallback))
+        return ('core table',)
+
+    monkeypatch.setattr(wrapper_mod, '_structure_core_table', stub)
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o(n_stag=49)
+    interior_o.radius = np.linspace(3.0e6, 6.0e6, 50)
+    interior_o.temp = np.linspace(7740.0, 2500.0, 49)
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)
+        ) as mock_solver,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        update_structure_from_interior(
+            _mock_dirs(), config, hf_row, interior_o, 0.0, 3000.0, 0.8
+        )
+    assert mock_solver.call_args.kwargs['core_temperature_arrays'] == ('core table',)
+    assert len(calls) == 1
+    assert calls[0][0] is config and calls[0][1] is interior_o and calls[0][3] is None
+    assert calls[0][4] == pytest.approx(7740.0, rel=1e-12)  # the deepest mantle T
 
 
 @pytest.mark.unit
@@ -1660,17 +1706,19 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize('path', ['raise', 'mass_anchor', 'up_step'])
 def test_a_rejected_structure_update_restores_the_solve_keys_of_the_row(path):
-    """A solve that writes M_core, M_core_solve, M_vol_solve and core_density and then fails
-    (a schema violation raises after the writes), misses the mass anchor, or makes a
-    rejected radius up-step leaves the 4 keys at their values before the call."""
+    """A solve that writes M_core, M_core_solve, M_vol_solve, core_density and the core
+    temperature table flags and then fails (a schema violation raises after the writes),
+    misses the mass anchor, or makes a rejected radius up-step leaves the 6 keys at their
+    values before the call."""
     config, hf_row, lt, lT, lP = _dtmagma_scenario()  # cooling, so an up-step is rejected
     before = {'M_core': 1.95e24, 'M_core_solve': 1.94e24, 'core_density': 1.1e4}
-    before['M_vol_solve'] = 2.55e21
+    before.update(struct_core_T_used=0.0, struct_core_T_excess=0.0, M_vol_solve=2.55e21)
     hf_row.update(before)
     interior_o = _mock_interior_o()
 
     def solver(cfg, outdir, row, *a, **k):
         row.update(M_core=2.1e24, M_core_solve=2.0e24, core_density=1.2e4, M_vol_solve=2.4e21)
+        row.update(struct_core_T_used=1.0, struct_core_T_excess=0.05)
         if path == 'raise':
             raise RuntimeError('zalmoxis_output.dat schema violation')
         if path == 'mass_anchor':
