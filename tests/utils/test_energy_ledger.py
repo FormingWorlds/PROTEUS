@@ -13,11 +13,13 @@ import math
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import HealthCheck, given, settings
-from hypothesis import strategies as st
 
 from proteus.utils.constants import secs_per_year
 from proteus.utils.energy_ledger import whole_run_ledger
+
+pytest.importorskip('hypothesis')
+from hypothesis import HealthCheck, given, settings  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
