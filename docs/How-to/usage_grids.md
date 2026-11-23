@@ -188,16 +188,7 @@ The explorer uses the formulas of the grid manager. To check it, compare these l
 - 20 cases with `cores_per_job = 16` give 2 jobs in 1 wave, with 37.5 % idle.
 - 50 cases with `cores_per_job = 4` and a MaxArraySize of 5 give 5 jobs in 3 waves, with 16.7 % idle.
 
-The collapsed section "Snellius SBU cost" shows what a grid costs on Snellius. Snellius charges a job that fits on one node in eighths of a node: the share is the larger of the cores and the memory that the job asks for, as a fraction of the node, rounded up to the next eighth ([Shared usage accounting](https://servicedesk.surf.nl/wiki/spaces/WIKI/pages/300974114/Shared+usage+accounting)). One charged core costs the SBU weight of the partition per hour. The explorer takes the cores, memory and weights from the [Snellius partitions](https://servicedesk.surf.nl/wiki/spaces/WIKI/pages/30660209/Snellius+partitions) page (read on 2026-11-21):
-
-| Partition | Cores per node | Memory per node (GiB) | Memory per core (GiB) | Smallest share | SBU per core-hour |
-|---|---|---|---|---|---|
-| `rome` | 128 | 224 | 1.75 | 16 cores and 28 GiB | 1.0 |
-| `genoa` | 192 | 336 | 1.75 | 24 cores and 42 GiB | 1.0 |
-| `fat_rome` | 128 | 960 | 7.5 | 16 cores and 120 GiB | 1.5 |
-| `fat_genoa` | 192 | 1440 | 7.5 | 24 cores and 180 GiB | 1.5 |
-
-Above 1.75 GiB per case on `rome` or `genoa`, memory sets the charge, so every case also pays for cores that it doesn't use; "Charged cores without a case" shows that share, and it includes the idle cores. The SBU for the grid assumes, as the drawing does, that every case runs for `max_days`; a job with fewer rows ends earlier. Snellius charges the time that a job runs, not its walltime. To check the section, set 8 cases with `cores_per_job = 8` and `max_mem = 7` on `rome`: the job is charged 32 cores, so 4.0 SBU per case-hour, as Snellius charged for such a job. On `fat_rome`, 16 cases with `cores_per_job = 16` and `max_mem = 7.5` are charged 16 cores, so 1.5 SBU per case-hour.
+The collapsed section "Snellius SBU cost" shows what the grid costs on a Snellius partition: the cores that Snellius charges for each job, the SBU, and the share of charged cores that no case uses. It assumes, as the drawing does, that every case runs for `max_days`. [Snellius charging](snellius_cluster_guide.md#how-snellius-charges-a-grid) explains the rule and gives the partition figures.
 
 #### How `max_jobs` is enforced
 
