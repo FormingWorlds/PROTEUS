@@ -540,8 +540,8 @@ def test_explorer_layout_and_idle_share_match_the_grid_manager():
 
 def test_explorer_charges_snellius_jobs_in_eighths_of_a_node():
     """A job is charged the larger of its core and memory share, rounded up to an eighth
-    of a node; a job below an eighth gets the whole eighth, and --mem-per-cpu gives each
-    of its cores max_mem. On rome, 8 cores at 6.9 GiB were charged 64 cores
+    of a node. On rome, a job below an eighth got the whole eighth, and --mem-per-cpu gave
+    each of its cores max_mem: 8 cores at 6.9 GiB were charged 64 cores
     (sbatch --test-only), not the 32 of 8 x 6.9 GiB; on fat_rome, 16 cores at 7.5 GiB,
     16. 28 GiB is exactly 1/8 of a rome node and 32 GiB rounds up to 2/8; on genoa, an
     eighth is 24 cores and 42 GiB."""

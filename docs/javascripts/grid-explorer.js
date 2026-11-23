@@ -37,8 +37,8 @@ function idleShare(n, k, jobs) {
   return 1 - n / (runs(n, k, jobs) * k);
 }
 
-// Snellius allocates whole eighths of cores, and --mem-per-cpu gives each allocated core
-// max_mem, also the cores that no case asked for.
+// Seen on rome and assumed elsewhere: Snellius allocates whole eighths of cores, and
+// --mem-per-cpu gives each allocated core max_mem, also the cores that no case asked for.
 function charge(k, mem, partition) {
   const [cores, nodeMem, weight] = PARTITIONS[partition];
   const allocated = (Math.ceil((8 * k) / cores) * cores) / 8;
