@@ -84,7 +84,9 @@ def _facts():
         ]
         for run in (r, o):
             lo, hi = RUNS[run]['F_atm'][LIVE], RUNS[run]['F_atm'][LIVE + 1]
-            facts.append(f'{_after(run, "F_int"):.2f} {wm2} in [{lo:.2f}, {hi:.2f}] {wm2}')
+            facts.append(
+                f'{_after(run, "F_int"):.2f} {wm2} in the band from {lo:.2f} to {hi:.2f} {wm2}'
+            )
     swings = [max(_later_steps(n)) for n in NAMES]
     ratios = [_step(a, 'T_surf') / _step(b, 'T_surf') for a, b in PAIRS]
     k2 = _live('seg1_response')[1]
