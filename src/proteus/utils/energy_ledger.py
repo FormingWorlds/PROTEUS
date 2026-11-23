@@ -76,7 +76,7 @@ class Ledger:
     time : np.ndarray
         Time at the end of each step [yr].
     terms : dict[str, np.ndarray]
-        Booked terms: S_state, L_int, C_cmb, Q, I_mantle, D_core, B_core, E_atm, compression.
+        Per-step terms: S_state, L_int, C_cmb, Q, I_mantle, D_core, B_core, E_atm, compression.
     R_m, R_c, G, R_p : np.ndarray
         Mantle, core, coupling and planet residuals.
     classes : dict[str, np.ndarray]
@@ -86,7 +86,8 @@ class Ledger:
     dM_mantle_frac : np.ndarray
         ``dM_mantle`` over the mantle mass at the start row [1].
     throughput : float
-        Gross energy throughput T, the sum of the absolute booked terms [J].
+        Gross energy throughput T, the sum of the absolute values of S_state, L_int, C_cmb, Q,
+        I_mantle and B_core [J].
     """
 
     time: np.ndarray
@@ -210,13 +211,8 @@ def _check(t: dict, cls: dict, R_m: np.ndarray, G: np.ndarray, c: dict) -> None:
     relative to dt."""
     p = _precision(c)
     step = np.maximum(p[:-1], p[1:])
-    time = c['Time']
-    span = np.divide(
-        np.abs(time[1:]) + np.abs(time[:-1]),
-        np.diff(time),
-        out=np.zeros(step.size),
-        where=np.diff(time) > 0,
-    )
+    time, dtime = c['Time'], np.diff(c['Time'])
+    span = (np.abs(time[1:]) + np.abs(time[:-1])) / np.where(dtime > 0, dtime, np.inf)
     tol = G_TOL * np.abs(t['L_int']) + 2 * step * np.abs(t['E_atm']) * (4 + span)
     plain = ~cls['lid'] & ~cls['zero']
     over = plain & ~(np.abs(G) <= tol)
@@ -231,8 +227,8 @@ def _check(t: dict, cls: dict, R_m: np.ndarray, G: np.ndarray, c: dict) -> None:
         stored, summed = er[-1] - er[0], float(R_m.sum())
         gross = sum(float(np.abs(t[k]).sum()) for k in ('S_state', 'L_int', 'C_cmb', 'Q'))
         floor = 64 * float(p.max()) * gross  # round-off of the per-step sums
-        # E_residual_cons_J is the difference of 2 cumulative columns: their run round-off and the
-        # rounding of the 2 stored end values
+        # E_residual_cons_J is the difference of 2 cumulative columns: their round-off in the run, and
+        # a resume from an 11-digit file that continues both from rounded values
         cum = R_m.size * float(np.finfo(float).eps) + 2 * max(p[0], p[-1])
         for name in ('E_state_heat_cons_J', 'dE_predicted_cons_J'):
             if c[name] is not None:

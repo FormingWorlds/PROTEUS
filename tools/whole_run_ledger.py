@@ -34,7 +34,8 @@ def run_settings(run: Path, core_bc: str | None) -> tuple[str, float]:
         )
     bc = core_bc or ie.get('aragog', {}).get('core_bc')
     if bc is None:
-        raise ValueError(f'{cfg} names no aragog core_bc; pass --core-bc')
+        what = 'names no aragog core_bc' if cfg.exists() else 'does not exist'
+        raise ValueError(f'{cfg} {what}; pass --core-bc')
     return bc, float(ie.get('core_tfac_avg', 1.147))
 
 
