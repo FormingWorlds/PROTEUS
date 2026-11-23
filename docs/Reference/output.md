@@ -51,6 +51,8 @@ description. The codes are:
 | 14 | Completed: net flux is small (radiative equilibrium) |
 | 15 | Completed: atmosphere escaped |
 | 16 | Completed: planet disintegrated |
+| 17 | Completed: satellite escaped |
+| 18 | Completed: satellite disintegrated |
 | 20 | Error: configuration |
 | 21 | Error: interior module |
 | 22 | Error: atmosphere module |
@@ -60,6 +62,8 @@ description. The codes are:
 | 26 | Error: tidal module |
 | 27 | Error: outgassing module |
 | 28 | Error: escape module |
+| 29 | Completed: planet evaporated |
+| 30 | Error: killed for memory (written by the Slurm job script) |
 
 ## Helpfile columns
 

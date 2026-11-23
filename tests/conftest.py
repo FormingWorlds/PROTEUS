@@ -79,8 +79,8 @@ def _restore_fwl_logger():
 
 @pytest.fixture(autouse=True)
 def _restore_sigterm_handler():
-    """`proteus start` and the inference `serve` install a SIGTERM handler; put the
-    earlier one back after each test."""
+    """`Proteus.start` installs a SIGTERM handler and tests call it or install their own;
+    put the earlier one back after each test."""
     before = signal.getsignal(signal.SIGTERM)
     yield
     signal.signal(signal.SIGTERM, before)

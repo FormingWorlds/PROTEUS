@@ -11,12 +11,12 @@ from proteus.utils.helper import CommentFromStatus, ReadStatus
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Broad status categories of the codes in `CommentFromStatus` (proteus.utils.helper),
-# shared by `summarise` and the grid analysis. Code 29 is 'Completed (planet evaporated)'.
+# Status categories of the codes in `CommentFromStatus` (proteus.utils.helper), shared by
+# `summarise` and the grid analysis. 29 is a completion; the Slurm job script writes 30.
 STATUS_CATEGORIES = {
     'Running': tuple(range(0, 10)),
     'Completed': (*range(10, 20), 29),
-    'Error': tuple(range(20, 29)),
+    'Error': (*range(20, 29), 30),
 }
 
 
@@ -31,7 +31,7 @@ def status_category(code: int) -> str:
     Returns
     -------
     str
-        'Running' (0-9), 'Completed' (10-19 and 29), 'Error' (20-28), or
+        'Running' (0-9), 'Completed' (10-19 and 29), 'Error' (20-28 and 30), or
         'Unknown' for any other code.
     """
     for name, codes in STATUS_CATEGORIES.items():

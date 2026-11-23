@@ -357,6 +357,46 @@ def test_dispatch_script_starts_no_case_after_the_last_start_time(tmp_path):
     assert done.stdout.decode().count('not started') == 3
 
 
+def test_a_case_killed_for_memory_gets_status_30_and_other_kills_25(tmp_path):
+    """srun reports a case the kernel killed for memory in the case log; the script then
+    writes status 30 instead of the 25 of any other case that ended without a final status.
+    A line that only mentions memory, not in srun's form, does not count. Both cases fail
+    the job, and a case that finished keeps its own status."""
+    oom = 'srun: error: tcn7: task 0: Out Of Memory'
+    # srun stand-in: run the case, then report a kill for memory as srun does for case 0
+    srun = _SRUN.replace(
+        'exec "$@"', f'"$@"; c=$?; [ $c -eq 137 ] && echo "{oom}" >&2; exit $c'
+    )
+    fakecase = (
+        'n=$(basename "$1" .toml); out="$(dirname "$(dirname "$1")")/$n"\n'
+        'mkdir -p "$out"; echo 1 > "$out/status"\n'
+        'case "$n" in\n'
+        '  case_000000) kill -9 $$ ;;\n'
+        '  case_000001) echo "the case ran Out Of Memory in a log line"; exit 1 ;;\n'
+        'esac\n'
+        'printf "10\\nCompleted\\n" > "$out/status"\n'
+    )
+    os.makedirs(tmp_path / 'my grid' / 'logs')
+    script = tmp_path / 'slurm_dispatch.sh'
+    script.write_text(_script(tmp_path, n_cases=3, cores=3, jobs=1, command='fakecase'))
+    env = _fake_tools(tmp_path, srun=srun, fakecase=fakecase)
+    done = subprocess.run(
+        ['bash', str(script)],
+        env={**env, 'SLURM_ARRAY_TASK_ID': '0', 'SLURM_JOB_ID': '7'},
+        capture_output=True,
+        timeout=20,
+    )
+    status = {
+        i: (tmp_path / 'my grid' / f'case_{i:06d}' / 'status').read_text().splitlines()
+        for i in range(3)
+    }
+    assert done.returncode != 0
+    assert status[0] == ['30', 'Error (killed for memory)']
+    assert status[1] == ['25', 'Error (died, or exit requested by user)']
+    assert status[2][0] == '10'
+    assert oom in (tmp_path / 'my grid' / 'logs' / 'case_000000.log').read_text()
+
+
 def _default_sigterm() -> None:
     """Give the batch shell the default SIGTERM action, unblocked: a CI runner can start
     the tests with SIGTERM ignored or blocked, and the shell and its cases inherit that."""
@@ -426,13 +466,14 @@ def test_sigterm_to_the_batch_shell_stops_new_cases_and_reaches_running_ones(tmp
 
 @pytest.mark.parametrize(
     ('status', 'fails'),
-    [(20, True), (28, True), (29, False)],
-    ids=['first-error', 'last-error', 'planet-evaporated'],
+    [(20, True), (28, True), (29, False), (30, True)],
+    ids=['first-error', 'last-error', 'planet-evaporated', 'killed-for-memory'],
 )
 def test_error_status_fails_the_job_also_after_exit_code_0(tmp_path, status, fails):
-    """A case that writes an error status (20 to 28) and exits with code 0 keeps its
-    status and fails its job, so sacct doesn't show the job as completed. Status 29,
-    "Completed (planet evaporated)", is no error: that case and its job succeed."""
+    """A case that writes an error status (20 to 28, or 30 for a memory kill) and exits
+    with code 0 keeps its status and fails its job, so sacct doesn't show the job as
+    completed. Status 29, "Completed (planet evaporated)", is no error: that case and its
+    job succeed."""
     env = _fake_tools(
         tmp_path,
         srun=_SRUN,
