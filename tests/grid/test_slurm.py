@@ -540,28 +540,27 @@ def test_explorer_layout_and_idle_share_match_the_grid_manager():
 
 def test_explorer_charges_snellius_jobs_in_eighths_of_a_node():
     """A job is charged the larger of its core and memory share, rounded up to an eighth
-    of a node. On rome, a job below an eighth got the whole eighth, and --mem-per-cpu gave
-    each of its cores max_mem: 8 cores at 6.9 GiB were charged 64 cores
-    (sbatch --test-only), not the 32 of 8 x 6.9 GiB; on fat_rome, 16 cores at 7.5 GiB,
-    16. 28 GiB is exactly 1/8 of a rome node and 32 GiB rounds up to 2/8; on genoa, an
-    eighth is 24 cores and 42 GiB."""
+    of a node. On rome, 8 cores with 56 GiB as one --mem request were charged 32 cores
+    (sbatch --test-only, and job 29530204), and on fat_rome 16 cores with 120 GiB, 16.
+    28 GiB is exactly 1/8 of a rome node and 32 GiB rounds up to 2/8; 4 cores at 7 GiB
+    fill one eighth; on genoa, an eighth is 24 cores and 42 GiB."""
     charges = _explorer(
-        "charge(8, 6.9, 'rome')",
+        "charge(8, 7, 'rome')",
         "charge(16, 7.5, 'fat_rome')",
         "charge(16, 1.75, 'rome')",
         "charge(16, 2, 'rome')",
-        "charge(4, 1, 'rome')",
+        "charge(4, 7, 'rome')",
         "charge(20, 1, 'rome')",
         "charge(24, 1.75, 'genoa')",
         "charge(24, 7, 'genoa')",
     )
-    assert [c['charged'] for c in charges] == [64, 16, 16, 32, 16, 32, 24, 96]
-    assert [c['perHour'] for c in charges[:2]] == [64, 24]
+    assert [c['charged'] for c in charges] == [32, 16, 16, 32, 16, 32, 24, 96]
+    assert [c['perHour'] for c in charges[:2]] == [32, 24]
 
 
 def test_explorer_sbu_stats_count_charged_cores_without_a_case():
-    """8 cases of 7 GiB on 8 rome cores are charged 64 cores: 56 of them carry no case
-    (87.5 %), and a case-hour costs 8.0 SBU. 20 cases on 16 cores at 1.75 GiB leave
+    """8 cases of 7 GiB on 8 rome cores are charged 32 cores: 24 of them carry no case
+    (75 %), and a case-hour costs 4.0 SBU. 20 cases on 16 cores at 1.75 GiB leave
     the 37.5 % idle cores, and nothing more."""
     days = 2
     rome7, rome175 = _explorer(
@@ -569,11 +568,11 @@ def test_explorer_sbu_stats_count_charged_cores_without_a_case():
         f"sbuStats({{cases: 20, cores: 16, mem: 1.75, days: {days}, partition: 'rome'}}, 2)",
     )
     assert dict(rome7) == {
-        'Charged cores per job': 64,
-        'SBU per job-hour': 64,
-        'SBU per case-hour': '8.00',
-        'SBU for the grid': 64 * 24 * days,
-        'Charged cores without a case': '87.5 %',
+        'Charged cores per job': 32,
+        'SBU per job-hour': 32,
+        'SBU per case-hour': '4.00',
+        'SBU for the grid': 32 * 24 * days,
+        'Charged cores without a case': '75.0 %',
     }
     assert dict(rome175)['Charged cores without a case'] == '37.5 %'
     assert dict(rome175)['SBU for the grid'] == 2 * 16 * 24 * days
