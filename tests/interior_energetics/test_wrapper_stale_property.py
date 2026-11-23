@@ -15,10 +15,16 @@ from tests.interior_energetics.test_wrapper import (  # noqa: E402
     _stale_ceiling_case,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.timeout(30),
+    pytest.mark.usefixtures('_no_core_table'),
+]
 
 
 @pytest.mark.unit
+# 150 Hypothesis examples: 21 s on the Linux and macOS runners
+@pytest.mark.timeout(60)
 @settings(
     max_examples=150, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )

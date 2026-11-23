@@ -53,6 +53,7 @@ nav:
       - Orbit and tidal evolution: Tutorials/orbit_tides.md
       - Giant impacts with a partial re-melt: Tutorials/giant_impact_remelt.md
       - Volatiles held under a closed crust: Tutorials/lid_seal.md
+      - The core temperature of the structure solve: Tutorials/core_table.md
 
   - Explanations:
       - Scientific background:
@@ -79,6 +80,7 @@ nav:
           - Mixing length at the core-mantle boundary (aragog.py): Validation/interior_energetics/aragog.md
           - Partial giant-impact re-melt (remelt.py): Validation/interior_energetics/remelt.md
       - Interior structure:
+          - Core temperature in the structure solve (core_temperature.py): Validation/interior_struct/core_temperature.md
           - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
       - Orbit:
           - Orbital evolution (orbit.py): Validation/orbit/orbit.md

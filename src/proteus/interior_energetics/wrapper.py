@@ -1317,6 +1317,8 @@ _ADIABAT_IC_RESTORE_KEYS = (
     'M_int',
     'M_core',
     'M_core_solve',
+    'struct_core_T_used',
+    'struct_core_T_excess',
     'M_int_target',
     'P_surf',
     'P_center',
@@ -1325,6 +1327,32 @@ _ADIABAT_IC_RESTORE_KEYS = (
     'core_density',
     'rho_avg',
 )
+
+
+def _structure_core_table(
+    config: Config, interior_o, hf_row: dict, t_anchor=None, t_fallback=None
+):
+    """Core temperature table ``(P, T)`` of a structure solve.
+
+    A given ``t_anchor`` [K] gives the Gaussian core fitted to the row structure through it,
+    also with a live core. Without it: the adiabat of the live Aragog core through its
+    temperature (``core_bc = "core_module"``), else the Gaussian fit through the row ``T_cmb``,
+    or through ``t_fallback`` [K] when the row has no positive ``T_cmb`` (a dummy interior
+    writes none).
+    """
+    from proteus.interior_energetics.aragog_core import core_temperature_state
+    from proteus.interior_struct.core_temperature import structure_core_table
+
+    solver = getattr(interior_o, 'aragog_solver', None)
+    budget = getattr(solver, '_core_module_budget', None)
+    if budget is not None and t_anchor is None:
+        t_core = core_temperature_state(solver, config.interior_energetics.aragog.core_bc)
+        if t_core is not None:
+            return structure_core_table(config, hf_row, t_core, budget.profiles)
+    if t_anchor is not None:
+        return structure_core_table(config, hf_row, float(t_anchor))
+    t_row = float(hf_row.get('T_cmb', 0.0))
+    return structure_core_table(config, hf_row, t_row if t_row > 0 else t_fallback)
 
 
 def _sample_adiabat_temperature_arrays(outdir: str, temperature_function):
@@ -1396,6 +1424,7 @@ def _solve_structure_with_adiabat_or_rollback(
     hf_row: dict,
     num_spider_nodes: int,
     temperature_function,
+    core_t_anchor: float | None = None,
 ) -> tuple[str | None, bool]:
     """Run one structure solve against ``temperature_function`` with rollback.
 
@@ -1405,7 +1434,7 @@ def _solve_structure_with_adiabat_or_rollback(
     :func:`_sample_adiabat_temperature_arrays`), then enforces the
     mass-anchor contract
     (``|M_int / M_int_target - 1| < _ZALMOXIS_MASS_ANCHOR_TOL``) and a finite,
-    positive ``R_int``. On any failure it restores BOTH the saved ``hf_row``
+    positive ``R_int``. On a failed solve or check it restores BOTH the saved ``hf_row``
     keys AND ``zalmoxis_output.dat`` from its ``.prev`` snapshot, so the
     immediately-following ``run_interior`` (Aragog ``ic = 1``) never sees the
     failed adiabat geometry against a linear-guess EOS mesh.
@@ -1430,6 +1459,10 @@ def _solve_structure_with_adiabat_or_rollback(
         Adiabat ``f(r, P) -> T`` closure. Passed to the solver together
         with the sampled r-indexed arrays; the solver's temperature-source
         dispatch then decides which one the solve consumes.
+    core_t_anchor : float or None, optional
+        CMB temperature [K] of the core temperature table: the core temperature of the run for a
+        solve after a giant impact; None takes the deepest mantle T of the sampled adiabat,
+        and gives no core table when the previous structure cannot be sampled.
 
     Returns
     -------
@@ -1438,6 +1471,15 @@ def _solve_structure_with_adiabat_or_rollback(
         and ``None`` on failure; ``ok`` is True only when the solve passed both
         the mass anchor and the ``R_int`` validity check. The caller decides
         what to do with the linear-guess mesh on failure.
+
+    Raises
+    ------
+    ValueError
+        When the core temperature table cannot be built. The table is built before the solve,
+        so this and every other error of the table builder stop the run with no rollback.
+    zalmoxis.invariants.StructureInvariantError
+        When the accepted structure breaks an invariant, such as core arrays off the core
+        temperature table. It stops the run with no rollback.
     """
     from proteus.interior_struct.zalmoxis import zalmoxis_solver
 
@@ -1465,6 +1507,10 @@ def _solve_structure_with_adiabat_or_rollback(
     # or malformed previous structure) degrades to the callable-only call.
     adiabat_arrays = _sample_adiabat_temperature_arrays(outdir, temperature_function)
 
+    # The core takes the adiabat through core_t_anchor, else the deepest mantle T of the previous
+    # pass, fitted to the row; a table that cannot be built stops the run, as in a re-solve
+    anchor = adiabat_arrays[1][0] if core_t_anchor is None and adiabat_arrays else core_t_anchor
+    core_table = None if anchor is None else _structure_core_table(config, None, hf_row, anchor)
     try:
         _cmb_radius, adiabat_mesh_file = zalmoxis_solver(
             config,
@@ -1473,6 +1519,7 @@ def _solve_structure_with_adiabat_or_rollback(
             num_spider_nodes=num_spider_nodes,
             temperature_function=temperature_function,
             temperature_arrays=adiabat_arrays,
+            core_temperature_arrays=core_table,
         )
         # Mass-anchor contract: a too-loosely-converged adiabat solve is
         # treated as a failure, same as the time-evolution re-solve path.
@@ -1533,14 +1580,15 @@ def _resolve_adiabatic_ic_structure(
     hf_row: dict,
     num_spider_nodes: int,
     linear_mesh_file: str | None,
+    core_t_anchor: float | None = None,
 ) -> str | None:
     """Re-solve the IC structure against the super-liquidus adiabat.
 
     Two-pass: the linear-guess solve has already populated ``hf_row`` (R_int,
     P_cmb, masses, mesh file). This builds the adiabat ``T(P)`` over the
     converged pressure range and re-solves the structure with it via
-    :func:`_solve_structure_with_adiabat_or_rollback`. On any failure (adiabat
-    unavailable, solver raises, mass-anchor violation) the linear-guess
+    :func:`_solve_structure_with_adiabat_or_rollback`. On a failure (adiabat
+    unavailable, solver error, mass-anchor violation) the linear-guess
     structure (both ``hf_row`` and the on-disk ``zalmoxis_output.dat``) is
     restored and its mesh file returned, so the IC is never made worse than the
     existing behaviour.
@@ -1558,11 +1606,22 @@ def _resolve_adiabatic_ic_structure(
         SPIDER basic-node count forwarded to the solver (0 for Aragog).
     linear_mesh_file : str or None
         Mesh file path from the linear-guess solve, returned on fallback.
+    core_t_anchor : float or None, optional
+        CMB temperature [K] of the core temperature table, see
+        :func:`_solve_structure_with_adiabat_or_rollback`.
 
     Returns
     -------
     str or None
         Mesh file path from the accepted solve.
+
+    Raises
+    ------
+    ValueError
+        When the core temperature table cannot be built: no rollback, the run stops, as on
+        every other error of the table builder.
+    zalmoxis.invariants.StructureInvariantError
+        When the accepted structure breaks an invariant: no rollback, the run stops.
     """
     P_cmb_linear = float(hf_row.get('P_cmb', 0.0) or 0.0)
     if P_cmb_linear <= 0.0:
@@ -1585,6 +1644,7 @@ def _resolve_adiabatic_ic_structure(
         hf_row,
         num_spider_nodes,
         temperature_function,
+        core_t_anchor=core_t_anchor,
     )
     if not ok:
         return linear_mesh_file
@@ -1619,7 +1679,11 @@ def determine_interior_radius_with_zalmoxis(
         Output directory path.
     thermal_solve : bool, optional
         Whether to run an interior thermal solve or update mechanical mass and
-        structure only (default is True).
+        structure only (default is True). False is the structure solve after a giant
+        impact: with the super-liquidus start-up re-solve (``temperature_mode =
+        "liquidus_super"``, not SPIDER) its core temperature table goes through the row
+        ``T_cmb``, else the deepest mantle T of a sampled previous structure, else no core
+        table; other modes give that solve no core table.
     """
 
     log.info('Using Zalmoxis to solve for interior structure')
@@ -1669,8 +1733,15 @@ def determine_interior_radius_with_zalmoxis(
     # converged pressure range with a small margin. SPIDER provides its own T(r)
     # through entropy evolution and is intentionally excluded.
     if _use_superliquidus_adiabat_ic(config):
+        # after a giant impact (no thermal solve) the core keeps the core temperature of the run
+        t_row = float(hf_row.get('T_cmb', 0.0) or 0.0)
         spider_mesh_file = _resolve_adiabatic_ic_structure(
-            config, outdir, hf_row, num_spider_nodes, spider_mesh_file
+            config,
+            outdir,
+            hf_row,
+            num_spider_nodes,
+            spider_mesh_file,
+            core_t_anchor=None if thermal_solve or not t_row > 0 else t_row,
         )
 
     # Store mesh file path for subsequent SPIDER calls
@@ -3205,6 +3276,8 @@ def update_structure_from_interior(
             'M_int',
             'M_core',
             'M_core_solve',
+            'struct_core_T_used',
+            'struct_core_T_excess',
             'core_density',
             'M_mantle',
             'P_surf',
@@ -3225,6 +3298,9 @@ def update_structure_from_interior(
     # false) raises R_int, and the guard then re-anchors to that larger
     # committed value; the bound stays "last accepted R_int" either way.
     R_int_prev = float(hf_row.get('R_int', 0.0) or 0.0)
+
+    # A core table that cannot be built stops the run; the fallback below is for the solve
+    core_table = _structure_core_table(config, interior_o, hf_row, t_fallback=_T_cmb)
 
     # Also hand the (r, T) arrays to Zalmoxis explicitly. The JAX path
     # needs them in r-indexed form because the default P-indexed
@@ -3250,6 +3326,7 @@ def update_structure_from_interior(
             num_spider_nodes=num_spider_nodes,
             temperature_function=temperature_function,
             temperature_arrays=(_r_asc, _T_asc),
+            core_temperature_arrays=core_table,
         )
         _zalmoxis_wall = _zalmoxis_time.monotonic() - _zalmoxis_wall_t0
         # Mass-anchor check: enforce |M_int / M_int_target - 1| <
