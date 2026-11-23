@@ -141,22 +141,14 @@ def test_the_loss_to_space_uses_the_area_of_the_start_row():
     """A step runs on the structure of its start row: with R_int changed at the end row of a step,
     E_atm uses 4 pi R_int(start)^2 and G stays 0; the end-row area would give G = -2.2 % of that L_int."""
     hf = _table()
-    hf.loc[6:, 'R_int'] = (
-        6.47e6  # structure update at row 6: the step ending at row 6 started on 6.4e6
-    )
+    hf.loc[6:, 'R_int'] = 6.47e6  # update at row 6: the step ending at row 6 started on 6.4e6
     k = 6
     A0 = 4.0 * np.pi * 6.4e6**2
-    hf.loc[k, 'F_atm'] = (
-        hf.loc[k + 1, 'step_dE_F_int_J']
-        * -1
-        / (
-            4.0
-            * np.pi
-            * 6.47e6**2
-            * (hf.loc[k + 1, 'Time'] - hf.loc[k, 'Time'])
-            * secs_per_year
+    for j in range(k, len(hf) - 1):  # the steps that start on the new structure
+        dt_j = (hf.loc[j + 1, 'Time'] - hf.loc[j, 'Time']) * secs_per_year
+        hf.loc[j, 'F_atm'] = -hf.loc[j + 1, 'step_dE_F_int_J'] / (
+            4.0 * np.pi * 6.47e6**2 * dt_j
         )
-    )
     led = whole_run_ledger(hf, 'energy_balance')
     assert abs(led.G.sum()) <= 1e-12 * led.throughput
     assert led.classes['update'][k - 3]  # the step that ends at row 6 ends on a new structure
@@ -219,8 +211,7 @@ def test_steps_are_classed_by_update_remap_zero_energy_and_impact():
     with dt > 0 and no energy is 'zero'; a step with impact energy is 'impact'."""
     hf = _table()
     hf.loc[6:, 'R_core'] = 3.49e6
-    hf.loc[8, 'step_dE_impact_J'] = 1e25
-    hf.loc[8, 'step_dE_state_heat_J'] += 1e25
+    hf.loc[8, 'step_dE_impact_J'] = 1e25  # booked on both sides of the mantle balance
     led = whole_run_ledger(hf, 'energy_balance')
     assert led.classes['update'].tolist() == [False, False, False, True, False, False, False]
     assert led.classes['remap'].tolist() == [False, False, False, False, True, False, False]
@@ -327,14 +318,15 @@ def test_a_negative_loss_to_space_is_flagged_not_refused():
 )
 def test_any_closed_run_closes_whatever_its_size(seed, n_steps, scale):
     """Property: a closed synthetic run of 1 to 12 steps, with every energy scaled by 1e-6 to 1e6,
-    has |R_p| <= 1e-12 T; the closure is a ratio, so it does not change with the scale."""
-    hf = _table(n_steps=n_steps, seed=seed)
+    has |R_p| <= 1e-12 T; the closure is a ratio, so it does not change with the scale. It runs the
+    core_module path: on energy_balance the core heat is C dT_cmb_node, and at a scale of 1e-6 dT lies
+    below the float resolution of a 4000 K temperature."""
+    hf = _table('core_module', n_steps=n_steps, seed=seed)
     cols = [
         c for c in hf.columns if c.startswith('step_dE_') or c in ('F_atm', 'E_residual_cons_J')
     ]
     hf[cols] *= scale
-    hf['T_cmb_node'] = 4000.0 - np.cumsum(hf['step_dE_F_cmb_J'].to_numpy()) / C_CORE
-    led = whole_run_ledger(hf, 'energy_balance')
+    led = whole_run_ledger(hf, 'core_module')
     assert abs(led.R_p.sum()) <= 1e-12 * led.throughput
     assert led.R_p.size == n_steps
 
