@@ -5183,21 +5183,22 @@ def test_a_helpfile_without_m_core_solve_resumes_with_zero(tmp_path):
 
 
 @pytest.mark.unit
-def test_m_vol_solve_survives_a_resume_and_an_older_helpfile_reads_zero(tmp_path):
-    """M_vol_solve is read back from the helpfile, so a resumed wet run keeps the volatile
-    mass of its last solve; a helpfile written before the column resumes with it at zero."""
+def test_m_dissolved_target_survives_a_resume_and_an_older_helpfile_reads_zero(tmp_path):
+    """M_dissolved_target is read back from the helpfile, so a resumed wet run keeps the
+    dissolved mass of its last solve. A helpfile written before the column reads it as zero,
+    which restore_dissolved_target then rebuilds for a wet mantle."""
     from proteus.utils.coupler import GetHelpfileKeys, ReadHelpfileFromCSV
 
     row = ZeroHelpfileRow()
-    row['M_vol_solve'] = 2.55e21  # kg
+    row['M_dissolved_target'] = 2.55e21  # kg
     pd.DataFrame([row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
     loaded = ReadHelpfileFromCSV(str(tmp_path))
-    assert loaded['M_vol_solve'].iloc[-1] == pytest.approx(2.55e21, rel=1e-12)
+    assert loaded['M_dissolved_target'].iloc[-1] == pytest.approx(2.55e21, rel=1e-12)
 
-    del row['M_vol_solve']
+    del row['M_dissolved_target']
     pd.DataFrame([row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
     loaded = ReadHelpfileFromCSV(str(tmp_path))
-    assert loaded['M_vol_solve'].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+    assert loaded['M_dissolved_target'].iloc[-1] == pytest.approx(0.0, abs=1e-30)
     assert set(loaded.columns) == set(GetHelpfileKeys())
 
 
