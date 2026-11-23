@@ -15,7 +15,10 @@ Each case below says why the check exists, what it tests, how we know the right 
 - $L_\mathrm{int}$: the heat that leaves the interior through its surface in a step, in J. Residuals are given as a fraction of its sum over the window.
 - $C_\mathrm{cmb}$: the heat that crosses the core-mantle boundary (CMB) in a step, in J, positive out of the core.
 - $R_m$, $R_c$, $G$, $R_p$: the residuals of the mantle, of the core, of the coupling to the atmosphere and of the planet, in J. The coupling term $G$ is $L_\mathrm{int}$ minus the loss to space $F_\mathrm{atm} A\,\Delta t$ on the area $A$ of the start row of the step. The planet residual is $R_p = R_m + R_c - G$.
-- Throughput: the sum of the absolute values of the booked terms of the mantle and the core, in J. The command prints it as `T`; it is an energy, not a temperature.
+- Throughput: the sum of the absolute values of the 6 terms that the run books: the change of the mantle heat, $L_\mathrm{int}$, $C_\mathrm{cmb}$, radiogenic and tidal heat, impact heat and booked core heat, in J. The command prints it as `T`; it is an energy, not a temperature.
+- CMB node: the lowest node of the mantle mesh; with `energy_balance` the core temperature follows it.
+- Closure of the CMB node: the formula for the slope of the node temperature against entropy, which turns the heat that crosses the CMB into a change of the entropy of the node.
+- Mush: the part of the mantle where melt and crystals are both present.
 - Structure update: Zalmoxis solves the structure again and the interior moves to the new mesh. The step that ends at the update is in the class "update", the step after it in the class "remap".
 
 | Test id | Reference | Scope | Last compared |
@@ -29,7 +32,7 @@ Each case below says why the check exists, what it tests, how we know the right 
 
 **Why this check exists.** When the [sub-grid lid](../../Explanations/lid_coupling.md) forms, the heat leaving the interior and the heat leaving to space are computed by different parts of the code. A ledger that uses the wrong area or misses a mantle term reports a wrong coupling gap here.
 
-**What it tests.** 25 steps of a 1 Earth-mass run in which the lid forms, every step with a live lid. The window starts at a structure update and holds 2 more. The mantle residual $R_m$ must be $-1.646 \times 10^{-6}$ of $L_\mathrm{int}$ and the coupling term $G$ must be $-5.698 \times 10^{-2}$ of $L_\mathrm{int}$. The core residual of the steps after an update must be $1.356$ of $L_\mathrm{int}$, and that of the other steps $-9.93 \times 10^{-4}$.
+**What it tests.** 25 steps of a 1 Earth-mass run in which the lid forms, every step with a live lid. The window starts at a structure update and holds 2 more. The mantle residual $R_m$ must be $-1.646 \times 10^{-6}$ of $L_\mathrm{int}$ and the coupling term $G$ must be $-5.698 \times 10^{-2}$ of $L_\mathrm{int}$. The core residual of the steps after an update must be $1.356$ of $L_\mathrm{int}$, and that of the steps that neither end at an update nor follow one $-9.93 \times 10^{-4}$.
 
 **How we know the right answer.** A separate script summed the same helpfile columns of this window and found these values. The test also computes $G$ with the loss to space on the area of the end row of each step, not the start row, and asserts that this wrong $G$ falls outside the tolerance.
 
@@ -38,7 +41,7 @@ Each case below says why the check exists, what it tests, how we know the right 
 ![Cumulative residuals by term over the lid onset window](../../assets/validation/energy_ledger_lid_onset.svg#only-light){ width="80%" }
 ![Cumulative residuals by term over the lid onset window](../../assets/validation/energy_ledger_lid_onset_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x axis is the time since the start of the window, in years. The y axis is each residual summed from the start of the window, divided by $L_\mathrm{int}$ of the whole window. The scale is linear near 0 and logarithmic beyond $10^{-6}$. The lines are $R_m$, $G$, and the core residual $R_c$ split into the steps after a structure update and the other steps. The core line after an update sits near 1 from the first step: the window starts at an update. The test asserts the end value of each line.
+**How to read the plot.** The x axis is the time since the start of the window, in years. The y axis is each residual summed from the start of the window, divided by $L_\mathrm{int}$ of the whole window. The scale is linear near 0 and logarithmic beyond $10^{-6}$. The lines are $R_m$, $G$, and the core residual $R_c$ in 3 classes: the steps after a structure update, the 2 steps that end at one, and the other steps. The core line after an update jumps to 1.50 in the first step, because the window starts at an update, and ends at 1.356. The test asserts the end values of $R_m$, $G$, the core line after an update and the core line of the other steps.
 
 ??? info "Test details"
     - Reference: a separate script that summed the same helpfile columns of this window, $R_m/L_\mathrm{int} = -1.646 \times 10^{-6}$, $G/L_\mathrm{int} = -5.698 \times 10^{-2}$; the core residual by class from an independent sum of the stored rows, $1.3557209386827422$ (after an update) and $-9.932 \times 10^{-4}$ (other steps) of $L_\mathrm{int}$.
@@ -79,7 +82,7 @@ This case is drawn on the plot of the next case, as the line "R_c, core_module",
 ![Cumulative core and coupling residuals of an energy_balance run](../../assets/validation/energy_ledger_core_remap.svg#only-light){ width="80%" }
 ![Cumulative core and coupling residuals of an energy_balance run](../../assets/validation/energy_ledger_core_remap_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x axis is the time in years. The y axis is each residual summed from the start, divided by $L_\mathrm{int}$ of the run, linear near 0 and logarithmic beyond $10^{-6}$. The core line of the steps after an update rises at each of the 3 updates; the other core steps stay near 0. The line "R_c, core_module" is the same run with `core_module`, which books the change and stays at 0. The coupling line $G$ drops at the first step of the run, which carries a loss to space but no interior heat, and is flat after it. The test asserts the end value of the core line after updates.
+**How to read the plot.** The x axis is the time in years. The y axis is each residual summed from the start, divided by $L_\mathrm{int}$ of the run, linear near 0 and logarithmic beyond $10^{-6}$. The core line of the steps after an update rises at each of the 3 updates; the core lines of the steps at an update and of the other steps stay near 0. The line "R_c, core_module" is a second run of the same setup with `core_module`, which books the change and stays at 0. The coupling line $G$ drops at the first step of the run, which carries a loss to space but no interior heat, and is flat after it. The test asserts the end value of the core line after updates.
 
 ??? info "Test details"
     - Reference: a separate measurement script on the same rows, $5.948278897938286 \times 10^{-3}$ of $L_\mathrm{int}$; the planet residual $8.525868397324384 \times 10^{-3}$ of $L_\mathrm{int}$ from an independent sum of the stored rows.
@@ -90,7 +93,7 @@ This case is drawn on the plot of the next case, as the line "R_c, core_module",
 
 ## The closure of the CMB node in the mush
 
-**Why this check exists.** The core temperature follows the lowest node of the mantle mesh, the CMB node. To turn the heat that crosses the CMB into a change of the entropy of this node, the code needs the slope of the node temperature against entropy; the closure of the CMB node is the formula for that slope. In the mush, the part of the mantle where melt and crystals are both present, the heat capacity $c_p$ of the phase blend does not give this slope. A closure with $c_p/T$ then lets the core lose more or less heat than crosses the CMB. The ledger must show that, and show that the slope closure removes it.
+**Why this check exists.** In the mush, the heat capacity $c_p$ of the phase blend does not give the slope of the temperature of the CMB node against entropy. A closure with $c_p/T$ then lets the core lose more or less heat than crosses the CMB. The ledger must show that, and show that the slope closure removes it.
 
 **What it tests.** The same 1 Earth-mass PALEOS run with 2 closures of the CMB node: $c_p/T$, and the entropy slope of the phase blend. For each step the ledger gives $R_c/|C_\mathrm{cmb}|$, which is positive when the core loses less heat than crosses the CMB. In the mush, from 1787 yr to 14.1 kyr, the $c_p/T$ run must miss by a median of $0.091 \pm 0.01$ and the slope run by at most $10^{-3}$. The $c_p/T$ run ends at 13.3 kyr.
 

@@ -395,20 +395,20 @@ set `write_flux_diagnostics = true` (disabled by default).
 
 ### The whole-run energy ledger
 
-Does a whole run keep its energy? The ledger answers this from the helpfile alone. It sums, step by step, the heat that the mantle and the core gain and lose and the heat that leaves to space.
+Does a whole run keep its energy? The ledger answers this from the helpfile alone: the mantle closes, and each heat change that no column books is reported on its own. For a 450 yr run with `energy_balance` and 3 structure updates, the mantle closes to $1.6 \times 10^{-6}$ of the heat that leaves the interior, and the open core term is $5.9 \times 10^{-3}$ of it.
 
-The ledger works in the heat frame: the heat that a mass parcel takes up is $T\,ds$ per kilogram, its temperature $T$ times the change $ds$ of its specific entropy, as in Bower et al. (2018)[^cite-bower2018] Eq. 1. When Zalmoxis solves the structure again, the interior keeps the entropy of each mass parcel, so the move to the new mesh books no mantle heat. Its compression work is reported apart, not added. The summed mantle residual equals the change of `E_residual_cons_J` above; the ledger refuses a run where the 2 differ.
+Summed by step, the heat flows give the residuals, 0 when every flow is booked: $R_m$ (mantle), $R_c$ (core), $G$ (coupling to the atmosphere) and $R_p = R_m + R_c - G$ (planet), in J.
 
-Some terms stay open, and the ledger reports each one apart:
+The ledger works in the heat frame of `E_residual_cons_J` above: the heat that a mass parcel takes up is $T\,ds$ per kilogram, as in Bower et al. (2018)[^cite-bower2018] Eq. 1. At a structure update the interior keeps the entropy of each mass parcel, so the move to the new mesh books no mantle heat; its compression work is reported separately. Where the helpfile holds `E_residual_cons_J`, the ledger refuses a run whose summed $R_m$ differs from its change.
 
-- With `core_bc = 'energy_balance'`, nothing books the change of the core heat at a structure update. No heat flow carries it: the CMB node, which the core temperature follows, moves to a new pressure. It shows in the core residual of the steps after an update (class `remap`). `core_module` books it.
+Open terms, which no column books, are reported separately:
+
+- With `core_bc = 'energy_balance'`, nothing books the change of the core heat at a structure update. No heat flow carries it: the CMB node, which sets the core temperature, moves to a new pressure. It shows in $R_c$ of the steps after an update (class `remap`). `core_module` books it.
 - The first step of a run carries a loss to space but no interior heat (class `zero`).
 - With the sub-grid lid, the interior heat loss and the loss to space come from different parts of the code (class `lid`).
-- A structure update can change the mantle mass. The ledger reports it in kg only: its energy depends on the zero of the energy of the equation of state.
+- A structure update can change the mantle mass. The ledger reports it in kg only, as its energy depends on the zero of the equation-of-state energy.
 
-For a 450 yr run with `energy_balance` and 3 structure updates, the open core term is $5.9 \times 10^{-3}$ of the heat that leaves the interior, and the mantle closes to $1.6 \times 10^{-6}$ of it.
-
-How to run it: [Check the energy closure of a run](../How-to/energy_ledger.md).
+To run it: [Check the energy closure of a run](../How-to/energy_ledger.md).
 
 **Where this is checked.** [Validation of the whole-run energy ledger](../Validation/utils/energy_ledger.md).
 

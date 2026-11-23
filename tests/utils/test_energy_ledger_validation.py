@@ -88,8 +88,15 @@ def test_the_lid_onset_window_reproduces_its_mantle_and_coupling_terms(validatio
             [
                 ('R_m', led.R_m),
                 ('G', led.G),
-                ('R_c, other', np.where(led.classes['remap'], 0.0, led.R_c)),
+                (
+                    'R_c, other',
+                    np.where(led.classes['remap'] | led.classes['update'], 0.0, led.R_c),
+                ),
                 ('R_c, after an update', np.where(led.classes['remap'], led.R_c, 0.0)),
+                (
+                    'R_c, at an update',
+                    np.where(led.classes['update'] & ~led.classes['remap'], led.R_c, 0.0),
+                ),
             ],
             'time in the window [yr]',
             [-0.1, -1e-3, 0.0, 1e-3, 1.0],
@@ -148,7 +155,14 @@ def test_energy_balance_leaves_the_core_heat_jump_of_an_update_in_the_remap_clas
             led,
             [
                 ('R_c, after an update', np.where(led.classes['remap'], led.R_c, 0.0)),
-                ('R_c, other', np.where(led.classes['remap'], 0.0, led.R_c)),
+                (
+                    'R_c, at an update',
+                    np.where(led.classes['update'] & ~led.classes['remap'], led.R_c, 0.0),
+                ),
+                (
+                    'R_c, other',
+                    np.where(led.classes['remap'] | led.classes['update'], 0.0, led.R_c),
+                ),
                 ('R_c, core_module', cm.R_c * L / cm.terms['L_int'].sum()),
                 ('G', led.G),
                 ('R_m', led.R_m),
