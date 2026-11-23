@@ -157,7 +157,7 @@ This will generate the markdown files and serve them on a local server. You can 
 
 You can find the documentation source in the [docs](https://github.com/FormingWorlds/PROTEUS/tree/main/docs) directory.
 If you are adding new pages, make sure to update the listing in the [`mkdocs.yml`](https://github.com/FormingWorlds/PROTEUS/blob/main/mkdocs.yml) under the `nav` entry.
-How to write a page, cite a paper and size a page is in [Writing docs](writing_docs.md).
+The page [Writing docs](writing_docs.md) says how to write a page, cite a paper and keep a page within its size budget.
 
 The documentation is hosted on the [PROTEUS framework website](https://proteus-framework.org/PROTEUS/).
 
@@ -184,7 +184,8 @@ gh release create 26.05.14 --generate-notes
 
 The Validation pages and the Explanation pages are read by new MSc and PhD students. They know physics and some Python, but they do not know this code, its history or its test framework. Write every Validation page and every new Explanation section for that reader, in simple English. Explain why each validation is there, what it tests and why it is important. Keep every technical item: the reference, the tolerance, the test id, the command and the plot. Add the parts for the reader around them; do not delete content to make a page short.
 
-The page [Validation: metal reservoir](https://proteus-framework.org/CALLIOPE/Validation/metal.html) of CALLIOPE uses this layout and is a good model. The page types, the size budget and the reference form are in [Writing docs](writing_docs.md).
+The page [Validation: metal reservoir](https://proteus-framework.org/CALLIOPE/Validation/metal.html) of CALLIOPE uses this layout and is a good model.
+The page [Writing docs](writing_docs.md) gives the page types, the size budget and the citation form.
 
 ### The top of a Validation page
 

@@ -155,7 +155,7 @@ This will generate the markdown files and serve them on a local server. You can 
 
 You can find the documentation source in the [docs](https://github.com/FormingWorlds/PROTEUS/tree/main/docs) directory.
 If you are adding new pages, make sure to update the listing in the [`mkdocs.yml`](https://github.com/FormingWorlds/PROTEUS/blob/main/mkdocs.yml) under the `nav` entry.
-How to write a page, cite a paper and size a page is in [Writing docs](https://proteus-framework.org/PROTEUS/Community/writing_docs.html).
+The page [Writing docs](https://proteus-framework.org/PROTEUS/Community/writing_docs.html) says how to write a page, cite a paper and keep a page within its size budget.
 
 The documentation is hosted on the [PROTEUS framework website](https://proteus-framework.org/proteus/).
 
