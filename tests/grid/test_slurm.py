@@ -3,17 +3,21 @@
 Checks: every case lands in exactly one array task and runs once; no job runs more
 cases than its cores times its waves; the array never exceeds the cluster limit; a
 failed case does not stop the other cases of its job; wall times convert to the
-nearest minute.
+nearest minute. The grid explorer of the docs (docs/javascripts/grid-explorer.js) gives
+the same layout and charges Snellius jobs in eighths of a node.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
+import shutil
 import signal
 import subprocess
 import time
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -502,3 +506,79 @@ def test_dispatch_script_runs_only_the_listed_cases_once_each(tmp_path):
         [['0', 'case_000000'], ['0', 'case_000003'], ['0', 'case_000011']]
         + [['1', 'case_000002'], ['1', 'case_000007']]
     )
+
+
+EXPLORER = Path(__file__).parents[2] / 'docs' / 'javascripts' / 'grid-explorer.js'
+
+
+def _explorer(*expressions):
+    """Evaluate JavaScript expressions after the grid explorer's own code, in node."""
+    node = shutil.which('node')
+    if node is None:
+        pytest.skip('node is not installed')
+    run = "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(require('vm').runInNewContext(s,{document:{addEventListener(){}},window:{}})))"
+    src = f'{EXPLORER.read_text()}\nJSON.stringify([{", ".join(expressions)}])'
+    done = subprocess.run(
+        [node, '-e', run], input=src, capture_output=True, text=True, timeout=20
+    )
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def test_explorer_layout_and_idle_share_match_the_grid_manager():
+    """The explorer draws the jobs, waves and idle share that slurm.py computes, also for
+    a MaxArraySize that forces waves and for jobs with unequal case counts."""
+    layouts = [(50, 4, 40), (20, 16, 1001), (50, 4, 5), (7, 3, 2), (1, 16, 40)]
+    calls = [
+        f'[layout({n}, {k}, {a}), idleShare({n}, {k}, layout({n}, {k}, {a}).jobs)]'
+        for n, k, a in layouts
+    ]
+    for (n, k, a), (lay, idle) in zip(layouts, _explorer(*calls)):
+        assert (lay['jobs'], lay['waves']) == slurm.array_layout(n, k, a)
+        assert idle == pytest.approx(slurm.idle_share(n, k, a), abs=1e-12)
+
+
+def test_explorer_charges_snellius_jobs_in_eighths_of_a_node():
+    """A job is charged the larger of its core and memory share, rounded up to an eighth
+    of a node. 8 cases of 7 GiB on rome were charged 32 cores (4.0 SBU per case-hour) on
+    Snellius; 16 cases of 7.5 GiB on fat_rome, 16 cores (sbatch --test-only). 28 GiB is
+    exactly 1/8 of a rome node, 32 GiB rounds up to 2/8, and 6 cases of 7 GiB on genoa
+    fill 1/8 of its 336 GiB. A job above one node doesn't fit."""
+    charges = _explorer(
+        "charge(8, 7, 'rome')",
+        "charge(16, 7.5, 'fat_rome')",
+        "charge(16, 1.75, 'rome')",
+        "charge(16, 2, 'rome')",
+        "charge(4, 1, 'rome')",
+        "charge(6, 7, 'genoa')",
+        "charge(130, 1, 'rome')",
+    )
+    assert [(c['charged'], c['perHour']) for c in charges[:6]] == [
+        (32, 32),
+        (16, 24),
+        (16, 16),
+        (32, 32),
+        (16, 16),
+        (24, 24),
+    ]
+    assert [c['fits'] for c in charges] == [True] * 6 + [False]
+
+
+def test_explorer_sbu_stats_count_charged_cores_without_a_case():
+    """With memory setting the charge, 8 cases of 7 GiB leave 24 of 32 charged rome cores
+    without a case (75 %) and cost 4.0 SBU per case-hour, 32 SBU per day-long job hour;
+    20 cases on 16 cores at 1.75 GiB leave the 37.5 % idle cores, and nothing more."""
+    days = 2
+    rome7, rome175 = _explorer(
+        f"sbuStats({{cases: 8, cores: 8, mem: 7, days: {days}, partition: 'rome'}}, 1).stats",
+        f"sbuStats({{cases: 20, cores: 16, mem: 1.75, days: {days}, partition: 'rome'}}, 2).stats",
+    )
+    assert dict(rome7) == {
+        'Charged cores per job': 32,
+        'SBU per job-hour': 32,
+        'SBU per case-hour': '4.00',
+        'SBU for the grid': 32 * 24 * days,
+        'Charged cores without a case': '75.0 %',
+    }
+    assert dict(rome175)['Charged cores without a case'] == '37.5 %'
+    assert dict(rome175)['SBU for the grid'] == 2 * 16 * 24 * days
