@@ -117,7 +117,6 @@ belong to the experimental binodal-aware mode.
 
 Zalmoxis solves the structure for a target mass and a core mass.
 The target is the planet mass (`planet.mass_tot` plus the `M_volatile_change` ledger of delivered, stripped, escaped and desiccated volatiles) without the volatile mass that the structure does not hold: every element inventory with `dry_mantle = true`, and the atmosphere part of each inventory with `dry_mantle = false`.
-With `dry_mantle = false` the structure therefore holds the dissolved inventory, which `M_ele` also counts. The helpfile column `M_vol_solve` is the volatile mass inside the target of the last accepted solve (0 with `dry_mantle = true`), and `M_planet = M_int - M_vol_solve + M_ele`, so the dissolved inventory counts once. It is the value of that solve because `M_int` keeps the mass of the last solve until the next one, while outgassing moves volatiles between the melt and the atmosphere.
 The core mass is `core_frac` of the planet without its kept volatiles, the inventories that the outgassing takes as inputs: H, C, N, S and the noble gases, and oxygen only when it is an input too (`planet.fO2_source = "from_O_budget"`, or `outgas.module = "dummy"`).
 With `dry_mantle = false` only the atmosphere part of the kept inventories is taken off.
 With the default `planet.fO2_source = "user_constant"`, CALLIOPE and atmodeller derive the oxygen inventory from the fO$_2$ buffer at each call. That oxygen takes none of the core, like rock vapour: it is mantle mass, and with an ice layer `zalmoxis.mantle_mass_fraction` of it is mantle mass and the rest is mass of the ice layer.
@@ -131,6 +130,14 @@ The structure takes a changed core mass at its next solve, so a run with no stru
 When the target leaves no mantle (a core mass at or above the target mass, which a large buffered oxygen inventory over a hot magma ocean can cause), the run stops with an error that names the masses.
 A run that resumes from a helpfile without `M_core_target` takes `core_frac` of the structure target of the row of its first structure solve, logs a warning, and keeps that core mass from there.
 This core mass depends on the oxygen inventory of that row, so it differs with the row at which the run resumes, and it is not the core mass of a run that starts with the column.
+
+**The planet mass with a wet mantle**
+
+With `dry_mantle = false` the structure target holds the dissolved inventory, which `M_ele` also counts.
+The helpfile column `M_dissolved_target` is the dissolved mass inside the target of the last accepted solve, and 0 with `dry_mantle = true`.
+`M_planet` is `M_int - M_dissolved_target + M_ele`, so the dissolved inventory counts once.
+Between solves `M_int` is the structure of the last solve as the interior module integrates it, so the value of that solve is taken off even while outgassing moves volatiles between the melt and the atmosphere.
+A run that resumes from a helpfile without `M_dissolved_target` sets it from the inventories of its last row and logs a warning.
 
 **The core mass that Zalmoxis returns**
 
