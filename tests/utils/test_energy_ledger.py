@@ -11,7 +11,6 @@ from __future__ import annotations
 import math
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from proteus.utils.constants import secs_per_year
@@ -221,7 +220,7 @@ def test_rows_out_of_range_raise(kwargs, match):
     before = hf.copy()
     with pytest.raises(ValueError, match=match):
         whole_run_ledger(hf, 'energy_balance', **kwargs)
-    pd.testing.assert_frame_equal(hf, before)  # a refused call leaves its input unchanged
+    assert hf.equals(before)  # a refused call leaves its input unchanged
 
 
 @pytest.mark.parametrize('column', ['step_dE_F_int_J', 'F_atm', 'T_cmb_node', 'M_mantle'])
@@ -231,7 +230,7 @@ def test_a_missing_column_raises_and_names_it(column):
     before = hf.copy()
     with pytest.raises(ValueError, match=column):
         whole_run_ledger(hf, 'energy_balance')
-    pd.testing.assert_frame_equal(hf, before)
+    assert hf.equals(before)
 
 
 def test_core_module_needs_its_core_columns():
@@ -240,7 +239,7 @@ def test_core_module_needs_its_core_columns():
     before = hf.copy()
     with pytest.raises(ValueError, match='step_dE_core_J'):
         whole_run_ledger(hf, 'core_module')
-    pd.testing.assert_frame_equal(hf, before)
+    assert hf.equals(before)
 
 
 @pytest.mark.parametrize(
@@ -253,7 +252,7 @@ def test_an_unknown_core_bc_raises(core_bc):
     before = hf.copy()
     with pytest.raises(ValueError, match='core_bc'):
         whole_run_ledger(hf, core_bc)
-    pd.testing.assert_frame_equal(hf, before)
+    assert hf.equals(before)
 
 
 @pytest.mark.parametrize(
@@ -266,7 +265,7 @@ def test_a_non_finite_term_raises(bad):
     before = hf.copy()
     with pytest.raises(ValueError, match=r'step_dE_F_cmb_J.*row 6'):
         whole_run_ledger(hf, 'energy_balance')
-    pd.testing.assert_frame_equal(hf, before)
+    assert hf.equals(before)
 
 
 def test_time_that_runs_backwards_raises():
@@ -409,7 +408,7 @@ def test_a_core_temperature_factor_out_of_range_raises(tfac):
     before = hf.copy()
     with pytest.raises(ValueError, match='core_tfac'):
         whole_run_ledger(hf, 'energy_balance', core_tfac=tfac)
-    pd.testing.assert_frame_equal(hf, before)
+    assert hf.equals(before)
 
 
 @pytest.mark.physics_invariant
@@ -484,7 +483,7 @@ def test_a_step_with_no_time_and_any_energy_raises(column):
     before = hf.copy()
     with pytest.raises(ValueError, match='Time'):
         whole_run_ledger(hf, 'energy_balance', end_row=6)
-    pd.testing.assert_frame_equal(hf, before)
+    assert hf.equals(before)
 
 
 def test_a_helpfile_written_with_11_digits_is_ledgered():
