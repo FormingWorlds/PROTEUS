@@ -134,6 +134,7 @@ nav:
   - Community:
       - Contact: Community/contact.md
       - Contributing: Community/CONTRIBUTING.md
+      - Writing docs: Community/writing_docs.md
       - Code of Conduct: Community/CODE_OF_CONDUCT.md
       - Developers: https://proteus-framework.org/people
       - Issues: https://github.com/FormingWorlds/PROTEUS/issues
