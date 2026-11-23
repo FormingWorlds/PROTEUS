@@ -23,6 +23,10 @@ def run_settings(run: Path, core_bc: str | None) -> tuple[str, float]:
     """The core boundary condition and core temperature factor of a run folder."""
     cfg = run / 'init_coupler.toml'
     ie = tomllib.loads(cfg.read_text()).get('interior_energetics', {}) if cfg.exists() else {}
+    if ie.get('module', 'aragog') != 'aragog':
+        raise ValueError(
+            f'interior_energetics.module = {ie["module"]!r}: the ledger reads the Aragog columns'
+        )
     bc = core_bc or ie.get('aragog', {}).get('core_bc')
     if bc is None:
         raise ValueError(f'{cfg} names no aragog core_bc; pass --core-bc')

@@ -52,7 +52,9 @@ def _cumulative_figure(led, series, xlabel, ticks):
     ax.set_xlabel(xlabel)
     ax.set_ylabel('cumulative / L_int')
     fig.legend(loc='lower center', ncol=2, frameon=False)
-    fig.tight_layout(rect=(0.0, 0.17, 1.0, 1.0))
+    fig.tight_layout(
+        rect=(0.0, 0.06 + 0.055 * -(-len(series) // 2), 1.0, 1.0)
+    )  # room per legend row
     return fig
 
 
@@ -127,6 +129,7 @@ def test_energy_balance_leaves_the_core_heat_jump_of_an_update_in_the_remap_clas
     assert abs(split['other'] + split['update']) < 1e-2 * split['remap']
     assert led.terms['B_core'].sum() == 0.0
     assert led.R_p.sum() / L == pytest.approx(8.525868397324384e-3, rel=1e-9)
+    cm, _, _ = _case('cm_updates', start_row=2)  # same setup with core_module, for the plot
     np.testing.assert_allclose(
         led.R_p, led.R_m + led.R_c - led.G, rtol=1e-12, atol=1e-3 * abs(L) * 1e-12
     )
@@ -137,6 +140,7 @@ def test_energy_balance_leaves_the_core_heat_jump_of_an_update_in_the_remap_clas
             [
                 ('R_c, after an update', np.where(led.classes['remap'], led.R_c, 0.0)),
                 ('R_c, other', np.where(led.classes['remap'], 0.0, led.R_c)),
+                ('R_c, core_module', cm.R_c * L / cm.terms['L_int'].sum()),
                 ('G', led.G),
                 ('R_m', led.R_m),
             ],

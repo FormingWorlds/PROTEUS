@@ -5,11 +5,13 @@ Per step k (row k-1 to row k) the ledger sums the booked energy columns [J]:
 - mantle and lid: ``R_m = S - (-L_int + C_cmb + Q + I_m) + I_m``, with the mantle heat change
   ``S = step_dE_state_heat_J``, the heat to the atmosphere ``L_int = -step_dE_F_int_J``, the CMB heat
   ``C_cmb = step_dE_F_cmb_J``, the radiogenic and tidal heat ``Q`` and the impact heat ``I_m``;
+  The impact heat is booked on both sides and cancels;
 - core: ``R_c = D_core + C_cmb - B_core``. With ``core_bc = 'core_module'`` the core heat change is
   ``step_dE_core_J`` and the booked terms ``B_core`` are the impact, refit and structure-update core heat;
-  with ``energy_balance`` and ``bower2018`` it is ``M_core core_heatcap core_tfac dT_cmb_node``
-  (Bower et al. 2018, Eqs. 19-21) and nothing is booked, so a core heat jump at a structure update stays
-  in ``R_c`` (the remap class);
+  with ``energy_balance`` it is ``M_core core_heatcap core_tfac dT_cmb_node`` with the core of the end
+  row (Bower et al. 2018, Eqs. 19-21), and nothing is booked, so the change of the core heat at a
+  structure update stays in ``R_c`` of the step after it (the remap class). ``bower2018`` keeps its own
+  core temperature state and has no ledger here;
 - coupling: ``G = L_int - E_atm``, with the loss to space ``E_atm = F_atm A dt`` on the start row of the
   step (a step runs on the structure of its start row);
 - planet: ``R_p = R_m + R_c - G``.
@@ -28,8 +30,11 @@ import pandas as pd
 
 from proteus.utils.constants import secs_per_year
 
-CORE_BCS = ('energy_balance', 'bower2018', 'core_module')
+CORE_BCS = ('energy_balance', 'core_module')
 G_TOL = 1e-12  # coupling identity on a no-lid step, relative to |L_int| of the step
+WRITE_PREC = (
+    5e-11  # relative precision of a helpfile written with 11 significant digits (%.10e)
+)
 R_M_TOL = 1e-9  # R_m against the stored E_residual_cons_J difference, relative
 
 _COMMON = [
@@ -54,7 +59,6 @@ _CORE = {
         'step_dE_struct_core_J',
     ],
     'energy_balance': ['core_heatcap', 'T_cmb_node'],
-    'bower2018': ['core_heatcap', 'T_cmb_node'],
 }
 _OPTIONAL = [
     'lid_weight',
@@ -101,7 +105,7 @@ class Ledger:
     @property
     def closure(self) -> float:
         """Planet closure ``sum R_p / T`` [1]."""
-        return float(self.R_p.sum() / self.throughput) if self.throughput > 0 else 0.0
+        return float(self.R_p.sum() / self.throughput) if self.throughput > 0 else float('nan')
 
     def split(self, name: str = 'R_c') -> dict[str, float]:
         """Sum of a residual by step class: steps ending at an update, steps after one, other [J]."""
@@ -172,12 +176,14 @@ def _terms(c: dict, core_bc: str, core_tfac: float, dt: np.ndarray) -> dict[str,
     }
 
 
-def _classes(c: dict, t: dict, dt: np.ndarray) -> dict[str, np.ndarray]:
+def _classes(c: dict, t: dict, dt: np.ndarray, before: dict | None) -> dict[str, np.ndarray]:
     """Step classes: a live lid at either end, the step ending on a new structure, the step after it,
-    a step with dt > 0 and no energy, an impact step and a step whose start row has F_atm < 0."""
+    a step with dt > 0 and no energy, an impact step and a step whose start row has F_atm < 0. The
+    structure of the row before the window, ``before``, classes the first step."""
     new = np.zeros(c['R_int'].size, bool)
     for k in ('R_core', 'M_core', 'R_int'):
         new[1:] |= c[k][1:] != c[k][:-1]
+        new[0] |= before is not None and c[k][0] != before[k]
     w = c['lid_weight']
     lid = (w[:-1] > 0) | (w[1:] > 0) if w is not None else np.zeros(dt.size, bool)
     return {
@@ -190,10 +196,21 @@ def _classes(c: dict, t: dict, dt: np.ndarray) -> dict[str, np.ndarray]:
     }
 
 
+def _precision(c: dict) -> float:
+    """Relative precision of the stored floats: ``WRITE_PREC`` when every value equals its rounding to
+    11 significant digits (an older helpfile), else the float eps."""
+    vals = np.concatenate([x for x in c.values() if x is not None])
+    eleven = all(float(f'{v:.10e}') == v for v in vals.tolist())
+    return WRITE_PREC if eleven else float(np.finfo(float).eps)
+
+
 def _check(t: dict, cls: dict, R_m: np.ndarray, G: np.ndarray, c: dict) -> None:
-    """The coupling identity on every no-lid step with energy, and R_m against the stored column."""
+    """The coupling identity on every no-lid step with energy, and R_m against the stored column,
+    each to the precision of the stored floats."""
+    prec = _precision(c)
+    g_tol = G_TOL if prec < WRITE_PREC else 20 * WRITE_PREC
     plain = ~cls['lid'] & ~cls['zero']
-    over = plain & ~(np.abs(G) <= G_TOL * np.abs(t['L_int']))
+    over = plain & ~(np.abs(G) <= g_tol * np.abs(t['L_int']))
     if over.any():
         k = int(np.flatnonzero(over)[0])
         raise RuntimeError(
@@ -204,14 +221,11 @@ def _check(t: dict, cls: dict, R_m: np.ndarray, G: np.ndarray, c: dict) -> None:
     if er is not None:
         stored, summed = er[-1] - er[0], float(R_m.sum())
         gross = sum(float(np.abs(t[k]).sum()) for k in ('S_state', 'L_int', 'C_cmb', 'Q'))
-        eps = np.finfo(float).eps
-        floor = 64 * eps * gross  # round-off of the per-step sums
-        for name in (
-            'E_state_heat_cons_J',
-            'dE_predicted_cons_J',
-        ):  # E_residual is their difference
+        floor = 64 * prec * gross  # round-off of the per-step sums
+        # E_residual_cons_J is the difference of these two cumulative columns
+        for name in ('E_state_heat_cons_J', 'dE_predicted_cons_J'):
             if c[name] is not None:
-                floor += R_m.size * eps * float(np.abs(c[name]).max())
+                floor += R_m.size * prec * float(np.abs(c[name]).max())
         if not abs(stored - summed) <= R_M_TOL * max(abs(stored), abs(summed)) + floor:
             raise RuntimeError(
                 f'R_m {summed:.6e} J differs from the stored E_residual_cons_J change {stored:.6e} J'
@@ -232,7 +246,7 @@ def whole_run_ledger(
     hf : pd.DataFrame
         Helpfile table, as ``proteus.utils.coupler.read_helpfile_table`` returns it.
     core_bc : str
-        Aragog core boundary condition of the run: ``energy_balance``, ``bower2018`` or ``core_module``.
+        Aragog core boundary condition of the run: ``energy_balance`` or ``core_module``.
     core_tfac : float
         Core temperature factor ``interior_energetics.core_tfac_avg`` [1].
     start_row, end_row : int
@@ -247,23 +261,33 @@ def whole_run_ledger(
     Raises
     ------
     ValueError
-        On an unknown ``core_bc``, a window outside the table, a missing or non-numeric column, a
-        non-finite value, or a time that does not increase across a step with energy.
+        On an unknown ``core_bc``, a ``core_tfac`` that is not finite and positive, a window outside the
+        table or without a step that books interior heat, a missing or non-numeric column, a non-finite
+        value, or a time that does not increase across a step with energy.
     RuntimeError
         When the coupling identity fails on a no-lid step, or ``R_m`` differs from the stored
-        ``E_residual_cons_J`` change.
+        ``E_residual_cons_J`` change, beyond the precision of the stored floats (11 significant digits
+        in older helpfiles).
     """
     if core_bc not in CORE_BCS:
         raise ValueError(f'core_bc {core_bc!r} has no core ledger here; use one of {CORE_BCS}')
+    if not (np.isfinite(core_tfac) and core_tfac > 0):
+        raise ValueError(f'core_tfac {core_tfac!r} must be finite and positive')
     start, end = _window(len(hf), start_row, end_row)
     c = _read(hf, core_bc, slice(start, end + 1))
+    keys = ('R_core', 'M_core', 'R_int')
+    before = {k: _column(hf, k)[start - 1] for k in keys} if start > 0 else None
     dt = np.diff(c['Time']) * secs_per_year
     t = _terms(c, core_bc, core_tfac, dt)
     energy = np.abs(t['S_state']) + np.abs(t['L_int']) + np.abs(t['C_cmb']) > 0
     if np.any(dt < 0) or np.any((dt == 0) & energy):
         k = int(np.flatnonzero((dt < 0) | ((dt == 0) & energy))[0]) + start + 1
         raise ValueError(f'Time does not increase into row {k} across a step with energy')
-    cls = _classes(c, t, dt)
+    if not energy.any():
+        raise ValueError(
+            'the window has no step that books interior heat (an interior without Aragog?)'
+        )
+    cls = _classes(c, t, dt, before)
     R_m = t['S_state'] - (-t['L_int'] + t['C_cmb'] + t['Q'] + t['I_mantle']) + t['I_mantle']
     R_c = t['D_core'] + t['C_cmb'] - t['B_core']
     G = t['L_int'] - t['E_atm']
