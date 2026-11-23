@@ -27,6 +27,11 @@ def run_settings(run: Path, core_bc: str | None) -> tuple[str, float]:
         raise ValueError(
             f'interior_energetics.module = {ie["module"]!r}: the ledger reads the Aragog columns'
         )
+    if ie.get('surface_bc_mode', 'flux') != 'flux':
+        raise ValueError(
+            f'surface_bc_mode = {ie["surface_bc_mode"]!r}: the interior does not lose heat by F_atm, '
+            'so the coupling identity does not hold by design'
+        )
     bc = core_bc or ie.get('aragog', {}).get('core_bc')
     if bc is None:
         raise ValueError(f'{cfg} names no aragog core_bc; pass --core-bc')

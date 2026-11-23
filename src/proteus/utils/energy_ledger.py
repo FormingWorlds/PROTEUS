@@ -4,8 +4,8 @@ Per step k (row k-1 to row k) the ledger sums the booked energy columns [J]:
 
 - mantle and lid: ``R_m = S - (-L_int + C_cmb + Q + I_m) + I_m``, with the mantle heat change
   ``S = step_dE_state_heat_J``, the heat to the atmosphere ``L_int = -step_dE_F_int_J``, the CMB heat
-  ``C_cmb = step_dE_F_cmb_J``, the radiogenic and tidal heat ``Q`` and the impact heat ``I_m``;
-  The impact heat is booked on both sides and cancels;
+  ``C_cmb = step_dE_F_cmb_J``, the radiogenic and tidal heat ``Q`` and the impact heat ``I_m``,
+  which is booked on both sides and cancels;
 - core: ``R_c = D_core + C_cmb - B_core``. With ``core_bc = 'core_module'`` the core heat change is
   ``step_dE_core_J`` and the booked terms ``B_core`` are the impact, refit and structure-update core heat;
   with ``energy_balance`` it is ``M_core core_heatcap core_tfac dT_cmb_node`` with the core of the end
@@ -32,9 +32,7 @@ from proteus.utils.constants import secs_per_year
 
 CORE_BCS = ('energy_balance', 'core_module')
 G_TOL = 1e-12  # coupling identity on a no-lid step, relative to |L_int| of the step
-WRITE_PREC = (
-    5e-11  # relative precision of a helpfile written with 11 significant digits (%.10e)
-)
+WRITE_PREC = 5e-11  # relative precision of a helpfile written with 11 digits (%.10e)
 R_M_TOL = 1e-9  # R_m against the stored E_residual_cons_J difference, relative
 
 _COMMON = [
@@ -196,21 +194,32 @@ def _classes(c: dict, t: dict, dt: np.ndarray, before: dict | None) -> dict[str,
     }
 
 
-def _precision(c: dict) -> float:
-    """Relative precision of the stored floats: ``WRITE_PREC`` when every value equals its rounding to
-    11 significant digits (an older helpfile), else the float eps."""
-    vals = np.concatenate([x for x in c.values() if x is not None])
-    eleven = all(float(f'{v:.10e}') == v for v in vals.tolist())
-    return WRITE_PREC if eleven else float(np.finfo(float).eps)
+def _precision(c: dict) -> np.ndarray:
+    """Relative precision of each stored row: ``WRITE_PREC`` where every value of the row equals its
+    rounding to 11 significant digits (the older writer, also in the older rows of a resumed run),
+    else the float eps."""
+    rows = np.column_stack([x for x in c.values() if x is not None]).tolist()
+    eleven = np.array([all(float(f'{v:.10e}') == v for v in row) for row in rows])
+    return np.where(eleven, WRITE_PREC, np.finfo(float).eps)
 
 
 def _check(t: dict, cls: dict, R_m: np.ndarray, G: np.ndarray, c: dict) -> None:
     """The coupling identity on every no-lid step with energy, and R_m against the stored column,
-    each to the precision of the stored floats."""
-    prec = _precision(c)
-    g_tol = G_TOL if prec < WRITE_PREC else 20 * WRITE_PREC
+    each to the precision of the stored rows. A step takes the coarser precision of its 2 rows; its
+    loss to space carries that precision on F_atm, R_int**2 and L_int, and the rounding of its 2 times
+    relative to dt."""
+    p = _precision(c)
+    step = np.maximum(p[:-1], p[1:])
+    time = c['Time']
+    span = np.divide(
+        np.abs(time[1:]) + np.abs(time[:-1]),
+        np.diff(time),
+        out=np.zeros(step.size),
+        where=np.diff(time) > 0,
+    )
+    tol = G_TOL * np.abs(t['L_int']) + 2 * step * np.abs(t['E_atm']) * (4 + span)
     plain = ~cls['lid'] & ~cls['zero']
-    over = plain & ~(np.abs(G) <= g_tol * np.abs(t['L_int']))
+    over = plain & ~(np.abs(G) <= tol)
     if over.any():
         k = int(np.flatnonzero(over)[0])
         raise RuntimeError(
@@ -221,11 +230,13 @@ def _check(t: dict, cls: dict, R_m: np.ndarray, G: np.ndarray, c: dict) -> None:
     if er is not None:
         stored, summed = er[-1] - er[0], float(R_m.sum())
         gross = sum(float(np.abs(t[k]).sum()) for k in ('S_state', 'L_int', 'C_cmb', 'Q'))
-        floor = 64 * prec * gross  # round-off of the per-step sums
-        # E_residual_cons_J is the difference of these two cumulative columns
+        floor = 64 * float(p.max()) * gross  # round-off of the per-step sums
+        # E_residual_cons_J is the difference of 2 cumulative columns: their run round-off and the
+        # rounding of the 2 stored end values
+        cum = R_m.size * float(np.finfo(float).eps) + 2 * max(p[0], p[-1])
         for name in ('E_state_heat_cons_J', 'dE_predicted_cons_J'):
             if c[name] is not None:
-                floor += R_m.size * prec * float(np.abs(c[name]).max())
+                floor += cum * float(np.abs(c[name]).max())
         if not abs(stored - summed) <= R_M_TOL * max(abs(stored), abs(summed)) + floor:
             raise RuntimeError(
                 f'R_m {summed:.6e} J differs from the stored E_residual_cons_J change {stored:.6e} J'
@@ -277,6 +288,9 @@ def whole_run_ledger(
     c = _read(hf, core_bc, slice(start, end + 1))
     keys = ('R_core', 'M_core', 'R_int')
     before = {k: _column(hf, k)[start - 1] for k in keys} if start > 0 else None
+    for k, v in (before or {}).items():
+        if not np.isfinite(v):
+            raise ValueError(f'column {k!r} is not finite at row {start - 1}')
     dt = np.diff(c['Time']) * secs_per_year
     t = _terms(c, core_bc, core_tfac, dt)
     energy = np.abs(t['S_state']) + np.abs(t['L_int']) + np.abs(t['C_cmb']) > 0
