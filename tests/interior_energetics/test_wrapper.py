@@ -8122,6 +8122,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
         lid_T_surface=1300.0,
         lid_T_base=1440.4,
         lid_T_node=3860.0,
+        lid_weight_max=0.0,
     )
     monkeypatch.setattr(
         'proteus.interior_energetics.aragog.AragogRunner._build_helpfile_output',
