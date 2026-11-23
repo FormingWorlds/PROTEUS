@@ -212,6 +212,16 @@ def test_the_stored_residual_check_allows_the_round_off_of_the_cumulative_column
         whole_run_ledger(hf, 'energy_balance')
 
 
+def test_a_helpfile_without_the_stored_residual_column_is_ledgered():
+    """An older helpfile without E_residual_cons_J has no stored residual to compare: the ledger still
+    closes the run and returns R_m, and an injected mantle residual still comes back."""
+    hf = _table().drop(columns=['E_residual_cons_J'])
+    led = whole_run_ledger(hf, 'energy_balance')
+    assert abs(led.R_m.sum()) <= 1e-12 * led.throughput
+    hf.loc[5, 'step_dE_state_heat_J'] += 1e24
+    assert whole_run_ledger(hf, 'energy_balance').R_m.sum() == pytest.approx(1e24, rel=1e-9)
+
+
 def test_the_mantle_mass_change_of_each_step_is_reported():
     """The mantle mass gained at a structure update is reported per step in kg and as a fraction of
     the mantle mass; the steps without a change report 0."""
