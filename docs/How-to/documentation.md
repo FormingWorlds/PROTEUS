@@ -51,7 +51,7 @@ Documentation source files are located in the [`docs`](https://github.com/Formin
 - **Reference**: lookup material, such as reference data, API-like documentation, or bibliographies.
 
 Using this structure helps keep pages focused on a single purpose. When adding a new page, try to decide first which of these four categories it belongs to.
-What to write on each type of page, and how to cite a paper, is in [Writing docs](../Community/writing_docs.md).
+What to write on each of these pages and on a Validation page, and how to cite a paper, is in [Writing docs](../Community/writing_docs.md).
 
 ## Layout of the `docs/` directory
 
