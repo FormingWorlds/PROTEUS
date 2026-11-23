@@ -135,15 +135,15 @@ Two runs, not stored in the repository, start from one state at 50828.99 yr: one
 
 | Start of step (yr) | $w$ at start | `F_atm` start (W m$^{-2}$) | `F_atm` end (W m$^{-2}$) | `F_int` (W m$^{-2}$) | Relative gap |
 |---|---|---|---|---|---|
-| 50913.4 | 0.349 | 26585 | 23461 | 21608 | 7.0 % |
-| 50943.8 | 0.957 | 23461 | 21465 | 18361 | 13.2 % |
-| 50976.9 | 0.9977 | 21465 | 19686 | 17223 | 11.5 % |
-| 51006.5 | 0.99977 | 19686 | 18072 | 16454 | 8.2 % |
-| 51038.0 | 0.99997 | 18072 | 16624 | 15566 | 5.9 % |
-| 51071.3 | 0.999993 | 16624 | 15533 | 14717 | 4.9 % |
-| 51106.4 | 0.999998 | 15533 | 15197 | 14178 | 6.6 % |
+| 50913.4 | 0.349 | 26585 | 23457 | 21608 | 7.0 % |
+| 50943.8 | 0.957 | 23457 | 21519 | 18161 | 14.3 % |
+| 50976.9 | 0.9980 | 21519 | 19722 | 17255 | 11.5 % |
+| 51006.7 | 0.99981 | 19722 | 18101 | 16490 | 8.2 % |
+| 51038.4 | 0.99997 | 18101 | 16646 | 15602 | 5.8 % |
+| 51071.9 | 0.999995 | 16646 | 15424 | 14745 | 4.1 % |
+| 51107.3 | 0.999998 | 15424 | 14557 | 14007 | 3.6 % |
 
-The table is the run at the normal step. In every step of the table `F_int` lies below the band. Over the steps that start from 50890 to 51300 yr, the time integral of the gap is $-1.32 \times 10^{13}$ J m$^{-2}$ at the normal step (mean step 35.1 yr). The time integral of `F_atm` over the same steps, by the trapezoid rule, is $2.28 \times 10^{14}$ J m$^{-2}$, so the gap is 5.8 % of it. At half the step (mean step 17.5 yr) the two integrals are $-6.34 \times 10^{12}$ and $2.15 \times 10^{14}$ J m$^{-2}$, so the gap is 3.0 % of the `F_atm` integral. In the half-step run the largest relative gap of a step was 10.7 %, against 13.2 % in the run of the table.
+The table is the run at the normal step. In every step of the table `F_int` lies below the band. Over the steps that start from 50890 to 51300 yr, the time integral of the gap is $-1.30 \times 10^{13}$ J m$^{-2}$ at the normal step (mean step 35.6 yr). The time integral of `F_atm` over the same steps, by the trapezoid rule, is $2.11 \times 10^{14}$ J m$^{-2}$, so the gap is 6.2 % of it. At half the step (mean step 17.8 yr) the two integrals are $-6.53 \times 10^{12}$ and $2.15 \times 10^{14}$ J m$^{-2}$, so the gap is 3.0 % of the `F_atm` integral. In the half-step run the largest relative gap of a step was 11.1 %, against 14.3 % in the run of the table.
 
 **The start gap.** At the start of a step the surface loses $F_\mathrm{top} = F_\mathrm{atm} + w\,(F_{s,0} - L)$ per total area. Here $F_\mathrm{top}$ is the heat flux that Aragog takes out at its top node, and $F_{s,0}$ is the loss of the held lid at the start state. A positive start gap means that the interior loses more than `F_atm` at the start of the step. $F_{s,0}$ differs from $L$ for 4 reasons:
 
@@ -159,4 +159,4 @@ The coupling does not correct this gap, and no helpfile column records it: `lid_
 
 A further test checks, in both cases and at 2 values of $L$, that the top-cell rate of the JAX right-hand side equals the NumPy rate (relative $10^{-9}$), so the JAX path carries the same start gap.
 
-In the run of the table, take the start gap of each step times the length of that step. This sum holds the start value over the whole step: it gives the size of the term, not the energy that the step lost by it. Over the steps that start from 50890 to 51300 yr, this sums to $+9.52 \times 10^{12}$ J m$^{-2}$: 4.2 % of the time integral of `F_atm` over those steps. Over all 25 steps from 50828.99 to 51700.0 yr it sums to $+9.62 \times 10^{12}$ J m$^{-2}$: 2.0 % of the time integral of `F_atm` over those 25 steps by the trapezoid rule, $4.76 \times 10^{14}$ J m$^{-2}$. The start gap is positive, while the gap of `F_int` to the band, defined at the top of this section, is negative over the steps from 50890 to 51300 yr ($-1.32 \times 10^{13}$ J m$^{-2}$).
+In the run of the table, take the start gap of each step times the length of that step. This sum holds the start value over the whole step: it gives the size of the term, not the energy that the step lost by it. Over the steps that start from 50890 to 51300 yr, this sums to $+9.63 \times 10^{12}$ J m$^{-2}$: 4.6 % of the time integral of `F_atm` over those steps. Over all 24 steps from 50828.99 to 51700.0 yr it sums to $+9.66 \times 10^{12}$ J m$^{-2}$: 2.0 % of the time integral of `F_atm` over those 24 steps by the trapezoid rule, $4.74 \times 10^{14}$ J m$^{-2}$. The start gap is positive, while the gap of `F_int` to the band, defined at the top of this section, is negative over the steps from 50890 to 51300 yr ($-1.30 \times 10^{13}$ J m$^{-2}$).
