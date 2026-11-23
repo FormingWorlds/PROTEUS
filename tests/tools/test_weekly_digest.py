@@ -159,7 +159,7 @@ def test_is_bot(login, kind, expected):
 def test_repository_settings_are_valid_and_exclude_archived_and_boreas():
     """The committed settings load, list each repository once and leave BOREAS and the archived SOCRATES out."""
     loaded = common.load_settings()
-    assert loaded['publish'] is False
+    assert loaded['publish'] is True
     assert len(set(loaded['repos'])) == len(loaded['repos'])
     assert not any('BOREAS' in r or r == 'nichollsh/SOCRATES' for r in loaded['repos'])
     assert loaded['repos'][0] == 'FormingWorlds/PROTEUS'
