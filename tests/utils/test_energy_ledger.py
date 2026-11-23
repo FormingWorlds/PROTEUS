@@ -9,12 +9,13 @@ raises; the mantle residual equals the stored cumulative column; bad input raise
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 import numpy as np
 import pytest
 
 from proteus.utils.constants import secs_per_year
-from proteus.utils.energy_ledger import Ledger, whole_run_ledger
+from proteus.utils.energy_ledger import whole_run_ledger
 from tests.utils._ledger_tables import _table
 
 pytest.importorskip('hypothesis')
@@ -386,9 +387,7 @@ def test_a_window_without_an_energy_step_is_refused():
     with pytest.raises(ValueError, match='no step'):
         whole_run_ledger(hf, 'energy_balance')
     led = whole_run_ledger(_table(), 'energy_balance')
-    assert math.isnan(
-        Ledger(**{**led.__dict__, 'throughput': 0.0}).closure
-    )  # no throughput: nan
+    assert math.isnan(replace(led, throughput=0.0).closure)  # no throughput: nan
 
 
 def test_the_throughput_is_the_sum_of_the_absolute_booked_terms():
@@ -399,17 +398,10 @@ def test_the_throughput_is_the_sum_of_the_absolute_booked_terms():
     hf.loc[7, 'step_dE_core_J'] += 3e26
     hf.loc[7, 'step_dE_struct_core_J'] = 3e26
     led = whole_run_ledger(hf, 'core_module')
-    k = slice(3, None)
-    hand = sum(
-        hf[c].iloc[k].abs().sum()
-        for c in (
-            'step_dE_state_heat_J',
-            'step_dE_F_int_J',
-            'step_dE_F_cmb_J',
-            'step_dE_Q_radio_J',
-        )
-    )
-    hand += 2e25 + 3e26  # the impact heat and the booked core term
+    cols = ['step_dE_state_heat_J', 'step_dE_F_int_J', 'step_dE_F_cmb_J', 'step_dE_Q_radio_J']
+    hand = (
+        hf[cols].iloc[3:].abs().sum().sum() + 2e25 + 3e26
+    )  # plus the impact and booked core heat
     assert led.throughput == pytest.approx(hand, rel=1e-12)
     assert led.closure == pytest.approx(led.R_p.sum() / hand, rel=1e-12, abs=1e-30)
     stored = (
