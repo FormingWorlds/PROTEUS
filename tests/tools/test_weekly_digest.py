@@ -1175,6 +1175,7 @@ def test_decide_command_prints_the_output_line(tmp_path, capsys, monkeypatch):
     data['window']['backdated'] = False
     src.write_text(json.dumps(data))
     args = ['decide', str(src), '--event', 'schedule', '--post-input', 'false']
+    monkeypatch.setattr(post, 'load_settings', lambda: {**_VALID, 'publish': False})
     assert post.main(args) == 0
     assert capsys.readouterr().out.strip() == 'live=false'
     monkeypatch.setattr(post, 'load_settings', lambda: {**_VALID, 'publish': True})
@@ -1860,7 +1861,7 @@ def test_publish_refuses_a_failed_check_a_backdated_window_or_publish_off(
         tmp_path, monkeypatch, None, _MON, event='workflow_dispatch', post_input='true'
     )
     assert rc == 0 and posted == ['PROTEUS weekly digest, 24 November 2026']
-    monkeypatch.setattr(post, 'load_settings', lambda: _VALID)
+    monkeypatch.setattr(post, 'load_settings', lambda: {**_VALID, 'publish': False})
     args = ['--event', 'schedule', '--post-input', 'false']
     with pytest.raises(common.DigestError, match='^not posted: posting is switched off$'):
         post.main(['publish', *(str(tmp_path / f) for f in ('c.json', 'd.json', 'out')), *args])
