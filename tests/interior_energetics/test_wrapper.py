@@ -1706,7 +1706,7 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize('path', ['raise', 'mass_anchor', 'up_step'])
 def test_a_rejected_structure_update_restores_the_solve_keys_of_the_row(path):
-    """A solve that writes M_core, M_core_solve, M_dissolved_target, core_density and the core
+    """A solve that writes M_core, M_core_solve, M_dissolved_target, core_density, and the core
     temperature table flags and then fails (a schema violation raises after the writes),
     misses the mass anchor, or makes a rejected radius up-step leaves the 6 keys at their
     values before the call."""
@@ -3247,8 +3247,8 @@ def test_update_planet_mass_handles_missing_element_columns():
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_the_wet_planet_mass_holds_while_outgassing_moves_mass_between_solves():
-    """M_int keeps the wet structure of its last solve, so M_planet takes off the volatile
-    mass of that solve (M_dissolved_target). Outgassing between solves leaves M_planet unchanged,
+    """M_int is the interior module's integral of the last solved wet structure, so M_planet
+    takes off the dissolved mass of that solve (M_dissolved_target). Outgassing between solves leaves M_planet unchanged,
     and escape lowers it by the escaped mass."""
     from proteus.interior_energetics.wrapper import update_planet_mass
 

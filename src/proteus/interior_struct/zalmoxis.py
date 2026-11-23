@@ -1320,8 +1320,8 @@ def _structure_target_masses(config: Config, hf_row: dict) -> tuple[float, float
     atmosphere, since the wet-mantle EOS holds the dissolved mass. The kept part holds the
     inventories that are inputs of the outgassing call; one that the call derives (O from a
     fixed fO2, rock vapour) is mantle mass. The dissolved mass is ``<e>_kg_total -
-    <e>_kg_atm`` over the elements that ``update_planet_mass`` sums into ``M_ele``, and 0
-    with ``dry_mantle``. Element columns absent from the row count as 0.
+    <e>_kg_atm`` over the elements that ``update_planet_mass`` sums into ``M_ele``, not
+    below 0, and 0 with ``dry_mantle``. Element columns absent from the row count as 0.
     """
     from proteus.interior_struct.common import volatile_mass_change
     from proteus.outgas.wrapper import outgassing_derives_o_kg_total
@@ -1344,7 +1344,8 @@ def _structure_target_masses(config: Config, hf_row: dict) -> tuple[float, float
             M_kept += mass
         if not dry_mantle and e in summed:
             M_dissolved += total - atm
-    return total_planet_mass, M_volatiles, M_kept, M_dissolved
+    # With no melt left, the outgassing solve can put an atmosphere a round-off above its total.
+    return total_planet_mass, M_volatiles, M_kept, max(M_dissolved, 0.0)
 
 
 def restore_dissolved_target(config: Config, hf_all) -> None:
@@ -1366,9 +1367,9 @@ def restore_dissolved_target(config: Config, hf_all) -> None:
         return
     hf_all.loc[hf_all.index[-1], 'M_dissolved_target'] = dissolved
     log.warning(
-        'The helpfile holds no M_dissolved_target: set to %.6e kg from the inventories of '
-        'the row at t = %.6e yr, which differ from those of the last structure solve by '
-        'the mass outgassed since then.',
+        'M_dissolved_target is 0 or absent in the helpfile: set to %.6e kg from the '
+        'inventories of the row at t = %.6e yr, which differ from those of the last '
+        'structure solve by the mass outgassed since then.',
         dissolved,
         float(row.get('Time') or 0.0),
     )

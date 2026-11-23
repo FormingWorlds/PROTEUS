@@ -136,8 +136,8 @@ This core mass depends on the oxygen inventory of that row, so it differs with t
 With `dry_mantle = false` the structure target holds the dissolved inventory, which `M_ele` also counts.
 The helpfile column `M_dissolved_target` is the dissolved mass inside the target of the last accepted solve, and 0 with `dry_mantle = true`.
 `M_planet` is `M_int - M_dissolved_target + M_ele`, so the dissolved inventory counts once.
-Between solves `M_int` is the structure of the last solve as the interior module integrates it, so the value of that solve is taken off even while outgassing moves volatiles between the melt and the atmosphere.
-A run that resumes from a helpfile without `M_dissolved_target` sets it from the inventories of its last row and logs a warning.
+Between solves `M_int` is the interior module's integral of the last solved structure, so the value of that solve is taken off even while outgassing moves volatiles between the melt and the atmosphere.
+A run that resumes from a helpfile without `M_dissolved_target`, or with 0 in it, sets it from the inventories of its last row and logs a warning.
 
 **The core mass that Zalmoxis returns**
 

@@ -244,9 +244,9 @@ def update_planet_mass(hf_row: dict):
     keeps the dissolved inventory, so ``M_int`` holds it as well as ``M_ele``.
     ``M_dissolved_target``, the dissolved element mass inside the target of the
     last accepted structure solve, is taken off ``M_int`` so that this mass
-    counts once. Between solves ``M_int`` is the structure of the last solve as
-    the interior module integrates it, so the value of that solve is taken off
-    even while outgassing moves volatiles between the melt and the atmosphere.
+    counts once. Between solves ``M_int`` is the interior module's integral of
+    the last solved structure, so the value of that solve is taken off even
+    while outgassing moves volatiles between the melt and the atmosphere.
     Totals that change without leaving the planet between solves,
     such as an oxygen inventory derived from the fO2 buffer, move M_planet
     until the next solve, as with a dry mantle. ``M_dissolved_target`` is 0

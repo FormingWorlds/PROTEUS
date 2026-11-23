@@ -124,9 +124,9 @@ def test_stored_core_target_returns_a_mass_or_zero_and_refuses_the_rest():
 
 @pytest.mark.physics_invariant
 def test_stored_dissolved_target_returns_a_mass_or_zero_and_refuses_the_rest():
-    """The stored dissolved target is a mass: an absent key, None and 0 read as 0 kg (a dry
-    mantle, another structure module), a positive value is returned to the last bit, and NaN,
-    an infinite value and a negative value raise an error that names the column and the
+    """The stored dissolved target is a mass: an absent key, None, and 0 read as 0 kg (a
+    dry mantle, another structure module), a positive value is returned to the last bit, and
+    NaN, an infinite value, and a negative value raise an error that names the column and the
     value, so a corrupt row cannot move M_planet."""
     assert stored_dissolved_target({}) == pytest.approx(0.0, abs=0.0)
     assert stored_dissolved_target({'M_dissolved_target': None}) == pytest.approx(0.0, abs=0.0)

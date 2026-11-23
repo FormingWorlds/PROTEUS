@@ -1842,8 +1842,30 @@ def test_the_planet_mass_counts_the_dissolved_volatiles_once(dry_mantle):
     assert abs(row['M_int'] + row['M_ele'] - row['M_planet']) == pytest.approx(
         expected, rel=1e-9, abs=0.0
     )
-    # Dissolved He (2e18 kg) and Si (1e19 kg) are far above the 6e12 kg tolerance, so a
-    # dissolved sum without the noble gases or with rock vapour fails the first assert.
+    # Dissolved He (2e18 kg) and Si (1e19 kg) are far above both tolerances (2.6e9 kg, 6e12 kg),
+    # so a dissolved sum without the noble gases or with rock vapour fails both asserts.
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_solid_wet_mantle_with_round_off_in_the_atmosphere_keeps_a_zero_dissolved_target():
+    """With no melt left every inventory sits in the atmosphere, and the outgassing solve can
+    put each one a round-off above its total. The dissolved target is then 0, not a negative
+    mass that update_planet_mass would refuse, and M_planet still closes on the planet mass."""
+    from proteus.interior_energetics.wrapper import update_planet_mass
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+    from proteus.utils.constants import M_earth
+
+    hf = {'H_kg_total': 4.7e20, 'O_kg_total': 3.1e21}
+    hf.update(H_kg_atm=4.7e20 * (1 + 1e-12), O_kg_atm=3.1e21 * (1 + 1e-12))
+    assert hf['H_kg_total'] - hf['H_kg_atm'] < 0.0
+    params = load_zalmoxis_configuration(_volatile_config(False), dict(hf))
+    assert params['dissolved_mass_target'] == pytest.approx(0.0, abs=0.0)
+
+    row = dict(hf, M_int=params['planet_mass'])
+    row['M_dissolved_target'] = params['dissolved_mass_target']
+    update_planet_mass(row)
+    assert row['M_planet'] == pytest.approx(M_earth, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -1873,7 +1895,7 @@ def test_a_resume_rebuilds_a_missing_dissolved_target_so_the_wet_planet_mass_clo
         restore_dissolved_target(config, hf_all)
     assert hf_all['M_dissolved_target'].iloc[-1] == pytest.approx(dissolved, rel=1e-12)
     assert hf_all['M_dissolved_target'].iloc[0] == pytest.approx(0.0, abs=0.0)
-    assert any('holds no M_dissolved_target' in r.getMessage() for r in caplog.records)
+    assert any('M_dissolved_target is 0 or absent' in r.getMessage() for r in caplog.records)
 
     row = hf_all.iloc[-1].to_dict()
     update_planet_mass(row)
@@ -2610,7 +2632,9 @@ def test_the_accretion_thermal_state_gets_the_core_fraction_of_the_solve(tmp_pat
 
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize('dry_mantle', [True, False], ids=['bare_silicate', 'wet_mantle'])
-def test_a_solve_records_the_volatile_mass_inside_its_target(tmp_path, monkeypatch, dry_mantle):
+def test_a_solve_records_the_dissolved_mass_inside_its_target(
+    tmp_path, monkeypatch, dry_mantle
+):
     """zalmoxis_solver writes M_dissolved_target from the row it solves for: the dissolved inventory
     with a wet mantle, 0 with a dry one. M_planet then differs from the planet mass only by
     the miss of the solve on its target, M_int - M_int_target, in both modes."""
