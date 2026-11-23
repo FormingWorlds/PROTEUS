@@ -56,7 +56,13 @@ _CORE = {
     'energy_balance': ['core_heatcap', 'T_cmb_node'],
     'bower2018': ['core_heatcap', 'T_cmb_node'],
 }
-_OPTIONAL = ['lid_weight', 'step_dE_compression_J', 'E_residual_cons_J']
+_OPTIONAL = [
+    'lid_weight',
+    'step_dE_compression_J',
+    'E_residual_cons_J',
+    'E_state_heat_cons_J',
+    'dE_predicted_cons_J',
+]
 
 
 @dataclass(frozen=True)
@@ -198,7 +204,14 @@ def _check(t: dict, cls: dict, R_m: np.ndarray, G: np.ndarray, c: dict) -> None:
     if er is not None:
         stored, summed = er[-1] - er[0], float(R_m.sum())
         gross = sum(float(np.abs(t[k]).sum()) for k in ('S_state', 'L_int', 'C_cmb', 'Q'))
-        floor = 64 * np.finfo(float).eps * gross  # round-off of the per-step sums
+        eps = np.finfo(float).eps
+        floor = 64 * eps * gross  # round-off of the per-step sums
+        for name in (
+            'E_state_heat_cons_J',
+            'dE_predicted_cons_J',
+        ):  # E_residual is their difference
+            if c[name] is not None:
+                floor += R_m.size * eps * float(np.abs(c[name]).max())
         if not abs(stored - summed) <= R_M_TOL * max(abs(stored), abs(summed)) + floor:
             raise RuntimeError(
                 f'R_m {summed:.6e} J differs from the stored E_residual_cons_J change {stored:.6e} J'
