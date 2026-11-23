@@ -9,15 +9,15 @@ This reader knows physics and some Python, but not this code, its history or its
 ## Steps
 
 1. Choose the page type from the [table of page types](#page-types).
-2. Put the content on the page type that is meant for it.
+2. Put the content on the page type that holds it.
 3. Write for the reader, in [plain words](#plain-words-and-numbers), and give numbers their units.
 4. Cite each paper in the [citation form](#citing-a-paper): the author and the year, followed at once by a footnote.
-5. Keep an Explanation page within the [size budget](#size-and-where-detail-goes), and move detail to the page type that is meant for it.
+5. Keep an Explanation page within the [size budget](#size-and-where-detail-goes), and move detail to the page type that holds it.
 6. Add each plot as a [light and dark pair](#plots) with alt text.
 7. Add a new page to the `nav` entry of `mkdocs.yml`, as in [Adding a new page](../How-to/documentation.md#adding-a-new-page).
 8. Link to the page from the pages where a reader meets its topic.
 9. Preview the page with `zensical serve` and read it in light and dark mode.
-10. Run `zensical build --clean --strict`, as the `Documentation links and anchors` check on a pull request does. It stops on a link or an anchor that does not exist.
+10. Run `zensical build --clean --strict`, as the `Documentation links and anchors` check on a PROTEUS pull request does. It stops on a link or an anchor that does not exist. It does not check image paths, so look at each plot in the preview.
 
 Steps 7, 9 and 10 apply to a site with a `mkdocs.yml`. A module with Julia documentation has its own build.
 
@@ -25,16 +25,16 @@ Steps 7, 9 and 10 apply to a site with a `mkdocs.yml`. A module with Julia docum
 
 - Define every symbol, term and abbreviation at first use on the page. Give each symbol its unit.
 - Cite every paper as `Name (Year)[^cite-key]`. On a page built with Documenter (the Julia documentation tool), cite as a [link to the bibliography](#modules-with-julia-documentation).
-- Cite every footnote at least once, and define it exactly once at the end of the page.
+- Define every footnote that the text uses exactly once, at the end of the page, and use every definition.
 - Keep DOIs (digital object identifiers) out of the text. A link to a release on Zenodo, the software and data archive, is the exception.
 - Keep an Explanation page and each of its sections within the size budget, or say in the pull request why it needs the length.
 - Give every plot a light and a dark file, and alt text that names what it shows.
 - Add all 4 parts for a [change to physics or chemistry](#a-change-to-physics-or-chemistry).
-- Run `zensical build --clean --strict`, and read the page on the preview.
+- On a site with a `mkdocs.yml`, run `zensical build --clean --strict`, and read the page on the preview.
 
 ## Page types
 
-Each piece of detail goes to the page type that is meant for it. Link to it from the other pages.
+Each piece of detail goes to the page type that holds it. Link to it from the other pages.
 
 | Page type | What it holds |
 |---|---|
@@ -65,7 +65,7 @@ A pure change to CI (continuous integration, the checks that run on a pull reque
 ## Size and where detail goes
 
 - An Explanation page has at most 2500 words, and a section (the text under one heading) at most 300.
-- Count the words of the prose, without code, math, footnote definitions, HTML comments (`<!-- ... -->`) and table rules (the `|---|` lines).
+- Count the words of the prose, without code, math, footnote definitions, comments (`<!-- ... -->`) and table rules (the `|---|` lines).
 - When an Explanation page is over the budget, move the detail to the page where it belongs and link to it. If the page needs the length, say why in the pull request.
 - Move detail, never drop it. A reference, tolerance, test id, command or plot that leaves a page goes to a named page in the same pull request.
 
@@ -74,7 +74,7 @@ A pure change to CI (continuous integration, the checks that run on a pull reque
 - Write sentences of at most about 25 words, with one statement per sentence.
 - Give numbers their units.
 - Describe the code as it is now, without its history or internal labels.
-- Do not use em dashes. A page range uses a hyphen.
+- Do not use em or en dashes. A page range in a citation uses a hyphen.
 
 The full rules on sentences, terms, abbreviations and headings are in [Simple English](CONTRIBUTING.md#simple-english) and [Formatting that guides the reader](CONTRIBUTING.md#formatting-that-guides-the-reader).
 
@@ -93,11 +93,12 @@ Citation rules:
 - The key is `cite-` plus the surname of the first author and the year, in lowercase letters a to z (no accents) and digits: `cite-elkinstanton2008`, `cite-vanderwal2010`. For 2 authors, the second surname can follow the first: `cite-rumpfgupte1971`.
 - For 2 papers of one author in one year, add `a` and `b` to the key and the text: `Abe (1995a)[^cite-abe1995a]`.
 - Put the definitions at the end of the page, 1 per line.
-- Cite every footnote at least once, and define it exactly once.
+- Define every footnote that the text uses exactly once, and use every definition.
 - Do not write a DOI in the text in any form: not as a `doi.org` link, not as `doi:10.xxxx` and not as `DOI 10.xxxx`. The DOI goes only in the footnote definition.
 - A software or data release on Zenodo is the exception: link it in the text.
 - On a page with footnotes, do not add a reference list in another form. The footnote definitions are the list.
-- Compare every field of a footnote with the paper itself, on the DOI page or on [SciX](https://scixplorer.org), not with your memory. SciX is the literature database of astronomy and physics.
+- Compare every field of a footnote with the paper itself, on the DOI page or on [SciX](https://scixplorer.org), not with your memory.
+- When you edit a page, bring every citation on it to these rules in the same pull request. This includes the parts that you did not change.
 
 ### Footnote definitions
 
@@ -110,7 +111,8 @@ A footnote definition has these parts, in this order:
 5. The SciX link, when the paper has one.
 
 A book or chapter without a DOI keeps its title in italics, without a link.
-When you edit a page, bring every citation on it to this form in the same pull request.
+A site with footnotes needs `footnotes` in the `markdown_extensions` of `mkdocs.yml`.
+It also needs the footnote rules of `docs/stylesheets/footnotes.css` of PROTEUS in a stylesheet under `docs/`.
 
 Example, for a paper that the PROTEUS docs cite:
 
@@ -143,8 +145,10 @@ Add each plot as a pair, one file for light mode and one for dark mode:
 ![Mantle temperature against time](../assets/<folder>/<name>_dark.avif#only-dark)
 ```
 
-Images in `docs/assets/` are AVIF. A validation line plot is SVG.
+Replace `<folder>` and `<name>` with your folder and file name.
+Save an image in `docs/assets/` as AVIF, a compressed image format.
+A validation line plot is the exception: save it as SVG, a vector format, in `docs/assets/validation/`.
 
 - Give each plot alt text that names what it shows, and a caption sentence.
 - A Validation plot also has a short note on how to read it. The rules are in [The layout of each validation case](CONTRIBUTING.md#the-layout-of-each-validation-case).
-- A script draws every figure on a Tutorials page, and a figure without an entry in its list fails a check. The steps are in [Update the tutorial figures](../How-to/documentation.md#update-the-tutorial-figures).
+- `tools/make_docs_figures.py` draws every figure on a Tutorials page from the list in `tools/docs_figures.toml`. Its `--check` option fails on a figure that is not in the list. The steps are in [Update the tutorial figures](../How-to/documentation.md#update-the-tutorial-figures).
