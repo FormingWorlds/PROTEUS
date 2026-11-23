@@ -3,7 +3,7 @@
 The rows are in ``tests/data/energy_ledger/`` (``build_cases.py`` there writes them from the source runs and
 records the source sha256 and the code versions). Cases: the lid onset of a 1 Earth-mass run (the mantle
 residual and the coupling term, reproduced from the earlier measurement of that window), the core ledger
-of core_module across 3 structure updates (closed to 1e-6 of the throughput) and the unbooked core heat
+of core_module across 3 structure updates (closed to 1e-7 of the throughput) and the unbooked core heat
 jump of energy_balance at the same updates (the remap class). Residuals are relative to the heat to the
 atmosphere L_int of the window.
 """
@@ -59,11 +59,13 @@ def _cumulative_figure(led, series, xlabel, ticks):
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
 def test_the_lid_onset_window_reproduces_its_mantle_and_coupling_terms(validation_plot):
-    """Lid onset of a 1 Earth-mass run (25 steps, all with a live lid): the mantle residual is
-    -1.646e-6 and the coupling term G -5.698e-2 of L_int, as measured for that window before this
-    function existed (lid-open-flux stream, ledger_window.py); the loss to space on the end-row area
-    instead of the start-row area would move G outside the tolerance."""
-    led, hf, prov = _case('r2rel_onset')
+    """Lid onset of a 1 Earth-mass run (25 steps, all with a live lid, the first after a structure
+    update at the start row): the mantle residual is -1.646e-6 and the coupling term G -5.698e-2 of
+    L_int, as a separate script on the same helpfile columns gives; the loss to space on the end-row area
+    instead of the start-row area would move G outside the tolerance. The core heat jump of the update,
+    which energy_balance books nowhere, is 1.3557 of L_int and sits in the step after the update."""
+    led, hf, prov = _case('r2rel_onset', start_row=1)
+    hf = hf.iloc[1:]
     L = led.terms['L_int'].sum()
     assert led.R_m.sum() / L == pytest.approx(-1.646e-6, rel=1e-3)
     assert led.G.sum() / L == pytest.approx(-5.698e-2, rel=1e-3)
@@ -72,7 +74,11 @@ def test_the_lid_onset_window_reproduces_its_mantle_and_coupling_terms(validatio
     dt = np.diff(hf['Time'].to_numpy()) * secs_per_year
     G_end = L - float(np.sum(hf['F_atm'].to_numpy()[:-1] * A[1:] * dt))
     assert abs(G_end / L + 5.698e-2) > 1e-3 * 5.698e-2  # the area of the end row misses
-    assert prov['rows'] == [873, 898]
+    assert prov['rows'] == [872, 898]  # row 872 classes the first step of the window
+    split = led.split('R_c')
+    assert led.classes['remap'][0]
+    assert split['remap'] / L == pytest.approx(1.3557209386827422, rel=1e-9)
+    assert split['other'] / L == pytest.approx(-9.932024803468492e-4, rel=1e-6)
 
     def figure():
         return _cumulative_figure(
@@ -94,14 +100,14 @@ def test_the_lid_onset_window_reproduces_its_mantle_and_coupling_terms(validatio
 @pytest.mark.reference_pinned
 def test_core_module_books_the_core_heat_of_each_structure_update():
     """core_module books the core heat change of each structure update (step_dE_struct_core_J): across
-    3 updates in 450 yr the core residual is within 1e-6 of the throughput in every step class; without
-    the booked term it would be the booked sum, 6.9e-3 of L_int."""
+    3 updates in 450 yr the core residual is within 1e-7 of the throughput in every step class; without
+    the booked term it would be the booked sum, 6.873e-3 of L_int."""
     led, _, _ = _case('cm_updates', start_row=2)
     T = led.throughput
-    assert abs(led.R_c.sum()) <= 1e-6 * T
-    assert all(abs(v) <= 1e-6 * T for v in led.split('R_c').values())
+    assert abs(led.R_c.sum()) <= 1e-7 * T  # measured 6e-9 of T
+    assert all(abs(v) <= 1e-7 * T for v in led.split('R_c').values())
     B = led.terms['B_core'].sum()
-    assert B / led.terms['L_int'].sum() == pytest.approx(6.92e-3, rel=1e-2)
+    assert B / led.terms['L_int'].sum() == pytest.approx(6.872932228745487e-3, rel=1e-9)
     assert int(led.classes['update'].sum()) == 3
 
 
@@ -112,13 +118,18 @@ def test_energy_balance_leaves_the_core_heat_jump_of_an_update_in_the_remap_clas
 ):
     """energy_balance books no core heat at a structure update, so the jump stays in R_c of the steps
     after an update: 5.948278897938286e-3 of L_int over 3 updates in 450 yr, the value of the separate
-    E2 measurement script on the same rows (same arithmetic, 1e-9). The other steps hold 1e-2 of it."""
+    separate measurement script on the same rows (same arithmetic, 1e-9). The other steps hold 1e-2 of
+    it, and the planet residual R_p = R_m + R_c - G is 8.526e-3 of L_int."""
     led, _, _ = _case('eb_updates', start_row=2)
     L = led.terms['L_int'].sum()
     split = led.split('R_c')
     assert split['remap'] / L == pytest.approx(5.948278897938286e-3, rel=1e-9)
     assert abs(split['other'] + split['update']) < 1e-2 * split['remap']
     assert led.terms['B_core'].sum() == 0.0
+    assert led.R_p.sum() / L == pytest.approx(8.525868397324384e-3, rel=1e-9)
+    np.testing.assert_allclose(
+        led.R_p, led.R_m + led.R_c - led.G, rtol=1e-12, atol=1e-3 * abs(L) * 1e-12
+    )
 
     def figure():
         return _cumulative_figure(

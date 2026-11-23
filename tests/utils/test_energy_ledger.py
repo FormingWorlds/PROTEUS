@@ -15,63 +15,14 @@ import pandas as pd
 import pytest
 
 from proteus.utils.constants import secs_per_year
-from proteus.utils.energy_ledger import whole_run_ledger
+from proteus.utils.energy_ledger import Ledger, whole_run_ledger
+from tests.utils._ledger_tables import _table
 
 pytest.importorskip('hypothesis')
 from hypothesis import HealthCheck, given, settings  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
-
-C_CORE = 2.0e24 * 800.0 * 1.147  # M_core core_heatcap tfac [J/K]
-
-
-def _table(core_bc='energy_balance', n_steps=7, seed=3):
-    """Helpfile of 3 start rows at t = 0 and ``n_steps`` steps whose booked terms close exactly.
-
-    Per step: mantle heat S = -L_int + C_cmb + Q; the loss to space F_atm(start) A(start) dt equals L_int;
-    the core change is -C_cmb (energy_balance through T_cmb_node, core_module through step_dE_core_J).
-    """
-    rng = np.random.default_rng(seed)
-    n = 3 + n_steps
-    t = np.r_[0.0, 0.0, 0.0, np.cumsum(rng.uniform(5.0, 50.0, n_steps))]
-    R_int = np.full(n, 6.4e6)
-    A = 4.0 * np.pi * R_int**2
-    L = np.r_[0.0, 0.0, 0.0, rng.uniform(1e27, 3e27, n_steps)]
-    C = np.r_[0.0, 0.0, 0.0, rng.uniform(1e26, 4e26, n_steps)]
-    Q = np.r_[0.0, 0.0, 0.0, rng.uniform(1e24, 5e24, n_steps)]
-    F_atm = np.zeros(n)
-    dt = np.diff(t) * secs_per_year
-    F_atm[2:-1] = L[3:] / (A[2:-1] * dt[2:])
-    d = {
-        'Time': t,
-        'R_int': R_int,
-        'F_atm': F_atm,
-        'step_dE_state_heat_J': -L + C + Q,
-        'step_dE_F_int_J': -L,
-        'step_dE_F_cmb_J': C,
-        'step_dE_Q_radio_J': Q,
-        'step_dE_Q_tidal_J': np.zeros(n),
-        'step_dE_impact_J': np.zeros(n),
-        'M_core': np.full(n, 2.0e24),
-        'R_core': np.full(n, 3.5e6),
-        'M_mantle': np.full(n, 4.0e24),
-        'core_heatcap': np.full(n, 800.0),
-        'lid_weight': np.zeros(n),
-        'step_dE_compression_J': np.zeros(n),
-    }
-    if core_bc == 'core_module':
-        d |= {
-            'step_dE_core_J': -C,
-            'step_dE_impact_core_J': np.zeros(n),
-            'step_dE_impact_core_refit_J': np.zeros(n),
-            'step_dE_struct_core_J': np.zeros(n),
-            'T_cmb_node': np.full(n, 4000.0),
-        }
-    else:
-        d['T_cmb_node'] = 4000.0 - np.cumsum(C) / C_CORE
-    d['E_residual_cons_J'] = np.zeros(n)
-    return pd.DataFrame(d)
 
 
 @pytest.mark.physics_invariant
@@ -266,34 +217,43 @@ def test_the_window_selects_the_steps_between_start_and_end_rows():
 )
 def test_rows_out_of_range_raise(kwargs, match):
     """A window outside the table raises ValueError that names the argument."""
+    hf = _table()
+    before = hf.copy()
     with pytest.raises(ValueError, match=match):
-        whole_run_ledger(_table(), 'energy_balance', **kwargs)
-    assert len(_table()) == 10
+        whole_run_ledger(hf, 'energy_balance', **kwargs)
+    pd.testing.assert_frame_equal(hf, before)  # a refused call leaves its input unchanged
 
 
 @pytest.mark.parametrize('column', ['step_dE_F_int_J', 'F_atm', 'T_cmb_node', 'M_mantle'])
 def test_a_missing_column_raises_and_names_it(column):
     """An older helpfile without a required column raises ValueError naming the column."""
     hf = _table().drop(columns=[column])
+    before = hf.copy()
     with pytest.raises(ValueError, match=column):
         whole_run_ledger(hf, 'energy_balance')
-    assert column not in hf.columns
+    pd.testing.assert_frame_equal(hf, before)
 
 
 def test_core_module_needs_its_core_columns():
     """core_module reads step_dE_core_J; a table without it raises."""
     hf = _table('core_module').drop(columns=['step_dE_core_J'])
+    before = hf.copy()
     with pytest.raises(ValueError, match='step_dE_core_J'):
         whole_run_ledger(hf, 'core_module')
-    assert 'step_dE_struct_core_J' in hf.columns
+    pd.testing.assert_frame_equal(hf, before)
 
 
-@pytest.mark.parametrize('core_bc', ['quasi_steady', 'gradient', '', 'Energy_Balance'])
+@pytest.mark.parametrize(
+    'core_bc', ['bower2018', 'quasi_steady', 'gradient', '', 'Energy_Balance']
+)
 def test_an_unknown_core_bc_raises(core_bc):
-    """Only energy_balance, bower2018 and core_module have a core ledger here; others raise."""
+    """Only energy_balance and core_module have a core ledger here; bower2018 keeps its own core
+    temperature state (T_cmb) without the core temperature factor, so it raises with the others."""
+    hf = _table()
+    before = hf.copy()
     with pytest.raises(ValueError, match='core_bc'):
-        whole_run_ledger(_table(), core_bc)
-    assert core_bc not in ('energy_balance', 'bower2018', 'core_module')
+        whole_run_ledger(hf, core_bc)
+    pd.testing.assert_frame_equal(hf, before)
 
 
 @pytest.mark.parametrize(
@@ -303,9 +263,10 @@ def test_a_non_finite_term_raises(bad):
     """NaN or inf in a summed term raises ValueError naming the column and the row."""
     hf = _table()
     hf.loc[6, 'step_dE_F_cmb_J'] = bad
+    before = hf.copy()
     with pytest.raises(ValueError, match=r'step_dE_F_cmb_J.*row 6'):
         whole_run_ledger(hf, 'energy_balance')
-    assert not np.isfinite(hf.loc[6, 'step_dE_F_cmb_J'])
+    pd.testing.assert_frame_equal(hf, before)
 
 
 def test_time_that_runs_backwards_raises():
@@ -360,18 +321,191 @@ def test_any_closed_run_closes_whatever_its_size(seed, n_steps, scale):
 
 @settings(max_examples=40, deadline=None)
 @given(
-    value=st.one_of(
-        st.just(math.nan),
-        st.just(math.inf),
-        st.just(-math.inf),
-        st.booleans(),
-        st.text(max_size=3),
-    )
+    value=st.sampled_from([math.nan, math.inf, -math.inf]),
+    row=st.integers(3, 9),
+    column=st.sampled_from(['step_dE_Q_radio_J', 'step_dE_F_int_J', 'F_atm', 'T_cmb_node']),
 )
-def test_any_bad_value_in_a_term_raises(value):
-    """Property: NaN, inf, a boolean or a string in a summed column raises ValueError, never a number."""
-    hf = _table().astype({'step_dE_Q_radio_J': object})
-    hf.loc[7, 'step_dE_Q_radio_J'] = value
-    with pytest.raises(ValueError):
+def test_any_non_finite_value_in_a_read_column_raises(value, row, column):
+    """Property: NaN or inf in any row of the window of a float column the ledger reads raises
+    ValueError naming that column, never a number."""
+    hf = _table()
+    hf.loc[row, column] = value
+    with pytest.raises(ValueError, match=column):
         whole_run_ledger(hf, 'energy_balance')
-    assert hf['step_dE_Q_radio_J'].dtype == object
+    assert (
+        hf[column].dtype == np.float64
+    )  # the column stays a float column: the value is refused
+
+
+@pytest.mark.parametrize('value', [True, 'x'], ids=['bool-column', 'string-column'])
+def test_a_column_that_is_not_float_raises(value):
+    """A column of booleans or strings is refused by its type, even where its values would convert
+    to numbers (True reads as 1.0 without the check)."""
+    hf = _table()
+    hf['step_dE_Q_radio_J'] = value
+    with pytest.raises(ValueError, match='not numeric'):
+        whole_run_ledger(hf, 'energy_balance')
+    assert (hf['step_dE_Q_radio_J'] == value).all()
+
+
+@pytest.mark.physics_invariant
+def test_a_window_that_starts_on_an_update_row_classes_its_first_step_as_remap():
+    """A window whose start row holds a new structure: its first step runs on the remapped profile and
+    is in class remap, read from the row before the window, as in the full run."""
+    hf = _table()
+    hf.loc[4:, 'R_core'] = 3.49e6  # structure update at row 4
+    full = whole_run_ledger(hf, 'energy_balance')
+    led = whole_run_ledger(hf, 'energy_balance', start_row=4)
+    assert led.classes['remap'][0] and not led.classes['update'][0]
+    assert led.classes['remap'].tolist() == full.classes['remap'][2:].tolist()
+    assert not whole_run_ledger(hf, 'energy_balance', start_row=5).classes['remap'][0]
+
+
+def test_a_window_without_an_energy_step_is_refused():
+    """A window in which no step books interior heat (a dummy or boundary interior) has no ledger:
+    it raises instead of a closure of 0."""
+    hf = _table()
+    for c in [c for c in hf.columns if c.startswith('step_dE_')]:
+        hf[c] = 0.0
+    hf['E_residual_cons_J'] = 0.0
+    with pytest.raises(ValueError, match='no step'):
+        whole_run_ledger(hf, 'energy_balance')
+    led = whole_run_ledger(_table(), 'energy_balance')
+    assert math.isnan(
+        Ledger(**{**led.__dict__, 'throughput': 0.0}).closure
+    )  # no throughput: nan
+
+
+def test_the_throughput_is_the_sum_of_the_absolute_booked_terms():
+    """The throughput T sums |S|, |L_int|, |C_cmb|, |Q|, |I_mantle| and |B_core| over the steps, and the
+    closure is sum R_p / T; with an impact and a booked core term both enter."""
+    hf = _table('core_module')
+    hf.loc[6, 'step_dE_impact_J'] = -2e25
+    hf.loc[7, 'step_dE_core_J'] += 3e26
+    hf.loc[7, 'step_dE_struct_core_J'] = 3e26
+    led = whole_run_ledger(hf, 'core_module')
+    k = slice(3, None)
+    hand = sum(
+        hf[c].iloc[k].abs().sum()
+        for c in (
+            'step_dE_state_heat_J',
+            'step_dE_F_int_J',
+            'step_dE_F_cmb_J',
+            'step_dE_Q_radio_J',
+        )
+    )
+    hand += 2e25 + 3e26  # the impact heat and the booked core term
+    assert led.throughput == pytest.approx(hand, rel=1e-12)
+    assert led.closure == pytest.approx(led.R_p.sum() / hand, rel=1e-12, abs=1e-30)
+    np.testing.assert_allclose(led.R_p, led.R_m + led.R_c - led.G, rtol=0, atol=1e-6)
+
+
+@pytest.mark.parametrize(
+    'tfac', [0.0, -1.0, math.nan, math.inf], ids=['zero', 'negative', 'nan', 'inf']
+)
+def test_a_core_temperature_factor_out_of_range_raises(tfac):
+    """core_tfac must be finite and positive, as the config requires of core_tfac_avg."""
+    hf = _table()
+    before = hf.copy()
+    with pytest.raises(ValueError, match='core_tfac'):
+        whole_run_ledger(hf, 'energy_balance', core_tfac=tfac)
+    pd.testing.assert_frame_equal(hf, before)
+
+
+@pytest.mark.physics_invariant
+def test_the_core_temperature_factor_enters_the_core_heat():
+    """A run whose core heat was booked with tfac 1.3 closes only with core_tfac = 1.3; with the
+    default 1.147 the core misses by 1 - 1.147/1.3 = 11.8 % of the CMB heat."""
+    hf = _table(tfac=1.3)
+    led = whole_run_ledger(hf, 'energy_balance', core_tfac=1.3)
+    assert abs(led.R_c.sum()) <= 1e-12 * led.throughput
+    off = whole_run_ledger(hf, 'energy_balance')
+    C = led.terms['C_cmb'].sum()
+    assert off.R_c.sum() / C == pytest.approx(1.0 - 1.147 / 1.3, rel=1e-9)
+
+
+@settings(max_examples=40, deadline=None)
+@given(rows=st.sets(st.integers(3, 9), max_size=5))
+def test_the_class_split_of_the_core_residual_sums_to_its_total(rows):
+    """Property: for any set of update rows, consecutive ones included, the update, remap and other
+    parts of R_c add up to sum R_c, and the remap steps are those after an update step."""
+    hf = _table()
+    hf.loc[3:, 'T_cmb_node'] += np.linspace(
+        0.0, 2.0, 7
+    )  # an unbooked core change in every step
+    for r in rows:
+        hf.loc[r:, 'R_int'] += 1e3
+    led = _closed_coupling(hf)
+    assert sum(led.split('R_c').values()) == pytest.approx(led.R_c.sum(), rel=1e-12)
+    assert led.classes['remap'][1:].tolist() == led.classes['update'][:-1].tolist()
+    assert int(led.classes['update'].sum()) == len(rows)
+
+
+def _closed_coupling(hf):
+    """Ledger of ``hf`` after resetting F_atm so that each step loses L_int on its start-row area."""
+    for j in range(2, len(hf) - 1):
+        dt_j = (hf.loc[j + 1, 'Time'] - hf.loc[j, 'Time']) * secs_per_year
+        hf.loc[j, 'F_atm'] = -hf.loc[j + 1, 'step_dE_F_int_J'] / (
+            4.0 * np.pi * hf.loc[j, 'R_int'] ** 2 * dt_j
+        )
+    return whole_run_ledger(hf, 'energy_balance')
+
+
+def test_a_change_of_the_core_mass_alone_is_a_structure_update():
+    """A structure solve that changes only M_core still moves the step to class update; an impact
+    step with negative impact heat is in class impact."""
+    hf = _table()
+    hf.loc[6:, 'M_core'] = 2.0e24 * (1 + 1e-4)
+    hf['T_cmb_node'] = 4000.0 - np.cumsum(hf['step_dE_F_cmb_J'].to_numpy()) / (
+        hf['M_core'] * 800.0 * 1.147
+    )
+    hf.loc[8, 'step_dE_impact_J'] = -1e25
+    led = whole_run_ledger(hf, 'energy_balance')
+    assert led.classes['update'].tolist() == [False, False, False, True, False, False, False]
+    assert led.classes['impact'].tolist() == [False, False, False, False, False, True, False]
+
+
+@pytest.mark.parametrize(
+    'column', ['step_dE_state_heat_J', 'step_dE_F_int_J', 'step_dE_F_cmb_J']
+)
+def test_a_step_with_no_time_and_any_energy_raises(column):
+    """A step with dt = 0 that books energy in any one of the mantle heat, the heat to the atmosphere
+    or the CMB heat is refused."""
+    hf = _table()
+    for c in (
+        'step_dE_state_heat_J',
+        'step_dE_F_int_J',
+        'step_dE_F_cmb_J',
+        'step_dE_Q_radio_J',
+    ):
+        hf.loc[6, c] = 0.0
+    hf.loc[6, column] = 1e24
+    hf.loc[6, 'Time'] = hf.loc[5, 'Time']
+    before = hf.copy()
+    with pytest.raises(ValueError, match='Time'):
+        whole_run_ledger(hf, 'energy_balance', end_row=6)
+    pd.testing.assert_frame_equal(hf, before)
+
+
+def test_a_helpfile_written_with_11_digits_is_ledgered():
+    """Older helpfiles hold 11 significant digits (format %.10e): the coupling identity and the stored
+    residual then hold only to that precision, and the ledger accepts them; a full-precision file with
+    the same coupling gap of 1e-10 of L_int is refused."""
+    hf = _table()
+    hf['Time'] = np.r_[
+        0.0, 0.0, 0.0, np.cumsum(np.arange(10.0, 17.0))
+    ]  # whole years, as such runs write
+    _closed_coupling(hf)
+    hf['E_state_heat_cons_J'] = (
+        -8e31 + np.r_[0.0, 0.0, 0.0, np.cumsum(hf['step_dE_state_heat_J'].iloc[3:])]
+    )
+    hf['dE_predicted_cons_J'] = hf['E_state_heat_cons_J']
+    written = hf.map(lambda v: float(f'{v:.10e}'))
+    written['E_residual_cons_J'] = (
+        written['E_state_heat_cons_J'] - written['dE_predicted_cons_J']
+    )
+    led = whole_run_ledger(written, 'energy_balance')
+    assert abs(led.G.sum()) <= 1e-9 * led.terms['L_int'].sum()
+    hf.loc[5, 'F_atm'] *= 1 + 1e-10
+    with pytest.raises(RuntimeError, match='coupling identity'):
+        whole_run_ledger(hf, 'energy_balance')

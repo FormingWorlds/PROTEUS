@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.utils.test_energy_ledger import _table
+from tests.utils._ledger_tables import _table
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -22,11 +22,16 @@ def _tool():
     return mod
 
 
-def _run(tmp_path, core_bc='core_module', toml=True):
-    _table(core_bc).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+def _run(
+    tmp_path, core_bc='core_module', toml=True, module='aragog', tfac=1.2, table_tfac=1.147
+):
+    _table(core_bc, tfac=table_tfac).to_csv(
+        tmp_path / 'runtime_helpfile.csv', sep='\t', index=False
+    )
     if toml:
         (tmp_path / 'init_coupler.toml').write_text(
-            f'[interior_energetics]\ncore_tfac_avg = 1.2\n[interior_energetics.aragog]\ncore_bc = "{core_bc}"\n'
+            f'[interior_energetics]\nmodule = "{module}"\ncore_tfac_avg = {tfac}\n'
+            f'[interior_energetics.aragog]\ncore_bc = "{core_bc}"\n'
         )
     return tmp_path
 
@@ -61,3 +66,22 @@ def test_a_run_the_ledger_refuses_exits_with_2(tmp_path, capsys):
     assert 'start_row' in capsys.readouterr().err
     assert tool.main([str(tmp_path / 'absent'), '--core-bc', 'core_module']) == 2
     assert 'runtime_helpfile.csv' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('module', ['dummy', 'boundary', 'spider'])
+def test_a_run_without_the_aragog_interior_is_refused(tmp_path, capsys, module):
+    """The ledger reads the core and mantle columns that the Aragog interior writes; a run with another
+    interior module exits 2 and names the module, instead of a closure of 0."""
+    rc = _tool().main([str(_run(tmp_path, module=module))])
+    assert rc == 2
+    assert module in capsys.readouterr().err
+
+
+def test_the_core_temperature_factor_of_the_config_reaches_the_core_heat(tmp_path, capsys):
+    """An energy_balance run booked with core_tfac_avg = 1.3 closes its core with the factor of its
+    config; R_c is 0 to round-off relative to L_int."""
+    rc = _tool().main([str(_run(tmp_path, 'energy_balance', tfac=1.3, table_tfac=1.3))])
+    out = capsys.readouterr().out
+    assert rc == 0
+    line = next(x for x in out.splitlines() if x.startswith('R_c '))
+    assert abs(float(line.split('(')[1].split()[0])) < 1e-12
