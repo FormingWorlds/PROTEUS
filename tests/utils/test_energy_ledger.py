@@ -195,6 +195,21 @@ def test_the_mantle_residual_must_equal_the_stored_cumulative_column():
         whole_run_ledger(hf, 'energy_balance')
 
 
+def test_the_stored_residual_check_allows_the_round_off_of_the_cumulative_columns():
+    """E_residual_cons_J is the difference of 2 whole-run sums of about 1e32 J, so its window difference
+    carries their round-off: 5e16 J (about 2 eps of 1e32) passes, 1e19 J (above 7 steps x eps x 2e32)
+    raises."""
+    hf = _table()
+    hf['E_state_heat_cons_J'] = -1.1e32
+    hf['dE_predicted_cons_J'] = -1.1e32
+    hf.loc[7:, 'E_residual_cons_J'] = 5e16
+    led = whole_run_ledger(hf, 'energy_balance')
+    assert abs(led.R_m.sum()) <= 1e-12 * led.throughput
+    hf.loc[7:, 'E_residual_cons_J'] = 1e19
+    with pytest.raises(RuntimeError, match='E_residual_cons_J'):
+        whole_run_ledger(hf, 'energy_balance')
+
+
 def test_the_mantle_mass_change_of_each_step_is_reported():
     """The mantle mass gained at a structure update is reported per step in kg and as a fraction of
     the mantle mass; the steps without a change report 0."""
