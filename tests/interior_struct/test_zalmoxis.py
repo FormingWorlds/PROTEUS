@@ -1814,6 +1814,31 @@ def test_dry_mass_target_excludes_only_undissolved_volatiles():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+@pytest.mark.parametrize('dry_mantle', [True, False], ids=['bare_silicate', 'wet_mantle'])
+def test_the_planet_mass_counts_the_dissolved_volatiles_once(dry_mantle):
+    """The structure target and update_planet_mass close on the planet mass in both mantle
+    modes. The wet target holds the dissolved inventory, which M_int + M_ele counts twice."""
+    from proteus.interior_energetics.wrapper import update_planet_mass
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+    from proteus.utils.constants import M_earth
+
+    hf = {'H_kg_total': 4.7e20, 'H_kg_atm': 1.2e20, 'O_kg_total': 3.1e21, 'O_kg_atm': 0.9e21}
+    dissolved = (4.7e20 - 1.2e20) + (3.1e21 - 0.9e21)
+    params = load_zalmoxis_configuration(_volatile_config(dry_mantle), dict(hf))
+    row = dict(hf, M_int=params['planet_mass'], M_vol_solve=params['structure_volatile_mass'])
+    update_planet_mass(row)
+
+    expected = 0.0 if dry_mantle else dissolved
+    assert params['structure_volatile_mass'] == pytest.approx(expected, rel=1e-12, abs=0.0)
+    assert row['M_planet'] == pytest.approx(M_earth, rel=1e-12)
+    # The sum without the correction misses by the dissolved inventory in the wet mode.
+    assert abs(row['M_int'] + row['M_ele'] - row['M_planet']) == pytest.approx(
+        expected, rel=1e-9, abs=0.0
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_a_resumed_row_gives_the_zalmoxis_target_rock_anchor_plus_volatile_change(tmp_path):
     """After restore_accretion_state, the real Zalmoxis target is the configured
     mass plus the accreted rock plus the stored volatile change, less volatiles."""
@@ -2502,6 +2527,42 @@ def test_the_accretion_thermal_state_gets_the_core_fraction_of_the_solve(tmp_pat
     assert fraction - 0.325 > 0.011
     assert hf_row['T_surf_accr'] == pytest.approx(2900.0, rel=1e-15)
     assert hf_row['M_core_target'] == pytest.approx(0.325 * (M_earth - 7.43e20), rel=1e-14)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('dry_mantle', [True, False], ids=['bare_silicate', 'wet_mantle'])
+def test_a_solve_records_the_volatile_mass_inside_its_target(tmp_path, monkeypatch, dry_mantle):
+    """zalmoxis_solver writes M_vol_solve from the row it solves for: the dissolved inventory
+    with a wet mantle, 0 with a dry one. M_planet then differs from the planet mass only by
+    the miss of the solve on its target, M_int - M_int_target, in both modes."""
+    from proteus.interior_energetics.wrapper import update_planet_mass
+    from proteus.utils.constants import M_earth
+
+    inventory = {'H_kg_total': 4.7e20, 'H_kg_atm': 1.2e20}
+    inventory.update(O_kg_total=3.1e21, O_kg_atm=0.9e21)
+    dissolved = (4.7e20 - 1.2e20) + (3.1e21 - 0.9e21)
+    # Dissolved water so that the wet solve builds a volatile profile.
+    hf_extra = dict(inventory, M_mantle_liquid=4.0e24, M_mantle_solid=1.0e24)
+    hf_extra['H2O_kg_liquid'] = 2.5e21
+    _, _, _, hf_row, _, _, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS-2phase:MgSiO3',
+        None,
+        None,
+        dry_mantle=dry_mantle,
+        hf_extra=hf_extra,
+    )
+    expected = 0.0 if dry_mantle else dissolved
+    assert hf_row['M_vol_solve'] == pytest.approx(expected, rel=1e-12, abs=0.0)
+
+    update_planet_mass(hf_row)
+    miss = hf_row['M_int'] - hf_row['M_int_target']
+    assert hf_row['M_planet'] - miss == pytest.approx(M_earth, rel=1e-12)
+    # Without M_vol_solve the wet planet is heavier by the dissolved inventory.
+    assert hf_row['M_int'] + hf_row['M_ele'] - miss - M_earth == pytest.approx(
+        expected, rel=1e-6, abs=0.0
+    )
 
 
 @pytest.mark.physics_invariant

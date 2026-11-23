@@ -1340,6 +1340,21 @@ def _structure_target_masses(config: Config, hf_row: dict) -> tuple[float, float
     return total_planet_mass, M_volatiles, M_kept
 
 
+def structure_volatile_mass(config: Config, hf_row: dict) -> float:
+    """Volatile and noble-gas element mass inside the structure target [kg].
+
+    With ``dry_mantle = false`` the target keeps each inventory without its atmosphere
+    part, so this is the sum of ``<e>_kg_total - <e>_kg_atm`` over the elements that
+    ``update_planet_mass`` sums into ``M_ele``. It is 0 with ``dry_mantle = true``.
+    """
+    if config.interior_struct.zalmoxis.dry_mantle:
+        return 0.0
+    return sum(
+        float(hf_row.get(e + '_kg_total', 0.0)) - float(hf_row.get(e + '_kg_atm', 0.0))
+        for e in vol_element_list + noble_gases
+    )
+
+
 def set_core_target_at_init_end(config: Config, hf_row: dict) -> None:
     """Set ``M_core_target`` from the row when the init stage ends.
 
@@ -1506,6 +1521,7 @@ def load_zalmoxis_configuration(
 
     return {
         'planet_mass': planet_mass,
+        'structure_volatile_mass': structure_volatile_mass(config, hf_row),
         'core_mass_fraction': core_mass_fraction,
         'core_mass_target': core_mass,
         'core_frac_mode': config.interior_struct.core_frac_mode,
@@ -4033,6 +4049,7 @@ def zalmoxis_solver(
     # |M_int / M_int_target - 1| above _ZALMOXIS_MASS_ANCHOR_TOL as not converged.
     hf_row['M_int_target'] = float(config_params.get('planet_mass', 0.0))
     hf_row['M_core_target'] = float(config_params.get('core_mass_target', 0.0))
+    hf_row['M_vol_solve'] = float(config_params.get('structure_volatile_mass', 0.0))
 
     # Self-consistent core density from Zalmoxis structure
     if cmb_radius > 0:

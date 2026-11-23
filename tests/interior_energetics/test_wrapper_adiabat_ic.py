@@ -255,6 +255,7 @@ def _linear_hf_row():
         'core_density': 1.1e4,
         'rho_avg': 8.0e3,
         'M_core_solve': 1.89e25,
+        'M_vol_solve': 1.2e22,
     }
 
 
@@ -341,6 +342,7 @@ def test_adiabat_resolve_rolls_back_on_mass_anchor_violation(tmp_path):
         row['R_int'] = 1.40e7  # would-be relaxed radius, discarded on rollback
         row['M_int'] = M_target * 1.10  # 10% off: violates the 0.3% anchor
         row['M_core_solve'] = 2.0e25
+        row['M_vol_solve'] = 1.5e22
         return 6.0e6, str(tmp_path / 'bad_mesh.dat')
 
     with (
@@ -365,6 +367,7 @@ def test_adiabat_resolve_rolls_back_on_mass_anchor_violation(tmp_path):
     # explicitly so a regression that skipped the rollback fails here.
     assert abs(hf_row['R_int'] - 1.40e7) > 1.0e6
     assert hf_row['M_core_solve'] == _linear_hf_row()['M_core_solve']  # restored exactly
+    assert hf_row['M_vol_solve'] == pytest.approx(_linear_hf_row()['M_vol_solve'], rel=1e-15)
     # On-disk contract: the file holds the LINEAR content again, not the adiabat
     # geometry the failed solver wrote. This is the discriminating check that the
     # hf_row-only rollback (the bug) would fail.

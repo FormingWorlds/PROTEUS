@@ -241,12 +241,14 @@ def update_planet_mass(hf_row: dict):
     Mantle FeO-bound oxygen remains implicit in the PALEOS density
     tables that drive ``M_int``; we don't double-count it here.
 
-    This site pairs with the dry-mass target in
-    ``load_zalmoxis_configuration``: both currently treat the mantle EOS
-    as bare silicate (``dry_mantle = true``, the only configuration the
-    config gate admits). If wet-mantle support is enabled there, this
-    sum must stop counting the dissolved inventory in ``M_ele``, because
-    a wet-mantle ``M_int`` already contains that mass.
+    With ``interior_struct.zalmoxis.dry_mantle = false`` the structure target
+    keeps the dissolved inventory, so ``M_int`` holds it as well as ``M_ele``.
+    ``M_vol_solve``, the element mass inside the last accepted structure, is
+    taken off ``M_int`` so that this mass counts once. It holds the value of
+    that solve: ``M_int`` keeps the mass of the solve until the next one, while
+    outgassing moves volatiles between the melt and the atmosphere. It is 0
+    with a dry mantle and with another structure module, where the sum is
+    ``M_int + M_ele``.
     """
 
     # Update total element mass.
@@ -255,7 +257,8 @@ def update_planet_mass(hf_row: dict):
         hf_row['M_ele'] += float(hf_row.get(e + '_kg_total', 0.0))
 
     # Add to total planet mass
-    hf_row['M_planet'] = hf_row['M_int'] + hf_row['M_ele']
+    M_vol_solve = float(hf_row.get('M_vol_solve', 0.0) or 0.0)
+    hf_row['M_planet'] = hf_row['M_int'] - M_vol_solve + hf_row['M_ele']
 
 
 def get_nlevb(config: Config):
@@ -1318,6 +1321,7 @@ _ADIABAT_IC_RESTORE_KEYS = (
     'M_core',
     'M_core_solve',
     'M_int_target',
+    'M_vol_solve',
     'P_surf',
     'P_center',
     'P_cmb',
@@ -3205,6 +3209,7 @@ def update_structure_from_interior(
             'M_int',
             'M_core',
             'M_core_solve',
+            'M_vol_solve',
             'core_density',
             'M_mantle',
             'P_surf',

@@ -2046,6 +2046,23 @@
       "consumers_possible": []
     },
     {
+      "name": "M_vol_solve",
+      "unit": "kg",
+      "description": "volatile and noble-gas element mass inside the last accepted Zalmoxis solve; 0 with zalmoxis.dry_mantle = true or another structure module",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_struct/zalmoxis.py",
+          "condition": "interior_struct.module = \"zalmoxis\""
+        }
+      ],
+      "consumers": [
+        "interior_energetics"
+      ],
+      "consumers_possible": []
+    },
+    {
       "name": "M_mantle_solid",
       "unit": "kg",
       "description": "dry mass of solid-phase mantle",

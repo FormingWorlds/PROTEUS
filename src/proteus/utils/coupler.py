@@ -988,6 +988,7 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'M_core_solve',
         'M_core_target',
         'M_desiccated',
+        'M_vol_solve',
         'M_volatile_change',
         'n_impacts_applied',
         'step_dE_impact_J',
@@ -1116,6 +1117,7 @@ def GetHelpfileKeys():
         'M_mantle',         # dry mass of mantle [kg]
         'M_core_target',    # core mass target of the Zalmoxis structure; 0 with another structure module [kg]
         'M_core_solve',     # core mass of the last accepted Zalmoxis solve; 0 with another structure module [kg]
+        'M_vol_solve',      # volatile and noble-gas element mass inside the last accepted Zalmoxis solve; 0 with zalmoxis.dry_mantle = true or another structure module [kg]
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
