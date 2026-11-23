@@ -2931,7 +2931,13 @@ def test_core_nodes_beyond_the_table_by_more_than_the_limit_stop_the_solve(
         with pytest.raises(RuntimeError, match='core temperature table'):
             run()
     else:
-        assert run()[3]['struct_core_T_excess'] == excess
+        try:
+            hf_row = run()[3]
+        except RuntimeError as exc:
+            pytest.fail(
+                f'a core {excess} of the table range beyond it stopped the solve: {exc}'
+            )
+        assert hf_row['struct_core_T_excess'] == excess
 
 
 def _spy_excess(monkeypatch):
