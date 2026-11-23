@@ -221,8 +221,8 @@ def _script(tmp_path, n_cases, cores, jobs, command, days=1.0):
 
 
 def test_dispatch_script_asks_for_the_cores_and_one_step_per_case(tmp_path):
-    """The job asks for its cores and the memory per core; each case is a one-core job
-    step with that memory, and the job is not requeued."""
+    """The job asks for its cores and their memory as one request; each case is a
+    one-core job step with the memory of one case, and the job is not requeued."""
     text = _script(tmp_path, n_cases=100, cores=16, jobs=7, command='proteus start --config')
     assert '#SBATCH --cpus-per-task=16\n' in text
     assert '#SBATCH --mem=49152M\n' in text  # 16 cores x 3072 MiB, one request

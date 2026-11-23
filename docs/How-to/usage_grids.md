@@ -221,7 +221,7 @@ For example, 20000 cases with `cores_per_job = 16` and a MaxArraySize of 1000 gi
 
 #### Idle cores
 
-A job keeps all of its cores until its last case ends. If the cases of a job don't fill all of its cores in the last wave, some cores have no case. A cluster that charges for allocated cores, such as Snellius, charges for these cores too. Memory is set per core, so the same share of the allocated memory is idle too.
+A job keeps all of its cores until its last case ends. If the cases of a job don't fill all of its cores in the last wave, some cores have no case. A cluster that charges for allocated cores, such as Snellius, charges for these cores too. The job asks for `max_mem` for each of its cores, so the same share of its memory is idle too.
 
 The grid manager computes the share of allocated core time that the layout leaves idle, if every case runs equally long. If that share is more than 10 %, it logs a warning with the share and with the nearest `cores_per_job` values that leave at most 10 % idle. It doesn't change the layout. Real cases don't run equally long, so the real idle time is different.
 

@@ -130,10 +130,8 @@ def dispatch_script(
         Wall time per job [days], written in whole minutes, at least 1, since a zero
         Slurm time limit means no limit.
     mem_per_case_mb : int
-        Memory per case [MiB], the limit of its job step. The job asks for
-        ``cores_per_job`` times it as one request, not per core: Snellius gives a job
-        below an eighth of a node the whole eighth, and a per-core request would also
-        charge the memory of the cores that no case uses.
+        Memory per case [MiB], the limit of its job step; the job asks for
+        ``cores_per_job`` times it as one ``--mem`` request.
     command : str
         Command that runs one case; the config path follows it.
     casedir : str or None
