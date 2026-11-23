@@ -160,11 +160,11 @@ The grid manager turns the grid settings into these Slurm settings in `slurm_dis
 |---|---|---|
 | `cores_per_job` | Cores per Slurm job. Each core runs 1 case at a time. | Cores per job (`--cpus-per-task`), so cases at a time within one job. |
 | `max_jobs` | Cases that run at the same time, over the whole grid. | Jobs at a time (the throttle, `%` in `--array`) = `max_jobs // cores_per_job`, at least 1 and at most the number of jobs. |
-| `max_mem` | Memory per case, in GB. | Memory per core (`--mem-per-cpu`) = `max_mem`, so memory per job = `cores_per_job * max_mem`. The job step of each case also gets `max_mem`. |
+| `max_mem` | Memory per case, in GB. | Memory per job (`--mem`) = `cores_per_job * max_mem`, as one request for the job. The job step of each case gets `max_mem` (`--mem-per-cpu` of its one core). |
 | `max_days` | Walltime per case, in days. | Walltime per job (`--time`) = `max_days * waves`, in whole minutes and at least 1 minute, because Slurm reads a walltime of 0 as no time limit. |
 | MaxArraySize (from Slurm) | Most jobs in one job array. The grid manager reads it with `scontrol show config`. Without `scontrol`, it uses the Slurm default of 1001. | Jobs (`--array`) = `min(ceil(cases / cores_per_job), MaxArraySize)`. |
 
-For example, 1000 cases with `cores_per_job = 16`, `max_jobs = 64`, `max_mem = 1.75` and `max_days = 1` give 63 jobs of 16 cores, 28 GB and 1 day each, in 1 wave. 4 jobs run at a time, so 64 cases run at a time. The script header then has `--cpus-per-task=16`, `--mem-per-cpu=1792M`, `--time=1440` and `--array=0-62%4`.
+For example, 1000 cases with `cores_per_job = 16`, `max_jobs = 64`, `max_mem = 1.75` and `max_days = 1` give 63 jobs of 16 cores, 28 GB and 1 day each, in 1 wave. 4 jobs run at a time, so 64 cases run at a time. The script header then has `--cpus-per-task=16`, `--mem=28672M`, `--time=1440` and `--array=0-62%4`.
 
 If `max_jobs` is smaller than `cores_per_job`, one job still runs, so more cases run at the same time than `max_jobs` says. If `max_jobs` isn't a multiple of `cores_per_job`, the grid manager rounds the number of jobs at a time down.
 

@@ -225,7 +225,8 @@ def test_dispatch_script_asks_for_the_cores_and_one_step_per_case(tmp_path):
     step with that memory, and the job is not requeued."""
     text = _script(tmp_path, n_cases=100, cores=16, jobs=7, command='proteus start --config')
     assert '#SBATCH --cpus-per-task=16\n' in text
-    assert '#SBATCH --mem-per-cpu=3072M\n' in text
+    assert '#SBATCH --mem=49152M\n' in text  # 16 cores x 3072 MiB, one request
+    assert '#SBATCH --mem-per-cpu' not in text
     assert '#SBATCH --array=0-6%7\n' in text
     assert '#SBATCH --no-requeue\n' in text
     assert 'xargs -n 1 -P 16 ' in text
