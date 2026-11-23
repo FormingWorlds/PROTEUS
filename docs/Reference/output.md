@@ -1236,6 +1236,7 @@ A computed key is a helpfile column name constructed dynamically at runtime thro
 - `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: `dynamic key sma_col` (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)
 - `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: `dynamic key ecc_col` (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)
 - `src/proteus/utils/coupler.py::assert_mass_conservation`: `dynamic key f'{e}_kg_{r}'`
+- `src/proteus/utils/energy_ledger.py::_column`: `dynamic key name`
 <!-- END GENERATED: helpfile-matrix -->
 
 ## Synthetic observation CSV columns

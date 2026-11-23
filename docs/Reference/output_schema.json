@@ -29584,6 +29584,12 @@
       "kind": "read",
       "reason": "dynamic key f'{e}_kg_{r}'",
       "function": "assert_mass_conservation"
+    },
+    {
+      "file": "src/proteus/utils/energy_ledger.py",
+      "kind": "read",
+      "reason": "dynamic key name",
+      "function": "_column"
     }
   ]
 }
