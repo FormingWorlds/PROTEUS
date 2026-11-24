@@ -90,9 +90,9 @@ _MONOTONIC_RINT_REL_TOL = 1e-9
 _REINFLATE_TMAGMA_REL_TOL = 1e-4
 _REINFLATE_PHI_ABS_TOL = 1e-3
 
-# Radius bound of the mass escape: dR/R <= slope * dM/M + offset. Up-steps from a target rise have
-# dR/R / dM/M of 0.73 to 0.94 (contractions 0.64 to 1.31); the offset covers the largest cooling
-# up-step measured with the target inside the anchor, 7.2e-4.
+# A step the mass escape keeps warns above dR/R = slope * dM/M + offset, dM/M from the reached mass.
+# Measured up-steps have dR/R / dM/M of 0.73 to 0.94; a solve can reach a rise near 0 within the
+# anchor, so the offset is the floor of the bound, above the largest measured artefact (7.2e-4).
 _MASS_ESCAPE_RADIUS_SLOPE = 2.0
 _MASS_ESCAPE_RADIUS_OFFSET = 1e-3
 
@@ -3492,19 +3492,14 @@ def update_structure_from_interior(
         # reopen the freeze.
         _composition_driven = comp_changed and not config.interior_struct.zalmoxis.dry_mantle
         # Mass escape: the retained structure fails the mass anchor (its operator) against a larger
-        # new target, and the radius step stays within the bound of that mass rise. Scalar up-step
-        # only; this escape never keeps a mesh beyond R_int.
+        # new target. Scalar up-step only; this escape never keeps a mesh beyond R_int.
         _M_retained = float(_saved_structure.get('M_int', 0.0) or 0.0)
-        _mass_outgrown = (
+        _target_outgrown = (
             _scalar_radius_up_step
             and not _grid_extent_up_step
             and 0.0 < _M_retained < _M_target
             and abs(_M_retained / _M_target - 1.0) > _ZALMOXIS_MASS_ANCHOR_TOL
         )
-        _dR_escape = _R_int_new / R_int_prev - 1.0 if _mass_outgrown else 0.0
-        _dM_escape = _M_target / _M_retained - 1.0 if _mass_outgrown else 0.0
-        _radius_bound = _MASS_ESCAPE_RADIUS_SLOPE * _dM_escape + _MASS_ESCAPE_RADIUS_OFFSET
-        _target_outgrown = _mass_outgrown and _dR_escape <= _radius_bound
         _accept_up_step = _interior_reinflating or _composition_driven or _target_outgrown
         if _superliq and _is_up_step and _accept_up_step:
             if _interior_reinflating:
@@ -3549,6 +3544,8 @@ def update_structure_from_interior(
                     1.0 - _M_retained / _M_target,
                     _ZALMOXIS_MASS_ANCHOR_TOL,
                 )
+                if not (_interior_reinflating or _composition_driven):
+                    _warn_mass_escape_radius_step(hf_row, R_int_prev, _M_retained, _M_target)
         if _superliq and _is_up_step and not _accept_up_step:
             if _scalar_radius_up_step:
                 log.info(
@@ -3560,20 +3557,6 @@ def update_structure_from_interior(
                     R_int_prev,
                     _R_int_new / R_int_prev - 1.0,
                 )
-                if _mass_outgrown:
-                    log.warning(
-                        'Mass escape refused on the super-liquidus adiabat IC: the re-solve step '
-                        'dR/R=%.3e exceeds the radius bound of the mass escape, bound %.3e = '
-                        '%.1f dM/M + %.1e at dM/M=%.3e (retained M_int=%.6e kg, M_target=%.6e '
-                        'kg), so the retained structure stays off its target.',
-                        _dR_escape,
-                        _radius_bound,
-                        _MASS_ESCAPE_RADIUS_SLOPE,
-                        _MASS_ESCAPE_RADIUS_OFFSET,
-                        _dM_escape,
-                        _M_retained,
-                        _M_target,
-                    )
             else:
                 log.info(
                     'Rejected EOS-grid-extent up-step under the super-liquidus '
@@ -3889,6 +3872,48 @@ def update_structure_from_interior(
     )
     _warn_committed_mass_miss(hf_row)
     return (current_time, float(hf_row['T_magma']), float(hf_row['Phi_global']))
+
+
+def _warn_mass_escape_radius_step(
+    hf_row: dict, r_prev: float, m_retained: float, m_target: float
+) -> None:
+    """Warn when a step kept by the mass escape alone has a large radius step for its mass rise.
+
+    The bound is ``_MASS_ESCAPE_RADIUS_SLOPE * dM/M + _MASS_ESCAPE_RADIUS_OFFSET``, with dM/M the
+    rise of the mass the solve reached over the retained mass. The step is kept either way; the
+    warning marks a step that can carry a representation artefact.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row after the solve, read for ``R_int`` [m] and ``M_int`` [kg].
+    r_prev : float
+        Running minimum of R_int before the solve [m].
+    m_retained : float
+        M_int of the retained structure [kg].
+    m_target : float
+        Mass target of the solve [kg].
+    """
+    d_r = float(hf_row['R_int']) / r_prev - 1.0
+    m_reached = float(hf_row['M_int'])
+    d_m = m_reached / m_retained - 1.0
+    bound = _MASS_ESCAPE_RADIUS_SLOPE * d_m + _MASS_ESCAPE_RADIUS_OFFSET
+    if d_r > bound:
+        log.warning(
+            'Mass escape keeps a radius step above its radius bound on the super-liquidus '
+            'adiabat IC: dR/R=%.6e > bound %.6e = %.1f dM/M + %.1e at the reached dM/M=%.6e '
+            '(target rise %.6e; retained M_int=%.6e kg, reached M_int=%.6e kg, M_target=%.6e kg). '
+            'The kept structure can carry a representation artefact.',
+            d_r,
+            bound,
+            _MASS_ESCAPE_RADIUS_SLOPE,
+            _MASS_ESCAPE_RADIUS_OFFSET,
+            d_m,
+            m_target / m_retained - 1.0,
+            m_retained,
+            m_reached,
+            m_target,
+        )
 
 
 def _warn_committed_mass_miss(hf_row: dict) -> None:
