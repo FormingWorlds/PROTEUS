@@ -2733,17 +2733,19 @@ def run_interior(
             raise
         except RuntimeError as e:
             interior_o.aragog_fail_count += 1
+            cause = _aragog_failure_cause(e)
             log.warning(
                 '%s #%d/%d. Keeping previous interior state for this step. Error: %s',
-                _aragog_failure_cause(e),
+                cause,
                 interior_o.aragog_fail_count,
                 _ARAGOG_MAX_CONSECUTIVE_FAILS,
                 str(e)[:200],
             )
             if interior_o.aragog_fail_count >= _ARAGOG_MAX_CONSECUTIVE_FAILS:
                 log.error(
-                    'Aragog failed %d consecutive times. Aborting.',
+                    'Aragog failed %d consecutive times (last: %s). Aborting.',
                     interior_o.aragog_fail_count,
+                    cause,
                 )
                 raise
             # Keep the previous step's hf_row with the call energies at 0; the solver holds
