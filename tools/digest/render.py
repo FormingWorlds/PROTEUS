@@ -22,7 +22,7 @@ from datetime import timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from common import SECTIONS, DigestError, is_bot, load_settings, parse_time
+from common import SECTIONS, DigestError, count, is_bot, load_settings, parse_time
 
 MAX_FACTS = 4
 MAX_DOCS = 5
@@ -219,15 +219,26 @@ def summary(data: dict, run_url: str) -> str:
     names = ', '.join(
         f'[{link_text(r.split("/", 1)[1])}]({link_url(GITHUB + r)})' for r in data['repos']
     )
-    read = (
-        f'the bodies of the {data["bodies_kept"]} largest pull requests '
-        f'and only the titles of the other {data["bodies_cut"]}'
-        if data['bodies_cut']
-        else 'the text of every pull request'
+    kept, cut = data['bodies_kept'], data['bodies_cut']
+    other = (
+        'the title of the other pull request' if cut == 1 else f'the titles of the other {cut}'
     )
+    if not cut:
+        read = 'the text of every pull request'
+    elif not kept:
+        read = (
+            'only the title of the pull request'
+            if cut == 1
+            else f'only the titles of the {cut} pull requests'
+        )
+    elif kept == 1:
+        read = f'the body of the largest pull request and only {other}'
+    else:
+        read = f'the bodies of the {kept} largest pull requests and only {other}'
     return (
-        f'Collected between {window_dates(data["window"])} from {merged} merged '
-        f'and {opened} open pull requests and {len(data["releases"])} releases in {names}. '
+        f'Collected between {window_dates(data["window"])} from '
+        f'{count(merged, "merged pull request")}, {count(opened, "open pull request")} '
+        f'and {count(len(data["releases"]), "release")} in {names}. '
         f'The model read {read}. [Workflow run]({run_url}).'
     )
 

@@ -410,7 +410,7 @@ def main(argv: list[str] | None = None) -> int:
         f'Open pull request left out: {d["ref"]} by {d["login"]} (association {d["association"]})'
         for d in data.get('dropped_open', [])
     ] + [
-        f'Docs pages left out: {n} of {site}'
+        f'Docs pages left out of {site}: {n}'
         for site, n in data.get('docs_left_out', {}).items()
     ]
     if lines:

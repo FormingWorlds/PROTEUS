@@ -22,7 +22,7 @@ import re
 import sys
 import unicodedata
 
-from common import DIGEST_DIR, SECTIONS
+from common import DIGEST_DIR, SECTIONS, count
 from render import plain
 
 NUMBER_RE = re.compile(
@@ -341,16 +341,17 @@ def main(argv: list[str] | None = None) -> int:
     with open(args.draft) as fh:
         draft = json.load(fh)
     fails, warns = check(data, draft), warnings(data, draft)
-    count = (
-        f'{len(fails)} failures and {len(warns)} warnings in {len(draft["entries"])} entries'
+    total = (
+        f'{count(len(fails), "failure")} and {count(len(warns), "warning")} '
+        f'in {count(len(draft["entries"]), "entry", "entries")}'
     )
     report = ''.join(f'FAIL {json.dumps(line)}\n' for line in fails)
-    report += ''.join(f'WARN {json.dumps(line)}\n' for line in warns) + count + '\n'
+    report += ''.join(f'WARN {json.dumps(line)}\n' for line in warns) + total + '\n'
     for line in fails:
         print(f'FAIL {json.dumps(line)}')
     for line in warns:
         print(f'WARN {json.dumps(line)}\n::warning::{json.dumps(line).replace("%", "%25")}')
-    print(count)
+    print(total)
     if args.out:
         with open(args.out, 'w') as fh:
             fh.write(report)

@@ -30,7 +30,15 @@ An open pull request counts only when GitHub reports its author as an owner, mem
 
 ### Find the docs pages of a pull request
 
-For each merged pull request, `collect.py` also lists its docs pages: each file `docs/<path>.md` of the pull request maps to `<site>/<path>.html`, with the docs site of its repository from the table `docs` in `repos.toml`. A page counts only when one HEAD request (a request for the status of a page, without its content) to that URL answers 200 at collect time, so a page that is not served, or a page of a pull request merged after the last docs deployment, is left out. A redirect is not followed, so a page that answers with a redirect is also left out. A page that the pull request deletes gets no request and no link. Each URL is asked once per run. After a network error on a docs site (no HTTP answer, such as a timeout), the pages of that site that are not asked yet are left out without a request; an HTTP answer such as 404 does not stop the site. A page name with a character other than an ASCII letter or digit, `_`, a space, `.`, `/` or `-`, or with no letter or digit, is also left out. The run log names each page left out, except a deleted page, with the reason. The job summary gives the number of those pages for each docs site. A repository without a docs site in the table gives no pages.
+For each merged pull request, `collect.py` also lists its docs pages. Each file `docs/<path>.md` of the pull request maps to `<site>/<path>.html`, and a space in the path becomes `%20` in the URL. The docs site of its repository comes from the table `docs` in `repos.toml`. A repository without a docs site in the table gives no pages.
+
+A page counts only when one HEAD request (a request for the status of a page, without its content) to that URL answers 200 when the data is collected. A page that is not served is left out. So is a page of a pull request merged after the last docs deployment. A redirect is not followed, so a page that answers with a redirect is also left out. Each URL is asked once per run.
+
+After a network error on a docs site (no HTTP answer, such as a timeout), the pages of that site that are not asked yet are left out without a request. An HTTP answer such as 404 does not stop the site.
+
+A page name is also left out when it has a character other than an ASCII letter or digit, `_`, a space, `.`, `/` or `-`, or when it has no letter or digit.
+
+A page that the pull request deletes is not a candidate: it gets no request, no link, no log line and no count. The run log names every other page left out, with the reason. The job summary gives the number of these pages for each docs site.
 
 ### Read the file changes as facts
 

@@ -119,6 +119,11 @@ def parse_time(text: str) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def count(n: int, noun: str, plural: str = '') -> str:
+    """``n`` with its noun: singular for 1, ``plural`` (default ``noun + 's'``) otherwise."""
+    return f'{n} {noun if n == 1 else plural or noun + "s"}'
+
+
 def iso(value: datetime) -> str:
     """Format a UTC time as ``YYYY-MM-DDTHH:MM:SSZ``."""
     return value.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
