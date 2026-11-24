@@ -355,7 +355,7 @@ def collect(gh: GitHub, settings: dict, window: dict) -> dict:
     dropped = [p for p in prs if p['status'] == 'open' and p['association'] not in MEMBERS]
     prs = [p for p in prs if p not in dropped]
     cut = add_bodies(prs, releases, settings['max_bodies'], settings['body_chars'])
-    down, ask, left = set(), functools.cache(page_status), collections.Counter()
+    down, ask, left = set(), functools.cache(page_status), collections.defaultdict(set)
     for p in prs:
         base = settings['docs'].get(p['repo']) if p['status'] == 'merged' else None
 
@@ -370,8 +370,10 @@ def collect(gh: GitHub, settings: dict, window: dict) -> dict:
         files = [f for f in p['files'] if f not in p['deleted']]
         p['docs'] = docs_pages(files, base, status)
         if base:
-            left[base] += sum(f.startswith('docs/') and f.endswith('.md') for f in files)
-            left[base] -= len(p['docs'])
+            kept = {f'docs/{d["path"]}.md' for d in p['docs']}
+            left[base] |= {
+                f for f in files if f.startswith('docs/') and f.endswith('.md')
+            } - kept
     return {
         'window': window,
         'repos': settings['repos'],
@@ -381,7 +383,7 @@ def collect(gh: GitHub, settings: dict, window: dict) -> dict:
             {'ref': p['ref'], 'login': p['author'], 'association': p['association']}
             for p in dropped
         ],
-        'docs_left_out': {site: n for site, n in left.items() if n},
+        'docs_left_out': {site: len(paths) for site, paths in left.items() if paths},
         **cut,
     }
 
@@ -399,7 +401,6 @@ def main(argv: list[str] | None = None) -> int:
     home = settings['repos'][0]
     state = None if args.since else previous_state(gh, home, settings['category'])
     window = resolve_window(args.since, args.until, state, datetime.now(timezone.utc))
-    window['previous'] = state
     data = collect(gh, settings, window)
     with open(args.out, 'w') as fh:
         json.dump(data, fh)
