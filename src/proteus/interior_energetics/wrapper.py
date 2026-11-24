@@ -3472,14 +3472,14 @@ def update_structure_from_interior(
         # still rejects under cooling; that narrows the escape, it does not
         # reopen the freeze.
         _composition_driven = comp_changed and not config.interior_struct.zalmoxis.dry_mantle
-        # Mass escape: a solve target above the retained structure mass by more than the mass
-        # anchor means the retained structure breaks the mass contract, so the larger one is kept.
-        # Scalar up-step only; a grid-extent-only up-step would hand Aragog an inconsistent mesh.
+        # Mass escape: the retained structure fails the mass anchor against a larger new target.
+        # Scalar up-step only, so a mesh beyond R_int never reaches Aragog.
         _M_retained = float(_saved_structure.get('M_int', 0.0) or 0.0)
         _target_outgrown = (
             _scalar_radius_up_step
-            and _M_retained > 0.0
-            and _M_target > _M_retained * (1.0 + _ZALMOXIS_MASS_ANCHOR_TOL)
+            and not _grid_extent_up_step
+            and 0.0 < _M_retained < _M_target
+            and abs(_M_retained / _M_target - 1.0) > _ZALMOXIS_MASS_ANCHOR_TOL
         )
         _accept_up_step = _interior_reinflating or _composition_driven or _target_outgrown
         if _superliq and _is_up_step and _accept_up_step:
@@ -3498,21 +3498,7 @@ def update_structure_from_interior(
                     last_Phi,
                     _Phi_now,
                 )
-            elif _target_outgrown:
-                log.info(
-                    'Accepted R_int increase after the structure mass target rose on the '
-                    'super-liquidus adiabat IC: re-solve R_int=%.6e m rose above the running '
-                    'minimum %.6e m; the solve target M_target=%.6e kg exceeds the retained '
-                    'M_int=%.6e kg (ratio %.4f) by more than the mass anchor %.1e, so the '
-                    'retained structure no longer holds the planet mass and the new one is kept.',
-                    _R_int_new,
-                    R_int_prev,
-                    _M_target,
-                    _M_retained,
-                    _M_target / _M_retained,
-                    _ZALMOXIS_MASS_ANCHOR_TOL,
-                )
-            else:
+            elif _composition_driven:
                 log.info(
                     'Accepted R_int increase from a composition-driven wet '
                     're-solve on the super-liquidus adiabat IC: re-solve '
@@ -3523,6 +3509,21 @@ def update_structure_from_interior(
                     'artifact, so the new structure is kept.',
                     _R_int_new,
                     R_int_prev,
+                )
+            if _target_outgrown:
+                log.info(
+                    'Accepted R_int increase on the super-liquidus adiabat IC because the retained '
+                    'structure fails the mass anchor against the new solve target: re-solve '
+                    'R_int=%.6e m rose above the running minimum %.6e m; retained M_int=%.6e kg, '
+                    'solve target M_target=%.6e kg (ratio %.6f, relative miss %.3e > anchor %.1e), '
+                    'so the new structure is kept.',
+                    _R_int_new,
+                    R_int_prev,
+                    _M_retained,
+                    _M_target,
+                    _M_target / _M_retained,
+                    1.0 - _M_retained / _M_target,
+                    _ZALMOXIS_MASS_ANCHOR_TOL,
                 )
         if _superliq and _is_up_step and not _accept_up_step:
             if _scalar_radius_up_step:
