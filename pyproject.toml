@@ -48,7 +48,7 @@ dependencies = [
     "fwl-mors>=26.10.6",
     "fwl-calliope>=26.10.05",
     "fwl-zephyrus>=26.10.10",
-    "fwl-aragog>=26.11.23",
+    "fwl-aragog>=26.11.24",
 
     # 26.11.22: the structure solve takes core_temperature_arrays, the core temperature table that
     # PROTEUS builds from the core state (#135); 26.11.14 adds adiabat_seed and the full-adiabat
