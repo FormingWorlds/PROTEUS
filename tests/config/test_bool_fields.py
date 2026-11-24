@@ -102,6 +102,7 @@ def test_every_bool_field_keeps_true_and_false():
             else:
                 assert reduce(getattr, path.split('.'), config) is value, path
     assert refused == {
+        ('atmos_chem.vulcan.escape_bc', True),
         ('atmos_chem.vulcan.use_vm_mol', True),
         ('atmos_clim.agni.solve_energy', False),
         ('interior_energetics.heat_tidal', True),

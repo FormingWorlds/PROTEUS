@@ -13,6 +13,9 @@ allow switch does not cover them. A record without a cell field does not tell th
 the run; ``aragog_resume.refuse_another_mesh`` then compares the radii of the snapshot. ``rheology.mlt_bottom_slope`` is a law like the two above
 when the rheology is on in the run and in the resume.
 
+``interior_energetics.aragog.core_module.ra_crit_cmb`` is a law of a run with
+``core_bc = 'core_module'`` on both sides; a record without it ran under 450.
+
 ``interior_energetics.mixing_length`` is a law of an Aragog and of a SPIDER run alike; a record of
 either module or of no named module holds it, one of a module without convection does not.
 
@@ -38,6 +41,9 @@ SLOPE_KEY = 'interior_energetics.aragog.rheology.mlt_bottom_slope'
 MIXING_KEY = 'interior_energetics.mixing_length'
 MLT_MODULES = ('aragog', 'spider')  # modules with a mixing-length flux
 MESH_FIELDS = ('cmb_cell_thickness', 'surface_cell_thickness')
+RA_CRIT_KEY = 'interior_energetics.aragog.core_module.ra_crit_cmb'
+# The critical Rayleigh number a core_module record without the setting ran under.
+UNRECORDED_RA_CRIT = 450.0
 # The slope a record without the field ran under.
 UNRECORDED_SLOPE = 1.0
 # The permission to switch a separation law holds for one resume, so the record keeps it off.
@@ -259,6 +265,14 @@ def check_resume_separation_laws(
             switch(
                 'rheology.mlt_bottom_slope', SLOPE_KEY, old, aragog.rheology.mlt_bottom_slope
             )
+    if aragog.core_bc == 'core_module' and stored.get('core_bc') == 'core_module':
+        core = stored.get('core_module')
+        old = UNRECORDED_RA_CRIT
+        if isinstance(core, dict):
+            old = core.get('ra_crit_cmb', UNRECORDED_RA_CRIT)
+        new = aragog.core_module.ra_crit_cmb
+        if old != new:
+            switch('core_module.ra_crit_cmb', RA_CRIT_KEY, old, new)
     return _finish(switches, refusals, notes)
 
 

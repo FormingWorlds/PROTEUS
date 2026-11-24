@@ -144,7 +144,7 @@ def _load_case(index: int, case_dir: Path, base_solid: dict) -> dict:
     """
     # Status code is read tolerantly (ReadStatus returns STATUS_MISSING if absent).
     code = ReadStatus(case_dir)
-    comment = CommentFromStatus(code) if code >= 0 else 'Missing status file'
+    comment = CommentFromStatus(code)
     if code < 0:
         log.warning('Case %06d has no readable status file', index)
 

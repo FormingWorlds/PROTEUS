@@ -79,6 +79,23 @@ from proteus.interior_energetics.wrapper import (
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
+@pytest.fixture(autouse=True)
+def core_table_calls(monkeypatch):
+    """Stub of the core temperature table: records (interior_o, t_anchor) and returns a sentinel,
+    since these rows carry no structure; tests/interior_energetics/test_structure_core_table.py
+    tests the table."""
+    import proteus.interior_energetics.wrapper as wrapper_mod
+
+    calls = []
+
+    def stub(config, interior_o, hf_row, t_anchor=None, t_fallback=None):
+        calls.append((interior_o, t_anchor))
+        return ('core table', t_anchor)
+
+    monkeypatch.setattr(wrapper_mod, '_structure_core_table', stub)
+    return calls
+
+
 def _config(
     module: str = 'aragog',
     temperature_mode: str = 'liquidus_super',
@@ -255,6 +272,9 @@ def _linear_hf_row():
         'core_density': 1.1e4,
         'rho_avg': 8.0e3,
         'M_core_solve': 1.89e25,
+        'M_dissolved_target': 1.2e22,
+        'struct_core_T_used': 0.0,
+        'struct_core_T_excess': 0.0,
     }
 
 
@@ -341,6 +361,8 @@ def test_adiabat_resolve_rolls_back_on_mass_anchor_violation(tmp_path):
         row['R_int'] = 1.40e7  # would-be relaxed radius, discarded on rollback
         row['M_int'] = M_target * 1.10  # 10% off: violates the 0.3% anchor
         row['M_core_solve'] = 2.0e25
+        row['M_dissolved_target'] = 1.5e22
+        row.update(struct_core_T_used=1.0, struct_core_T_excess=0.05)
         return 6.0e6, str(tmp_path / 'bad_mesh.dat')
 
     with (
@@ -365,6 +387,11 @@ def test_adiabat_resolve_rolls_back_on_mass_anchor_violation(tmp_path):
     # explicitly so a regression that skipped the rollback fails here.
     assert abs(hf_row['R_int'] - 1.40e7) > 1.0e6
     assert hf_row['M_core_solve'] == _linear_hf_row()['M_core_solve']  # restored exactly
+    assert hf_row['M_dissolved_target'] == pytest.approx(
+        _linear_hf_row()['M_dissolved_target'], rel=1e-15
+    )
+    for key in ('struct_core_T_used', 'struct_core_T_excess'):
+        assert hf_row[key] == _linear_hf_row()[key]  # the flags of the restored structure
     # On-disk contract: the file holds the LINEAR content again, not the adiabat
     # geometry the failed solver wrote. This is the discriminating check that the
     # hf_row-only rollback (the bug) would fail.
@@ -536,7 +563,7 @@ def test_sample_adiabat_arrays_returns_none_on_bad_input(tmp_path):
     assert _sample_adiabat_temperature_arrays(str(tmp_path), _raising_closure) is None
 
 
-def test_adiabat_solve_hands_sampled_arrays_alongside_callable(tmp_path):
+def test_adiabat_solve_hands_sampled_arrays_alongside_callable(tmp_path, core_table_calls):
     """The adiabat solve passes both the closure and its r-indexed sampling.
 
     With a numeric previous structure on disk, the solver receives the same
@@ -563,6 +590,7 @@ def test_adiabat_solve_hands_sampled_arrays_alongside_callable(tmp_path):
     ):
         received['tf'] = temperature_function
         received['arrays'] = temperature_arrays
+        received['core'] = kw.get('core_temperature_arrays')
         row['R_int'] = 1.2746e7
         row['M_int'] = M_target
         return 6.0e6, str(tmp_path / 'adiabat_mesh.dat')
@@ -585,9 +613,14 @@ def test_adiabat_solve_hands_sampled_arrays_alongside_callable(tmp_path):
     np.testing.assert_allclose(r_arr, r_file, rtol=0, atol=0)
     expected = np.array([tf(r, P) for r, P in zip(r_file, p_file)])
     np.testing.assert_allclose(t_arr, expected, rtol=1e-12)
+    # The core table is the adiabat through the deepest sampled mantle T, fitted to the row
+    assert core_table_calls == [(None, t_arr[0])]
+    assert received['core'] == ('core table', t_arr[0])
 
 
-def test_adiabat_solve_degrades_to_callable_only_without_previous_structure(tmp_path):
+def test_adiabat_solve_degrades_to_callable_only_without_previous_structure(
+    tmp_path, core_table_calls
+):
     """Without a usable previous structure the solve carries the callable alone.
 
     temperature_arrays arrives as None, which reproduces the pre-#719 call
@@ -612,6 +645,7 @@ def test_adiabat_solve_degrades_to_callable_only_without_previous_structure(tmp_
     ):
         received['tf'] = temperature_function
         received['arrays'] = temperature_arrays
+        received['core'] = kw.get('core_temperature_arrays')
         row['R_int'] = 1.2746e7
         row['M_int'] = M_target
         return 6.0e6, str(tmp_path / 'adiabat_mesh.dat')
@@ -628,6 +662,7 @@ def test_adiabat_solve_degrades_to_callable_only_without_previous_structure(tmp_
     assert ok is True
     assert received['tf'] is tf
     assert received['arrays'] is None
+    assert received['core'] is None and core_table_calls == []
 
 
 def test_adiabat_resolve_falls_back_when_adiabat_unavailable():
@@ -1257,14 +1292,13 @@ def _monotonic_interior_o(n_stag=49):
     """Real Interior_t with a mantle T(r) profile for the re-solve hand-off.
 
     A real Interior_t (not a MagicMock) so zalmoxis_fail_count is a true integer
-    the guard must leave untouched and last_successful_struct_time is settable.
+    the guard must leave untouched.
     The radius/temp arrays feed the temperature_function the wrapper builds.
     """
     interior_o = Interior_t(n_stag + 1)
     interior_o.radius = np.linspace(6.371e6, 3.504e6, n_stag + 1)
     interior_o.temp = np.full(n_stag, 3000.0)
     interior_o.zalmoxis_fail_count = 0
-    interior_o.last_successful_struct_time = float('-inf')
     return interior_o
 
 
@@ -1393,9 +1427,6 @@ def test_monotonic_radius_guard_rejects_representation_up_step(tmp_path):
     assert sentinel[0] == pytest.approx(1100.0, rel=1e-12)
     assert sentinel[1] == pytest.approx(3000.0, rel=1e-12)
     assert sentinel[2] == pytest.approx(0.8, rel=1e-12)
-    # The stale-aware ceiling anchor advances too, so it does not immediately
-    # re-arm and force a wasteful re-solve next step.
-    assert interior_o.last_successful_struct_time == pytest.approx(1100.0, rel=1e-12)
     # No-op contract 3 (the load-bearing one): a rejected up-step is NOT a solver
     # failure, so the consecutive-failure counter stays at zero and the run's
     # abort budget is untouched.
@@ -1595,3 +1626,202 @@ def test_adiabat_tp_passes_a_missing_table_stop_through():
         side_effect=RuntimeError('numerical'),
     ):
         assert _build_superliquidus_adiabat_tp(_config(), {}, P_cmb_target=1.4e12) is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('error', [ValueError('bad anchor'), KeyError('M_core')])
+def test_a_core_table_error_at_start_up_stops_the_run(tmp_path, monkeypatch, error):
+    """A core temperature table that cannot be built (a refused anchor or fit, a row without a
+    structure) stops the start-up solve with that error, as in a re-solve, instead of rolling
+    back to the previous structure; the solver is not called."""
+    import proteus.interior_energetics.wrapper as wrapper_mod
+
+    def broken(*a, **k):
+        raise error
+
+    monkeypatch.setattr(wrapper_mod, '_structure_core_table', broken)
+    monkeypatch.setattr(
+        wrapper_mod,
+        '_sample_adiabat_temperature_arrays',
+        lambda outdir, tf: (np.linspace(3.5e6, 6.3e6, 5), np.linspace(4000.0, 2000.0, 5)),
+    )
+    (tmp_path / 'data').mkdir()
+    with patch('proteus.interior_struct.zalmoxis.zalmoxis_solver') as solver:
+        with pytest.raises(type(error)):
+            _solve_structure_with_adiabat_or_rollback(
+                _config(),
+                str(tmp_path),
+                _linear_hf_row(),
+                num_spider_nodes=0,
+                temperature_function=lambda r, P: 5000.0,
+            )
+    assert solver.call_count == 0
+
+
+@pytest.mark.unit
+def test_a_broken_structure_invariant_stops_the_start_up_solve(tmp_path, caplog):
+    """A StructureInvariantError of an accepted solve stops the start-up solve with that error:
+    no rollback restores the row, as a RuntimeError of the solve does."""
+    from zalmoxis.invariants import StructureInvariantError
+
+    _write_structure_file(tmp_path)
+    hf_row = _linear_hf_row()
+
+    def solve(cfg, outdir, row, **kw):
+        row.update(R_int=1.2746e7)
+        raise StructureInvariantError('core arrays off the core table')
+
+    with (
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solve),
+        caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        with pytest.raises(StructureInvariantError, match='off the core table'):
+            _solve_structure_with_adiabat_or_rollback(
+                _config(),
+                str(tmp_path),
+                hf_row,
+                num_spider_nodes=0,
+                temperature_function=_adiabat_closure(),
+            )
+    assert hf_row['R_int'] == pytest.approx(1.2746e7, rel=1e-12)
+    assert 'restored the linear-guess structure' not in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('thermal_solve', 't_cmb', 'anchor'),
+    [
+        (False, 5700.0, 5700.0),
+        (False, 0.0, None),
+        (False, float('nan'), None),
+        (False, -1.0, None),
+        (True, 5700.0, None),
+    ],
+    ids=[
+        'impact',
+        'impact without T_cmb',
+        'impact NaN T_cmb',
+        'impact negative T_cmb',
+        'start-up',
+    ],
+)
+def test_an_impact_solve_anchors_the_core_table_at_the_row_t_cmb(thermal_solve, t_cmb, anchor):
+    """A structure solve after a giant impact (thermal_solve False) anchors the core table at the
+    row T_cmb, the core temperature of the run before the impact; a start-up solve, or a row
+    without a positive T_cmb (0, NaN, negative), leaves the anchor to the deepest mantle T of the
+    adiabat."""
+    from proteus.interior_energetics import wrapper as wmod
+
+    config = _gate_config('aragog', 'liquidus_super')
+    hf_row = {'P_cmb': 1.456e12, 'R_int': 1.2e7, 'T_cmb': t_cmb, 'M_int': 6e24, 'M_core': 2e24}
+    with (
+        patch.object(wmod, 'get_nlevb', return_value=80),
+        patch.object(wmod, 'Interior_t', return_value=MagicMock(ic=1)),
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(6.0e6, None)),
+        patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
+        patch.object(wmod, '_provide_spider_eos_tables'),
+        patch.object(wmod, 'run_interior'),
+        patch.object(wmod, 'update_planet_mass'),
+        patch.object(wmod, '_resolve_adiabatic_ic_structure', return_value=None) as resolve,
+    ):
+        wmod.determine_interior_radius_with_zalmoxis(
+            {'output': '/tmp/out', 'spider': '/tmp/spider'},
+            config,
+            MagicMock(),
+            hf_row,
+            '/tmp/out',
+            thermal_solve=thermal_solve,
+        )
+    assert resolve.call_count == 1
+    assert resolve.call_args.kwargs.get('core_t_anchor') == anchor
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('anchor', [5700.0, 0.0])
+def test_the_adiabat_solve_takes_a_given_core_anchor(tmp_path, core_table_calls, anchor):
+    """With a core anchor given, the adiabat solve builds the core table through it, not through
+    the deepest sampled mantle T; a given anchor of 0 reaches the builder unchanged."""
+    _write_structure_file(tmp_path)
+    hf_row = _linear_hf_row()
+
+    def solve(cfg, outdir, row, **kw):
+        row.update(R_int=1.2746e7, M_int=row['M_int_target'])
+        return 6.0e6, str(tmp_path / 'adiabat_mesh.dat')
+
+    with patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solve):
+        _mesh, ok = _solve_structure_with_adiabat_or_rollback(
+            _config(),
+            str(tmp_path),
+            hf_row,
+            num_spider_nodes=0,
+            temperature_function=_adiabat_closure(),
+            core_t_anchor=anchor,
+        )
+    assert ok is True
+    assert core_table_calls == [(None, anchor)]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('anchor', [5700.0, None], ids=['impact anchor', 'start-up'])
+def test_the_ic_re_solve_passes_the_core_anchor_to_the_solve(
+    tmp_path, core_table_calls, anchor
+):
+    """The adiabat re-solve hands its core anchor to the solve that builds the core table: the
+    given anchor after an impact, the deepest sampled mantle T without one."""
+    _write_structure_file(tmp_path)
+    hf_row = _linear_hf_row()
+    adiabat = _good_adiabat()
+
+    def solve(cfg, outdir, row, **kw):
+        row.update(R_int=1.2746e7, M_int=row['M_int_target'])
+        return 6.0e6, str(tmp_path / 'adiabat_mesh.dat')
+
+    with (
+        patch(
+            'proteus.interior_energetics.wrapper._build_superliquidus_adiabat_tp',
+            return_value=(_adiabat_closure(), adiabat['P'], adiabat['T']),
+        ),
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solve) as solver,
+    ):
+        _resolve_adiabatic_ic_structure(
+            _config(),
+            str(tmp_path),
+            hf_row,
+            num_spider_nodes=0,
+            linear_mesh_file=None,
+            core_t_anchor=anchor,
+        )
+    assert solver.call_count == 1
+    sampled = solver.call_args.kwargs['temperature_arrays'][1][0]
+    assert core_table_calls == [(None, sampled if anchor is None else anchor)]
+
+
+@pytest.mark.unit
+def test_a_given_core_anchor_builds_the_table_without_a_sampled_structure(
+    tmp_path, core_table_calls
+):
+    """Without a readable previous structure the adiabat solve runs on the callable alone; a
+    given core anchor (after an impact) still builds the core table, which needs only the row,
+    and the solve gets it."""
+    hf_row = _linear_hf_row()
+    received = {}
+
+    def solve(cfg, outdir, row, **kw):
+        received.update(kw)
+        row.update(R_int=1.2746e7, M_int=row['M_int_target'])
+        return 6.0e6, str(tmp_path / 'adiabat_mesh.dat')
+
+    with patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solve):
+        _mesh, ok = _solve_structure_with_adiabat_or_rollback(
+            _config(),
+            str(tmp_path),
+            hf_row,
+            num_spider_nodes=0,
+            temperature_function=_adiabat_closure(),
+            core_t_anchor=5700.0,
+        )
+    assert ok is True
+    assert received['temperature_arrays'] is None
+    assert core_table_calls == [(None, 5700.0)]
+    assert received['core_temperature_arrays'] == ('core table', 5700.0)

@@ -186,4 +186,5 @@ config_version = "3.1"
     module = "none"
 
 [atmos_chem]
-    module = "none"
+    module = "dummy"   # for `proteus offchem --grid`; mode none, so the run itself skips it
+    mode   = "none"

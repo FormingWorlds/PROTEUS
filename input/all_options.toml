@@ -400,7 +400,7 @@ config_version = "3.1"
         update_dw_comp_abs    = 0.05         # composition trigger: relative change in dissolved H2O/H2 mass fraction
         update_interval       = 1e9          # time-cadence ceiling [yr]; the large default leaves refreshes to the dphi/dtmagma/dw triggers; 0 = init only
         update_min_interval   = 0            # min time between updates [yr]
-        update_stale_ceiling  = 2.5e4        # max time since last successful re-solve [yr]; 0 = disabled
+        update_stale_ceiling  = 2.5e4        # recovery after a failed re-solve: re-solve once this time [yr] has passed since the last attempt, if no other trigger fires; 0 = disabled
         mesh_max_shift        = 0.05         # max fractional radius shift per update
         mesh_convergence_interval = 10.0     # convergence time after mesh update [yr]
 
@@ -543,9 +543,9 @@ config_version = "3.1"
         top_cell_dt_rel_dT            = 0.08     # relative surface-temperature change allowance in the mushy regime (phi_s[-1] >= 0.40); in (0, 0.15]
         top_cell_dt_rel_dT_solid      = 0.08     # relative surface-temperature change allowance at a fully solid top cell (phi_s[-1] = 0); in (0, top_cell_dt_rel_dT]
 
-        # Core evolution, read when core_bc = "core_module": the CMB radius and pressure come
-        # from the mesh and the central density and length scale from fits to the interior
-        # structure, so only material and model choices appear here.
+        # Core evolution, read when core_bc = "core_module"; alpha and c_p also set the Gaussian core of
+        # a Zalmoxis solve with a core temperature table and no live core (SPIDER, other core_bc).
+        # The CMB radius, pressure, central density and length scale come from the mesh and fits.
         [interior_energetics.aragog.core_module]
             alpha                  = 1.35e-5   # core thermal expansion coefficient [K-1]
             c_p                    = 840.0     # core specific heat capacity [J kg-1 K-1]
@@ -565,7 +565,7 @@ config_version = "3.1"
             layer_k_mix            = 1.0e7     # eddy diffusivity of shell mixing [m2 s-1]
             layer_g_mix            = 1.0e-3    # reference superadiabatic gradient of shell mixing, fraction of the CMB adiabatic gradient
             f_ohm                  = 1.0       # ohmic fraction of the dissipation in the field-strength scaling
-            ra_crit_cmb            = 450.0     # critical Rayleigh number of the mantle-side CMB boundary layer that sets the core-mantle heat flux
+            ra_crit_cmb            = "phase"   # critical Rayleigh number of the mantle-side CMB boundary layer that sets the core-mantle heat flux: "phase" (450 while the bottom cell is liquid, Thiriet et al. 2019 eq. 16 while solid, blended by a tanh of its melt fraction that is 0.05 and 0.95 at rfront_loc -+ rfront_wid/2), "eq16", or a number, e.g. 450
             flux_geometry          = "const_flux"  # field-strength efficiency geometry: const_flux | zero_outer
 
     # SPIDER-only parameters
@@ -952,6 +952,7 @@ config_version = "3.1"
         network               = "SNCHO"      # chemical network: CHO | NCHO | SNCHO
         ini_mix               = "profile"    # initial mixing ratios: profile | outgas | previous
         fix_surf              = false        # hold surface mixing ratios fixed
+        escape_bc             = false        # PROTEUS escape as top boundary (needs fix_surf)
         make_funs             = true         # generate reaction network functions
 
         # Processes

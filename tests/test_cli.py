@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import types
@@ -1307,8 +1308,9 @@ class _FakeProteusPost:
         self.ran_observe = False
         type(self).instances.append(self)
 
-    def offline_chemistry(self):
+    def offline_chemistry(self, network_compiled=False):
         self.ran_offchem = True
+        self.network_compiled = network_compiled
 
     def observe(self):
         self.ran_observe = True
@@ -1330,6 +1332,133 @@ def test_offchem_invokes_offline_chemistry(monkeypatch, tmp_path):
     assert _FakeProteusPost.instances[0].ran_offchem is True
     # Discrimination: observe path must NOT have fired
     assert _FakeProteusPost.instances[0].ran_observe is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('compiled', [False, True], ids=['default', 'network_compiled'])
+def test_offchem_network_compiled_flag_reaches_offline_chemistry(
+    monkeypatch, tmp_path, compiled
+):
+    """The hidden --network-compiled flag, which the grid dispatcher passes, reaches
+    offline_chemistry; without it the run compiles the network itself."""
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+    _FakeProteusPost.instances = []
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusPost)
+    monkeypatch.setattr(cli, 'setup_logger', lambda *a, **k: None)
+
+    res = runner.invoke(cli.offchem, ['-c', str(cfg)] + (['--network-compiled'] * compiled))
+
+    assert res.exit_code == 0
+    assert _FakeProteusPost.instances[0].network_compiled is compiled
+    assert '--network-compiled' not in runner.invoke(cli.offchem, ['--help']).output
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'args',
+    [[], ['-c', 'CFG', '-g', 'GRID'], ['-c', 'CFG', '--slurm']],
+    ids=['neither', 'config_and_grid', 'slurm_without_grid'],
+)
+def test_offchem_refuses_a_wrong_combination_of_options(monkeypatch, tmp_path, args):
+    """offchem takes one config (-c) or one grid folder (-g), and --slurm only with -g;
+    any other combination is a usage error, and neither a run nor a grid starts."""
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+    args = [{'CFG': str(cfg), 'GRID': str(tmp_path)}.get(a, a) for a in args]
+    grids = []
+    _FakeProteusPost.instances = []
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusPost)
+    monkeypatch.setattr('proteus.grid.offchem.offchem_grid', lambda *a: grids.append(a) or [])
+
+    res = runner.invoke(cli.offchem, args)
+
+    assert res.exit_code == 2
+    assert 'Usage' in res.output
+    assert _FakeProteusPost.instances == []
+    assert grids == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('slurm', [False, True], ids=['local', 'slurm'])
+def test_offchem_grid_runs_the_grid_folder_with_its_log_there(monkeypatch, tmp_path, slurm):
+    """-g hands the resolved grid folder and --slurm to offchem_grid, logs to offchem.log
+    in that folder, and builds no single-run Proteus."""
+    calls, logs = [], []
+    _FakeProteusPost.instances = []
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusPost)
+    monkeypatch.setattr(cli, 'setup_logger', lambda **k: logs.append(k['logpath']))
+    monkeypatch.setattr(
+        'proteus.grid.offchem.offchem_grid', lambda g, s: calls.append((g, s)) or []
+    )
+
+    res = runner.invoke(cli.offchem, ['-g', str(tmp_path)] + (['--slurm'] * slurm))
+
+    assert res.exit_code == 0
+    assert calls == [(tmp_path.resolve(), slurm)]
+    assert logs == [os.path.join(tmp_path.resolve(), 'offchem.log')]
+    assert _FakeProteusPost.instances == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'outcome,expected,traceback',
+    [
+        (
+            ['case_000001', 'case_000004'],
+            'Chemistry failed for case_000001, case_000004',
+            False,
+        ),
+        (
+            ValueError('case_000002: atmos_chem.module is none'),
+            'case_000002: atmos_chem',
+            False,
+        ),
+        (
+            EnvironmentError('VULCAN module is missing. Fix: x'),
+            'VULCAN module is missing',
+            False,
+        ),
+        (FileNotFoundError('VULCAN network file not found'), 'network file not found', False),
+        (
+            RuntimeError('element C not conserved'),
+            'Chemistry of the grid stopped: element C not conserved',
+            True,
+        ),
+    ],
+    ids=[
+        'failed_cases',
+        'refused_grid',
+        'vulcan_missing',
+        'network_file_missing',
+        'unexpected',
+    ],
+)
+def test_offchem_grid_exits_non_zero_naming_the_cases(
+    monkeypatch, tmp_path, caplog, outcome, expected, traceback
+):
+    """Failed cases, a refused grid and a VULCAN install problem end the command with
+    exit code 1 and an error on the log that names the problem, without a traceback; an
+    unexpected error, such as one from compiling the VULCAN network, also reaches the
+    log, with its traceback."""
+
+    def fake_grid(grid, slurm):
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(cli, 'setup_logger', lambda **k: None)
+    monkeypatch.setattr('proteus.grid.offchem.offchem_grid', fake_grid)
+
+    with caplog.at_level(logging.ERROR, logger='fwl'):
+        res = runner.invoke(cli.offchem, ['-g', str(tmp_path)])
+
+    assert res.exit_code == 1
+    assert isinstance(res.exception, SystemExit)
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 1
+    assert expected in errors[0].getMessage()
+    assert (errors[0].exc_info is not None) is traceback
 
 
 @pytest.mark.unit
@@ -4385,3 +4514,32 @@ def test_grid_analyse_takes_a_grid_folder_and_needs_c_or_o(monkeypatch, tmp_path
     assert res.exit_code == 2
     assert '-o' in res.output
     assert len(calls) == 2
+
+
+def test_start_records_status_25_on_sigterm(monkeypatch, tmp_path):
+    """SLURM sends SIGTERM at the time limit and on scancel. Under `proteus start` it ends
+    the run through the status guard of `Proteus.start`, which records status 25, with exit
+    code 143; without the handler the signal would end Python before the guard runs.
+    The stub calls the installed handler instead of sending a real SIGTERM, because with
+    PYTHON_JULIACALL_HANDLE_SIGNALS=yes (as in CI) Julia takes the signal and ends pytest."""
+    from proteus.proteus import _status_on_exit
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
+    cfg = tmp_path / 'stub.toml'
+    cfg.write_text('# stub\n')
+
+    class FakeProteus:
+        def __init__(self, config_path):
+            self.directories = {'output': str(tmp_path)}
+
+        @_status_on_exit
+        def start(self, resume, offline):
+            UpdateStatusfile(self.directories, 1)
+            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+
+    monkeypatch.setattr(cli, 'Proteus', FakeProteus)
+    # Without the handler under test, the stub calls this one and the run keeps status 1.
+    signal.signal(signal.SIGTERM, lambda *_: None)
+    res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
+    assert ReadStatus(tmp_path) == 25
+    assert res.exit_code == 128 + signal.SIGTERM == 143

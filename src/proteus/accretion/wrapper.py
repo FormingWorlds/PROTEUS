@@ -834,7 +834,7 @@ def _apply_volatile_consequences(
         )
 
     # Refresh tracked-element total and whole-planet mass from updated budgets
-    # so M_planet remains consistent with M_int + M_ele for subsequent modules.
+    # so M_planet follows the new element totals for subsequent modules.
     from proteus.interior_energetics.wrapper import update_planet_mass
 
     update_planet_mass(hf_row)

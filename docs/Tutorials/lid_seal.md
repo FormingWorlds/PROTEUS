@@ -3,6 +3,7 @@
 This tutorial shows how a crust that closes over the magma ocean holds the volatiles of the melt, and how they then leak out down to a floor.
 You run the same planet twice, once with the lid seal and once without it.
 Then you read when the seal closed, check when each volatile starts to leak, and compare the 2 atmospheres.
+The last section needs no run: it builds helpfile rows by hand to show what the interior takes from the atmosphere under a sub-grid lid, and writes them to `output/tutorial_lid_slope/`.
 
 When the seal closes, the volatiles dissolved in the melt move to the `{x}_kg_sealed` columns, and the chemistry stops.
 While the seal holds, the held volatiles reach the atmosphere only by a leak with the relaxation time `tau_leak`, and by volcanism if `crust_rate` is above 0.
@@ -179,3 +180,129 @@ fig.savefig('output/tutorial_lid_seal/water.png', dpi=150)
 - Set `tau_leak` to `1e2` and run again: the leak follows the floor more closely, and the water in the atmosphere at 140 kyr changes by less than 0.1 %.
 - Set `crust_rate` above 0 to add the volcanic leak; the columns `{e}_kg_leak_volc` and `{e}_kg_leak_tau` show the 2 parts in each step, and `seal_volc_capped` shows the steps where the crust production was cut to the melt mass. Both parts stop at the same floor.
 - Set `delta_close` to 0.3 m: on this mesh the seal closes at the same step, because a crust on the mesh is 0 or a whole cell. A thin crust closes the seal earlier only through the Aragog sub-grid lid.
+
+## What the interior takes under a sub-grid lid
+
+The runs above have no sub-grid lid. With `interior_energetics.aragog.lid_mush_base = true`, Aragog keeps a thin lid on top of its mesh, and the coupling passes more than one flux.
+This section shows what the interior takes from the atmosphere step under a live lid, and which slope it uses.
+It needs no run: the blocks build 4 helpfile rows by hand, and the last block adds a fifth.
+
+A lid is live when its area fraction $w$ (`lid_weight`) and its conductance $G_\mathrm{lid}$ (`lid_conductance`) are both above 0.
+The interior then takes `F_atm`, in W m$^{-2}$ per total area, as its outer boundary value, and 4 terms of the atmosphere call.
+One term is $F'$, the slope of `F_atm` with `T_surf` in W m$^{-2}$ K$^{-1}$; `lid_flux_secant` takes it from the last 2 rows.
+In the last row below, the surface moved by 0.005 K, less than the 0.01 K a secant needs, so the secant gives 0:
+
+```python
+import pandas as pd
+
+from proteus.atmos_clim.common import (
+    lid_fallback_slope,
+    lid_flux_secant,
+    lid_open_fields,
+    lid_open_flux,
+)
+
+hf_all = pd.DataFrame(
+    {
+        'Time': [10.0, 20.0, 30.0, 40.0],  # [yr]
+        'T_surf': [1150.0, 1160.0, 1170.0, 1170.005],  # [K]
+        'F_atm': [14000.0, 14400.0, 14800.0, 14801.0],  # [W m-2]
+    }
+)
+lid = {
+    'lid_weight': 0.4,  # w
+    'lid_conductance': 21.9,  # G_lid [W m-2 K-1]
+    'lid_T_base': 1440.0,  # T_b [K]
+    'lid_T_node': 1500.0,  # melt node under the open part [K]
+    'boundary_layer_thickness': 0.01,  # skin d [m]
+    'boundary_layer_conductivity': 2.0,  # skin k [W m-1 K-1]
+}
+row = {**hf_all.iloc[-1].to_dict(), **lid}
+
+slope, T_other = lid_flux_secant(hf_all, row)
+print(f'secant of the last 2 rows: {slope} W m-2 K-1 (T_surf before {T_other} K)')
+slope, rows_back, code = lid_fallback_slope(hf_all, row)
+print(f'fallback: {slope:.1f} W m-2 K-1, {rows_back} row back, code {code}')
+grey, _, grey_code = lid_fallback_slope(hf_all.iloc[-1:], row)
+print(f'without a usable secant in the run: {grey:.1f} W m-2 K-1, code {grey_code}')
+```
+
+The block printed:
+
+```text
+secant of the last 2 rows: 0.0 W m-2 K-1 (T_surf before 1170.0 K)
+fallback: 40.0 W m-2 K-1, 1 row back, code 3
+without a usable secant in the run: 363.3 W m-2 K-1, code 4
+```
+
+`lid_fallback_slope` takes the newest usable secant of 2 consecutive earlier rows: 40 W m$^{-2}$ K$^{-1}$ from the rows at 20 and 30 yr, 1 row back (code 3).
+A run logs it as `Lid slope: last secant unusable, secant 40 W m-2 K-1 (1 row back)`.
+A run with no usable secant takes the grey tangent $4 \sigma T_\mathrm{surf}^3$ (code 4), with $\sigma$ the Stefan-Boltzmann constant.
+`lid_open_fields` then gives the 4 terms, and `lid_open_flux` the diagnostic `lid_F_open`:
+
+```python
+fields, cut = lid_open_fields(row, slope)
+for name, value in fields.items():
+    print(f'{name:22s} {value:10.2f}')
+print(f'F_atm (outer boundary value) {row["F_atm"]:.1f} W m-2, cut code {cut}')
+print(f'lid_F_open {lid_open_flux(row):.1f} W m-2 per open area')
+```
+
+The block printed:
+
+```text
+open_lid_flux             5912.89
+open_surface_slope          40.00
+open_skin_conductance      200.00
+open_lid_conductance        21.90
+F_atm (outer boundary value) 14801.0 W m-2, cut code 0
+lid_F_open 20726.4 W m-2 per open area
+```
+
+- `open_lid_flux` is $L = G_\mathrm{lid}' (T_b - T_\mathrm{surf})$, the flux of the lid part, with $G_\mathrm{lid}' = \min(G_\mathrm{lid}, G_\mathrm{skin})$.
+- `open_surface_slope` is $F'$, cut at the grey secant of the same 2 rows (cut code 2). The call above passes no other end, so the cut is the grey tangent, 363.3 W m$^{-2}$ K$^{-1}$; 40 lies below it, so no cut acts.
+- `open_skin_conductance` is $G_\mathrm{skin} = k / d$ of the skin, and `open_lid_conductance` is $G_\mathrm{lid}'$.
+- `lid_F_open` is $(F_\mathrm{atm} - w L) / (1 - w)$, the start flux of the open part per open area; Aragog does not read it.
+- These rows are built by hand, not by an atmosphere call, so they do not close the skin balance: the skin of the open part conducts $G_\mathrm{skin} (T_m - T_\mathrm{surf})$ = 65999 W m$^{-2}$ per open area here, not 20726. A run records the residual of the atmosphere call per total area, $F_\mathrm{atm} - B$ with $B$ the skin balance of the call, in `lid_F_resid` (here -27163.6 W m$^{-2}$) and logs a warning where its size is above 1 W m$^{-2}$.
+
+A run writes `lid_weight`, `lid_slope_guard` and `lid_F_open` on every row of `runtime_helpfile.csv`.
+The block writes these rows and 1 more in that format, with the same lid columns on each row and the codes that a run gives them, and reads them back as you would read a run:
+
+```python
+import os
+
+# a row records the code of the step that ends at it: the step from the first
+# row has no slope (code 0), the steps from 20 and 30 yr take their secant as it
+# is (code 0), the step from 40 yr the secant 1 row back (code 3, on the row at 50 yr)
+steps = pd.concat([hf_all, pd.DataFrame({'Time': [50.0], 'T_surf': [1180.0], 'F_atm': [15200.0]})])
+steps = steps.reset_index(drop=True)
+rows = [{**steps.iloc[i].to_dict(), **lid} for i in range(len(steps))]
+hf = steps.assign(
+    lid_weight=lid['lid_weight'],
+    lid_slope_guard=[0, 0, 0, 0, 3],
+    lid_F_open=[lid_open_flux(r) for r in rows],
+)
+os.makedirs('output/tutorial_lid_slope', exist_ok=True)
+hf.to_csv('output/tutorial_lid_slope/runtime_helpfile.csv', sep='\t', index=False)
+
+run = pd.read_csv('output/tutorial_lid_slope/runtime_helpfile.csv', sep=r'\s+')
+print(run[['Time', 'T_surf', 'lid_weight', 'lid_slope_guard', 'lid_F_open']].to_string(index=False))
+print('rows with a fallback slope:', run.index[run['lid_slope_guard'] >= 3].tolist())
+```
+
+The block printed:
+
+```text
+ Time   T_surf  lid_weight  lid_slope_guard   lid_F_open
+ 10.0 1150.000         0.4                0 19099.333333
+ 20.0 1160.000         0.4                0 19912.000000
+ 30.0 1170.000         0.4                0 20724.666667
+ 40.0 1170.005         0.4                0 20726.406333
+ 50.0 1180.000         0.4                3 21537.333333
+rows with a fallback slope: [4]
+```
+
+The code on a row belongs to the step that ends at that row: the fallback of the step from 40 yr is on the row at 50 yr.
+The first row ends no step, and the first step of a new run starts without a slope, so the rows at 10 and 20 yr have code 0; code 0 also means that the secant of the last 2 rows was used as it is.
+A code 3 slope above the grey tangent is cut for the cap and the open part and records code 5.
+[Slope guard codes](../Reference/lid_coupling.md#slope-guard-codes) lists all 5 codes, and [What the interior takes](../Explanations/lid_coupling.md#what-the-interior-takes) explains why the open part starts from $F_\mathrm{atm} - w L$.

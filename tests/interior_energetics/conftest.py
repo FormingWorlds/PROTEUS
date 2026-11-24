@@ -19,3 +19,13 @@ def _clear_superliquidus_memo():
     _clear()
     yield
     _clear()
+
+
+@pytest.fixture
+def _no_core_table(monkeypatch):
+    """Stub the core temperature table builder for rows without a structure (M_core, P_center,
+    R_core, P_cmb), on which the real builder raises; the solve gets no table. Opt in with
+    usefixtures; tests/interior_energetics/test_structure_core_table.py tests the real builder."""
+    import proteus.interior_energetics.wrapper as wrapper_mod
+
+    monkeypatch.setattr(wrapper_mod, '_structure_core_table', lambda *a, **k: None)

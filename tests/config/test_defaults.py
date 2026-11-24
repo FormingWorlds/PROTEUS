@@ -348,11 +348,13 @@ def test_aragog_core_module_defaults_and_mode_validator():
     with pytest.raises(ValueError):
         AragogCoreModule(flux_geometry='spherical_cow')
 
-    # CMB boundary-layer critical Rayleigh number: Thiriet et al. (2019) Table 2 default.
-    assert cm.ra_crit_cmb == pytest.approx(450.0)
+    # CMB boundary-layer critical Rayleigh number: the law by phase by default, Thiriet et
+    # al. (2019) eq. 16, or a fixed positive number such as their upper-layer 450.
+    assert cm.ra_crit_cmb == 'phase'
     assert AragogCoreModule(ra_crit_cmb=1000.0).ra_crit_cmb == pytest.approx(1000.0)
-    for bad in (0.0, float('inf'), float('nan')):
-        with pytest.raises(ValueError):
+    assert AragogCoreModule(ra_crit_cmb=450).ra_crit_cmb == pytest.approx(450.0)
+    for bad in (0.0, -1.0, float('inf'), float('nan'), 'eq17', '450', True, None):
+        with pytest.raises((ValueError, TypeError)):
             AragogCoreModule(ra_crit_cmb=bad)
 
 
@@ -966,9 +968,10 @@ def test_a_config_file_with_the_lid_and_janus_is_refused_at_load(tmp_path):
 
 @pytest.mark.unit
 def test_a_config_file_with_the_lid_and_prevent_warming_is_refused_at_load(tmp_path):
-    """prevent_warming clamps F_atm while the open part of the lid keeps the skin flux, so the
-    flux balance of the lid does not close: the lid with prevent_warming is refused at load,
-    with both keys named; the same file with prevent_warming false loads."""
+    """prevent_warming raises F_atm to at least 1e-8 W m-2 and keeps T_magma from rising, so the
+    two parts of the lid surface would lose a flux that the atmosphere did not solve: the lid
+    with prevent_warming is refused at load, with both keys named; the same file with
+    prevent_warming false loads."""
     from pathlib import Path
 
     import tomlkit
@@ -994,6 +997,7 @@ def test_a_config_file_with_the_lid_and_prevent_warming_is_refused_at_load(tmp_p
             with pytest.raises(ValueError, match='prevent_warming') as excinfo:
                 read_config_object(path)
             assert 'lid_mush_base' in str(excinfo.value)
+            assert 'at least 1e-8 W m-2' in str(excinfo.value)
         else:
             assert read_config_object(path).planet.prevent_warming is False
 
