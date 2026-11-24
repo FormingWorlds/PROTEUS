@@ -141,6 +141,12 @@ def test_up_step_kept_when_target_mass_rose(caplog):
     assert 'M_target=%.6e kg' % (M_RETAINED * ratio) in accepted[0]
     assert 'ratio %.6f' % ratio in accepted[0]
     assert 'relative miss %.3e' % (1.0 - M_RETAINED / (M_RETAINED * ratio)) in accepted[0]
+    assert 'anchor %.1e' % _ZALMOXIS_MASS_ANCHOR_TOL in accepted[0]
+    assert (
+        're-solve R_int=%.6e m rose above the running minimum %.6e m'
+        % (R_RETAINED * 1.0709, R_RETAINED)
+        in accepted[0]
+    )
     assert not any(REJECT_MSG in m for m in msgs)
     assert not any(HEATING_MSG in m or 'composition-driven' in m for m in msgs)
     assert hf_row['R_int'] == pytest.approx(R_RETAINED * 1.0709, rel=1e-12)
@@ -295,6 +301,22 @@ def test_composition_and_an_anchor_miss_log_both_reasons(caplog):
     assert any(ACCEPT_MSG in m for m in msgs)
     assert not any(HEATING_MSG in m for m in msgs)
     assert hf_row['R_int'] == pytest.approx(r_prev * 1.06, rel=1e-12)
+
+
+def test_heating_with_a_wet_composition_trigger_logs_only_the_heating_line(caplog):
+    """A heating re-solve with a wet composition trigger logs only the heating accept line."""
+    config, hf_row, dirs = _composition_trigger_scenario(dry_mantle=False)
+    r_prev = hf_row['R_int']
+
+    def _solve(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    msgs, _, _ = run_guard(caplog, hf_row, config, (0.0, 2900.0, 0.5), _solve, dirs=dirs)
+
+    assert any(HEATING_MSG in m for m in msgs)
+    assert not any('composition-driven wet' in m for m in msgs)
+    assert hf_row['R_int'] == pytest.approx(r_prev * (1.0 + 1.0e-3), rel=1e-12)
 
 
 @pytest.mark.physics_invariant
