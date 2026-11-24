@@ -88,27 +88,27 @@ for name in ('tutorial_core_table', 'tutorial_core_table_cm'):
 ```text
 tutorial_core_table
   t [yr]  T_cmb [K]  R_core [km]  P_center [GPa]  used  excess
-       0     5726.1       4076.8          434.40     1  0.0000
-     102     5619.2       4074.1          435.69     1  0.0036
-     246     5492.6       4069.2          438.04     1  0.0066
-     371     5402.1       4065.4          439.86     1  0.0051
-     450     5351.1       4065.4          439.86     1  0.0051
+       0     5725.3       4076.9          434.33     1  0.0000
+     102     5618.4       4074.2          435.62     1  0.0036
+     246     5491.7       4069.2          437.98     1  0.0066
+     371     5401.2       4065.5          439.81     1  0.0051
+     450     5350.3       4065.5          439.81     1  0.0051
 tutorial_core_table_cm
   t [yr]  T_cmb [K]  R_core [km]  P_center [GPa]  used  excess
-       0     5727.1       4076.8          434.40     1  0.0000
-     102     5725.4       4077.0          434.64     1  0.0007
-     246     5718.2       4075.4          435.76     1  0.0032
-     371     5709.1       4074.0          436.72     1  0.0027
-     450     5701.2       4074.0          436.72     1  0.0027
+       0     5726.4       4076.9          434.33     1  0.0000
+     102     5724.7       4077.1          434.57     1  0.0007
+     246     5717.5       4075.5          435.70     1  0.0032
+     371     5708.4       4074.1          436.67     1  0.0027
+     450     5700.6       4074.1          436.67     1  0.0027
 ```
 
 ## Step 5: compare the 2 cores
 
 Every solve used the table, and the core nodes lie at most 0.0066 of its pressure range past it; PROTEUS stops a solve above 0.1.
 
-The core with its own energy budget cools slowly: after 450 yr it is 350 K hotter than the core in the mantle energy balance (5701.2 against 5351.1 K).
+The core with its own energy budget cools slowly: after 450 yr it is 350 K hotter than the core in the mantle energy balance (5700.6 against 5350.3 K).
 The hotter core is less dense, so its radius is 8.6 km larger and its central pressure 3.1 GPa lower.
-With `"energy_balance"` the core cools with the base of the mantle, and the core shrinks by 11.4 km over the 3 updates.
+With `"energy_balance"` the core cools with the base of the mantle, and the core shrinks by 11.5 km over the 3 updates.
 
 The rows between updates keep the structure of the last update, so `R_core` and `P_center` change only at the update rows.
 
