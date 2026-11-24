@@ -101,8 +101,8 @@ _COMPOSITION_SENTINEL_SPECIES = ('H2O', 'H2')
 # evolution; the counter resets on each successful SPIDER call.
 _SPIDER_MAX_CONSECUTIVE_FAILS = 3
 
-# Abort threshold for consecutive Aragog retry-ladder exhaustions; the
-# counter resets on each successful Aragog call.
+# Abort threshold for consecutive failed Aragog calls; the counter resets on
+# each successful Aragog call.
 _ARAGOG_MAX_CONSECUTIVE_FAILS = 3
 
 # Per-call energy columns that a skipped Aragog step sets to 0.
@@ -2315,10 +2315,36 @@ def _remelt_aragog(
         hf_row['M_mantle_solid'] = (1.0 - phi_g) * m_mantle
 
 
+def _aragog_failure_cause(error: RuntimeError) -> str:
+    """Name the cause of a failed Aragog call for the skip-step warning.
+
+    Parameters
+    ----------
+    error : RuntimeError
+        Error of the call that the wrapper absorbs.
+
+    Returns
+    -------
+    str
+        'Aragog retry-ladder exhaustion' when every attempt of the ladder failed,
+        'Aragog CMB closure check failed (CMBClosureError)' for the CMB ledger check of
+        aragog, else 'Aragog call failed (<error class>)'.
+    """
+    from proteus.interior_energetics.aragog import RetryLadderExhaustedError
+
+    if isinstance(error, RetryLadderExhaustedError):
+        return 'Aragog retry-ladder exhaustion'
+    name = type(error).__name__
+    # matched by name: the class exists from fwl-aragog 26.11.24 on
+    if name == 'CMBClosureError':
+        return f'Aragog CMB closure check failed ({name})'
+    return f'Aragog call failed ({name})'
+
+
 def _skip_aragog_call_energy(hf_row: dict) -> None:
     """Set the per-call energy columns of a skipped Aragog step to 0, in place.
 
-    A retry-ladder fallback integrates nothing, so the energy ledgers must not count the
+    A skipped call integrates nothing, so the energy ledgers must not count the
     previous call's values again.
     """
     for key in _ARAGOG_CALL_ENERGY_KEYS:
@@ -2708,8 +2734,8 @@ def run_interior(
         except RuntimeError as e:
             interior_o.aragog_fail_count += 1
             log.warning(
-                'Aragog retry-ladder exhaustion #%d/%d. '
-                'Keeping previous interior state for this step. Error: %s',
+                '%s #%d/%d. Keeping previous interior state for this step. Error: %s',
+                _aragog_failure_cause(e),
                 interior_o.aragog_fail_count,
                 _ARAGOG_MAX_CONSECUTIVE_FAILS,
                 str(e)[:200],

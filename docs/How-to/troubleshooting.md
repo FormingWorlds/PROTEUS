@@ -12,6 +12,7 @@ step-by-step guide or the advice below,
 | Error / symptom | Section |
 |---|---|
 | `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
+| `Aragog CMB closure check failed (CMBClosureError)` | [The CMB closure check of Aragog fails](#the-cmb-closure-check-of-aragog-fails) |
 | `was written before N column(s) of the current output schema existed` | [Resuming an older run](#resuming-a-run-written-by-an-older-proteus) |
 | `Resume: no Zalmoxis structure file matches the helpfile row` | [Resume stops on the Zalmoxis structure](#resume-stops-no-zalmoxis-structure-file-matches-the-row) |
 | `interior_energetics.aragog.<law>` or `interior_energetics.mixing_length is ... but the run was written with`, or `... is not recorded in`, after `Resume refused:` | [Resume stops on a separation law](#resume-stops-on-a-separation-law) |
@@ -40,7 +41,7 @@ step-by-step guide or the advice below,
 
 ### Numerically fragile coupled runs {#numerically-fragile-coupled-runs}
 
-Some coupled atmosphere-interior-outgassing configurations occasionally fail with messages such as `RuntimeError: Aragog retry ladder exhausted` or with warnings about T_core jumping >1500 K despite Aragog reporting `status=0`. The same config may succeed on one launch and fail on the next.
+Some coupled atmosphere-interior-outgassing configurations occasionally fail with messages such as `RetryLadderExhaustedError: Aragog retry ladder exhausted` or with warnings about T_core jumping >1500 K despite Aragog reporting `status=0`. The same config may succeed on one launch and fail on the next.
 
 The cause is sub-1e-7 floating-point noise in JAX/XLA reduction order that compounds through Aragog's tight tolerances and lands the solver on a wrong P-S branch within ~15 iterations.
 
@@ -56,6 +57,17 @@ The flag intercepts itself in `sys.argv` *before* any heavy imports, sets `JAX_E
 Do not enable by default; the flag has a small per-step cost. Use only when a config shows noise-floor divergence between launches.
 
 For broader convergence problems,see [stabilising simulations](stabilise_run.md).
+
+### The CMB closure check of Aragog fails {#the-cmb-closure-check-of-aragog-fails}
+
+With fwl-aragog 26.11.24 or later, Aragog checks the heat budget at the core-mantle boundary (CMB) after each call. With `interior_energetics.aragog.core_bc = "energy_balance"` or `"gradient"`, the change of the core heat in the call must match the heat that crossed the CMB. With `"core_module"`, the CMB node must follow the change of the core top. A miss above the bound of the check gives a warning. A miss above 10 times that bound, or a slope (dT/dS)_P of the CMB node that is not finite and positive, raises `CMBClosureError`.
+
+PROTEUS then logs `Aragog CMB closure check failed (CMBClosureError) #n/3` with the message of Aragog. It keeps the interior state of the previous step for this step, sets the energy columns of the call to 0, and goes on with the other modules. Three failed Aragog calls in a row stop the run. The retry ladder does not run for this error.
+
+What to check, by the message of Aragog:
+
+- `node slope (dT/dS)_P = ...`: the CMB node is in a part of the P-S tables where the temperature does not rise with entropy, or the slope there is not a number. Compare the temperature or entropy in the message with the range of the tables at the CMB pressure.
+- `ledger miss ... is above 10x the solver bound`: the core heat and the CMB heat of the call disagree. The bound adds the error that the solver tolerance allows at the CMB node, the error of the tabulated slope there and the error of the time integral of the CMB heat. Aragog takes it as a worst case, so a miss above 10 times the bound points to the closure at the CMB, not to the tolerance.
 
 ### Aragog stops at setup: CVODE cannot be imported {#aragog-stops-at-setup-cvode-cannot-be-imported}
 

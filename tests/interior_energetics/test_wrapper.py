@@ -30,6 +30,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from proteus.interior_energetics.aragog import RetryLadderExhaustedError
 from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.wrapper import (
     _ARAGOG_CALL_ENERGY_KEYS,
@@ -4956,6 +4957,7 @@ def _skip_aragog_step(error, fail_count=0, caplog=None):
     [
         (CMBClosureError(_CMB_MSG), 'Aragog CMB closure check failed (CMBClosureError) #1/3.'),
         (RuntimeError('setup fault'), 'Aragog call failed (RuntimeError) #1/3.'),
+        (RetryLadderExhaustedError('ladder out'), 'Aragog retry-ladder exhaustion #1/3.'),
     ],
 )
 def test_a_skipped_aragog_step_names_the_error_that_stopped_the_call(error, cause, caplog):
@@ -4966,7 +4968,9 @@ def test_a_skipped_aragog_step_names_the_error_that_stopped_the_call(error, caus
     assert len(warns) == 1
     assert warns[0].startswith(cause)
     assert str(error) in warns[0]
-    assert 'retry-ladder exhaustion' not in warns[0]
+    assert ('retry-ladder exhaustion' in warns[0]) == isinstance(
+        error, RetryLadderExhaustedError
+    )
     assert interior_o.aragog_fail_count == 1
     assert interior_o.dt == 42.0
     assert hf_row['T_magma'] == hf_row0['T_magma']

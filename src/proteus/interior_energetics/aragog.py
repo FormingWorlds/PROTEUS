@@ -788,6 +788,14 @@ class InteriorStalledError(RuntimeError):
     """
 
 
+class RetryLadderExhaustedError(RuntimeError):
+    """Every attempt of the retry ladder of one Aragog call failed.
+
+    The wrapper keeps the previous interior state for the step, as for every other
+    RuntimeError of the call, and logs this case as a retry-ladder exhaustion.
+    """
+
+
 class AragogRunner:
     def __init__(
         self,
@@ -2983,7 +2991,7 @@ class AragogRunner:
                         attempt,
                         reason,
                     )
-                    raise RuntimeError(
+                    raise RetryLadderExhaustedError(
                         f'Aragog retry ladder exhausted: {reason} '
                         f'after {attempt} attempts at t={hf_row.get("Time", 0.0):.3e} yr'
                     )
