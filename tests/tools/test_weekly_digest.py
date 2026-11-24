@@ -9,14 +9,17 @@ the network; GitHub answers are recorded fixtures or fakes.
 
 from __future__ import annotations
 
+import email.message
 import http.client
-import http.server
+import io
 import json
 import re
 import stat
 import sys
-import threading
 import unicodedata
+import urllib.parse
+import urllib.request
+import urllib.response
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -96,9 +99,9 @@ def _fact(
     }
 
 
-def _data(prs=None, releases=None, fact_list=None, previous=None):
+def _data(prs=None, releases=None, fact_list=None):
     return {
-        'window': {'since': SINCE, 'until': UNTIL, 'backdated': True, 'previous': previous},
+        'window': {'since': SINCE, 'until': UNTIL, 'backdated': True},
         'repos': ['FormingWorlds/PROTEUS', 'nichollsh/AGNI'],
         'prs': prs if prs is not None else [_pr()],
         'releases': releases if releases is not None else [],
@@ -1291,15 +1294,12 @@ def test_collect_main_marks_a_dated_run_and_skips_the_state(tmp_path, monkeypatc
         collect.main(['--out', str(out), '--since', '2026-09-01', '--until', '2026-09-30']) == 0
     )
     window = json.loads(out.read_text())['window']
-    assert window == {'since': SINCE, 'until': UNTIL, 'backdated': True, 'previous': None}
+    assert window == {'since': SINCE, 'until': UNTIL, 'backdated': True}
     assert seen == []
     monkeypatch.setattr(collect, 'previous_state', lambda *a: {'until': '2026-11-10T00:00:00Z'})
     assert collect.main(['--out', str(out), '--until', '2026-11-17']) == 0
     window = json.loads(out.read_text())['window']
-    assert (
-        window['previous'] == {'until': '2026-11-10T00:00:00Z'}
-        and window['since'] == '2026-11-10T00:00:00Z'
-    )
+    assert window['since'] == '2026-11-10T00:00:00Z' and 'previous' not in window
 
 
 def test_known_keys_cover_every_tracked_file_kind():
@@ -2779,7 +2779,7 @@ def test_page_status_reads_the_answer_and_never_raises(monkeypatch):
             return False
 
     def fake(req, timeout):
-        calls.append((req.get_method(), req.full_url, timeout))
+        calls.append((req.get_method(), req.full_url, timeout, req.get_header('User-agent')))
         if 'gone' in req.full_url:
             raise urllib.error.HTTPError(req.full_url, 404, 'Not Found', {}, None)
         if 'down' in req.full_url:
@@ -2790,7 +2790,7 @@ def test_page_status_reads_the_answer_and_never_raises(monkeypatch):
     assert _PAGE_STATUS('https://d/ok.html') == 200
     assert _PAGE_STATUS('https://d/gone.html') == 404
     assert 'no route' in _PAGE_STATUS('https://d/down.html')
-    assert calls[0] == ('HEAD', 'https://d/ok.html', 15) and len(calls) == 3
+    assert calls[0] == ('HEAD', 'https://d/ok.html', 15, 'weekly-digest') and len(calls) == 3
     for err in (http.client.BadStatusLine('x'), http.client.InvalidURL('bad'), ValueError('v')):
 
         def raise_it(req, timeout, err=err):
@@ -2811,6 +2811,7 @@ def test_a_deleted_author_is_unknown_and_gets_no_link():
 
 
 _PAGE_STATUS = collect.page_status
+_OPENER = collect.PAGE_OPENER
 
 
 @pytest.fixture(autouse=True)
@@ -3011,43 +3012,42 @@ def test_publish_refuses_a_body_that_mentions_a_cited_author(tmp_path, monkeypat
         )
 
 
-class _Site(http.server.BaseHTTPRequestHandler):
-    """Local docs site: /moved.html redirects to /ok.html, which answers 200."""
+class _StubSite(urllib.request.HTTPHandler):
+    """Docs site with no socket: /moved.html answers 301 to /ok.html, /ok.html answers 200."""
 
-    asked: list = []
+    def __init__(self):
+        super().__init__()
+        self.asked = []
 
-    def do_HEAD(self):
-        _Site.asked.append(self.path)
-        self.send_response(200 if self.path == '/ok.html' else 301)
-        self.send_header('Location', '/ok.html')
-        self.end_headers()
-
-    do_GET = do_HEAD
-
-    def log_message(self, *args):
-        pass
-
-
-def test_a_redirect_is_not_a_served_page(monkeypatch):
-    """A 3xx answer is given back as it is, never followed, so the page is left out."""
-    monkeypatch.undo()
-    server = http.server.HTTPServer(('127.0.0.1', 0), _Site)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    try:
-        url = f'http://127.0.0.1:{server.server_port}'
-        _Site.asked.clear()
-        assert _PAGE_STATUS(f'{url}/moved.html') == 301
-        assert _Site.asked == ['/moved.html']
-        assert _PAGE_STATUS(f'{url}/ok.html') == 200
-    finally:
-        server.shutdown()
-        server.server_close()
+    def http_open(self, req):
+        path = urllib.parse.urlsplit(req.full_url).path
+        self.asked.append((req.get_method(), path))
+        headers = email.message.Message()
+        headers['Location'] = '/ok.html'
+        code = 200 if path == '/ok.html' else 301
+        resp = urllib.response.addinfourl(io.BytesIO(b''), headers, req.full_url, code)
+        resp.msg = 'OK' if code == 200 else 'Moved Permanently'
+        return resp
 
 
-def test_render_state_holds_only_the_window_end_and_the_run():
-    """The state marker holds what the next run reads: the window end and the run id."""
-    _, state = _render(_draft(_entry()), live=True)
-    assert set(state) == {'until', 'run_id'}
+@pytest.mark.parametrize(
+    ('handler', 'code', 'asked'),
+    [
+        (
+            urllib.request.HTTPRedirectHandler,
+            200,
+            [('HEAD', '/moved.html'), ('GET', '/ok.html')],
+        ),
+        (collect.NoRedirect, 301, [('HEAD', '/moved.html')]),
+    ],
+)
+def test_a_redirect_is_not_a_served_page(monkeypatch, handler, code, asked):
+    """The stock handler follows the redirect to a 200; the opener of the digest gives the 301 back."""
+    site = _StubSite()
+    monkeypatch.setattr(collect, 'PAGE_OPENER', urllib.request.build_opener(handler, site))
+    assert _PAGE_STATUS('http://d.x/moved.html') == code
+    assert site.asked == asked
+    assert any(isinstance(h, collect.NoRedirect) for h in _OPENER.handlers)
 
 
 def test_collect_main_reads_no_pull_request_state(tmp_path, monkeypatch):
@@ -3120,3 +3120,76 @@ def test_a_deleted_docs_page_is_not_asked_or_linked(monkeypatch):
     assert 'docs/Tutorials/first_run.md' in rec['files']
     assert not any('first_run' in u for u in asked)
     assert out['docs_left_out'] == {}
+
+
+def test_collect_main_writes_no_summary_when_nothing_is_left_out(tmp_path, monkeypatch):
+    """With no pull request dropped and no docs page left out, the job summary is not touched."""
+    monkeypatch.setattr(collect, 'GitHub', lambda: 'gh')
+    monkeypatch.setattr(
+        collect,
+        'collect',
+        lambda gh, s, w: {'window': w, 'prs': [], 'releases': [], 'docs_left_out': {}},
+    )
+    out, summary = tmp_path / 'c.json', tmp_path / 's.md'
+    args = ['--out', str(out), '--since', '2026-09-01', '--until', '2026-09-30']
+    assert collect.main([*args, '--summary', str(summary)]) == 0
+    assert not summary.exists()
+
+
+def test_a_page_left_out_in_two_pull_requests_counts_once(monkeypatch):
+    """JANUS#94 and JANUS#103 both change docs/Explanations/model.md: 1 page left out, not 2."""
+    monkeypatch.setattr(
+        collect, 'page_status', lambda url: 404 if 'Explanations/model' in url else 200
+    )
+    out = _collect_janus({'FormingWorlds/JANUS': 'https://d.example/J'})
+    assert out['docs_left_out'] == {'https://d.example/J': 1}
+
+
+_KINDS = ['ADDED', 'DELETED', 'RENAMED', 'COPIED', 'MODIFIED', 'CHANGED']
+_FILES = st.lists(
+    st.tuples(st.sampled_from('abcd'), st.sampled_from(_KINDS)),
+    max_size=5,
+    unique_by=lambda f: f[0],
+)
+
+
+@settings(max_examples=200, deadline=None, derandomize=True)
+@given(_FILES, _FILES, st.sets(st.sampled_from('abcd')))
+def test_left_out_count_and_deleted_pages_over_any_file_list(first, second, served):
+    """Deleted pages are never asked or linked; the site count is the unique pages asked and not served."""
+    janus, asked = _janus(), []
+    for node in janus['repository']['pullRequests']['nodes']:
+        files = {94: first, 103: second}.get(node['number'], [])
+        node['files'] = {
+            'totalCount': len(files),
+            'nodes': [{'path': f'docs/{n}.md', 'changeType': k} for n, k in files],
+        }
+
+    def status(url):
+        asked.append(url[len('https://d.x/') : -len('.html')])
+        return 200 if asked[-1] in served else 404
+
+    old = collect.page_status
+    collect.page_status = status
+    try:
+        settings_ = {
+            **_VALID,
+            'repos': ['FormingWorlds/JANUS'],
+            'docs': {'FormingWorlds/JANUS': 'https://d.x'},
+        }
+        out = collect.collect(_FakeGH([janus]), settings_, _LATER)
+    finally:
+        collect.page_status = old
+    live = {n for n, k in first + second if k != 'DELETED'}
+    assert set(asked) == live
+    assert out['docs_left_out'] == (
+        {'https://d.x': len(live - served)} if live - served else {}
+    )
+    for p in out['prs']:
+        files = {94: first, 103: second}.get(p['number'], [])
+        want = (
+            [n for n, k in files if k != 'DELETED' and n in served]
+            if p['status'] == 'merged'
+            else []
+        )
+        assert [d['path'] for d in p['docs']] == want
