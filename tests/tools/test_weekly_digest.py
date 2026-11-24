@@ -2794,3 +2794,43 @@ def test_any_docs_path_renders_as_one_safe_link(path):
     assert row.count('|') == 5, row
     assert '@' not in body
     assert render.scan_body(body, render.allowed_urls(data, 'https://run', []), []) == []
+
+
+def test_page_status_reads_the_answer_and_never_raises(monkeypatch):
+    """One HEAD request: the status of an answer, the code of an HTTP error, the text of a network error."""
+    import urllib.error
+
+    calls = []
+
+    class _Ok:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def fake(req, timeout):
+        calls.append((req.get_method(), req.full_url, timeout))
+        if 'gone' in req.full_url:
+            raise urllib.error.HTTPError(req.full_url, 404, 'Not Found', {}, None)
+        if 'down' in req.full_url:
+            raise urllib.error.URLError('no route')
+        return _Ok()
+
+    monkeypatch.setattr(collect.urllib.request, 'urlopen', fake)
+    assert collect.page_status('https://d/ok.html') == 200
+    assert collect.page_status('https://d/gone.html') == 404
+    assert 'no route' in collect.page_status('https://d/down.html')
+    assert calls[0] == ('HEAD', 'https://d/ok.html', 15) and len(calls) == 3
+
+
+def test_a_deleted_author_is_unknown_and_gets_no_link():
+    """A pull request of a deleted account names its author as unknown, with no profile link."""
+    data = _data(prs=[_pr(author=None, kind=None)])
+    body, _ = _render(_draft(_entry(logins=[])), data, live=True)
+    assert 'by unknown |' in body and 'https://github.com/None' not in body
+    urls = render.allowed_urls(data, 'https://run', [])
+    assert not any(u.startswith('https://github.com/None') for u in urls)
+    assert render.scan_body(body, urls, []) == []
