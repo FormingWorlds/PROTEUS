@@ -3400,11 +3400,9 @@ def update_structure_from_interior(
                     )
                 )
 
-        # Monotonic-radius guard (super-liquidus adiabat IC only): a cooling interior cannot
-        # re-inflate, so an R_int up-step is a P-T vs P-S cross-table artifact and is rejected.
-        # It is kept when the mantle heats (T_magma or Phi up), after a wet composition trigger,
-        # or when the retained structure fails the mass anchor against a larger target. A reject
-        # restores the previous structure and zalmoxis_output.dat; no failure, stale flag kept.
+        # Monotonic-radius guard (super-liquidus adiabat IC only): a cooling R_int up-step is a
+        # cross-table artifact and is rejected, unless the mantle heats, a wet composition trigger
+        # fired, or the retained structure fails the mass anchor against a larger target.
         _R_int_new = float(hf_row.get('R_int', 0.0) or 0.0)
         _scalar_radius_up_step = R_int_prev > 0.0 and _R_int_new > R_int_prev * (
             1.0 + _MONOTONIC_RINT_REL_TOL
