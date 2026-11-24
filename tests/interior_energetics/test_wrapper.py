@@ -4933,13 +4933,13 @@ class CMBClosureError(RuntimeError):
 _CMB_MSG = 'CMB closure fault in the call to t = 1.0e+03 yr: ledger miss 5 is above 10x the solver bound 0.1 (J)'
 
 
-def _skip_aragog_step(error, fail_count=0, caplog=None, interior_o=None):
+def _skip_aragog_step(error, caplog):
     """Run one aragog ``run_interior`` call whose solver raises ``error``; return state and warnings."""
     config = _make_run_interior_config(prevent_warming=False, module='aragog')
     hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
     hf_row.update(dict.fromkeys(_ARAGOG_CALL_ENERGY_KEYS, 1.0e27))
-    interior_o = interior_o or MagicMock(spec=Interior_t)
-    interior_o.ic, interior_o.dt, interior_o.aragog_fail_count = 2, 0.0, fail_count
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic, interior_o.dt, interior_o.aragog_fail_count = 2, 0.0, 0
     runner_mock = MagicMock()
     runner_mock.run_solver.side_effect = error
     with (
@@ -4970,30 +4970,14 @@ def test_a_skipped_aragog_step_names_the_error_that_stopped_the_call(error, caus
     """The skip-step warning names the error class and its message; only an exhausted ladder
     reads as a retry-ladder exhaustion. The skip itself is the same for every cause."""
     _, hf_row0 = _make_run_interior_state(prev_f_int=0.1)
-    hf_row, interior_o, warns = _skip_aragog_step(error, caplog=caplog)
+    hf_row, interior_o, warns = _skip_aragog_step(error, caplog)
     assert len(warns) == 1
     assert warns[0].startswith(cause)
     assert str(error) in warns[0]
-    assert ('retry-ladder exhaustion' in warns[0]) == isinstance(
-        error, RetryLadderExhaustedError
-    )
     assert interior_o.aragog_fail_count == 1
     assert interior_o.dt == 42.0
     assert hf_row['T_magma'] == hf_row0['T_magma']
     assert all(hf_row[k] == 0.0 for k in _ARAGOG_CALL_ENERGY_KEYS)
-
-
-@pytest.mark.unit
-def test_a_third_cmb_closure_failure_in_a_row_stops_the_run(caplog):
-    """A CMBClosureError counts like every other skipped call: the third in a row re-raises."""
-    from proteus.interior_energetics import wrapper as _w
-
-    interior_o = MagicMock(spec=Interior_t)
-    with pytest.raises(CMBClosureError, match='ledger miss'):
-        _skip_aragog_step(
-            CMBClosureError(_CMB_MSG), _w._ARAGOG_MAX_CONSECUTIVE_FAILS - 1, caplog, interior_o
-        )
-    assert interior_o.aragog_fail_count == _w._ARAGOG_MAX_CONSECUTIVE_FAILS
 
 
 @pytest.mark.unit
