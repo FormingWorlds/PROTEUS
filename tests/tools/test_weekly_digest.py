@@ -2791,5 +2791,6 @@ def test_any_docs_path_renders_as_one_safe_link(path):
     row = next(
         line for line in body.splitlines() if line.startswith('| Smaller default grain size')
     )
-    assert row.count(' | ') == 3, row
+    assert row.count('|') == 5, row
+    assert '@' not in body
     assert render.scan_body(body, render.allowed_urls(data, 'https://run', []), []) == []
