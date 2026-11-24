@@ -1,6 +1,8 @@
 # R_int up-steps with dM/M > 3e-3 measured in coupled runs on the super-liquidus adiabat IC.
 # dM_over_M: the mass the re-solve reached over the retained M_int, minus 1; dR_over_R: the re-solve R_int over the running minimum, minus 1.
 # guard: what the guard did with the step in that run (rejected under a code without the mass escape, accepted with it).
+# Rows 1 to 107 come from runs of one planet of 8.63 Earth masses: row 1 a resume on code without the mass escape, rows 2 and 3 the same resume with it, rows 4 to 107 the original run. Rows 108 to 112 come from a second resume of that run on older code.
+# dM_over_M takes the solve mass from its log line, 3 decimals in Earth masses, so it is good to about 1e-4.
 guard,dM_over_M,dR_over_R
 rejected,+8.9111e-02,+7.5830e-02
 accepted,+8.9063e-02,+7.5834e-02

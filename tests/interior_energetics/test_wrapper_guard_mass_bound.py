@@ -25,6 +25,7 @@ from proteus.interior_energetics.wrapper import (
     _MASS_ESCAPE_RADIUS_SLOPE,
     _ZALMOXIS_MASS_ANCHOR_TOL,
     _warn_committed_mass_miss,
+    _warn_mass_escape_radius_step,
 )
 from tests.interior_energetics.test_wrapper import _composition_trigger_scenario
 from tests.interior_energetics.test_wrapper_guard_mass_target import (
@@ -62,6 +63,7 @@ def _bound(dm):
 
 
 def _measured_up_steps():
+    """Return (dM/M, dR/R) of each measured up-step in the fixture file."""
     with UP_STEPS_CSV.open() as f:
         rows = list(csv.DictReader(line for line in f if not line.startswith('#')))
     return [(float(r['dM_over_M']), float(r['dR_over_R'])) for r in rows]
@@ -126,11 +128,12 @@ def test_a_one_percent_step_at_an_anchor_trip_is_kept_with_a_warning(caplog):
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize('dry_mantle', [True, False], ids=['dry mantle', 'wet mantle'])
 def test_a_fixed_target_at_radius_ratio_4_is_kept_at_the_first_solve(caplog, dry_mantle):
-    """A +1 % target with a +4 % radius step is kept at once, and the next solve is not refused.
+    """A +1 % target with a +4 % radius step is kept at once, and the planet meets the target.
 
-    A radius rise of 4 times the mass rise is above the bound (2.1 %), as for H2 that dissolves
-    into a wet mantle. The cooling dT/T solve is kept with a warning, so the structure takes the
-    new target at once. The next solve at the same target contracts by 1e-3 and is kept as well.
+    A radius rise of 4 times the mass rise is above the bound (2.1 %). The cooling dT/T solve is
+    kept with a warning, so the structure takes the new target at once. The next solve at the same
+    target up-steps by an artifact of 5e-4: the guard rejects it against the kept structure, which
+    meets its target, so neither warning fires.
     """
     config, hf_row, base = _cooling_case()
     config.interior_struct.zalmoxis.dry_mantle = dry_mantle
@@ -143,11 +146,13 @@ def test_a_fixed_target_at_radius_ratio_4_is_kept_at_the_first_solve(caplog, dry
     assert hf_row['M_int'] == pytest.approx(M_RETAINED * 1.01, rel=1e-12)
 
     hf_row['Time'] += 1000.0
-    msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve_to(1.01, 1.04 * (1.0 - 1e-3)))
+    msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve_to(1.01, 1.04 * (1.0 + 5e-4)))
 
-    assert not any(REJECT_MSG in m for m in msgs)
+    assert any(REJECT_MSG in m for m in msgs)
     assert not _warnings(caplog, BOUND_MSG)
-    assert hf_row['R_int'] == pytest.approx(R_RETAINED * 1.04 * (1.0 - 1e-3), rel=1e-12)
+    assert not _warnings(caplog, MISS_MSG)
+    assert hf_row['R_int'] == pytest.approx(R_RETAINED * 1.04, rel=1e-12)
+    assert hf_row['M_int'] == pytest.approx(M_RETAINED * 1.01, rel=1e-12)
 
 
 @pytest.mark.physics_invariant
@@ -237,6 +242,24 @@ def test_the_bound_uses_the_mass_the_solve_reached(caplog):
     assert 'target rise %.6e' % (target / M_RETAINED - 1.0) in warned[0]
     assert hf_row['M_int'] == reached
     assert not _warnings(caplog, MISS_MSG)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('radius', 'mass'),
+    [
+        pytest.param(float('nan'), M_RETAINED * 1.01, id='non-finite radius'),
+        pytest.param(R_RETAINED * 1.001, float('nan'), id='non-finite reached mass'),
+    ],
+)
+def test_a_non_finite_kept_step_warns_about_its_radius_step(caplog, radius, mass):
+    """A kept step with a non-finite radius or reached mass warns: no bound can hold for it."""
+    with caplog.at_level(logging.WARNING):
+        _warn_mass_escape_radius_step(
+            {'R_int': radius, 'M_int': mass}, R_RETAINED, M_RETAINED, M_RETAINED * 1.01
+        )
+
+    assert len(_warnings(caplog, BOUND_MSG)) == 1
 
 
 @pytest.mark.physics_invariant
