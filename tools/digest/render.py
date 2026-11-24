@@ -236,8 +236,7 @@ def render_body(
     data: dict, draft: dict, live: bool, run_url: str, bots: list[str], run_id: str = ''
 ) -> tuple[str, dict]:
     """Return the markdown body and the state marker of the next post."""
-    window, prev = data['window'], data['window'].get('previous') or {}
-    announced_before = set(prev.get('announced_open', []))
+    window, home = data['window'], data['repos'][0]
     prs = {p['ref']: p for p in data['prs']}
     rels = {r['ref']: r for r in data['releases']}
     facts = {f['id']: f for f in data.get('facts', [])}
@@ -247,9 +246,9 @@ def render_body(
         'Additions and changes from across the ecosystem that affect more than one project. '
         'This is a selection, not a complete change list.',
         '',
-        'This digest is written automatically by a workflow in FormingWorlds/PROTEUS from merged '
-        'pull requests, open pull requests and releases; check the linked pull requests before you '
-        'act on it.',
+        f'This digest is written automatically by a workflow in [{link_text(home)}]({link_url(GITHUB + home)}) from '
+        'merged pull requests, open pull requests and releases; check the linked pull requests '
+        'before you act on it.',
         '',
     ]
     if not live:
@@ -260,7 +259,6 @@ def render_body(
             f'{window_dates(window)}.'
         )
         lines.append('')
-    announced_now = set()
     for key, heading in SECTIONS.items():
         entries = [e for e in draft['entries'] if e['section'] == key]
         if not entries:
@@ -278,8 +276,6 @@ def render_body(
         for entry in entries:
             items = [prs[r] for r in entry['prs']] + [rels[r] for r in entry['releases']]
             cited = [facts[f] for f in entry['facts']]
-            if key == 'open':
-                announced_now |= {i['ref'] for i in items}
             text = plain(entry['text'])
             detail = facts_text(cited)
             if key == 'results':
@@ -300,13 +296,7 @@ def render_body(
                 lines += [f'Docs: {pages}.', '']
             lines += [f'{links(items)}, by {authors(items, bots)}', '']
         lines.append('')
-    open_now = {r for r, p in prs.items() if p['status'] == 'open'}
-    still = open_now | set(data.get('still_open', []))
-    state = {
-        'until': window['until'],
-        'run_id': run_id,
-        'announced_open': sorted(announced_now | (announced_before & still)),
-    }
+    state = {'until': window['until'], 'run_id': run_id}
     lines += [
         f'<!-- weekly-digest-state {json.dumps(state, separators=(",", ":"))} -->',
     ]

@@ -986,9 +986,9 @@ def test_render_results_table_and_summary():
     )
     assert '[Workflow run](https://run)' in body
     assert body.rstrip().endswith(
-        '<!-- weekly-digest-state {"until":"2026-09-30T00:00:00Z","run_id":"","announced_open":[]} -->'
+        '<!-- weekly-digest-state {"until":"2026-09-30T00:00:00Z","run_id":""} -->'
     )
-    assert state == {'until': UNTIL, 'run_id': '', 'announced_open': []}
+    assert state == {'until': UNTIL, 'run_id': ''}
 
 
 def test_render_links_every_author_and_never_bots():
@@ -1017,16 +1017,15 @@ def test_render_links_every_author_and_never_bots():
         assert '@' not in body and ('Dry run' in body) is not live
 
 
-def test_render_keeps_announced_open_prs_in_the_state():
-    """Open PRs announced before stay in the state while open; every author is a profile link."""
+def test_render_open_entry_links_every_author():
+    """An entry of open pull requests links each author to the profile."""
     prs = [
         _pr(),
         _pr('PROTEUS#900', status='open', author='carol'),
         _pr('PROTEUS#901', status='open', author='dan'),
         _pr('PROTEUS#902', status='open', author='erin'),
     ]
-    previous = {'until': SINCE, 'announced_open': ['PROTEUS#900', 'PROTEUS#902', 'PROTEUS#5']}
-    data = _data(prs=prs, previous=previous)
+    data = _data(prs=prs)
     entries = [
         _entry(),
         _entry(
@@ -1037,9 +1036,8 @@ def test_render_keeps_announced_open_prs_in_the_state():
             title='O',
         ),
     ]
-    body, state = _render(_draft(*entries), data, live=True)
+    body, _ = _render(_draft(*entries), data, live=True)
     assert 'by [carol](https://github.com/carol), [dan](https://github.com/dan)' in body
-    assert state['announced_open'] == ['PROTEUS#900', 'PROTEUS#901', 'PROTEUS#902']
 
 
 def test_render_quiet_week():
@@ -1960,26 +1958,6 @@ def test_workflow_wiring_of_the_guards():
     assert '--run-id "$GITHUB_RUN_ID"' in jobs['publish']
 
 
-def test_announced_open_pr_stays_until_merged_or_closed():
-    """An announced pull request stays in the state while GitHub reports it open."""
-    pages = [
-        {'repository': {'pullRequest': {'state': 'OPEN'}}},
-        {'repository': {'pullRequest': {'state': 'MERGED'}}},
-        {'repository': {'pullRequest': {'state': 'CLOSED'}}},
-    ]
-    refs = ['PROTEUS#900', 'AGNI#5', 'Gone#3', 'PROTEUS#901']
-    repos = ['FormingWorlds/PROTEUS', 'nichollsh/AGNI']
-    gh = _FakeGH(pages)
-    assert collect.still_open(gh, repos, refs) == ['PROTEUS#900']
-    assert [q['number'] for q in gh.queries] == [900, 5, 901]
-    data = _data(previous={'until': SINCE, 'announced_open': ['PROTEUS#900']})
-    data['still_open'] = ['PROTEUS#900']
-    body, state = _render(_draft(_entry()), data)
-    assert state['announced_open'] == ['PROTEUS#900']
-    data['still_open'] = []
-    assert _render(_draft(_entry()), data)[1]['announced_open'] == []
-
-
 @pytest.mark.parametrize(
     ('text', 'found'),
     [
@@ -2266,31 +2244,6 @@ def test_check_main_prints_warnings_and_passes(tmp_path, capsys):
     assert lines[0].startswith('WARN "entry') and lines[1].startswith('::warning::"entry')
     assert lines[-1] == '0 failures and 1 warnings in 1 entries'
     assert 'WARN &quot;entry' in summary.read_text()
-
-
-@pytest.mark.parametrize(
-    ('error', 'kept'),
-    [
-        ("GraphQL error: [{'type': 'NOT_FOUND'}]", False),
-        ("GraphQL error: [{'message': 'Could not resolve to a PullRequest'}]", False),
-        ('GraphQL error: not found', True),
-        ('GitHub API 502 for https://api.github.com/graphql', True),
-    ],
-)
-def test_still_open_on_an_error(capsys, error, kept):
-    """Only a GraphQL not-found answer drops an announced ref; any other error keeps it."""
-
-    class Gh(_FakeGH):
-        def graphql(self, query, **variables):
-            if variables['number'] == 5:
-                raise common.DigestError(error)
-            return {'repository': {'pullRequest': {'state': 'OPEN'}}}
-
-    refs = ['PROTEUS#900', 'AGNI#5', 'Gone#3']
-    out = collect.still_open(Gh(), ['FormingWorlds/PROTEUS', 'nichollsh/AGNI'], refs)
-    assert out == ['PROTEUS#900', 'AGNI#5'] if kept else out == ['PROTEUS#900']
-    log = capsys.readouterr().out
-    assert 'AGNI#5' in log and 'Gone#3' in log
 
 
 def test_check_main_with_a_malformed_entry(tmp_path, capsys):

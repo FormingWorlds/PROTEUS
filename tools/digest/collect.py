@@ -14,6 +14,7 @@ HTML and mentions are removed before anything reaches the model.
 from __future__ import annotations
 
 import argparse
+import collections
 import functools
 import html
 import http.client
@@ -44,7 +45,7 @@ query($owner: String!, $name: String!, $cursor: String) {
         additions deletions
         author { login __typename }
         labels(first: 10) { nodes { name } }
-        files(first: 100) { totalCount nodes { path } }
+        files(first: 100) { totalCount nodes { path changeType } }
         mergeCommit { oid parents(first: 1) { nodes { oid } } }
       }
     }
@@ -65,12 +66,6 @@ query($owner: String!, $name: String!, $category: ID!, $cursor: String) {
       nodes { url title createdAt body author { login __typename } }
     }
   }
-}
-"""
-
-PR_STATE_QUERY = """
-query($owner: String!, $name: String!, $number: Int!) {
-  repository(owner: $owner, name: $name) { pullRequest(number: $number) { state } }
 }
 """
 
@@ -163,30 +158,6 @@ def previous_state(gh: GitHub, home: str, category: str) -> dict | None:
         cursor = posts['pageInfo']['endCursor']
 
 
-def still_open(gh: GitHub, repos: list[str], refs: list[str]) -> list[str]:
-    """Return the announced pull requests (``name#number``) that GitHub reports open."""
-    full = {short_name(r): r for r in repos}
-    out = []
-    for ref in refs:
-        name, number = ref.split('#')
-        if name not in full:
-            print(
-                f'Announced pull request {ref} leaves the state: its repository is not in the settings'
-            )
-            continue
-        owner, repo = full[name].split('/')
-        try:
-            found = gh.graphql(PR_STATE_QUERY, owner=owner, name=repo, number=int(number))
-        except DigestError as err:
-            if not re.search(r'NOT_FOUND|Could not resolve', str(err)):
-                out.append(ref)
-            print(f'Announced pull request {ref} cannot be read: {err}')
-            continue
-        if ((found['repository'] or {}).get('pullRequest') or {}).get('state') == 'OPEN':
-            out.append(ref)
-    return out
-
-
 def resolve_window(
     since: str | None, until: str | None, state: dict | None, now: datetime
 ) -> dict:
@@ -231,6 +202,7 @@ def pr_record(repo: str, node: dict, since: str, until: str) -> dict | None:
         'size': node['additions'] + node['deletions'],
         'labels': [label['name'] for label in node['labels']['nodes']],
         'files': [f['path'] for f in node['files']['nodes']],
+        'deleted': [f['path'] for f in node['files']['nodes'] if f['changeType'] == 'DELETED'],
         'files_truncated': node['files'].get('totalCount', 0) > len(node['files']['nodes']),
         'merge_oid': commit['oid'] if commit else None,
         'parent_oid': parents[0]['oid'] if parents else None,
@@ -308,13 +280,23 @@ def add_bodies(prs: list, releases: list, max_bodies: int, body_chars: int) -> d
     return {'bodies_kept': len(keep), 'bodies_cut': len(prs) - len(keep)}
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Give a redirect back as its 3xx answer, so only a page served at its own URL counts."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+PAGE_OPENER = urllib.request.build_opener(NoRedirect)
+
+
 def page_status(url: str) -> int | str:
     """HTTP status of one HEAD request to a docs page, or the error text; it never raises."""
     try:
         req = urllib.request.Request(
             url, method='HEAD', headers={'User-Agent': 'weekly-digest'}
         )
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with PAGE_OPENER.open(req, timeout=15) as resp:
             return resp.status
     except urllib.error.HTTPError as err:
         return err.code
@@ -373,7 +355,7 @@ def collect(gh: GitHub, settings: dict, window: dict) -> dict:
     dropped = [p for p in prs if p['status'] == 'open' and p['association'] not in MEMBERS]
     prs = [p for p in prs if p not in dropped]
     cut = add_bodies(prs, releases, settings['max_bodies'], settings['body_chars'])
-    down, ask = set(), functools.cache(page_status)
+    down, ask, left = set(), functools.cache(page_status), collections.Counter()
     for p in prs:
         base = settings['docs'].get(p['repo']) if p['status'] == 'merged' else None
 
@@ -385,7 +367,11 @@ def collect(gh: GitHub, settings: dict, window: dict) -> dict:
                 down.add(base)
             return code
 
-        p['docs'] = docs_pages(p['files'], base, status)
+        files = [f for f in p['files'] if f not in p['deleted']]
+        p['docs'] = docs_pages(files, base, status)
+        if base:
+            left[base] += sum(f.startswith('docs/') and f.endswith('.md') for f in files)
+            left[base] -= len(p['docs'])
     return {
         'window': window,
         'repos': settings['repos'],
@@ -395,6 +381,7 @@ def collect(gh: GitHub, settings: dict, window: dict) -> dict:
             {'ref': p['ref'], 'login': p['author'], 'association': p['association']}
             for p in dropped
         ],
+        'docs_left_out': {site: n for site, n in left.items() if n},
         **cut,
     }
 
@@ -414,15 +401,15 @@ def main(argv: list[str] | None = None) -> int:
     window = resolve_window(args.since, args.until, state, datetime.now(timezone.utc))
     window['previous'] = state
     data = collect(gh, settings, window)
-    data['still_open'] = still_open(
-        gh, settings['repos'], (state or {}).get('announced_open', [])
-    )
     with open(args.out, 'w') as fh:
         json.dump(data, fh)
     print(f'{len(data["prs"])} PRs, {len(data["releases"])} releases in {window}')
     lines = [
         f'Open pull request left out: {d["ref"]} by {d["login"]} (association {d["association"]})'
         for d in data.get('dropped_open', [])
+    ] + [
+        f'Docs pages left out: {n} of {site}'
+        for site, n in data.get('docs_left_out', {}).items()
     ]
     if lines:
         print(*lines, sep='\n')
