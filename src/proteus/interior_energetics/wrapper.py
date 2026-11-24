@@ -91,8 +91,8 @@ _REINFLATE_TMAGMA_REL_TOL = 1e-4
 _REINFLATE_PHI_ABS_TOL = 1e-3
 
 # A step the mass escape keeps warns above dR/R = slope * dM/M + offset, dM/M from the reached mass.
-# Measured up-steps have dR/R / dM/M of 0.73 to 0.94; a solve can reach a rise near 0 within the
-# anchor, so the offset is the floor of the bound, above the largest measured artefact (7.2e-4).
+# Measured up-steps with dM/M > 3e-3 have dR/R / dM/M of 0.72 to 0.94. The offset, the floor of the
+# bound, is above the largest measured artefact (7.2e-4), so an artefact of that size does not warn.
 _MASS_ESCAPE_RADIUS_SLOPE = 2.0
 _MASS_ESCAPE_RADIUS_OFFSET = 1e-3
 
@@ -3384,7 +3384,7 @@ def update_structure_from_interior(
 
     # Running-minimum radius for the monotonic-radius guard: the last accepted R_int. A cooling
     # re-solve only lowers it; the heating, wet composition and mass escapes below can raise it,
-    # and the bound then re-anchors to that larger committed value.
+    # and the running minimum then re-anchors to that larger committed value.
     R_int_prev = float(hf_row.get('R_int', 0.0) or 0.0)
 
     # A core table that cannot be built stops the run; the fallback below is for the solve
@@ -3880,8 +3880,10 @@ def _warn_mass_escape_radius_step(
     """Warn when a step kept by the mass escape alone has a large radius step for its mass rise.
 
     The bound is ``_MASS_ESCAPE_RADIUS_SLOPE * dM/M + _MASS_ESCAPE_RADIUS_OFFSET``, with dM/M the
-    rise of the mass the solve reached over the retained mass. The step is kept either way; the
-    warning marks a step that can carry a representation artefact.
+    rise of the mass the solve reached over the retained mass. The step is kept either way. The
+    bound lies above every measured mass-driven step plus the largest measured artefact, so the
+    warning marks a radius step larger than any measured one; an artefact of measured size passes
+    without a warning. A non-finite radius or mass also warns.
 
     Parameters
     ----------
@@ -3898,7 +3900,7 @@ def _warn_mass_escape_radius_step(
     m_reached = float(hf_row['M_int'])
     d_m = m_reached / m_retained - 1.0
     bound = _MASS_ESCAPE_RADIUS_SLOPE * d_m + _MASS_ESCAPE_RADIUS_OFFSET
-    if d_r > bound:
+    if not d_r <= bound:
         log.warning(
             'Mass escape keeps a radius step above its radius bound on the super-liquidus '
             'adiabat IC: dR/R=%.6e > bound %.6e = %.1f dM/M + %.1e at the reached dM/M=%.6e '
