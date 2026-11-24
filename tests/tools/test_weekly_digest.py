@@ -9,6 +9,7 @@ the network; GitHub answers are recorded fixtures or fakes.
 
 from __future__ import annotations
 
+import http.client
 import json
 import re
 import stat
@@ -182,6 +183,7 @@ _BAD_VALUES = {
         {'a/b': 'http://x'},
         {'a/b': 'https://x/'},
         {'a/b': 'https://x y'},
+        {'FormingWorlds/Nope': 'https://x.y'},
     ],
 }
 
@@ -2779,12 +2781,18 @@ def test_window_and_repo_summary_open_the_post(live):
 @settings(max_examples=300, deadline=None, derandomize=True)
 @given(
     st.text(
-        alphabet=st.sampled_from(list('ab /|@[]()`<>*_\\#%?.\u00e9')), min_size=1, max_size=12
+        alphabet=st.sampled_from(list('ab /|@[]()`<>*_\\#%?.&!;-\u00e9\n\r\t\u2028\u202e')),
+        min_size=1,
+        max_size=12,
     )
 )
 def test_any_docs_path_renders_as_one_safe_link(path):
-    """A page path of any characters gives a quoted URL, one table cell and a body that passes the scan."""
-    [page] = collect.docs_pages([f'docs/{path}.md'], 'https://d.example', lambda url: 200)
+    """A path of any characters is left out, or gives a quoted URL, one table cell and a body that passes the scan."""
+    pages = collect.docs_pages([f'docs/{path}.md'], 'https://d.example', lambda url: 200)
+    if not re.fullmatch(r'[\w ./-]+', path):
+        assert pages == []
+        return
+    [page] = pages
     assert ' ' not in page['url'] and page['url'].startswith('https://d.example/')
     data = _data(prs=[_pr(docs=[page])])
     body, _ = _render(_draft(_entry()), data, live=True)
@@ -2820,10 +2828,17 @@ def test_page_status_reads_the_answer_and_never_raises(monkeypatch):
         return _Ok()
 
     monkeypatch.setattr(collect.urllib.request, 'urlopen', fake)
-    assert collect.page_status('https://d/ok.html') == 200
-    assert collect.page_status('https://d/gone.html') == 404
-    assert 'no route' in collect.page_status('https://d/down.html')
+    assert _PAGE_STATUS('https://d/ok.html') == 200
+    assert _PAGE_STATUS('https://d/gone.html') == 404
+    assert 'no route' in _PAGE_STATUS('https://d/down.html')
     assert calls[0] == ('HEAD', 'https://d/ok.html', 15) and len(calls) == 3
+    for err in (http.client.BadStatusLine('x'), http.client.InvalidURL('bad'), ValueError('v')):
+
+        def raise_it(req, timeout, err=err):
+            raise err
+
+        monkeypatch.setattr(collect.urllib.request, 'urlopen', raise_it)
+        assert isinstance(_PAGE_STATUS('https://d/x.html'), str), err
 
 
 def test_a_deleted_author_is_unknown_and_gets_no_link():
@@ -2834,3 +2849,106 @@ def test_a_deleted_author_is_unknown_and_gets_no_link():
     urls = render.allowed_urls(data, 'https://run', [])
     assert not any(u.startswith('https://github.com/None') for u in urls)
     assert render.scan_body(body, urls, []) == []
+
+
+_PAGE_STATUS = collect.page_status
+
+
+@pytest.fixture(autouse=True)
+def _no_docs_requests(monkeypatch):
+    """No test reaches a docs site: every page is unreachable unless the test stubs the request."""
+    monkeypatch.setattr(collect, 'page_status', lambda url: 'no network in tests')
+
+
+_LATER = {'since': '2026-10-01T00:00:00Z', 'until': '2026-11-18T00:00:00Z'}
+
+
+def _collect_janus(docs):
+    mors = _janus()
+    mors['repository']['pullRequests']['nodes'] = []
+    mors['repository']['releases']['nodes'] = []
+    settings_ = {**_VALID, 'repos': ['FormingWorlds/JANUS', 'FormingWorlds/MORS'], 'docs': docs}
+    return collect.collect(_FakeGH([_janus(), mors]), settings_, _LATER)
+
+
+def test_collect_links_the_served_pages_of_merged_prs_only(monkeypatch):
+    """Merged PRs of a repository with a site get their pages, each URL asked once; open PRs get none."""
+    seen = []
+    monkeypatch.setattr(collect, 'page_status', lambda url: seen.append(url) or 200)
+    out = _collect_janus({'FormingWorlds/JANUS': 'https://d.example/J'})
+    docs = {p['ref']: [d['path'] for d in p['docs']] for p in out['prs']}
+    assert docs == {
+        'JANUS#105': [],
+        'JANUS#104': [],
+        'JANUS#94': ['Explanations/model'],
+        'JANUS#103': ['Explanations/model', 'Tutorials/first_run', 'Validation/solve_pt'],
+    }
+    assert sorted(seen) == [
+        'https://d.example/J/Explanations/model.html',
+        'https://d.example/J/Tutorials/first_run.html',
+        'https://d.example/J/Validation/solve_pt.html',
+    ]
+    seen.clear()
+    assert all(p['docs'] == [] for p in _collect_janus({})['prs']) and seen == []
+
+
+def test_a_host_that_fails_once_gets_no_more_requests(monkeypatch):
+    """After a network error on a docs host, the other pages of that host are left out unasked."""
+    seen = []
+    monkeypatch.setattr(collect, 'page_status', lambda url: seen.append(url) or 'timed out')
+    out = _collect_janus({'FormingWorlds/JANUS': 'https://d.example/J'})
+    assert len(seen) == 1 and all(p['docs'] == [] for p in out['prs'])
+
+
+def test_docs_pages_keep_only_a_200_answer_and_log_the_rest(capsys):
+    """500, 301, 404 and an error text leave a page out, each with a log line; only 200 keeps it."""
+    answers = {'a': 200, 'b': 404, 'c': 500, 'd': 301, 'e': 'timed out'}
+    files = [f'docs/{k}.md' for k in answers]
+    pages = collect.docs_pages(files, 'https://d.x', lambda url: answers[url[12]])
+    assert pages == [{'path': 'a', 'url': 'https://d.x/a.html'}]
+    log = capsys.readouterr().out
+    for k in 'bcde':
+        assert f'Docs page left out: https://d.x/{k}.html answered {answers[k]}' in log
+
+
+@pytest.mark.parametrize(
+    ('n', 'tail'),
+    [(0, None), (1, None), (5, None), (6, 'and 1 more page'), (7, 'and 2 more pages')],
+)
+def test_docs_links_cap_and_count(n, tail):
+    """Up to 5 pages are linked; more pages end in a count with the right plural."""
+    pr = _pr(docs=[{'path': f'p{i}', 'url': f'https://d.x/p{i}.html'} for i in range(n)])
+    text = render.docs_links([pr])
+    assert text.count('](https://d.x/') == min(n, render.MAX_DOCS)
+    assert text.endswith(tail) if tail else 'more page' not in text, text
+
+
+def test_summary_counts_and_a_cut_of_one():
+    """The summary gives the merged, open and release counts, and names a cut of 1 pull request."""
+    data, _ = _nov10()
+    first = render.summary({**data, 'bodies_cut': 1, 'bodies_kept': 40}, 'https://run')
+    merged = sum(p['status'] == 'merged' for p in data['prs'])
+    opened = sum(p['status'] == 'open' for p in data['prs'])
+    counts = f'from {merged} merged and {opened} open pull requests and {len(data["releases"])} releases in '
+    assert counts in first
+    assert (
+        'the bodies of the 40 largest pull requests and only the titles of the other 1.'
+        in first
+    )
+
+
+def test_a_listed_bot_with_a_user_account_gets_no_profile_link():
+    """A login in the bots list is a code span even when GitHub marks it as a user."""
+    data = _data(prs=[_pr(author='renovate', kind='User')])
+    body, _ = _render(_draft(_entry(logins=[])), data, live=True, bots=('renovate',))
+    assert 'by `renovate` |' in body
+    urls = render.allowed_urls(data, 'https://run', ['renovate'])
+    assert 'https://github.com/renovate' not in urls
+
+
+def test_repository_link_text_is_escaped():
+    """A repository name with markdown characters shows as plain link text."""
+    data = {**_data(), 'repos': ['A/b_c*d']}
+    first = render.summary(data, 'https://run')
+    assert '[b\\_c\\*d](' in first
+    assert render.scan_body(first, render.allowed_urls(data, 'https://run', []), []) == []
