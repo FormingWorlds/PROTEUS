@@ -90,6 +90,7 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
     ('accretion/wrapper.py', '_partition_impactor_content', '<?>_kg_total'): _ELEMENTS,
     ('accretion/wrapper.py', '_apply_volatile_consequences', '<?>_kg_total'): _ELEMENTS,
     ('accretion/wrapper.py', '_restore_volatile_budgets', '<?>_kg_total'): _ELEMENTS,
+    ('atmos_chem/common.py', 'escape_atom_fluxes', 'esc_rate_<?>'): _VOL_ELEMENTS,
     ('escape/wrapper.py', 'calc_new_elements', '<?>_kg_total'): _ELEMENTS,
     ('escape/wrapper.py', 'run_escape', '<?>_kg_total'): _ELEMENTS,
     ('escape/common.py', 'calc_unfract_fluxes', 'esc_rate_<?>'): _ELEMENTS,

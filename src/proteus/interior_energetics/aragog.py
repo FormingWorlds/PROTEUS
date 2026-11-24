@@ -18,6 +18,7 @@ import platformdirs
 from scipy.optimize import OptimizeResult
 
 from aragog import aragog_file_logger
+from aragog.config.boundary import OPEN_PART_FIELDS
 from aragog.mesh import derive_core_density_from_mesh
 from aragog.solver import EntropySolver, SolverOutput
 from aragog.parser import (
@@ -31,7 +32,18 @@ from aragog.parser import (
     _SolverParameters,
 )
 from proteus.accretion.common import snap_to_impact
-from proteus.atmos_clim.common import lid_acts, lid_flux_cap, lid_flux_slope
+from proteus.atmos_clim.common import (
+    lid_acts,
+    lid_flux_cap,
+    LID_SLOPE_GUARD_FALLBACK,
+    LID_SLOPE_GUARD_FALLBACK_CUT,
+    LID_SLOPE_GUARD_GREY,
+    LID_SLOPE_GUARD_SIZE,
+    lid_fallback_slope,
+    lid_flux_secant,
+    lid_open_fields,
+    lid_open_slope,
+)
 from proteus.interior_energetics import aragog_core, aragog_resume
 from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
 from proteus.interior_energetics.aragog_phase import (
@@ -602,28 +614,50 @@ def _lid_out(out, name: str) -> float:
     return float(np.nan_to_num(float(getattr(out, name, np.nan))))
 
 
+def _surface_temperature_of_row(hf_row: dict) -> float | None:
+    """Surface temperature [K] that the Aragog CMB law takes for its shell contrast.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row, with ``T_surf`` from the atmosphere.
+
+    Returns
+    -------
+    float or None
+        ``T_surf``, or None when the row has no finite positive ``T_surf`` (Aragog then
+        takes the top cell).
+    """
+    try:
+        T_surf = float(hf_row.get('T_surf'))
+    except (TypeError, ValueError):
+        return None
+    return T_surf if np.isfinite(T_surf) and T_surf > 0.0 else None
+
+
 def _set_lid_surface(bc, hf_row: dict, slope: float | None = None) -> None:
-    """Hold the lid surface of the next interior step at the atmosphere surface, with its cap.
+    """Set the cap of the lid surface of the next interior step, held at the atmosphere surface.
+
+    The held surface itself is ``surface_temperature`` (:func:`_surface_temperature_of_row`),
+    which Aragog takes for the lid in flux mode with the mush base.
 
     Parameters
     ----------
     bc : object
-        Boundary parameters of the Aragog solver; ``lid_surface_temperature``,
-        ``lid_surface_flux_cap`` and ``lid_surface_flux_slope`` are set on it.
+        Boundary parameters of the Aragog solver; ``lid_surface_flux_cap`` and
+        ``lid_surface_flux_slope`` are set on it.
     hf_row : dict
         Current helpfile row after the atmosphere step.
     slope : float or None
         Slope ``F'`` of the atmosphere flux with the surface [W m-2 K-1] for the cap; it is
         set only with a cap.
     """
-    bc.lid_surface_temperature = _lid_surface_of_row(
+    T_held = _lid_surface_of_row(
         hf_row,
         'flux' if getattr(bc, 'outer_boundary_condition', None) == 4 else 'grey_body',
         getattr(bc, 'lid_mush_base', False),
     )
-    bc.lid_surface_flux_cap = (
-        lid_flux_cap(hf_row) if bc.lid_surface_temperature is not None else None
-    )
+    bc.lid_surface_flux_cap = lid_flux_cap(hf_row) if T_held is not None else None
     bc.lid_surface_flux_slope = slope if bc.lid_surface_flux_cap is not None else None
 
 
@@ -1110,6 +1144,9 @@ class AragogRunner:
             # typical magma-ocean cooling rates).
             atol=float(config.interior_energetics.aragog.atol_temperature_equivalent),
             rtol=float(config.interior_energetics.rtol),
+            # an accepted state outside the EOS tables raises; the retry ladder halves the step
+            # and the run stops with status 21 after the last attempt
+            strict_accepted_range=True,
         )
 
         # Surface boundary condition mode (matches SPIDER wrapper):
@@ -1165,6 +1202,7 @@ class AragogRunner:
             subgrid_lid=config.interior_energetics.aragog.lid_mush_base,
             lid_mush_base=config.interior_energetics.aragog.lid_mush_base,
             core_module_params=core_module_params,
+            surface_temperature=_surface_temperature_of_row(hf_row),
             **lid_kw,
         )
 
@@ -1813,6 +1851,11 @@ class AragogRunner:
                         solver.jax_lid_params() if getattr(solver, '_lid_on', False) else None
                     ),
                     core_module_ra_crit_cmb=getattr(solver, '_core_module_ra_crit_cmb', None),
+                    core_module_surface_temperature=(
+                        solver.cmb_shell_surface_temperature()
+                        if core_bc_mode == 'core_module'
+                        else None
+                    ),
                 )
                 return rhs_fn, jac_fn
 
@@ -2242,7 +2285,8 @@ class AragogRunner:
         hf_all: pd.DataFrame | None = None,
     ):
         """Update solver for next coupling step (entropy formulation); ``hf_all`` gives the
-        slope of the lid cap from the last 2 rows."""
+        slope of the lid cap and the open part: the secant of the last 2 rows, or a fallback
+        from earlier rows, cut at the grey slope."""
         solver = interior_o.aragog_solver
         solver.parameters.solver.start_time = hf_row['Time']
         solver.parameters.solver.end_time = hf_row['Time'] + dt
@@ -2295,12 +2339,39 @@ class AragogRunner:
         if S_field is not None:
             interior_o._last_entropy = S_field
 
-        # Update boundary conditions (F_atm from atmosphere module); the open part of a live
-        # lid takes lid_F_open, also checked against the solver, since a resume can turn it off
+        # Update boundary conditions (F_atm from atmosphere module, per total area); the lid is
+        # also checked against the solver, since a resume can turn it off
         bc = solver.parameters.boundary_conditions
         live = getattr(bc, 'subgrid_lid', False) and lid_acts(hf_row)
-        bc.outer_boundary_value = hf_row['lid_F_open'] if live else hf_row['F_atm']
-        _set_lid_surface(bc, hf_row, lid_flux_slope(hf_all, hf_row))
+        bc.outer_boundary_value = hf_row['F_atm']
+        bc.surface_temperature = _surface_temperature_of_row(hf_row)
+        # in flux mode with the mush base the open part of a live lid follows its node in the
+        # step, as a total-area term at the in-step lid weight
+        open_part = (
+            live and bc.outer_boundary_condition == 4 and getattr(bc, 'lid_mush_base', False)
+        )
+        slope, T_other = lid_flux_secant(hf_all, hf_row)
+        fallback = 0
+        if open_part and slope == 0.0:
+            # an unusable secant would leave the held lid a pure flux cap
+            slope, rows_back, fallback = lid_fallback_slope(hf_all, hf_row)
+            T_other = None
+            log.info(
+                'Lid slope: last secant unusable, %s %.4g W m-2 K-1 (%d row%s back)',
+                'grey tangent' if fallback == LID_SLOPE_GUARD_GREY else 'secant',
+                slope,
+                rows_back,
+                '' if rows_back == 1 else 's',
+            )
+        fields, code = lid_open_fields(hf_row, slope, T_other) if open_part else ({}, 0)
+        for name in OPEN_PART_FIELDS:  # None without a live lid
+            setattr(bc, name, fields.get(name))
+        _set_lid_surface(bc, hf_row, fields.get('open_surface_slope', slope))  # one cut slope
+        # a cut fallback keeps its source in its own code; the grey tangent is the cut itself
+        if fallback == LID_SLOPE_GUARD_FALLBACK and code == LID_SLOPE_GUARD_SIZE:
+            hf_row['lid_slope_guard'] = LID_SLOPE_GUARD_FALLBACK_CUT
+        else:
+            hf_row['lid_slope_guard'] = fallback or code
 
         # Update equilibrium temperature (tracks stellar luminosity evolution).
         # SPIDER receives fresh T_eqm at every call via -teqm (spider.py:748).
@@ -2532,10 +2603,12 @@ class AragogRunner:
         """Solve the call once more with the secant slope where the cap acted at its end.
 
         The cap acts at the end where the lid surface ends above the held one. The secant of the
-        atmosphere flux between the held and the end surface (``self._lid_flux_at``) replaces
-        the slope of the call, and the call runs again from its start; a secant equal to the
-        slope (:func:`lid_resolve_skip`) or no flux provider keeps the first solve. The count
-        and the wall time of the re-solves are kept on ``interior_o``.
+        atmosphere flux between the held and the end surface (``self._lid_flux_at``), cut by
+        ``lid_open_slope`` where the step has an open part, replaces the slope of the call for
+        the lid part and the open part, and the call runs again from its start; a secant of 0
+        (unusable), a cut secant equal to the slope of the call (:func:`lid_resolve_skip`) or no
+        flux provider keeps the first solve. The count and the wall time of the re-solves are
+        kept on ``interior_o``.
 
         Returns
         -------
@@ -2547,18 +2620,34 @@ class AragogRunner:
             return out
         solver = interior_o.aragog_solver
         bc = solver.parameters.boundary_conditions
-        T_held = getattr(bc, 'lid_surface_temperature', None)
         cap = getattr(bc, 'lid_surface_flux_cap', None)
+        T_held = getattr(bc, 'surface_temperature', None) if cap is not None else None
         T_end = float(getattr(out, 'lid_T_surface', float('nan')))
         if T_held is None or cap is None or not T_end > T_held + LID_CAP_DT_ACT:
             return out
         tangent = float(bc.lid_surface_flux_slope or 0.0)
         secant = lid_cap_secant(T_held, T_end, float(hf_row['F_atm']), float(flux_at(T_end)))
+        # an unusable secant keeps the first solve: a live lid never runs as a pure flux cap
+        if secant == 0.0:
+            log.info(
+                'Lid cap re-solve skipped: no usable secant from the held surface %.3f K to the '
+                'end %.3f K; the first solve with slope %.4g W/m2/K stands',
+                T_held,
+                T_end,
+                tangent,
+            )
+            return out
+        code = None
+        if getattr(bc, 'open_surface_slope', None) is not None:
+            # the open part and the cap take one slope: the secant with its guard cut
+            secant, code = lid_open_slope(hf_row, secant, T_end)
         if lid_resolve_skip(tangent, secant):
             return out
         t0 = time.perf_counter()
         _restore_call_start(solver, snap, interior_o)
         bc.lid_surface_flux_slope = secant
+        if code is not None:
+            bc.open_surface_slope, hf_row['lid_slope_guard'] = secant, code
         out2 = self._solve_with_retry(hf_row, interior_o, S0_entry)
         wall = time.perf_counter() - t0
         interior_o.lid_cap_resolves = getattr(interior_o, 'lid_cap_resolves', 0) + 1
@@ -2614,6 +2703,9 @@ class AragogRunner:
         ------
         RuntimeError
             When every attempt of the ladder failed.
+        AcceptedStateRangeError
+            When the last attempt still leaves the EOS tables at an accepted state; earlier
+            such attempts count as failures of the dt-halving branch.
 
         Notes
         -----
@@ -2636,6 +2728,8 @@ class AragogRunner:
         follow-up; the relaxation is measured-safe on this recovery path and the
         guard only fires on a stall.
         """
+        from aragog.solver.entropy_solver import AcceptedStateRangeError
+
         solver = self.aragog_solver
         max_attempts = 6
         # A CV_TOO_MUCH_WORK stall front-loads three non-dt attempts (raise
@@ -2719,7 +2813,42 @@ class AragogRunner:
             # and drives the exhaustion check below.
             for attempt in range(1, max_attempts_stiff + 1):
                 _t0 = time.perf_counter()
-                solver.solve()
+                try:
+                    solver.solve()
+                except AcceptedStateRangeError as exc:
+                    # An accepted state outside the EOS tables: never accept it; retry with
+                    # half the step, and on the last attempt pass the error up (status 21).
+                    if attempt >= max_attempts:
+                        log.error(
+                            'Aragog left the EOS tables at an accepted state on every attempt '
+                            '(%d); stopping. %s',
+                            attempt,
+                            str(exc)[:200],
+                        )
+                        raise
+                    other_seen += 1
+                    dt_new = min(
+                        dt_requested * (0.5**other_seen),
+                        float(solver.parameters.solver.end_time) - t_start,
+                    )
+                    log.warning(
+                        'Aragog attempt %d/%d left the EOS tables at an accepted state (%s). '
+                        'Retrying with dt=%.3e yr.',
+                        attempt,
+                        max_attempts,
+                        str(exc)[:200],
+                        dt_new,
+                    )
+                    # a shorter step at the base controls, not looser ones of an earlier attempt
+                    solver.parameters.solver.rtol = base_rtol
+                    if hasattr(solver, '_max_steps'):
+                        solver._max_steps = base_max_steps
+                    solver._atol_sf = 1.0
+                    solver.parameters.solver.start_time = t_start
+                    solver.parameters.solver.end_time = t_start + dt_new
+                    solver.reset()
+                    solver._S0, solver._last_compression_J = S0_entry.copy(), compression
+                    continue
                 _solve_wall = time.perf_counter() - _t0
                 out = solver.get_state()
                 if _diag_on:
@@ -3137,6 +3266,7 @@ class AragogRunner:
             'lid_T_surface': _lid_out(out, 'lid_T_surface'),
             'lid_T_base': _lid_out(out, 'lid_T_base'),
             'lid_T_node': float(out.T_basic[-1]),
+            'lid_weight_max': _lid_out(out, 'lid_weight_max'),
             # the lid booking exists only in flux mode; grey_body books the surface node
             'lid_F_diff': F_int - hf_row['F_atm'] if surface_bc_mode == 'flux' else 0.0,
             'Phi_global': out.Phi_global,

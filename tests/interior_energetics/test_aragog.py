@@ -598,7 +598,7 @@ def test_setup_solver_stops_with_a_missing_data_error(tmp_path, missing, message
     which start() turns into status 20."""
     from proteus.data import LOOKUP_WOLF_BOWER_2018_1TPA, dataset_dir
     from proteus.interior_energetics.aragog import AragogRunner
-    from proteus.utils.helper import MissingReferenceData
+    from proteus.utils.helper import MissingDataError
 
     config = _make_aragog_config(struct_module='spider')
     hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
@@ -613,7 +613,7 @@ def test_setup_solver_stops_with_a_missing_data_error(tmp_path, missing, message
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        pytest.raises(MissingReferenceData, match=message),
+        pytest.raises(MissingDataError, match=message),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path / 'out'))
 
@@ -886,6 +886,17 @@ def test_setup_solver_passes_the_interior_rtol_to_aragog(tmp_path, rtol):
     with patch('proteus.interior_energetics.aragog._SolverParameters') as sp:
         _run_setup_solver(tmp_path, config, lambda **rest: MagicMock())
     assert sp.call_args.kwargs['rtol'] == pytest.approx(1e-8 if rtol is None else rtol)
+
+
+@pytest.mark.unit
+def test_setup_solver_asks_aragog_to_raise_on_an_accepted_state_out_of_the_tables(tmp_path):
+    """A coupled run stops on an accepted state outside the EOS tables, with the rheology off
+    as with it on, instead of a failed call."""
+    config = _make_aragog_config(struct_module='spider')
+    with patch('proteus.interior_energetics.aragog._SolverParameters') as sp:
+        _run_setup_solver(tmp_path, config, lambda **rest: MagicMock())
+    assert sp.call_count == 1
+    assert sp.call_args.kwargs['strict_accepted_range'] is True
 
 
 @pytest.mark.unit
@@ -2289,6 +2300,8 @@ def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch, r
     )
     if ra_crit is not None:
         solver._core_module_ra_crit_cmb = ra_crit
+    surface = {'T': 1500.0}
+    solver.cmb_shell_surface_temperature = lambda: surface['T']
     installed = {}
     solver.set_jax_cvode_factory = lambda f: installed.update(factory=f)
     interior_o = SimpleNamespace(aragog_solver=solver, _spider_eos_dir='/nonexistent')
@@ -2305,8 +2318,10 @@ def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch, r
         AragogRunner._maybe_install_jax_cvode_factory(_jax_factory_config(), interior_o)
         # An impact replaces the budget after install; the factory must read it per call.
         solver._core_module_budget = 'refit-sentinel'
+        surface['T'] = 1601.5  # the surface of the next step
         installed['factory'](MagicMock(), 'core_module')
     kwargs = build.call_args.kwargs
+    assert kwargs['core_module_surface_temperature'] == surface['T']
     assert kwargs['core_bc_mode'] == 'core_module'
     assert kwargs['core_module_budget'] == 'refit-sentinel'
     assert kwargs['core_module_q_radio'] == pytest.approx(3.0e12)
@@ -4345,6 +4360,29 @@ def test_setup_solver_threads_core_module_params(tmp_path):
     assert params['stratification'] is False
     assert params['m_core'] == pytest.approx(1.93e24)
     assert params['p_cen'] == pytest.approx(3.6e11)
+    assert params['ra_crit_cmb'] == 'phase'  # the default law by phase reaches aragog as is
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(('value', 'sent'), [('eq16', None), (450.0, 450.0), (1800, 1800.0)])
+def test_the_critical_rayleigh_setting_reaches_aragog(value, sent):
+    """'eq16' is sent as None, which selects eq. 16 in aragog; a number is sent as a float."""
+    from types import SimpleNamespace
+
+    from proteus.config._interior import AragogCoreModule
+    from proteus.interior_energetics.aragog_core import core_module_params
+
+    config = SimpleNamespace(
+        interior_energetics=SimpleNamespace(
+            aragog=SimpleNamespace(core_module=AragogCoreModule(ra_crit_cmb=value))
+        ),
+        params=SimpleNamespace(resume=False),
+    )
+    params = core_module_params(
+        config, {'M_core': 1.93e24, 'P_center': 3.6e11}, SimpleNamespace(), '.'
+    )
+    assert params['ra_crit_cmb'] == sent
+    assert sent is None or isinstance(params['ra_crit_cmb'], float)
 
 
 @pytest.mark.unit
@@ -4484,6 +4522,35 @@ def test_setup_solver_passes_the_lid_onset_thickness_with_the_lid(tmp_path, lid)
         assert kwargs['lid_delta_on'] == pytest.approx(0.06, rel=1e-14)
     else:
         assert 'lid_delta_on' not in kwargs
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('T_surf', 'want'), [(1529.0, 1529.0), (0.0, None), (float('nan'), None)]
+)
+def test_setup_solver_passes_the_surface_temperature_of_the_row(tmp_path, T_surf, want):
+    """The boundary conditions of a new solver hold the row's surface temperature, the
+    surface of the shell contrast of the CMB law; a row without a positive finite one
+    passes None, so Aragog takes its top cell."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = _make_aragog_config(struct_module='zalmoxis')
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
+    hf_row.update(R_core=3.48e6, T_surf=T_surf)
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch(
+            'proteus.interior_energetics.aragog._BoundaryConditionsParameters'
+        ) as mock_bc_cls,
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
+
+    assert mock_bc_cls.call_count == 1
+    assert mock_bc_cls.call_args.kwargs['surface_temperature'] == want
 
 
 @pytest.mark.unit

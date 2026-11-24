@@ -32,7 +32,6 @@ from proteus.data import (
 from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
-    create_tmp_folder,
     format_subyear_time,
     mol_to_ele,
     multiple,
@@ -612,7 +611,7 @@ def init_agni_atmos(
             the newest in ``data/``; the prepared ``runtime.sf`` of the run is then not
             reused. Postprocessing a snapshot passes the spectrum that snapshot used.
         io_dir : str or None
-            Folder for AGNI's working files, instead of the output folder or a new
+            Folder for AGNI's working files, instead of the output folder or the run's
             temporary folder.
 
     Returns
@@ -642,10 +641,10 @@ def init_agni_atmos(
     # prepared runtime.sf pair here and so this is where the cache reads from.
     if io_dir is not None:
         os.makedirs(io_dir, exist_ok=True)
-    elif (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == 'DEBUG'):
+    elif config.atmos_clim.agni.verbosity >= 2:
         io_dir = dirs['output']
     else:
-        io_dir = create_tmp_folder()
+        io_dir = dirs['temp']
     log.info(f'Temporary-file working dir: {io_dir}')
 
     # Set when this run built a prepared spectral file that the cache does not
