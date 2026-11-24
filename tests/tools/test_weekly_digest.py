@@ -184,10 +184,11 @@ _BAD_VALUES = {
     'docs': [
         [],
         'https://x',
-        {'a/b': 3},
-        {'a/b': 'http://x'},
-        {'a/b': 'https://x/'},
-        {'a/b': 'https://x y'},
+        {'FormingWorlds/PROTEUS': 3},
+        {'FormingWorlds/PROTEUS': 'http://x'},
+        {'FormingWorlds/PROTEUS': 'https://x/'},
+        {'FormingWorlds/PROTEUS': 'https://x y'},
+        {'FormingWorlds/PROTEUS': 'https://x.y', 'FormingWorlds/JANUS': 'https://x.y/'},
         {'FormingWorlds/Nope': 'https://x.y'},
     ],
 }
@@ -198,6 +199,13 @@ def test_settings_reject_wrong_types_and_ranges(key, bad):
     """Every setting rejects a wrong type, a bool for an int, NaN, inf and an out-of-range value."""
     with pytest.raises(common.DigestError, match=key):
         common.validate_settings({**_VALID, key: bad})
+
+
+@pytest.mark.parametrize('site', ['https://x.y', 'https://x.y/a/b'])
+def test_settings_accept_a_docs_site_with_or_without_a_path(site):
+    """A docs site is https with a host, and a path that does not end in a slash."""
+    docs = {'FormingWorlds/PROTEUS': site}
+    assert common.validate_settings({**_VALID, 'docs': docs})['docs'] == docs
 
 
 @pytest.mark.parametrize('key', sorted(_BAD_VALUES))
@@ -3153,13 +3161,19 @@ _FILES = st.lists(
 )
 
 
-@settings(max_examples=200, deadline=None, derandomize=True)
-@given(_FILES, _FILES, st.sets(st.sampled_from('abcd')))
-def test_left_out_count_and_deleted_pages_over_any_file_list(first, second, served):
-    """Deleted pages are never asked or linked; the site count is the unique pages asked and not served."""
-    janus, asked = _janus(), []
+_ANSWERS = st.dictionaries(
+    st.sampled_from('abcd'), st.sampled_from([200, 404, 'TimeoutError: t'])
+)
+
+
+@settings(max_examples=300, deadline=None, derandomize=True)
+@given(_FILES, _FILES, _ANSWERS)
+def test_left_out_count_and_deleted_pages_over_any_file_list(first, second, answers):
+    """Each page is asked at most once and never when deleted; a page that answered 200 is linked
+    wherever it is changed; the site count is the unique changed pages that never answered 200."""
+    janus, asked, by_pr = _janus(), [], {94: first, 103: second}
     for node in janus['repository']['pullRequests']['nodes']:
-        files = {94: first, 103: second}.get(node['number'], [])
+        files = by_pr.get(node['number'], [])
         node['files'] = {
             'totalCount': len(files),
             'nodes': [{'path': f'docs/{n}.md', 'changeType': k} for n, k in files],
@@ -3167,29 +3181,56 @@ def test_left_out_count_and_deleted_pages_over_any_file_list(first, second, serv
 
     def status(url):
         asked.append(url[len('https://d.x/') : -len('.html')])
-        return 200 if asked[-1] in served else 404
+        return answers.get(asked[-1], 404)
 
-    old = collect.page_status
-    collect.page_status = status
-    try:
-        settings_ = {
-            **_VALID,
-            'repos': ['FormingWorlds/JANUS'],
-            'docs': {'FormingWorlds/JANUS': 'https://d.x'},
-        }
+    settings_ = {
+        **_VALID,
+        'repos': ['FormingWorlds/JANUS'],
+        'docs': {'FormingWorlds/JANUS': 'https://d.x'},
+    }
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(collect, 'page_status', status)
         out = collect.collect(_FakeGH([janus]), settings_, _LATER)
-    finally:
-        collect.page_status = old
     live = {n for n, k in first + second if k != 'DELETED'}
-    assert set(asked) == live
+    served = {n for n in asked if answers.get(n) == 200}
+    assert len(asked) == len(set(asked)) and set(asked) <= live
     assert out['docs_left_out'] == (
         {'https://d.x': len(live - served)} if live - served else {}
     )
     for p in out['prs']:
-        files = {94: first, 103: second}.get(p['number'], [])
+        files = by_pr.get(p['number'], [])
         want = (
             [n for n, k in files if k != 'DELETED' and n in served]
             if p['status'] == 'merged'
             else []
         )
         assert [d['path'] for d in p['docs']] == want
+
+
+def test_a_served_page_stays_served_after_a_network_error_on_its_site(monkeypatch):
+    """JANUS#94 links x, then y times out; JANUS#103 still links x from its answer, and only y counts."""
+    asked = []
+    monkeypatch.setattr(
+        collect,
+        'page_status',
+        lambda url: asked.append(url) or (200 if '/x.' in url else 'TimeoutError: t'),
+    )
+    janus = _janus()
+    for node in janus['repository']['pullRequests']['nodes']:
+        names = {94: 'xy', 103: 'x'}.get(node['number'], '')
+        node['files'] = {
+            'totalCount': len(names),
+            'nodes': [{'path': f'docs/{n}.md', 'changeType': 'MODIFIED'} for n in names],
+        }
+    settings_ = {
+        **_VALID,
+        'repos': ['FormingWorlds/JANUS'],
+        'docs': {'FormingWorlds/JANUS': 'https://d.x'},
+    }
+    out = collect.collect(_FakeGH([janus]), settings_, _LATER)
+    docs = {
+        p['ref']: [d['path'] for d in p['docs']] for p in out['prs'] if p['status'] == 'merged'
+    }
+    assert docs == {'JANUS#94': ['x'], 'JANUS#103': ['x']}
+    assert asked == ['https://d.x/x.html', 'https://d.x/y.html']
+    assert out['docs_left_out'] == {'https://d.x': 1}
