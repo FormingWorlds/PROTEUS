@@ -2645,3 +2645,129 @@ def test_publish_allows_the_link_to_its_own_run(tmp_path, monkeypatch):
     except common.DigestError as err:
         pytest.fail(f'the run link was refused: {err}')
     assert rc == 0 and posted == ['PROTEUS weekly digest, 24 November 2026']
+
+
+# links and summary
+
+
+def _nov10():
+    blob = json.loads((_DATA / 'window_nov10.json').read_text())
+    return blob['collected'], blob['draft']
+
+
+def test_erebus_is_not_in_the_digest():
+    """Erebus.jl is neither collected nor tracked."""
+    assert not any('Erebus' in r for r in _VALID['repos'] + list(_VALID['tracked']))
+
+
+@pytest.mark.parametrize('live', [True, False])
+def test_every_author_is_a_profile_link_and_nobody_is_mentioned(live):
+    """Each entry links every person who wrote a cited item to the GitHub profile; bots stay code spans."""
+    data, dft = _nov10()
+    data['prs'].append(_pr('PROTEUS#999', author='dependabot', kind='Bot'))
+    dft['entries'].append(
+        _entry(section='install', facts=[], prs=['PROTEUS#999'], title='Bot', logins=[])
+    )
+    body, _ = render.render_body(data, dft, live, 'https://run', _VALID['bots'])
+    items = {i['ref']: i for i in data['prs'] + data['releases']}
+    for entry in dft['entries']:
+        cited = [items[r] for r in entry['prs'] + entry['releases']]
+        tail = next(line for line in body.splitlines() if links_of(cited[0]) in line)
+        for item in cited:
+            login = item['author']
+            want = (
+                f'`{login}`'
+                if common.is_bot(login, item['author_kind'], _VALID['bots'])
+                else f'[{login}](https://github.com/{login})'
+            )
+            assert want in tail, (entry['title'], want)
+    assert not re.search(r'@\w', re.sub(r'<!--.*?-->', '', body)), 'a mention is left'
+    urls = render.allowed_urls(data, 'https://run', _VALID['bots'])
+    assert render.scan_body(body, urls, []) == []
+    assert 'https://github.com/dependabot' not in body, 'a bot got a profile link'
+    assert render.scan_body(body + '\n[x](https://github.com/mallory)\n', urls, []) != []
+
+
+def links_of(item):
+    """The markdown link of one cited item, as render writes it."""
+    return render.links([item])
+
+
+_PAGE = 'https://proteus-framework.org/PROTEUS/Tutorials/core_table.html'
+
+
+def test_collect_keeps_only_served_docs_pages():
+    """Markdown pages under docs/ map to the served .html URL; only a 200 answer keeps a page."""
+    files = ['docs/Tutorials/core_table.md', 'docs/gone.md', 'docs/assets/x.svg', 'README.md']
+    seen = []
+
+    def status(url):
+        seen.append(url)
+        return 200 if url == _PAGE else 404
+
+    pages = collect.docs_pages(files, 'https://proteus-framework.org/PROTEUS', status)
+    assert pages == [{'path': 'Tutorials/core_table', 'url': _PAGE}]
+    assert seen == [_PAGE, 'https://proteus-framework.org/PROTEUS/gone.html']
+    assert collect.docs_pages(files, None, status) == []
+    assert set(_VALID['docs']) <= set(_VALID['repos'])
+    assert _VALID['docs']['FormingWorlds/PROTEUS'] == 'https://proteus-framework.org/PROTEUS'
+
+
+def test_results_and_capabilities_link_their_served_docs_pages():
+    """Results rows and capability entries link the docs pages of their PRs, at most 5; other sections none."""
+    data, dft = _nov10()
+    by_section = {}
+    for entry in dft['entries']:
+        by_section.setdefault(entry['section'], entry)
+    assert {'results', 'capabilities'} <= set(by_section), sorted(by_section)
+    pages = [
+        {
+            'path': f'How-to/p{i}',
+            'url': f'https://proteus-framework.org/PROTEUS/How-to/p{i}.html',
+        }
+        for i in range(7)
+    ]
+    for p in data['prs']:
+        p['docs'] = pages if p['status'] == 'merged' else []
+    body, _ = render.render_body(data, dft, False, 'https://run', _VALID['bots'])
+    link = f'[How-to/p0]({pages[0]["url"]})'
+    row = next(
+        line
+        for line in body.splitlines()
+        if line.startswith(f'| {render.plain(by_section["results"]["title"])} |')
+    )
+    assert f'docs: {link}' in row and 'and 2 more pages' in row and 'p5' not in row
+    cap = body.split(f'### {render.plain(by_section["capabilities"]["title"])}')[1].split(
+        '\n###'
+    )[0]
+    assert f'Docs: {link}' in cap
+    for key in set(by_section) - {'results', 'capabilities'}:
+        part = body.split(f'### {render.plain(by_section[key]["title"])}')[1].split('\n###')[0]
+        assert 'ocs:' not in part, key
+    urls = render.allowed_urls(data, 'https://run', _VALID['bots'])
+    assert render.scan_body(body, urls, []) == []
+    bad = body.replace(pages[0]['url'], 'https://proteus-framework.org/PROTEUS/x.html', 1)
+    assert render.scan_body(bad, urls, []) != []
+    assert check.check(data, dft) == []
+    text = f'See {pages[0]["url"]} for details.'
+    assert check.check(data, _draft(_entry(text=text))) != []
+
+
+@pytest.mark.parametrize('live', [True, False])
+def test_window_and_repo_summary_open_the_post(live):
+    """The window, counts, linked repositories and run link come first; the marker stays last."""
+    data, dft = _nov10()
+    body, state = render.render_body(data, dft, live, 'https://run', _VALID['bots'], '7')
+    blocks = body.split('\n\n')
+    first = blocks[1] if blocks[0].startswith('**Dry run') else blocks[0]
+    assert (
+        first.startswith('Collected between ')
+        and first.count('[Workflow run](https://run)') == 1
+    )
+    for repo in data['repos']:
+        assert f'[{repo.split("/")[1]}](https://github.com/{repo})' in first, repo
+    assert '\n---\n' not in body and body.count('Collected between') == 1
+    assert body.rstrip().splitlines()[-1].startswith('<!-- weekly-digest-state ')
+    assert collect.parse_state(body)['until'] == state['until']
+    urls = render.allowed_urls(data, 'https://run', _VALID['bots'])
+    assert render.scan_body(body, urls, []) == []
