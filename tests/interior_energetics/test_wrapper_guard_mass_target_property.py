@@ -40,8 +40,8 @@ pytestmark = [
 )
 @example(target_ratio=float(_target_ratio_at_anchor()), radius_step=1.0e-3)
 @example(target_ratio=float(np.nextafter(_target_ratio_at_anchor(), 2.0)), radius_step=1.0e-3)
-@example(target_ratio=1.05, radius_step=0.1049)
-@example(target_ratio=1.05, radius_step=0.1051)
+@example(target_ratio=1.05, radius_step=0.1009)
+@example(target_ratio=1.05, radius_step=0.1011)
 @given(target_ratio=st.floats(0.9, 1.2), radius_step=st.floats(1.0e-6, 0.2))
 def test_up_step_kept_if_and_only_if_the_retained_mass_misses_a_larger_target(
     caplog, target_ratio, radius_step
