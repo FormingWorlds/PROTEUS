@@ -22,7 +22,6 @@ repos = [
     "FormingWorlds/atmodeller",
     "FormingWorlds/Zalmoxis",
     "FormingWorlds/Obliqua",
-    "FormingWorlds/Erebus.jl",
     "FormingWorlds/Morrigan",
     "nichollsh/AGNI",
 ]
@@ -32,5 +31,4 @@ repos = [
 [tracked]
 "FormingWorlds/PROTEUS" = ["docs/Reference/config/config_schema.json", "docs/Reference/output_schema.json"]
 "FormingWorlds/Zalmoxis" = ["input/default.toml"]
-"FormingWorlds/Erebus.jl" = ["configs/default.toml"]
 "nichollsh/AGNI" = ["res/config/default.toml"]
