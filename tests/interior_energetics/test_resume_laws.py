@@ -853,3 +853,103 @@ def test_a_resume_keeps_or_reports_the_recorded_mixing_length(
     else:
         with pytest.raises(ResumeSeparationLawError, match='mixing_length'):
             check_resume_separation_laws(config, path, out)
+
+
+def _core_config(folder, ra=None, core_bc='core_module', allow=False, name='user.toml'):
+    """A config file from input/minimal.toml with the given core_bc and, when given,
+    core_module.ra_crit_cmb; returns (Config, path)."""
+    text = MINIMAL.read_text() + '\n[interior_energetics.aragog]\n'
+    text += f"    core_bc = '{core_bc}'\n"
+    if allow:
+        text += '    allow_resume_law_change = true\n'
+    if ra is not None:
+        text += f'\n[interior_energetics.aragog.core_module]\n    ra_crit_cmb = {tomlkit.item(ra).as_string()}\n'
+    path = Path(folder) / name
+    path.write_text(text)
+    return read_config_object(path), path
+
+
+def _core_run(folder, ra=None, core_bc='core_module', drop=False):
+    """A run directory recording core_bc and ra_crit_cmb; ``drop`` removes the setting."""
+    out = Path(folder) / 'run'
+    out.mkdir()
+    config, _ = _core_config(out, ra=ra, core_bc=core_bc)
+    config.write(out / 'init_coupler.toml')
+    if drop:
+        doc = tomlkit.parse((out / 'init_coupler.toml').read_text())
+        del doc['interior_energetics']['aragog']['core_module']['ra_crit_cmb']
+        (out / 'init_coupler.toml').write_text(tomlkit.dumps(doc))
+    return out
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('drop', [False, True], ids=['recorded 450', 'not recorded'])
+def test_a_run_written_with_450_refuses_a_resume_under_the_default_law(tmp_path, drop):
+    """A core_module run written with Ra_crit 450, or before the setting was recorded (when
+    450 was the only law), keeps it at a resume: the default law would change the CMB flux."""
+    out = _core_run(tmp_path, ra=450.0, drop=drop)
+    config, path = _core_config(tmp_path)
+    with pytest.raises(ResumeSeparationLawError, match='ra_crit_cmb') as err:
+        check_resume_separation_laws(config, path, out)
+    assert 'written with 450.0' in str(err.value)
+    assert 'the default' in str(err.value)
+
+
+def test_a_run_written_with_450_resumes_with_450(tmp_path, caplog):
+    """Setting the recorded number in the resume config keeps the law and resumes quietly."""
+    out = _core_run(tmp_path, ra=450.0, drop=True)
+    config, path = _core_config(tmp_path, ra=450.0)
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        assert check_resume_separation_laws(config, path, out) == []
+    assert not any('ra_crit_cmb' in r.getMessage() for r in caplog.records)
+
+
+def test_an_eq16_run_refuses_a_fixed_number_and_keeps_eq16(tmp_path):
+    """An eq. 16 run refuses a fixed number and the default law by phase at a resume, and
+    resumes under eq. 16."""
+    out = _core_run(tmp_path, ra='eq16')
+    for name, ra in (('fixed.toml', 450.0), ('default.toml', None)):
+        config, path = _core_config(tmp_path, ra=ra, name=name)
+        with pytest.raises(ResumeSeparationLawError, match="written with 'eq16'"):
+            check_resume_separation_laws(config, path, out)
+    config, path = _core_config(tmp_path, ra='eq16', name='same.toml')
+    assert check_resume_separation_laws(config, path, out) == []
+
+
+def test_a_run_by_phase_resumes_by_phase_and_refuses_another_law(tmp_path):
+    """A run under the law by phase (the default) keeps it at a resume."""
+    out = _core_run(tmp_path)
+    config, path = _core_config(tmp_path, name='same.toml')
+    assert check_resume_separation_laws(config, path, out) == []
+    config, path = _core_config(tmp_path, ra='eq16')
+    with pytest.raises(ResumeSeparationLawError, match="written with 'phase'"):
+        check_resume_separation_laws(config, path, out)
+
+
+def test_the_allow_switch_lets_the_critical_rayleigh_number_change(tmp_path, caplog):
+    """With allow_resume_law_change the resume switches to the default law by phase and warns
+    once."""
+    out = _core_run(tmp_path, ra=450.0)
+    config, path = _core_config(tmp_path, allow=True)
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        switches = check_resume_separation_laws(config, path, out)
+    assert switches == [('core_module.ra_crit_cmb', 450.0, 'phase')]
+    assert sum('ra_crit_cmb' in r.getMessage() for r in caplog.records) == 1
+
+
+@pytest.mark.parametrize(
+    ('stored_bc', 'new_bc'),
+    [('energy_balance', 'core_module'), ('core_module', 'energy_balance')],
+)
+def test_the_critical_rayleigh_number_is_a_law_of_core_module_runs_only(
+    tmp_path, stored_bc, new_bc
+):
+    """A record of another core boundary holds no Ra_crit, and a resume without core_module
+    does not use it, so neither compares the setting."""
+    out = _core_run(tmp_path, ra=450.0, core_bc=stored_bc)
+    config, path = _core_config(tmp_path, core_bc=new_bc)
+    switches = check_resume_separation_laws(config, path, out)
+    assert all(field != 'core_module.ra_crit_cmb' for field, _, _ in switches)
+    # the setting (the default law by phase) differs from the record, so a core_module pair
+    # would compare it
+    assert config.interior_energetics.aragog.core_module.ra_crit_cmb == 'phase'

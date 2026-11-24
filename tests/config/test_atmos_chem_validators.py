@@ -101,6 +101,23 @@ def test_atmos_chem_offline_mode_requires_a_module():
 
 
 @pytest.mark.unit
+def test_atmos_chem_photo_off_refused_only_for_the_vulcan_sncho_network():
+    """VULCAN has no SNCHO network without photochemistry, so that combination is refused
+    by name; without photochemistry CHO and NCHO are accepted, and so is SNCHO when the
+    module is not VULCAN, as the network then goes unused."""
+    with pytest.raises(ValueError, match="photo_on = false is not available with .*'SNCHO'"):
+        AtmosChem(module='vulcan', photo_on=False, vulcan=Vulcan(network='SNCHO'))
+    for network in ('CHO', 'NCHO'):
+        chem = AtmosChem(module='vulcan', photo_on=False, vulcan=Vulcan(network=network))
+        assert chem.photo_on is False
+    assert (
+        AtmosChem(module='dummy', photo_on=False, vulcan=Vulcan(network='SNCHO')).photo_on
+        is False
+    )
+    assert AtmosChem(module='vulcan', photo_on=True, vulcan=Vulcan(network='SNCHO')).photo_on
+
+
+@pytest.mark.unit
 def test_atmos_chem_times_accepts_end_all_and_a_list_of_years():
     """'end' and 'all' are kept as strings; a list of times [yr] is kept in
     order and converted to floats, including t = 0 and an integer entry."""

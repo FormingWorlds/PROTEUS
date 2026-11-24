@@ -1,0 +1,8 @@
+{
+"file": "state_eb_102yr.npz",
+"content": "inputs of the first structure re-solve (102 yr) of a coupled run: row scalars (JSON string 'row'), Aragog mantle arrays 'r' [m] and 'T' [K] ascending in r, the core temperature table 'table_P' [Pa] and 'table_T' [K] that PROTEUS built for that solve, and num_spider_nodes",
+"run": {"config":"tests/integration/zalmoxis_aragog_calliope.toml","edits":{"planet.temperature_mode":"liquidus_super","interior_energetics.aragog.core_bc":"energy_balance","interior_struct.zalmoxis.update_interval":100.0,"interior_struct.zalmoxis.update_min_interval":0.0,"params.dt.initial":50.0,"params.dt.minimum":5.0,"params.dt.maximum":50.0}},
+"capture": "zalmoxis_solver wrapped; at the first call with a core table and Time > 0 the inputs were saved and the run stopped",
+"versions": {"proteus":"55c481e1f163da34a98891aa36548259d57804cc","fwl-zalmoxis":"26.11.22","fwl-aragog":"26.11.17","platform":"macOS arm64"},
+"date": "2026-11-22"
+}

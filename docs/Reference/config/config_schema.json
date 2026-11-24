@@ -4579,7 +4579,7 @@
           "value": 0
         }
       ],
-      "description": "Minimum time between structure updates [yr]; prevents thrashing.",
+      "description": "Minimum time between structure updates [yr]; prevents thrashing. Every trigger waits for it, the recovery of `update_stale_ceiling` included. Only mesh convergence skips it: the extra re-solves, spaced by `mesh_convergence_interval`, that follow an update whose mesh shift was limited to `mesh_max_shift`.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 4,
@@ -4675,7 +4675,7 @@
           "value": 0
         }
       ],
-      "description": "Time since the last successful re-solve after which a trigger refires [yr]; 0 disables.",
+      "description": "Recovery after a failed re-solve [yr]: if no other trigger fires, a new re-solve starts once this time has passed since the last attempt. The other triggers can start one sooner, after `update_min_interval`. On resume the resumed time counts as the last attempt. Has an effect only if smaller than `update_interval`, and only while the last re-solve has failed; 0 disables.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 5,
@@ -5711,7 +5711,7 @@
           "value": 0
         }
       ],
-      "description": "Core thermal expansion coefficient [K-1].",
+      "description": "Core thermal expansion coefficient [K-1]. Without a running core module (any other core_bc, or SPIDER) also the expansion coefficient of the Gaussian core fitted to the Zalmoxis structure, whose adiabat sets the core temperature of the next structure solve.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5732,7 +5732,7 @@
           "value": 0
         }
       ],
-      "description": "Core specific heat capacity [J kg-1 K-1].",
+      "description": "Core specific heat capacity [J kg-1 K-1]. Used for that Gaussian core in the same way.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6078,21 +6078,12 @@
       "path": "interior_energetics.aragog.core_module.ra_crit_cmb",
       "toml_section": "interior_energetics.aragog.core_module",
       "class": "AragogCoreModule",
-      "type": "float",
+      "type": "float or str",
       "accepts_none": false,
-      "default": "450.0",
+      "default": "\"phase\"",
       "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        },
-        {
-          "op": "<",
-          "value": Infinity
-        }
-      ],
-      "description": "Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast; the default is the theoretical value of Thiriet et al. (2019)[^cite-thiriet2019], Table 2.",
+      "bounds": null,
+      "description": "Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast. 'phase' (the default) takes 450 while the bottom cell is liquid and eq. 16 while it is solid (the switch of Miyazaki & Korenaga (2019b)[^cite-miyazaki2019b] at the critical melt fraction), blended in the logarithm with the weight (1 + tanh((phi - rfront_loc)/w_s))/2 at the bottom-cell melt fraction phi, w_s = (rfront_wid/2)/atanh(0.9), so the weight is 0.05 and 0.95 at the edges of the band [rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2], which must lie inside [0, 1]. 'eq16' takes the lower-layer law of Thiriet et al. (2019)[^cite-thiriet2019], eq. 16, from the internal Rayleigh number of the mantle; a positive, finite number fixes it, for example 450, their Table 2 value for the upper boundary layer.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11259,7 +11250,7 @@
       "default": "true",
       "choices": null,
       "bounds": null,
-      "description": "Use photochemistry.",
+      "description": "Use photochemistry. Required with the VULCAN network SNCHO, which VULCAN has only with photochemistry.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12900,6 +12891,18 @@
         "module"
       ],
       "doc": "Refuse coupled chemistry, and automatic chemistry without a module."
+    },
+    {
+      "validator": "valid_photo_on",
+      "module": "_atmos_chem.py",
+      "attached_to": [
+        "atmos_chem.photo_on"
+      ],
+      "touches": [
+        "module",
+        "vulcan.network"
+      ],
+      "doc": "Refuse VULCAN's SNCHO network without photochemistry, which VULCAN does not have."
     },
     {
       "validator": "valid_aerosols_enabled",

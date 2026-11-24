@@ -9,6 +9,7 @@ import netCDF4 as nc
 import numpy as np
 from aragog.solver.entropy_solver import EXTRA_STATE_SLOTS
 
+from proteus.config._interior import RA_CRIT_EQ16
 from proteus.utils.constants import secs_per_year
 from proteus.utils.helper import snapshot_path_for_time
 
@@ -126,6 +127,8 @@ def core_module_params(config, hf_row: dict, interior_o, outdir: str) -> dict:
     params = attrs.asdict(config.interior_energetics.aragog.core_module)
     for key in _DIAGNOSTIC_ONLY_KEYS:
         params.pop(key)
+    if params['ra_crit_cmb'] == RA_CRIT_EQ16:
+        params['ra_crit_cmb'] = None  # aragog's selector of eq. 16
 
     if getattr(config.params, 'resume', False) is True and 'Time' in hf_row:
         snap = _snapshot_frozen_profile(outdir, hf_row['Time'])

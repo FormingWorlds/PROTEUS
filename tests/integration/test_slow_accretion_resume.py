@@ -44,8 +44,6 @@ See also:
 
 from __future__ import annotations
 
-import shutil
-
 import numpy as np
 import pytest
 from helpers import PROTEUS_ROOT
@@ -99,28 +97,11 @@ LOOKUP_NP = 150
 LOOKUP_NS = 60
 
 
-# Scratch directories created by Proteus construction, cleared after the
-# test. ``set_directories`` allocates one per runner and nothing in the
-# framework removes it.
-_RUNNER_TEMP_DIRS: list[str] = []
-
-
-@pytest.fixture(autouse=True)
-def _remove_runner_temp_dirs():
-    """Delete the scratch directories this file's runners allocate."""
-    _RUNNER_TEMP_DIRS.clear()
-    yield
-    for path in _RUNNER_TEMP_DIRS:
-        shutil.rmtree(path, ignore_errors=True)
-    _RUNNER_TEMP_DIRS.clear()
-
-
 def _config_with_output_path(output_dir):
     """Write a copy of the dummy config that already names its output path.
 
     Building the runner from a config that carries the run directory avoids a
-    second ``init_directories`` call, and with it a second scratch directory
-    per runner.
+    second ``init_directories`` call.
     """
     text = CONFIG.read_text()
     patched = text.replace('path = "auto"', f'path = "{output_dir}"', 1)
@@ -146,7 +127,6 @@ def _make_runner(output_dir, stop_time):
         Configured runner; the caller starts it.
     """
     runner = Proteus(config_path=_config_with_output_path(output_dir))
-    _RUNNER_TEMP_DIRS.append(runner.directories['temp'])
 
     runner.config.interior_energetics.module = 'aragog'
     runner.config.interior_energetics.rtol = default_rtol('aragog')

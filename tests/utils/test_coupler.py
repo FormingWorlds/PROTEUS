@@ -4214,8 +4214,8 @@ def test_set_directories_errors_without_fwl_data(monkeypatch):
 
 
 @pytest.mark.unit
-def test_set_directories_auto_path_and_debug_temp(monkeypatch):
-    """Cover set_directories auto-output branch and DEBUG temp-dir behavior."""
+def test_set_directories_auto_path(monkeypatch):
+    """An 'auto' output path resolves to a timestamped run name."""
     cfg = types.SimpleNamespace(
         params=types.SimpleNamespace(out=types.SimpleNamespace(path='auto', logging='DEBUG')),
         atmos_clim=types.SimpleNamespace(module='dummy'),
@@ -4228,7 +4228,7 @@ def test_set_directories_auto_path_and_debug_temp(monkeypatch):
 
     assert cfg.params.out.path.startswith('run_')
     assert cfg.params.out.path.endswith('_beef')
-    assert dirs['temp'] == dirs['output']
+    assert dirs['output'].endswith(f'/output/{cfg.params.out.path}/')
     assert dirs['fwl'].endswith('/tmp/fwl_data/')
 
 
@@ -4242,7 +4242,6 @@ def test_set_directories_requires_rad_dir_for_agni(monkeypatch):
     monkeypatch.setattr('proteus.utils.coupler.get_proteus_dir', lambda: '/tmp/proteus')
     monkeypatch.setenv('FWL_DATA', '/tmp/fwl_data')
     monkeypatch.delenv('RAD_DIR', raising=False)
-    monkeypatch.setattr('proteus.utils.coupler.create_tmp_folder', lambda: '/tmp/tmpwork')
 
     with patch('proteus.utils.coupler.UpdateStatusfile') as mock_update:
         with pytest.raises(EnvironmentError, match='RAD_DIR'):
@@ -4251,8 +4250,13 @@ def test_set_directories_requires_rad_dir_for_agni(monkeypatch):
 
 
 @pytest.mark.unit
-def test_set_directories_sets_rad_and_temp_for_non_debug(monkeypatch):
-    """Cover set_directories success path with AGNI and non-DEBUG temp folder."""
+def test_set_directories_sets_rad_and_creates_no_temp_folder(monkeypatch, system_tmp):
+    """Resolving directories for AGNI sets RAD_DIR and allocates no temporary folder.
+
+    The temporary folder belongs to a run (`Proteus.start`), so a runner that is
+    only constructed, or whose config is refused, leaves nothing in TMPDIR. A
+    script that calls a module outside a run gets the output folder as 'temp'.
+    """
     cfg = types.SimpleNamespace(
         params=types.SimpleNamespace(out=types.SimpleNamespace(path='run3', logging='INFO')),
         atmos_clim=types.SimpleNamespace(module='agni'),
@@ -4260,12 +4264,12 @@ def test_set_directories_sets_rad_and_temp_for_non_debug(monkeypatch):
     monkeypatch.setattr('proteus.utils.coupler.get_proteus_dir', lambda: '/tmp/proteus')
     monkeypatch.setenv('FWL_DATA', '/tmp/fwl_data')
     monkeypatch.setenv('RAD_DIR', '/tmp/rad_dir')
-    monkeypatch.setattr('proteus.utils.coupler.create_tmp_folder', lambda: '/tmp/tmpwork')
 
     dirs = set_directories(cfg)
 
     assert dirs['rad'].endswith('/tmp/rad_dir/')
-    assert dirs['temp'].endswith('/tmp/tmpwork/')
+    assert dirs['temp'] == dirs['output']
+    assert os.listdir(system_tmp) == []
     assert dirs['output'].endswith('/tmp/proteus/output/run3/')
 
 
@@ -5179,6 +5183,26 @@ def test_a_helpfile_without_m_core_solve_resumes_with_zero(tmp_path):
 
 
 @pytest.mark.unit
+def test_m_dissolved_target_survives_a_resume_and_an_older_helpfile_reads_zero(tmp_path):
+    """M_dissolved_target is read back from the helpfile, so a resumed wet run keeps the
+    dissolved mass of its last solve. A helpfile written before the column reads it as zero,
+    which restore_dissolved_target then rebuilds for a wet mantle."""
+    from proteus.utils.coupler import GetHelpfileKeys, ReadHelpfileFromCSV
+
+    row = ZeroHelpfileRow()
+    row['M_dissolved_target'] = 2.55e21  # kg
+    pd.DataFrame([row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert loaded['M_dissolved_target'].iloc[-1] == pytest.approx(2.55e21, rel=1e-12)
+
+    del row['M_dissolved_target']
+    pd.DataFrame([row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert loaded['M_dissolved_target'].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+    assert set(loaded.columns) == set(GetHelpfileKeys())
+
+
+@pytest.mark.unit
 def test_a_helpfile_without_the_skin_conductivity_resumes_with_zero(tmp_path):
     """boundary_layer_conductivity is zero-filled for a helpfile that predates it, so an
     older run resumes; boundary_layer_thickness is kept, and the skin step writes both
@@ -5218,6 +5242,57 @@ def test_a_helpfile_without_f_remelt_resumes_with_no_remelt_recorded(tmp_path):
     pd.DataFrame([row, row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
     loaded = ReadHelpfileFromCSV(str(tmp_path))
     assert loaded['f_remelt'].tolist() == [0.0, 0.0]
+
+
+@pytest.mark.unit
+def test_the_core_table_flags_resume_as_zero_or_as_stored():
+    """Hypothesis over helpfiles with or without struct_core_T_used and struct_core_T_excess:
+    an absent column resumes as 0.0 on every row (no core temperature table), a present column
+    keeps its stored values bit for bit."""
+    pytest.importorskip('hypothesis')
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    from proteus.utils.coupler import ReadHelpfileFromCSV
+
+    keys = ('struct_core_T_used', 'struct_core_T_excess')
+    values = {
+        'struct_core_T_used': st.sampled_from([0.0, 1.0]),
+        'struct_core_T_excess': st.floats(0.0, 0.1, allow_nan=False),
+    }
+
+    @settings(max_examples=40, deadline=None)
+    @given(
+        present=st.sets(st.sampled_from(keys)),
+        rows=st.integers(1, 4).flatmap(
+            lambda n: st.lists(st.fixed_dictionaries(values), min_size=n, max_size=n)
+        ),
+    )
+    def check(present, rows):
+        table = []
+        for stored in rows:
+            row = ZeroHelpfileRow()
+            for key in keys:
+                if key in present:
+                    row[key] = stored[key]
+                else:
+                    del row[key]
+            table.append(row)
+        with tempfile.TemporaryDirectory() as tmp:
+            pd.DataFrame(table).to_csv(
+                os.path.join(tmp, 'runtime_helpfile.csv'), sep='\t', index=False
+            )
+            try:
+                loaded = ReadHelpfileFromCSV(tmp)
+            except Exception as exc:
+                pytest.fail(
+                    f'a helpfile with columns {sorted(present)} did not resume: {exc!r}'
+                )
+        for key in keys:
+            want = [r[key] for r in rows] if key in present else [0.0] * len(rows)
+            assert loaded[key].tolist() == want, key
+
+    check()
 
 
 @pytest.mark.unit

@@ -294,27 +294,29 @@ def assert_M_atm_le_M_planet(hf_row: pd.Series, rel_tol: float = DEFAULT_REL_TOL
     )
 
 
-def assert_M_planet_matches_M_int_plus_M_ele(hf_row: pd.Series, rel_tol: float = 1e-3) -> None:
-    """M_planet ≈ M_int + M_ele (whole-planet element + interior closure).
+def assert_M_planet_matches_its_parts(hf_row: pd.Series, rel_tol: float = 1e-3) -> None:
+    """M_planet ≈ M_int - M_dissolved_target + M_ele (whole-planet closure).
 
     The structure module computes M_int. Element bookkeeping computes M_ele.
-    They must agree on M_planet. A 0.1% tolerance admits the small
-    bookkeeping noise from atmosphere not being part of M_int (since M_int
-    is the structure mass below the surface). Tighten as PROTEUS gets more
-    consistent here.
+    With a wet mantle M_int also holds the dissolved inventory of the last
+    structure solve, M_dissolved_target, which M_ele counts too, so it is taken
+    off once. A 0.1% tolerance admits the small bookkeeping noise from
+    atmosphere not being part of M_int (since M_int is the structure mass below
+    the surface). Tighten as PROTEUS gets more consistent here.
     """
     M_int = float(hf_row.get('M_int', 0.0))
     M_ele = float(hf_row.get('M_ele', 0.0))
+    M_dissolved = float(hf_row.get('M_dissolved_target', 0.0))
     M_planet = float(hf_row.get('M_planet', 0.0))
     if M_planet <= 0.0:
         return
-    expected = M_int + M_ele
+    expected = M_int - M_dissolved + M_ele
     rel = abs(expected - M_planet) / M_planet
     assert rel < rel_tol, (
-        f'M_planet={M_planet:.3e} kg does not match M_int + M_ele = '
+        f'M_planet={M_planet:.3e} kg does not match M_int - M_dissolved_target + M_ele = '
         f'{expected:.3e} kg (rel diff {rel * 100:.4f}%, tol {rel_tol * 100:.4f}%). '
         f'Either the structure module and element bookkeeping disagree on '
-        f'where mass lives, or M_atm has been double-counted.'
+        f'where mass lives, or a reservoir has been double-counted.'
     )
 
 
@@ -382,5 +384,5 @@ def assert_smoke_conservation_invariants(hf_all: pd.DataFrame) -> None:
     assert_atmosphere_element_sum_matches_M_atm(final_row)
     assert_element_sum_matches_species_sum(final_row)
     assert_M_atm_le_M_planet(final_row)
-    assert_M_planet_matches_M_int_plus_M_ele(final_row)
+    assert_M_planet_matches_its_parts(final_row)
     assert_escape_within_atmospheric_budget(final_row, dt_s=dt_s)

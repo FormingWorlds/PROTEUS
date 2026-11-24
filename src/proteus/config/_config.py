@@ -602,8 +602,9 @@ def lid_requires_the_skin_atmosphere(instance, attribute, value):
     if getattr(getattr(instance, 'planet', None), 'prevent_warming', False):
         raise ValueError(
             'interior_energetics.aragog.lid_mush_base = true cannot be used with '
-            'planet.prevent_warming = true: prevent_warming clamps F_atm while the open part of '
-            'the lid keeps the skin flux, so the flux balance of the lid does not close.'
+            'planet.prevent_warming = true: prevent_warming raises F_atm to at least 1e-8 W m-2 '
+            'and keeps T_magma from rising, so the two parts of the lid surface would lose a flux '
+            'that the atmosphere did not solve.'
         )
     if getattr(atm, 'surface_d', None) == 'saturation':
         raise ValueError(

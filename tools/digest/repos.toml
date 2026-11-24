@@ -1,6 +1,6 @@
 # Settings of the weekly ecosystem digest (.github/workflows/weekly-digest.yml).
 # publish = false keeps every run a dry run that only uploads the digest as an artifact.
-publish = false
+publish = true
 category = "weekly-digest"  # slug of the discussion category
 model = "claude-sonnet-5-5"
 # Bodies of the largest merged PRs (additions + deletions) go to the model; the rest give titles only.

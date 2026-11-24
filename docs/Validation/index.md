@@ -31,7 +31,7 @@ Without `--validation-plots` the tests write nothing, but each plot test compare
 | Interior energetics | `interior_energetics/common.py` | [Radiogenic decay and solidification front](interior_energetics/common.md) | |
 | Interior energetics | `interior_energetics/aragog.py` | [Mixing length at the core-mantle boundary](interior_energetics/aragog.md) | [core heat flux](interior_energetics/aragog.md#the-constant-length-keeps-the-heat-flux-out-of-the-core-on-every-mesh) |
 | Interior energetics | `interior_energetics/remelt.py` | [Partial giant-impact re-melt](interior_energetics/remelt.md) | [melt front](interior_energetics/remelt.md#melt-front-against-the-closed-form) |
-| Interior energetics | `interior_energetics/resolved_mantle.py` | [Melt curve and mantle shells](interior_energetics/resolved_mantle.md) | |
+| Interior structure | `interior_struct/core_temperature.py` | [Core temperature in the structure solve](interior_struct/core_temperature.md) | [2 independent paths](interior_struct/core_temperature.md#the-core-table-gives-the-structure-of-2-independent-paths) |
 | Interior structure | `interior_struct/zalmoxis.py` | [Liquidus-super IC anchor](interior_struct/zalmoxis.md) | [MgSiO3 liquidus](interior_struct/zalmoxis.md#mgsio3-liquidus-at-135-gpa) |
 | Orbit | `orbit/orbit.py` | [Orbital evolution](orbit/orbit.md) | [eccentricity rate](orbit/orbit.md#eccentricity-rate-of-sp0d) |
 | Orbit | `orbit/parameterized.py` | [Prescribed migration laws](orbit/parameterized.md) | [eccentricity decay](orbit/parameterized.md#eccentricity-decay-of-high-eccentricity-migration) |
