@@ -33,7 +33,7 @@ import pytest
 from aragog.solver.entropy_solver import EntropySolver
 
 from proteus.config._interior import Spider
-from proteus.interior_energetics.aragog import InteriorStalledError
+from proteus.interior_energetics.aragog import InteriorStalledError, RetryLadderExhaustedError
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -1694,7 +1694,7 @@ def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
     max_attempts = 6
 
     cvode_runner, cvode_interior_o, cvode_hf_row = _build_runner(status=-1)
-    with pytest.raises(RuntimeError, match='CVODE status=-1') as cvode_info:
+    with pytest.raises(RetryLadderExhaustedError, match='CVODE status=-1') as cvode_info:
         cvode_runner._solve_with_retry(cvode_hf_row, cvode_interior_o)
     assert 'Radau status=' not in str(cvode_info.value)
     assert 'BDF status=' not in str(cvode_info.value)
@@ -1703,18 +1703,41 @@ def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
     radau_runner, radau_interior_o, radau_hf_row = _build_runner(
         status=-1, solver_method='radau'
     )
-    with pytest.raises(RuntimeError, match='Radau status=-1') as radau_info:
+    with pytest.raises(RetryLadderExhaustedError, match='Radau status=-1') as radau_info:
         radau_runner._solve_with_retry(radau_hf_row, radau_interior_o)
     assert 'CVODE status=' not in str(radau_info.value)
     assert 'BDF status=' not in str(radau_info.value)
     assert radau_runner.aragog_solver.solve.call_count == max_attempts
 
     bdf_runner, bdf_interior_o, bdf_hf_row = _build_runner(status=-1, solver_method='bdf')
-    with pytest.raises(RuntimeError, match='BDF status=-1') as bdf_info:
+    with pytest.raises(RetryLadderExhaustedError, match='BDF status=-1') as bdf_info:
         bdf_runner._solve_with_retry(bdf_hf_row, bdf_interior_o)
     assert 'CVODE status=' not in str(bdf_info.value)
     assert 'Radau status=' not in str(bdf_info.value)
     assert bdf_runner.aragog_solver.solve.call_count == max_attempts
+
+
+@pytest.mark.unit
+def test_a_cmb_closure_error_leaves_the_retry_ladder_on_its_first_attempt():
+    """A CMBClosureError of aragog is not an attempt failure of the ladder: it passes up
+    after one solve(), unchanged, for the wrapper to log under its own name."""
+    from aragog.solver.entropy_solver import CMBClosureError
+
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    runner = AragogRunner.__new__(AragogRunner)
+    runner._config = MagicMock()
+    runner._config.planet.mass_tot = 1.0
+    solver = MagicMock()
+    solver.parameters.solver.start_time, solver.parameters.solver.end_time = 0.0, 1.0
+    solver._dSdr_cmb_init = None
+    solver.solve.side_effect = CMBClosureError('CMB closure: node slope (dT/dS)_P = -1')
+    runner.aragog_solver = solver
+    interior_o = MagicMock()
+    interior_o._last_entropy = None
+    with pytest.raises(CMBClosureError, match='node slope'):
+        runner._solve_with_retry({'Time': 2.15e5, 'T_cmb': 0.0}, interior_o)
+    assert solver.solve.call_count == 1
 
 
 def _cvode_config(*, module='aragog', solver_method='cvode'):
