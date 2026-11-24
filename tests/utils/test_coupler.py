@@ -5183,6 +5183,26 @@ def test_a_helpfile_without_m_core_solve_resumes_with_zero(tmp_path):
 
 
 @pytest.mark.unit
+def test_m_dissolved_target_survives_a_resume_and_an_older_helpfile_reads_zero(tmp_path):
+    """M_dissolved_target is read back from the helpfile, so a resumed wet run keeps the
+    dissolved mass of its last solve. A helpfile written before the column reads it as zero,
+    which restore_dissolved_target then rebuilds for a wet mantle."""
+    from proteus.utils.coupler import GetHelpfileKeys, ReadHelpfileFromCSV
+
+    row = ZeroHelpfileRow()
+    row['M_dissolved_target'] = 2.55e21  # kg
+    pd.DataFrame([row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert loaded['M_dissolved_target'].iloc[-1] == pytest.approx(2.55e21, rel=1e-12)
+
+    del row['M_dissolved_target']
+    pd.DataFrame([row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert loaded['M_dissolved_target'].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+    assert set(loaded.columns) == set(GetHelpfileKeys())
+
+
+@pytest.mark.unit
 def test_a_helpfile_without_the_skin_conductivity_resumes_with_zero(tmp_path):
     """boundary_layer_conductivity is zero-filled for a helpfile that predates it, so an
     older run resumes; boundary_layer_thickness is kept, and the skin step writes both
