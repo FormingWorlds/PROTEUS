@@ -957,8 +957,8 @@ def _render(draft_doc, data=None, live=False, bots=('dependabot',)):
     return render.render_body(data or _data(), draft_doc, live, 'https://run', list(bots))
 
 
-def test_render_results_table_and_footer():
-    """A results entry is a table row with the setting change, date, link and author."""
+def test_render_results_table_and_summary():
+    """A results entry is a table row with the setting change, date, link and author profile."""
     body, state = _render(_draft(_entry()))
     assert '**Dry run: not posted.' in body
     row = next(
@@ -966,7 +966,7 @@ def test_render_results_table_and_footer():
     )
     assert '`interior_energetics.grain_size`: `0.1` → `0.001`.' in row
     assert row.endswith(
-        '| 6 Sep | [PROTEUS#849](https://github.com/FormingWorlds/PROTEUS/pull/849), by `@alice` |'
+        '| 6 Sep | [PROTEUS#849](https://github.com/FormingWorlds/PROTEUS/pull/849), by [alice](https://github.com/alice) |'
     )
     assert (
         'between 1 and 29 September 2026 (UTC 2026-09-01T00:00:00Z to 2026-09-30T00:00:00Z)'
@@ -979,8 +979,8 @@ def test_render_results_table_and_footer():
     assert state == {'until': UNTIL, 'run_id': '', 'announced_open': []}
 
 
-def test_render_mentions_once_per_person_and_never_bots():
-    """Live: the first mention is @login, later names and bots in code spans; dry: all code spans."""
+def test_render_links_every_author_and_never_bots():
+    """Live and dry: every name of a person is a profile link, a bot a code span, and nobody is mentioned."""
     data = _data(
         prs=[
             _pr(),
@@ -996,20 +996,17 @@ def test_render_mentions_once_per_person_and_never_bots():
             section='install', facts=[], prs=['PROTEUS#851'], title='C', logins=['dependabot']
         ),
     ]
-    live, _ = _render(_draft(*entries), data, live=True)
-    assert (
-        live.count('@alice') == 1
-        and 'by `alice`' in live
-        and '@dependabot' not in live
-        and 'by `dependabot`' in live
-    )
-    assert 'Dry run' not in live
-    dry, _ = _render(_draft(*entries), data)
-    assert 'by `@alice`' in dry and dry.count('@alice') == 1
+    for live in (True, False):
+        body, _ = _render(_draft(*entries), data, live=live)
+        assert (
+            body.count('by [alice](https://github.com/alice)') == 2
+            and 'by `dependabot`' in body
+        )
+        assert '@' not in body and ('Dry run' in body) is not live
 
 
-def test_render_open_pr_announced_before_is_not_mentioned_again():
-    """An open PR from the previous post keeps its author unmentioned; a new open PR mentions."""
+def test_render_keeps_announced_open_prs_in_the_state():
+    """Open PRs announced before stay in the state while open; every author is a profile link."""
     prs = [
         _pr(),
         _pr('PROTEUS#900', status='open', author='carol'),
@@ -1029,7 +1026,7 @@ def test_render_open_pr_announced_before_is_not_mentioned_again():
         ),
     ]
     body, state = _render(_draft(*entries), data, live=True)
-    assert 'by `carol`, @dan' in body
+    assert 'by [carol](https://github.com/carol), [dan](https://github.com/dan)' in body
     assert state['announced_open'] == ['PROTEUS#900', 'PROTEUS#901', 'PROTEUS#902']
 
 
@@ -1050,7 +1047,7 @@ def test_render_main_writes_both_files(tmp_path):
     doc = json.loads((tmp_path / 'out' / 'digest.json').read_text())
     assert doc['title'] == 'PROTEUS weekly digest, 29 September 2026'
     assert (tmp_path / 'out' / 'digest.md').read_text() == f'# {doc["title"]}\n\n{doc["body"]}'
-    assert '@alice' in doc['body'] and '`@alice`' not in doc['body']
+    assert '[alice](https://github.com/alice)' in doc['body'] and '@' not in doc['body']
 
 
 # draft
@@ -1429,13 +1426,6 @@ def test_release_tag_cannot_form_a_link():
     )
 
 
-def test_merged_pr_announced_as_open_before_is_mentioned():
-    """The open-PR rule suppresses a mention only while the PR is still open."""
-    previous = {'until': SINCE, 'announced_open': ['PROTEUS#849']}
-    body, _ = _render(_draft(_entry()), _data(previous=previous), live=True)
-    assert '@alice' in body
-
-
 def test_collect_drops_prs_merged_into_another_branch():
     """A pull request merged into a feature branch is not a merge of the repository."""
     page = _janus()
@@ -1568,9 +1558,12 @@ def test_number_signs_match_in_text_and_source():
 
 
 def test_quiet_week_note_is_a_paragraph():
-    """The quiet-week sentence is followed by a blank line, so the rule below cannot make it a heading."""
+    """The quiet-week sentence is a paragraph of its own, between the lede and the marker."""
     body, _ = _render(_draft(empty=True), _data(prs=[], fact_list=[]))
-    assert '2026-09-30T00:00:00Z).\n\n---' in body
+    assert (
+        '\n\nQuiet week: ' in body
+        and '2026-09-30T00:00:00Z).\n\n<!-- weekly-digest-state' in body
+    )
 
 
 def test_http_protocol_errors_are_handled(monkeypatch, capsys):
@@ -1669,7 +1662,8 @@ def test_render_follows_the_highlights_layout():
     ]
     paragraphs = body.split('\n\n')
     lede = 'Additions and changes from across the ecosystem that affect more than one project. This is a selection, not a complete change list.'
-    assert paragraphs[1] == lede and paragraphs[2].startswith(
+    assert paragraphs[1].startswith('Collected between ')
+    assert paragraphs[2] == lede and paragraphs[3].startswith(
         'This digest is written automatically'
     )
     assert (
@@ -2073,8 +2067,8 @@ def test_render_refuses_a_body_over_the_post_limit(tmp_path, monkeypatch):
         render.main([str(src), str(dft), str(tmp_path / 'out')])
 
 
-def test_footer_without_a_cut_says_every_body_was_read():
-    """With no pull request cut, the footer does not count the titles of 0 others."""
+def test_summary_without_a_cut_says_every_body_was_read():
+    """With no pull request cut, the summary does not count the titles of 0 others."""
     body, _ = _render(_draft(_entry()))
     assert 'the other 0' not in body and 'read the text of every pull request' in body
 
@@ -2369,8 +2363,10 @@ def test_check_reads_the_text_as_rendered(text):
 def test_scan_body_allows_only_collected_links_and_authors(bad, reason):
     """The rendered body links only to collected items and the run, and mentions only authors."""
     body, _ = _render(_draft(_entry()), live=True)
-    allowed = ([_GOOD, 'https://run'], ['alice'])
-    assert '@alice' in body and render.scan_body(body, *allowed) == []
+    allowed = (render.allowed_urls(_data(), 'https://run', []), [])
+    assert (
+        '[alice](https://github.com/alice)' in body and render.scan_body(body, *allowed) == []
+    )
     assert reason in render.scan_body(body.replace('The default grain size', bad, 1), *allowed)
 
 
@@ -2413,7 +2409,7 @@ def test_checked_text_renders_without_foreign_links(text, value):
     if check.check(data, dft):
         return
     body, _ = render.render_body(data, dft, True, 'https://run', [])
-    assert render.scan_body(body, [_GOOD, 'https://run'], ['alice']) == []
+    assert render.scan_body(body, render.allowed_urls(data, 'https://run', []), []) == []
 
 
 def test_workflow_dry_runs_cannot_cancel_a_live_run():
@@ -2530,10 +2526,9 @@ def test_real_windows_pass_the_check_and_the_link_scan(name):
     blob = json.loads((_DATA / f'window_{name}.json').read_text())
     data, dft = blob['collected'], blob['draft']
     assert check.check(data, dft) == [] and check.warnings(data, dft) == []
-    items = data['prs'] + data['releases']
     body, _ = render.render_body(data, dft, True, 'https://run', _VALID['bots'])
-    urls = [x['url'] for x in items] + ['https://run']
-    assert render.scan_body(body, urls, [x['author'] for x in items]) == []
+    urls = render.allowed_urls(data, 'https://run', _VALID['bots'])
+    assert render.scan_body(body, urls, []) == []
 
 
 def test_workflow_overwrites_artifacts_and_reports_unreadable_files():
@@ -2546,8 +2541,8 @@ def test_workflow_overwrites_artifacts_and_reports_unreadable_files():
     )
 
 
-def test_names_that_are_not_mentions_are_code_spans():
-    """A repeated person and a bot are code spans, so a login never forms a reference or commit link."""
+def test_logins_shaped_like_references_are_profile_links():
+    """A login shaped like a reference or commit id is link text, and a bot a code span, so neither forms a link of its own."""
     prs = [
         _pr('PROTEUS#849', author='GH-12'),
         _pr('PROTEUS#850', author='GH-12'),
@@ -2562,10 +2557,10 @@ def test_names_that_are_not_mentions_are_code_spans():
     data = _data(prs=prs, fact_list=[])
     assert check.check(data, _draft(*entries)) == []
     body, _ = _render(_draft(*entries), data, live=True, bots=())
-    assert '@GH-12' in body and 'by `GH-12`' in body and 'by `cafe123`' in body
-    assert 'by `renovate[bot]`' in body
-    urls = [p['url'] for p in prs] + ['https://run']
-    assert render.scan_body(body, urls, ['GH-12', 'cafe123']) == []
+    assert body.count('by [GH-12](https://github.com/GH-12)') == 2
+    assert body.count('by [cafe123](https://github.com/cafe123)') == 2
+    assert 'by `renovate[bot]`' in body and '@' not in body
+    assert render.scan_body(body, render.allowed_urls(data, 'https://run', []), []) == []
 
 
 @pytest.mark.parametrize('text', ['The old run was defaced.', 'See run 1234567.'])

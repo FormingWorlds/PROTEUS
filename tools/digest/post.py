@@ -23,8 +23,8 @@ from pathlib import Path
 
 from check import check
 from collect import parse_state, previous_state, trusted
-from common import DigestError, GitHub, find_category, is_bot, load_settings, parse_time
-from render import scan_body
+from common import DigestError, GitHub, find_category, load_settings, parse_time
+from render import allowed_urls, scan_body
 
 CREATE = """
 mutation($repo: ID!, $category: ID!, $title: String!, $body: String!) {
@@ -86,15 +86,8 @@ def main(argv: list[str] | None = None) -> int:
     opts = dict(zip(args[4::2], args[5::2]))
     fails = check(data, json.loads(Path(args[2]).read_text()))
     post = json.loads((Path(args[3]) / 'digest.json').read_text())
-    items = data['prs'] + data['releases']
     problems = scan_body(
-        post['body'],
-        [i['url'] for i in items] + [opts.get('--run-url', '')],
-        [
-            i['author']
-            for i in items
-            if not is_bot(i['author'], i['author_kind'], settings['bots'])
-        ],
+        post['body'], allowed_urls(data, opts.get('--run-url', ''), settings['bots']), []
     )
     for problem in problems:
         print(f'Link problem: {json.dumps(problem)}')
