@@ -91,8 +91,8 @@ _REINFLATE_TMAGMA_REL_TOL = 1e-4
 _REINFLATE_PHI_ABS_TOL = 1e-3
 
 # Radius bound of the mass escape: dR/R <= slope * dM/M + offset. Up-steps from a target rise have
-# dR/R / dM/M of 0.73 to 0.94 (contractions 0.64 to 1.31); the offset covers the largest up-step at an
-# unchanged target under cooling, 7.2e-4.
+# dR/R / dM/M of 0.73 to 0.94 (contractions 0.64 to 1.31); the offset covers the largest cooling
+# up-step measured with the target inside the anchor, 7.2e-4.
 _MASS_ESCAPE_RADIUS_SLOPE = 2.0
 _MASS_ESCAPE_RADIUS_OFFSET = 1e-3
 
@@ -3868,7 +3868,8 @@ def _warn_committed_mass_miss(hf_row: dict) -> None:
 
     A solve writes its target only when it succeeds. A rejected up-step, and the fall-back after the
     wrapper's mass-anchor check refused a solve, restore M_int but keep that new target, so the
-    committed structure can miss it. A non-finite mass or target also warns.
+    committed structure can miss it. With both keys set, a non-finite or non-positive value also
+    warns.
 
     Parameters
     ----------
@@ -3883,7 +3884,7 @@ def _warn_committed_mass_miss(hf_row: dict) -> None:
     if not miss <= _ZALMOXIS_MASS_ANCHOR_TOL:
         log.warning(
             'Committed structure misses its mass target: M_int=%.6e kg, '
-            'M_int_target=%.6e kg, relative miss %.3e > anchor %.1e.',
+            'M_int_target=%.6e kg, relative miss %.3e, anchor %.1e.',
             m_int,
             m_target,
             miss,

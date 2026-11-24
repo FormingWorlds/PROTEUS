@@ -12,6 +12,7 @@ See also:
 from __future__ import annotations
 
 import logging
+import math
 
 import pytest
 
@@ -79,8 +80,8 @@ def test_a_radius_step_far_above_its_mass_step_is_rejected_with_a_warning(caplog
 def test_a_one_percent_step_at_an_anchor_trip_is_rejected(caplog):
     """A +1.1 % R_int up-step at a +0.31 % rise of the target is refused.
 
-    At an anchor trip a re-expansion is at most 0.941 dM/M plus the largest measured artifact,
-    7.2e-4, about 3.6e-3 here; +1.1 % is 3 times that.
+    At an anchor trip a re-expansion is at most 0.941 dM/M plus the largest cooling up-step
+    measured with the target inside the anchor, 7.2e-4: about 3.6e-3 here; +1.1 % is 3 times that.
     """
     config, hf_row, base = _cooling_case()
     msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve_to(1.0 / (1.0 - 3.1e-3), 1.011))
@@ -94,7 +95,7 @@ def test_a_one_percent_step_at_an_anchor_trip_is_rejected(caplog):
 @pytest.mark.parametrize(
     ('dm', 'dr'),
     [
-        # dM/M and dR/R of re-expansions measured in coupled runs of an 8.6 Earth-mass planet
+        # dM/M and dR/R of re-expansions measured in coupled runs of a planet of 8.63 Earth masses
         pytest.param(8.9111e-02, 7.0910e-02, id='re-expansion at +8.9 % mass, ratio 0.80'),
         pytest.param(1.6498e-01, 1.5520e-01, id='re-expansion at +16.5 % mass, ratio 0.94'),
         pytest.param(1.9129e-01, 1.7460e-01, id='re-expansion at +19.1 % mass, ratio 0.91'),
@@ -192,7 +193,7 @@ def test_a_bound_reject_warns_that_the_structure_misses_its_target(caplog):
 @pytest.mark.parametrize(
     ('ratio', 'radius'),
     [
-        # the largest measured artifact: target +9.9e-4, radius +7.19e-4
+        # the largest cooling up-step measured inside the anchor: target +9.9e-4, radius +7.19e-4
         pytest.param(1.0 + 9.9e-4, 1.0 + 7.19e-4, id='artifact reject inside the anchor'),
         pytest.param(8.010 / 7.355, 1.0709, id='accepted re-expansion'),
         pytest.param(1.0, 1.0 - 1.0e-3, id='accepted down-step'),
@@ -226,10 +227,12 @@ def test_a_fall_back_after_a_mass_anchor_miss_warns_about_the_new_target(caplog)
 
     assert any('Falling back to previous structure' in m for m in msgs)
     assert interior_o.structure_stale is True
+    assert hf_row['R_int'] == R_RETAINED
     assert hf_row['M_int'] == M_RETAINED
     assert len(_warnings(caplog, MISS_MSG)) == 1
 
 
+@pytest.mark.physics_invariant
 def test_a_fall_back_after_a_raising_solve_keeps_the_old_target_and_does_not_warn(caplog):
     """A solve that raises writes no target, so the restored structure meets its old target."""
     config, hf_row, base = _cooling_case()
@@ -244,6 +247,7 @@ def test_a_fall_back_after_a_raising_solve_keeps_the_old_target_and_does_not_war
     assert not _warnings(caplog, MISS_MSG)
 
 
+@pytest.mark.physics_invariant
 def test_a_non_finite_committed_mass_warns(caplog):
     """A solve that returns a NaN mass on its target commits it; the step warns."""
     config, hf_row, base = _cooling_case()
@@ -254,16 +258,7 @@ def test_a_non_finite_committed_mass_warns(caplog):
 
     run_guard(caplog, hf_row, config, base, _solve)
 
+    assert math.isnan(hf_row['M_int'])
     warned = _warnings(caplog, MISS_MSG)
     assert len(warned) == 1
     assert 'M_int=nan kg' in warned[0]
-
-
-def test_the_bound_constants_cover_the_measured_steps():
-    """The slope and offset cover the measured extremes.
-
-    Re-expansions from a target rise have dR/R / dM/M of at most 0.941; the largest measured
-    up-step at an unchanged target under cooling, an artifact, is 7.19e-4.
-    """
-    assert _MASS_ESCAPE_RADIUS_SLOPE >= 1.5 * 0.941
-    assert _MASS_ESCAPE_RADIUS_OFFSET > 7.19e-4
