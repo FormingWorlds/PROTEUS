@@ -2773,10 +2773,16 @@ def test_window_and_repo_summary_open_the_post(live):
     assert render.scan_body(body, urls, []) == []
 
 
+_VISIBLE = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
+_PATH_CHARS = _VISIBLE | set('_ ./-')
+
+
 @settings(max_examples=300, deadline=None, derandomize=True)
 @given(
     st.text(
-        alphabet=st.sampled_from(list('ab /|@[]()`<>*_\\#%?.&!;-\u00e9\n\r\t\u2028\u202e')),
+        alphabet=st.sampled_from(
+            list('aZ5 /|@[]()`<>*_\\#%?.&!;-\u00e9\n\r\t\u2028\u202e\u3164\u00a0')
+        ),
         min_size=1,
         max_size=12,
     )
@@ -2784,7 +2790,7 @@ def test_window_and_repo_summary_open_the_post(live):
 def test_any_docs_path_renders_as_one_safe_link(path):
     """A path of any characters is left out, or gives a quoted URL, one table cell and a body that passes the scan."""
     pages = collect.docs_pages([f'docs/{path}.md'], 'https://d.example', lambda url: 200)
-    if not re.fullmatch(r'[\w ./-]+', path):
+    if not (set(path) <= _PATH_CHARS and set(path) & _VISIBLE):
         assert pages == []
         return
     [page] = pages
@@ -3006,3 +3012,29 @@ def test_link_text_holds_no_line_break_or_invisible_character():
     """Link text of any origin is one line with no control, format or line-separator character."""
     text = render.link_text('a\nb\r\tc\u2028d\u202ee\u200bf')
     assert text == 'a b c d e f', repr(text)
+
+
+@pytest.mark.parametrize(
+    'char', ['\x00', '\x1b', '\x7f', '\u200b', '\u202e', '\u2028', '\u2029']
+)
+def test_link_text_folds_each_control_and_format_character(char):
+    """A control, format or line-separator character becomes one space."""
+    assert render.link_text(f'a{char}b') == 'a b'
+
+
+@pytest.mark.parametrize('name', [' ', '  ', '\u3164', '\u00e9t\u00e9', 'a\u00a0b', '_', '-'])
+def test_docs_page_with_no_visible_ascii_name_is_left_out(name):
+    """A page name must be ASCII letters, digits, _, space, ., / and - with a letter or digit in it."""
+    asked = []
+    assert collect.docs_pages([f'docs/{name}.md'], 'https://d.x', asked.append) == []
+    assert asked == []
+
+
+@settings(max_examples=500, deadline=None, derandomize=True)
+@given(st.text(max_size=20))
+def test_link_text_of_any_text_is_one_trimmed_line_with_escaped_markup(text):
+    """Any text gives link text with no invisible character, no @ or pipe, no outer space, markup escaped."""
+    out = render.link_text(text)
+    assert not any(unicodedata.category(c) in ('Cc', 'Cf', 'Zl', 'Zp') for c in out)
+    assert '@' not in out and '|' not in out and out == out.strip()
+    assert not re.search(r'(?<!\\)[\[\]()`<>*_]', out.replace('\\\\', '')), out
