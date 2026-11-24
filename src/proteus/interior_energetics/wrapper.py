@@ -3340,13 +3340,9 @@ def update_structure_from_interior(
         if k in hf_row
     }
 
-    # Running-minimum radius for the monotonic-radius guard. Because each
-    # accepted re-solve under the super-liquidus adiabat IC only lowers R_int,
-    # the last accepted value IS the running minimum, so a single read of the
-    # current hf_row['R_int'] is the bound to compare the new solve against.
-    # Wet exception: an accepted composition-driven up-step (dry_mantle =
-    # false) raises R_int, and the guard then re-anchors to that larger
-    # committed value; the bound stays "last accepted R_int" either way.
+    # Running-minimum radius for the monotonic-radius guard: the last accepted R_int. A cooling
+    # re-solve only lowers it; the heating, wet composition and mass escapes below can raise it,
+    # and the bound then re-anchors to that larger committed value.
     R_int_prev = float(hf_row.get('R_int', 0.0) or 0.0)
 
     # A core table that cannot be built stops the run; the fallback below is for the solve
@@ -3404,28 +3400,11 @@ def update_structure_from_interior(
                     )
                 )
 
-        # Monotonic-radius guard for the super-liquidus adiabat IC. A fully
-        # molten super-liquidus start solved on the true P-T adiabat cools and
-        # crystallises against Aragog's evolved P-S interior_o.temp; the
-        # cross-table mismatch can let a re-solve raise R_int slightly above the
-        # running minimum while the interior is in fact cooling, which is a
-        # representation artifact, not real re-inflation. The guard rejects an
-        # up-step ONLY when the interior is cooling over the step, i.e. neither
-        # T_magma nor the melt fraction Phi is rising relative to the last
-        # structure decision. When the mantle is genuinely heating (T_magma
-        # rising, or Phi rising as melt returns) the up-step is physical and is
-        # accepted; the accept criterion is the observed thermal change, not an
-        # assumed mechanism. A wet mantle adds one more physical up-step: a
-        # composition-triggered re-solve with dry_mantle=false can raise R_int
-        # while cooling because the dissolved volatiles lower the mean mantle
-        # density; that case is accepted through _composition_driven below. A reject restores the previous structure (hf_row keys AND the
-        # on-disk zalmoxis_output.dat snapshot) and returns the no-update
-        # sentinel: a clean no-op, NOT a solver failure, so the consecutive-
-        # failure counter is left untouched (a rejected up-step must not count
-        # toward the abort budget) and the stale flag is not raised. The guard is
-        # confined to _use_superliquidus_adiabat_ic runs, where the monotone-
-        # cooling baseline makes an artifact up-step identifiable; other ICs carry
-        # no such expectation and are never clamped.
+        # Monotonic-radius guard (super-liquidus adiabat IC only): a cooling interior cannot
+        # re-inflate, so an R_int up-step is a P-T vs P-S cross-table artifact and is rejected.
+        # It is kept when the mantle heats (T_magma or Phi up), after a wet composition trigger,
+        # or when the retained structure fails the mass anchor against a larger target. A reject
+        # restores the previous structure and zalmoxis_output.dat; no failure, stale flag kept.
         _R_int_new = float(hf_row.get('R_int', 0.0) or 0.0)
         _scalar_radius_up_step = R_int_prev > 0.0 and _R_int_new > R_int_prev * (
             1.0 + _MONOTONIC_RINT_REL_TOL
@@ -3473,7 +3452,7 @@ def update_structure_from_interior(
         # reopen the freeze.
         _composition_driven = comp_changed and not config.interior_struct.zalmoxis.dry_mantle
         # Mass escape: the retained structure fails the mass anchor against a larger new target.
-        # Scalar up-step only, so a mesh beyond R_int never reaches Aragog.
+        # Scalar up-step only; this escape never keeps a mesh beyond R_int.
         _M_retained = float(_saved_structure.get('M_int', 0.0) or 0.0)
         _target_outgrown = (
             _scalar_radius_up_step

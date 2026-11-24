@@ -1,9 +1,9 @@
 """Monotonic-radius guard: an up-step is kept when the retained structure fails the mass anchor.
 
-Under the super-liquidus adiabat IC the guard in ``update_structure_from_interior`` rejects an R_int
-increase while the interior cools. When the retained structure mass misses the larger target of the
-new solve by more than the Zalmoxis mass anchor, the retained structure fails the mass contract of
-the wrapper, so the larger structure is kept.
+Under the super-liquidus adiabat IC the guard in ``update_structure_from_interior`` rejects an
+R_int increase while the interior cools. When the retained structure mass misses the larger
+target of the new solve by more than the Zalmoxis mass anchor, the retained structure fails the
+mass contract of the wrapper, so the larger structure is kept.
 
 See also:
 - docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
@@ -12,6 +12,7 @@ See also:
 from __future__ import annotations
 
 import logging
+import tempfile
 from unittest.mock import patch
 
 import numpy as np
@@ -22,6 +23,7 @@ from proteus.interior_energetics.wrapper import (
     update_structure_from_interior,
 )
 from tests.interior_energetics.test_wrapper import (
+    _composition_trigger_scenario,
     _dtmagma_scenario,
     _mock_dirs,
     _mock_interior_o,
@@ -45,7 +47,7 @@ REJECT_MSG = 'Rejected representation-artifact radius increase'
 
 
 def _target_ratio_at_anchor():
-    """Largest target ratio r whose float miss abs(M_retained / (M_retained r) - 1) is within the anchor."""
+    """Largest ratio r with a float miss abs(M_ret / (M_ret r) - 1) within the anchor."""
 
     def miss(r):
         return abs(M_RETAINED / (M_RETAINED * r) - 1.0)
@@ -59,7 +61,7 @@ def _target_ratio_at_anchor():
 
 
 def _cooling_case():
-    """A dT/T re-solve while T_magma falls 3000 -> 2800 K at flat Phi, from the retained structure."""
+    """A dT/T re-solve from the retained structure while T_magma falls 3000 -> 2800 K."""
     config, hf_row, *base = _dtmagma_scenario()
     config.interior_struct.zalmoxis.dry_mantle = True
     hf_row.update(
@@ -89,12 +91,16 @@ def _solve_to(target_ratio, radius_ratio, set_target=True):
 
 
 def run_guard(caplog, hf_row, config, base, solve, dirs=None, interior_o=None):
-    """Call the wrapper with a stub solve; return the log messages, dirs and interior."""
-    dirs = dirs if dirs is not None else _mock_dirs()
+    """Call the wrapper with a stub solve; return the log messages, dirs and interior.
+
+    Without given dirs the output folder is a fresh empty one, so no stray zalmoxis_output.dat
+    can make the grid-extent check fire.
+    """
     interior_o = interior_o if interior_o is not None else _mock_interior_o()
     caplog.clear()
     s, ns, cp = _solver_patches(side_effect=solve)
     with (
+        tempfile.TemporaryDirectory() as out,
         caplog.at_level(logging.INFO),
         s as mock_solver,
         ns,
@@ -104,6 +110,9 @@ def run_guard(caplog, hf_row, config, base, solve, dirs=None, interior_o=None):
             return_value=True,
         ),
     ):
+        if dirs is None:
+            dirs = _mock_dirs()
+            dirs['output'] = out
         update_structure_from_interior(dirs, config, hf_row, interior_o, *base)
     mock_solver.assert_called_once()
     return [r.getMessage() for r in caplog.records], dirs, interior_o
@@ -111,12 +120,12 @@ def run_guard(caplog, hf_row, config, base, solve, dirs=None, interior_o=None):
 
 @pytest.mark.physics_invariant
 def test_up_step_kept_when_target_mass_rose(caplog):
-    """A cooling up-step is kept when the retained mass misses the new target by far more than the anchor.
+    """A cooling up-step is kept when the retained mass misses the new target by far more.
 
-    The retained structure has 7.355 Earth masses and the new solve is made for 8.010, so the retained
-    mass is 8.2 % below the target (the target is 8.9 % above it), far outside the 3e-3 anchor. The
-    larger structure is kept, the accept line names both masses, their ratio and the relative miss,
-    and the success path clears a stale flag that a reject would keep.
+    The retained structure has 7.355 Earth masses and the new solve is made for 8.010, so the
+    retained mass is 8.2 % below the target (the target is 8.9 % above it), far outside the 3e-3
+    anchor. The larger structure is kept, the accept line names both masses, their ratio and the
+    relative miss, and the success path clears a stale flag that a reject would keep.
     """
     config, hf_row, base = _cooling_case()
     ratio = 8.010 / 7.355
@@ -148,9 +157,10 @@ def test_up_step_kept_when_target_mass_rose(caplog):
     ids=['unchanged', 'inside anchor', 'at anchor', 'fallen'],
 )
 def test_up_step_still_rejected_without_an_anchor_miss(caplog, target_ratio):
-    """The guard's own case stays rejected: the retained mass is within the anchor of the target, or the target fell.
+    """The guard's own case stays rejected: the miss is within the anchor, or the target fell.
 
-    The largest target whose float miss stays within the anchor is rejected; a reject keeps a stale flag.
+    The largest target whose float miss stays within the anchor is rejected; a reject keeps a
+    stale flag.
     """
     config, hf_row, base = _cooling_case()
     interior_o = _mock_interior_o()
@@ -171,6 +181,7 @@ def test_up_step_still_rejected_without_an_anchor_miss(caplog, target_ratio):
     assert interior_o.structure_stale is True
 
 
+@pytest.mark.physics_invariant
 def test_up_step_kept_just_beyond_the_anchor(caplog):
     """A miss a hair beyond the anchor is enough to keep the up-step."""
     config, hf_row, base = _cooling_case()
@@ -181,8 +192,9 @@ def test_up_step_kept_just_beyond_the_anchor(caplog):
     assert hf_row['R_int'] == pytest.approx(R_RETAINED * (1.0 + 1.0e-3), rel=1e-12)
 
 
+@pytest.mark.physics_invariant
 def test_up_step_rejected_when_the_retained_mass_sits_off_its_own_target(caplog):
-    """A retained mass 0.1 % below its own target with the target unchanged stays inside the anchor: rejected."""
+    """A retained mass 0.1 % below its own unchanged target is inside the anchor: rejected."""
     config, hf_row, base = _cooling_case()
     hf_row['M_int'] = M_RETAINED * (1.0 - 1.0e-3)
     msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve_to(1.0, 1.0 + 1.0e-3))
@@ -193,9 +205,10 @@ def test_up_step_rejected_when_the_retained_mass_sits_off_its_own_target(caplog)
 
 @pytest.mark.parametrize('drop', ['M_int', 'M_int_target'])
 def test_up_step_rejected_when_a_mass_is_missing(caplog, drop):
-    """Without a retained mass or a solve target the comparison cannot be made, so the guard rejects.
+    """Without a retained mass or a solve target there is no comparison, so the guard rejects.
 
-    Only R_int is checked: production rows always carry M_int, and a key absent at entry is not restored.
+    Only R_int is checked: production rows always carry M_int, and a key absent at entry is not
+    restored.
     """
     config, hf_row, base = _cooling_case()
     del hf_row[drop]
@@ -227,11 +240,14 @@ def _grid_case(tmp_path, scalar_ratio):
     return config, hf_row, base, _solve, dirs
 
 
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize(
-    'scalar_ratio', [1.0, 1.0 + 1.0e-3], ids=['grid only', 'scalar and grid']
+    ('scalar_ratio', 'reject_msg'),
+    [(1.0, 'Rejected EOS-grid-extent up-step'), (1.0 + 1.0e-3, REJECT_MSG)],
+    ids=['grid only', 'scalar and grid'],
 )
 def test_a_mesh_beyond_r_int_stays_rejected_with_a_larger_target(
-    tmp_path, caplog, scalar_ratio
+    tmp_path, caplog, scalar_ratio, reject_msg
 ):
     """A mesh that ends beyond R_int is never handed to Aragog through the mass escape.
 
@@ -242,15 +258,17 @@ def test_a_mesh_beyond_r_int_stays_rejected_with_a_larger_target(
     msgs, dirs, interior_o = run_guard(caplog, hf_row, config, base, solve, dirs=dirs)
 
     assert not any(ACCEPT_MSG in m for m in msgs)
-    assert any(REJECT_MSG in m or 'Rejected EOS-grid-extent up-step' in m for m in msgs)
+    assert [m for m in msgs if 'Rejected' in m and reject_msg in m]
+    assert len([m for m in msgs if 'Rejected' in m]) == 1
     assert hf_row['R_int'] == pytest.approx(R_RETAINED, rel=1e-12)
     assert hf_row['M_int'] == pytest.approx(M_RETAINED, rel=1e-12)
     assert dirs['_last_resolve_dR_rel'] == 0.0
     assert interior_o.zalmoxis_fail_count == 0
 
 
+@pytest.mark.physics_invariant
 def test_heating_and_an_anchor_miss_log_both_reasons(caplog):
-    """When the mantle heats and the retained mass misses the target, both accept lines are logged."""
+    """A heating re-solve whose target outgrows the retained mass logs both accept lines."""
     config, hf_row, base = _cooling_case()
     base[1] = 2700.0  # last structure decision at 2700 K, now 2800 K: heating
     msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve_to(1.07, 1.06))
@@ -260,6 +278,26 @@ def test_heating_and_an_anchor_miss_log_both_reasons(caplog):
     assert hf_row['R_int'] == pytest.approx(R_RETAINED * 1.06, rel=1e-12)
 
 
+@pytest.mark.physics_invariant
+def test_composition_and_an_anchor_miss_log_both_reasons(caplog):
+    """A wet composition re-solve whose target outgrows the retained mass logs both lines."""
+    config, hf_row, dirs = _composition_trigger_scenario(dry_mantle=False)
+    hf_row['M_int_target'] = hf_row['M_int']
+    m_ret, r_prev = hf_row['M_int'], hf_row['R_int']
+
+    def _solve(*args, **kwargs):
+        args[2].update(R_int=r_prev * 1.06, M_int_target=m_ret * 1.07, M_int=m_ret * 1.07)
+        return (3.504e6, None)
+
+    msgs, _, _ = run_guard(caplog, hf_row, config, (0.0, 3000.0, 0.5), _solve, dirs=dirs)
+
+    assert any('composition-driven wet' in m for m in msgs)
+    assert any(ACCEPT_MSG in m for m in msgs)
+    assert not any(HEATING_MSG in m for m in msgs)
+    assert hf_row['R_int'] == pytest.approx(r_prev * 1.06, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
 def test_a_later_artifact_up_step_is_rejected_against_the_kept_structure(caplog):
     """After an accepted re-expansion the guard holds the new structure as its minimum.
 
