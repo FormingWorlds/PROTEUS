@@ -12,8 +12,10 @@ from __future__ import annotations
 import email.message
 import http.client
 import io
+import itertools
 import json
 import re
+import socket
 import stat
 import sys
 import unicodedata
@@ -205,7 +207,11 @@ def test_settings_reject_wrong_types_and_ranges(key, bad):
 def test_settings_accept_a_docs_site_with_or_without_a_path(site):
     """A docs site is https with a host, and a path that does not end in a slash."""
     docs = {'FormingWorlds/PROTEUS': site}
-    assert common.validate_settings({**_VALID, 'docs': docs})['docs'] == docs
+    try:
+        out = common.validate_settings({**_VALID, 'docs': docs})['docs']
+    except common.DigestError as err:
+        out = str(err)
+    assert out == docs
 
 
 @pytest.mark.parametrize('key', sorted(_BAD_VALUES))
@@ -2250,7 +2256,7 @@ def test_check_main_prints_warnings_and_passes(tmp_path, capsys):
     assert check.main([str(src), str(dft), '--summary', str(summary)]) == 0
     lines = capsys.readouterr().out.splitlines()
     assert lines[0].startswith('WARN "entry') and lines[1].startswith('::warning::"entry')
-    assert lines[-1] == '0 failures and 1 warnings in 1 entries'
+    assert lines[-1] == '0 failures and 1 warning in 1 entry'
     assert 'WARN &quot;entry' in summary.read_text()
 
 
@@ -2896,18 +2902,126 @@ def test_docs_links_cap_and_count(n, tail):
     assert text.endswith(tail) if tail else 'more page' not in text, text
 
 
-def test_summary_counts_and_a_cut_of_one():
-    """The summary gives the merged, open and release counts, and names a cut of 1 pull request."""
-    data, _ = _nov10()
-    first = render.summary({**data, 'bodies_cut': 1, 'bodies_kept': 40}, 'https://run')
-    merged = sum(p['status'] == 'merged' for p in data['prs'])
-    opened = sum(p['status'] == 'open' for p in data['prs'])
-    counts = f'from {merged} merged and {opened} open pull requests and {len(data["releases"])} releases in '
-    assert counts in first
+@pytest.mark.parametrize(
+    ('merged', 'opened', 'rels'), list(itertools.product((0, 1, 2), repeat=3))
+)
+def test_summary_counts_take_the_noun_of_their_number(merged, opened, rels):
+    """Each count of 0, 1 or 2 merged and open pull requests and releases reads with its own noun."""
+    prs = [_pr(ref=f'PROTEUS#{i}') for i in range(merged)]
+    prs += [_pr(ref=f'PROTEUS#{90 + i}', status='open') for i in range(opened)]
+    data = {**_data(prs=prs, releases=[{'ref': f'r{i}'} for i in range(rels)])}
+    first = render.summary(data, 'https://run')
+    noun = {0: 's', 1: '', 2: 's'}
     assert (
-        'the bodies of the 40 largest pull requests and only the titles of the other 1.'
-        in first
+        f' from {merged} merged pull request{noun[merged]}, {opened} open pull request{noun[opened]}'
+        f' and {rels} release{noun[rels]} in [PROTEUS]('
+    ) in first
+
+
+@pytest.mark.parametrize(
+    ('kept', 'cut', 'read'),
+    [
+        (0, 0, 'the text of every pull request'),
+        (2, 0, 'the text of every pull request'),
+        (0, 1, 'only the title of the pull request'),
+        (0, 2, 'only the titles of the 2 pull requests'),
+        (
+            1,
+            1,
+            'the body of the largest pull request and only the title of the other pull request',
+        ),
+        (1, 2, 'the body of the largest pull request and only the titles of the other 2'),
+        (
+            2,
+            1,
+            'the bodies of the 2 largest pull requests and only the title of the other pull request',
+        ),
+        (2, 2, 'the bodies of the 2 largest pull requests and only the titles of the other 2'),
+    ],
+)
+def test_summary_names_the_bodies_read_with_the_noun_of_their_number(kept, cut, read):
+    """The sentence on the bodies the model read is right for 0, 1 and 2 kept and cut pull requests."""
+    first = render.summary({**_data(), 'bodies_kept': kept, 'bodies_cut': cut}, 'https://run')
+    assert f' The model read {read}. [Workflow run](https://run).' in first
+
+
+@pytest.mark.parametrize(
+    ('n', 'out'), [(0, '0 entries'), (1, '1 entry'), (2, '2 entries'), (-1, '-1 entries')]
+)
+def test_count_takes_the_noun_of_its_number(n, out):
+    """One takes the singular noun, every other number the plural."""
+    assert common.count(n, 'entry', 'entries') == out
+    assert common.count(n, 'warning') == out.replace('entry', 'warning').replace(
+        'entries', 'warnings'
     )
+
+
+def test_pr_query_asks_the_change_type_of_each_file():
+    """The query names the change type of each file, so a deleted docs page can be skipped."""
+    assert 'files(first: 100) { totalCount nodes { path changeType } }' in collect.PR_QUERY
+
+
+def test_a_page_name_with_a_space_is_asked_with_percent_20():
+    """A space in a page name becomes %20 in the URL that is asked and linked."""
+    asked = []
+    pages = collect.docs_pages(
+        ['docs/My Page.md'], 'https://d.x', lambda u: asked.append(u) or 200
+    )
+    assert asked == ['https://d.x/My%20Page.html']
+    assert pages == [{'path': 'My Page', 'url': 'https://d.x/My%20Page.html'}]
+
+
+def test_an_unquoted_space_fails_in_http_client_before_a_socket(monkeypatch):
+    """http.client refuses a URL with a space before it opens a socket; page_status returns the error."""
+    monkeypatch.setattr(collect, 'PAGE_OPENER', urllib.request.build_opener(collect.NoRedirect))
+    monkeypatch.setattr(socket, 'create_connection', _refuse_network)
+    assert _PAGE_STATUS('https://d.x/My Page.html').startswith('InvalidURL: ')
+
+
+class _ServedSocket:
+    """A socket that takes the request and answers 200 with no body."""
+
+    def sendall(self, data):
+        pass
+
+    def makefile(self, mode):
+        return io.BytesIO(b'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n')
+
+    def close(self):
+        pass
+
+
+class _ServedConnection(http.client.HTTPConnection):
+    """http.client checks and writes the request as usual, with no network."""
+
+    def connect(self):
+        self.sock = _ServedSocket()
+
+
+class _ServedSite(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(_ServedConnection, req)
+
+
+def test_a_page_name_with_a_space_leaves_the_other_pages_of_its_site_asked(monkeypatch):
+    """Through http.client, a page with a space in its name is served, and so are the others of the site."""
+    monkeypatch.setattr(collect, 'page_status', _PAGE_STATUS)
+    monkeypatch.setattr(
+        collect, 'PAGE_OPENER', urllib.request.build_opener(collect.NoRedirect, _ServedSite())
+    )
+    janus = _janus()
+    pr = next(n for n in janus['repository']['pullRequests']['nodes'] if n['number'] == 103)
+    pr['files']['nodes'].insert(0, {'path': 'docs/My Page.md', 'changeType': 'ADDED'})
+    settings_ = {
+        **_VALID,
+        'repos': ['FormingWorlds/JANUS'],
+        'docs': {'FormingWorlds/JANUS': 'http://d.x'},
+    }
+    out = collect.collect(_FakeGH([janus]), settings_, _LATER)
+    rec = next(p for p in out['prs'] if p['ref'] == 'JANUS#103')
+    assert [d['url'] for d in rec['docs']][0] == 'http://d.x/My%20Page.html'
+    assert len(rec['docs']) == 4
+    assert out['docs_left_out'] == {}
 
 
 def test_a_listed_bot_with_a_user_account_gets_no_profile_link():
@@ -3105,7 +3219,7 @@ def test_collect_main_writes_the_left_out_docs_pages_to_the_summary(tmp_path, mo
     args = ['--out', str(out), '--since', '2026-09-01', '--until', '2026-09-30']
     assert collect.main([*args, '--summary', str(summary)]) == 0
     assert (
-        summary.read_text() == '<pre>\nDocs pages left out: 2 of https://d.example/J\n</pre>\n'
+        summary.read_text() == '<pre>\nDocs pages left out of https://d.example/J: 2\n</pre>\n'
     )
 
 
