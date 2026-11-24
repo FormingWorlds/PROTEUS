@@ -1312,34 +1312,67 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     return out
 
 
-def _structure_target_masses(config: Config, hf_row: dict) -> tuple[float, float, float]:
-    """Planet mass, volatile mass outside the structure, and its kept part [kg].
+def _structure_target_masses(config: Config, hf_row: dict) -> tuple[float, float, float, float]:
+    """Planet mass, volatile mass outside the structure, its kept part, and the dissolved
+    volatile mass inside the structure [kg].
 
     The volatile mass (O included) is the full inventory with ``dry_mantle``, else only the
     atmosphere, since the wet-mantle EOS holds the dissolved mass. The kept part holds the
     inventories that are inputs of the outgassing call; one that the call derives (O from a
-    fixed fO2, rock vapour) is mantle mass. Element columns absent from the row count as 0.
+    fixed fO2, rock vapour) is mantle mass. The dissolved mass is ``<e>_kg_total -
+    <e>_kg_atm`` over the elements that ``update_planet_mass`` sums into ``M_ele``, not
+    below 0, and 0 with ``dry_mantle``. Element columns absent from the row count as 0.
     """
     from proteus.interior_struct.common import volatile_mass_change
     from proteus.outgas.wrapper import outgassing_derives_o_kg_total
 
     # mass_tot is the rock anchor; the ledger adds what impacts and escape moved.
     total_planet_mass = config.planet.mass_tot * M_earth + volatile_mass_change(hf_row)
-    kept = set(vol_element_list + noble_gases)
+    summed = set(vol_element_list + noble_gases)
+    kept = set(summed)
     if outgassing_derives_o_kg_total(config):
         kept.discard('O')
     dry_mantle = config.interior_struct.zalmoxis.dry_mantle
-    M_volatiles = M_kept = 0.0
+    M_volatiles = M_kept = M_dissolved = 0.0
     for e in element_list:
         # literal suffixes: the output reference reads the column names from this file
-        if dry_mantle:
-            mass = float(hf_row.get(e + '_kg_total', 0.0))
-        else:
-            mass = float(hf_row.get(e + '_kg_atm', 0.0))
+        total = float(hf_row.get(e + '_kg_total', 0.0))
+        atm = float(hf_row.get(e + '_kg_atm', 0.0))
+        mass = total if dry_mantle else atm
         M_volatiles += mass
         if e in kept:
             M_kept += mass
-    return total_planet_mass, M_volatiles, M_kept
+        if not dry_mantle and e in summed:
+            M_dissolved += total - atm
+    # With no melt left, the outgassing solve can put an atmosphere a round-off above its total.
+    return total_planet_mass, M_volatiles, M_kept, max(M_dissolved, 0.0)
+
+
+def restore_dissolved_target(config: Config, hf_all) -> None:
+    """Rebuild ``M_dissolved_target`` on the last row of a resumed wet-mantle helpfile.
+
+    A helpfile written before the column reads it as 0, and a resume does not solve the
+    structure, so ``M_planet`` would count the dissolved inventory twice until the next
+    solve. The rebuild takes the inventories of the last row, which differ from those of
+    the last solve by the mass outgassed since then.
+    """
+    struct = config.interior_struct
+    if struct.module != 'zalmoxis' or struct.zalmoxis.dry_mantle or len(hf_all) == 0:
+        return
+    row = hf_all.iloc[-1].to_dict()
+    if float(row.get('M_dissolved_target') or 0.0) > 0.0:
+        return
+    dissolved = _structure_target_masses(config, row)[3]
+    if dissolved <= 0.0:
+        return
+    hf_all.loc[hf_all.index[-1], 'M_dissolved_target'] = dissolved
+    log.warning(
+        'M_dissolved_target is 0 or absent in the helpfile: set to %.6e kg from the '
+        'inventories of the row at t = %.6e yr, which differ from those of the last '
+        'structure solve by the mass outgassed since then.',
+        dissolved,
+        float(row.get('Time') or 0.0),
+    )
 
 
 def set_core_target_at_init_end(config: Config, hf_row: dict) -> None:
@@ -1351,7 +1384,7 @@ def set_core_target_at_init_end(config: Config, hf_row: dict) -> None:
     """
     struct = config.interior_struct
     if struct.module == 'zalmoxis':
-        total_planet_mass, _, M_kept = _structure_target_masses(config, hf_row)
+        total_planet_mass, _, M_kept, _ = _structure_target_masses(config, hf_row)
         hf_row['M_core_target'] = struct.core_frac * (total_planet_mass - M_kept)
 
 
@@ -1393,7 +1426,9 @@ def load_zalmoxis_configuration(
             config.interior_struct.core_frac,
         )
 
-    total_planet_mass, M_volatiles, M_kept = _structure_target_masses(config, hf_row)
+    total_planet_mass, M_volatiles, M_kept, M_dissolved = _structure_target_masses(
+        config, hf_row
+    )
 
     log.debug(
         'Total target planet mass (dry mass + volatiles): %s kg '
@@ -1510,6 +1545,7 @@ def load_zalmoxis_configuration(
         'planet_mass': planet_mass,
         'core_mass_fraction': core_mass_fraction,
         'core_mass_target': core_mass,
+        'dissolved_mass_target': M_dissolved,
         'core_frac_mode': config.interior_struct.core_frac_mode,
         'mantle_mass_fraction': config.interior_struct.zalmoxis.mantle_mass_fraction,
         # Mode mapping in _resolve_zalmoxis_temperature_mode; the anchor pair (CMB, surface)
@@ -4080,6 +4116,7 @@ def zalmoxis_solver(
     # |M_int / M_int_target - 1| above _ZALMOXIS_MASS_ANCHOR_TOL as not converged.
     hf_row['M_int_target'] = float(config_params.get('planet_mass', 0.0))
     hf_row['M_core_target'] = float(config_params.get('core_mass_target', 0.0))
+    hf_row['M_dissolved_target'] = float(config_params.get('dissolved_mass_target', 0.0))
 
     # Self-consistent core density from Zalmoxis structure
     if cmb_radius > 0:

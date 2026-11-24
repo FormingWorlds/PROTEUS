@@ -21,7 +21,7 @@ from _smoke_invariants import (
     assert_element_sum_matches_species_sum,
     assert_escape_within_atmospheric_budget,
     assert_M_atm_le_M_planet,
-    assert_M_planet_matches_M_int_plus_M_ele,
+    assert_M_planet_matches_its_parts,
     assert_no_nan_inf,
     assert_per_element_mass_closure,
     assert_per_species_mass_closure,
@@ -489,34 +489,51 @@ def test_M_atm_le_M_planet_skips_when_M_planet_zero():
 
 
 # ---------------------------------------------------------------------------
-# assert_M_planet_matches_M_int_plus_M_ele
+# assert_M_planet_matches_its_parts
 # ---------------------------------------------------------------------------
-def test_M_planet_matches_M_int_plus_M_ele_accepts_consistent_row():
+def test_M_planet_matches_its_parts_accepts_consistent_row():
     """A consistent row where ``M_planet == M_int + M_ele`` passes the
     interior-vs-element bookkeeping check.
     """
     row = _good_row()
-    result = assert_M_planet_matches_M_int_plus_M_ele(row)
+    result = assert_M_planet_matches_its_parts(row)
     assert result is None  # contract: helper returns None silently when bookkeeping matches
     # Discriminating check: pin the additivity invariant directly so the test
     # catches a regression that loosens the helper's tolerance.
     assert math.isclose(row['M_planet'], row['M_int'] + row['M_ele'], rel_tol=1e-9)
 
 
-def test_M_planet_matches_M_int_plus_M_ele_flags_disagreement():
+def test_M_planet_matches_its_parts_flags_disagreement():
     """Halving M_int leaves ``M_planet > M_int + M_ele``; the helper
     raises with a message naming the two sides of the comparison.
     """
     row = _good_row()
     M_int_original = row['M_int']
     row['M_int'] = M_int_original * 0.5  # halve the interior, planet now wrong
-    with pytest.raises(AssertionError, match=r'M_planet=.*does not match M_int \+ M_ele'):
-        assert_M_planet_matches_M_int_plus_M_ele(row)
+    with pytest.raises(AssertionError, match=r'M_planet=.*does not match M_int - '):
+        assert_M_planet_matches_its_parts(row)
     # Symmetry: lifting M_ele by the lost interior mass restores the
     # M_int + M_ele = M_planet bookkeeping. Catches a regression that
     # fired regardless of compensating reservoir moves.
     row['M_ele'] = row['M_ele'] + M_int_original * 0.5
-    assert assert_M_planet_matches_M_int_plus_M_ele(row) is None
+    assert assert_M_planet_matches_its_parts(row) is None
+
+
+def test_M_planet_matches_its_parts_takes_off_the_dissolved_target_once():
+    """With a wet mantle M_int holds the dissolved inventory of the last structure solve,
+    which M_ele also counts. A row with M_planet = M_int - M_dissolved_target + M_ele
+    passes, and the same row with the dissolved mass left in (the double count) fails.
+    The dissolved mass is 0.2% of the planet, above the 0.1% tolerance."""
+    dissolved = 1.2e22  # kg
+    row = _good_row()
+    row['M_int'] = row['M_int'] + dissolved
+    row['M_dissolved_target'] = dissolved
+    assert assert_M_planet_matches_its_parts(row) is None
+    assert dissolved / row['M_planet'] > 1.5e-3
+
+    row['M_planet'] = row['M_int'] + row['M_ele']
+    with pytest.raises(AssertionError, match='does not match M_int - M_dissolved_target'):
+        assert_M_planet_matches_its_parts(row)
 
 
 # ---------------------------------------------------------------------------
