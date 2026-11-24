@@ -327,8 +327,8 @@ def docs_pages(files: list[str], base: str | None, status) -> list[dict]:
 
     A file ``docs/<path>.md`` maps to ``<base>/<path>.html``; it is kept only when
     ``status(url)`` gives 200, so a page that is deleted or not yet deployed is left out.
-    A path with a character other than a word character, a space, ``.``, ``/`` or ``-``
-    is left out unasked, so its link text holds no markup or line break.
+    A page name of other characters than ASCII letters, digits, ``_``, space, ``.``, ``/``
+    and ``-``, or with no letter or digit, is left out unasked, so its link is visible text.
 
     Parameters
     ----------
@@ -349,7 +349,7 @@ def docs_pages(files: list[str], base: str | None, status) -> list[dict]:
         if not (path.startswith('docs/') and path.endswith('.md')):
             continue
         page = path[len('docs/') : -len('.md')]
-        if not re.fullmatch(r'[\w ./-]+', page):
+        if not re.fullmatch(r'[\w ./-]*[^\W_][\w ./-]*', page, re.ASCII):
             print(f'Docs page left out: {path!r} has a character a link text cannot hold')
             continue
         url = f'{base}/{urllib.parse.quote(page)}.html'

@@ -141,11 +141,9 @@ def link_url(url: str) -> str:
 
 
 def link_text(text: str) -> str:
-    """One-line link text with no ``@``, pipe or invisible character, its markdown escaped."""
-    text = ''.join(
-        ' ' if unicodedata.category(c) in ('Cc', 'Cf', 'Zl', 'Zp') else c for c in text
-    )
-    text = re.sub(r'\s+', ' ', text.replace('@', ' ').replace('|', '/'))
+    """Trimmed one-line link text with no ``@``, pipe or control character, markdown escaped."""
+    text = ''.join(' ' if unicodedata.category(c) in ('Cc', 'Cf') else c for c in text)
+    text = re.sub(r'\s+', ' ', text.replace('@', ' ').replace('|', '/')).strip()
     return re.sub(r'([\\\[\]()`<>*_])', r'\\\1', text)
 
 
