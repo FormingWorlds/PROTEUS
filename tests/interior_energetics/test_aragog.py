@@ -1721,10 +1721,9 @@ def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
 def test_a_cmb_closure_error_leaves_the_retry_ladder_on_its_first_attempt():
     """A CMBClosureError of aragog is not an attempt failure of the ladder: it passes up
     after one solve(), unchanged, for the wrapper to log under its own name."""
-    from proteus.interior_energetics.aragog import AragogRunner
+    from aragog.solver.entropy_solver import CMBClosureError
 
-    class CMBClosureError(RuntimeError):
-        """Stand-in with the name and base class of the aragog error."""
+    from proteus.interior_energetics.aragog import AragogRunner
 
     runner = AragogRunner.__new__(AragogRunner)
     runner._config = MagicMock()

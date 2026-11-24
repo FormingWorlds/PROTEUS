@@ -29,14 +29,14 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from aragog.solver.entropy_solver import CMBClosureError
 
-from proteus.interior_energetics.aragog import InteriorStalledError, RetryLadderExhaustedError
+from proteus.interior_energetics.aragog import RetryLadderExhaustedError
 from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.wrapper import (
     _ARAGOG_CALL_ENERGY_KEYS,
     _RESUME_STRUCT_DPHI_BACKSTOP_CAP,
     _RESUME_STRUCT_DR_REL_TOL,
-    _aragog_failure_cause,
     _clear_jax_caches_after_resolve,
     _eos_grid_extent_up_step,
     _prevent_warming_clamp_active,
@@ -4927,10 +4927,6 @@ def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
     interior_o.aragog_fail_count = 0
 
 
-class CMBClosureError(RuntimeError):
-    """Stand-in with the name and base class of ``aragog.solver.entropy_solver.CMBClosureError``."""
-
-
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(
@@ -4941,6 +4937,10 @@ class CMBClosureError(RuntimeError):
             'Aragog CMB closure check failed (CMBClosureError) #1/3.',
         ),
         (RuntimeError('setup fault'), 'Aragog call failed (RuntimeError) #1/3.'),
+        (
+            type('CMBClosureError', (RuntimeError,), {})('same name, other class'),
+            'Aragog call failed (CMBClosureError) #1/3.',
+        ),
         (RetryLadderExhaustedError('ladder out'), 'Aragog retry-ladder exhaustion #1/3.'),
         (
             type('Sub', (RetryLadderExhaustedError,), {})('sub'),
@@ -4994,25 +4994,6 @@ def test_the_abort_after_the_last_skipped_aragog_step_names_its_cause(caplog):
         'Aragog failed 3 consecutive times (last: Aragog CMB closure check failed '
         '(CMBClosureError)). Aborting.'
     ]
-
-
-@pytest.mark.unit
-def test_the_cmb_closure_error_of_aragog_takes_the_cmb_cause():
-    """The class of aragog is a RuntimeError, not a stop class of the wrapper, and its name
-    gives the CMB cause; an aragog from 26.11.24 on without the class fails the test."""
-    import aragog
-    from aragog.solver import entropy_solver
-
-    cls = getattr(entropy_solver, 'CMBClosureError', None)
-    if cls is None:
-        if tuple(aragog.__version_tuple__[:3]) < (26, 11, 24):
-            pytest.skip('installed aragog is older than 26.11.24')
-        pytest.fail(f'aragog {aragog.__version__} has no CMBClosureError')
-    assert issubclass(cls, RuntimeError)
-    assert not issubclass(cls, (InteriorStalledError, entropy_solver.AcceptedStateRangeError))
-    assert (
-        _aragog_failure_cause(cls('x')) == 'Aragog CMB closure check failed (CMBClosureError)'
-    )
 
 
 # ============================================================================
