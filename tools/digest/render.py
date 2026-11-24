@@ -139,13 +139,23 @@ def link_url(url: str) -> str:
     return urllib.parse.quote(url, safe=':/#?=&%@+.,-_~')
 
 
+def link_text(text: str) -> str:
+    """Link text with no ``@`` or pipe, and its markdown characters escaped."""
+    return re.sub(r'([\\\[\]()`<>*_])', r'\\\1', text.replace('@', ' ').replace('|', '/'))
+
+
 def links(items: list[dict]) -> str:
     """Markdown links to the cited pull requests and releases."""
-    texts = [
-        re.sub(r'([\\\[\]()`<>*_])', r'\\\1', i['ref'].replace('@', ' ').replace('|', '/'))
-        for i in items
-    ]
-    return ', '.join(f'[{text}]({link_url(i["url"])})' for text, i in zip(texts, items))
+    return ', '.join(f'[{link_text(i["ref"])}]({link_url(i["url"])})' for i in items)
+
+
+def docs_links(items: list[dict]) -> str:
+    """Links to the served docs pages of the cited pull requests, at most ``MAX_DOCS``."""
+    pages = list({d['url']: d for i in items for d in i.get('docs', [])}.values())
+    texts = [f'[{link_text(d["path"])}]({link_url(d["url"])})' for d in pages[:MAX_DOCS]]
+    if len(pages) > MAX_DOCS:
+        texts.append(f'and {len(pages) - MAX_DOCS} more pages')
+    return ', '.join(texts)
 
 
 def scan_body(body: str, urls: list[str], logins: list[str]) -> list[str]:
@@ -272,9 +282,10 @@ def render_body(
             if key == 'results':
                 when = min(i.get('merged_at') or i['published_at'] for i in items)
                 change = f'{text} {detail}.' if detail else text
+                docs = f'; docs: {pages};' if (pages := docs_links(items)) else ','
                 lines.append(
-                    f'| {plain(entry["title"])} | {change} | {short_date(when)} | {links(items)}, '
-                    f'by {authors(items, bots)} |'
+                    f'| {plain(entry["title"])} | {change} | {short_date(when)} | {links(items)}'
+                    f'{docs} by {authors(items, bots)} |'
                 )
                 continue
             if entry.get('action'):
@@ -282,6 +293,8 @@ def render_body(
             lines += [f'### {plain(entry["title"])}', '', text, '']
             if detail:
                 lines += [f'Settings: {detail}.', '']
+            if key == 'capabilities' and (pages := docs_links(items)):
+                lines += [f'Docs: {pages}.', '']
             lines += [f'{links(items)}, by {authors(items, bots)}', '']
         lines.append('')
     open_now = {r for r, p in prs.items() if p['status'] == 'open'}

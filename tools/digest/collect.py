@@ -14,11 +14,15 @@ HTML and mentions are removed before anything reaches the model.
 from __future__ import annotations
 
 import argparse
+import functools
 import html
 import json
 import re
 import sys
 import unicodedata
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from common import DigestError, GitHub, find_category, iso, load_settings, parse_time
@@ -303,6 +307,51 @@ def add_bodies(prs: list, releases: list, max_bodies: int, body_chars: int) -> d
     return {'bodies_kept': len(keep), 'bodies_cut': len(prs) - len(keep)}
 
 
+def page_status(url: str) -> int | str:
+    """HTTP status of one HEAD request to a docs page, or the error text; no retry."""
+    req = urllib.request.Request(url, method='HEAD', headers={'User-Agent': 'weekly-digest'})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status
+    except urllib.error.HTTPError as err:
+        return err.code
+    except (urllib.error.URLError, OSError) as err:
+        return str(err)
+
+
+def docs_pages(files: list[str], base: str | None, status) -> list[dict]:
+    """Return the served docs pages among the files of a pull request.
+
+    A file ``docs/<path>.md`` maps to ``<base>/<path>.html``; it is kept only when
+    ``status(url)`` gives 200, so a page that is deleted or not yet deployed is left out.
+
+    Parameters
+    ----------
+    files : list of str
+        Paths of the pull request.
+    base : str or None
+        Docs site of the repository; None gives no pages.
+    status : callable
+        Maps a URL to its HTTP status, or to an error text.
+
+    Returns
+    -------
+    list of dict
+        ``{'path': <path>, 'url': <url>}`` in file order.
+    """
+    pages = []
+    for path in files if base else []:
+        if not (path.startswith('docs/') and path.endswith('.md')):
+            continue
+        page = path[len('docs/') : -len('.md')]
+        url = f'{base}/{urllib.parse.quote(page)}.html'
+        if (code := status(url)) == 200:
+            pages.append({'path': page, 'url': url})
+        else:
+            print(f'Docs page left out: {url} answered {code}')
+    return pages
+
+
 def collect(gh: GitHub, settings: dict, window: dict) -> dict:
     """Collect all repositories of the settings into one JSON-ready dict."""
     names = [short_name(r) for r in settings['repos']]
@@ -316,6 +365,10 @@ def collect(gh: GitHub, settings: dict, window: dict) -> dict:
     dropped = [p for p in prs if p['status'] == 'open' and p['association'] not in MEMBERS]
     prs = [p for p in prs if p not in dropped]
     cut = add_bodies(prs, releases, settings['max_bodies'], settings['body_chars'])
+    status = functools.cache(page_status)
+    for p in prs:
+        base = settings['docs'].get(p['repo']) if p['status'] == 'merged' else None
+        p['docs'] = docs_pages(p['files'], base, status)
     return {
         'window': window,
         'repos': settings['repos'],

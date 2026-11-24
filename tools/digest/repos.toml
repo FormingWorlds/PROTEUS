@@ -32,3 +32,18 @@ repos = [
 "FormingWorlds/PROTEUS" = ["docs/Reference/config/config_schema.json", "docs/Reference/output_schema.json"]
 "FormingWorlds/Zalmoxis" = ["input/default.toml"]
 "nichollsh/AGNI" = ["res/config/default.toml"]
+
+# Served docs site of each repository: a page docs/<path>.md is linked as <site>/<path>.html
+# when that URL answers 200 at collect time. A repository without a site here gets no docs links.
+[docs]
+"FormingWorlds/PROTEUS" = "https://proteus-framework.org/PROTEUS"
+"FormingWorlds/aragog" = "https://proteus-framework.org/aragog"
+"FormingWorlds/CALLIOPE" = "https://proteus-framework.org/CALLIOPE"
+"FormingWorlds/JANUS" = "https://proteus-framework.org/JANUS"
+"FormingWorlds/MORS" = "https://proteus-framework.org/MORS"
+"FormingWorlds/ZEPHYRUS" = "https://proteus-framework.org/ZEPHYRUS"
+"FormingWorlds/SPIDER" = "https://proteus-framework.org/SPIDER"
+"FormingWorlds/VULCAN" = "https://proteus-framework.org/VULCAN"
+"FormingWorlds/SOCRATES" = "https://proteus-framework.org/SOCRATES"
+"FormingWorlds/Zalmoxis" = "https://proteus-framework.org/Zalmoxis"
+"FormingWorlds/Morrigan" = "https://proteus-framework.org/Morrigan"

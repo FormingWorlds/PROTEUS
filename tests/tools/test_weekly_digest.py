@@ -175,6 +175,14 @@ _BAD_VALUES = {
     'bots': ['dependabot', [1], None],
     'repos': [[], ['PROTEUS'], ['a/b/c'], 'FormingWorlds/PROTEUS', [3]],
     'tracked': [[], {'a/b': 'file'}, {'a/b': [1]}],
+    'docs': [
+        [],
+        'https://x',
+        {'a/b': 3},
+        {'a/b': 'http://x'},
+        {'a/b': 'https://x/'},
+        {'a/b': 'https://x y'},
+    ],
 }
 
 
@@ -2766,3 +2774,22 @@ def test_window_and_repo_summary_open_the_post(live):
     assert collect.parse_state(body)['until'] == state['until']
     urls = render.allowed_urls(data, 'https://run', _VALID['bots'])
     assert render.scan_body(body, urls, []) == []
+
+
+@settings(max_examples=300, deadline=None, derandomize=True)
+@given(
+    st.text(
+        alphabet=st.sampled_from(list('ab /|@[]()`<>*_\\#%?.\u00e9')), min_size=1, max_size=12
+    )
+)
+def test_any_docs_path_renders_as_one_safe_link(path):
+    """A page path of any characters gives a quoted URL, one table cell and a body that passes the scan."""
+    [page] = collect.docs_pages([f'docs/{path}.md'], 'https://d.example', lambda url: 200)
+    assert ' ' not in page['url'] and page['url'].startswith('https://d.example/')
+    data = _data(prs=[_pr(docs=[page])])
+    body, _ = _render(_draft(_entry()), data, live=True)
+    row = next(
+        line for line in body.splitlines() if line.startswith('| Smaller default grain size')
+    )
+    assert row.count(' | ') == 3, row
+    assert render.scan_body(body, render.allowed_urls(data, 'https://run', []), []) == []

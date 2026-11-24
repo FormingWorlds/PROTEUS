@@ -9,6 +9,7 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import re
 import time
 import tomllib
 import urllib.error
@@ -81,6 +82,13 @@ def validate_settings(settings: dict) -> dict:
             isinstance(v, dict)
             and all(
                 isinstance(p, list) and all(isinstance(x, str) for x in p) for p in v.values()
+            )
+        ),
+        'docs': lambda v: (
+            isinstance(v, dict)
+            and all(
+                isinstance(u, str) and re.fullmatch(r'https://[^\s/]+(/[^\s]*)?(?<!/)', u)
+                for u in v.values()
             )
         ),
     }
