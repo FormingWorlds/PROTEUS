@@ -216,7 +216,9 @@ def test_run_solver_raises_when_diffrax_result_fails(tmp_path):
     # Sentinel: confirm interior_o._last_entropy is not set before the call.
     interior_o._last_entropy = None
     with patch('aragog.jax.solver.solve_entropy', return_value=failed_result):
-        with pytest.raises(RuntimeError, match=r'JAX Aragog solver failed.*t_final.*steps'):
+        with pytest.raises(
+            RuntimeError, match=r'JAX Aragog solver failed.*t_final.*steps.*skips this step\.$'
+        ):
             runner.run_solver(
                 {'F_atm': 1e5, 'Time': 1.0e3},
                 interior_o,

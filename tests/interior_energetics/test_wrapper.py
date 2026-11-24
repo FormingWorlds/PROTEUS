@@ -4759,7 +4759,7 @@ def test_a_value_error_of_an_interior_step_writes_the_status_for_the_core_module
 
 @pytest.mark.unit
 def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
-    """Aragog's retry-ladder exhaustion (RuntimeError) increments the
+    """Aragog's retry-ladder exhaustion (RetryLadderExhaustedError) increments the
     consecutive counter and falls back to the previous step's hf_row.
     """
     from unittest.mock import patch as _patch
@@ -4776,7 +4776,7 @@ def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
     interior_o.aragog_fail_count = 0
 
     runner_mock = MagicMock()
-    runner_mock.run_solver.side_effect = RuntimeError('retry ladder exhausted')
+    runner_mock.run_solver.side_effect = RetryLadderExhaustedError('retry ladder exhausted')
 
     with (
         _patch(
@@ -4823,7 +4823,7 @@ def test_a_skipped_aragog_step_adds_nothing_to_the_energy_ledgers():
     interior_o.dt = 0.0
     interior_o.aragog_fail_count = 0
     runner_mock = MagicMock()
-    runner_mock.run_solver.side_effect = RuntimeError('retry ladder exhausted')
+    runner_mock.run_solver.side_effect = RetryLadderExhaustedError('retry ladder exhausted')
     with (
         patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
         patch('proteus.interior_energetics.timestep.next_step', return_value=42.0),
@@ -4933,11 +4933,12 @@ class CMBClosureError(RuntimeError):
 _CMB_MSG = 'CMB closure fault in the call to t = 1.0e+03 yr: ledger miss 5 is above 10x the solver bound 0.1 (J)'
 
 
-def _skip_aragog_step(error, fail_count=0, caplog=None):
+def _skip_aragog_step(error, fail_count=0, caplog=None, interior_o=None):
     """Run one aragog ``run_interior`` call whose solver raises ``error``; return state and warnings."""
     config = _make_run_interior_config(prevent_warming=False, module='aragog')
     hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
-    interior_o = MagicMock(spec=Interior_t)
+    hf_row.update(dict.fromkeys(_ARAGOG_CALL_ENERGY_KEYS, 1.0e27))
+    interior_o = interior_o or MagicMock(spec=Interior_t)
     interior_o.ic, interior_o.dt, interior_o.aragog_fail_count = 2, 0.0, fail_count
     runner_mock = MagicMock()
     runner_mock.run_solver.side_effect = error
@@ -4952,12 +4953,17 @@ def _skip_aragog_step(error, fail_count=0, caplog=None):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize(
     ('error', 'cause'),
     [
         (CMBClosureError(_CMB_MSG), 'Aragog CMB closure check failed (CMBClosureError) #1/3.'),
         (RuntimeError('setup fault'), 'Aragog call failed (RuntimeError) #1/3.'),
         (RetryLadderExhaustedError('ladder out'), 'Aragog retry-ladder exhaustion #1/3.'),
+        (
+            type('Sub', (RetryLadderExhaustedError,), {})('sub'),
+            'Aragog retry-ladder exhaustion #1/3.',
+        ),
     ],
 )
 def test_a_skipped_aragog_step_names_the_error_that_stopped_the_call(error, cause, caplog):
@@ -4982,10 +4988,31 @@ def test_a_third_cmb_closure_failure_in_a_row_stops_the_run(caplog):
     """A CMBClosureError counts like every other skipped call: the third in a row re-raises."""
     from proteus.interior_energetics import wrapper as _w
 
+    interior_o = MagicMock(spec=Interior_t)
     with pytest.raises(CMBClosureError, match='ledger miss'):
         _skip_aragog_step(
-            CMBClosureError(_CMB_MSG), _w._ARAGOG_MAX_CONSECUTIVE_FAILS - 1, caplog
+            CMBClosureError(_CMB_MSG), _w._ARAGOG_MAX_CONSECUTIVE_FAILS - 1, caplog, interior_o
         )
+    assert interior_o.aragog_fail_count == _w._ARAGOG_MAX_CONSECUTIVE_FAILS
+
+
+@pytest.mark.unit
+def test_the_cmb_closure_error_of_aragog_takes_the_cmb_cause():
+    """The class of aragog (fwl-aragog 26.11.24 on) is a RuntimeError, not a stop class of the
+    wrapper, and its name gives the CMB cause; skipped while the installed aragog lacks it."""
+    from aragog.solver import entropy_solver
+
+    from proteus.interior_energetics.aragog import InteriorStalledError
+    from proteus.interior_energetics.wrapper import _aragog_failure_cause
+
+    cls = getattr(entropy_solver, 'CMBClosureError', None)
+    if cls is None:
+        pytest.skip('installed aragog has no CMBClosureError')
+    assert issubclass(cls, RuntimeError)
+    assert not issubclass(cls, (InteriorStalledError, entropy_solver.AcceptedStateRangeError))
+    assert (
+        _aragog_failure_cause(cls('x')) == 'Aragog CMB closure check failed (CMBClosureError)'
+    )
 
 
 # ============================================================================
@@ -7956,7 +7983,7 @@ def test_a_stalled_interior_ends_the_run_instead_of_being_absorbed():
         'stalled run looks the same from outside as one still going'
     )
 
-    absorbed, absorbed_interior, _ = _drive(RuntimeError('retry ladder exhausted'))
+    absorbed, absorbed_interior, _ = _drive(RetryLadderExhaustedError('retry ladder exhausted'))
     assert absorbed is None, (
         f'an ordinary solver failure was passed up ({absorbed!r}) instead of '
         'being absorbed by the keep-previous-state fallback'
