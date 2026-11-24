@@ -47,22 +47,21 @@ def test_up_step_kept_if_and_only_if_the_retained_mass_misses_a_larger_target(
     caplog, target_ratio, radius_step
 ):
     """Under cooling a scalar up-step is kept exactly when the retained mass misses a larger
-    target by more than the anchor and the radius step stays within the bound of that mass rise;
-    the bound warning comes exactly when the mass miss holds and the bound refuses the step."""
+    target by more than the anchor; a kept step warns exactly when its radius step exceeds the
+    bound of the mass rise it reached."""
     config, hf_row, base = _cooling_case()
     msgs, _, _ = run_guard(
         caplog, hf_row, config, base, _solve_to(target_ratio, 1.0 + radius_step)
     )
 
     target = M_RETAINED * target_ratio
-    outgrown = (
+    kept = (
         bool(target > M_RETAINED) and abs(M_RETAINED / target - 1.0) > _ZALMOXIS_MASS_ANCHOR_TOL
     )
     d_r = R_RETAINED * (1.0 + radius_step) / R_RETAINED - 1.0
     bound = _MASS_ESCAPE_RADIUS_SLOPE * (target / M_RETAINED - 1.0) + _MASS_ESCAPE_RADIUS_OFFSET
-    kept = outgrown and bool(d_r <= bound)
     assert any(ACCEPT_MSG in m for m in msgs) is kept
-    assert any(BOUND_MSG in m for m in msgs) is (outgrown and not kept)
+    assert any(BOUND_MSG in m for m in msgs) is (kept and bool(d_r > bound))
     assert any(REJECT_MSG in m for m in msgs) is not kept
     expected_R = R_RETAINED * (1.0 + radius_step) if kept else R_RETAINED
     assert hf_row['R_int'] == pytest.approx(expected_R, rel=1e-12)

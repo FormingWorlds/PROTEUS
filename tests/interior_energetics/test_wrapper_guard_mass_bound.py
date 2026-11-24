@@ -1,9 +1,10 @@
-"""Monotonic-radius guard: the radius bound of the mass escape and the committed-mass check.
+"""Monotonic-radius guard: the radius bound warning of the mass escape and the committed-mass check.
 
-The mass escape keeps a cooling R_int up-step only while the radius step stays within
-``_MASS_ESCAPE_RADIUS_SLOPE * dM/M + _MASS_ESCAPE_RADIUS_OFFSET``, with dM/M the relative rise of
-the solve target over the retained mass. The structure step warns when the committed M_int misses
-its live target by more than the Zalmoxis mass anchor.
+The mass escape keeps a cooling R_int up-step whenever the retained mass misses a larger target
+by more than the Zalmoxis mass anchor. When it is the only escape and the radius step exceeds
+``_MASS_ESCAPE_RADIUS_SLOPE * dM/M + _MASS_ESCAPE_RADIUS_OFFSET``, with dM/M the rise of the mass
+the solve reached over the retained mass, the step warns. The structure step also warns when the
+committed M_int misses its live target by more than the anchor.
 
 See also:
 - docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
@@ -11,9 +12,12 @@ See also:
 
 from __future__ import annotations
 
+import csv
 import logging
 import math
+from pathlib import Path
 
+import numpy as np
 import pytest
 
 from proteus.interior_energetics.wrapper import (
@@ -22,8 +26,10 @@ from proteus.interior_energetics.wrapper import (
     _ZALMOXIS_MASS_ANCHOR_TOL,
     _warn_committed_mass_miss,
 )
+from tests.interior_energetics.test_wrapper import _composition_trigger_scenario
 from tests.interior_energetics.test_wrapper_guard_mass_target import (
     ACCEPT_MSG,
+    HEATING_MSG,
     M_RETAINED,
     R_RETAINED,
     REJECT_MSG,
@@ -38,8 +44,9 @@ pytestmark = [
     pytest.mark.usefixtures('_no_core_table'),
 ]
 
-BOUND_MSG = 'exceeds the radius bound of the mass escape'
+BOUND_MSG = 'Mass escape keeps a radius step above its radius bound'
 MISS_MSG = 'Committed structure misses its mass target'
+UP_STEPS_CSV = Path(__file__).parent / 'fixtures' / 'mass_escape_up_steps.csv'
 
 
 def _warnings(caplog, key):
@@ -54,63 +61,103 @@ def _bound(dm):
     return _MASS_ESCAPE_RADIUS_SLOPE * dm + _MASS_ESCAPE_RADIUS_OFFSET
 
 
-@pytest.mark.physics_invariant
-def test_a_radius_step_far_above_its_mass_step_is_rejected_with_a_warning(caplog):
-    """A +20 % R_int up-step at a +0.31 % rise of the target is not kept by the mass escape.
+def _measured_up_steps():
+    with UP_STEPS_CSV.open() as f:
+        rows = list(csv.DictReader(line for line in f if not line.startswith('#')))
+    return [(float(r['dM_over_M']), float(r['dR_over_R'])) for r in rows]
 
-    The retained mass misses the target by more than the anchor, but the radius step is far above
-    any measured mass-driven step, so the guard keeps the retained structure and warns with the
-    step, the mass rise and the bound.
+
+def _misses_around_the_anchor(m_target, side):
+    """Committed masses with the largest float miss within the anchor and the next float out."""
+
+    def miss(m):
+        return abs(m / m_target - 1.0)
+
+    out = np.inf if side > 0 else 0.0
+    m = m_target * (1.0 + side * _ZALMOXIS_MASS_ANCHOR_TOL)
+    while miss(m) > _ZALMOXIS_MASS_ANCHOR_TOL:
+        m = np.nextafter(m, m_target)
+    while miss(np.nextafter(m, out)) <= _ZALMOXIS_MASS_ANCHOR_TOL:
+        m = np.nextafter(m, out)
+    return float(m), float(np.nextafter(m, out))
+
+
+@pytest.mark.physics_invariant
+def test_a_radius_step_far_above_its_mass_step_is_kept_with_a_warning(caplog):
+    """A +20 % R_int up-step at a +0.31 % mass rise is kept by the mass escape, and warns.
+
+    The retained mass misses the target by more than the anchor, so the solve is kept. The radius
+    step is far above the bound of that mass rise, so the step warns with both ratios, the bound
+    and the masses.
     """
     config, hf_row, base = _cooling_case()
     ratio = 1.0 / (1.0 - 3.1e-3)
     msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve_to(ratio, 1.20))
 
-    assert any(REJECT_MSG in m for m in msgs)
-    assert not any(ACCEPT_MSG in m for m in msgs)
+    assert any(ACCEPT_MSG in m for m in msgs)
+    assert not any(REJECT_MSG in m for m in msgs)
     warned = _warnings(caplog, BOUND_MSG)
     assert len(warned) == 1
-    assert 'dR/R=2.000e-01' in warned[0]
-    assert 'dM/M=%.3e' % (ratio - 1.0) in warned[0]
-    assert 'bound %.3e' % _bound(ratio - 1.0) in warned[0]
-    assert '= 2.0 dM/M + 1.0e-03 at' in warned[0]
+    assert 'dR/R=2.000000e-01' in warned[0]
+    assert 'bound %.6e' % _bound(ratio - 1.0) in warned[0]
+    assert '= 2.0 dM/M + 1.0e-03 at the reached dM/M=%.6e' % (ratio - 1.0) in warned[0]
+    assert 'target rise %.6e' % (ratio - 1.0) in warned[0]
     assert (
-        'retained M_int=%.6e kg, M_target=%.6e kg' % (M_RETAINED, M_RETAINED * ratio)
+        'retained M_int=%.6e kg, reached M_int=%.6e kg, M_target=%.6e kg'
+        % (M_RETAINED, M_RETAINED * ratio, M_RETAINED * ratio)
         in warned[0]
     )
-    assert hf_row['R_int'] == R_RETAINED
-    assert hf_row['M_int'] == M_RETAINED
+    assert hf_row['R_int'] == pytest.approx(R_RETAINED * 1.20, rel=1e-12)
+    assert hf_row['M_int'] == pytest.approx(M_RETAINED * ratio, rel=1e-12)
+    assert not _warnings(caplog, MISS_MSG)
 
 
 @pytest.mark.physics_invariant
-def test_a_one_percent_step_at_an_anchor_trip_is_rejected(caplog):
-    """A +1.1 % R_int up-step at a +0.31 % rise of the target is refused.
-
-    At an anchor trip a re-expansion is at most 0.941 dM/M plus the largest cooling up-step
-    measured with the target inside the anchor, 7.2e-4: about 3.6e-3 here; +1.1 % is 3 times that.
-    """
+def test_a_one_percent_step_at_an_anchor_trip_is_kept_with_a_warning(caplog):
+    """A +1.1 % R_int up-step at a +0.31 % mass rise is kept, and warns: the bound there is 0.72 %."""
     config, hf_row, base = _cooling_case()
     msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve_to(1.0 / (1.0 - 3.1e-3), 1.011))
 
-    assert any(REJECT_MSG in m for m in msgs)
+    assert any(ACCEPT_MSG in m for m in msgs)
     assert len(_warnings(caplog, BOUND_MSG)) == 1
-    assert hf_row['R_int'] == R_RETAINED
+    assert hf_row['R_int'] == pytest.approx(R_RETAINED * 1.011, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('dry_mantle', [True, False], ids=['dry mantle', 'wet mantle'])
+def test_a_fixed_target_at_radius_ratio_4_is_kept_at_the_first_solve(caplog, dry_mantle):
+    """A +1 % target with a +4 % radius step is kept at once, and the next solve is not refused.
+
+    A radius rise of 4 times the mass rise is above the bound (2.1 %), as for H2 that dissolves
+    into a wet mantle. The cooling dT/T solve is kept with a warning, so the structure takes the
+    new target at once. The next solve at the same target contracts by 1e-3 and is kept as well.
+    """
+    config, hf_row, base = _cooling_case()
+    config.interior_struct.zalmoxis.dry_mantle = dry_mantle
+    msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve_to(1.01, 1.04))
+
+    assert any(ACCEPT_MSG in m for m in msgs)
+    assert not any(REJECT_MSG in m or 'composition-driven' in m for m in msgs)
+    assert len(_warnings(caplog, BOUND_MSG)) == 1
+    assert hf_row['R_int'] == pytest.approx(R_RETAINED * 1.04, rel=1e-12)
+    assert hf_row['M_int'] == pytest.approx(M_RETAINED * 1.01, rel=1e-12)
+
+    hf_row['Time'] += 1000.0
+    msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve_to(1.01, 1.04 * (1.0 - 1e-3)))
+
+    assert not any(REJECT_MSG in m for m in msgs)
+    assert not _warnings(caplog, BOUND_MSG)
+    assert hf_row['R_int'] == pytest.approx(R_RETAINED * 1.04 * (1.0 - 1e-3), rel=1e-12)
 
 
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(
     ('dm', 'dr'),
-    [
-        # dM/M and dR/R of re-expansions measured in coupled runs of a planet of 8.63 Earth masses
-        pytest.param(8.9111e-02, 7.0910e-02, id='re-expansion at +8.9 % mass, ratio 0.80'),
-        pytest.param(1.6498e-01, 1.5520e-01, id='re-expansion at +16.5 % mass, ratio 0.94'),
-        pytest.param(1.9129e-01, 1.7460e-01, id='re-expansion at +19.1 % mass, ratio 0.91'),
-        pytest.param(8.9063e-02, 7.5834e-02, id='re-expansion at +8.9 % mass, ratio 0.85'),
-        pytest.param(6.9826e-02, 6.2582e-02, id='re-expansion at +7.0 % mass, ratio 0.90'),
-    ],
+    _measured_up_steps(),
+    ids=[f'measured up-step {i}' for i in range(len(_measured_up_steps()))],
 )
-def test_measured_mass_steps_pass_the_radius_bound(caplog, dm, dr):
-    """Every measured re-expansion of a stuck planet is kept, with no bound warning."""
+def test_measured_up_steps_are_kept_with_no_bound_warning(caplog, dm, dr):
+    """Every R_int up-step measured with a mass rise above the anchor is kept and does not warn."""
     config, hf_row, base = _cooling_case()
     msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve_to(1.0 + dm, 1.0 + dr))
 
@@ -119,40 +166,108 @@ def test_measured_mass_steps_pass_the_radius_bound(caplog, dm, dr):
     assert hf_row['R_int'] == pytest.approx(R_RETAINED * (1.0 + dr), rel=1e-12)
 
 
+def test_the_measured_up_steps_file_holds_112_steps_above_the_anchor():
+    """The replayed data set is the full set of 112 measured steps, each a mass-escape case."""
+    steps = _measured_up_steps()
+
+    assert len(steps) == 112
+    assert all(
+        dm > 1.0 / (1.0 - _ZALMOXIS_MASS_ANCHOR_TOL) - 1.0 and dr > 0.0 for dm, dr in steps
+    )
+
+
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(
-    ('dm', 'dr', 'kept'),
+    ('dm', 'dr', 'warns'),
     [
-        # dR/R <= 2 dM/M + 1e-3, with the numbers written out
-        pytest.param(0.05, 0.08, True, id='+8 % radius at +5 % mass, inside the slope'),
-        pytest.param(0.05, 0.102, False, id='+10.2 % radius at +5 % mass, above 0.101'),
+        # dR/R against 2 dM/M + 1e-3, with the numbers written out
+        pytest.param(0.05, 0.08, False, id='+8 % radius at +5 % mass, inside the slope'),
+        pytest.param(0.05, 0.102, True, id='+10.2 % radius at +5 % mass, above 0.101'),
         pytest.param(
-            3.1e-3, 6.8e-3, True, id='+0.68 % radius at +0.31 % mass, inside the offset'
+            3.1e-3, 6.8e-3, False, id='+0.68 % radius at +0.31 % mass, inside the offset'
         ),
-        pytest.param(3.1e-3, 7.3e-3, False, id='+0.73 % radius at +0.31 % mass, above 0.72 %'),
+        pytest.param(3.1e-3, 7.3e-3, True, id='+0.73 % radius at +0.31 % mass, above 0.72 %'),
     ],
 )
-def test_the_radius_bound_has_slope_2_and_offset_1e_3(caplog, dm, dr, kept):
-    """The kept and refused steps of the bound dR/R <= 2 dM/M + 1e-3, in fixed numbers."""
+def test_the_radius_bound_has_slope_2_and_offset_1e_3(caplog, dm, dr, warns):
+    """Each step of the bound dR/R <= 2 dM/M + 1e-3 is kept; only a step above it warns."""
     config, hf_row, base = _cooling_case()
     msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve_to(1.0 + dm, 1.0 + dr))
 
-    assert any(ACCEPT_MSG in m for m in msgs) is kept
-    assert bool(_warnings(caplog, BOUND_MSG)) is not kept
+    assert any(ACCEPT_MSG in m for m in msgs)
+    assert bool(_warnings(caplog, BOUND_MSG)) is warns
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize(('scale', 'kept'), [(1.0 - 1e-9, True), (1.0 + 1e-9, False)])
-def test_the_radius_bound_holds_at_its_edge(caplog, scale, kept):
-    """A radius step just inside the bound is kept; one just outside is rejected."""
+@pytest.mark.parametrize(('scale', 'warns'), [(1.0 - 1e-9, False), (1.0 + 1e-9, True)])
+def test_the_radius_bound_warning_holds_at_its_edge(caplog, scale, warns):
+    """A radius step just inside the bound is kept silently; one just outside is kept and warns."""
     config, hf_row, base = _cooling_case()
     dm = 1.0e-2
     msgs, _, _ = run_guard(
         caplog, hf_row, config, base, _solve_to(1.0 + dm, 1.0 + _bound(dm) * scale)
     )
 
-    assert any(ACCEPT_MSG in m for m in msgs) is kept
-    assert bool(_warnings(caplog, BOUND_MSG)) is not kept
+    assert any(ACCEPT_MSG in m for m in msgs)
+    assert bool(_warnings(caplog, BOUND_MSG)) is warns
+
+
+@pytest.mark.physics_invariant
+def test_the_bound_uses_the_mass_the_solve_reached(caplog):
+    """A solve that lands 2.9e-3 short of a +0.302 % target is judged by the rise it reached.
+
+    The reached rise is 1.1e-4, so the bound is 1.2e-3 and a +0.7 % radius step warns; against
+    the target rise the bound would be 7.04e-3 and the step would pass silently. The committed
+    mass misses its target by 2.9e-3, inside the anchor, so the committed-mass check stays silent.
+    """
+    config, hf_row, base = _cooling_case()
+    target = M_RETAINED * (1.0 + 3.02e-3)
+    reached = target * (1.0 - 2.9e-3)
+
+    def _solve(*args, **kwargs):
+        args[2].update(R_int=R_RETAINED * (1.0 + 7.0e-3), M_int_target=target, M_int=reached)
+        return (3.504e6, None)
+
+    msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve)
+
+    assert any(ACCEPT_MSG in m for m in msgs)
+    warned = _warnings(caplog, BOUND_MSG)
+    assert len(warned) == 1
+    assert 'reached dM/M=%.6e' % (reached / M_RETAINED - 1.0) in warned[0]
+    assert 'target rise %.6e' % (target / M_RETAINED - 1.0) in warned[0]
+    assert hf_row['M_int'] == reached
+    assert not _warnings(caplog, MISS_MSG)
+
+
+@pytest.mark.physics_invariant
+def test_the_heating_escape_keeps_a_large_step_with_no_bound_warning(caplog):
+    """Under heating, an anchor trip with a +20 % radius step is kept by the heating escape alone."""
+    config, hf_row, base = _cooling_case()
+    base[1] = 2700.0  # last structure decision at 2700 K, now 2800 K: heating
+    msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve_to(1.0 / (1.0 - 3.1e-3), 1.20))
+
+    assert any(HEATING_MSG in m for m in msgs)
+    assert not _warnings(caplog, BOUND_MSG)
+    assert hf_row['R_int'] == pytest.approx(R_RETAINED * 1.20, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_the_wet_composition_escape_keeps_a_large_step_with_no_bound_warning(caplog):
+    """A wet composition re-solve with an anchor trip and a +20 % radius step does not warn."""
+    config, hf_row, dirs = _composition_trigger_scenario(dry_mantle=False)
+    hf_row['M_int_target'] = hf_row['M_int']
+    m_ret, r_prev = hf_row['M_int'], hf_row['R_int']
+
+    def _solve(*args, **kwargs):
+        args[2].update(R_int=r_prev * 1.20, M_int_target=m_ret * 1.0031, M_int=m_ret * 1.0031)
+        return (3.504e6, None)
+
+    msgs, _, _ = run_guard(caplog, hf_row, config, (0.0, 3000.0, 0.5), _solve, dirs=dirs)
+
+    assert any('composition-driven wet' in m for m in msgs)
+    assert any(ACCEPT_MSG in m for m in msgs)
+    assert not _warnings(caplog, BOUND_MSG)
+    assert hf_row['R_int'] == pytest.approx(r_prev * 1.20, rel=1e-12)
 
 
 @pytest.mark.physics_invariant
@@ -199,6 +314,7 @@ def test_a_falling_target_with_an_artifact_up_step_warns_about_the_heavier_struc
     msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve_to(ratio, 1.0 + 7.2e-4))
 
     assert any(REJECT_MSG in m for m in msgs)
+    assert not _warnings(caplog, BOUND_MSG)
     assert hf_row['M_int'] == M_RETAINED
     assert hf_row['M_int_target'] == M_RETAINED * ratio
     warned = _warnings(caplog, MISS_MSG)
@@ -206,15 +322,6 @@ def test_a_falling_target_with_an_artifact_up_step_warns_about_the_heavier_struc
     assert 'M_int=%.6e kg' % M_RETAINED in warned[0]
     assert 'M_int_target=%.6e kg' % (M_RETAINED * ratio) in warned[0]
     assert 'relative miss %.3e' % abs(M_RETAINED / (M_RETAINED * ratio) - 1.0) in warned[0]
-
-
-@pytest.mark.physics_invariant
-def test_a_bound_reject_warns_that_the_structure_misses_its_target(caplog):
-    """The bound reject of a too-large radius step leaves the planet off its target, and says so."""
-    config, hf_row, base = _cooling_case()
-    run_guard(caplog, hf_row, config, base, _solve_to(1.0 / (1.0 - 3.1e-3), 1.20))
-
-    assert len(_warnings(caplog, MISS_MSG)) == 1
 
 
 @pytest.mark.physics_invariant
@@ -234,6 +341,47 @@ def test_no_mass_warning_when_the_committed_structure_meets_its_target(caplog, r
 
     assert not _warnings(caplog, MISS_MSG)
     assert abs(hf_row['M_int'] / hf_row['M_int_target'] - 1.0) <= _ZALMOXIS_MASS_ANCHOR_TOL
+
+
+@pytest.mark.physics_invariant
+def test_an_accepted_solve_at_a_miss_of_2p9e_3_does_not_warn(caplog):
+    """A down-step solve that lands 2.9e-3 below its target passes the anchor and does not warn."""
+    config, hf_row, base = _cooling_case()
+
+    def _solve(*args, **kwargs):
+        args[2].update(
+            R_int=R_RETAINED * (1.0 - 1.0e-3),
+            M_int_target=M_RETAINED,
+            M_int=M_RETAINED * (1.0 - 2.9e-3),
+        )
+        return (3.504e6, None)
+
+    msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve)
+
+    assert not any('Falling back to previous structure' in m for m in msgs)
+    assert hf_row['M_int'] == M_RETAINED * (1.0 - 2.9e-3)
+    assert not _warnings(caplog, MISS_MSG)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('side', [1.0, -1.0], ids=['mass above target', 'mass below target'])
+def test_the_committed_mass_warning_starts_at_the_first_float_beyond_the_anchor(caplog, side):
+    """The largest float miss within the anchor does not warn; the next float out warns.
+
+    No float mass gives a miss of exactly 3e-3 (1 +- 3e-3 is not a float), so the two floats on
+    either side of the anchor pin the threshold.
+    """
+    inside, outside = _misses_around_the_anchor(M_RETAINED, side)
+    assert abs(inside / M_RETAINED - 1.0) <= _ZALMOXIS_MASS_ANCHOR_TOL
+    assert abs(outside / M_RETAINED - 1.0) > _ZALMOXIS_MASS_ANCHOR_TOL
+
+    with caplog.at_level(logging.WARNING):
+        _warn_committed_mass_miss({'M_int': inside, 'M_int_target': M_RETAINED})
+    assert not _warnings(caplog, MISS_MSG)
+
+    with caplog.at_level(logging.WARNING):
+        _warn_committed_mass_miss({'M_int': outside, 'M_int_target': M_RETAINED})
+    assert len(_warnings(caplog, MISS_MSG)) == 1
 
 
 @pytest.mark.physics_invariant
