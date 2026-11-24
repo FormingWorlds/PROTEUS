@@ -4973,6 +4973,30 @@ def test_a_skipped_aragog_step_names_the_error_that_stopped_the_call(error, caus
 
 
 @pytest.mark.unit
+def test_the_abort_after_the_last_skipped_aragog_step_names_its_cause(caplog):
+    """The third failed call in a row stops the run, and the abort line names its cause."""
+    from proteus.interior_energetics import wrapper as _w
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic, interior_o.dt = 2, 0.0
+    interior_o.aragog_fail_count = _w._ARAGOG_MAX_CONSECUTIVE_FAILS - 1
+    runner_mock = MagicMock()
+    runner_mock.run_solver.side_effect = CMBClosureError('ledger miss 5 above 10x the bound')
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
+        caplog.at_level('ERROR', logger='fwl.proteus.interior_energetics.wrapper'),
+        pytest.raises(CMBClosureError),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
+    assert caplog.messages == [
+        'Aragog failed 3 consecutive times (last: Aragog CMB closure check failed '
+        '(CMBClosureError)). Aborting.'
+    ]
+
+
+@pytest.mark.unit
 def test_the_cmb_closure_error_of_aragog_takes_the_cmb_cause():
     """The class of aragog is a RuntimeError, not a stop class of the wrapper, and its name
     gives the CMB cause; an aragog from 26.11.24 on without the class fails the test."""
