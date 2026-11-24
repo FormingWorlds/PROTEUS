@@ -2330,15 +2330,15 @@ def _aragog_failure_cause(error: RuntimeError) -> str:
         'Aragog CMB closure check failed (CMBClosureError)' for the CMB ledger check of
         aragog, else 'Aragog call failed (<error class>)'.
     """
+    from aragog.solver.entropy_solver import CMBClosureError
+
     from proteus.interior_energetics.aragog import RetryLadderExhaustedError
 
     if isinstance(error, RetryLadderExhaustedError):
         return 'Aragog retry-ladder exhaustion'
-    name = type(error).__name__
-    # matched by name: the class exists from fwl-aragog 26.11.24 on
-    if name == 'CMBClosureError':
-        return f'Aragog CMB closure check failed ({name})'
-    return f'Aragog call failed ({name})'
+    if isinstance(error, CMBClosureError):
+        return 'Aragog CMB closure check failed (CMBClosureError)'
+    return f'Aragog call failed ({type(error).__name__})'
 
 
 def _skip_aragog_call_energy(hf_row: dict) -> None:

@@ -60,7 +60,7 @@ For broader convergence problems,see [stabilising simulations](stabilise_run.md)
 
 ### The CMB closure check of Aragog fails {#the-cmb-closure-check-of-aragog-fails}
 
-With fwl-aragog 26.11.24 or later, Aragog checks the heat budget at the core-mantle boundary (CMB) after each call. With `interior_energetics.aragog.core_bc = "energy_balance"` or `"gradient"`, the change of the core heat in the call must match the heat that crossed the CMB. With `"core_module"`, the CMB node must follow the change of the core top. A miss above the bound of the check gives a warning. A miss above 10 times that bound, or a slope (dT/dS)_P of the CMB node that is not finite and positive, raises `CMBClosureError`.
+Aragog checks the heat budget at the core-mantle boundary (CMB) after each call. With `interior_energetics.aragog.core_bc = "energy_balance"` or `"gradient"`, the change of the core heat in the call must match the heat that crossed the CMB. With `"core_module"`, the CMB node must follow the change of the core top. A miss above the bound of the check gives a warning. A miss above 10 times that bound, or a slope (dT/dS)_P of the CMB node that is not finite and positive, raises `CMBClosureError`.
 
 PROTEUS then logs `Aragog CMB closure check failed (CMBClosureError) #n/3` with the message of Aragog. It keeps the interior state of the previous step for this step, sets the energy columns of the call to 0, and goes on with the other modules. Three failed Aragog calls in a row stop the run. The retry ladder does not run for this error.
 
