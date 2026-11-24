@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import collections
-import functools
 import html
 import http.client
 import json
@@ -355,17 +354,19 @@ def collect(gh: GitHub, settings: dict, window: dict) -> dict:
     dropped = [p for p in prs if p['status'] == 'open' and p['association'] not in MEMBERS]
     prs = [p for p in prs if p not in dropped]
     cut = add_bodies(prs, releases, settings['max_bodies'], settings['body_chars'])
-    down, ask, left = set(), functools.cache(page_status), collections.defaultdict(set)
+    down, answers, left = set(), {}, collections.defaultdict(set)
     for p in prs:
         base = settings['docs'].get(p['repo']) if p['status'] == 'merged' else None
 
         def status(url: str, base: str | None = base) -> int | str:
             """One request per URL, and none to a docs site after a network error on it."""
-            if base in down:
-                return 'not asked: the site failed before'
-            if isinstance(code := ask(url), str):
-                down.add(base)
-            return code
+            if url not in answers:
+                if base in down:
+                    return 'not asked: the site failed before'
+                answers[url] = page_status(url)
+                if isinstance(answers[url], str):
+                    down.add(base)
+            return answers[url]
 
         files = [f for f in p['files'] if f not in p['deleted']]
         p['docs'] = docs_pages(files, base, status)
