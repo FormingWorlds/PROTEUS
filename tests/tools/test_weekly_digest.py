@@ -10,10 +10,12 @@ the network; GitHub answers are recorded fixtures or fakes.
 from __future__ import annotations
 
 import http.client
+import http.server
 import json
 import re
 import stat
 import sys
+import threading
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
@@ -404,7 +406,7 @@ def _node(merged=None, created='2026-09-02T00:00:00Z', draft=False):
         'author': {'login': 'alice', '__typename': 'User'},
         'authorAssociation': 'MEMBER',
         'labels': {'nodes': []},
-        'files': {'nodes': [{'path': 'a.py'}]},
+        'files': {'nodes': [{'path': 'a.py', 'changeType': 'MODIFIED'}]},
         'mergeCommit': {'oid': 'm', 'parents': {'nodes': [{'oid': 'p'}]}} if merged else None,
     }
 
@@ -2007,7 +2009,10 @@ def test_numbers_split_a_letter_or_underscore_prefix_but_keep_formulas(text, fou
 def test_truncated_file_list_diffs_every_tracked_file():
     """A pull request with more files than the query returns has every tracked file compared."""
     node = _node(merged='2026-09-05T00:00:00Z')
-    node['files'] = {'totalCount': 250, 'nodes': [{'path': 'src/a.py'}]}
+    node['files'] = {
+        'totalCount': 250,
+        'nodes': [{'path': 'src/a.py', 'changeType': 'MODIFIED'}],
+    }
     record = collect.pr_record('FormingWorlds/PROTEUS', node, SINCE, UNTIL)
     assert record['files_truncated'] is True
     old, new = _schema(a={'default': 1}), _schema(a={'default': 2})
@@ -2157,7 +2162,7 @@ def test_model_stdout_tail_is_one_json_string(tmp_path, monkeypatch):
 def test_limits_and_query_details():
     """Boundaries of the file list, the lengths and the body, the post cursor and the schedule."""
     node = _node(merged='2026-09-05T00:00:00Z')
-    node['files'] = {'totalCount': 1, 'nodes': [{'path': 'a.py'}]}
+    node['files'] = {'totalCount': 1, 'nodes': [{'path': 'a.py', 'changeType': 'MODIFIED'}]}
     assert (
         collect.pr_record('FormingWorlds/PROTEUS', node, SINCE, UNTIL)['files_truncated']
         is False
@@ -2371,7 +2376,7 @@ def test_check_reads_the_text_as_rendered(text):
     ],
 )
 def test_scan_body_allows_only_collected_links_and_authors(bad, reason):
-    """The rendered body links only to collected items and the run, and mentions only authors."""
+    """The rendered body links only to collected items and the run, and mentions nobody."""
     body, _ = _render(_draft(_entry()), live=True)
     allowed = (render.allowed_urls(_data(), 'https://run', []), [])
     assert (
@@ -2828,7 +2833,7 @@ def test_page_status_reads_the_answer_and_never_raises(monkeypatch):
             raise urllib.error.URLError('no route')
         return _Ok()
 
-    monkeypatch.setattr(collect.urllib.request, 'urlopen', fake)
+    monkeypatch.setattr(collect.PAGE_OPENER, 'open', fake)
     assert _PAGE_STATUS('https://d/ok.html') == 200
     assert _PAGE_STATUS('https://d/gone.html') == 404
     assert 'no route' in _PAGE_STATUS('https://d/down.html')
@@ -2838,7 +2843,7 @@ def test_page_status_reads_the_answer_and_never_raises(monkeypatch):
         def raise_it(req, timeout, err=err):
             raise err
 
-        monkeypatch.setattr(collect.urllib.request, 'urlopen', raise_it)
+        monkeypatch.setattr(collect.PAGE_OPENER, 'open', raise_it)
         assert isinstance(_PAGE_STATUS('https://d/x.html'), str), err
 
 
@@ -2859,6 +2864,11 @@ _PAGE_STATUS = collect.page_status
 def _no_docs_requests(monkeypatch):
     """No test reaches a docs site: every page is unreachable unless the test stubs the request."""
     monkeypatch.setattr(collect, 'page_status', lambda url: 'no network in tests')
+    monkeypatch.setattr(collect.PAGE_OPENER, 'open', _refuse_network)
+
+
+def _refuse_network(req, timeout):
+    raise AssertionError(f'a test asked the network for {req.full_url}')
 
 
 _LATER = {'since': '2026-10-01T00:00:00Z', 'until': '2026-11-18T00:00:00Z'}
@@ -3038,3 +3048,122 @@ def test_link_text_of_any_text_is_one_trimmed_line_with_escaped_markup(text):
     assert not any(unicodedata.category(c) in ('Cc', 'Cf', 'Zl', 'Zp') for c in out)
     assert '@' not in out and '|' not in out and out == out.strip()
     assert not re.search(r'(?<!\\)[\[\]()`<>*_]', out.replace('\\\\', '')), out
+
+
+def test_publish_refuses_a_body_that_mentions_a_cited_author(tmp_path, monkeypatch):
+    """An @mention of a real author is refused too: the post notifies nobody."""
+    with pytest.raises(common.DigestError, match=r'^not posted: \d+ link problems$'):
+        _publish(
+            tmp_path, monkeypatch, None, _MON, tamper=('The default', '@alice The default')
+        )
+
+
+class _Site(http.server.BaseHTTPRequestHandler):
+    """Local docs site: /moved.html redirects to /ok.html, which answers 200."""
+
+    asked: list = []
+
+    def do_HEAD(self):
+        _Site.asked.append(self.path)
+        self.send_response(200 if self.path == '/ok.html' else 301)
+        self.send_header('Location', '/ok.html')
+        self.end_headers()
+
+    do_GET = do_HEAD
+
+    def log_message(self, *args):
+        pass
+
+
+def test_a_redirect_is_not_a_served_page(monkeypatch):
+    """A 3xx answer is given back as it is, never followed, so the page is left out."""
+    monkeypatch.undo()
+    server = http.server.HTTPServer(('127.0.0.1', 0), _Site)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        url = f'http://127.0.0.1:{server.server_port}'
+        _Site.asked.clear()
+        assert _PAGE_STATUS(f'{url}/moved.html') == 301
+        assert _Site.asked == ['/moved.html']
+        assert _PAGE_STATUS(f'{url}/ok.html') == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_render_state_holds_only_the_window_end_and_the_run():
+    """The state marker holds what the next run reads: the window end and the run id."""
+    _, state = _render(_draft(_entry()), live=True)
+    assert set(state) == {'until', 'run_id'}
+
+
+def test_collect_main_reads_no_pull_request_state(tmp_path, monkeypatch):
+    """collect.py makes no request for pull requests named in an earlier state marker."""
+    monkeypatch.setattr(collect, 'GitHub', lambda: 'gh')
+    monkeypatch.setattr(
+        collect,
+        'previous_state',
+        lambda *a: {'until': '2026-11-10T00:00:00Z', 'announced_open': ['PROTEUS#900']},
+    )
+    monkeypatch.setattr(
+        collect, 'collect', lambda gh, s, w: {'window': w, 'prs': [], 'releases': []}
+    )
+    out = tmp_path / 'c.json'
+    assert collect.main(['--out', str(out), '--until', '2026-11-17']) == 0
+    assert 'still_open' not in json.loads(out.read_text())
+
+
+def test_intro_links_the_repository_of_the_workflow():
+    """The sentence that names the workflow links its repository, like every other repository."""
+    body, _ = _render(_draft(_entry()), live=True)
+    assert (
+        'a workflow in [FormingWorlds/PROTEUS](https://github.com/FormingWorlds/PROTEUS) from'
+        in body
+    )
+
+
+def test_collect_counts_the_left_out_docs_pages_per_site(monkeypatch):
+    """Each site with pages left out gets its count, so a wrong base or a timeout shows."""
+    monkeypatch.setattr(collect, 'page_status', lambda url: 404 if 'first_run' in url else 200)
+    out = _collect_janus({'FormingWorlds/JANUS': 'https://d.example/J'})
+    assert out['docs_left_out'] == {'https://d.example/J': 1}
+    monkeypatch.setattr(collect, 'page_status', lambda url: 200)
+    assert _collect_janus({'FormingWorlds/JANUS': 'https://d.example/J'})['docs_left_out'] == {}
+
+
+def test_collect_main_writes_the_left_out_docs_pages_to_the_summary(tmp_path, monkeypatch):
+    """The job summary names each docs site with pages left out, and how many."""
+    monkeypatch.setattr(collect, 'GitHub', lambda: 'gh')
+    left = {'https://d.example/J': 2}
+    monkeypatch.setattr(
+        collect,
+        'collect',
+        lambda gh, s, w: {'window': w, 'prs': [], 'releases': [], 'docs_left_out': left},
+    )
+    out, summary = tmp_path / 'c.json', tmp_path / 's.md'
+    args = ['--out', str(out), '--since', '2026-09-01', '--until', '2026-09-30']
+    assert collect.main([*args, '--summary', str(summary)]) == 0
+    assert (
+        summary.read_text() == '<pre>\nDocs pages left out: 2 of https://d.example/J\n</pre>\n'
+    )
+
+
+def test_a_deleted_docs_page_is_not_asked_or_linked(monkeypatch):
+    """A page the pull request deletes gets no request and no link; its path stays in the files."""
+    asked = []
+    monkeypatch.setattr(collect, 'page_status', lambda url: asked.append(url) or 200)
+    janus = _janus()
+    pr = next(n for n in janus['repository']['pullRequests']['nodes'] if n['number'] == 103)
+    gone = next(f for f in pr['files']['nodes'] if f['path'] == 'docs/Tutorials/first_run.md')
+    gone['changeType'] = 'DELETED'
+    settings_ = {
+        **_VALID,
+        'repos': ['FormingWorlds/JANUS'],
+        'docs': {'FormingWorlds/JANUS': 'https://d.x'},
+    }
+    out = collect.collect(_FakeGH([janus]), settings_, _LATER)
+    rec = next(p for p in out['prs'] if p['ref'] == 'JANUS#103')
+    assert [d['path'] for d in rec['docs']] == ['Explanations/model', 'Validation/solve_pt']
+    assert 'docs/Tutorials/first_run.md' in rec['files']
+    assert not any('first_run' in u for u in asked)
+    assert out['docs_left_out'] == {}
