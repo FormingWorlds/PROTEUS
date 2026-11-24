@@ -4,7 +4,7 @@ The weekly digest is a short post that tells the developers of the PROTEUS ecosy
 
 A GitHub Actions workflow in this repository writes the digest and, when posting is switched on, posts it to the FormingWorlds Discussions tab (the forum of a GitHub repository), in the category Weekly digest. This page is for people who run or change the workflow. It explains what the workflow does, how to make a dry run (a run that writes the digest and posts nothing), how to switch posting on or off, and what to do when a run is red.
 
-A language model drafts the text from the collected data. A script checks every entry before anything is posted: each pull request, release, number and config key in an entry must come from the collected data. The top of the post says that it is a selection and that a workflow wrote it. The closing paragraph gives the collection window and the number of pull requests, releases and repositories, and says whether the model read the text of every pull request or only of the largest ones (the others by title only). Readers must read the linked pull requests before they act on an entry.
+A language model drafts the text from the collected data. A script checks every entry before anything is posted: each pull request, release, number and config key in an entry must come from the collected data. The post opens, after the dry-run line of a dry run, with the collection window, the number of pull requests and releases, the repositories (each a link to its GitHub repository), whether the model read the text of every pull request or only of the largest ones (the others by title only), and a link to the workflow run. Then it says that it is a selection and that a workflow wrote it. Readers must read the linked pull requests before they act on an entry.
 
 ## What the workflow does
 
@@ -15,6 +15,8 @@ A digest covers a window of time. The window starts where the window of the last
 ### Collect the data
 
 `collect.py` reads the pull requests and releases of every repository in `tools/digest/repos.toml` through the GitHub API. It stops if a repository is private or archived. Anyone with a GitHub account can write the titles and texts of pull requests and releases, so `collect.py` cleans that text before the model reads it. It reads only the first 20000 characters of each title or text. It removes format and control characters, HTML comments (a comment ends only at `-->`, and an unclosed comment removes the rest of the text), images, link targets, HTML tags, every `<`, `>` and `@`, and every word that holds `://` or `www.`. Link text stays, and so does the text around a `<` or `>` that does not start a tag, as in `T < 300 K`. Text inside markup, such as an attribute value or the content of a `<script>` element, can still reach the model. Of text in the form `[word](...)` only `word` stays, and of `![word](...)` nothing stays, also when the round brackets hold plain prose and not a link target. `check.py` and the link scan of the post step stop links, mentions, markup and numbers without a source in the post; they do not stop wording that such text steers.
+
+For each merged pull request, `collect.py` also lists its docs pages: each file `docs/<path>.md` of the pull request maps to `<site>/<path>.html`, with the docs site of its repository from the table `docs` in `repos.toml`. A page counts only when one HEAD request to that URL answers 200 at collect time, so a deleted page, or a page of a pull request merged after the last docs deployment, is left out. The run log names each page left out and the answer it got. A repository without a docs site in the table gives no pages.
 
 An open pull request counts only when GitHub reports its author as an owner, member, collaborator or contributor of the repository (the author association). `collect.py` leaves out the other open pull requests and names each one, with its login and association, in the run log and the job summary. Merged pull requests count whatever the association.
 
@@ -90,7 +92,9 @@ The check prints each failure as one line, `FAIL` and a quoted JSON string, so e
 
 `render.py` writes the post:
 
-- The config keys, their values, the links, the dates and the mentions come from the collected data, not from the model text.
+- The config keys, their values, the links, the dates and the author names come from the collected data, not from the model text.
+- Each author is a link to the GitHub profile (see [Authors](#authors)).
+- A row of the section "Changes that affect your results" and an entry of the section "New capabilities" link the docs pages of their pull requests, at most 5, then the number of the other pages.
 - The model text is escaped, so any markdown in it shows as plain text.
 - An empty fact value shows as (empty), a null or missing one as (none), and a value of only `|` or backtick characters as (not shown).
 - The title is the date of the Tuesday of the week (Monday to Sunday, Amsterdam time) in which the window ends. The scheduled Monday run takes the next day. A run from Tuesday to Sunday takes the Tuesday that is already past, the meeting of its own week.
@@ -105,7 +109,7 @@ The post step runs only in a live run, a run that is allowed to post (see [Switc
 - the run is scheduled, or its box **Post the digest** is ticked;
 - the draft passes `check.py`;
 - the body is not a dry run;
-- the final body links only to collected pull requests and releases and to the run, and mentions only their authors.
+- the final body links only to the collected pull requests, releases and docs pages, the run, the repositories and the profiles of the authors, and mentions nobody.
 
 `post.py` makes at most one post per meeting. It reads the newest digest post, and skips posting when that post has the same workflow run id (the number of the Actions run, which a rerun keeps), the same title, or a window end that is the same as or later than the window end of this run:
 
@@ -170,7 +174,7 @@ A run that fails in the post step after GitHub created the post is red, and the 
 
 ## Sections of a digest
 
-The sections appear in the order of the table below, and a section without entries is left out. The section "Changes that affect your results" is a table with the columns Setting, Change (the entry text, then old value → new value for each cited fact), Merged and Links (with the authors).
+The sections appear in the order of the table below, and a section without entries is left out. The section "Changes that affect your results" is a table with the columns Setting, Change (the entry text, then old value → new value for each cited fact), Merged and Links (with the docs pages and the authors). An entry of the section "New capabilities" lists its docs pages after its text.
 
 | Section | What goes in it |
 | --- | --- |
@@ -181,14 +185,12 @@ The sections appear in the order of the table below, and a section without entri
 | Design choices to look at | New interfaces, defaults, coupling choices and dependencies that maintainers can check against their plans |
 | In review, coming soon | Open pull requests in review by owners, members, collaborators and contributors (draft pull requests are left out) |
 
-## Mentions
+## Authors
 
-The post names each author as `@login`, which notifies that person. The rules:
+Each entry ends with the authors of its pull requests and releases, each once:
 
-- Each person is mentioned once per post; later names are code spans, so a login cannot form a reference.
-- Bots and organisations are never mentioned: the logins in the list `bots` in `repos.toml`, every login that ends in `[bot]`, and every account that GitHub does not mark as a user.
-- The author of an open pull request that an earlier digest announced is not mentioned again for it while it stays open. Before each run, `collect.py` asks GitHub which announced pull requests are still open. A pull request leaves the list when GitHub answers that it does not exist, or when its repository is no longer in `repos.toml`; on any other error it stays.
-- A dry run shows the mentions in code spans, so nobody is notified.
+- A person is a link to the GitHub profile, `[login](https://github.com/login)`. A link notifies nobody, and the post has no `@` mentions.
+- A bot or an organisation is a code span: the logins in the list `bots` in `repos.toml`, every login that ends in `[bot]`, and every account that GitHub does not mark as a user.
 
 ## Settings in `repos.toml`
 
@@ -199,8 +201,9 @@ The post names each author as `@login`, which notifies that person. The rules:
 | `model` | Model that drafts the entries |
 | `max_bodies` | Number of the largest pull requests (by changed lines) whose text the model reads; the others give their titles only. From 0 to 500 |
 | `body_chars` | Characters kept of each pull-request or release text. From 1 to 20000 |
-| `bots` | Logins that are never mentioned |
+| `bots` | Logins shown as code spans, not as profile links |
 | `repos` | Repositories in the digest, as `owner/name` |
+| `docs` | Docs site per repository, as `owner/name = "https://..."` with no `/` at the end; a page `docs/<path>.md` is served at `<site>/<path>.html` |
 | `tracked` | Files per repository whose changes become facts; `pyproject.toml` and `Project.toml` are always tracked. A listed file must exist on the default branch of its repository, or the run stops |
 
 The run stops if a setting is missing or has the wrong type or range.
@@ -210,7 +213,8 @@ The run stops if a setting is missing or has the wrong type or range.
 What a digest can miss:
 
 - A fact comes from the merge commit of a pull request and the commit before it. For a pull request merged as several rebased commits, only the last commit is compared.
-- For a pull request with more than 100 changed files, every tracked file of its repository is compared.
+- For a pull request with more than 100 changed files, every tracked file of its repository is compared, and its docs pages come from its first 100 files only.
+- A docs page is checked once, when the data is collected; a page that the docs deployment removes later stays linked.
 - Only pull requests whose base is the default branch of their repository are read, merged or open. A pull request closed without a merge does not appear.
 - An open pull request counts only when it was updated after the window start.
 - A window with no merged pull request and no release gives a post that says Quiet week and lists no open pull requests, even when some are open.
