@@ -4,7 +4,17 @@ The weekly digest is a short post that tells the developers of the PROTEUS ecosy
 
 A GitHub Actions workflow in this repository writes the digest and, when posting is switched on, posts it to the FormingWorlds Discussions tab (the forum of a GitHub repository), in the category Weekly digest. This page is for people who run or change the workflow. It explains what the workflow does, how to make a dry run (a run that writes the digest and posts nothing), how to switch posting on or off, and what to do when a run is red.
 
-A language model drafts the text from the collected data. A script checks every entry before anything is posted: each pull request, release, number and config key in an entry must come from the collected data. The post opens, after the dry-run line of a dry run, with the collection window, the number of pull requests and releases, the repositories (each a link to its GitHub repository), whether the model read the text of every pull request or only of the largest ones (the others by title only), and a link to the workflow run. Then it says that it is a selection and that a workflow wrote it. Readers must read the linked pull requests before they act on an entry.
+A language model drafts the text from the collected data. A script checks every entry before anything is posted: each pull request, release, number and config key in an entry must come from the collected data.
+
+The post opens with a summary of what the digest covers:
+
+- the collection window;
+- the number of merged pull requests, open pull requests and releases;
+- the repositories, each a link to its GitHub repository;
+- whether the model read the text of every pull request or only of the largest ones (the others by title only);
+- a link to the workflow run.
+
+A dry run puts the line **Dry run: not posted.** before this summary. After the summary, the post says that it is a selection and that a workflow wrote it. Readers must read the linked pull requests before they act on an entry.
 
 ## What the workflow does
 
@@ -16,7 +26,7 @@ A digest covers a window of time. The window starts where the window of the last
 
 `collect.py` reads the pull requests and releases of every repository in `tools/digest/repos.toml` through the GitHub API. It stops if a repository is private or archived. Anyone with a GitHub account can write the titles and texts of pull requests and releases, so `collect.py` cleans that text before the model reads it. It reads only the first 20000 characters of each title or text. It removes format and control characters, HTML comments (a comment ends only at `-->`, and an unclosed comment removes the rest of the text), images, link targets, HTML tags, every `<`, `>` and `@`, and every word that holds `://` or `www.`. Link text stays, and so does the text around a `<` or `>` that does not start a tag, as in `T < 300 K`. Text inside markup, such as an attribute value or the content of a `<script>` element, can still reach the model. Of text in the form `[word](...)` only `word` stays, and of `![word](...)` nothing stays, also when the round brackets hold plain prose and not a link target. `check.py` and the link scan of the post step stop links, mentions, markup and numbers without a source in the post; they do not stop wording that such text steers.
 
-For each merged pull request, `collect.py` also lists its docs pages: each file `docs/<path>.md` of the pull request maps to `<site>/<path>.html`, with the docs site of its repository from the table `docs` in `repos.toml`. A page counts only when one HEAD request to that URL answers 200 at collect time, so a deleted page, or a page of a pull request merged after the last docs deployment, is left out. The run log names each page left out and the answer it got. A repository without a docs site in the table gives no pages.
+For each merged pull request, `collect.py` also lists its docs pages: each file `docs/<path>.md` of the pull request maps to `<site>/<path>.html`, with the docs site of its repository from the table `docs` in `repos.toml`. A page counts only when one HEAD request to that URL answers 200 at collect time, so a deleted page, or a page of a pull request merged after the last docs deployment, is left out. Each URL is asked once per run. After a network error on a docs site, the other pages of that site are left out without a request. A path with a character other than a letter, a digit, `_`, a space, `.`, `/` or `-` is also left out. The run log names each page left out and the reason. A repository without a docs site in the table gives no pages.
 
 An open pull request counts only when GitHub reports its author as an owner, member, collaborator or contributor of the repository (the author association). `collect.py` leaves out the other open pull requests and names each one, with its login and association, in the run log and the job summary. Merged pull requests count whatever the association.
 
@@ -191,6 +201,7 @@ Each entry ends with the authors of its pull requests and releases, each once:
 
 - A person is a link to the GitHub profile, `[login](https://github.com/login)`. A link notifies nobody, and the post has no `@` mentions.
 - A bot or an organisation is a code span: the logins in the list `bots` in `repos.toml`, every login that ends in `[bot]`, and every account that GitHub does not mark as a user.
+- A deleted account has no login and shows as the plain word `unknown`.
 
 ## Settings in `repos.toml`
 
@@ -203,7 +214,7 @@ Each entry ends with the authors of its pull requests and releases, each once:
 | `body_chars` | Characters kept of each pull-request or release text. From 1 to 20000 |
 | `bots` | Logins shown as code spans, not as profile links |
 | `repos` | Repositories in the digest, as `owner/name` |
-| `docs` | Docs site per repository, as `owner/name = "https://..."` with no `/` at the end; a page `docs/<path>.md` is served at `<site>/<path>.html` |
+| `docs` | Docs site per repository of `repos`, as `owner/name = "https://..."` with no `/` at the end; a page `docs/<path>.md` is served at `<site>/<path>.html` |
 | `tracked` | Files per repository whose changes become facts; `pyproject.toml` and `Project.toml` are always tracked. A listed file must exist on the default branch of its repository, or the run stops |
 
 The run stops if a setting is missing or has the wrong type or range.
