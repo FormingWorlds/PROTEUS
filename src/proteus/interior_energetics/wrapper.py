@@ -90,10 +90,11 @@ _MONOTONIC_RINT_REL_TOL = 1e-9
 _REINFLATE_TMAGMA_REL_TOL = 1e-4
 _REINFLATE_PHI_ABS_TOL = 1e-3
 
-# Radius bound of the mass escape: dR/R <= slope * dM/M + offset. Mass-driven structure steps have
-# dR/R / dM/M of 0.64 to 1.31; at a fixed mass the radius moves with temperature by up to 2.2e-3.
+# Radius bound of the mass escape: dR/R <= slope * dM/M + offset. Up-steps from a target rise have
+# dR/R / dM/M of 0.73 to 0.94 (contractions 0.64 to 1.31); the offset covers the largest up-step at an
+# unchanged target under cooling, 7.2e-4.
 _MASS_ESCAPE_RADIUS_SLOPE = 2.0
-_MASS_ESCAPE_RADIUS_OFFSET = 5e-3
+_MASS_ESCAPE_RADIUS_OFFSET = 1e-3
 
 # Dissolved-volatile species whose mantle mass fraction drives the
 # composition-change structure trigger. Single source of truth: the trigger that
@@ -3472,10 +3473,10 @@ def update_structure_from_interior(
             and 0.0 < _M_retained < _M_target
             and abs(_M_retained / _M_target - 1.0) > _ZALMOXIS_MASS_ANCHOR_TOL
         )
-        _dR_rel = _R_int_new / R_int_prev - 1.0 if _mass_outgrown else 0.0
-        _dM_rel = _M_target / _M_retained - 1.0 if _mass_outgrown else 0.0
-        _radius_bound = _MASS_ESCAPE_RADIUS_SLOPE * _dM_rel + _MASS_ESCAPE_RADIUS_OFFSET
-        _target_outgrown = _mass_outgrown and _dR_rel <= _radius_bound
+        _dR_escape = _R_int_new / R_int_prev - 1.0 if _mass_outgrown else 0.0
+        _dM_escape = _M_target / _M_retained - 1.0 if _mass_outgrown else 0.0
+        _radius_bound = _MASS_ESCAPE_RADIUS_SLOPE * _dM_escape + _MASS_ESCAPE_RADIUS_OFFSET
+        _target_outgrown = _mass_outgrown and _dR_escape <= _radius_bound
         _accept_up_step = _interior_reinflating or _composition_driven or _target_outgrown
         if _superliq and _is_up_step and _accept_up_step:
             if _interior_reinflating:
@@ -3537,11 +3538,11 @@ def update_structure_from_interior(
                         'dR/R=%.3e exceeds the radius bound of the mass escape, bound %.3e = '
                         '%.1f dM/M + %.1e at dM/M=%.3e (retained M_int=%.6e kg, M_target=%.6e '
                         'kg), so the retained structure stays off its target.',
-                        _dR_rel,
+                        _dR_escape,
                         _radius_bound,
                         _MASS_ESCAPE_RADIUS_SLOPE,
                         _MASS_ESCAPE_RADIUS_OFFSET,
-                        _dM_rel,
+                        _dM_escape,
                         _M_retained,
                         _M_target,
                     )
@@ -3865,8 +3866,9 @@ def update_structure_from_interior(
 def _warn_committed_mass_miss(hf_row: dict) -> None:
     """Warn when the committed structure misses its live mass target by more than the anchor.
 
-    A rejected up-step and the fall-back to the previous structure restore M_int but keep the
-    target of the new solve, so the committed structure can miss it.
+    A solve writes its target only when it succeeds. A rejected up-step, and the fall-back after the
+    wrapper's mass-anchor check refused a solve, restore M_int but keep that new target, so the
+    committed structure can miss it. A non-finite mass or target also warns.
 
     Parameters
     ----------
@@ -3875,17 +3877,18 @@ def _warn_committed_mass_miss(hf_row: dict) -> None:
     """
     m_target = float(hf_row.get('M_int_target', 0.0) or 0.0)
     m_int = float(hf_row.get('M_int', 0.0) or 0.0)
-    if m_target > 0.0 and m_int > 0.0:
-        miss = abs(m_int / m_target - 1.0)
-        if miss > _ZALMOXIS_MASS_ANCHOR_TOL:
-            log.warning(
-                'Committed structure misses its mass target: M_int=%.6e kg, '
-                'M_int_target=%.6e kg, relative miss %.3e > anchor %.1e.',
-                m_int,
-                m_target,
-                miss,
-                _ZALMOXIS_MASS_ANCHOR_TOL,
-            )
+    if m_target == 0.0 or m_int == 0.0:
+        return
+    miss = abs(m_int / m_target - 1.0)
+    if not miss <= _ZALMOXIS_MASS_ANCHOR_TOL:
+        log.warning(
+            'Committed structure misses its mass target: M_int=%.6e kg, '
+            'M_int_target=%.6e kg, relative miss %.3e > anchor %.1e.',
+            m_int,
+            m_target,
+            miss,
+            _ZALMOXIS_MASS_ANCHOR_TOL,
+        )
 
 
 def get_all_output_times(output_dir: str, model: str):
