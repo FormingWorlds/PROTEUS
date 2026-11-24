@@ -495,8 +495,9 @@ def test_the_thickest_mush_layer_is_found_and_bad_node_arrays_are_refused():
 def test_pore_melt_beyond_the_solver_porosity_does_not_flow():
     """A node whose record holds psi = 0.4 while the solver porosity is 0.2
     passes the flux of psi = 0.2, the melt that is still liquid; the extra pore
-    space has crystallised in place. Uncapped, it would pass 0.4 at a
-    percolation speed that grows with porosity, at least four times more."""
+    space has crystallised in place and is no longer pore melt. Uncapped, it
+    would pass 0.4 at a percolation speed that grows with porosity, at least
+    four times more."""
     r = np.array([5.0e6, 5.06e6])
     volume, area, _ = node_geometry(r)
     args = ([np.array([0])], volume, area, _speed(1.0), np.array([0.0]), 1.0)
@@ -505,8 +506,8 @@ def test_pore_melt_beyond_the_solver_porosity_does_not_flow():
     free = drain_mush_layers(np.array([0.4]), *args)
     assert capped.returned == pytest.approx(at_cap.returned, rel=1e-6)
     assert free.returned > 4.0 * capped.returned
-    # The record loses what flowed, from its own pore melt.
-    assert capped.psi[0] == pytest.approx(0.4 - capped.returned / volume[0], rel=1e-12)
+    # The pore melt is what the cap left, less what flowed.
+    assert capped.psi[0] == pytest.approx(0.2 - capped.returned / volume[0], rel=1e-12)
     # A cap above the pore melt changes nothing.
     loose = drain_mush_layers(np.array([0.4]), *args, porosity=np.array([0.9]))
     assert loose.returned == pytest.approx(free.returned, rel=1e-15)
@@ -559,28 +560,110 @@ def test_a_dense_melt_node_seals_itself_and_the_mush_below_it():
 
 
 @pytest.mark.physics_invariant
-def test_pore_melt_beyond_the_solver_porosity_stays_with_its_share_of_the_volatiles():
-    """A node holding psi = 0.3 at a solver porosity of 0.1, drained for a
-    hundred of its drainage times, keeps the 0.2 that crystallised in place and
-    two thirds of its volatiles; only the flowing 0.1 leaves. A rate taken off
-    the whole psi would empty the node and take every volatile with it."""
+def test_pore_melt_that_crystallises_in_place_passes_its_volatiles_to_the_melt_left():
+    """A node holding psi = 0.3 at a solver porosity of 0.1 crystallises 0.2 in
+    place. Its crystals keep D = 0.0017 times the concentration of that melt;
+    the 0.1 of melt left holds the rest of the volatiles, at almost three times
+    the concentration. Drained for a hundred of its drainage times, the node
+    keeps the crystals' share alone, since the 0.1 leaves with every volatile
+    it holds. Crystals that kept the concentration of their melt would keep two
+    thirds of the volatiles."""
+    d = 0.0017
     volume, area = np.array([1.0]), np.array([1.0])
+
+    def drain(duration):
+        return drain_mush_layers(
+            np.array([0.3]),
+            [np.array([0])],
+            volume,
+            area,
+            lambda p, idx: np.full(np.size(idx), 1.0e-2),
+            np.array([0.0]),
+            duration,
+            tracer=np.array([[0.3]]),
+            porosity=np.array([0.1]),
+            keep=np.array([d]),
+        )
+
+    now = drain(0.0)
+    assert now.psi[0] == pytest.approx(0.1, rel=1e-12)
+    assert now.kept[0, 0] == pytest.approx(0.2 * d, rel=1e-12)
+    assert now.tracer[0, 0] == pytest.approx(0.3 - 0.2 * d, rel=1e-12)
+    late = drain(1.0e4)
+    assert late.returned == pytest.approx(0.1, rel=1e-9)
+    assert late.psi[0] == pytest.approx(0.0, abs=1e-9)
+    assert late.tracer[0, 0] == pytest.approx(0.0, abs=1e-9)
+    assert late.kept[0, 0] == pytest.approx(0.2 * d, rel=1e-12)
+    # Discrimination: crystals that kept their melt's concentration hold 0.2.
+    assert late.tracer[0, 0] + late.kept[0, 0] < 1e-2 * 0.2
+
+
+@pytest.mark.physics_invariant
+def test_melt_that_crystallised_in_place_does_not_refill_the_pores_drainage_empties():
+    """Drained over one step or over two halves, a node holding psi = 0.3 at a
+    solver porosity of 0.1 ends with the same pore melt and volatiles: the 0.2
+    that crystallised at the first cap stays crystalline. A record that took it
+    back as pore melt at the start of the second half would drain more."""
+    volume, area = np.array([1.0]), np.array([1.0])
+
+    def drain(psi, tracer, duration):
+        return drain_mush_layers(
+            np.array([psi]),
+            [np.array([0])],
+            volume,
+            area,
+            lambda p, idx: 1.0e-2 * (np.asarray(p) / 0.1) ** 2,
+            np.array([0.0]),
+            duration,
+            tracer=np.array([[tracer]]),
+            porosity=np.array([0.1]),
+        )
+
+    one = drain(0.3, 0.3, 200.0)
+    half = drain(0.3, 0.3, 100.0)
+    two = drain(half.psi[0], half.tracer[0, 0], 100.0)
+    assert two.psi[0] == pytest.approx(one.psi[0], rel=1e-3)
+    assert two.tracer[0, 0] == pytest.approx(one.tracer[0, 0], rel=1e-3)
+    assert 0.1 * 0.3 < one.tracer[0, 0] < 0.5 * 0.3
+    # Discrimination: the crystallised 0.2 taken back as pore melt drains on.
+    refilled = drain(half.psi[0] + 0.2, half.tracer[0, 0], 100.0)
+    assert refilled.returned > 1.5 * two.returned
+
+
+@pytest.mark.physics_invariant
+def test_a_nearly_closed_node_does_not_stall_the_drainage_below_it():
+    """A column of 10 nodes under a top node of solver porosity 5e-4: melt
+    rising from below fills the nodes under the nearly closed top to their
+    porosity and stays there. The whole step of 1e11 s is integrated in a few
+    hundred sub-steps, with no node above its porosity, and melt and tracer
+    are conserved. A sub-step sized by the time the top node takes to fill,
+    taken from the inflow before it is capped, stops at the 20000 sub-step
+    limit with a fifth of the step done."""
+    n = 10
+    volume, area = np.ones(n), np.ones(n)
+    room = np.full(n, 0.3)
+    room[-1] = 5.0e-4
+    psi0 = np.full(n, 0.2)
+    psi0[-1] = 5.0e-4
     out = drain_mush_layers(
-        np.array([0.3]),
-        [np.array([0])],
+        psi0,
+        [np.arange(n)],
         volume,
         area,
-        lambda p, idx: np.full(np.size(idx), 1.0e-2),
-        np.array([0.0]),
-        1.0e4,
-        tracer=np.array([[0.3]]),
-        porosity=np.array([0.1]),
+        lambda p, idx: 6.0e-9 * np.asarray(p) ** 2,
+        np.zeros(n),
+        1.0e11,
+        tracer=np.array([psi0]),
+        porosity=room,
     )
-    assert out.psi[0] == pytest.approx(0.2, rel=1e-9)
-    assert out.tracer[0, 0] == pytest.approx(0.2, rel=1e-9)
-    assert out.returned == pytest.approx(0.1, rel=1e-9)
-    # Discrimination: an emptied node would hold less than a tenth of this.
-    assert out.psi[0] > 0.19
+    assert out.elapsed == pytest.approx(1.0e11, rel=1e-12)
+    assert out.n_substeps < 1000
+    assert np.all(out.psi <= room * (1.0 + 1e-12))
+    assert float(np.sum(out.psi)) + out.returned == pytest.approx(np.sum(psi0), rel=1e-12)
+    assert float(np.sum(out.tracer)) == pytest.approx(np.sum(psi0), rel=1e-6)
+    # The melt stacks under the closed top.
+    assert out.psi[-2] == pytest.approx(0.3, rel=1e-3)
+    assert out.psi[0] < 0.1
 
 
 @pytest.mark.physics_invariant

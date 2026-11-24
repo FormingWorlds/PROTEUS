@@ -34,14 +34,20 @@ takes its share of the buried mass with it; melt that drains out of the top of
 a mush layer rejoins the ocean and its volatiles return to the melt reservoir.
 What a node holds when it reaches the porosity floor is locked. Crystals that
 grow in a liquid node take ``D_Z C_Z`` of their mass from the ocean; crystals
-that grow in the pores of the mush draw on the pore melt the record already
-holds. Over the life of a node the two add up to ``[F + (1 - F) D_Z] C m``,
-Sim et al. (2024) Eq. 6 applied to the node's own mass. The noble gases follow
-the same rules at ``D_Z = 0``.
+that grow in the pores of the mush, where the solver's porosity falls below
+the pore melt, take ``D_Z`` times the pore melt's concentration and pass the
+rest of its volatiles to the melt that still flows. A node that does not drain
+keeps both, ``[F + (1 - F) D_Z] C m`` in all, Sim et al. (2024) Eq. 6 applied
+to the node's own mass. The noble gases follow the same rules at ``D_Z = 0``.
 
 The record keeps two stores per species: ``pore``, the volatiles dissolved in
 the pore melt, which drain with it, and ``crystal``, the volatiles in the
 crystals and in pore melt that froze at the floor, which stay at their node.
+For the diagnostics it also carries ``psi_carried``, the pore melt at its
+entry concentration that a node's buried volatiles amount to: it moves with
+the volatiles of a species with ``D_Z = 0``, so the pore melt a node locks at
+the floor, over its entry pore melt, is the share of its entry volatiles it
+keeps.
 
 The new burials of a step, crystals included, are capped together at what the
 melt reservoir holds after this step's returns, so the net mass a step moves
@@ -122,6 +128,7 @@ class NodeRecord:
     t_darcy: np.ndarray  # time spent percolation-limited in this residence [yr]
     t_matrix: np.ndarray  # time spent compaction-limited in this residence [yr]
     t_held: np.ndarray  # time spent unable to drain, sealed [yr]
+    psi_carried: np.ndarray  # pore melt at entry concentration its volatiles amount to [1]
     crystal: dict[str, np.ndarray] = field(default_factory=dict)  # per species [kg]
     pore: dict[str, np.ndarray] = field(default_factory=dict)  # in pore melt [kg]
 
@@ -141,6 +148,7 @@ class NodeRecord:
             t_darcy=self.t_darcy.copy(),
             t_matrix=self.t_matrix.copy(),
             t_held=self.t_held.copy(),
+            psi_carried=self.psi_carried.copy(),
             crystal={s: v.copy() for s, v in self.crystal.items()},
             pore={s: v.copy() for s, v in self.pore.items()},
         )
@@ -182,6 +190,7 @@ class NodeRecord:
             t_darcy=np.zeros(n),
             t_matrix=np.zeros(n),
             t_held=np.zeros(n),
+            psi_carried=psi.copy(),
             crystal={s: np.zeros(n) for s in RECORD_SPECIES},
             pore={s: np.zeros(n) for s in RECORD_SPECIES},
         )
@@ -218,7 +227,7 @@ class LayerStep:
     """What one coupling step of the layer scheme did."""
 
     exited: np.ndarray  # nodes that reached the porosity floor this step
-    trapped: np.ndarray  # trapped melt mass fraction, F_entry psi / psi_entry [1]
+    trapped: np.ndarray  # trapped melt fraction, F_entry psi_carried / psi_entry [1]
     branch: np.ndarray  # drainage branch code of each exited node
     residence: np.ndarray  # time each exited node spent in the mush [yr]
     node_branch: np.ndarray  # branch code of every node that drained this step
@@ -308,12 +317,16 @@ class _Transitions:
     x_prev: np.ndarray  # melt fraction at the previous classification [1]
 
 
-def _drain(new: NodeRecord, mesh: _Mesh, species, dt_yr, params: DrainageParams) -> tuple:
+def _drain(new: NodeRecord, mesh: _Mesh, species, dt_yr, params, part) -> tuple:
     """Drain the open mush layers of the previous step and carry their volatiles.
 
-    Returns the drainage outcome, the open mush layers, those sealed below a
-    solid layer, those held at and below a dense-melt node, and the mass of
-    each species that left through the tops of the open layers.
+    The pore melt of every mush node is held to the solver porosity, taken
+    linear in time from the previous step's melt fraction to this one; the
+    crystals that grow in its pores keep the partition coefficient ``part``
+    times its concentration of each species. Returns the drainage outcome, the
+    open mush layers, those sealed below a solid layer, those held at and below
+    a dense-melt node, and the mass of each species that left through the tops
+    of the open layers.
     """
     n = mesh.n
     active = (new.phase == PHASE_MUSH) & np.isfinite(new.psi)
@@ -343,7 +356,8 @@ def _drain(new: NodeRecord, mesh: _Mesh, species, dt_yr, params: DrainageParams)
     tau_s = compaction_times(
         open_layers, mesh.r_basic, mesh.centre, drho, mesh.gravity, params.mush_visc
     )
-    tracer = np.array([new.pore[sp] / mesh.volume for sp in species]).reshape(len(species), n)
+    # The species' pore masses per node volume, and the carried pore melt.
+    rows = [new.pore[sp] / mesh.volume for sp in species] + [new.psi_carried]
     drained = drain_mush_layers(
         new.psi,
         open_layers,
@@ -354,19 +368,22 @@ def _drain(new: NodeRecord, mesh: _Mesh, species, dt_yr, params: DrainageParams)
         dt_yr * secs_per_year,
         substep_fraction=params.substep_fraction,
         max_substeps=params.max_substeps,
-        tracer=tracer if species else None,
-        porosity=0.5
-        * (melt_volume_fraction(new.melt_fraction, mesh.rho_s, mesh.rho_l) + mesh.phi),
+        tracer=np.array(rows).reshape(len(rows), n),
+        porosity=mesh.phi,
+        porosity_start=melt_volume_fraction(new.melt_fraction, mesh.rho_s, mesh.rho_l),
+        keep=np.array([part.get(sp, 0.0) for sp in species] + [0.0]),
     )
-    moved = np.zeros(n, dtype=bool)
-    for layer in open_layers:
-        moved[layer] = True
+    known = np.isfinite(new.psi)
     release = {}
     for k, sp in enumerate(species):
-        after = np.where(moved, drained.tracer[k] * mesh.volume, new.pore[sp])
-        # Everything that left the open layers went out through their tops.
-        release[sp] = max(float(np.sum(new.pore[sp][moved] - after[moved])), 0.0)
+        after = np.where(known, drained.tracer[k] * mesh.volume, new.pore[sp])
+        grown = np.where(known, drained.kept[k] * mesh.volume, 0.0)
+        # What neither stayed in the pore melt nor went into crystals left the
+        # mush through the tops of its open layers.
+        release[sp] = max(float(np.sum(new.pore[sp] - after - grown)), 0.0)
         new.pore[sp] = after
+        new.crystal[sp] = new.crystal[sp] + grown
+    new.psi_carried = np.where(known, drained.tracer[-1], new.psi_carried)
     return drained, open_layers, sealed, dense, release
 
 
@@ -380,12 +397,12 @@ def _exits(record, new, mesh, active, time_now):
     exit_bound = ((record.phase == PHASE_LIQUID) | stray) & floor
     exited = np.flatnonzero(exit_drained | exit_bound)
     drained_exit = exit_drained[exited]
-    # Drainage removes melt in proportion to the pore volume, so the pore melt
-    # mass is the entry melt mass scaled by psi / psi_entry.
+    # The carried pore melt over the entry pore melt is the share of its entry
+    # volatiles a node locks, whatever crystallised in its pores.
     entry = new.psi_entry[exited]
     f_entry = mass_fraction_of_volume(entry, mesh.rho_l[exited], mesh.rho_s[exited])
     scaled = np.divide(
-        f_entry * new.psi[exited], entry, out=np.zeros(exited.size), where=entry > 0.0
+        f_entry * new.psi_carried[exited], entry, out=np.zeros(exited.size), where=entry > 0.0
     )
     trapped = np.where(drained_exit, scaled, mesh.rfront_loc)
     spent = new.t_darcy[exited] + new.t_matrix[exited]
@@ -454,6 +471,7 @@ def _reclassify(record, new, mesh, active, exit_bound, stray, time_prev, time_no
     leave = active & (mesh.phase != PHASE_MUSH)
     new.psi[leave] = np.nan
     new.psi_entry[leave] = np.nan
+    new.psi_carried[leave] = np.nan
     new.t_entry[leave] = np.nan
     for arr in (new.t_darcy, new.t_matrix, new.t_held):
         arr[leave | exit_bound] = 0.0
@@ -464,6 +482,7 @@ def _reclassify(record, new, mesh, active, exit_bound, stray, time_prev, time_no
     new.psi[from_above] = mesh.psi_transition[from_above]
     new.psi[from_below] = mesh.phi[from_below]
     new.psi_entry[entering] = new.psi[entering]
+    new.psi_carried[entering] = new.psi[entering]
     # Crossing time of the transition, interpolated within the step on the melt
     # fraction, so a node's residence is resolved finer than one step.
     x_prev = record.melt_fraction
@@ -479,7 +498,7 @@ def _reclassify(record, new, mesh, active, exit_bound, stray, time_prev, time_no
     return from_above, entering
 
 
-def _evolve(record: NodeRecord, mesh: _Mesh, species, time_prev, time_now, params):
+def _evolve(record: NodeRecord, mesh: _Mesh, species, time_prev, time_now, params, part):
     """Drain the previous mush, then move every node to its phase state of this step.
 
     Returns the new record, whose carried, frozen and remelted mass is settled
@@ -491,7 +510,9 @@ def _evolve(record: NodeRecord, mesh: _Mesh, species, time_prev, time_now, param
         new.crystal.setdefault(sp, np.zeros(mesh.n))
     dt_yr = max(time_now - time_prev, 0.0)
     active = (record.phase == PHASE_MUSH) & np.isfinite(record.psi)
-    drained, open_layers, sealed, dense, release = _drain(new, mesh, species, dt_yr, params)
+    drained, open_layers, sealed, dense, release = _drain(
+        new, mesh, species, dt_yr, params, part
+    )
     new.psi = drained.psi
     new.t_darcy = new.t_darcy + drained.t_darcy / secs_per_year
     new.t_matrix = new.t_matrix + drained.t_matrix / secs_per_year
@@ -695,7 +716,7 @@ def advance_record(
     else:
         species = sorted(set(RECORD_SPECIES) | set(record.pore) | set(record.crystal))
         new, step, moves = _evolve(
-            record, mesh, species, float(time_prev), float(time_now), params
+            record, mesh, species, float(time_prev), float(time_now), params, part
         )
 
     _settle(new, mesh, moves, step, species, conc, part, liquid or {})

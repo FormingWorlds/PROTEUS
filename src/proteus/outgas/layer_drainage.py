@@ -35,8 +35,8 @@ exactly ``rfront_loc``, the bound the front scheme caps its guard at.
 
 Drainage
 --------
-The pore melt ``psi`` of a node changes only by drainage, as in the front
-integral; melt that crystallises in the pores keeps its volatiles. The melt
+The pore melt ``psi`` of a node changes by drainage, as in the front integral,
+and by crystallisation where the solver's porosity falls below it. The melt
 volume flux out of the top of node ``k`` of a mush layer is
 
     q_k = min( A_k psi_k w_D(psi_k),  q_(k-1) + psi_k V_k / tau_s,k ),   q_(base) = 0
@@ -53,12 +53,16 @@ node with ``L = V / A`` and the same matrix time obeys the front integral's
 equation exactly. The contrast enters as its magnitude, as in the solver's
 separation velocity.
 
-The solver's own melt volume fraction, the mean of its values at the start
-and the end of the step, bounds the pore melt that flows. Pore melt the record
-holds beyond it has crystallised in place: it stays at its node with its share
-of the volatiles, and only the rest drains. A node receives no more from below
-than it passes on plus its free pore space, the solver porosity less its
-flowing pore melt, so no node fills beyond the melt the solver gives it.
+The solver's own melt volume fraction bounds the pore melt, taken linear in
+time between its values at the start and the end of the step. Pore melt beyond
+it crystallises in place and stays crystalline: the pore melt does not take
+it back when drainage lowers the pore melt below the bound. The crystals keep
+``D`` times the concentration of the melt they grow from, with ``D`` the
+crystal/melt partition coefficient of each species; the rest of the volatiles
+passes to the melt that still flows, which for the volatiles, with ``D`` near
+0, is almost all of them. A node receives no more from below than it passes
+on plus its free pore space, the solver porosity less its pore melt, so no
+node fills beyond the melt the solver gives it.
 
 A node whose tables put the melt at or above the solid density cannot drive
 its melt upward; the solver's separation velocity sinks it. Such a node takes
@@ -71,7 +75,8 @@ capped by a solid node is sealed: nothing leaves it. :func:`split_at_dense`
 seals the part of a mush layer at and below its uppermost dense-melt node.
 The fluxes are integrated with a second-order Runge-Kutta scheme, on sub-steps
 short enough that no node passes on more than :data:`SUBSTEP_FRACTION` of what
-it holds, nor receives more than that share of what it can hold, in one of them.
+it holds in one of them, and, while the solver porosity changes over the
+step, no longer than that fraction of the step.
 """
 
 from __future__ import annotations
@@ -123,6 +128,7 @@ class Drainage:
     elapsed: float  # time integrated; short of the step only if truncated [s]
     matrix_speed: float  # largest melt flux per area at the end [m s-1]
     tracer: np.ndarray | None = None  # carried quantity per node volume, afterwards
+    kept: np.ndarray | None = None  # of it, taken into crystals grown in the pores
 
 
 def melt_volume_fraction(
@@ -283,23 +289,41 @@ def _layer_fluxes(psi, layers, volume, area_top, speed_of, tau_s):
     return out
 
 
-def _step_limit(psi, layers, fluxes, volume, room) -> float:
-    """The shortest time any node takes to pass on what it holds, or to fill.
+def _step_limit(psi, layers, fluxes, volume) -> float:
+    """The shortest time any node takes to pass on what it holds [s].
 
-    A node passes on ``psi V / q_out``; one receiving melt fills its pore space
-    in ``max(psi, room - psi) V / q_in``. A tenth of the shorter keeps every
-    node's melt and carried mass positive and the upwind transport monotone.
+    A node passes on ``psi V / q_out``; a tenth of that keeps every node's melt
+    and carried mass positive and the upwind transport monotone. What a node
+    receives needs no limit of its own: :func:`_limit_inflow` caps it at the
+    free pore space within each sub-step, however long.
     """
     span = np.inf
     for layer, (q, _) in zip(layers, fluxes):
         p, v = psi[layer], volume[layer]
-        inflow = np.concatenate(([0.0], q[:-1]))
-        holds = np.maximum(p, room[layer] - p)
         with np.errstate(divide='ignore', invalid='ignore'):
             passing = np.where(q > 0.0, p * v / q, np.inf)
-            filling = np.where((inflow > 0.0) & (holds > 0.0), holds * v / inflow, np.inf)
-        span = min(span, float(np.min(passing)), float(np.min(filling)))
+        span = min(span, float(np.min(passing)))
     return span
+
+
+def _bound_at(start, end, fraction):
+    """The solver porosity a ``fraction`` of the way through the step [1]."""
+    return start + (end - start) * fraction
+
+
+def _crystallise(psi, tracer, kept, bound, nodes, keep):
+    """Crystallise the pore melt beyond ``bound`` in ``nodes``, in place.
+
+    The crystals keep ``keep`` times the concentration of the melt they grow
+    from; the rest of the carried mass stays in the pore melt that is left.
+    """
+    excess = np.zeros_like(psi)
+    np.subtract(psi, bound, out=excess, where=nodes & (psi > bound))
+    if tracer is not None and keep is not None:
+        share = np.divide(excess, psi, out=np.zeros_like(psi), where=excess > 0.0)
+        into = tracer * np.minimum(keep[:, None] * share[None, :], 1.0)
+        tracer, kept = tracer - into, kept + into
+    return psi - excess, tracer, kept
 
 
 def _limit_inflow(q, p, room, volume, dt):
@@ -316,7 +340,7 @@ def _limit_inflow(q, p, room, volume, dt):
 
 
 def _rates(psi, tracer, layers, fluxes, volume, room, dt):
-    """Rates of change of the flowing pore melt and what it carries over ``dt``.
+    """Rates of change of the pore melt and what it carries over ``dt``.
 
     The fluxes leave each node at the concentration of the melt it holds.
     """
@@ -350,21 +374,27 @@ def drain_mush_layers(
     max_substeps: int = MAX_SUBSTEPS,
     tracer: np.ndarray | None = None,
     porosity: np.ndarray | None = None,
+    porosity_start: np.ndarray | None = None,
+    keep: np.ndarray | None = None,
 ) -> Drainage:
     """Drain the pore melt of every open mush layer over ``duration`` seconds.
 
     ``speed_of(psi, index)`` returns the drainage speed of the nodes ``index``
-    at pore-melt volume fractions ``psi`` [m s-1]. ``porosity``, the solver's
-    melt volume fraction of every node over the step [1], bounds the pore melt
-    that flows: pore melt the record holds beyond it has crystallised in place,
-    stays at its node with its share of ``tracer``, and only the rest drains. It
-    is also the pore space a node can fill with melt from below; without it, a
-    node can fill to 1. Every flux is counted once
-    leaving one node and once entering the next, so the melt of the layers plus
-    what left through their tops is conserved to rounding. ``tracer``, of shape
+    at pore-melt volume fractions ``psi`` [m s-1]. ``porosity_start`` and
+    ``porosity`` are the solver's melt volume fraction of every node [1] at
+    the start and the end of the step; the start defaults to the end, and
+    without either the bound is 1. Taken linear in time between the two, the
+    bound caps the pore melt of every node: melt beyond it crystallises in
+    place and leaves the pore melt for good, and the bound is the pore space a
+    node can fill with melt from below. ``tracer``, of shape
     ``(quantities, nodes)``, is anything the melt carries per unit node volume,
-    here the buried mass of each species [kg m-3]; it moves with the melt at the
-    concentration of the node it leaves and is conserved the same way.
+    here the buried mass of each species [kg m-3]; it moves with the melt at
+    the concentration of the node it leaves. Melt that crystallises in place
+    passes its tracer to the pore melt that is left, except ``keep`` [1], per
+    quantity, times the concentration of the crystallised melt, which the
+    crystals take: ``Drainage.kept``. Every flux is counted once leaving one
+    node and once entering the next, so melt and tracer are conserved to
+    rounding.
 
     Raises
     ------
@@ -374,22 +404,23 @@ def drain_mush_layers(
     if not 0.0 < substep_fraction <= 1.0:
         raise ValueError(f'substep_fraction must lie in (0, 1], got {substep_fraction!r}')
     psi = np.array(psi, dtype=float, copy=True)
-    room = np.ones(psi.size) if porosity is None else np.asarray(porosity, dtype=float)
-    room = np.clip(room, 0.0, 1.0)
-    # Pore melt beyond the solver porosity has crystallised in place and stays.
-    stuck = np.where(np.isfinite(psi), np.maximum(psi - room, 0.0), 0.0)
-    share = np.divide(stuck, psi, out=np.zeros_like(psi), where=np.isfinite(psi) & (psi > 0.0))
-    psi = psi - stuck
-    t_stuck = None
+    end = np.ones(psi.size) if porosity is None else np.asarray(porosity, dtype=float)
+    end = np.clip(end, 0.0, 1.0)
+    start = end if porosity_start is None else np.clip(porosity_start, 0.0, 1.0)
+    kept, share = None, None
     if tracer is not None:
         tracer = np.array(tracer, dtype=float, copy=True)
-        t_stuck = tracer * share[None, :]
-        tracer = tracer - t_stuck
-    t_darcy = np.zeros_like(psi)
-    t_matrix = np.zeros_like(psi)
+        kept = np.zeros_like(tracer)
+        if keep is not None:
+            share = np.maximum(np.asarray(keep, dtype=float).ravel(), 0.0)
+    known = np.isfinite(psi)
     members = np.zeros(psi.size, dtype=bool)
     for layer in layers:
         members[layer] = True
+    psi, tracer, kept = _crystallise(psi, tracer, kept, start, known, share)
+    column = (layers, volume, area_top, speed_of, tau_s)
+    ramp = bool(np.any(start[members] != end[members]))
+    t_darcy, t_matrix = np.zeros_like(psi), np.zeros_like(psi)
     elapsed, returned, steps = 0.0, 0.0, 0
     while layers and elapsed < duration:
         if steps >= max_substeps:
@@ -402,36 +433,30 @@ def drain_mush_layers(
                 duration,
             )
             break
-        fluxes1 = _layer_fluxes(psi, layers, volume, area_top, speed_of, tau_s)
-        span = _step_limit(psi, layers, fluxes1, volume, room)
-        dt = min(duration - elapsed, substep_fraction * span)
+        fluxes = _layer_fluxes(psi, *column)
+        dt = min(
+            duration - elapsed, substep_fraction * _step_limit(psi, layers, fluxes, volume)
+        )
+        if ramp:
+            dt = min(dt, substep_fraction * duration)
         if not dt > 0.0:
             break
-        rate1, t_rate1, out1 = _rates(psi, tracer, layers, fluxes1, volume, room, dt)
-        limit1 = np.zeros(psi.size, dtype=bool)
-        for layer, (_, perc) in zip(layers, fluxes1):
-            limit1[layer] = perc
-        trial = np.clip(psi + dt * rate1, 0.0, 1.0)
-        t_trial = None if tracer is None else np.maximum(tracer + dt * t_rate1, 0.0)
-        fluxes2 = _layer_fluxes(trial, layers, volume, area_top, speed_of, tau_s)
-        rate2, t_rate2, out2 = _rates(trial, t_trial, layers, fluxes2, volume, room, dt)
-        psi = np.clip(psi + 0.5 * dt * (rate1 + rate2), 0.0, 1.0)
-        if tracer is not None:
-            tracer = np.maximum(tracer + 0.5 * dt * (t_rate1 + t_rate2), 0.0)
-        returned += 0.5 * dt * (out1 + out2)
-        t_darcy[members & limit1] += dt
-        t_matrix[members & ~limit1] += dt
+        bounds = (
+            _bound_at(start, end, elapsed / duration),
+            _bound_at(start, end, min((elapsed + dt) / duration, 1.0)),
+        )
+        psi, tracer, out, limited = _substep(psi, tracer, column, fluxes, bounds, dt)
+        psi, tracer, kept = _crystallise(psi, tracer, kept, bounds[1], members, share)
+        returned += out
+        t_darcy[members & limited] += dt
+        t_matrix[members & ~limited] += dt
         elapsed += dt
         steps += 1
+    psi, tracer, kept = _crystallise(psi, tracer, kept, end, known, share)
 
     matrix_speed = 0.0
-    for layer, (q, _) in zip(
-        layers, _layer_fluxes(psi, layers, volume, area_top, speed_of, tau_s)
-    ):
+    for layer, (q, _) in zip(layers, _layer_fluxes(psi, *column)):
         matrix_speed = max(matrix_speed, float(np.max(q / area_top[layer])))
-    psi = psi + stuck
-    if tracer is not None:
-        tracer = tracer + t_stuck
     return Drainage(
         psi=psi,
         t_darcy=t_darcy,
@@ -441,7 +466,32 @@ def drain_mush_layers(
         elapsed=elapsed,
         matrix_speed=matrix_speed,
         tracer=tracer,
+        kept=kept,
     )
+
+
+def _substep(psi, tracer, column, fluxes, bounds, dt):
+    """One second-order Runge-Kutta sub-step of the drainage over ``dt`` [s].
+
+    The first stage takes the fluxes of ``psi`` against the porosity bound at
+    the start of the sub-step, the second those of the trial state, held to
+    the bound at its end, against that bound. Returns the pore melt, the
+    carried mass, the melt volume that left the layers [m3] and the nodes
+    their own permeability limited in the first stage.
+    """
+    layers, volume = column[0], column[1]
+    rate1, t_rate1, out1 = _rates(psi, tracer, layers, fluxes, volume, bounds[0], dt)
+    limited = np.zeros(psi.size, dtype=bool)
+    for layer, (_, perc) in zip(layers, fluxes):
+        limited[layer] = perc
+    trial = np.minimum(np.clip(psi + dt * rate1, 0.0, 1.0), bounds[1])
+    t_trial = None if tracer is None else np.maximum(tracer + dt * t_rate1, 0.0)
+    fluxes2 = _layer_fluxes(trial, *column)
+    rate2, t_rate2, out2 = _rates(trial, t_trial, layers, fluxes2, volume, bounds[1], dt)
+    psi = np.clip(psi + 0.5 * dt * (rate1 + rate2), 0.0, 1.0)
+    if tracer is not None:
+        tracer = np.maximum(tracer + 0.5 * dt * (t_rate1 + t_rate2), 0.0)
+    return psi, tracer, 0.5 * dt * (out1 + out2), limited
 
 
 def node_array(values, n: int, name: str) -> np.ndarray:

@@ -23,6 +23,10 @@ _RECORD_FIELDS = {
     't_held': 'yr',
 }
 
+# Written beside them, but optional on reading: a snapshot written before a
+# field existed reads it as the pore melt.
+_OPTIONAL_FIELDS = {'psi_carried': ''}
+
 # Per-species stores, by the prefix of their snapshot variables.
 _STORES = ('crystal', 'pore')
 
@@ -53,8 +57,8 @@ def write_record(path: str, record: NodeRecord) -> None:
                 f'{path} has no staggered dimension of {record.size} nodes to hold '
                 'the per-node trapping record'
             )
-        columns = {name: getattr(record, name) for name in _RECORD_FIELDS}
-        units = dict(_RECORD_FIELDS)
+        units = {**_RECORD_FIELDS, **_OPTIONAL_FIELDS}
+        columns = {name: getattr(record, name) for name in units}
         for store in _STORES:
             for species, kg in getattr(record, store).items():
                 columns[f'{store}_{species}'] = kg
@@ -92,6 +96,9 @@ def read_record(path: str, n: int | None = None) -> NodeRecord | None:
             return np.ma.filled(ds.variables[key][:].astype(float), fill)
 
         arrays = {f: column(_snapshot_name(f), np.nan) for f in _RECORD_FIELDS}
+        for f in _OPTIONAL_FIELDS:
+            key = _snapshot_name(f)
+            arrays[f] = column(key, np.nan) if key in ds.variables else arrays['psi'].copy()
         stores = {store: {} for store in _STORES}
         for species in RECORD_SPECIES:
             for store in _STORES:
@@ -113,6 +120,7 @@ def read_record(path: str, n: int | None = None) -> NodeRecord | None:
         t_darcy=arrays['t_darcy'],
         t_matrix=arrays['t_matrix'],
         t_held=arrays['t_held'],
+        psi_carried=arrays['psi_carried'],
         crystal=stores['crystal'],
         pore=stores['pore'],
     )

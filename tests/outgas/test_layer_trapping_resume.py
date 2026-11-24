@@ -216,8 +216,10 @@ def test_a_resume_without_a_record_buries_the_nodes_that_leave_the_ocean(tmp_pat
     """Resumed from a snapshot without a record, the first step restarts the
     record on that snapshot's melt fraction: node 5, which leaves the ocean in
     that step, buries C F m as in the run that kept its record, while the mush
-    found there holds the trapped mass. A snapshot on a finer mesh gives the
-    same. Restarting on the current mesh instead buries nothing for node 5."""
+    found there holds the trapped mass and dates from the snapshot's time, as
+    in that run, so its residence counts from there. A snapshot on a finer mesh
+    gives the same. Restarting on the current mesh instead buries nothing for
+    node 5."""
     config = _config(melt_log10visc=30.0)
     first = _hf_row(_X_FREEZE)
     kept = _interior(_X_FREEZE)
@@ -234,13 +236,17 @@ def test_a_resume_without_a_record_buries_the_nodes_that_leave_the_ocean(tmp_pat
     entered = c * (0.5 + _D_H2O * 0.5) * _M_NODE
     assert continuous - first['H2O_kg_trapped'] == pytest.approx(entered, rel=1e-6)
 
+    found = _X_FREEZE < 0.5  # the mush of the first step, nodes 6 and 7
+    assert np.all(kept.trap_record.t_entry[found] == first['Time'])
     for n in (_N, 2 * _N):
         output = str(tmp_path / f'run{n}')
         fine = np.repeat(_X_FREEZE, n // _N)
         _resume_snapshot(output, first['Time'], fine, n)
         resumed = dict(first, Time=3.0e4, Phi_global=float(np.mean(x)))
-        run_trapping(config, resumed, hf_all, _interior(x), dirs={'output': output})
+        interior = _interior(x)
+        run_trapping(config, resumed, hf_all, interior, dirs={'output': output})
         assert resumed['H2O_kg_trapped'] == pytest.approx(continuous, rel=1e-9), n
+        np.testing.assert_array_equal(interior.trap_record.t_entry, kept.trap_record.t_entry)
     blind = dict(first, Time=3.0e4, Phi_global=float(np.mean(x)))
     run_trapping(config, blind, hf_all, _interior(x))
     # Discrimination: without the earlier profile node 5 is found in the mush.

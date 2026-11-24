@@ -24,8 +24,9 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from _layer_reference import kept_share
 
-from proteus.outgas.compaction import BRANCH_DARCY, BRANCH_GUARD, BRANCH_MATRIX
+from proteus.outgas.compaction import BRANCH_DARCY, BRANCH_GUARD, BRANCH_MATRIX, darcy_velocity
 from proteus.outgas.layer_drainage import (
     PHASE_LIQUID,
     PHASE_MUSH,
@@ -260,17 +261,21 @@ def test_unrecorded_trapped_mass_is_adopted_by_the_nodes_that_are_not_liquid():
 def test_buried_volatiles_move_with_the_melt_and_keep_their_entry_concentration():
     """Pore melt carries the concentration it entered with, and mixes as it drains.
 
-    Node 0 enters at 1e-3 and node 1 a step later at 3e-3. Drainage moves melt
-    from node 0 into node 1 only, so node 0 keeps 1e-3 exactly and node 1 falls
-    toward it; what leaves the top of the mush layer returns to the melt. A node
-    crossing the whole mush in one step buries the ocean melt of that step.
+    Node 0 enters at 1e-3 and node 1 a step later at 3e-3. Measured on the
+    carried pore melt, which drains with the volatiles and which crystals in the
+    pores do not take, node 0 keeps 1e-3 exactly, since drainage moves melt from
+    node 0 into node 1 only, and node 1 falls toward it; what leaves the top of
+    the mush layer returns to the melt. The pore melt itself is richer, since
+    the melt that crystallised in its pores passed its water on. A node crossing
+    the whole mush in one step buries the ocean melt of that step.
     """
     n = 3
     kw = _mesh_kwargs(n, melt_visc=1.0, mush_visc=1.0e14)
 
-    def conc_of(record, k):
+    def conc_of(record, k, carried=True):
         f_entry = mass_fraction_of_volume(record.psi_entry[k], _RHO_L, _RHO_S)
-        melt = f_entry * record.psi[k] / record.psi_entry[k] * 1.0e23
+        psi = record.psi_carried[k] if carried else record.psi[k]
+        melt = f_entry * psi / record.psi_entry[k] * 1.0e23
         return record.pore['H2O'][k] / melt
 
     step_kw = dict(partition={}, liquid={'H2O': 1.0e30})
@@ -303,6 +308,8 @@ def test_buried_volatiles_move_with_the_melt_and_keep_their_entry_concentration(
     )
     assert conc_of(record, 0) == pytest.approx(1e-3, rel=1e-9)
     assert conc_of(record, 1) == pytest.approx(3e-3, rel=1e-9)
+    # The porosity of x = 0.3 holds about 0.6 of the transition's pore melt.
+    assert 1.5e-3 < conc_of(record, 0, carried=False) < 1.8e-3
     before = float(np.sum(record.pore['H2O']))
     record, drained = advance_record(
         record,
@@ -445,8 +452,6 @@ def test_a_sealed_node_reaching_the_floor_keeps_all_its_melt():
     assert floor.trapped[0] == pytest.approx(0.3, rel=1e-9)
     assert floor.branch.tolist() == [BRANCH_GUARD]
     # Cap the sub-steps of an open column: it drains less than when integrated.
-    from proteus.outgas.compaction import darcy_velocity
-
     r = np.linspace(4.0e6, 4.5e6, 3)
     volume, area, centre = node_geometry(r)
     tau = compaction_times([np.arange(2)], r, centre, _uniform(2, _DRHO), _uniform(2, _G), 1e19)
@@ -555,6 +560,113 @@ def test_a_matrix_limited_node_traps_the_closed_form_share_of_its_melt(validatio
     validation_plot(figure, 'node_record_matrix_limited_node')
 
 
+def _freeze_top_node(n_steps: int, d_h2o: float, **overrides):
+    """The top node of a 6-node mesh enters the mush at x = 0.3, then freezes.
+
+    Over 1000 yr in ``n_steps`` coupling steps its solver porosity falls
+    linearly in time from that of x = 0.3 to 0. Returns the share of the water
+    it buried on entry that it locks at the floor, and the last step.
+    """
+    n = 6
+    kw = _mesh_kwargs(n, **overrides)
+    vol = dict(concentration={'H2O': 1.0e-3}, partition={'H2O': d_h2o}, liquid={'H2O': 1e30})
+    phi0 = float(melt_volume_fraction(0.3, _RHO_S, _RHO_L))
+    x = np.ones(n)
+    record, _ = advance_record(None, time_prev=0.0, time_now=0.0, melt_fraction=x, **kw)
+    x[-1] = 0.3
+    record, _ = advance_record(
+        record, time_prev=0.0, time_now=1.0, melt_fraction=x, **vol, **kw
+    )
+    buried, grown = float(record.pore['H2O'][-1]), float(record.crystal['H2O'][-1])
+    for k in range(1, n_steps + 1):
+        x[-1] = float(mass_fraction_of_volume(phi0 * (1.0 - k / n_steps), _RHO_L, _RHO_S))
+        record, step = advance_record(
+            record,
+            time_prev=1.0 + 1.0e3 * (k - 1) / n_steps,
+            time_now=1.0 + 1.0e3 * k / n_steps,
+            melt_fraction=x,
+            **vol,
+            **kw,
+        )
+        if step.exited.size:
+            break
+    return (float(record.crystal['H2O'][-1]) - grown) / buried, step
+
+
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_a_node_freezing_within_a_step_keeps_what_the_continuous_drainage_keeps(
+    validation_plot,
+):
+    """Cross-check against the continuous problem, integrated without coupling
+    steps: a node whose solver porosity falls from that of x = 0.3 to 0 over
+    1000 yr locks the same share of its water whether it freezes in 1, 2, 4,
+    16 or 64 coupling steps. Its pore melt drains at its own rate, the
+    porosity caps it, and the melt that crystallises in its pores passes all
+    but D = 0.0017 of its water to the melt left. The scheme holds the cap
+    linear in time within each step; the tolerance of 5e-3 covers the 2.4e-3
+    of its ten sub-steps when one step spans the whole freezing.
+    """
+    d_h2o, melt_visc, mush_visc = 0.0017, 0.1, 1.0e19
+    steps = (1, 2, 4, 16, 64)
+    runs = [_freeze_top_node(k, d_h2o, melt_visc=melt_visc, mush_visc=mush_visc) for k in steps]
+    kept = np.array([share for share, _ in runs])
+
+    r = np.linspace(3.5e6, 6.3e6, 7)
+    volume, area, centre = node_geometry(r)
+    tau = mush_visc / (_DRHO * _G * (r[-1] - centre[-1]))
+
+    def rate_of(f):
+        w = float(darcy_velocity(f, _GRAIN, _DRHO, _G, melt_visc, buoyancy='mixture'))
+        return min(w * area[-1] / volume[-1], 1.0 / tau)
+
+    reference = dict(
+        porosity=float(melt_volume_fraction(0.3, _RHO_S, _RHO_L)),
+        duration=1.0e3 * secs_per_year,
+        floor=0.01,
+        entry=float(melt_volume_fraction(0.5, _RHO_S, _RHO_L)),
+    )
+    exact = kept_share(rate_of, partition=d_h2o, **reference)
+    for k, (share, step) in zip(steps, runs):
+        assert step.exited.tolist() == [5], k
+        assert share == pytest.approx(exact, rel=5e-3), k
+    assert kept[-1] == pytest.approx(exact, rel=1e-4)
+    assert 0.3 < exact < 0.7
+    # Discrimination: crystals that kept the concentration of the melt they grow
+    # from would leave the water with the crystallised melt.
+    held = kept_share(rate_of, partition=1.0, **reference)
+    assert held > 1.3 * exact
+    # The pore crystals keep D of the water of the melt they grow from.
+    bare, _ = _freeze_top_node(64, 0.0, melt_visc=melt_visc, mush_visc=mush_visc)
+    gain = exact - kept_share(rate_of, partition=0.0, **reference)
+    assert gain > 1.0e-4
+    assert kept[-1] - bare == pytest.approx(gain, rel=0.1)
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        where = np.log2(steps)
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.6))
+        ax1.plot(where, kept, 'o', mfc='none', label='layer record')
+        ax1.axhline(exact, color='C0', label='continuous drainage')
+        ax1.axhline(held, color='C1', ls='--', label='crystals keep the melt concentration')
+        ax1.set_ylabel('Water locked / water buried')
+        ax1.set_ylim(0.0, 1.0)
+        ax1.legend(fontsize=8)
+        ax2.plot(where, 1.0e3 * (kept / exact - 1.0), 'o', mfc='none')
+        ax2.axhline(5.0, color='C2', lw=1, label='tolerance')
+        ax2.axhline(0.0, color='0.5', lw=0.8)
+        ax2.set_ylabel('Relative deviation / 1e-3')
+        ax2.legend(fontsize=8)
+        for ax in (ax1, ax2):
+            ax.set_xticks(where, [str(k) for k in steps])
+            ax.set_xlabel('Coupling steps over the freezing')
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'node_record_freezing_within_a_step')
+
+
 @pytest.mark.physics_invariant
 def test_each_store_takes_the_settled_burial_of_its_transition():
     """One step from a molten mesh: node 0 cools within the liquid from 1 to
@@ -627,3 +739,43 @@ def test_a_burial_draws_on_the_melt_the_same_step_returns():
     assert step.moved_kg['CO2'] == pytest.approx(wanted - step.released_kg['CO2'], rel=1e-12)
     # Discrimination: capped at the melt reservoir alone, the burial is 5 times smaller.
     assert step.buried_kg['CO2'] > 4.0 * melt_held
+
+
+@pytest.mark.physics_invariant
+def test_crystals_grown_in_the_pores_keep_the_partition_coefficient_times_the_pore_melt():
+    """A node that cannot drain enters the mush at x = 0.4 and cools to 0.2.
+
+    The crystals that grow in its pores keep D times the concentration of the
+    melt they grow from, which the water the crystallising melt passes on
+    raises: at D = 0.5 they take 0.35 of the pore water, within 3 % of the
+    fractional crystallisation law ``1 - (psi / psi_entry)^D``; at D = 1 they
+    take the crystallised melt's share exactly, and at D = 0 nothing. The
+    node's water stays at the node. A share of D on the crystallised melt
+    alone, without the concentration rise, takes a fifth less at D = 0.5.
+    """
+    n = 4
+    psi_entry = float(melt_volume_fraction(0.5, _RHO_S, _RHO_L))
+    ratio = float(melt_volume_fraction(0.2, _RHO_S, _RHO_L)) / psi_entry
+    taken = {}
+    for d in (0.0, 0.5, 1.0):
+        kw = _stiff_kwargs(n)
+        vol = dict(concentration={'H2O': 1e-3}, partition={'H2O': d}, liquid={'H2O': 1e30})
+        x = np.ones(n)
+        record, _ = advance_record(None, time_prev=0.0, time_now=1.0, melt_fraction=x, **kw)
+        x[-1] = 0.4
+        record, _ = advance_record(
+            record, time_prev=1.0, time_now=2.0, melt_fraction=x, **vol, **kw
+        )
+        pore, crystal = float(record.pore['H2O'][-1]), float(record.crystal['H2O'][-1])
+        x[-1] = 0.2
+        record, _ = advance_record(
+            record, time_prev=2.0, time_now=3.0, melt_fraction=x, **vol, **kw
+        )
+        held = float(record.pore['H2O'][-1] + record.crystal['H2O'][-1])
+        assert held == pytest.approx(pore + crystal, rel=1e-12), d
+        taken[d] = (float(record.crystal['H2O'][-1]) - crystal) / pore
+    assert taken[0.0] == pytest.approx(0.0, abs=0.0)
+    assert taken[0.5] == pytest.approx(1.0 - ratio**0.5, rel=3e-2)
+    assert taken[1.0] == pytest.approx(1.0 - ratio, rel=1e-12)
+    # Discrimination: D times the crystallised share alone.
+    assert abs(taken[0.5] - 0.5 * (1.0 - ratio)) > 0.1 * taken[0.5]
