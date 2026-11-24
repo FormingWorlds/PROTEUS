@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import re
 import sys
 from contextlib import nullcontext
 from pathlib import Path
@@ -4990,9 +4991,11 @@ def test_the_abort_after_the_last_skipped_aragog_step_names_its_cause(caplog):
         pytest.raises(CMBClosureError),
     ):
         run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
+    # the campaign census counts run deaths with this pattern
+    assert re.search(r'Aragog failed .* consecutive times\. Aborting\.', caplog.messages[0])
     assert caplog.messages == [
-        'Aragog failed 3 consecutive times (last: Aragog CMB closure check failed '
-        '(CMBClosureError)). Aborting.'
+        'Aragog failed 3 consecutive times. Aborting. Last cause: Aragog CMB closure check '
+        'failed (CMBClosureError)'
     ]
 
 
