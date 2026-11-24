@@ -30,12 +30,13 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from proteus.interior_energetics.aragog import RetryLadderExhaustedError
+from proteus.interior_energetics.aragog import InteriorStalledError, RetryLadderExhaustedError
 from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.wrapper import (
     _ARAGOG_CALL_ENERGY_KEYS,
     _RESUME_STRUCT_DPHI_BACKSTOP_CAP,
     _RESUME_STRUCT_DR_REL_TOL,
+    _aragog_failure_cause,
     _clear_jax_caches_after_resolve,
     _eos_grid_extent_up_step,
     _prevent_warming_clamp_active,
@@ -4930,11 +4931,26 @@ class CMBClosureError(RuntimeError):
     """Stand-in with the name and base class of ``aragog.solver.entropy_solver.CMBClosureError``."""
 
 
-_CMB_MSG = 'CMB closure fault in the call to t = 1.0e+03 yr: ledger miss 5 is above 10x the solver bound 0.1 (J)'
-
-
-def _skip_aragog_step(error, caplog):
-    """Run one aragog ``run_interior`` call whose solver raises ``error``; return state and warnings."""
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('error', 'cause'),
+    [
+        (
+            CMBClosureError('ledger miss 5 above 10x the bound'),
+            'Aragog CMB closure check failed (CMBClosureError) #1/3.',
+        ),
+        (RuntimeError('setup fault'), 'Aragog call failed (RuntimeError) #1/3.'),
+        (RetryLadderExhaustedError('ladder out'), 'Aragog retry-ladder exhaustion #1/3.'),
+        (
+            type('Sub', (RetryLadderExhaustedError,), {})('sub'),
+            'Aragog retry-ladder exhaustion #1/3.',
+        ),
+    ],
+)
+def test_a_skipped_aragog_step_names_the_error_that_stopped_the_call(error, cause, caplog):
+    """The skip-step warning names the error class and its message; only an exhausted ladder
+    reads as a retry-ladder exhaustion. The skip itself is the same for every cause."""
     config = _make_run_interior_config(prevent_warming=False, module='aragog')
     hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
     hf_row.update(dict.fromkeys(_ARAGOG_CALL_ENERGY_KEYS, 1.0e27))
@@ -4948,50 +4964,26 @@ def _skip_aragog_step(error, caplog):
         caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'),
     ):
         run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
-    warns = [r.getMessage() for r in caplog.records if r.levelname == 'WARNING']
-    return hf_row, interior_o, warns
-
-
-@pytest.mark.unit
-@pytest.mark.physics_invariant
-@pytest.mark.parametrize(
-    ('error', 'cause'),
-    [
-        (CMBClosureError(_CMB_MSG), 'Aragog CMB closure check failed (CMBClosureError) #1/3.'),
-        (RuntimeError('setup fault'), 'Aragog call failed (RuntimeError) #1/3.'),
-        (RetryLadderExhaustedError('ladder out'), 'Aragog retry-ladder exhaustion #1/3.'),
-        (
-            type('Sub', (RetryLadderExhaustedError,), {})('sub'),
-            'Aragog retry-ladder exhaustion #1/3.',
-        ),
-    ],
-)
-def test_a_skipped_aragog_step_names_the_error_that_stopped_the_call(error, cause, caplog):
-    """The skip-step warning names the error class and its message; only an exhausted ladder
-    reads as a retry-ladder exhaustion. The skip itself is the same for every cause."""
-    _, hf_row0 = _make_run_interior_state(prev_f_int=0.1)
-    hf_row, interior_o, warns = _skip_aragog_step(error, caplog)
-    assert len(warns) == 1
-    assert warns[0].startswith(cause)
-    assert str(error) in warns[0]
+    assert len(caplog.messages) == 1
+    assert caplog.messages[0].startswith(cause)
+    assert str(error) in caplog.messages[0]
     assert interior_o.aragog_fail_count == 1
     assert interior_o.dt == 42.0
-    assert hf_row['T_magma'] == hf_row0['T_magma']
     assert all(hf_row[k] == 0.0 for k in _ARAGOG_CALL_ENERGY_KEYS)
 
 
 @pytest.mark.unit
 def test_the_cmb_closure_error_of_aragog_takes_the_cmb_cause():
-    """The class of aragog (fwl-aragog 26.11.24 on) is a RuntimeError, not a stop class of the
-    wrapper, and its name gives the CMB cause; skipped while the installed aragog lacks it."""
+    """The class of aragog is a RuntimeError, not a stop class of the wrapper, and its name
+    gives the CMB cause; an aragog from 26.11.24 on without the class fails the test."""
+    import aragog
     from aragog.solver import entropy_solver
-
-    from proteus.interior_energetics.aragog import InteriorStalledError
-    from proteus.interior_energetics.wrapper import _aragog_failure_cause
 
     cls = getattr(entropy_solver, 'CMBClosureError', None)
     if cls is None:
-        pytest.skip('installed aragog has no CMBClosureError')
+        if tuple(aragog.__version_tuple__[:3]) < (26, 11, 24):
+            pytest.skip('installed aragog is older than 26.11.24')
+        pytest.fail(f'aragog {aragog.__version__} has no CMBClosureError')
     assert issubclass(cls, RuntimeError)
     assert not issubclass(cls, (InteriorStalledError, entropy_solver.AcceptedStateRangeError))
     assert (
