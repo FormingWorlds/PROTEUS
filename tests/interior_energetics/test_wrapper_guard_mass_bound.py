@@ -20,6 +20,7 @@ from proteus.interior_energetics.wrapper import (
     _MASS_ESCAPE_RADIUS_OFFSET,
     _MASS_ESCAPE_RADIUS_SLOPE,
     _ZALMOXIS_MASS_ANCHOR_TOL,
+    _warn_committed_mass_miss,
 )
 from tests.interior_energetics.test_wrapper_guard_mass_target import (
     ACCEPT_MSG,
@@ -72,6 +73,11 @@ def test_a_radius_step_far_above_its_mass_step_is_rejected_with_a_warning(caplog
     assert 'dR/R=2.000e-01' in warned[0]
     assert 'dM/M=%.3e' % (ratio - 1.0) in warned[0]
     assert 'bound %.3e' % _bound(ratio - 1.0) in warned[0]
+    assert '= 2.0 dM/M + 1.0e-03 at' in warned[0]
+    assert (
+        'retained M_int=%.6e kg, M_target=%.6e kg' % (M_RETAINED, M_RETAINED * ratio)
+        in warned[0]
+    )
     assert hf_row['R_int'] == R_RETAINED
     assert hf_row['M_int'] == M_RETAINED
 
@@ -111,6 +117,28 @@ def test_measured_mass_steps_pass_the_radius_bound(caplog, dm, dr):
     assert any(ACCEPT_MSG in m for m in msgs)
     assert not _warnings(caplog, BOUND_MSG)
     assert hf_row['R_int'] == pytest.approx(R_RETAINED * (1.0 + dr), rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('dm', 'dr', 'kept'),
+    [
+        # dR/R <= 2 dM/M + 1e-3, with the numbers written out
+        pytest.param(0.05, 0.08, True, id='+8 % radius at +5 % mass, inside the slope'),
+        pytest.param(0.05, 0.102, False, id='+10.2 % radius at +5 % mass, above 0.101'),
+        pytest.param(
+            3.1e-3, 6.8e-3, True, id='+0.68 % radius at +0.31 % mass, inside the offset'
+        ),
+        pytest.param(3.1e-3, 7.3e-3, False, id='+0.73 % radius at +0.31 % mass, above 0.72 %'),
+    ],
+)
+def test_the_radius_bound_has_slope_2_and_offset_1e_3(caplog, dm, dr, kept):
+    """The kept and refused steps of the bound dR/R <= 2 dM/M + 1e-3, in fixed numbers."""
+    config, hf_row, base = _cooling_case()
+    msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve_to(1.0 + dm, 1.0 + dr))
+
+    assert any(ACCEPT_MSG in m for m in msgs) is kept
+    assert bool(_warnings(caplog, BOUND_MSG)) is not kept
 
 
 @pytest.mark.physics_invariant
@@ -245,6 +273,22 @@ def test_a_fall_back_after_a_raising_solve_keeps_the_old_target_and_does_not_war
     assert any('Falling back to previous structure' in m for m in msgs)
     assert hf_row['M_int_target'] == M_RETAINED
     assert not _warnings(caplog, MISS_MSG)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('m_int', 'm_target'),
+    [
+        pytest.param(-1.0, M_RETAINED, id='negative mass'),
+        pytest.param(M_RETAINED, -M_RETAINED, id='negative target'),
+    ],
+)
+def test_a_non_positive_committed_mass_warns(caplog, m_int, m_target):
+    """A negative mass or target with both keys set warns."""
+    with caplog.at_level(logging.WARNING):
+        _warn_committed_mass_miss({'M_int': m_int, 'M_int_target': m_target})
+
+    assert len(_warnings(caplog, MISS_MSG)) == 1
 
 
 @pytest.mark.physics_invariant
