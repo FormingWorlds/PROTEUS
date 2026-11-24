@@ -41,7 +41,7 @@ step-by-step guide or the advice below,
 
 ### Numerically fragile coupled runs {#numerically-fragile-coupled-runs}
 
-Some coupled atmosphere-interior-outgassing configurations occasionally fail with messages such as `RetryLadderExhaustedError: Aragog retry ladder exhausted` or with warnings about T_core jumping >1500 K despite Aragog reporting `status=0`. The same config may succeed on one launch and fail on the next.
+Some coupled atmosphere-interior-outgassing configurations occasionally fail with messages such as `proteus.interior_energetics.aragog.RetryLadderExhaustedError: Aragog retry ladder exhausted` or with warnings about T_core jumping >1500 K despite Aragog reporting `status=0`. The same config may succeed on one launch and fail on the next.
 
 The cause is sub-1e-7 floating-point noise in JAX/XLA reduction order that compounds through Aragog's tight tolerances and lands the solver on a wrong P-S branch within ~15 iterations.
 
@@ -60,7 +60,7 @@ For broader convergence problems,see [stabilising simulations](stabilise_run.md)
 
 ### The CMB closure check of Aragog fails {#the-cmb-closure-check-of-aragog-fails}
 
-Aragog checks the heat budget at the core-mantle boundary (CMB) after each call. With `interior_energetics.aragog.core_bc = "energy_balance"` or `"gradient"`, the change of the core heat in the call must match the heat that crossed the CMB. With `"core_module"`, the CMB node must follow the change of the core top. A miss above the bound of the check gives a warning. A miss above 10 times that bound, or a slope (dT/dS)_P of the CMB node that is not finite and positive, raises `CMBClosureError`.
+With `interior_energetics.aragog.core_bc = "energy_balance"`, `"gradient"` or `"core_module"`, Aragog checks the heat budget at the core-mantle boundary (CMB) after each call; `"quasi_steady"` and `"bower2018"` have no such check. With `"energy_balance"` or `"gradient"`, the change of the core heat in the call must match the heat that crossed the CMB. With `"core_module"`, the CMB node must follow the change of the core top. A miss above the bound of the check gives a warning. A miss above 10 times that bound, or a slope (dT/dS)_P of the CMB node that is not finite and positive, raises `CMBClosureError`.
 
 PROTEUS then logs `Aragog CMB closure check failed (CMBClosureError) #n/3` with the message of Aragog. It keeps the interior state of the previous step for this step, sets the energy columns of the call to 0, and goes on with the other modules. Three failed Aragog calls in a row stop the run. The retry ladder does not run for this error.
 

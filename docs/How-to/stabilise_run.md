@@ -107,7 +107,7 @@ timesteps, by limiting the overall tidal response:
 
 **Use the `--deterministic` flag**
 
-If a simulation fails on noise-floor floating-point divergence, for example when you get the message `RetryLadderExhaustedError: Aragog retry ladder exhausted` or with T_core jumping warnings, the `--deterministic` flag enforces stricter numerical reproducibility via JAX and XLA settings:
+If a simulation fails on noise-floor floating-point divergence, for example when you get the message `proteus.interior_energetics.aragog.RetryLadderExhaustedError: Aragog retry ladder exhausted` or with T_core jumping warnings, the `--deterministic` flag enforces stricter numerical reproducibility via JAX and XLA settings:
 
 ```console
 proteus start -c my_config.toml --deterministic

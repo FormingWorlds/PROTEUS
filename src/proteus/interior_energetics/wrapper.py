@@ -2743,7 +2743,7 @@ def run_interior(
             )
             if interior_o.aragog_fail_count >= _ARAGOG_MAX_CONSECUTIVE_FAILS:
                 log.error(
-                    'Aragog failed %d consecutive times (last: %s). Aborting.',
+                    'Aragog failed %d consecutive times. Aborting. Last cause: %s',
                     interior_o.aragog_fail_count,
                     cause,
                 )
