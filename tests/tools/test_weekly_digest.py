@@ -2887,8 +2887,8 @@ def test_collect_links_the_served_pages_of_merged_prs_only(monkeypatch):
     assert all(p['docs'] == [] for p in _collect_janus({})['prs']) and seen == []
 
 
-def test_a_host_that_fails_once_gets_no_more_requests(monkeypatch):
-    """After a network error on a docs host, the other pages of that host are left out unasked."""
+def test_a_site_that_fails_once_gets_no_more_requests(monkeypatch):
+    """After a network error on a docs site, the other pages of that site are left out unasked."""
     seen = []
     monkeypatch.setattr(collect, 'page_status', lambda url: seen.append(url) or 'timed out')
     out = _collect_janus({'FormingWorlds/JANUS': 'https://d.example/J'})
@@ -2947,3 +2947,62 @@ def test_repository_link_text_is_escaped():
     first = render.summary(data, 'https://run')
     assert '[b\\_c\\*d](' in first
     assert render.scan_body(first, render.allowed_urls(data, 'https://run', []), []) == []
+
+
+def test_a_failed_site_leaves_other_sites_on_its_host_asked(monkeypatch):
+    """A network error on one site stops only that site; another site of the same host is still asked."""
+    seen = []
+
+    def answer(url):
+        seen.append(url)
+        return 'timed out' if '/J/' in url else 200
+
+    monkeypatch.setattr(collect, 'page_status', answer)
+    settings_ = {
+        **_VALID,
+        'repos': ['FormingWorlds/JANUS', 'FormingWorlds/MORS'],
+        'docs': {
+            'FormingWorlds/JANUS': 'https://d.example/J',
+            'FormingWorlds/MORS': 'https://d.example/M',
+        },
+    }
+    out = collect.collect(_FakeGH([_janus(), _janus()]), settings_, _LATER)
+    docs = {p['ref']: len(p['docs']) for p in out['prs'] if p['status'] == 'merged'}
+    assert docs == {'JANUS#94': 0, 'JANUS#103': 0, 'MORS#94': 1, 'MORS#103': 3}
+    assert sum('/J/' in u for u in seen) == 1
+
+
+def test_an_http_error_answer_does_not_stop_the_site(monkeypatch):
+    """A 404 is an answer, not a network error: the next pages of the site are still asked and kept."""
+    seen = []
+    monkeypatch.setattr(
+        collect, 'page_status', lambda url: seen.append(url) or (404 if len(seen) == 1 else 200)
+    )
+    out = _collect_janus({'FormingWorlds/JANUS': 'https://d.example/J'})
+    assert len(seen) == 3
+    linked = sorted(d['path'] for p in out['prs'] for d in p['docs'])
+    assert linked == ['Tutorials/first_run', 'Validation/solve_pt']
+
+
+def test_page_status_never_raises_on_a_malformed_url():
+    """A URL that urllib cannot build a request from gives an error text, not an exception."""
+    assert isinstance(_PAGE_STATUS('https://[bad/x.html'), str)
+    assert isinstance(_PAGE_STATUS('nourl'), str)
+
+
+@pytest.mark.parametrize(
+    'char',
+    list(':~$"\'{}^+,;&!#%?*<>@[]()|`\\')
+    + ['\n', '\r', '\t', '\u2028', '\u202e', '\u200b', '\ufeff'],
+)
+def test_docs_path_with_a_markup_or_control_character_is_left_out(char):
+    """Each character outside letters, digits, _, space, ., / and - leaves the page out unasked."""
+    asked = []
+    pages = collect.docs_pages([f'docs/a{char}b.md', 'docs/.md'], 'https://d.x', asked.append)
+    assert pages == [] and asked == []
+
+
+def test_link_text_holds_no_line_break_or_invisible_character():
+    """Link text of any origin is one line with no control, format or line-separator character."""
+    text = render.link_text('a\nb\r\tc\u2028d\u202ee\u200bf')
+    assert text == 'a b c d e f', repr(text)
