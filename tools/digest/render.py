@@ -5,9 +5,9 @@ Usage::
     python tools/digest/render.py collected.json draft.json OUTDIR [--live] [--run-url URL] [--run-id ID]
 
 Writes ``OUTDIR/digest.md`` (title and body, for reading) and ``OUTDIR/digest.json``
-(``title``, ``body`` for the post). Settings, values, links, dates and mentions
-come from the collected data, never from the model text. Without ``--live`` the
-mentions are shown in code spans, so a dry run notifies nobody.
+(``title``, ``body`` for the post). Settings, values, links, dates and author
+names come from the collected data, never from the model text. Without ``--live``
+the body starts with the dry-run line, which stops the post step.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from common import SECTIONS, DigestError, is_bot, load_settings, parse_time
 
 MAX_FACTS = 4
 MAX_DOCS = 5
-GITHUB = PROFILE = 'https://github.com/'
+GITHUB = 'https://github.com/'
 VALUE_CHARS = 60
 BODY_LIMIT = 65536
 LINK_RE = re.compile(r'\[((?:\\.|[^\\\[\]])*)\]\(([^()\s]*)\)')
@@ -131,7 +131,7 @@ def author_link(item: dict, bots: list[str]) -> str:
         return 'unknown'
     if is_bot(login, item['author_kind'], bots):
         return f'`{login}`'
-    return f'[{login}]({link_url(PROFILE + login)})'
+    return f'[{link_text(login)}]({link_url(GITHUB + login)})'
 
 
 def link_url(url: str) -> str:
@@ -154,7 +154,8 @@ def docs_links(items: list[dict]) -> str:
     pages = list({d['url']: d for i in items for d in i.get('docs', [])}.values())
     texts = [f'[{link_text(d["path"])}]({link_url(d["url"])})' for d in pages[:MAX_DOCS]]
     if len(pages) > MAX_DOCS:
-        texts.append(f'and {len(pages) - MAX_DOCS} more pages')
+        more = len(pages) - MAX_DOCS
+        texts.append(f'and {more} more page' + ('s' if more > 1 else ''))
     return ', '.join(texts)
 
 
@@ -200,7 +201,7 @@ def allowed_urls(data: dict, run_url: str, bots: list[str]) -> list[str]:
         + [run_url]
         + [GITHUB + r for r in data['repos']]
         + [
-            PROFILE + i['author']
+            GITHUB + i['author']
             for i in items
             if not is_bot(i['author'], i['author_kind'], bots)
         ]
@@ -212,7 +213,9 @@ def summary(data: dict, run_url: str) -> str:
     """The window, the counts, the linked repositories and the run link that open the post."""
     merged = sum(p['status'] == 'merged' for p in data['prs'])
     opened = sum(p['status'] == 'open' for p in data['prs'])
-    names = ', '.join(f'[{r.split("/", 1)[1]}]({link_url(GITHUB + r)})' for r in data['repos'])
+    names = ', '.join(
+        f'[{link_text(r.split("/", 1)[1])}]({link_url(GITHUB + r)})' for r in data['repos']
+    )
     read = (
         f'the bodies of the {data["bodies_kept"]} largest pull requests '
         f'and only the titles of the other {data["bodies_cut"]}'
@@ -247,10 +250,7 @@ def render_body(
         '',
     ]
     if not live:
-        lines[:0] = [
-            '**Dry run: not posted.**',
-            '',
-        ]
+        lines[:0] = ['**Dry run: not posted.**', '']
     if draft['empty']:
         lines.append(
             f'Quiet week: no pull request was merged and no release was published between '

@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import functools
 import html
+import http.client
 import json
 import re
 import sys
@@ -308,15 +309,15 @@ def add_bodies(prs: list, releases: list, max_bodies: int, body_chars: int) -> d
 
 
 def page_status(url: str) -> int | str:
-    """HTTP status of one HEAD request to a docs page, or the error text; no retry."""
+    """HTTP status of one HEAD request to a docs page, or the error text; it never raises."""
     req = urllib.request.Request(url, method='HEAD', headers={'User-Agent': 'weekly-digest'})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return resp.status
     except urllib.error.HTTPError as err:
         return err.code
-    except (urllib.error.URLError, OSError) as err:
-        return str(err)
+    except (OSError, http.client.HTTPException, ValueError) as err:
+        return f'{type(err).__name__}: {err}'
 
 
 def docs_pages(files: list[str], base: str | None, status) -> list[dict]:
@@ -324,6 +325,8 @@ def docs_pages(files: list[str], base: str | None, status) -> list[dict]:
 
     A file ``docs/<path>.md`` maps to ``<base>/<path>.html``; it is kept only when
     ``status(url)`` gives 200, so a page that is deleted or not yet deployed is left out.
+    A path with a character other than a word character, a space, ``.``, ``/`` or ``-``
+    is left out unasked, so its link text holds no markup or line break.
 
     Parameters
     ----------
@@ -344,6 +347,9 @@ def docs_pages(files: list[str], base: str | None, status) -> list[dict]:
         if not (path.startswith('docs/') and path.endswith('.md')):
             continue
         page = path[len('docs/') : -len('.md')]
+        if not re.fullmatch(r'[\w ./-]+', page):
+            print(f'Docs page left out: {path!r} has a character a link text cannot hold')
+            continue
         url = f'{base}/{urllib.parse.quote(page)}.html'
         if (code := status(url)) == 200:
             pages.append({'path': page, 'url': url})
@@ -365,7 +371,19 @@ def collect(gh: GitHub, settings: dict, window: dict) -> dict:
     dropped = [p for p in prs if p['status'] == 'open' and p['association'] not in MEMBERS]
     prs = [p for p in prs if p not in dropped]
     cut = add_bodies(prs, releases, settings['max_bodies'], settings['body_chars'])
-    status = functools.cache(page_status)
+    down = set()
+
+    @functools.cache
+    def status(url: str) -> int | str:
+        """One request per URL, and none to a host after a network error on it."""
+        host = urllib.parse.urlsplit(url).netloc
+        if host in down:
+            return 'not asked: the host failed before'
+        code = page_status(url)
+        if isinstance(code, str):
+            down.add(host)
+        return code
+
     for p in prs:
         base = settings['docs'].get(p['repo']) if p['status'] == 'merged' else None
         p['docs'] = docs_pages(p['files'], base, status)

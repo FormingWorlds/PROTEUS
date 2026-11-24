@@ -95,6 +95,8 @@ def validate_settings(settings: dict) -> dict:
     for key, ok in rules.items():
         if key not in settings or not ok(settings[key]):
             raise DigestError(f'setting {key} is missing or invalid: {settings.get(key)!r}')
+    if extra := set(settings['docs']) - set(settings['repos']):
+        raise DigestError(f'setting docs names repositories not in repos: {sorted(extra)}')
     return settings
 
 
@@ -123,7 +125,7 @@ def iso(value: datetime) -> str:
 
 
 def is_bot(login: str | None, kind: str | None, bots: list[str]) -> bool:
-    """Return True for an account that must never be mentioned.
+    """Return True for an account shown as a code span, never as a profile link.
 
     Parameters
     ----------

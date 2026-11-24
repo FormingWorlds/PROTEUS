@@ -2677,7 +2677,7 @@ def test_every_author_is_a_profile_link_and_nobody_is_mentioned(live):
     items = {i['ref']: i for i in data['prs'] + data['releases']}
     for entry in dft['entries']:
         cited = [items[r] for r in entry['prs'] + entry['releases']]
-        tail = next(line for line in body.splitlines() if links_of(cited[0]) in line)
+        tail = next(line for line in body.splitlines() if render.links(cited[:1]) in line)
         for item in cited:
             login = item['author']
             want = (
@@ -2691,11 +2691,6 @@ def test_every_author_is_a_profile_link_and_nobody_is_mentioned(live):
     assert render.scan_body(body, urls, []) == []
     assert 'https://github.com/dependabot' not in body, 'a bot got a profile link'
     assert render.scan_body(body + '\n[x](https://github.com/mallory)\n', urls, []) != []
-
-
-def links_of(item):
-    """The markdown link of one cited item, as render writes it."""
-    return render.links([item])
 
 
 _PAGE = 'https://proteus-framework.org/PROTEUS/Tutorials/core_table.html'
