@@ -95,6 +95,23 @@ def stored_core_target(hf_row: dict) -> float:
     return stored
 
 
+def stored_dissolved_target(hf_row: dict) -> float:
+    """Return ``M_dissolved_target`` [kg], or zero when absent (dry mantle, another structure).
+
+    Raises
+    ------
+    ValueError
+        If the column is not finite or is negative, which is not a dissolved mass.
+    """
+    stored = float(hf_row.get('M_dissolved_target') or 0.0)
+    if not math.isfinite(stored) or stored < 0.0:
+        raise ValueError(
+            f'M_dissolved_target is not a dissolved mass ({stored!r} kg). '
+            'The helpfile row is corrupt.'
+        )
+    return stored
+
+
 def record_volatile_change(config: Config, hf_row: dict, delta: float) -> None:
     """Add ``delta`` [kg] to ``M_volatile_change`` when the Zalmoxis structure is in use.
 

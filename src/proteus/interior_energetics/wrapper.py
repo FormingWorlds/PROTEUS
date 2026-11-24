@@ -224,15 +224,14 @@ def calculate_core_mass(hf_row: dict, config: Config):
 
 def update_planet_mass(hf_row: dict):
     """
-    Calculate total planet mass, as sum of dry+wet parts.
+    Calculate total planet mass, M_planet = M_int - M_dissolved_target + M_ele.
 
     Whole-planet volatile element accounting (issue #677): M_ele sums over
     ``vol_element_list + noble_gases``, so oxygen is included.
 
     The atmospheric and dissolved O mass produced by CALLIOPE (from fO2) is
-    therefore counted in M_planet = M_int + M_ele, keeping the
-    bookkeeping symmetric so M_atm cannot exceed M_planet at
-    high H budgets.
+    therefore counted in M_planet through M_ele, keeping the bookkeeping
+    symmetric so M_atm cannot exceed M_planet at high H budgets.
 
     The rock-forming elements of ``vap_element_list`` are deliberately NOT
     summed here. Rock vapour is added to the atmosphere without being
@@ -241,13 +240,19 @@ def update_planet_mass(hf_row: dict):
     Mantle FeO-bound oxygen remains implicit in the PALEOS density
     tables that drive ``M_int``; we don't double-count it here.
 
-    This site pairs with the dry-mass target in
-    ``load_zalmoxis_configuration``: both currently treat the mantle EOS
-    as bare silicate (``dry_mantle = true``, the only configuration the
-    config gate admits). If wet-mantle support is enabled there, this
-    sum must stop counting the dissolved inventory in ``M_ele``, because
-    a wet-mantle ``M_int`` already contains that mass.
+    With ``interior_struct.zalmoxis.dry_mantle = false`` the structure target
+    keeps the dissolved inventory, so ``M_int`` holds it as well as ``M_ele``.
+    ``M_dissolved_target``, the dissolved element mass inside the target of the
+    last accepted structure solve, is taken off ``M_int`` so that this mass
+    counts once. Between solves ``M_int`` is the interior module's integral of
+    the last solved structure, so the value of that solve is taken off even
+    while outgassing moves volatiles between the melt and the atmosphere.
+    Totals that change without leaving the planet between solves,
+    such as an oxygen inventory derived from the fO2 buffer, move M_planet
+    until the next solve, as with a dry mantle. ``M_dissolved_target`` is 0
+    with a dry mantle and with another structure module.
     """
+    from proteus.interior_struct.common import stored_dissolved_target
 
     # Update total element mass.
     hf_row['M_ele'] = 0.0
@@ -255,7 +260,8 @@ def update_planet_mass(hf_row: dict):
         hf_row['M_ele'] += float(hf_row.get(e + '_kg_total', 0.0))
 
     # Add to total planet mass
-    hf_row['M_planet'] = hf_row['M_int'] + hf_row['M_ele']
+    M_dissolved = stored_dissolved_target(hf_row)
+    hf_row['M_planet'] = hf_row['M_int'] - M_dissolved + hf_row['M_ele']
 
 
 def get_nlevb(config: Config):
@@ -1320,6 +1326,7 @@ _ADIABAT_IC_RESTORE_KEYS = (
     'struct_core_T_used',
     'struct_core_T_excess',
     'M_int_target',
+    'M_dissolved_target',
     'P_surf',
     'P_center',
     'P_cmb',
@@ -3326,6 +3333,7 @@ def update_structure_from_interior(
             'M_int',
             'M_core',
             'M_core_solve',
+            'M_dissolved_target',
             'struct_core_T_used',
             'struct_core_T_excess',
             'core_density',

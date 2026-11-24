@@ -1705,18 +1705,21 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize('path', ['raise', 'mass_anchor', 'up_step'])
-def test_a_rejected_structure_update_restores_the_core_keys_of_the_row(path):
-    """A solve that writes M_core, M_core_solve, core_density and the core temperature table
-    flags and then fails (a schema violation raises after the writes), misses the mass anchor,
-    or makes a rejected radius up-step leaves the 5 keys at their values before the call."""
+def test_a_rejected_structure_update_restores_the_solve_keys_of_the_row(path):
+    """A solve that writes M_core, M_core_solve, M_dissolved_target, core_density, and the core
+    temperature table flags and then fails (a schema violation raises after the writes),
+    misses the mass anchor, or makes a rejected radius up-step leaves the 6 keys at their
+    values before the call."""
     config, hf_row, lt, lT, lP = _dtmagma_scenario()  # cooling, so an up-step is rejected
     before = {'M_core': 1.95e24, 'M_core_solve': 1.94e24, 'core_density': 1.1e4}
-    before.update(struct_core_T_used=0.0, struct_core_T_excess=0.0)
+    before.update(struct_core_T_used=0.0, struct_core_T_excess=0.0, M_dissolved_target=2.55e21)
     hf_row.update(before)
     interior_o = _mock_interior_o()
 
     def solver(cfg, outdir, row, *a, **k):
-        row.update(M_core=2.1e24, M_core_solve=2.0e24, core_density=1.2e4)
+        row.update(
+            M_core=2.1e24, M_core_solve=2.0e24, core_density=1.2e4, M_dissolved_target=2.4e21
+        )
         row.update(struct_core_T_used=1.0, struct_core_T_excess=0.05)
         if path == 'raise':
             raise RuntimeError('zalmoxis_output.dat schema violation')
@@ -3239,6 +3242,40 @@ def test_update_planet_mass_handles_missing_element_columns():
     update_planet_mass(hf_row)
     assert hf_row['M_ele'] == pytest.approx(0.0, abs=1e-12)
     assert hf_row['M_planet'] == pytest.approx(5.972e24, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_wet_planet_mass_holds_while_outgassing_moves_mass_between_solves():
+    """M_int is the interior module's integral of the last solved wet structure, so M_planet
+    takes off the dissolved mass of that solve (M_dissolved_target). Outgassing between solves leaves M_planet unchanged,
+    and escape lowers it by the escaped mass."""
+    from proteus.interior_energetics.wrapper import update_planet_mass
+
+    rock = 5.97e24  # kg
+    H_total, O_total = 4.7e20, 3.1e21
+    d0 = (H_total - 1.2e20) + (O_total - 0.9e21)  # dissolved at the solve
+    row = {'M_int': rock + d0, 'M_dissolved_target': d0}
+    row.update(H_kg_total=H_total, H_kg_atm=1.2e20, O_kg_total=O_total, O_kg_atm=0.9e21)
+    update_planet_mass(row)
+    m0 = row['M_planet']
+    assert m0 == pytest.approx(rock + H_total + O_total, rel=1e-14)
+
+    # Outgas 1.5e20 kg from the melt. The totals and the structure stay as they were.
+    row['H_kg_atm'] += 5.0e19
+    row['O_kg_atm'] += 1.0e20
+    update_planet_mass(row)
+    assert row['M_planet'] == pytest.approx(m0, rel=1e-14)
+    # Taking off the current dissolved inventory instead misses by the outgassed mass.
+    dissolved_now = sum(row[e + '_kg_total'] - row[e + '_kg_atm'] for e in ('H', 'O'))
+    wrong = row['M_int'] - dissolved_now + row['M_ele']
+    assert wrong - m0 == pytest.approx(1.5e20, rel=1e-6)
+
+    # Escape takes 2e19 kg of H out of the atmosphere.
+    row['H_kg_total'] -= 2.0e19
+    row['H_kg_atm'] -= 2.0e19
+    update_planet_mass(row)
+    assert m0 - row['M_planet'] == pytest.approx(2.0e19, rel=1e-6)
 
 
 @pytest.mark.unit
