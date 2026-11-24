@@ -680,10 +680,11 @@ def assert_mass_conservation(
 
     Issue #677 invariant. M_atm sums atmospheric oxygen (over gas_list of
     *_kg_atm, including the O atoms in H2O / CO2 / SO2), and M_planet =
-    M_int + M_ele counts the same oxygen in M_ele, so whole-planet O
-    accounting keeps the two sides symmetric and M_atm <= M_planet holds
-    by construction. This assertion catches any regression that
-    re-introduces an asymmetry by dropping O from one side.
+    M_int - M_dissolved_target + M_ele counts the same oxygen in M_ele, so
+    whole-planet O accounting keeps the two sides symmetric and M_atm <=
+    M_planet holds by construction (M_dissolved_target is part of M_int).
+    This assertion catches any regression that re-introduces an asymmetry by
+    dropping O from one side.
 
     Rock vapourisation (``outgas.vapourise``) moves vapourised rock mass into
     M_atm without debiting it from the interior, so M_planet does not track it
@@ -991,6 +992,7 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'M_core_solve',
         'M_core_target',
         'M_desiccated',
+        'M_dissolved_target',
         'M_volatile_change',
         'n_impacts_applied',
         'step_dE_impact_J',
@@ -1129,6 +1131,7 @@ def GetHelpfileKeys():
         'M_mantle',         # dry mass of mantle [kg]
         'M_core_target',    # core mass target of the Zalmoxis structure; 0 with another structure module [kg]
         'M_core_solve',     # core mass of the last accepted Zalmoxis solve, equal to M_core; 0 with another structure module [kg]
+        'M_dissolved_target',  # dissolved volatile and noble-gas element mass inside the target of the last accepted Zalmoxis solve (0 with zalmoxis.dry_mantle = true or another structure module) [kg]
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]

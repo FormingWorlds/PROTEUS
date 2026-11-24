@@ -1070,6 +1070,12 @@ class Proteus:
                         'incomplete trailing snapshots'
                     )
 
+            # A wet-mantle helpfile from before M_dissolved_target needs it before M_planet.
+            if self.config.interior_struct.module == 'zalmoxis':
+                from proteus.interior_struct.zalmoxis import restore_dissolved_target
+
+                restore_dissolved_target(self.config, self.hf_all)
+
             # Get last row from helpfile dataframe
             self.hf_row = self.hf_all.iloc[-1].to_dict()
 
