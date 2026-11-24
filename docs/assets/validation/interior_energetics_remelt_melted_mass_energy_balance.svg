@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:description>test: tests/integration/test_slow_accretion_partial_remelt.py::test_the_melted_mass_closes_on_the_pre_impact_cell_masses[energy_balance]; command: pytest 'tests/integration/test_slow_accretion_partial_remelt.py::test_the_melted_mass_closes_on_the_pre_impact_cell_masses[energy_balance]' --validation-plots; summary: {"v": 1, "axes": [{"scales": ["linear", "linear"], "categories": [["Structural mass", "Cell volume", "EOS mass $\\rho(P, S_\\mathrm{end})V$"], null], "lines": [[2, 0.0, 1.0, 0.5, 0.5, 0.3, 0.3, 0.3, 0.0]], "collections": [], "values": [], "value_scales": [], "patches": [[15, -0.25, 2.25, 0.95, 0.4619047619047618, 0.0, 0.3305161166248332, 0.11948469443989995, 0.005260248809937277]], "images": [], "image_scales": [], "extents": []}]}</dc:description>
+    <dc:description>test: tests/integration/test_slow_accretion_partial_remelt.py::test_the_melted_mass_closes_on_the_pre_impact_cell_masses[energy_balance]; command: pytest 'tests/integration/test_slow_accretion_partial_remelt.py::test_the_melted_mass_closes_on_the_pre_impact_cell_masses[energy_balance]' --validation-plots; summary: {"v": 1, "axes": [{"scales": ["linear", "linear"], "categories": [["Structural mass", "Cell volume", "EOS mass $\\rho(P, S_\\mathrm{end})V$"], null], "lines": [[2, 0.0, 1.0, 0.5, 0.5, 0.3, 0.3, 0.3, 0.0]], "collections": [], "values": [], "value_scales": [], "patches": [[15, -0.25, 2.25, 0.95, 0.4619047619047618, 0.0, 0.3305161166248332, 0.11948410067020691, 0.005259782276607042]], "images": [], "image_scales": [], "extents": []}]}</dc:description>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -1148,8 +1148,8 @@ z
    <g id="patch_5">
     <path d="M 306.931643 240.540909 
 L 365.536809 240.540909 
-L 365.536809 110.227646 
-L 306.931643 110.227646 
+L 365.536809 110.229831 
+L 306.931643 110.229831 
 z
 " clip-path="url(#p597c22264b)" style="fill: #10151b"/>
    </g>
