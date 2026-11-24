@@ -310,8 +310,10 @@ def add_bodies(prs: list, releases: list, max_bodies: int, body_chars: int) -> d
 
 def page_status(url: str) -> int | str:
     """HTTP status of one HEAD request to a docs page, or the error text; it never raises."""
-    req = urllib.request.Request(url, method='HEAD', headers={'User-Agent': 'weekly-digest'})
     try:
+        req = urllib.request.Request(
+            url, method='HEAD', headers={'User-Agent': 'weekly-digest'}
+        )
         with urllib.request.urlopen(req, timeout=15) as resp:
             return resp.status
     except urllib.error.HTTPError as err:
@@ -371,21 +373,18 @@ def collect(gh: GitHub, settings: dict, window: dict) -> dict:
     dropped = [p for p in prs if p['status'] == 'open' and p['association'] not in MEMBERS]
     prs = [p for p in prs if p not in dropped]
     cut = add_bodies(prs, releases, settings['max_bodies'], settings['body_chars'])
-    down = set()
-
-    @functools.cache
-    def status(url: str) -> int | str:
-        """One request per URL, and none to a host after a network error on it."""
-        host = urllib.parse.urlsplit(url).netloc
-        if host in down:
-            return 'not asked: the host failed before'
-        code = page_status(url)
-        if isinstance(code, str):
-            down.add(host)
-        return code
-
+    down, ask = set(), functools.cache(page_status)
     for p in prs:
         base = settings['docs'].get(p['repo']) if p['status'] == 'merged' else None
+
+        def status(url: str, base: str | None = base) -> int | str:
+            """One request per URL, and none to a docs site after a network error on it."""
+            if base in down:
+                return 'not asked: the site failed before'
+            if isinstance(code := ask(url), str):
+                down.add(base)
+            return code
+
         p['docs'] = docs_pages(p['files'], base, status)
     return {
         'window': window,

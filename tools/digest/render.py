@@ -16,6 +16,7 @@ import argparse
 import json
 import re
 import sys
+import unicodedata
 import urllib.parse
 from datetime import timedelta
 from pathlib import Path
@@ -140,8 +141,12 @@ def link_url(url: str) -> str:
 
 
 def link_text(text: str) -> str:
-    """Link text with no ``@`` or pipe, and its markdown characters escaped."""
-    return re.sub(r'([\\\[\]()`<>*_])', r'\\\1', text.replace('@', ' ').replace('|', '/'))
+    """One-line link text with no ``@``, pipe or invisible character, its markdown escaped."""
+    text = ''.join(
+        ' ' if unicodedata.category(c) in ('Cc', 'Cf', 'Zl', 'Zp') else c for c in text
+    )
+    text = re.sub(r'\s+', ' ', text.replace('@', ' ').replace('|', '/'))
+    return re.sub(r'([\\\[\]()`<>*_])', r'\\\1', text)
 
 
 def links(items: list[dict]) -> str:

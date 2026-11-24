@@ -8,8 +8,8 @@ Usage::
 ``decide`` prints ``live=true`` or ``live=false`` for ``$GITHUB_OUTPUT``. ``publish``
 repeats every guard (posting switched on, a window that is not back-dated, a
 scheduled run or a ticked post box, a draft that passes the check, a body that is
-not a dry run, a body that links only to collected items, docs pages, repositories,
-author profiles and the run, and mentions nobody), then creates the discussion in the digest category of the first
+not a dry run, a body whose links all come from ``render.allowed_urls`` and that
+mentions nobody), then creates the discussion in the digest category of the first
 repository in the settings. It skips with a notice when the newest digest post has
 the same run id or title, or a window end that is not earlier than this one: one
 post per run and per meeting, and no stale post after a newer one.
