@@ -23,6 +23,6 @@ Rules:
 4. `logins` lists the authors of the cited pull requests, releases and commits, exactly as in the JSON. Never put a login or an `@` in `text`.
 5. Write plain sentences in `title` and `text`: no URLs, no markdown (links, square brackets, emphasis, headings, lists), no HTML or HTML entities, no `#` or `GH-` references, no commit ids, no superscript characters and no code.
 6. Do not write a config key, a helpfile column, a default value or a version floor in `text`; the script prints them from the facts you cite. You can describe the change in words ("the grain size default is now smaller").
-7. Use only numbers that appear, with the same sign, in the title or body of a cited pull request or release. Do not repeat the values of cited facts, and write no dates; the script prints both.
+7. Use only numbers that appear, with the same sign, in the title or body of a cited pull request, release or commit. Do not repeat the values of cited facts, and write no dates; the script prints both.
 8. Do not guess. When the JSON does not say why a change was made, say what changed and stop.
 9. Write in plain, formal English with no em dashes. Do not claim that the digest is complete.

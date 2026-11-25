@@ -156,7 +156,7 @@ def ref_text(item: dict) -> str:
 
 
 def links(items: list[dict]) -> str:
-    """Markdown links to the cited pull requests and releases."""
+    """Markdown links to the cited pull requests, releases and commits."""
     return ', '.join(f'[{link_text(ref_text(i))}]({link_url(i["url"])})' for i in items)
 
 
@@ -229,7 +229,7 @@ def summary(data: dict, run_url: str) -> str:
     )
     per = collections.Counter(c['repo'].split('/', 1)[1] for c in data.get('commits', []))
     also = ''.join(
-        f' It also reads the {count(n, "commit")} to the default branch of {name}, '
+        f' It also read {count(n, "commit")} to the default branch of {name}, '
         'a repository without pull requests.'
         for name, n in per.items()
     )
@@ -301,7 +301,7 @@ def render_body(
             ]
         for entry in entries:
             items = [prs[r] for r in entry['prs']] + [rels[r] for r in entry['releases']]
-            items += [cms[r] for r in entry.get('commits', [])]
+            items += [cms[r] for r in entry['commits']]
             cited = [facts[f] for f in entry['facts']]
             text = plain(entry['text'])
             detail = facts_text(cited)

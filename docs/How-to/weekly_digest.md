@@ -33,11 +33,11 @@ An open pull request counts only when GitHub reports its author as an owner, mem
 
 Some repositories take their changes as commits to the default branch, with no pull requests. The list `commits_only` in `repos.toml` names them. For such a repository, `collect.py` reads no pull requests. It reads the commits to the default branch whose commit date is in the window, and it cleans their messages in the same way as the text of a pull request.
 
-A commit counts by its commit date, not by its author date. A commit that was written before the window and rebased onto the default branch in the window counts in this window. A merge commit (a commit with 2 parents) is left out.
+A commit counts by its commit date in UTC, not by its author date. A commit that was written before the window and rebased onto the default branch in the window counts in this window. A merge commit (a commit with 2 parents) is left out.
 
-`collect.py` reads at most the newest `max_commits` commits of each repository and window. The job summary gives the number of the other commits. Each commit gets its changed files from one request to the GitHub API, at most 300 files. The run log lists every commit read, with its reference, its full commit id and its commit date.
+`collect.py` reads at most the newest `max_commits` commits of each repository and window, merge commits included. The job summary gives the number of the other commits, merge commits included. The model reads the message of every commit read, each cut to `body_chars` characters; `max_bodies` applies to pull requests only. Each commit gets its changed files from one request to the GitHub API, at most 300 files. The run log lists every commit read, with its reference, its full commit id and its commit date.
 
-Each commit has a reference of the form `PALEOS:c1`, numbered from the oldest commit of the window. The reference holds no commit id. The model groups related commits into one entry. In the post, a commit links as the repository name and the first 7 characters of its id, and its author links to the GitHub profile.
+Each commit has a reference of the form `PALEOS:c1`, numbered from the oldest commit of the window, with a parent before its child when they have the same commit date. The reference holds no commit id. The model groups related commits into one entry. In the post, a commit links as the repository name and the first 7 characters of its id, and its author links to the GitHub profile.
 
 ### Find the docs pages of a pull request
 
@@ -249,6 +249,7 @@ What a digest can miss:
 - A fact comes from the merge commit of a pull request and the commit before it. For a pull request merged as several rebased commits, only the last commit is compared.
 - For a pull request with more than 100 changed files, every tracked file of its repository is compared, and its docs pages come from its first 100 files only.
 - For a commit with 300 or more changed files, every tracked file of its repository is compared.
+- A commit to a repository without pull requests whose commit date is before the window start, but that reaches the default branch after it, is in no digest: for example a commit made before the run and pushed after it, or the commits of a side branch that a merge commit brings in.
 - A docs page is checked once, when the data is collected; a page that the docs deployment removes later stays linked.
 - Only pull requests whose base is the default branch of their repository are read, merged or open. A pull request closed without a merge does not appear.
 - An open pull request counts only when it was updated after the window start.

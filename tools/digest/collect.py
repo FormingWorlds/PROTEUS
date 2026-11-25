@@ -248,10 +248,11 @@ def release_record(repo: str, node: dict, since: str, until: str) -> dict | None
 def commit_record(repo: str, node: dict, since: str, until: str) -> dict | None:
     """Return a commit as a record when it is no merge commit and its commit date is in the window.
 
-    The commit date, not the author date, places a commit, so a commit rebased onto the
-    default branch in the window counts in it.
+    The commit date in UTC, not the author date, places a commit, so a commit rebased
+    onto the default branch in the window counts in it.
     """
-    if node['parents']['totalCount'] > 1 or not since <= node['committedDate'] < until:
+    committed = iso(parse_time(node['committedDate']))
+    if node['parents']['totalCount'] > 1 or not since <= committed < until:
         return None
     user = (node['author'] or {}).get('user') or {}
     parents = node['parents']['nodes']
@@ -263,7 +264,7 @@ def commit_record(repo: str, node: dict, since: str, until: str) -> dict | None:
         'raw_body': node['messageBody'] or '',
         'author': user.get('login'),
         'author_kind': user.get('__typename'),
-        'committed_at': node['committedDate'],
+        'committed_at': committed,
         'size': node['additions'] + node['deletions'],
         'merge_oid': node['oid'],
         'parent_oid': parents[0]['oid'] if parents else None,
@@ -275,7 +276,7 @@ def collect_commits(gh: GitHub, repo: str, window: dict, cap: int) -> tuple[list
 
     The newest ``cap`` commits of the window to the default branch are read, and each
     kept commit gets its changed files from one REST call. Refs count up from the
-    oldest commit date (``PALEOS:c1``). The third value is the number of commits over the cap.
+    oldest commit date (``PALEOS:c1``), a parent before its child on one date. The third value is the number of commits over the cap.
 
     Raises
     ------
@@ -290,8 +291,8 @@ def collect_commits(gh: GitHub, repo: str, window: dict, cap: int) -> tuple[list
         raise DigestError(f'{repo} is not a public, active repository')
     history = data['defaultBranchRef']['target']['history']
     commits = sorted(
-        (c for n in history['nodes'] if (c := commit_record(repo, n, since, until))),
-        key=lambda c: (c['committed_at'], c['oid']),
+        (c for n in reversed(history['nodes']) if (c := commit_record(repo, n, since, until))),
+        key=lambda c: c['committed_at'],
     )
     for i, c in enumerate(commits, 1):
         files = gh.commit_files(repo, c['oid'])

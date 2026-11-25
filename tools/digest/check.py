@@ -236,8 +236,7 @@ def check_entry(entry: dict, index: dict) -> list[str]:
             for r, x in zip(refs, found)
             if not x
         ]
-    prs, rels, cms = [p for p in prs if p], [r for r in rels if r], [c for c in cms if c]
-    facts = [f for f in facts if f]
+    prs, rels, cms, facts = ([x for x in xs if x] for xs in (prs, rels, cms, facts))
     if not prs and not rels and not cms:
         fails.append(f'{name}: cites no pull request, release or commit')
     want_open = entry['section'] in ('design', 'open')
@@ -246,10 +245,11 @@ def check_entry(entry: dict, index: dict) -> list[str]:
         for p in prs
         if (p['status'] == 'open') != want_open
     ]
-    if want_open and rels:
-        fails.append(f'{name}: a release in section {entry["section"]}')
-    if want_open and cms:
-        fails.append(f'{name}: a commit in section {entry["section"]}')
+    fails += [
+        f'{name}: a {kind} in section {entry["section"]}'
+        for kind, found in (('release', rels), ('commit', cms))
+        if want_open and found
+    ]
     if entry['section'] == 'results' and not facts and not rels:
         fails.append(f'{name}: a results entry cites no fact or release')
     cited = {p['ref'] for p in prs + cms}
@@ -310,7 +310,9 @@ def check(data: dict, draft: dict) -> list[str]:
             f'draft empty flag {draft.get("empty")} does not match the window (empty={empty})'
         ]
     if not empty and not draft['entries']:
-        return ['the model returned no entries for a window with merged pull requests']
+        return [
+            'the model returned no entries for a window with merged pull requests, releases or commits'
+        ]
     index = {
         'prs': {p['ref']: p for p in data['prs']},
         'releases': {r['ref']: r for r in data['releases']},
