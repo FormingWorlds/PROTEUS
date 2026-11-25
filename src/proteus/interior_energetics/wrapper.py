@@ -91,8 +91,9 @@ _REINFLATE_TMAGMA_REL_TOL = 1e-4
 _REINFLATE_PHI_ABS_TOL = 1e-3
 
 # A step the mass escape keeps warns above dR/R = slope * dM/M + offset, dM/M from the reached mass.
-# Measured up-steps with dM/M > 3e-3 have dR/R / dM/M of 0.72 to 0.94. The offset, the floor of the
-# bound, is above the largest measured artefact (7.2e-4), so an artefact of that size does not warn.
+# The measured up-steps have dM/M of 0.07 to 0.19 and dR/R / dM/M of 0.72 to 0.94; near the anchor
+# the slope is not measured. The offset, the floor of the bound, is above the largest measured
+# artefact (7.2e-4), so an artefact of that size does not warn.
 _MASS_ESCAPE_RADIUS_SLOPE = 2.0
 _MASS_ESCAPE_RADIUS_OFFSET = 1e-3
 
@@ -3428,7 +3429,7 @@ def update_structure_from_interior(
         _M_int = float(hf_row.get('M_int', 0.0) or 0.0)
         if _M_target > 0.0:
             _mass_rel_err = abs(_M_int / _M_target - 1.0)
-            if _mass_rel_err > _ZALMOXIS_MASS_ANCHOR_TOL:
+            if not _mass_rel_err <= _ZALMOXIS_MASS_ANCHOR_TOL:
                 raise RuntimeError(
                     'Zalmoxis mass-anchor violation: '
                     '|M_int / M_int_target - 1| = %.3e > tol=%.3e '
@@ -3442,10 +3443,17 @@ def update_structure_from_interior(
                     )
                 )
 
+        # A non-finite R_int or M_int is a failed solve; the guard below sees only finite values.
+        _R_int_new = float(hf_row.get('R_int', 0.0) or 0.0)
+        if not (np.isfinite(_R_int_new) and np.isfinite(_M_int)):
+            raise RuntimeError(
+                'Zalmoxis returned a non-finite structure: R_int=%.6e m, M_int=%.6e kg. '
+                'Treating as non-converged.' % (_R_int_new, _M_int)
+            )
+
         # Monotonic-radius guard (super-liquidus adiabat IC only): a cooling R_int up-step is a
         # cross-table artifact and is rejected, unless the mantle heats, a wet composition trigger
         # fired, or the retained structure fails the mass anchor against a larger target.
-        _R_int_new = float(hf_row.get('R_int', 0.0) or 0.0)
         _scalar_radius_up_step = R_int_prev > 0.0 and _R_int_new > R_int_prev * (
             1.0 + _MONOTONIC_RINT_REL_TOL
         )
@@ -3883,7 +3891,7 @@ def _warn_mass_escape_radius_step(
     rise of the mass the solve reached over the retained mass. The step is kept either way. The
     bound lies above every measured mass-driven step plus the largest measured artefact, so the
     warning marks a radius step larger than any measured one; an artefact of measured size passes
-    without a warning. A non-finite radius or mass also warns.
+    without a warning. The caller passes only a finite radius and reached mass.
 
     Parameters
     ----------
