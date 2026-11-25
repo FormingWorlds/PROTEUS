@@ -24,8 +24,8 @@ import sys
 from pathlib import Path
 
 from check import check
-from collect import live_state, parse_state
-from common import DigestError, GitHub, load_settings, parse_time
+from collect import LIVE_ARTIFACT, live_state, parse_state
+from common import API, DigestError, GitHub, load_settings, parse_time
 from render import allowed_urls, scan_body
 
 
@@ -79,20 +79,26 @@ def main(argv: list[str] | None = None) -> int:
     ]
     if reasons:
         raise DigestError(f'not deposited: {", ".join(reasons)}')
-    last = live_state(GitHub(), settings['repos'][0]) or {}
+    gh, home = GitHub(), settings['repos'][0]
+    last = live_state(gh, home) or {}
     mine = {**(parse_state(post['body']) or {}), 'title': post['title']}
     same = [
         f'the same {k.replace("_", " ")}'
         for k in ('run_id', 'title')
         if mine.get(k) and last.get(k) == mine[k]
     ]
+    run = os.environ.get('GITHUB_RUN_ID')
+    own = f'{API}/repos/{home}/actions/runs/{run}/artifacts?name={LIVE_ARTIFACT}'
+    rerun = bool(run and (gh.get_json(own) or {}).get('total_count'))
     if last.get('until') and parse_time(mine['until']) <= parse_time(last['until']):
         same.append('a window end that is not earlier')
     if same:
         print(
             f'::notice::Not deposited: the newest live digest {last.get("url")} has {", ".join(same)}'
         )
-    else:
+    if rerun:
+        print('::notice::Not deposited: this run already holds digest-live (a rerun)')
+    if not same and not rerun:
         doc = {
             'live': True,
             'run_id': mine.get('run_id', ''),
@@ -109,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
         (live / 'digest.md').write_text(post['body'])
         print(f'Deposited {post["title"]} for the artifact digest-live')
     with open(opts['--output'], 'a') as fh:
-        fh.write(f'deposited={str(not same).lower()}\n')
+        fh.write(f'deposited={str(not same and not rerun).lower()}\n')
     return 0
 
 
