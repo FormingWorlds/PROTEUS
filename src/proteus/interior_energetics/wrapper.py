@@ -3442,12 +3442,13 @@ def update_structure_from_interior(
                     )
                 )
 
-        # A non-finite R_int or M_int is a failed solve; the guard below sees only finite values.
+        # An R_int or M_int that is not finite and positive is a failed solve; the guard below
+        # sees only finite, positive values.
         _R_int_new = float(hf_row.get('R_int', 0.0) or 0.0)
-        if not (np.isfinite(_R_int_new) and np.isfinite(_M_int)):
+        if not (0.0 < _R_int_new < np.inf and 0.0 < _M_int < np.inf):
             raise RuntimeError(
-                'Zalmoxis returned a non-finite structure: R_int=%.6e m, M_int=%.6e kg. '
-                'Treating as non-converged.' % (_R_int_new, _M_int)
+                'Zalmoxis returned a non-finite or non-positive R_int or M_int: '
+                'R_int=%.6e m, M_int=%.6e kg. Treating as non-converged.' % (_R_int_new, _M_int)
             )
 
         # Monotonic-radius guard (super-liquidus adiabat IC only): a cooling R_int up-step is a
@@ -3890,7 +3891,7 @@ def _warn_mass_escape_radius_step(
     rise of the mass the solve reached over the retained mass. The step is kept either way. The
     bound lies above every measured mass-driven step plus the largest measured artefact, so the
     warning marks a radius step larger than any measured one; an artefact of measured size passes
-    without a warning. The caller passes only a finite radius and reached mass.
+    without a warning. The caller passes only a finite, positive radius and reached mass.
 
     Parameters
     ----------
