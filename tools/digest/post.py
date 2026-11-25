@@ -11,9 +11,9 @@ is not back-dated, a scheduled run or a ticked post box, a draft that passes the
 check, a body that is not a dry run, a body whose links all come from
 ``render.allowed_urls`` and that mentions nobody), then writes ``digest.json`` and
 ``digest.md`` to DIR, which the workflow uploads as ``digest-live``. It deposits
-nothing, with a notice, when the newest live digest has the same run id or title, or
-a window end that is not earlier than this one: one live digest per run and per
-meeting. It writes ``deposited=true`` or ``deposited=false`` to FILE.
+nothing, with a notice, in a rerun (``GITHUB_RUN_ATTEMPT`` above 1), and when the
+newest live digest has the same run id or title, or a window end that is not earlier
+than this one: one live digest per run and per meeting. It writes ``deposited=true`` or ``deposited=false`` to FILE.
 """
 
 from __future__ import annotations
@@ -24,8 +24,8 @@ import sys
 from pathlib import Path
 
 from check import check
-from collect import LIVE_ARTIFACT, live_state, parse_state
-from common import API, DigestError, GitHub, load_settings, parse_time
+from collect import live_state, parse_state
+from common import DigestError, GitHub, load_settings, parse_time
 from render import allowed_urls, scan_body
 
 
@@ -87,9 +87,7 @@ def main(argv: list[str] | None = None) -> int:
         for k in ('run_id', 'title')
         if mine.get(k) and last.get(k) == mine[k]
     ]
-    run = os.environ.get('GITHUB_RUN_ID')
-    own = f'{API}/repos/{home}/actions/runs/{run}/artifacts?name={LIVE_ARTIFACT}'
-    rerun = bool(run and (gh.get_json(own) or {}).get('total_count'))
+    rerun = os.environ.get('GITHUB_RUN_ATTEMPT', '1') != '1'
     if last.get('until') and parse_time(mine['until']) <= parse_time(last['until']):
         same.append('a window end that is not earlier')
     if same:
@@ -97,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
             f'::notice::Not deposited: the newest live digest {last.get("url")} has {", ".join(same)}'
         )
     if rerun:
-        print('::notice::Not deposited: this run already holds digest-live (a rerun)')
+        print('::notice::Not deposited: this is a rerun; start a new manual run instead')
     if not same and not rerun:
         doc = {
             'live': True,
