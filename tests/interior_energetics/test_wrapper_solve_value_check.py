@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from proteus.interior_energetics import wrapper as wmod
 from proteus.interior_energetics.wrapper import _warn_committed_mass_miss
 from tests.interior_energetics.test_wrapper_adiabat_ic import (
     _config,
@@ -54,12 +55,49 @@ def _writing_solver(R_int, M_int):
     return solve
 
 
+def _run_first_solve(R_int, M_int, hf_row):
+    """Run the first structure solve of the start-up with a stub solver that writes R_int, M_int."""
+    with (
+        patch.object(wmod, 'get_nlevb', return_value=80),
+        patch.object(wmod, 'Interior_t', return_value=MagicMock(ic=1)),
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            side_effect=_writing_solver(R_int, M_int),
+        ),
+        patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
+        patch.object(wmod, '_provide_spider_eos_tables'),
+        patch.object(wmod, 'run_interior'),
+    ):
+        wmod.determine_interior_radius_with_zalmoxis(
+            {'output': '/tmp/out'},
+            _gate_config('aragog', 'isothermal'),
+            MagicMock(),
+            hf_row,
+            '/tmp/out',
+        )
+
+
+def _run_linear_equilibration(R_int, M_int, hf_row):
+    """Run one linear-guess equilibration iteration with a stub solver that writes R_int, M_int."""
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            side_effect=_writing_solver(R_int, M_int),
+        ),
+        _patch_equilibrate_io(),
+    ):
+        wmod.equilibrate_initial_state(
+            {'output': '/tmp/out'},
+            _equilibrate_config(temperature_mode='isothermal', max_iter=1),
+            hf_row,
+            '/tmp/out',
+        )
+
+
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(('R_int', 'M_int'), BAD_PAIRS)
 def test_adiabat_re_solve_with_a_bad_value_rolls_back(tmp_path, R_int, M_int):
     """The adiabat re-solve refuses the structure and restores the row and the output file."""
-    from proteus.interior_energetics.wrapper import _resolve_adiabatic_ic_structure
-
     hf_row = _linear_hf_row()
     data_dir = tmp_path / 'data'
     data_dir.mkdir()
@@ -80,7 +118,7 @@ def test_adiabat_re_solve_with_a_bad_value_rolls_back(tmp_path, R_int, M_int):
         ),
         patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=bad_solver),
     ):
-        mesh = _resolve_adiabatic_ic_structure(
+        mesh = wmod._resolve_adiabatic_ic_structure(
             _config(), str(tmp_path), hf_row, num_spider_nodes=0, linear_mesh_file=linear_mesh
         )
 
@@ -89,61 +127,28 @@ def test_adiabat_re_solve_with_a_bad_value_rolls_back(tmp_path, R_int, M_int):
     assert out_path.read_text() == 'LINEAR\n'
 
 
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize(('R_int', 'M_int'), BAD_PAIRS)
 def test_first_structure_solve_with_a_bad_value_raises(R_int, M_int):
     """The first solve has no fall-back, so a bad structure stops the start-up."""
-    from proteus.interior_energetics import wrapper as wmod
-
-    hf_row = {'P_cmb': 1.456e12}
-    with (
-        patch.object(wmod, 'get_nlevb', return_value=80),
-        patch.object(wmod, 'Interior_t', return_value=MagicMock(ic=1)),
-        patch(
-            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
-            side_effect=_writing_solver(R_int, M_int),
-        ),
-        patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
-        patch.object(wmod, '_provide_spider_eos_tables'),
-        patch.object(wmod, 'run_interior'),
-        pytest.raises(RuntimeError, match=BAD_SOLVE_MSG) as err,
-    ):
-        wmod.determine_interior_radius_with_zalmoxis(
-            {'output': '/tmp/out'},
-            _gate_config('aragog', 'isothermal'),
-            MagicMock(),
-            hf_row,
-            '/tmp/out',
-        )
-    assert 'first structure solve' in str(err.value)
+    with pytest.raises(RuntimeError, match=BAD_SOLVE_MSG) as err:
+        _run_first_solve(R_int, M_int, {'P_cmb': 1.456e12})
+    assert 'start-up or post-impact structure solve' in str(err.value)
 
 
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize(('R_int', 'M_int'), BAD_PAIRS)
 def test_equilibration_linear_solve_with_a_bad_value_raises(R_int, M_int):
     """The linear-guess solve of the equilibration loop has no fall-back either."""
-    from proteus.interior_energetics import wrapper as wmod
-
-    with (
-        patch(
-            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
-            side_effect=_writing_solver(R_int, M_int),
-        ),
-        _patch_equilibrate_io(),
-        pytest.raises(RuntimeError, match=BAD_SOLVE_MSG) as err,
-    ):
-        wmod.equilibrate_initial_state(
-            {'output': '/tmp/out'},
-            _equilibrate_config(temperature_mode='isothermal', max_iter=1),
-            _linear_hf_row(),
-            '/tmp/out',
-        )
+    with pytest.raises(RuntimeError, match=BAD_SOLVE_MSG) as err:
+        _run_linear_equilibration(R_int, M_int, _linear_hf_row())
     assert 'equilibration' in str(err.value)
 
 
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize(('R_int', 'M_int'), BAD_PAIRS)
 def test_equilibration_fall_back_solve_with_a_bad_value_raises(tmp_path, R_int, M_int):
     """After a refused adiabat re-solve, a bad linear fall-back solve stops the loop."""
-    from proteus.interior_energetics import wrapper as wmod
-
     (tmp_path / 'data').mkdir()
     (tmp_path / 'data' / 'zalmoxis_output.dat').write_text('LINEAR\n')
     calls = []
@@ -176,45 +181,31 @@ def test_equilibration_fall_back_solve_with_a_bad_value_raises(tmp_path, R_int, 
     assert len(calls) == 2 and callable(calls[0]) and calls[1] is None
 
 
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'row',
+    [
+        pytest.param({}, id='empty row'),
+        pytest.param({'R_int': R_OK}, id='no mass'),
+        pytest.param({'M_int': M_OK}, id='no radius'),
+    ],
+)
+def test_an_absent_radius_or_mass_is_a_failed_solve(row):
+    """A solve that writes no R_int or no M_int is refused like a zero value."""
+    with pytest.raises(RuntimeError, match=BAD_SOLVE_MSG) as err:
+        wmod._require_finite_structure(row, 'test solve')
+    assert 'R_int=' in str(err.value) and 'M_int=' in str(err.value)
+
+
+@pytest.mark.physics_invariant
 def test_good_values_pass_every_start_up_solve(tmp_path):
     """Finite, positive values pass the first solve and the equilibration solve unchanged."""
-    from proteus.interior_energetics import wrapper as wmod
-
     hf_row = {'P_cmb': 1.456e12}
-    with (
-        patch.object(wmod, 'get_nlevb', return_value=80),
-        patch.object(wmod, 'Interior_t', return_value=MagicMock(ic=1)),
-        patch(
-            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
-            side_effect=_writing_solver(R_OK, M_OK),
-        ),
-        patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
-        patch.object(wmod, '_provide_spider_eos_tables'),
-        patch.object(wmod, 'run_interior'),
-    ):
-        wmod.determine_interior_radius_with_zalmoxis(
-            {'output': '/tmp/out'},
-            _gate_config('aragog', 'isothermal'),
-            MagicMock(),
-            hf_row,
-            '/tmp/out',
-        )
+    _run_first_solve(R_OK, M_OK, hf_row)
     assert (hf_row['R_int'], hf_row['M_int']) == (R_OK, M_OK)
 
     row = _linear_hf_row()
-    with (
-        patch(
-            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
-            side_effect=_writing_solver(R_OK, M_OK),
-        ),
-        _patch_equilibrate_io(),
-    ):
-        wmod.equilibrate_initial_state(
-            {'output': '/tmp/out'},
-            _equilibrate_config(temperature_mode='isothermal', max_iter=1),
-            row,
-            '/tmp/out',
-        )
+    _run_linear_equilibration(R_OK, M_OK, row)
     assert (row['R_int'], row['M_int']) == (R_OK, M_OK)
 
 

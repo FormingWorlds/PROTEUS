@@ -1434,6 +1434,8 @@ def _sample_adiabat_temperature_arrays(outdir: str, temperature_function):
 def _require_finite_structure(hf_row: dict, where: str) -> None:
     """Refuse a structure solve that left R_int or M_int not finite and positive.
 
+    Only these 2 keys are checked; the other structure keys of the row are not.
+
     Parameters
     ----------
     hf_row : dict
@@ -1470,8 +1472,8 @@ def _solve_structure_with_adiabat_or_rollback(
     ``T(P)`` closure plus its r-indexed sampling (see
     :func:`_sample_adiabat_temperature_arrays`), then enforces the
     mass-anchor contract
-    (``|M_int / M_int_target - 1| < _ZALMOXIS_MASS_ANCHOR_TOL``) and a finite,
-    positive ``R_int``. On a failed solve or check it restores BOTH the saved ``hf_row``
+    (``|M_int / M_int_target - 1| < _ZALMOXIS_MASS_ANCHOR_TOL``) and finite,
+    positive ``R_int`` and ``M_int``. On a failed solve or check it restores BOTH the saved ``hf_row``
     keys AND ``zalmoxis_output.dat`` from its ``.prev`` snapshot, so the
     immediately-following ``run_interior`` (Aragog ``ic = 1``) never sees the
     failed adiabat geometry against a linear-guess EOS mesh.
@@ -1506,7 +1508,7 @@ def _solve_structure_with_adiabat_or_rollback(
     tuple
         ``(mesh_file, ok)``. ``mesh_file`` is the solver's mesh path on success
         and ``None`` on failure; ``ok`` is True only when the solve passed both
-        the mass anchor and the ``R_int`` validity check. The caller decides
+        the mass anchor and the finite, positive ``R_int`` and ``M_int``. The caller decides
         what to do with the linear-guess mesh on failure.
 
     Raises
@@ -1558,7 +1560,6 @@ def _solve_structure_with_adiabat_or_rollback(
             temperature_arrays=adiabat_arrays,
             core_temperature_arrays=core_table,
         )
-        _require_finite_structure(hf_row, 'adiabat IC re-solve')
         # Mass-anchor contract: a too-loosely-converged adiabat solve is
         # treated as a failure, same as the time-evolution re-solve path.
         M_target = float(hf_row.get('M_int_target', 0.0) or 0.0)
@@ -1571,6 +1572,7 @@ def _solve_structure_with_adiabat_or_rollback(
                     f'|M_int / M_int_target - 1| = {mass_rel_err:.3e} > '
                     f'tol={_ZALMOXIS_MASS_ANCHOR_TOL:.3e}.'
                 )
+        _require_finite_structure(hf_row, 'adiabat IC re-solve')
         R_int_adiabat = float(hf_row['R_int'])
     except (RuntimeError, ValueError, FloatingPointError) as exc:
         # Restore the structure-defining hf_row keys AND the on-disk
@@ -1718,6 +1720,12 @@ def determine_interior_radius_with_zalmoxis(
         "liquidus_super"``, not SPIDER) its core temperature table goes through the row
         ``T_cmb``, else the deepest mantle T of a sampled previous structure, else no core
         table; other modes give that solve no core table.
+
+    Raises
+    ------
+    RuntimeError
+        When the solve leaves ``R_int`` or ``M_int`` not finite and positive; this solve has
+        no fall-back, so the run stops.
     """
 
     log.info('Using Zalmoxis to solve for interior structure')
@@ -1756,7 +1764,7 @@ def determine_interior_radius_with_zalmoxis(
         num_spider_nodes=num_spider_nodes,
         temperature_mode_override=_temp_mode_override,
     )
-    _require_finite_structure(hf_row, 'first structure solve')
+    _require_finite_structure(hf_row, 'start-up or post-impact structure solve')
 
     # liquidus_super: the first solve above integrated the mantle density against
     # Zalmoxis' internal linear-in-r temperature guess, which is colder and
@@ -1837,6 +1845,12 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
         Current helpfile row with volatile masses, R_int, P_surf, T_magma, etc.
     outdir : str
         Output directory for Zalmoxis files.
+
+    Raises
+    ------
+    RuntimeError
+        When a structure solve of the loop leaves ``R_int`` or ``M_int`` not finite and
+        positive; the loop has no fall-back for it, so the run stops.
     """
     from proteus.interior_struct.zalmoxis import generate_spider_tables, zalmoxis_solver
     from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
@@ -1924,9 +1938,7 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
                 temperature_function=None,
             )
 
-        _require_finite_structure(
-            hf_row, f'equilibration iter {i + 1}/{max_iter} structure solve'
-        )
+        _require_finite_structure(hf_row, f'equilibration iter {i + 1}/{max_iter} solve')
 
         # Update M_mantle from Zalmoxis results (M_int and M_core are set
         # by zalmoxis_solver, but M_mantle is not). run_outgassing needs
