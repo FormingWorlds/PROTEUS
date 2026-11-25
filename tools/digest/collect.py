@@ -207,25 +207,30 @@ def live_doc_state(doc: object) -> dict | None:
 
 
 def live_state(gh: GitHub, home: str) -> dict | None:
-    """Return the state of the newest ``digest-live`` artifact of a trusted run, or None.
+    """Return the state of the trusted ``digest-live`` with the latest window end, or None.
 
     Anybody who can open a pull request can upload an artifact with that name, so each
-    candidate is accepted only when its run passes ``trusted_run``.
+    candidate counts only when its run passes ``trusted_run``. GitHub lists artifacts by
+    id, not by time, so every page is read and the latest ``until`` wins.
     """
+    best = None
     for page in range(1, ARTIFACT_PAGES + 1):
         url = f'{API}/repos/{home}/actions/artifacts?name={LIVE_ARTIFACT}&per_page=100&page={page}'
         artifacts = (gh.get_json(url) or {}).get('artifacts', [])
         if not artifacts:
-            return None
+            break
         for art in artifacts:
             if art.get('expired'):
                 continue
             run = gh.get_json(f'{API}/repos/{home}/actions/runs/{art["workflow_run"]["id"]}')
-            if trusted_run(run, home) and (
-                state := live_doc_state(gh.artifact_json(art, 'digest.json'))
+            state = trusted_run(run, home) and live_doc_state(
+                gh.artifact_json(art, 'digest.json')
+            )
+            if state and (
+                best is None or parse_time(state['until']) > parse_time(best['until'])
             ):
-                return state
-    return None
+                best = state
+    return best
 
 
 def window_state(gh: GitHub, home: str, category: str, now: datetime) -> dict | None:
