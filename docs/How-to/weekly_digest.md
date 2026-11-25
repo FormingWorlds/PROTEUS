@@ -69,10 +69,10 @@ Each entry has an action flag, which the model sets when every user must act on 
 - the draft says the window is empty although it has a merged pull request or a release, or says it has content although it has none;
 - an entry misses a field, has a field of the wrong type, or names a section that does not exist;
 - an entry cites a pull request, release or fact that is not in the collected data;
-- an entry cites no pull request and no release, or cites a release in the section "In review, coming soon";
+- an entry cites no pull request and no release, or cites a release in the section "Design choices to look at" or "In review, coming soon";
 - an entry cites a fact but not the pull request that the fact comes from;
 - an entry names a login that is not an author of a cited item;
-- an entry cites an open pull request outside the section "In review, coming soon", or a merged pull request inside it;
+- an entry cites an open pull request outside the sections "Design choices to look at" and "In review, coming soon", or a merged pull request inside them;
 - an entry in the section "Changes that affect your results" cites no fact and no release;
 - an entry outside the section "Installing and running" carries the action flag;
 - the title of an entry is longer than 80 characters, or its text is longer than 400 characters.
@@ -202,8 +202,8 @@ The sections appear in the order of the table below, and a section without entri
 | New capabilities | New physics, modules, options and tools |
 | Installing and running | Installation, environments, platforms and the command-line interface; an entry that every user must act on starts with **Action for everyone:** |
 | Data and licensing | Reference data, downloads and licences |
-| Design choices to look at | New interfaces, defaults, coupling choices and dependencies that maintainers can check against their plans |
-| In review, coming soon | Open pull requests in review by owners, members, collaborators and contributors (draft pull requests are left out) |
+| Design choices to look at | Open pull requests that change an interface between modules, a default, a coupling choice or a dependency, for maintainers to check against their plans; a merged design change goes to one of the 4 sections above |
+| In review, coming soon | The other open pull requests in review by owners, members, collaborators and contributors (draft pull requests are left out) |
 
 ## Authors
 

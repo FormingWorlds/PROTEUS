@@ -8,8 +8,10 @@ Return entries in these sections:
 - `capabilities`: new physics, new modules, new options or new tools that users can now use.
 - `install`: installation, environments, platforms, compilers, Julia and Python versions, the command-line interface. Set `action` to true when every user must do something (update a tool, reinstall, change a config); `action` is false in every other entry and section. Do not write the words of the marker in `text`; the script adds them.
 - `data`: reference data, downloads, licences.
-- `design`: choices that maintainers should check against their own plans: new interfaces between modules, new defaults, coupling choices, new dependencies.
-- `open`: open pull requests that are in review and coming soon. Cite only open pull requests here, and only merged pull requests or releases in the other sections.
+- `design`: open pull requests that change an interface between modules, a default, a coupling choice or a dependency, for maintainers to check against their own plans.
+- `open`: the other open pull requests that are in review and coming soon.
+
+Cite only open pull requests in `design` and `open`, and only merged pull requests or releases in the other sections. A merged design change goes to `results`, `capabilities`, `install` or `data`.
 
 Rules:
 

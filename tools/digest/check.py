@@ -232,14 +232,14 @@ def check_entry(entry: dict, index: dict) -> list[str]:
     prs, rels, facts = [p for p in prs if p], [r for r in rels if r], [f for f in facts if f]
     if not prs and not rels:
         fails.append(f'{name}: cites no pull request or release')
-    want_open = entry['section'] == 'open'
+    want_open = entry['section'] in ('design', 'open')
     fails += [
         f'{name}: {p["ref"]} is {p["status"]}, not allowed in section {entry["section"]}'
         for p in prs
         if (p['status'] == 'open') != want_open
     ]
     if want_open and rels:
-        fails.append(f'{name}: a release in section open')
+        fails.append(f'{name}: a release in section {entry["section"]}')
     if entry['section'] == 'results' and not facts and not rels:
         fails.append(f'{name}: a results entry cites no fact or release')
     cited = {p['ref'] for p in prs}
