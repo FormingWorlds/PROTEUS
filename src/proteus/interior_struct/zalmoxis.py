@@ -3328,6 +3328,8 @@ def _seed_boundary_temperatures(config: Config, hf_row: dict, temperature) -> No
         return
     hf_row['T_magma'] = float(temperature[-2])
     hf_row['T_surf'] = float(temperature[-1])
+
+
 def _core_table_excess(model_results, table):
     """Return ``core_T_max_excess`` of a Zalmoxis result (0.0 when absent without a ``table``).
 

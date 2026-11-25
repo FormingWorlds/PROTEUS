@@ -2589,6 +2589,10 @@ def test_adiabat_structure_resolve_does_not_heat_the_mantle(mock_config, tmp_pat
         'proteus.interior_struct.zalmoxis.zalmoxis_solver',
         _resolving_structure(tmp_path, calls),
     )
+    # The stand-in solve ignores the core table, and this row has no structure pressures for it.
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper._structure_core_table', lambda *a, **k: None
+    )
     for _ in range(5):
         runner = _make_runner(
             mock_config, tmp_path, interior_o, 'adiabat', T_magma=hf_row['T_magma']
