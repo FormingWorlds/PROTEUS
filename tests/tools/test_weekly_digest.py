@@ -1263,7 +1263,17 @@ def test_draft_main_skips_the_model_on_an_empty_window(tmp_path, monkeypatch):
 )
 def test_decide(publish, event, post_input, backdated, live):
     """Only a switched-on, non-back-dated scheduled run or confirmed dispatch posts."""
-    assert post.decide({'publish': publish}, event, post_input, backdated) is live
+    main = ('refs/heads/main', '1')
+    assert post.decide({'publish': publish}, event, post_input, backdated, *main) is live
+
+
+@pytest.mark.parametrize(
+    ('ref', 'attempt'), [('refs/heads/tl/x', '1'), ('refs/heads/main', '2')]
+)
+def test_decide_takes_no_run_off_main_and_no_rerun_as_live(ref, attempt):
+    """A ticked run off main or a rerun renders a dry-run body, as it deposits nothing."""
+    assert post.decide({'publish': True}, 'schedule', True, False, 'refs/heads/main', '1')
+    assert post.decide({'publish': True}, 'schedule', True, False, ref, attempt) is False
 
 
 def test_decide_command_prints_the_output_line(tmp_path, capsys, monkeypatch):
@@ -1273,6 +1283,8 @@ def test_decide_command_prints_the_output_line(tmp_path, capsys, monkeypatch):
     data['window']['backdated'] = False
     src.write_text(json.dumps(data))
     args = ['decide', str(src), '--event', 'schedule', '--post-input', 'false']
+    monkeypatch.setenv('GITHUB_REF', 'refs/heads/main')
+    monkeypatch.setenv('GITHUB_RUN_ATTEMPT', '1')
     monkeypatch.setattr(post, 'load_settings', lambda: {**_VALID, 'publish': False})
     assert post.main(args) == 0
     assert capsys.readouterr().out.strip() == 'live=false'
@@ -1283,6 +1295,12 @@ def test_decide_command_prints_the_output_line(tmp_path, capsys, monkeypatch):
     src.write_text(json.dumps(data))
     post.main(args)
     assert capsys.readouterr().out.strip() == 'live=false'
+    data['window']['backdated'] = False
+    src.write_text(json.dumps(data))
+    for name, value in (('GITHUB_RUN_ATTEMPT', '2'), ('GITHUB_REF', 'refs/heads/x')):
+        monkeypatch.setenv(name, value)
+        post.main(args)
+        assert capsys.readouterr().out.strip() == 'live=false', name
 
 
 def _jobs():
@@ -4027,9 +4045,10 @@ def test_author_link_of_a_bot_commit_or_an_empty_login(item, want):
     assert render.author_link(item, ['dependabot']) == want
 
 
-def _not_read(n):
+def _not_read(n, more='more '):
     verb = 'is' if n == 1 else 'are'
-    return f'{n} more commit{"" if n == 1 else "s"} of PALEOS in the window {verb} not read.'
+    noun = f'{n} {more}commit{"" if n == 1 else "s"}'
+    return f'{noun} of PALEOS in the window {verb} not read, merge commits included.'
 
 
 @pytest.mark.parametrize('left', [1, 50])
@@ -4061,7 +4080,7 @@ def test_quiet_week_names_the_commits_over_the_cap():
     data['commits'], data['commits_left_out'] = [], {PALEOS: 3}
     assert check.is_empty(data)
     body, _ = render.render_body(data, _draft(empty=True), False, 'r', [])
-    assert body.count(_not_read(3)) == 2, body
+    assert body.count(_not_read(3)) == 1 and body.count(_not_read(3, '')) == 1, body
     assert 'no commit was read' not in body
     assert (
         body.count(
@@ -4429,12 +4448,14 @@ def _run(**over):
         'head_branch': 'main',
         'head_repository': {'full_name': HOME},
         'conclusion': 'success',
+        'updated_at': '2027-06-01T00:00:00Z',
         **over,
     }
 
 
-def _art(i, expired=False):
-    return {'id': i, 'expired': expired, 'workflow_run': {'id': 100 + i}}
+def _art(i, expired=False, **run):
+    wr = {'id': 100 + i, 'head_branch': 'main', 'head_repository_id': 1, 'repository_id': 1}
+    return {'id': i, 'expired': expired, 'workflow_run': {**wr, **run}}
 
 
 def _doc(until='2026-11-30T22:23:00Z', **over):
@@ -4507,7 +4528,7 @@ def test_trusted_run_takes_a_manual_run():
 def test_live_doc_state_reads_only_a_live_digest_with_a_valid_end(doc, ok):
     """The window end comes from a live digest.json with a parseable until."""
     try:
-        got = collect.live_doc_state(doc)
+        got = collect.live_doc_state(doc, '2027-06-01T00:00:00Z')
     except Exception as err:
         got = repr(err)
     if ok:
@@ -4554,7 +4575,8 @@ def test_live_state_reads_the_next_page_and_stops_at_the_end():
     assert [u for u in gh.got if '?name=' in u] == [f'{_ARTS}1', f'{_ARTS}2', f'{_ARTS}3']
     gh = _FakeGH(rest={f'{_ARTS}1': {'artifacts': []}})
     assert collect.live_state(gh, HOME) is None
-    assert collect.live_state(_FakeGH(), HOME) is None
+    with pytest.raises(common.DigestError, match=f'^{re.escape(_ARTS)}1 answered 404$'):
+        collect.live_state(_FakeGH(), HOME)
 
 
 def test_window_state_falls_back_to_the_last_post_while_no_live_digest_exists(monkeypatch):
@@ -4625,7 +4647,8 @@ def test_github_reads_json_and_one_file_of_an_artifact(monkeypatch):
         got = repr(err)
     assert got == {'live': True}
     assert gh.artifact_json(art, 'other.json') is None
-    assert gh.artifact_json({'archive_download_url': 'https://z/9'}, 'digest.json') is None
+    with pytest.raises(common.DigestError, match='^artifact https://z/9 answered 404$'):
+        gh.artifact_json({'archive_download_url': 'https://z/9'}, 'digest.json')
 
 
 def test_deposit_writes_the_live_digest_for_the_copy_workflow(tmp_path, monkeypatch):
@@ -4677,7 +4700,8 @@ def test_workflow_uploads_the_live_digest_last_and_keeps_it_90_days():
     _, jobs = _jobs()
     steps = jobs['publish'].split('      - ')
     last = steps[-1]
-    assert 'uses: actions/upload-artifact@v6' in last and 'name: digest-live' in last
+    assert 'uses: actions/upload-artifact@v6' in last
+    assert f'          name: {collect.LIVE_ARTIFACT}\n' in last
     assert "if: steps.deposit.outputs.deposited == 'true'" in last
     assert 'retention-days: 90' in last and 'path: live/' in last
     deposit = steps[-2]
@@ -4686,7 +4710,7 @@ def test_workflow_uploads_the_live_digest_last_and_keeps_it_90_days():
 
 
 def test_deposit_skips_every_rerun(tmp_path, monkeypatch, capsys):
-    """A rerun (attempt 2 or later) deposits nothing; GitHub hides the artifacts of attempt 1."""
+    """A rerun (attempt 2 or later) deposits nothing; GitHub deletes the artifacts of attempt 1."""
     for attempt, deposited in (('2', False), ('3', False), ('1', True)):
         rc, posted = _publish(tmp_path, monkeypatch, None, _MON, attempt=attempt)
         assert rc == 0 and bool(posted) is deposited, attempt
@@ -4765,3 +4789,161 @@ def test_deposit_without_a_runner_variable(tmp_path, monkeypatch, name, deposite
         assert got is True
     else:
         assert got == 'not deposited: not on the default branch'
+
+
+# Final check, return 2
+
+
+def test_live_state_skips_an_artifact_off_main_before_the_run_lookup():
+    """The list answer already names the branch and the head repository, so no run is read."""
+    arts = [_art(2, head_branch='tl/x'), _art(3, head_repository_id=9), _art(4)]
+    runs = {2: _run(), 3: _run(), 4: _run()}
+    docs = {2: _doc('2027-01-01T00:00:00Z'), 3: _doc('2027-01-01T00:00:00Z'), 4: _doc()}
+    gh = _live_gh(arts, runs, docs)
+    assert (collect.live_state(gh, HOME) or {}).get('until') == '2026-11-30T22:23:00Z'
+    assert [u.rsplit('/', 1)[1] for u in gh.got if '/runs/' in u] == ['104']
+
+
+@pytest.mark.parametrize(('last', 'fails'), [(100, True), (99, False)])
+def test_live_state_fails_when_the_page_limit_leaves_artifacts_unread(monkeypatch, last, fails):
+    """A full last page means more artifacts than the search reads: an error, not a silent miss."""
+    monkeypatch.setattr(collect, 'ARTIFACT_PAGES', 2)
+    other = [_art(i, head_branch='x') for i in range(100)]
+    rest = {f'{_ARTS}1': {'artifacts': other}, f'{_ARTS}2': {'artifacts': other[:last]}}
+    gh = _FakeGH(rest=rest)
+    try:
+        got = collect.live_state(gh, HOME)
+    except common.DigestError as err:
+        got = str(err)
+    want = 'more than 200 digest-live artifacts; the newest trusted one can be unread'
+    assert got == (want if fails else None)
+
+
+def test_live_state_refuses_a_window_end_after_its_run_ended():
+    """A digest.json whose until is later than its run's last update is not a window end."""
+    arts = [_art(2), _art(3)]
+    runs = {2: _run(updated_at='2026-12-01T00:00:00Z'), 3: _run()}
+    docs = {2: _doc('2026-12-01T00:00:01Z'), 3: _doc()}
+    assert (collect.live_state(_live_gh(arts, runs, docs), HOME) or {}).get(
+        'until'
+    ) == '2026-11-30T22:23:00Z'
+    runs[2] = _run(updated_at='2026-12-01T00:00:01Z')
+    assert (collect.live_state(_live_gh(arts, runs, docs), HOME) or {}).get(
+        'until'
+    ) == '2026-12-01T00:00:01Z'
+    assert collect.live_doc_state(_doc(), None) is None
+
+
+def test_live_state_fails_on_a_404_for_the_zip_of_a_trusted_run():
+    """A trusted candidate whose zip is gone stops the run instead of moving the window back."""
+    gh = _live_gh([_art(2)], {2: _run()}, {})
+    gh.artifact_json = lambda art, member: (_ for _ in ()).throw(
+        common.DigestError('artifact https://z/2 answered 404')
+    )
+    with pytest.raises(common.DigestError, match='answered 404'):
+        collect.live_state(gh, HOME)
+
+
+def test_collect_main_warns_when_no_earlier_digest_is_found(tmp_path, monkeypatch, capsys):
+    """With no live digest and no usable marker the window is 7 days, and the run says so."""
+    monkeypatch.setattr(collect, 'GitHub', lambda: 'gh')
+    monkeypatch.setattr(collect, 'window_state', lambda *a: None)
+    monkeypatch.setattr(
+        collect, 'collect', lambda gh, s, w: {'window': w, 'prs': [], 'releases': []}
+    )
+    out = tmp_path / 'c.json'
+    assert collect.main(['--out', str(out)]) == 0
+    window = json.loads(out.read_text())['window']
+    assert window['no_earlier'] is True and window['backdated'] is False
+    want = '::warning::No earlier digest was found; the window is the last 7 days'
+    assert capsys.readouterr().out.splitlines().count(want) == 1
+    assert collect.main(['--out', str(out), '--until', '2026-11-01']) == 0
+    assert 'no_earlier' not in json.loads(out.read_text())['window']
+    assert '::warning::' not in capsys.readouterr().out
+
+
+def test_summary_says_when_no_earlier_digest_was_found():
+    """A 7-day window without an earlier digest gets one sentence in the post summary."""
+    data = _data()
+    want = ' No earlier digest was found; this digest covers the last 7 days.'
+    assert want not in render.summary(data, 'https://run')
+    data['window']['no_earlier'] = True
+    assert render.summary(data, 'https://run').count(want) == 1
+
+
+def test_a_group_of_added_registry_lines_stays_a_dataset_list():
+    """10 added registry lines merge into one dataset list fact, which a results entry cannot cite alone."""
+    new = ''.join(f'f{i}.dat md5:{i:02d}\n' for i in range(10))
+    got = facts.group_facts(facts.diff_file(REGISTRY, None, new))
+    assert [(f['kind'], f['change'], len(f['members'])) for f in got] == [
+        ('dataset list', 'added', 10)
+    ]
+    fact = {**got[0], 'id': 'F1', 'pr': 'fwl-io#90'}
+    data = _data(prs=[_pr('fwl-io#90')], fact_list=[fact])
+    data['repos'] = [*data['repos'], FWL]
+    entry = _entry(prs=['fwl-io#90'], title='New iron files', text='The iron files are new.')
+    fails = check.check(data, _draft(entry))
+    assert any('a results entry cites no fact or release' in f for f in fails), fails
+
+
+def test_an_entry_on_a_registry_fact_can_name_its_dataset():
+    """The dataset stem of a registry key is a form of the fact, so naming paleos_iron passes."""
+    key = 'interior.eos.paleos_iron:iron.dat'
+    assert {'paleos_iron', 'interior.eos.paleos_iron', key} <= check.key_forms({key})
+    fact = {
+        **_fact(pr='fwl-io#90', key=key, old='md5:aa', new='md5:bb'),
+        'kind': 'dataset file',
+    }
+    data = _data(prs=[_pr('fwl-io#90')], fact_list=[fact])
+    data['repos'] = [*data['repos'], FWL]
+    data['known_keys'] = ['interior.eos.paleos_iron', key]
+    for name in ('paleos_iron', 'interior.eos.paleos_iron'):
+        entry = _entry(
+            prs=['fwl-io#90'], title='New iron sums', text=f'The {name} table changed.'
+        )
+        assert check.check(data, _draft(entry)) == [], name
+
+
+def test_attach_facts_reads_no_removal_without_a_file_list_or_a_file_at_the_commit():
+    """A commit with no file list and no file at its id is unreadable, not a removal."""
+    files = {(PALEOS, 'pyproject.toml', 'p1'): '[project]\ndependencies = ["numpy>=1"]\n'}
+    data = {'prs': [], 'commits': [_commit(files=[], files_truncated=True)]}
+    facts.attach_facts(_FakeGH(files=files), data, {'tracked': {}})
+    assert data['facts'] == []
+    assert data['facts_unreadable'] == [
+        {
+            'pr': 'PALEOS:c1',
+            'file': 'pyproject.toml',
+            'error': 'no file list and no file at the commit',
+        }
+    ]
+    cut = _commit(files=['a.py'] * 300, files_truncated=True)
+    data = {'prs': [], 'commits': [cut]}
+    facts.attach_facts(_FakeGH(files=files), data, {'tracked': {}})
+    assert [f['change'] for f in data['facts']] == ['removed']
+
+
+def test_manifest_map_needs_a_zenodo_doi_as_text():
+    """A table whose zenodo value is not text is no dataset."""
+    text = '[settings]\nzenodo = true\n\n[d]\nzenodo = "10.5281/zenodo.1"\n'
+    assert facts.manifest_map(text) == {'d': {'zenodo': '10.5281/zenodo.1'}}
+
+
+def test_render_prints_dataset_facts_under_data():
+    """In a section entry, dataset facts follow Data: and config facts follow Settings:."""
+    data, entry = _dataset_case('dataset', 'zenodo')
+    data['facts'].append({**_fact('F2', pr='fwl-io#90'), 'file': facts.CONFIG_SCHEMA})
+    entry.update(section='data', facts=['F1', 'F2'])
+    body, _ = _render(_draft(entry), data)
+    assert (
+        body.count(
+            'Data: `interior.eos.paleos_iron` zenodo: `10.5281/zenodo.1` → `10.5281/zenodo.2`.'
+        )
+        == 1
+    ), body
+    assert (
+        body.count('Settings: `interior_energetics.grain_size` default: `0.1` → `0.001`.') == 1
+    )
+    entry['facts'] = ['F1']
+    body, _ = _render(_draft(entry), data)
+    assert 'Settings:' not in body
