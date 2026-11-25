@@ -1,6 +1,6 @@
 # Weekly ecosystem digest
 
-The weekly digest is a short post that tells the developers of the PROTEUS ecosystem (PROTEUS and its module repositories) what changed. It lists the pull requests merged since the last digest, the open pull requests that need review, and the new releases. Developers read it at the start of their weekly meeting on Tuesday, so a change that alters model results, or that every user must act on, does not stay hidden in a long list of pull requests.
+The weekly digest is a short post that tells the developers of the PROTEUS ecosystem (PROTEUS and its module repositories) what changed. It lists the pull requests merged since the last digest, the open pull requests that need review, and the new releases. For a repository without pull requests, it reads the commits to the default branch instead. Developers read it at the start of their weekly meeting on Tuesday, so a change that alters model results, or that every user must act on, does not stay hidden in a long list of pull requests.
 
 A GitHub Actions workflow in this repository writes the digest and, when posting is switched on, posts it to the FormingWorlds Discussions tab (the forum of a GitHub repository), in the category Weekly digest. This page is for people who run or change the workflow. It explains what the workflow does, how to make a dry run (a run that writes the digest and posts nothing), how to switch posting on or off, and what to do when a run is red.
 
@@ -10,6 +10,7 @@ The post opens with a summary of what the digest covers:
 
 - the collection window;
 - the number of merged pull requests, open pull requests and releases;
+- the number of commits read from each repository without pull requests, when it has commits in the window;
 - the repositories, each a link to its GitHub repository;
 - whether the model read the text of every pull request or only of the largest ones (the others by title only);
 - a link to the workflow run.
@@ -28,6 +29,16 @@ A digest covers a window of time. The window starts where the window of the last
 
 An open pull request counts only when GitHub reports its author as an owner, member, collaborator or contributor of the repository (the author association). `collect.py` leaves out the other open pull requests and names each one, with its login and association, in the run log and the job summary. Merged pull requests count whatever the association.
 
+### Read the commits of a repository without pull requests
+
+Some repositories take their changes as commits to the default branch, with no pull requests. The list `commits_only` in `repos.toml` names them. For such a repository, `collect.py` reads no pull requests. It reads the commits to the default branch whose commit date is in the window, and it cleans their messages in the same way as the text of a pull request.
+
+A commit counts by its commit date, not by its author date. A commit that was written before the window and rebased onto the default branch in the window counts in this window. A merge commit (a commit with 2 parents) is left out.
+
+`collect.py` reads at most the newest `max_commits` commits of each repository and window. The job summary gives the number of the other commits. Each commit gets its changed files from one request to the GitHub API, at most 300 files. The run log lists every commit read, with its reference, its full commit id and its commit date.
+
+Each commit has a reference of the form `PALEOS:c1`, numbered from the oldest commit of the window. The reference holds no commit id. The model groups related commits into one entry. In the post, a commit links as the repository name and the first 7 characters of its id, and its author links to the GitHub profile.
+
 ### Find the docs pages of a pull request
 
 For each merged pull request, `collect.py` also lists its docs pages. Each file `docs/<path>.md` of the pull request maps to `<site>/<path>.html`, and a space in the path becomes `%20` in the URL. The docs site of its repository comes from the table `docs` in `repos.toml`. A repository without a docs site in the table gives no pages.
@@ -42,7 +53,7 @@ A page that the pull request deletes is not a candidate: it gets no request, no 
 
 ### Read the file changes as facts
 
-For each merged pull request that changes a tracked file, `facts.py` compares the file before and after the merge. A tracked file is one listed in `repos.toml` (see [Settings in `repos.toml`](#settings-in-repostoml)). Each change becomes a fact: a change that the script reads from the files, not from the model. A fact is one of:
+For each merged pull request and each commit that changes a tracked file, `facts.py` compares the file before and after the merge or the commit. A tracked file is one listed in `repos.toml` (see [Settings in `repos.toml`](#settings-in-repostoml)). Each change becomes a fact: a change that the script reads from the files, not from the model. A fact is one of:
 
 - a config key that was added or removed, or whose default, choices, bounds or description changed;
 - a helpfile column (a column of the PROTEUS output table) that was added or removed, or whose unit changed;
@@ -65,12 +76,12 @@ Each entry has an action flag, which the model sets when every user must act on 
 
 #### Checks on citations and form
 
-- the model returns no entry for a window that has a merged pull request or a release;
-- the draft says the window is empty although it has a merged pull request or a release, or says it has content although it has none;
+- the model returns no entry for a window that has a merged pull request, a release or a commit;
+- the draft says the window is empty although it has a merged pull request, a release or a commit, or says it has content although it has none;
 - an entry misses a field, has a field of the wrong type, or names a section that does not exist;
-- an entry cites a pull request, release or fact that is not in the collected data;
-- an entry cites no pull request and no release, or cites a release in the section "Design choices to look at" or "In review, coming soon";
-- an entry cites a fact but not the pull request that the fact comes from;
+- an entry cites a pull request, release, commit or fact that is not in the collected data;
+- an entry cites no pull request, no release and no commit, or cites a release or a commit in the section "Design choices to look at" or "In review, coming soon";
+- an entry cites a fact but not the pull request or commit that the fact comes from;
 - an entry names a login that is not an author of a cited item;
 - an entry cites an open pull request outside the sections "Design choices to look at" and "In review, coming soon", or a merged pull request inside them;
 - an entry in the section "Changes that affect your results" cites no fact and no release;
@@ -207,11 +218,11 @@ The sections appear in the order of the table below, and a section without entri
 
 ## Authors
 
-Each entry ends with the authors of its pull requests and releases, each once:
+Each entry ends with the authors of its pull requests, releases and commits, each once:
 
 - A person is a link to the GitHub profile, `[login](https://github.com/login)`. A link notifies nobody, and the post has no `@` mentions.
 - A bot or an organisation is a code span: the logins in the list `bots` in `repos.toml`, every login that ends in `[bot]`, and every account that GitHub does not mark as a user.
-- A deleted account has no login and shows as the word unknown, with no link and no code span.
+- A deleted account has no login and shows as the word unknown, with no link and no code span. So does the author of a commit whose git author has no GitHub account.
 
 ## Settings in `repos.toml`
 
@@ -224,6 +235,8 @@ Each entry ends with the authors of its pull requests and releases, each once:
 | `body_chars` | Characters kept of each pull-request or release text. From 1 to 20000 |
 | `bots` | Logins shown as code spans, not as profile links |
 | `repos` | Repositories in the digest, as `owner/name` |
+| `commits_only` | Repositories of `repos` without pull requests, read by their commits to the default branch |
+| `max_commits` | Number of the newest commits read per repository of `commits_only` and window; the job summary counts the others. From 1 to 100 |
 | `docs` | Docs site per repository of `repos`, as `owner/name = "https://..."` with no `/` at the end; a page `docs/<path>.md` is served at `<site>/<path>.html` |
 | `tracked` | Files per repository whose changes become facts; `pyproject.toml` and `Project.toml` are always tracked. A listed file must exist on the default branch of its repository, or the run stops |
 
@@ -235,10 +248,11 @@ What a digest can miss:
 
 - A fact comes from the merge commit of a pull request and the commit before it. For a pull request merged as several rebased commits, only the last commit is compared.
 - For a pull request with more than 100 changed files, every tracked file of its repository is compared, and its docs pages come from its first 100 files only.
+- For a commit with 300 or more changed files, every tracked file of its repository is compared.
 - A docs page is checked once, when the data is collected; a page that the docs deployment removes later stays linked.
 - Only pull requests whose base is the default branch of their repository are read, merged or open. A pull request closed without a merge does not appear.
 - An open pull request counts only when it was updated after the window start.
-- A window with no merged pull request and no release gives a post that says Quiet week and lists no open pull requests, even when some are open.
+- A window with no merged pull request, no release and no commit gives a post that says Quiet week and lists no open pull requests, even when some are open.
 - At most the 20 newest releases of each repository are read.
 - The number check does not read digits after 2 or more letters (`step200`, `RK45`).
 - The value warning covers only the old value in the wordings above. A third value ("the mixing length is now linear" for a change from nearest to constant), another wording or a sentence that does not name the config key gives no warning. The table next to the entry shows the fact.

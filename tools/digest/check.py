@@ -71,6 +71,7 @@ FIELDS = {
     'text': str,
     'prs': list,
     'releases': list,
+    'commits': list,
     'facts': list,
     'logins': list,
 }
@@ -137,8 +138,12 @@ def key_forms(keys: set[str]) -> set[str]:
 
 
 def is_empty(data: dict) -> bool:
-    """True when the window has no merged pull request and no release."""
-    return not data['releases'] and not any(p['status'] == 'merged' for p in data['prs'])
+    """True when the window has no merged pull request, no release and no commit."""
+    return (
+        not data['releases']
+        and not data.get('commits')
+        and not any(p['status'] == 'merged' for p in data['prs'])
+    )
 
 
 def shape_failures(entry: object) -> list[str]:
@@ -218,10 +223,12 @@ def check_entry(entry: dict, index: dict) -> list[str]:
     fails = []
     prs = [index['prs'].get(r) for r in entry['prs']]
     rels = [index['releases'].get(r) for r in entry['releases']]
+    cms = [index['commits'].get(r) for r in entry['commits']]
     facts = [index['facts'].get(f) for f in entry['facts']]
     for kind, refs, found in (
         ('PR', entry['prs'], prs),
         ('release', entry['releases'], rels),
+        ('commit', entry['commits'], cms),
         ('fact', entry['facts'], facts),
     ):
         fails += [
@@ -229,9 +236,10 @@ def check_entry(entry: dict, index: dict) -> list[str]:
             for r, x in zip(refs, found)
             if not x
         ]
-    prs, rels, facts = [p for p in prs if p], [r for r in rels if r], [f for f in facts if f]
-    if not prs and not rels:
-        fails.append(f'{name}: cites no pull request or release')
+    prs, rels, cms = [p for p in prs if p], [r for r in rels if r], [c for c in cms if c]
+    facts = [f for f in facts if f]
+    if not prs and not rels and not cms:
+        fails.append(f'{name}: cites no pull request, release or commit')
     want_open = entry['section'] in ('design', 'open')
     fails += [
         f'{name}: {p["ref"]} is {p["status"]}, not allowed in section {entry["section"]}'
@@ -240,15 +248,17 @@ def check_entry(entry: dict, index: dict) -> list[str]:
     ]
     if want_open and rels:
         fails.append(f'{name}: a release in section {entry["section"]}')
+    if want_open and cms:
+        fails.append(f'{name}: a commit in section {entry["section"]}')
     if entry['section'] == 'results' and not facts and not rels:
         fails.append(f'{name}: a results entry cites no fact or release')
-    cited = {p['ref'] for p in prs}
+    cited = {p['ref'] for p in prs + cms}
     fails += [
         f'{name}: fact {f["id"]} belongs to {f["pr"]}, not cited'
         for f in facts
         if f['pr'] not in cited
     ]
-    authors = {x['author'] for x in prs + rels}
+    authors = {x['author'] for x in prs + rels + cms}
     fails += [
         f'{name}: login {x} is not an author of a cited item'
         for x in entry['logins']
@@ -273,7 +283,7 @@ def check_entry(entry: dict, index: dict) -> list[str]:
     ):
         fails.append(f'{name}: text holds a special number character')
     sources = set()
-    for item in prs + rels:
+    for item in prs + rels + cms:
         sources |= numbers(
             f'{item.get("title", "")} {item.get("name", "")} {item.get("body", "")}'
         )
@@ -304,6 +314,7 @@ def check(data: dict, draft: dict) -> list[str]:
     index = {
         'prs': {p['ref']: p for p in data['prs']},
         'releases': {r['ref']: r for r in data['releases']},
+        'commits': {c['ref']: c for c in data.get('commits', [])},
         'facts': {f['id']: f for f in data.get('facts', [])},
         'keys': key_forms(set(data.get('known_keys', []))),
     }

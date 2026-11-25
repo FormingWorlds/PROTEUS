@@ -3811,7 +3811,7 @@ def test_render_links_each_commit_with_its_short_id_and_author():
     body, _ = render.render_body(data, _draft(cap, res), True, 'https://run', _VALID['bots'])
     url = _commit()['url']
     link = f'[PALEOS {_oid(1)[:7]}]({url})'
-    assert body.count(f'{link}, by [maraattia](https://github.com/maraattia)') == 1
+    assert body.splitlines().count(f'{link}, by [maraattia](https://github.com/maraattia)') == 1
     row = next(line for line in body.splitlines() if line.startswith('| Checked tables |'))
     assert f'| {render.short_date(_commit()["committed_at"])} | {link}, by ' in row
     urls = render.allowed_urls(data, 'https://run', _VALID['bots'])

@@ -24,7 +24,12 @@ repos = [
     "FormingWorlds/Obliqua",
     "FormingWorlds/Morrigan",
     "nichollsh/AGNI",
+    "maraattia/PALEOS",
 ]
+# Repositories without pull requests: the commits of the window to their default branch
+# are read instead, the newest max_commits of them (1 to 100); the job summary counts the rest.
+commits_only = ["maraattia/PALEOS"]
+max_commits = 100
 
 # Files whose changes become facts, per repository; every repository also gets
 # pyproject.toml and Project.toml when it has them.

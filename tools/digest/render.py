@@ -13,6 +13,7 @@ the body starts with the dry-run line, which stops the post step.
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import re
 import sys
@@ -147,9 +148,16 @@ def link_text(text: str) -> str:
     return re.sub(r'([\\\[\]()`<>*_])', r'\\\1', text)
 
 
+def ref_text(item: dict) -> str:
+    """Link text of a cited item: its ref, or for a commit the repository name and the 7-character id."""
+    return (
+        f'{item["repo"].split("/", 1)[1]} {item["oid"][:7]}' if 'oid' in item else item['ref']
+    )
+
+
 def links(items: list[dict]) -> str:
     """Markdown links to the cited pull requests and releases."""
-    return ', '.join(f'[{link_text(i["ref"])}]({link_url(i["url"])})' for i in items)
+    return ', '.join(f'[{link_text(ref_text(i))}]({link_url(i["url"])})' for i in items)
 
 
 def docs_links(items: list[dict]) -> str:
@@ -198,7 +206,7 @@ def authors(items: list[dict], bots: list[str]) -> str:
 
 def allowed_urls(data: dict, run_url: str, bots: list[str]) -> list[str]:
     """Every URL the body may link: cited items, the run, repositories, profiles and docs pages."""
-    items = data['prs'] + data['releases']
+    items = data['prs'] + data['releases'] + data.get('commits', [])
     return (
         [i['url'] for i in items]
         + [run_url]
@@ -219,6 +227,12 @@ def summary(data: dict, run_url: str) -> str:
     names = ', '.join(
         f'[{link_text(r.split("/", 1)[1])}]({link_url(GITHUB + r)})' for r in data['repos']
     )
+    per = collections.Counter(c['repo'].split('/', 1)[1] for c in data.get('commits', []))
+    also = ''.join(
+        f' It also reads the {count(n, "commit")} to the default branch of {name}, '
+        'a repository without pull requests.'
+        for name, n in per.items()
+    )
     kept, cut = data['bodies_kept'], data['bodies_cut']
     other = (
         'the title of the other pull request' if cut == 1 else f'the titles of the other {cut}'
@@ -238,7 +252,7 @@ def summary(data: dict, run_url: str) -> str:
     return (
         f'Collected between {window_dates(data["window"])} from '
         f'{count(merged, "merged pull request")}, {count(opened, "open pull request")} '
-        f'and {count(len(data["releases"]), "release")} in {names}. '
+        f'and {count(len(data["releases"]), "release")} in {names}.{also} '
         f'The model read {read}. [Workflow run]({run_url}).'
     )
 
@@ -250,6 +264,7 @@ def render_body(
     window, home = data['window'], data['repos'][0]
     prs = {p['ref']: p for p in data['prs']}
     rels = {r['ref']: r for r in data['releases']}
+    cms = {c['ref']: c for c in data.get('commits', [])}
     facts = {f['id']: f for f in data.get('facts', [])}
     lines = [
         summary(data, run_url),
@@ -258,8 +273,8 @@ def render_body(
         'This is a selection, not a complete change list.',
         '',
         f'This digest is written automatically by a workflow in [{link_text(home)}]({link_url(GITHUB + home)}) from '
-        'merged pull requests, open pull requests and releases; check the linked pull requests '
-        'before you act on it.',
+        'merged pull requests, open pull requests, releases and the commits of repositories '
+        'without pull requests; check the linked items before you act on it.',
         '',
     ]
     if not live:
@@ -286,11 +301,15 @@ def render_body(
             ]
         for entry in entries:
             items = [prs[r] for r in entry['prs']] + [rels[r] for r in entry['releases']]
+            items += [cms[r] for r in entry.get('commits', [])]
             cited = [facts[f] for f in entry['facts']]
             text = plain(entry['text'])
             detail = facts_text(cited)
             if key == 'results':
-                when = min(i.get('merged_at') or i['published_at'] for i in items)
+                when = min(
+                    i.get('merged_at') or i.get('committed_at') or i['published_at']
+                    for i in items
+                )
                 change = f'{text} {detail}.' if detail else text
                 docs = f'; docs: {pages};' if (pages := docs_links(items)) else ','
                 lines.append(

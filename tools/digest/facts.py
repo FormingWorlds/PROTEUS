@@ -185,8 +185,8 @@ def attach_facts(gh: GitHub, data: dict, settings: dict) -> None:
     no facts, so one broken file cannot stop every later run.
     """
     facts, unreadable = [], []
-    for pr in data['prs']:
-        if pr['status'] != 'merged' or not pr['parent_oid']:
+    for pr in data['prs'] + data.get('commits', []):
+        if pr.get('status', 'merged') != 'merged' or not pr['parent_oid']:
             continue
         for path in [*settings.get('tracked', {}).get(pr['repo'], []), *TRACKED_ALWAYS]:
             if path not in pr['files'] and not pr.get('files_truncated'):

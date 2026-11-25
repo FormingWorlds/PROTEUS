@@ -29,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 from common import DigestError, GitHub, find_category, iso, load_settings, parse_time
 
 MEMBERS = ('OWNER', 'MEMBER', 'COLLABORATOR', 'CONTRIBUTOR')
+REST_FILES = 300  # files in the REST answer for one commit
 RAW_CHARS = 20000  # raw text read per title or body; the largest body_chars allowed
 STATE_RE = re.compile(r'<!-- weekly-digest-state (\{.*?\}) -->', re.S)
 
@@ -47,7 +48,8 @@ query($owner: String!, $name: String!, $cursor: String) {
         files(first: 100) { totalCount nodes { path changeType } }
         mergeCommit { oid parents(first: 1) { nodes { oid } } }
       }
-    }
+    }"""
+RELEASES_FIELD = """
     releases(first: 20, orderBy: {field: CREATED_AT, direction: DESC}) {
       nodes { tagName name url publishedAt isDraft isPrerelease description
               author { login __typename } }
@@ -55,6 +57,21 @@ query($owner: String!, $name: String!, $cursor: String) {
   }
 }
 """
+PR_QUERY += RELEASES_FIELD
+COMMIT_QUERY = (
+    """
+query($owner: String!, $name: String!, $since: GitTimestamp!, $until: GitTimestamp!, $max: Int!) {
+  repository(owner: $owner, name: $name) {
+    isPrivate isArchived
+    defaultBranchRef { target { ... on Commit {
+      history(since: $since, until: $until, first: $max) {
+        totalCount
+        nodes { oid url committedDate messageHeadline messageBody additions deletions
+                parents(first: 2) { totalCount nodes { oid } }
+                author { user { login __typename } } }
+      } } } }"""
+    + RELEASES_FIELD
+)
 
 POSTS_QUERY = """
 query($owner: String!, $name: String!, $category: ID!, $cursor: String) {
@@ -228,6 +245,64 @@ def release_record(repo: str, node: dict, since: str, until: str) -> dict | None
     }
 
 
+def commit_record(repo: str, node: dict, since: str, until: str) -> dict | None:
+    """Return a commit as a record when it is no merge commit and its commit date is in the window.
+
+    The commit date, not the author date, places a commit, so a commit rebased onto the
+    default branch in the window counts in it.
+    """
+    if node['parents']['totalCount'] > 1 or not since <= node['committedDate'] < until:
+        return None
+    user = (node['author'] or {}).get('user') or {}
+    parents = node['parents']['nodes']
+    return {
+        'repo': repo,
+        'oid': node['oid'],
+        'url': node['url'],
+        'title': node['messageHeadline'],
+        'raw_body': node['messageBody'] or '',
+        'author': user.get('login'),
+        'author_kind': user.get('__typename'),
+        'committed_at': node['committedDate'],
+        'size': node['additions'] + node['deletions'],
+        'merge_oid': node['oid'],
+        'parent_oid': parents[0]['oid'] if parents else None,
+    }
+
+
+def collect_commits(gh: GitHub, repo: str, window: dict, cap: int) -> tuple[list, list, int]:
+    """Return the commit and release records of a repository without pull requests.
+
+    The newest ``cap`` commits of the window to the default branch are read, and each
+    kept commit gets its changed files from one REST call. Refs count up from the
+    oldest commit date (``PALEOS:c1``). The third value is the number of commits over the cap.
+
+    Raises
+    ------
+    DigestError
+        When the repository is private, archived, missing or has no default branch.
+    """
+    owner, name = repo.split('/')
+    since, until = window['since'], window['until']
+    asked = {'owner': owner, 'name': name, 'since': since, 'until': until, 'max': cap}
+    data = gh.graphql(COMMIT_QUERY, **asked)['repository']
+    if data is None or data['isPrivate'] or data['isArchived'] or not data['defaultBranchRef']:
+        raise DigestError(f'{repo} is not a public, active repository')
+    history = data['defaultBranchRef']['target']['history']
+    commits = sorted(
+        (c for n in history['nodes'] if (c := commit_record(repo, n, since, until))),
+        key=lambda c: (c['committed_at'], c['oid']),
+    )
+    for i, c in enumerate(commits, 1):
+        files = gh.commit_files(repo, c['oid'])
+        c['ref'] = f'{short_name(repo)}:c{i}'
+        c['files'] = [f['filename'] for f in files]
+        c['deleted'] = [f['filename'] for f in files if f['status'] == 'removed']
+        c['files_truncated'] = len(files) >= REST_FILES
+    releases = [release_record(repo, n, since, until) for n in data['releases']['nodes']]
+    return commits, [r for r in releases if r], history['totalCount'] - len(history['nodes'])
+
+
 def collect_repo(gh: GitHub, repo: str, window: dict) -> tuple[list, list]:
     """Return the pull-request and release records of one repository.
 
@@ -346,11 +421,20 @@ def collect(gh: GitHub, settings: dict, window: dict) -> dict:
     names = [short_name(r) for r in settings['repos']]
     if len(set(names)) != len(names):
         raise DigestError('two repositories share a name; references would be ambiguous')
-    prs, releases = [], []
+    prs, releases, commits, over = [], [], [], {}
     for repo in settings['repos']:
-        got_prs, got_releases = collect_repo(gh, repo, window)
-        prs += got_prs
+        if repo in settings['commits_only']:
+            got, got_releases, n = collect_commits(gh, repo, window, settings['max_commits'])
+            commits += got
+            if n:
+                over[repo] = n
+        else:
+            got_prs, got_releases = collect_repo(gh, repo, window)
+            prs += got_prs
         releases += got_releases
+    for c in commits:
+        c['title'] = clean_text(c['title'], 300)
+        c['body'] = clean_text(c.pop('raw_body'), settings['body_chars'])
     dropped = [p for p in prs if p['status'] == 'open' and p['association'] not in MEMBERS]
     prs = [p for p in prs if p not in dropped]
     cut = add_bodies(prs, releases, settings['max_bodies'], settings['body_chars'])
@@ -380,6 +464,8 @@ def collect(gh: GitHub, settings: dict, window: dict) -> dict:
         'repos': settings['repos'],
         'prs': prs,
         'releases': releases,
+        'commits': commits,
+        'commits_left_out': over,
         'dropped_open': [
             {'ref': p['ref'], 'login': p['author'], 'association': p['association']}
             for p in dropped
@@ -406,13 +492,22 @@ def main(argv: list[str] | None = None) -> int:
     with open(args.out, 'w') as fh:
         json.dump(data, fh)
     print(f'{len(data["prs"])} PRs, {len(data["releases"])} releases in {window}')
-    lines = [
-        f'Open pull request left out: {d["ref"]} by {d["login"]} (association {d["association"]})'
-        for d in data.get('dropped_open', [])
-    ] + [
-        f'Docs pages left out of {site}: {n}'
-        for site, n in data.get('docs_left_out', {}).items()
-    ]
+    for c in data.get('commits', []):
+        print(f'Commit {c["ref"]} {c["oid"]} {c["committed_at"]}')
+    lines = (
+        [
+            f'Open pull request left out: {d["ref"]} by {d["login"]} (association {d["association"]})'
+            for d in data.get('dropped_open', [])
+        ]
+        + [
+            f'Docs pages left out of {site}: {n}'
+            for site, n in data.get('docs_left_out', {}).items()
+        ]
+        + [
+            f'Commits left out of {repo}: {n}'
+            for repo, n in data.get('commits_left_out', {}).items()
+        ]
+    )
     if lines:
         print(*lines, sep='\n')
     if args.summary and lines:

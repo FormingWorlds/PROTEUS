@@ -84,6 +84,8 @@ def validate_settings(settings: dict) -> dict:
                 isinstance(p, list) and all(isinstance(x, str) for x in p) for p in v.values()
             )
         ),
+        'commits_only': lambda v: isinstance(v, list) and all(isinstance(r, str) for r in v),
+        'max_commits': lambda v: _is_int(v) and 1 <= v <= 100,
         'docs': lambda v: (
             isinstance(v, dict)
             and all(
@@ -95,8 +97,9 @@ def validate_settings(settings: dict) -> dict:
     for key, ok in rules.items():
         if key not in settings or not ok(settings[key]):
             raise DigestError(f'setting {key} is missing or invalid: {settings.get(key)!r}')
-    if extra := set(settings['docs']) - set(settings['repos']):
-        raise DigestError(f'setting docs names repositories not in repos: {sorted(extra)}')
+    for key in ('docs', 'commits_only'):
+        if extra := set(settings[key]) - set(settings['repos']):
+            raise DigestError(f'setting {key} names repositories not in repos: {sorted(extra)}')
     return settings
 
 
@@ -210,6 +213,11 @@ class GitHub:
             accept='application/vnd.github.raw',
         )
         return None if raw is None else raw.decode()
+
+    def commit_files(self, repo: str, oid: str) -> list[dict]:
+        """Changed files of one commit, at most 300 (one REST page); a missing commit gives none."""
+        raw = self._request(f'{API}/repos/{repo}/commits/{oid}')
+        return json.loads(raw).get('files', []) if raw is not None else []
 
 
 def find_category(gh: GitHub, home: str, slug: str) -> tuple[str, str | None]:
