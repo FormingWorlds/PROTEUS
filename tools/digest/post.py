@@ -106,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
         same.append('a window end that is not earlier')
     if same:
         print(
-            f'::notice::Not deposited: the newest live digest {last.get("url")} has {", ".join(same)}'
+            f'::notice::Not deposited: the newest live digest of run {last.get("run_id")} has {", ".join(same)}'
         )
     if rerun:
         print('::notice::Not deposited: this is a rerun; start a new manual run instead')
