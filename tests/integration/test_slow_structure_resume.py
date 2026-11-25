@@ -64,15 +64,16 @@ def _resolve_times(hf):
 
 
 def _drop_references(outdir):
-    """Set the trigger references of the last helpfile row to 0, as an older helpfile reads."""
+    """Set the trigger references of the last (tab-separated) helpfile row to 0, as an older
+    helpfile reads."""
     path = outdir / 'runtime_helpfile.csv'
-    lines = path.read_text().splitlines(keepends=True)
-    header = lines[0].split()
-    values = lines[-1].split()
+    lines = path.read_text().splitlines()
+    header = lines[0].split('\t')
+    values = lines[-1].split('\t')
     for key in REF_KEYS:
         values[header.index(key)] = '0.0'
-    lines[-1] = ' '.join(values) + '\n'
-    path.write_text(''.join(lines))
+    lines[-1] = '\t'.join(values)
+    path.write_text('\n'.join(lines) + '\n')
 
 
 @pytest.fixture(scope='module')
