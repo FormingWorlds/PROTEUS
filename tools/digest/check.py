@@ -22,7 +22,7 @@ import re
 import sys
 import unicodedata
 
-from common import DIGEST_DIR, SECTIONS, count
+from common import DIGEST_DIR, LIST_KIND, SECTIONS, count
 from render import plain
 
 NUMBER_RE = re.compile(
@@ -250,7 +250,11 @@ def check_entry(entry: dict, index: dict) -> list[str]:
         for kind, found in (('release', rels), ('commit', cms))
         if want_open and found
     ]
-    if entry['section'] == 'results' and not facts and not rels:
+    if (
+        entry['section'] == 'results'
+        and not rels
+        and all(f['kind'] == LIST_KIND for f in facts)
+    ):
         fails.append(f'{name}: a results entry cites no fact or release')
     cited = {p['ref'] for p in prs + cms}
     fails += [

@@ -21,6 +21,7 @@ from pathlib import Path
 DIGEST_DIR = Path(__file__).resolve().parent
 API = 'https://api.github.com'
 TRACKED_ALWAYS = ('pyproject.toml', 'Project.toml')
+LIST_KIND = 'dataset list'  # a dataset or file added or removed; not a result change
 SECTIONS = {
     'results': 'Changes that affect your results',
     'capabilities': 'New capabilities',
