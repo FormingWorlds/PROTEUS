@@ -4473,7 +4473,7 @@ def _doc(until='2026-11-30T22:23:00Z', **over):
 
 
 def _live_gh(arts, runs, docs, pages=1):
-    rest = {f'{_ARTS}{p}': {'artifacts': arts if p == 1 else []} for p in range(1, pages + 1)}
+    rest = {f'{_ARTS}{p}': {'artifacts': arts if p == 1 else []} for p in range(1, pages + 2)}
     rest.update(
         {
             f'https://api.github.com/repos/{HOME}/actions/runs/{100 + i}': r
