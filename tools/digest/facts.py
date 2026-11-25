@@ -19,15 +19,18 @@ import os
 import re
 import sys
 import tomllib
+from collections.abc import Callable
 
-from common import TRACKED_ALWAYS, DigestError, GitHub, load_settings
+from common import LIST_KIND, TRACKED_ALWAYS, DigestError, GitHub, load_settings
 
 CONFIG_SCHEMA = 'docs/Reference/config/config_schema.json'
 OUTPUT_SCHEMA = 'docs/Reference/output_schema.json'
 DESCRIPTION_CHARS = 600
 GROUP_LIMIT = 8
 CONFIG_FIELDS = ('default', 'choices', 'bounds', 'description')
+DATASET_FIELDS = ('zenodo', 'dataverse', 'files')
 UNREADABLE = (ValueError, KeyError, TypeError, AttributeError, RecursionError)
+NO_FILE = 'no file list and no file at the commit'  # a 404 commit, not a removal
 REQ_RE = re.compile(r'^\s*([A-Za-z0-9][A-Za-z0-9._-]*)(\[[^\]]*\])?\s*(.*)$')
 
 
@@ -80,6 +83,58 @@ def toml_map(text: str | None) -> dict:
     return flatten(tomllib.loads(text)) if text else {}
 
 
+def manifest_map(text: str | None) -> dict:
+    """Map each dataset of an fwl-io manifest (a table with a ``zenodo`` DOI as text) to its source fields."""
+    out = {}
+
+    def walk(table: dict, prefix: str) -> None:
+        for key, value in table.items():
+            if isinstance(value, dict) and isinstance(value.get('zenodo'), str):
+                out[prefix + key] = {f: value[f] for f in DATASET_FIELDS if f in value}
+            elif isinstance(value, dict):
+                walk(value, f'{prefix}{key}.')
+
+    walk(tomllib.loads(text) if text else {}, '')
+    return out
+
+
+def registry_map(text: str | None, path: str) -> dict:
+    """Map ``<registry stem>:<file>`` to the sum of each line ``<file> md5:<hash>`` of a registry.
+
+    Raises
+    ------
+    ValueError
+        When a line that is not blank or a comment is not a file name and an ``md5:`` sum.
+    """
+    stem = path.rsplit('/', 1)[-1].removesuffix('.registry.txt')
+    out = {}
+    for line in (text or '').splitlines():
+        if not line.strip() or line.lstrip().startswith('#'):
+            continue
+        parts = line.split()
+        if len(parts) != 2 or not parts[1].startswith('md5:'):
+            raise ValueError(f'registry line is not a file and a sum: {line!r}')
+        out[f'{stem}:{parts[0]}'] = {'value': parts[1]}
+    return out
+
+
+def parser(path: str) -> tuple[str, Callable[[str | None], dict], tuple[str, ...]]:
+    """The fact kind, the parser and the compared fields of a tracked file, chosen by its path."""
+    if path == CONFIG_SCHEMA:
+        return 'config', config_schema_map, CONFIG_FIELDS
+    if path == OUTPUT_SCHEMA:
+        return 'output column', output_schema_map, ('unit',)
+    if path.endswith('pyproject.toml'):
+        return 'dependency', pyproject_map, ('value',)
+    if path.endswith('Project.toml'):
+        return 'dependency', project_toml_map, ('value',)
+    if path.endswith('manifest.toml'):
+        return 'dataset', manifest_map, DATASET_FIELDS
+    if path.endswith('.registry.txt'):
+        return 'dataset file', lambda text: registry_map(text, path), ('value',)
+    return 'config', toml_map, ('value',)
+
+
 def requirement_map(specs: list[str], group: str) -> dict:
     """Map ``group:package`` to its version specifier for a list of requirement strings."""
     out = {}
@@ -128,19 +183,18 @@ def diff_file(path: str, old: str | None, new: str | None) -> list[dict]:
     old, new : str or None
         File text before and after the merge; None when the file is absent.
     """
-    if path == CONFIG_SCHEMA:
-        kind, parse, fields = 'config', config_schema_map, CONFIG_FIELDS
-    elif path == OUTPUT_SCHEMA:
-        kind, parse, fields = 'output column', output_schema_map, ('unit',)
-    elif path.endswith('pyproject.toml'):
-        kind, parse, fields = 'dependency', pyproject_map, ('value',)
-    elif path.endswith('Project.toml'):
-        kind, parse, fields = 'dependency', project_toml_map, ('value',)
-    else:
-        kind, parse, fields = 'config', toml_map, ('value',)
+    kind, parse, fields = parser(path)
     found = _changes(parse(old), parse(new), fields)
+    listed = kind.startswith('dataset')
     return [
-        {'file': path, 'kind': kind, 'change': c, 'key': k, 'old': _short(o), 'new': _short(n)}
+        {
+            'file': path,
+            'kind': LIST_KIND if listed and c in ('added', 'removed') else kind,
+            'change': c,
+            'key': k,
+            'old': _short(o),
+            'new': _short(n),
+        }
         for c, k, o, n in found
     ]
 
@@ -185,17 +239,22 @@ def attach_facts(gh: GitHub, data: dict, settings: dict) -> None:
     no facts, so one broken file cannot stop every later run.
     """
     facts, unreadable = [], []
-    for pr in data['prs']:
-        if pr['status'] != 'merged' or not pr['parent_oid']:
+    for pr in data['prs'] + data.get('commits', []):
+        if pr.get('status', 'merged') != 'merged' or not pr['parent_oid']:
             continue
         for path in [*settings.get('tracked', {}).get(pr['repo'], []), *TRACKED_ALWAYS]:
             if path not in pr['files'] and not pr.get('files_truncated'):
                 continue
             try:
                 old = gh.raw_file(pr['repo'], path, pr['parent_oid'])
-                found = diff_file(path, old, gh.raw_file(pr['repo'], path, pr['merge_oid']))
+                new = gh.raw_file(pr['repo'], path, pr['merge_oid'])
+                found = diff_file(path, old, new)
             except UNREADABLE as err:
                 unreadable.append(_unreadable(pr['ref'], path, err))
+                continue
+            # an empty file list here is a cut one: a missing file is no removal
+            if new is None and old is not None and not pr['files']:
+                unreadable.append({'pr': pr['ref'], 'file': path, 'error': NO_FILE})
                 continue
             for fact in group_facts(found):
                 facts.append({'id': f'F{len(facts) + 1}', 'pr': pr['ref'], **fact})
@@ -213,14 +272,13 @@ def known_keys(gh: GitHub, settings: dict, unreadable: list[dict]) -> set[str]:
     A tracked file on the default branch that does not parse is added to ``unreadable``.
     """
     keys = set()
-    parse = {CONFIG_SCHEMA: config_schema_map, OUTPUT_SCHEMA: output_schema_map}
     for repo, paths in settings.get('tracked', {}).items():
         for path in paths:
             try:
                 text = gh.raw_file(repo, path, None)
                 if text is None:
                     raise DigestError(f'cannot read {path} of {repo} for the key check')
-                keys |= set(parse.get(path, toml_map)(text))
+                keys |= set(parser(path)[1](text))
             except UNREADABLE as err:
                 unreadable.append(_unreadable(f'{repo} default branch', path, err))
     return {k for k in keys if '_' in k or '.' in k}
