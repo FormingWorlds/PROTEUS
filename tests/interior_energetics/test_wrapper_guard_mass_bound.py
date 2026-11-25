@@ -46,6 +46,7 @@ pytestmark = [
 
 BOUND_MSG = 'Mass escape keeps a radius step above its radius bound'
 MISS_MSG = 'Committed structure misses its mass target'
+BAD_SOLVE_MSG = 'non-finite or non-positive R_int or M_int'
 UP_STEPS_CSV = Path(__file__).parent / 'fixtures' / 'mass_escape_up_steps.csv'
 
 
@@ -247,19 +248,20 @@ def test_the_bound_uses_the_mass_the_solve_reached(caplog):
 @pytest.mark.parametrize(
     ('radius', 'mass', 'target', 'reason'),
     [
-        pytest.param(math.inf, 1.01, 1.01, 'non-finite structure', id='infinite radius'),
-        pytest.param(math.nan, 1.0, 1.0, 'non-finite structure', id='NaN radius'),
+        pytest.param(math.inf, 1.01, 1.01, BAD_SOLVE_MSG, id='infinite radius'),
+        pytest.param(math.nan, 1.0, 1.0, BAD_SOLVE_MSG, id='NaN radius'),
+        pytest.param(0.0, 1.0, 1.0, BAD_SOLVE_MSG, id='zero radius'),
+        pytest.param(-1.0, 1.0, 1.0, BAD_SOLVE_MSG, id='negative radius'),
         pytest.param(1.001, math.nan, 1.01, 'mass-anchor violation', id='NaN mass on a target'),
-        pytest.param(0.999, math.nan, None, 'non-finite structure', id='NaN mass, no target'),
+        pytest.param(0.999, math.nan, None, BAD_SOLVE_MSG, id='NaN mass, no target'),
+        pytest.param(0.999, 0.0, None, BAD_SOLVE_MSG, id='zero mass, no target'),
     ],
 )
-def test_a_non_finite_solve_falls_back_to_the_retained_structure(
-    caplog, radius, mass, target, reason
-):
-    """A solve that returns a non-finite R_int or M_int fails: the previous structure comes back.
+def test_a_non_finite_or_non_positive_solve_falls_back(caplog, radius, mass, target, reason):
+    """A solve with an R_int or M_int that is not finite and positive falls back to the old one.
 
     The structure turns stale and the failure counts; no step is kept and no bound warns. A NaN
-    mass on a target fails the mass anchor; without a target the finiteness check refuses it.
+    mass on a target fails the mass anchor; without a target the structure check refuses it.
     """
     config, hf_row, base = _cooling_case()
 
