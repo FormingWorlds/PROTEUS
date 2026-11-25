@@ -31,7 +31,7 @@ def test_structure_check_raises_exactly_for_values_not_finite_and_positive(R_int
     from proteus.interior_energetics.wrapper import _require_finite_structure
 
     row = {'R_int': R_int, 'M_int': M_int}
-    R, M = (0.0 if v is None else float(v) for v in (R_int, M_int))
+    R, M = (float(v or 0.0) for v in (R_int, M_int))  # the row read of the wrapper: -0.0 is 0.0
     if 0.0 < R < math.inf and 0.0 < M < math.inf:
         _require_finite_structure(row, 'test solve')
         return

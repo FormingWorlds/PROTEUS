@@ -1431,6 +1431,30 @@ def _sample_adiabat_temperature_arrays(outdir: str, temperature_function):
     return r_arr, t_arr
 
 
+def _require_finite_structure(hf_row: dict, where: str) -> None:
+    """Refuse a structure solve that left R_int or M_int not finite and positive.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row after the solve, read for ``R_int`` [m] and ``M_int`` [kg].
+    where : str
+        Name of the solve, put at the start of the message.
+
+    Raises
+    ------
+    RuntimeError
+        If ``R_int`` or ``M_int`` is NaN, infinite, zero, negative or absent.
+    """
+    R_int = float(hf_row.get('R_int', 0.0) or 0.0)
+    M_int = float(hf_row.get('M_int', 0.0) or 0.0)
+    if not (0.0 < R_int < np.inf and 0.0 < M_int < np.inf):
+        raise RuntimeError(
+            f'{where}: Zalmoxis returned a non-finite or non-positive R_int or M_int: '
+            f'R_int={R_int:.6e} m, M_int={M_int:.6e} kg.'
+        )
+
+
 def _solve_structure_with_adiabat_or_rollback(
     config: Config,
     outdir: str,
@@ -1534,23 +1558,20 @@ def _solve_structure_with_adiabat_or_rollback(
             temperature_arrays=adiabat_arrays,
             core_temperature_arrays=core_table,
         )
+        _require_finite_structure(hf_row, 'adiabat IC re-solve')
         # Mass-anchor contract: a too-loosely-converged adiabat solve is
         # treated as a failure, same as the time-evolution re-solve path.
         M_target = float(hf_row.get('M_int_target', 0.0) or 0.0)
         M_int = float(hf_row.get('M_int', 0.0) or 0.0)
         if M_target > 0.0:
             mass_rel_err = abs(M_int / M_target - 1.0)
-            if mass_rel_err > _ZALMOXIS_MASS_ANCHOR_TOL:
+            if not mass_rel_err <= _ZALMOXIS_MASS_ANCHOR_TOL:
                 raise RuntimeError(
                     'adiabat IC re-solve mass-anchor violation: '
                     f'|M_int / M_int_target - 1| = {mass_rel_err:.3e} > '
                     f'tol={_ZALMOXIS_MASS_ANCHOR_TOL:.3e}.'
                 )
-        R_int_adiabat = float(hf_row.get('R_int', 0.0) or 0.0)
-        if not np.isfinite(R_int_adiabat) or R_int_adiabat <= 0.0:
-            raise RuntimeError(
-                f'adiabat IC re-solve produced an invalid R_int={R_int_adiabat}.'
-            )
+        R_int_adiabat = float(hf_row['R_int'])
     except (RuntimeError, ValueError, FloatingPointError) as exc:
         # Restore the structure-defining hf_row keys AND the on-disk
         # zalmoxis_output.dat, so the next run_interior reads a mesh that is
@@ -1735,6 +1756,7 @@ def determine_interior_radius_with_zalmoxis(
         num_spider_nodes=num_spider_nodes,
         temperature_mode_override=_temp_mode_override,
     )
+    _require_finite_structure(hf_row, 'first structure solve')
 
     # liquidus_super: the first solve above integrated the mantle density against
     # Zalmoxis' internal linear-in-r temperature guess, which is colder and
@@ -1901,6 +1923,10 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
                 num_spider_nodes=num_spider_nodes,
                 temperature_function=None,
             )
+
+        _require_finite_structure(
+            hf_row, f'equilibration iter {i + 1}/{max_iter} structure solve'
+        )
 
         # Update M_mantle from Zalmoxis results (M_int and M_core are set
         # by zalmoxis_solver, but M_mantle is not). run_outgassing needs
@@ -3444,12 +3470,8 @@ def update_structure_from_interior(
 
         # An R_int or M_int that is not finite and positive is a failed solve; the guard below
         # sees only finite, positive values.
-        _R_int_new = float(hf_row.get('R_int', 0.0) or 0.0)
-        if not (0.0 < _R_int_new < np.inf and 0.0 < _M_int < np.inf):
-            raise RuntimeError(
-                'Zalmoxis returned a non-finite or non-positive R_int or M_int: '
-                'R_int=%.6e m, M_int=%.6e kg. Treating as non-converged.' % (_R_int_new, _M_int)
-            )
+        _require_finite_structure(hf_row, 'Zalmoxis re-solve')
+        _R_int_new = float(hf_row['R_int'])
 
         # Monotonic-radius guard (super-liquidus adiabat IC only): a cooling R_int up-step is a
         # cross-table artifact and is rejected, unless the mantle heats, a wet composition trigger
@@ -3929,10 +3951,10 @@ def _warn_mass_escape_radius_step(
 def _warn_committed_mass_miss(hf_row: dict) -> None:
     """Warn when the committed structure misses its live mass target by more than the anchor.
 
-    A solve writes its target only when it succeeds. A rejected up-step, and the fall-back after the
-    wrapper's mass-anchor check refused a solve, restore M_int but keep that new target, so the
-    committed structure can miss it. With both keys set, a non-finite or non-positive value also
-    warns.
+    A solve writes its target only when it succeeds. Three fall-backs restore M_int but keep the new
+    target, so the committed structure can miss it: a rejected radius up-step, a solve refused by
+    the mass anchor, and a solve refused because R_int or M_int is not finite and positive. With
+    both keys set, a NaN or infinite value also warns.
 
     Parameters
     ----------
