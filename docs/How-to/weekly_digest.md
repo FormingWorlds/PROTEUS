@@ -4,13 +4,14 @@ The weekly digest is a short post that tells the developers of the PROTEUS ecosy
 
 A GitHub Actions workflow in this repository writes the digest and, when posting is switched on, posts it to the FormingWorlds Discussions tab (the forum of a GitHub repository), in the category Weekly digest. This page is for people who run or change the workflow. It explains what the workflow does, how to make a dry run (a run that writes the digest and posts nothing), how to switch posting on or off, and what to do when a run is red.
 
-A language model drafts the text from the collected data. A script checks every entry before anything is posted: each pull request, release, number and config key in an entry must come from the collected data.
+A language model drafts the text from the collected data. A script checks every entry before anything is posted: each pull request, release, commit, number and config key in an entry must come from the collected data.
 
 The post opens with a summary of what the digest covers:
 
 - the collection window;
 - the number of merged pull requests, open pull requests and releases;
 - the number of commits read from each repository without pull requests, when it has commits in the window;
+- the number of commits of the window over `max_commits` that are not read, for each repository that has such commits;
 - the repositories, each a link to its GitHub repository;
 - whether the model read the text of every pull request or only of the largest ones (the others by title only);
 - a link to the workflow run.
@@ -35,7 +36,7 @@ Some repositories take their changes as commits to the default branch, with no p
 
 A commit counts by its commit date in UTC, not by its author date. A commit that was written before the window and rebased onto the default branch in the window counts in this window. A merge commit (a commit with 2 or more parents) is left out.
 
-`collect.py` asks GitHub for at most the newest `max_commits` commits of each repository and window, and then leaves out the merge commits. The job summary gives the number of commits that it did not ask for. Both numbers include merge commits. The model reads the headline and the message of every commit kept, cut to 300 and to `body_chars` characters; `max_bodies` applies to pull requests only. Each commit gets its changed files from one request to the GitHub API, at most 300 files. The run log lists every commit kept, with its reference, its full commit id and its commit date.
+`collect.py` asks GitHub for at most the newest `max_commits` commits of each repository and window, and then leaves out the merge commits. The post summary and the job summary give the number of commits that it did not ask for. Both numbers include merge commits. The model reads the headline and the message of every commit kept, cut to 300 and to `body_chars` characters; `max_bodies` applies to pull requests only. Each commit gets its changed files from one request to the GitHub API, at most 300 files. When GitHub gives no file list for a commit, the run log names the commit, and the facts step compares every tracked file of its repository. The run log lists every commit kept, with its reference, its full commit id and its commit date.
 
 Each commit has a reference of the form `PALEOS:c1`, numbered from the oldest commit kept. Commits with the same commit date keep the reverse order of the GitHub history, which puts a parent before its child in a history without merges. The reference holds no commit id. The model groups related commits into one entry. In the post, a commit links as the repository name and the first 7 characters of its id, and its author links to the GitHub profile.
 
@@ -101,7 +102,7 @@ The check reads the title and text of an entry as the model wrote them, and as t
 The run also fails when the text as the model wrote it has:
 
 - an invisible character, a fraction or a letter number such as a Roman numeral;
-- a number that is not in a cited pull request or release (cited fact values do not count);
+- a number that is not in a cited pull request, release or commit (cited fact values do not count);
 - a config key or helpfile column that is not in a cited fact.
 
 How the check reads numbers:
@@ -140,7 +141,7 @@ The post step runs only in a live run, a run that is allowed to post (see [Switc
 - the run is scheduled, or its box **Post the digest** is ticked;
 - the draft passes `check.py`;
 - the body is not a dry run;
-- the final body links only to the collected pull requests, releases and docs pages, the run, the repositories and the profiles of the authors, and mentions nobody.
+- the final body links only to the collected pull requests, releases, commits and docs pages, the run, the repositories and the profiles of the authors, and mentions nobody.
 
 `post.py` makes at most one post per meeting. It reads the newest digest post, and skips posting when that post has the same workflow run id (the number of the Actions run, which a rerun keeps), the same title, or a window end that is the same as or later than the window end of this run:
 
@@ -236,7 +237,7 @@ Each entry ends with the authors of its pull requests, releases and commits, eac
 | `bots` | Logins shown as code spans, not as profile links |
 | `repos` | Repositories in the digest, as `owner/name` |
 | `commits_only` | Repositories of `repos` without pull requests, read by their commits to the default branch |
-| `max_commits` | Number of the newest commits read per repository of `commits_only` and window; the job summary counts the others. From 1 to 100 |
+| `max_commits` | Number of the newest commits read per repository of `commits_only` and window; the post summary and the job summary count the others. From 1 to 100 |
 | `docs` | Docs site per repository of `repos`, as `owner/name = "https://..."` with no `/` at the end; a page `docs/<path>.md` is served at `<site>/<path>.html` |
 | `tracked` | Files per repository whose changes become facts; `pyproject.toml` and `Project.toml` are always tracked. A listed file must exist on the default branch of its repository, or the run stops |
 
@@ -249,11 +250,13 @@ What a digest can miss:
 - A fact comes from the merge commit of a pull request and the commit before it. For a pull request merged as several rebased commits, only the last commit is compared.
 - For a pull request with more than 100 changed files, every tracked file of its repository is compared, and its docs pages come from its first 100 files only.
 - For a commit with 300 or more changed files, every tracked file of its repository is compared.
+- The commits of a window over `max_commits` are not read. The post summary gives their number for each repository, but the model does not see them.
+- A commit that a digest reported and that is then rewritten on the default branch (a force push or a rebase of published history) gets a new commit id. It appears again in the digest of the window of its new commit date.
 - A commit to a repository without pull requests whose commit date is before the window start, but that reaches the default branch after it, is in no scheduled digest: for example a commit made before the run and pushed after it, or the commits of a side branch that a merge commit brings in. A back-dated run with an earlier start reads it when it is among the newest `max_commits` commits of that window, and a back-dated run never posts.
 - A docs page is checked once, when the data is collected; a page that the docs deployment removes later stays linked.
 - Only pull requests whose base is the default branch of their repository are read, merged or open. A pull request closed without a merge does not appear.
 - An open pull request counts only when it was updated after the window start.
-- A window with no merged pull request, no release and no commit gives a post that says Quiet week and lists no open pull requests, even when some are open.
+- A window with no merged pull request, no release and no commit kept gives a post that says Quiet week and lists no open pull requests, even when some are open.
 - At most the 20 newest releases of each repository are read.
 - The number check does not read digits after 2 or more letters (`step200`, `RK45`).
 - The value warning covers only the old value in the wordings above. A third value ("the mixing length is now linear" for a change from nearest to constant), another wording or a sentence that does not name the config key gives no warning. The table next to the entry shows the fact.
