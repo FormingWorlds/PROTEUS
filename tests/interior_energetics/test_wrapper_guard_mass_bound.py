@@ -255,6 +255,7 @@ def test_the_bound_uses_the_mass_the_solve_reached(caplog):
         pytest.param(1.001, math.nan, 1.01, 'mass-anchor violation', id='NaN mass on a target'),
         pytest.param(0.999, math.nan, None, BAD_SOLVE_MSG, id='NaN mass, no target'),
         pytest.param(0.999, 0.0, None, BAD_SOLVE_MSG, id='zero mass, no target'),
+        pytest.param(0.999, math.inf, None, BAD_SOLVE_MSG, id='infinite mass, no target'),
     ],
 )
 def test_a_non_finite_or_non_positive_solve_falls_back(caplog, radius, mass, target, reason):
