@@ -1438,6 +1438,8 @@ def _require_finite_structure(hf_row: dict, where: str) -> None:
     """Refuse a structure solve that left R_int or M_int not finite and positive.
 
     Only these 2 keys are checked; the other structure keys of the row are not.
+    The adiabat and dynamic re-solves run the mass anchor first, so with a positive
+    ``M_int_target`` a non-finite ``M_int`` is reported by the anchor; without one, by this check.
 
     Parameters
     ----------

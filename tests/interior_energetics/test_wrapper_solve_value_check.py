@@ -128,6 +128,46 @@ def test_adiabat_re_solve_with_a_bad_value_rolls_back(tmp_path, R_int, M_int):
 
 
 @pytest.mark.physics_invariant
+@pytest.mark.parametrize('target', [0.0, math.nan], ids=['zero target', 'NaN target'])
+@pytest.mark.parametrize(
+    'M_int',
+    [math.nan, math.inf, 0.0, -M_OK],
+    ids=['NaN mass', 'inf mass', 'zero mass', 'negative mass'],
+)
+def test_adiabat_re_solve_without_a_target_refuses_a_bad_mass(tmp_path, caplog, target, M_int):
+    """With no usable mass target the anchor is skipped, so the finite check alone refuses the mass."""
+    hf_row = {**_linear_hf_row(), 'M_int_target': target}
+    saved = dict(hf_row)
+    (tmp_path / 'data').mkdir()
+    (tmp_path / 'data' / 'zalmoxis_output.dat').write_text('LINEAR\n')
+    adiabat = _good_adiabat()
+    with (
+        patch.object(
+            wmod,
+            '_build_superliquidus_adiabat_tp',
+            return_value=(lambda r, P: 5000.0, adiabat['P'], adiabat['T']),
+        ),
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            side_effect=_writing_solver(R_OK, M_int),
+        ),
+        caplog.at_level(logging.WARNING),
+    ):
+        mesh, ok = wmod._solve_structure_with_adiabat_or_rollback(
+            _config(), str(tmp_path), hf_row, 0, lambda r, P: 5000.0
+        )
+
+    assert (mesh, ok) == (None, False)
+    assert hf_row.keys() == saved.keys()
+    assert all(
+        hf_row[k] == saved[k] or (hf_row[k] != hf_row[k] and saved[k] != saved[k])
+        for k in saved
+    )
+    failed = [r.getMessage() for r in caplog.records if 're-solve failed' in r.getMessage()]
+    assert len(failed) == 1 and BAD_SOLVE_MSG in failed[0] and 'mass-anchor' not in failed[0]
+
+
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize(('R_int', 'M_int'), BAD_PAIRS)
 def test_first_structure_solve_with_a_bad_value_raises(R_int, M_int):
     """The first solve has no fall-back, so a bad structure stops the start-up."""
