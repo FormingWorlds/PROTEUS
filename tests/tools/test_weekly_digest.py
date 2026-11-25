@@ -887,6 +887,45 @@ def test_check_section_rules_for_open_prs_and_releases():
     assert any('fact F1 belongs to PROTEUS#849, not cited' in f for f in fails)
 
 
+@pytest.mark.parametrize(
+    ('prs', 'releases', 'message'),
+    [
+        (['PROTEUS#849'], [], 'PROTEUS#849 is merged, not allowed in section design'),
+        (['PROTEUS#900'], ['AGNI@1.13.0'], 'a release in section design'),
+    ],
+)
+def test_check_design_takes_only_open_prs(prs, releases, message):
+    """The design section is open work: a merged PR or a release in it fails."""
+    data = _data(
+        prs=[_pr(), _pr('PROTEUS#900', status='open', author='carol')], releases=[_release()]
+    )
+    entry = _entry(section='design', prs=prs, releases=releases, facts=[], logins=[])
+    assert any(message in f for f in check.check(data, _draft(entry)))
+
+
+def test_check_design_accepts_an_open_pr():
+    """An open PR in the design section passes."""
+    data = _data(prs=[_pr(), _pr('PROTEUS#900', status='open', author='carol')])
+    entry = _entry(
+        section='design', prs=['PROTEUS#900'], facts=[], logins=['carol'], text='A new coupling.'
+    )
+    assert check.check(data, _draft(entry)) == []
+
+
+def test_prompt_names_open_work_for_design():
+    """The prompt keeps design for open PRs and merged design changes in the change sections."""
+    prompt = (_ROOT / 'tools' / 'digest' / 'prompt.md').read_text()
+    assert prompt.count(
+        '- `design`: open pull requests that change an interface between modules, a default, '
+        'a coupling choice or a dependency, for maintainers to check against their own plans.'
+    ) == 1
+    assert prompt.count(
+        'Cite only open pull requests in `design` and `open`, and only merged pull requests or '
+        'releases in the other sections. A merged design change goes to `results`, '
+        '`capabilities`, `install` or `data`.'
+    ) == 1
+
+
 def test_check_grouped_fact_members_count_as_cited_keys():
     """A key listed in a grouped fact may be named in the text."""
     grouped = {
