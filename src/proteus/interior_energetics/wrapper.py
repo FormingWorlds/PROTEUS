@@ -91,9 +91,8 @@ _REINFLATE_TMAGMA_REL_TOL = 1e-4
 _REINFLATE_PHI_ABS_TOL = 1e-3
 
 # A step the mass escape keeps warns above dR/R = slope * dM/M + offset, dM/M from the reached mass.
-# The measured up-steps have dM/M of 0.07 to 0.19 and dR/R / dM/M of 0.72 to 0.94; near the anchor
-# the slope is not measured. The offset, the floor of the bound, is above the largest measured
-# artefact (7.2e-4), so an artefact of that size does not warn.
+# Measured up-steps: dM/M 0.07 to 0.19, dR/R / dM/M 0.72 to 0.94; not measured near the anchor.
+# The offset (bound floor) is above the largest measured artefact, 7.2e-4, so it does not warn.
 _MASS_ESCAPE_RADIUS_SLOPE = 2.0
 _MASS_ESCAPE_RADIUS_OFFSET = 1e-3
 
