@@ -5,9 +5,9 @@ Usage::
     python tools/digest/render.py collected.json draft.json OUTDIR [--live] [--run-url URL] [--run-id ID]
 
 Writes ``OUTDIR/digest.md`` (title and body, for reading) and ``OUTDIR/digest.json``
-(``title``, ``body`` for the post). Settings, values, links, dates and author
+(``title``, ``body`` for the deposit). Settings, values, links, dates and author
 names come from the collected data, never from the model text. Without ``--live``
-the body starts with the dry-run line, which stops the post step.
+the body starts with the dry-run line, which stops the deposit step.
 """
 
 from __future__ import annotations

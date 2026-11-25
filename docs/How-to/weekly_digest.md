@@ -2,9 +2,9 @@
 
 The weekly digest is a short post that tells the developers of the PROTEUS ecosystem (PROTEUS and its module repositories) what changed. It lists the pull requests merged since the last digest, the open pull requests that need review, and the new releases. For a repository without pull requests, it reads the commits to the default branch instead. Developers read it at the start of their weekly meeting on Tuesday, so a change that alters model results, or that every user must act on, does not stay hidden in a long list of pull requests.
 
-A GitHub Actions workflow in this repository writes the digest and, when posting is switched on, posts it to the FormingWorlds Discussions tab (the forum of a GitHub repository), in the category Weekly digest. This page is for people who run or change the workflow. It explains what the workflow does, how to make a dry run (a run that writes the digest and posts nothing), how to switch posting on or off, and what to do when a run is red.
+A GitHub Actions workflow in this repository writes the digest. A live run deposits it as the artifact `digest-live` (a file set of the run, kept 90 days), and a workflow in another repository copies it from there, for example into the issue of the weekly meeting. The workflow posts nothing itself. This page is for people who run or change the workflow. It explains what the workflow does, how to make a dry run (a run that writes the digest and deposits nothing), how to switch the deposit on or off, what a copy workflow can rely on, and what to do when a run is red.
 
-A language model drafts the text from the collected data. A script checks every entry before anything is posted: each pull request, release, commit, number and config key in an entry must come from the collected data.
+A language model drafts the text from the collected data. A script checks every entry before anything is deposited: each pull request, release, commit, number and config key in an entry must come from the collected data.
 
 The post opens with a summary of what the digest covers:
 
@@ -20,9 +20,11 @@ A dry run puts the line **Dry run: not posted.** before this summary. After the 
 
 ## What the workflow does
 
-The workflow is `.github/workflows/weekly-digest.yml`, with its scripts in `tools/digest/`. It runs every Monday at 22:23 UTC (23:23 in Amsterdam in winter, 00:23 on Tuesday in summer). You can also start it by hand. It has 3 jobs, shown in the Actions tab as `Collect pull requests, releases and facts`, `Draft the entries` and `Check, render and post`. This page calls them the collect job, the draft job and the check job (its job id in the workflow is `publish`). The check job checks the draft, renders it, and posts it only in a live run. It uploads its files as the artifact `digest`, a file set that you can download from the run page. A scheduled run and a manual run with the box **Post the digest** ticked and no window share one queue: a run waits while another runs, and a new run cancels a run that waits. Every other manual run runs on its own and cannot cancel a waiting scheduled run.
+The workflow is `.github/workflows/weekly-digest.yml`, with its scripts in `tools/digest/`. It runs every Monday at 22:23 UTC (23:23 in Amsterdam in winter, 00:23 on Tuesday in summer). You can also start it by hand. It has 3 jobs, shown in the Actions tab as `Collect pull requests, releases and facts`, `Draft the entries` and `Check, render and deposit`. This page calls them the collect job, the draft job and the check job (its job id in the workflow is `publish`). The check job checks the draft, renders it, and deposits it only in a live run. It uploads its files as the artifact `digest`, a file set that you can download from the run page; this artifact is not the publication. A scheduled run and a manual run with the box **Deposit the live digest** ticked and no window share one queue: a run waits while another runs, and a new run cancels a run that waits. Every other manual run runs on its own and cannot cancel a waiting scheduled run.
 
-A digest covers a window of time. The window starts where the window of the last digest post ended. `collect.py` reads that time from a hidden state marker (an HTML comment) at the end of the post. The state marker holds the window end and the run id. `collect.py` trusts only a state marker in a post by the login (GitHub user name) `github-actions`, the account the workflow posts as. The window ends at the time of the run. With no earlier post, the window is the last 7 days. A window that you set by hand, with a start or an end, is back-dated, and a back-dated run never posts.
+A digest covers a window of time. The window starts where the window of the last live digest ended. `collect.py` lists the artifacts `digest-live` of this repository and keeps those that are not expired and whose run is a successful scheduled or manual run of this workflow on `main` of this repository. It reads the window end from `digest.json` in each of them, only when the file says `live: true`, and takes the latest window end. Anybody who can open a pull request can upload an artifact with that name, so the run is checked, not the name.
+
+While no live digest exists, the window starts at the hidden state marker (an HTML comment) at the end of the newest post by the login (GitHub user name) `github-actions` in the Discussions category Weekly digest, where earlier digests were posted. A marker that ends more than 35 days before the run is not used. With neither, the window is the last 7 days. The window ends at the time of the run. A window that you set by hand, with a start or an end, is back-dated, and a back-dated run never deposits.
 
 ### Collect the data
 
@@ -75,7 +77,7 @@ Each entry has an action flag, which the model sets when every user must act on 
 
 ### Check the draft
 
-`check.py` checks the corrected draft. The run fails, and nothing is posted, if one of the conditions below is true.
+`check.py` checks the corrected draft. The run fails, and nothing is deposited, if one of the conditions below is true.
 
 #### Checks on citations and form
 
@@ -115,7 +117,7 @@ How the check reads numbers:
 
 #### Warnings
 
-The check gives a warning when an entry states the old value of a cited config key change as the current value. A warning does not stop the run, and the post goes out. A sentence gives a warning when it names the config key and one of these is true:
+The check gives a warning when an entry states the old value of a cited config key change as the current value. A warning does not stop the run, and the digest is deposited. A sentence gives a warning when it names the config key and one of these is true:
 
 - an assignment ("is now", "set to", "becomes", "equals", "uses") stands directly before the old value, and the new value is absent or marked as old ("from", "not", "instead of");
 - the sentence reads "from" the new value "to" the old value.
@@ -134,32 +136,57 @@ The check prints each failure as one line, `FAIL` and a quoted JSON string, so e
 - The title is the date of the Tuesday of the week (Monday to Sunday, Amsterdam time) in which the window ends. The scheduled Monday run takes the next day. A run from Tuesday to Sunday takes the Tuesday that is already past, the meeting of its own week.
 - A body longer than 65,536 characters stops the run.
 
-### Post it once
+### Deposit it once
 
-The post step runs only in a live run, a run that is allowed to post (see [Switch posting on or off](#switch-posting-on-or-off)). Before it posts, `post.py` repeats every guard:
+The deposit step runs only in a live run, a run that is allowed to deposit (see [Switch the deposit on or off](#switch-the-deposit-on-or-off)). Before it deposits, `post.py` repeats every guard:
 
-- posting is switched on;
+- the deposit is switched on;
+- the run is on the branch `main`;
 - the window is not back-dated;
-- the run is scheduled, or its box **Post the digest** is ticked;
+- the run is scheduled, or its box **Deposit the live digest** is ticked;
 - the draft passes `check.py`;
 - the body is not a dry run;
 - the final body links only to the collected pull requests, releases, commits and docs pages, the run, the repositories and the profiles of the authors, and mentions nobody.
 
-`post.py` makes at most one post per meeting. It reads the newest digest post, and skips posting when that post has the same workflow run id (the number of the Actions run, which a rerun keeps), the same title, or a window end that is the same as or later than the window end of this run:
+`post.py` then writes `digest.json` and `digest.md` to `live/`, and the workflow uploads them as the artifact `digest-live`, kept 90 days. This upload is the last step of the run.
+
+`post.py` deposits at most one live digest per run and per meeting. It reads the newest live digest as `collect.py` does, and deposits nothing when that digest has the same workflow run id (the number of the Actions run, which a rerun keeps), the same title, or a window end that is the same as or later than the window end of this run. It also deposits nothing when its own run already holds `digest-live`. During a rerun the earlier attempt is not a finished run, so this second rule is what stops a rerun.
 
 | Situation | Result |
 | --- | --- |
-| Rerun of failed jobs or of all jobs of the run that made the newest post, on any day | No second post |
-| Second manual run for the same meeting | No second post |
-| Rerun of the failed jobs of an older run after a newer post | No post, so the next window does not move back |
-| Rerun of all jobs of an older run | It collects a new window from the newest post and posts for the meeting of its week, unless that meeting has a post |
-| Manual run on a Monday before the scheduled run | It takes the title of the scheduled run, which then posts nothing; the next window starts at the end of the manual run, so no pull request is left out |
+| Rerun of failed jobs or of all jobs of a run that deposited, on any day | Nothing deposited |
+| Second manual live run for the same meeting | Nothing deposited |
+| Rerun of the failed jobs of an older run after a newer live digest | Nothing deposited, so the next window does not move back |
+| Rerun of all jobs of an older run that deposited nothing | It collects a new window from the newest live digest and deposits for the meeting of its week, unless that meeting has a live digest |
+| Manual run on a Monday before the scheduled run | It takes the title of the scheduled run, which then deposits nothing; the next window starts at the end of the manual run, so no pull request is left out |
 
-A skipped post gives a notice annotation on the run page, and the run stays green. After `post.py` creates the post, it checks the author in the answer of GitHub (see [If a run is red](#if-a-run-is-red)).
+A skipped deposit gives a notice annotation on the run page, and the run stays green.
+
+### For a workflow that copies the digest
+
+A workflow in another repository finds the newest live digest in 3 steps:
+
+1. List the artifacts with `GET https://api.github.com/repos/FormingWorlds/PROTEUS/actions/artifacts?name=digest-live`. GitHub sorts them by artifact id, which is close to, but not always the same as, the order of creation.
+2. Keep the entries with `expired` false, `workflow_run.head_branch` equal to `main`, and `workflow_run.head_repository_id` equal to `workflow_run.repository_id`. For the full check of `collect.py`, also read `GET https://api.github.com/repos/FormingWorlds/PROTEUS/actions/runs/<workflow_run.id>` and require the path `.github/workflows/weekly-digest.yml`, the event `schedule` or `workflow_dispatch`, and the conclusion `success`.
+3. Download the `archive_download_url` of each entry kept, read `digest.json`, and take the one with the latest `until`. The download needs a token that can read this repository, also though the repository is public.
+
+`digest.json` holds:
+
+| Field | Meaning |
+| --- | --- |
+| `live` | Always `true`; a dry run uploads no `digest-live` |
+| `run_id` | The number of the Actions run |
+| `run_url` | The page of the run; a copy can use it to skip a digest that it already copied |
+| `event` | `schedule` or `workflow_dispatch` |
+| `since`, `until` | The window, UTC |
+| `title` | The title, with the date of the Tuesday meeting |
+| `body` | The digest as markdown |
+
+`digest.md` holds the same body. The body has no `@` mentions (people are links to their profiles) and ends with the state marker, which a copy can drop.
 
 ## Make a dry run
 
-A manual run with all inputs empty and the box **Post the digest** unticked is a dry run of the current window. To make a dry run for a past window:
+A manual run with all inputs empty and the box **Deposit the live digest** unticked is a dry run of the current window. To make a dry run for a past window:
 
 1. Open the Actions tab and select **Weekly ecosystem digest**.
 2. Click **Run workflow**.
@@ -168,7 +195,7 @@ A manual run with all inputs empty and the box **Post the digest** unticked is a
 
 The artifact `digest` holds `collected.json`, `draft.json` and `check.txt`. If the check passes, it also holds `out/digest.md`, and the digest also appears in the job summary. If the check fails, there is no `out/digest.md`: read `check.txt` or the job summary instead.
 
-A run with a window start or end never posts. A dry run does not scan the final body for links: the scan runs only in the post step, on the live body. You can run the same scripts locally with a token that can read public repositories:
+A run with a window start or end never deposits. A dry run does not scan the final body for links: the scan runs only in the deposit step, on the live body. You can run the same scripts locally with a token that can read public repositories:
 
 ```bash
 export GITHUB_TOKEN=$(gh auth token)
@@ -181,30 +208,29 @@ python tools/digest/render.py collected.json draft.json out
 
 The draft step needs the `claude` command line and either a signed-in `claude` session or `CLAUDE_CODE_OAUTH_TOKEN`. Read the result in `out/digest.md`.
 
-## Switch posting on or off
+## Switch the deposit on or off
 
-`publish` in `tools/digest/repos.toml` controls posting:
+`publish` in `tools/digest/repos.toml` controls the deposit:
 
 - `publish = false`: every run is a dry run.
-- `publish = true`: the scheduled run posts. A manual run posts only when its box **Post the digest** is ticked and no window is given.
+- `publish = true`: the scheduled run deposits. A manual run on `main` deposits only when its box **Deposit the live digest** is ticked and no window is given.
 
-To switch posting on:
+To switch the deposit on:
 
 1. Check that the repository secret `CLAUDE_CODE_OAUTH_TOKEN` exists. The draft job needs it.
-2. Check that the Discussions category with the slug in `category` exists in the PROTEUS repository. A run that posts fails without it.
-3. Set `publish = true` in a pull request.
+2. Set `publish = true` in a pull request.
 
-To add or remove a repository, edit `repos` in the same file. Each repository must be public and must not be archived, and no two repositories may have the same name after the slash. The first repository in the list receives the post, so keep `FormingWorlds/PROTEUS` first.
+To add or remove a repository, edit `repos` in the same file. Each repository must be public and must not be archived, and no two repositories may have the same name after the slash. The first repository in the list is the repository of the workflow, whose live digests start the window, so keep `FormingWorlds/PROTEUS` first.
 
 ## If a run is red
 
 If the collect job or the draft job is red, the check job does not run and there is no `check.txt`. Open the log of that job: the collect job names each open pull request that it left out, and the draft job prints the error text of the model call.
 
-If the check job is red before the post step, nothing is posted. Read the check lines in the job summary, or open `check.txt` in the artifact `digest` (see [Make a dry run](#make-a-dry-run)).
+If the check job is red before the deposit step, nothing is deposited. Read the check lines in the job summary, or open `check.txt` in the artifact `digest` (see [Make a dry run](#make-a-dry-run)).
 
-If the post step is red with `not posted:`, nothing is posted, and the message names each failed guard. For link problems, the log has one `Link problem:` line for each link or mention in the final body that the collected data does not allow. The check stops such text earlier, so a link problem means a gap in `check.py`: read `out/digest.md` in the artifact `digest`.
+If the deposit step is red with `not deposited:`, nothing is deposited, and the message names each failed guard. For link problems, the log has one `Link problem:` line for each link or mention in the final body that the collected data does not allow. The check stops such text earlier, so a link problem means a gap in `check.py`: read `out/digest.md` in the artifact `digest`.
 
-A run that fails in the post step after GitHub created the post is red, and the post stays. A run is also red when the author of the post is not `github-actions`: the next run would not find that post, and a rerun of this run posts again. Look at the category before you start the run again.
+A run that fails after the deposit step, in the upload of `digest-live`, deposits nothing. The next run starts at the window end of the last live digest, so no pull request is left out.
 
 ## Sections of a digest
 
@@ -231,8 +257,8 @@ Each entry ends with the authors of its pull requests, releases and commits, eac
 
 | Setting | Meaning |
 | --- | --- |
-| `publish` | `true` to post, `false` for dry runs only |
-| `category` | Slug of the discussion category; a run that posts fails if it does not exist |
+| `publish` | `true` to deposit live digests, `false` for dry runs only |
+| `category` | Slug of the discussion category whose newest post by `github-actions` starts the window while no live digest exists |
 | `model` | Model that drafts the entries |
 | `max_bodies` | Number of the largest pull requests (by changed lines) whose text the model reads; the others give their titles only. From 0 to 500 |
 | `body_chars` | Characters kept of each pull-request or release text. From 1 to 20000 |

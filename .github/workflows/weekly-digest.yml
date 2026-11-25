@@ -16,7 +16,7 @@ on:
         description: 'Window end (ISO date or time, UTC); setting it makes a back-dated dry run'
         required: false
       post:
-        description: 'Deposit the live digest (only on main, with publish = true and a window that is not back-dated)'
+        description: 'Deposit the live digest'
         type: boolean
         default: false
 
