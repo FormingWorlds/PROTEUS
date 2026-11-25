@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip('hypothesis')
-from hypothesis import given, settings  # noqa: E402
+from hypothesis import example, given, settings  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(60)]
@@ -3576,6 +3576,10 @@ def test_settings_reject_bad_commit_settings(key, bad):
 
 @settings(max_examples=200, deadline=None)
 @given(st.integers(-1000, 1000))
+@example(0)
+@example(1)
+@example(100)
+@example(101)
 def test_settings_take_max_commits_from_1_to_100(n):
     """Every int from 1 to 100 is a valid cap, and no other int."""
     try:
@@ -3685,7 +3689,7 @@ def test_collect_commits_returns_the_releases_of_the_window():
     _, releases, _ = collect.collect_commits(
         _FakeGH([page]), PALEOS, {'since': SINCE, 'until': UNTIL}, 9
     )
-    assert [r['ref'] for r in releases] == ['PALEOS@1.0.0']
+    assert [r and r['ref'] for r in releases] == ['PALEOS@1.0.0']
 
 
 def test_collect_commits_marks_a_full_file_page_as_cut():
@@ -3707,8 +3711,13 @@ def test_collect_commits_marks_a_full_file_page_as_cut():
 )
 def test_collect_commits_refuses_a_private_missing_or_empty_repository(page):
     """No public default branch is an error, as for a repository with pull requests."""
-    with pytest.raises(common.DigestError, match='PALEOS is not a public, active repository'):
+    try:
         collect.collect_commits(_FakeGH([page]), PALEOS, {'since': SINCE, 'until': UNTIL}, 100)
+        err = None
+    except Exception as exc:
+        err = exc
+    assert isinstance(err, common.DigestError), repr(err)
+    assert 'PALEOS is not a public, active repository' in str(err)
 
 
 def test_commit_query_asks_the_history_of_the_default_branch():
@@ -3719,6 +3728,7 @@ def test_commit_query_asks_the_history_of_the_default_branch():
         'oid url committedDate messageHeadline messageBody additions deletions',
         'parents(first: 2) { totalCount nodes { oid } }',
         'author { user { login __typename } }',
+        'isPrivate isArchived defaultBranchRef { target {',
         'releases(first: 20, orderBy: {field: CREATED_AT, direction: DESC})',
     ):
         assert query.count(part) == 1, part
@@ -3760,7 +3770,11 @@ def test_collect_reads_a_commits_only_repository_by_its_commits():
     gh = _FakeGH(
         [_janus(), _cpage([node], total=4, releases=[_rnode('1.0.0', window['since'])])]
     )
-    out = collect.collect(gh, settings_, window)
+    try:
+        out = collect.collect(gh, settings_, window)
+    except Exception as err:
+        out = repr(err)
+    assert isinstance(out, dict), out
     assert gh.queries[1]['max'] == 2 and 'PALEOS@1.0.0' in [r['ref'] for r in out['releases']]
     assert [c['ref'] for c in out['commits']] == ['PALEOS:c1']
     got = out['commits'][0]
@@ -3769,6 +3783,8 @@ def test_collect_reads_a_commits_only_repository_by_its_commits():
     assert [p['ref'] for p in out['prs']] == ['JANUS#105', 'JANUS#104', 'JANUS#103']
     out = collect.collect(_FakeGH([_janus(), _cpage([node])]), settings_, window)
     assert out['commits_left_out'] == {}
+    out = collect.collect(_FakeGH([_janus(), _cpage([node], total=2)]), settings_, window)
+    assert out['commits_left_out'] == {PALEOS: 1}
 
 
 def test_collect_main_lists_the_commits_and_the_cut(tmp_path, monkeypatch, capsys):
@@ -3791,7 +3807,9 @@ def test_collect_main_lists_the_commits_and_the_cut(tmp_path, monkeypatch, capsy
     assert collect.main([*args, '--summary', str(summary)]) == 0
     printed = capsys.readouterr().out.splitlines()
     assert printed.count(f'Commit PALEOS:c1 {_oid(1)} 2026-11-05T00:00:00Z') == 1
-    assert summary.read_text() == f'<pre>\nCommits left out of {PALEOS}: 3\n</pre>\n'
+    assert summary.exists() and summary.read_text() == (
+        f'<pre>\nCommits left out of {PALEOS}: 3\n</pre>\n'
+    )
 
 
 @pytest.mark.parametrize(
@@ -3804,6 +3822,7 @@ def test_collect_main_lists_the_commits_and_the_cut(tmp_path, monkeypatch, capsy
         ({'logins': ['bob']}, 'login bob is not an author of a cited item'),
         ({'text': 'Now 4 generators.'}, 'number 4 is in no cited source'),
         ({'commits': []}, 'cites no pull request, release or commit'),
+        ({'section': 'data', 'commits': []}, 'cites no pull request, release or commit'),
     ],
 )
 def test_check_fails_closed_on_commits(change, message):
@@ -3877,7 +3896,7 @@ def test_model_input_gives_each_commit_without_its_id_or_url():
     """The model gets the ref, title, body, author and size of a commit, no id and no URL."""
     got = draft.model_input(_cdata())
     c = _commit()
-    assert got['commits'] == [{k: c[k] for k in ('ref', 'title', 'body', 'author', 'size')}]
+    assert got.get('commits') == [{k: c[k] for k in ('ref', 'title', 'body', 'author', 'size')}]
     assert _oid(1) not in json.dumps(got) and 'github.com' not in json.dumps(got)
 
 
@@ -3893,11 +3912,19 @@ def test_prompt_and_schema_name_the_commit_list():
         == 1
     )
     assert prompt.count('the authors of the cited pull requests, releases and commits') == 1
+    assert (
+        prompt.count(
+            'the commits of the window to the default branch of repositories without pull '
+            'requests (`commits`)'
+        )
+        == 1
+    )
+    assert prompt.count('`prs`, `releases`, `commits` and `facts`, never in `text`') == 1
     assert prompt.count('in the title or body of a cited pull request, release or commit') == 1
     item = json.loads((_ROOT / 'tools' / 'digest' / 'entry_schema.json').read_text())
     item = item['properties']['entries']['items']
     assert 'commits' in item['required']
-    assert item['properties']['commits'] == {'type': 'array', 'items': {'type': 'string'}}
+    assert item['properties'].get('commits') == {'type': 'array', 'items': {'type': 'string'}}
 
 
 def test_render_links_each_commit_with_its_short_id_and_author():
@@ -3954,3 +3981,68 @@ def test_attach_facts_reads_the_tracked_files_of_a_commit():
     assert [(f['id'], f['pr'], f['key'], f['new']) for f in data['facts']] == [
         ('F1', 'PALEOS:c1', 'dependencies:numpy', '>=2')
     ]
+
+
+@pytest.mark.parametrize('bad', [[3], [None], [(PALEOS,)]])
+def test_settings_refuse_a_commits_only_item_that_is_not_a_name(bad):
+    """A commits_only item that is not a string fails the type rule, not only the repos rule."""
+    with pytest.raises(common.DigestError, match='setting commits_only is missing or invalid'):
+        common.validate_settings({**_VALID, 'commits_only': bad})
+
+
+def test_collect_reads_every_commits_only_repository_and_cuts_long_titles():
+    """Two commits-only repositories give the commits of both; a title is cut to 300 characters."""
+    other = 'FormingWorlds/ZZ'
+    settings_ = {
+        **_VALID,
+        'repos': [PALEOS, other],
+        'commits_only': [PALEOS, other],
+        'docs': {},
+    }
+    window = {'since': SINCE, 'until': UNTIL}
+    pages = [
+        _cpage([_cnode(_oid(1), SINCE, headline='y' * 400)]),
+        _cpage([_cnode(_oid(2), SINCE)]),
+    ]
+    out = collect.collect(_FakeGH(pages), settings_, window)
+    assert [c['ref'] for c in out['commits']] == ['PALEOS:c1', 'ZZ:c1']
+    assert out['commits'][0]['title'] == 'y' * 300
+
+
+def test_render_results_row_gives_the_first_date_of_its_items():
+    """A results row that cites commits of two dates shows the earlier date."""
+    data = _cdata()
+    data['commits'].append(_commit('PALEOS:c2', committed_at='2026-09-20T00:00:00Z'))
+    entry = _centry(section='results', commits=['PALEOS:c2', 'PALEOS:c1'], title='Two commits')
+    body, _ = _render(_draft(entry), data)
+    row = next(line for line in body.splitlines() if line.startswith('| Two commits |'))
+    assert '| 10 Sep |' in row and '20 Sep' not in row
+
+
+def test_render_links_docs_pages_only_in_capabilities_not_in_data():
+    """A data entry of a pull request with docs pages gets no Docs line; a capability entry does."""
+    page = {'path': 'How-to/p0', 'url': 'https://proteus-framework.org/PROTEUS/How-to/p0.html'}
+    data = _data(prs=[_pr(docs=[page])], fact_list=[])
+    for section, want in (('data', 0), ('capabilities', 1)):
+        body, _ = _render(_draft(_entry(section=section, facts=[], title='D')), data)
+        assert body.count('Docs: [How-to/p0]') == want, (section, body)
+
+
+def test_render_disclaimer_asks_to_check_every_linked_item():
+    """The disclaimer covers pull requests, releases and commits alike."""
+    body, _ = _render(_draft(_entry()))
+    assert body.count('check the linked items before you act on it.') == 1
+
+
+@pytest.mark.parametrize(
+    ('item', 'want'),
+    [
+        ({'author': 'dependabot', 'author_kind': 'Bot', 'oid': _oid(1)}, '`dependabot`'),
+        ({'author': 'dependabot', 'author_kind': 'User', 'oid': _oid(1)}, '`dependabot`'),
+        ({'author': '', 'author_kind': None}, 'unknown'),
+        ({'author': None, 'author_kind': None, 'oid': _oid(1)}, 'unknown'),
+    ],
+)
+def test_author_link_of_a_bot_commit_or_an_empty_login(item, want):
+    """A bot that authored a commit is a code span; an empty or missing login is unknown."""
+    assert render.author_link(item, ['dependabot']) == want
