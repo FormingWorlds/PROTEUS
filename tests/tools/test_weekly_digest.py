@@ -4143,3 +4143,207 @@ def test_attach_facts_reads_a_tracked_file_of_a_commit_without_a_file_list():
     assert [(f['pr'], f['key'], f['new']) for f in data['facts']] == [
         ('PALEOS:c1', 'dependencies:numpy', '>=2')
     ]
+
+
+FWL = 'FormingWorlds/fwl-io'
+MANIFEST = 'src/fwl_io/data/shared_manifest.toml'
+REGISTRY = 'src/fwl_io/data/interior.eos.paleos_iron.registry.txt'
+_MAN_OLD = """[meta]
+version = 3
+
+[interior.eos.paleos_iron]
+name = "PALEOS iron equation of state"
+zenodo = "10.5281/zenodo.1"
+dataverse = "10.34894/A"
+files = ["iron.dat"]
+required_by = ["zalmoxis"]
+
+[interior.eos.seager_2007]
+name = "Seager"
+zenodo = "10.5281/zenodo.7"
+"""
+
+
+def _man(**over):
+    text = _MAN_OLD
+    for old, new in over.items():
+        text = text.replace(old, new)
+    return text
+
+
+def test_settings_track_both_manifests_and_the_paleos_registries():
+    """Every dataset of both manifests and the file sums of the 4 PALEOS datasets are tracked."""
+    reg = [
+        f'src/fwl_io/data/interior.eos.paleos_{n}.registry.txt'
+        for n in ('iron', 'mgsio3', 'mgsio3_unified', 'h2o')
+    ]
+    assert _VALID['tracked'][FWL] == [MANIFEST, *reg]
+    assert (
+        'src/proteus/data/proteus_manifest.toml' in _VALID['tracked']['FormingWorlds/PROTEUS']
+    )
+
+
+def test_manifest_map_keeps_the_source_fields_of_each_dataset():
+    """A dataset is a table with a zenodo DOI; its name and users are not compared."""
+    assert facts.manifest_map(_MAN_OLD) == {
+        'interior.eos.paleos_iron': {
+            'zenodo': '10.5281/zenodo.1',
+            'dataverse': '10.34894/A',
+            'files': ['iron.dat'],
+        },
+        'interior.eos.seager_2007': {'zenodo': '10.5281/zenodo.7'},
+    }
+    assert facts.manifest_map(None) == {}
+
+
+def test_registry_map_reads_one_sum_per_file():
+    """Each line names a file and its sum; blank and comment lines are skipped."""
+    text = '# sums\n\niron.dat md5:aa\nwater.dat md5:bb\n'
+    assert facts.registry_map(text, REGISTRY) == {
+        'interior.eos.paleos_iron:iron.dat': {'value': 'md5:aa'},
+        'interior.eos.paleos_iron:water.dat': {'value': 'md5:bb'},
+    }
+    assert facts.registry_map(None, REGISTRY) == {}
+
+
+@pytest.mark.parametrize('line', ['iron.dat', 'iron.dat md5:aa extra', 'iron.dat aa'])
+def test_registry_map_refuses_a_line_that_is_not_a_file_and_a_sum(line):
+    """A malformed registry line is an unreadable file, not a silent empty map."""
+    with pytest.raises(ValueError, match='registry line'):
+        facts.registry_map(line + '\n', REGISTRY)
+
+
+@settings(max_examples=300, deadline=None)
+@given(st.text(alphabet=' \tabc.:#5\n', max_size=40))
+def test_registry_map_gives_a_map_or_a_value_error(text):
+    """Any text gives a map of the registry stem or a ValueError, nothing else."""
+    try:
+        out = facts.registry_map(text, REGISTRY)
+    except ValueError:
+        return
+    assert all(k.startswith('interior.eos.paleos_iron:') for k in out)
+    assert all(v['value'].startswith('md5:') for v in out.values())
+
+
+@pytest.mark.parametrize(
+    ('new', 'want'),
+    [
+        (
+            _man(**{'zenodo.1"': 'zenodo.2"'}),
+            [
+                (
+                    'dataset',
+                    'zenodo',
+                    'interior.eos.paleos_iron',
+                    '10.5281/zenodo.1',
+                    '10.5281/zenodo.2',
+                )
+            ],
+        ),
+        (
+            _man(**{'34894/A': '34894/B'}),
+            [('dataset', 'dataverse', 'interior.eos.paleos_iron', '10.34894/A', '10.34894/B')],
+        ),
+        (
+            _man(**{'["iron.dat"]': '["iron2.dat"]'}),
+            [('dataset', 'files', 'interior.eos.paleos_iron', ['iron.dat'], ['iron2.dat'])],
+        ),
+        (_man(**{'"Seager"': '"Seager et al."', 'version = 3': 'version = 4'}), []),
+        (
+            _MAN_OLD + '\n[interior.eos.new]\nzenodo = "10.5281/zenodo.9"\n',
+            [('dataset list', 'added', 'interior.eos.new', None, None)],
+        ),
+        (
+            _MAN_OLD.split('[interior.eos.seager_2007]')[0],
+            [('dataset list', 'removed', 'interior.eos.seager_2007', None, None)],
+        ),
+    ],
+    ids=['zenodo', 'dataverse', 'files', 'name-and-meta', 'added', 'removed'],
+)
+def test_diff_file_gives_dataset_facts_from_a_manifest(new, want):
+    """A changed source of a dataset is a dataset fact; an added or removed dataset is a list fact."""
+    got = facts.diff_file(MANIFEST, _MAN_OLD, new)
+    assert [(f['kind'], f['change'], f['key'], f['old'], f['new']) for f in got] == want
+    assert all(f['file'] == MANIFEST for f in got)
+
+
+def test_diff_file_gives_dataset_file_facts_from_a_registry():
+    """A changed sum is a dataset file fact; a file added to a registry is a list fact."""
+    got = facts.diff_file(REGISTRY, 'iron.dat md5:aa\n', 'iron.dat md5:bb\nnew.dat md5:cc\n')
+    assert [(f['kind'], f['change'], f['key'], f['old'], f['new']) for f in got] == [
+        ('dataset file', 'value', 'interior.eos.paleos_iron:iron.dat', 'md5:aa', 'md5:bb'),
+        ('dataset list', 'added', 'interior.eos.paleos_iron:new.dat', None, 'md5:cc'),
+    ]
+
+
+def test_known_keys_name_the_datasets_of_a_manifest():
+    """The key check knows each dataset by its manifest key, not by its name or users."""
+    gh = _FakeGH(
+        files={(FWL, MANIFEST, None): _MAN_OLD, (FWL, REGISTRY, None): 'iron.dat md5:aa\n'}
+    )
+    keys = facts.known_keys(gh, {'tracked': {FWL: [MANIFEST, REGISTRY]}}, [])
+    assert keys == {
+        'interior.eos.paleos_iron',
+        'interior.eos.seager_2007',
+        'interior.eos.paleos_iron:iron.dat',
+    }
+
+
+def test_attach_facts_reads_a_new_paleos_version_from_an_fwl_io_pull_request():
+    """An fwl-io pull request that changes the PALEOS DOI gives a dataset fact cited by its ref."""
+    pr = _pr('fwl-io#90', files=[MANIFEST])
+    files = {
+        (FWL, MANIFEST, 'p1'): _MAN_OLD,
+        (FWL, MANIFEST, 'm1'): _man(**{'zenodo.1"': 'zenodo.2"'}),
+    }
+    data = {'prs': [pr]}
+    facts.attach_facts(_FakeGH(files=files), data, {'tracked': {FWL: [MANIFEST]}})
+    assert [(f['id'], f['pr'], f['kind'], f['key']) for f in data['facts']] == [
+        ('F1', 'fwl-io#90', 'dataset', 'interior.eos.paleos_iron')
+    ]
+
+
+def _dataset_case(kind, change):
+    fact = {
+        **_fact(pr='fwl-io#90', key='interior.eos.paleos_iron'),
+        'file': MANIFEST,
+        'kind': kind,
+        'change': change,
+        'old': '10.5281/zenodo.1' if change == 'zenodo' else None,
+        'new': '10.5281/zenodo.2' if change == 'zenodo' else None,
+    }
+    data = _data(prs=[_pr('fwl-io#90')], fact_list=[fact])
+    data['repos'] = [*data['repos'], FWL]
+    entry = _entry(
+        prs=['fwl-io#90'], title='New PALEOS tables', text='The iron tables are new.'
+    )
+    return data, entry
+
+
+def test_check_takes_a_changed_dataset_in_results_but_not_an_added_one():
+    """A new version of a dataset changes results; a dataset that is only added does not."""
+    data, entry = _dataset_case('dataset', 'zenodo')
+    assert check.check(data, _draft(entry)) == []
+    data, entry = _dataset_case('dataset list', 'added')
+    fails = check.check(data, _draft(entry))
+    assert any('a results entry cites no fact or release' in f for f in fails), fails
+    entry['section'] = 'data'
+    assert check.check(data, _draft(entry)) == []
+
+
+def test_render_prints_a_dataset_fact_with_its_field():
+    """A dataset fact reads as the dataset, the field and the old and new value."""
+    data, entry = _dataset_case('dataset', 'zenodo')
+    body, _ = _render(_draft(entry), data)
+    assert '`interior.eos.paleos_iron` zenodo: `10.5281/zenodo.1` → `10.5281/zenodo.2`' in body
+
+
+def test_prompt_puts_a_changed_dataset_in_results_and_an_added_one_not():
+    """The prompt says which dataset facts change results."""
+    prompt = (_ROOT / 'tools' / 'digest' / 'prompt.md').read_text()
+    want = (
+        'A fact of kind `dataset` or `dataset file` is a new version of a data table that runs '
+        'download, so it changes results. A fact of kind `dataset list` (a dataset or a file '
+        'added or removed) does not, and it cannot be the only fact of a `results` entry.'
+    )
+    assert prompt.count(want) == 1
