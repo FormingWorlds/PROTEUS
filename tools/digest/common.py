@@ -214,10 +214,10 @@ class GitHub:
         )
         return None if raw is None else raw.decode()
 
-    def commit_files(self, repo: str, oid: str) -> list[dict]:
-        """Changed files of one commit, at most 300 (one REST page); a missing commit gives none."""
+    def commit_files(self, repo: str, oid: str) -> list[dict] | None:
+        """Changed files of one commit, at most 300 (one REST page); None for a missing commit."""
         raw = self._request(f'{API}/repos/{repo}/commits/{oid}')
-        return json.loads(raw).get('files', []) if raw is not None else []
+        return json.loads(raw).get('files', []) if raw is not None else None
 
 
 def find_category(gh: GitHub, home: str, slug: str) -> tuple[str, str | None]:

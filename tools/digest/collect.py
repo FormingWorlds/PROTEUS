@@ -298,9 +298,13 @@ def collect_commits(gh: GitHub, repo: str, window: dict, cap: int) -> tuple[list
     for i, c in enumerate(commits, 1):
         files = gh.commit_files(repo, c['oid'])
         c['ref'] = f'{short_name(repo)}:c{i}'
-        c['files'] = [f['filename'] for f in files]
-        c['deleted'] = [f['filename'] for f in files if f['status'] == 'removed']
-        c['files_truncated'] = len(files) >= REST_FILES
+        if files is None:
+            print(
+                f'Commit {c["ref"]} {c["oid"]}: no file list from GitHub; facts read every tracked file'
+            )
+        c['files'] = [f['filename'] for f in files or []]
+        c['deleted'] = [f['filename'] for f in files or [] if f['status'] == 'removed']
+        c['files_truncated'] = files is None or len(files) >= REST_FILES
     releases = [release_record(repo, n, since, until) for n in data['releases']['nodes']]
     return commits, [r for r in releases if r], history['totalCount'] - len(history['nodes'])
 
