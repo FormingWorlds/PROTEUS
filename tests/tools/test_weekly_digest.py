@@ -4198,15 +4198,21 @@ def test_manifest_map_keeps_the_source_fields_of_each_dataset():
 
 def test_registry_map_reads_one_sum_per_file():
     """Each line names a file and its sum; blank and comment lines are skipped."""
-    text = '# sums\n\niron.dat md5:aa\nwater.dat md5:bb\n'
-    assert facts.registry_map(text, REGISTRY) == {
+    text = '# sums\n\n  # indented\niron.dat md5:aa\nwater.dat md5:bb\n'
+    try:
+        got = facts.registry_map(text, REGISTRY)
+    except ValueError as err:
+        got = repr(err)
+    assert got == {
         'interior.eos.paleos_iron:iron.dat': {'value': 'md5:aa'},
         'interior.eos.paleos_iron:water.dat': {'value': 'md5:bb'},
     }
     assert facts.registry_map(None, REGISTRY) == {}
 
 
-@pytest.mark.parametrize('line', ['iron.dat', 'iron.dat md5:aa extra', 'iron.dat aa'])
+@pytest.mark.parametrize(
+    'line', ['iron.dat', 'iron.dat md5:aa extra', 'iron.dat aa', 'iron.dat md5aa']
+)
 def test_registry_map_refuses_a_line_that_is_not_a_file_and_a_sum(line):
     """A malformed registry line is an unreadable file, not a silent empty map."""
     with pytest.raises(ValueError, match='registry line'):
@@ -4257,8 +4263,27 @@ def test_registry_map_gives_a_map_or_a_value_error(text):
             _MAN_OLD.split('[interior.eos.seager_2007]')[0],
             [('dataset list', 'removed', 'interior.eos.seager_2007', None, None)],
         ),
+        (
+            _man(**{'34894/A': '34894/B', 'zenodo.1"': 'zenodo.2"'}),
+            [
+                (
+                    'dataset',
+                    'zenodo',
+                    'interior.eos.paleos_iron',
+                    '10.5281/zenodo.1',
+                    '10.5281/zenodo.2',
+                ),
+                (
+                    'dataset',
+                    'dataverse',
+                    'interior.eos.paleos_iron',
+                    '10.34894/A',
+                    '10.34894/B',
+                ),
+            ],
+        ),
     ],
-    ids=['zenodo', 'dataverse', 'files', 'name-and-meta', 'added', 'removed'],
+    ids=['zenodo', 'dataverse', 'files', 'name-and-meta', 'added', 'removed', 'two-fields'],
 )
 def test_diff_file_gives_dataset_facts_from_a_manifest(new, want):
     """A changed source of a dataset is a dataset fact; an added or removed dataset is a list fact."""
@@ -4348,3 +4373,31 @@ def test_prompt_puts_a_changed_dataset_in_results_and_an_added_one_not():
         'added or removed) does not, and it cannot be the only fact of a `results` entry.'
     )
     assert prompt.count(want) == 1
+
+
+@pytest.mark.parametrize(
+    ('path', 'kind'),
+    [
+        ('docs/Reference/config/config_schema.json', 'config'),
+        ('docs/Reference/output_schema.json', 'output column'),
+        ('pyproject.toml', 'dependency'),
+        ('Project.toml', 'dependency'),
+        ('manifest.toml', 'dataset'),
+        (MANIFEST, 'dataset'),
+        (REGISTRY, 'dataset file'),
+        ('input/default.toml', 'config'),
+        ('docs/notes.txt', 'config'),
+    ],
+)
+def test_parser_picks_the_fact_kind_by_path(path, kind):
+    """The path of a tracked file sets the kind of its facts."""
+    assert facts.parser(path)[0] == kind
+
+
+def test_an_added_key_outside_a_manifest_keeps_its_kind():
+    """Only a dataset or registry file that is added or removed is a dataset list fact."""
+    got = facts.diff_file('input/default.toml', '[a]\nx = 1\n', '[a]\nx = 1\ny = 2\n')
+    assert [(f['kind'], f['change'], f['key']) for f in got] == [('config', 'added', 'a.y')]
+    old, new = '[project]\ndependencies = []\n', '[project]\ndependencies = ["numpy>=2"]\n'
+    got = facts.diff_file('pyproject.toml', old, new)
+    assert [(f['kind'], f['change']) for f in got] == [('dependency', 'added')]
