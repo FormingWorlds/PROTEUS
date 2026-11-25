@@ -3833,11 +3833,15 @@ def test_check_lists_an_unknown_citation_beside_known_ones(field, ref, kind):
     )
     assert check.check(data, _draft(entry)) == []
     entry[field] = [*entry[field], ref]
+    entry['logins'] = [*entry['logins'], 'zed']
     try:
         out = check.check(data, _draft(entry))
-    except (KeyError, TypeError) as err:
+    except Exception as err:
         out = [repr(err)]
-    assert out == [f'entry "One consistency check": {kind} {ref} is not in the collected set']
+    assert out == [
+        f'entry "One consistency check": {kind} {ref} is not in the collected set',
+        'entry "One consistency check": login zed is not an author of a cited item',
+    ]
 
 
 def test_check_accepts_a_commit_entry_with_its_numbers_and_facts():
@@ -3856,8 +3860,15 @@ def test_a_window_with_only_commits_is_not_empty():
     assert check.check(data, _draft()) == [
         'the model returned no entries for a window that is not empty'
     ]
-    body, _ = render.render_body(_data(prs=[]), _draft(empty=True), False, 'r', [])
-    assert body.count('no release was published and no commit was read between') == 1
+    quiet = _data(prs=[])
+    body, _ = render.render_body(quiet, _draft(empty=True), False, 'r', [])
+    assert (
+        body.count(
+            'Quiet week: no pull request was merged, no release was published and no commit '
+            f'was read between {render.window_dates(quiet["window"])}.'
+        )
+        == 1
+    )
     data['commits'] = []
     assert check.is_empty(data)
 
@@ -3898,7 +3909,7 @@ def test_render_links_each_commit_with_its_short_id_and_author():
         body, _ = render.render_body(
             data, _draft(cap, res), True, 'https://run', _VALID['bots']
         )
-    except (KeyError, ValueError) as err:
+    except Exception as err:
         body = repr(err)
     url = _commit()['url']
     link = f'[PALEOS {_oid(1)[:7]}]({url})'
