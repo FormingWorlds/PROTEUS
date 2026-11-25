@@ -1188,29 +1188,24 @@ class Proteus:
                     self.directories['spider_liquidus_ps'] = liquidus_ps
                 log.info('Restored spider_eos_dir: %s', eos_dir_restored)
 
-            # Initialize structure-update sentinels from last helpfile row
-            self.last_struct_time = self.hf_row.get('Time', 0.0)
-            self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
-            self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
+            # Structure-update triggers: the references of the last update, stored in the row.
+            # A helpfile written before they were stored falls back to the row itself.
+            from proteus.interior_energetics.wrapper import restore_structure_trigger_state
+
+            refs = restore_structure_trigger_state(self.hf_row, self.directories)
+            if refs is None:
+                refs = (
+                    self.hf_row.get('Time', 0.0),
+                    self.hf_row.get('T_magma', np.inf),
+                    self.hf_row.get('Phi_global', np.inf),
+                )
+            self.last_struct_time, self.last_struct_Tmagma, self.last_struct_Phi = refs
 
             if (
                 self.config.interior_struct.module == 'zalmoxis'
                 and self.config.interior_energetics.module == 'aragog'
             ):
                 self._resync_zalmoxis_mesh()
-
-            # Arm the resume-settling structure-re-solve guard. The resumed
-            # interior relaxes thermally over the first loops and would
-            # otherwise fire repeated dynamic structure re-solves that recompute
-            # the same converged radius at a large wall cost. The guard (in
-            # interior_energetics/wrapper.py) suppresses dT/T-only re-solves once
-            # the radius has converged, within this window. Only the resume path
-            # arms it, so a fresh run's re-solve cadence is unchanged.
-            from proteus.interior_energetics.wrapper import (
-                _RESUME_STRUCT_SETTLE_LOOPS,
-            )
-
-            self.directories['_resume_struct_settle_loops'] = _RESUME_STRUCT_SETTLE_LOOPS
 
         log.info(' ')
 
@@ -1378,13 +1373,6 @@ class Proteus:
                 if _IT_TIMING_ENABLED:
                     _t_mod['structure'] = time.perf_counter() - _t0
                 # gc.collect() already called inside update_structure_from_interior()
-
-                # Count down the resume-settling structure-re-solve window once
-                # per loop. When it reaches zero the guard disengages and the
-                # normal dynamic re-solve cadence resumes. Only ever armed on the
-                # resume path, so a fresh run never decrements (the key is absent).
-                if self.directories.get('_resume_struct_settle_loops', 0) > 0:
-                    self.directories['_resume_struct_settle_loops'] -= 1
 
             ############### / INTERIOR AND STRUCTURE
 
@@ -1676,6 +1664,13 @@ class Proteus:
                 self.interior_o.ic = 2
 
             # Update full helpfile
+            from proteus.interior_energetics.wrapper import store_structure_trigger_state
+
+            store_structure_trigger_state(
+                self.hf_row,
+                self.directories,
+                (self.last_struct_time, self.last_struct_Tmagma, self.last_struct_Phi),
+            )
             if self.loops['total'] > 1:
                 # append row
                 self.hf_all = ExtendHelpfile(self.hf_all, self.hf_row)
