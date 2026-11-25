@@ -1834,13 +1834,14 @@ def _publish(
     post_input='false',
     tamper=None,
     run_url='',
+    prs=None,
     **window,
 ):
     """Render a digest for ``until`` and run publish against a newest post ``last``.
 
     ``entry`` replaces the draft after the render, as a draft that failed the check.
     """
-    data = _data()
+    data = _data(prs=prs)
     data['window'].update({'until': until, 'backdated': False, **window})
     src, dft, out = tmp_path / 'c.json', tmp_path / 'd.json', tmp_path / 'out'
     src.write_text(json.dumps(data))
@@ -2627,10 +2628,24 @@ def test_publish_allows_the_link_to_its_own_run(tmp_path, monkeypatch):
     """The footer link to the run passes the scan only because publish gets the run URL."""
     url = 'https://github.com/FormingWorlds/PROTEUS/actions/runs/9'
     try:
-        rc, posted = _publish(tmp_path, monkeypatch, None, _MON, run_url=url)
+        out = _publish(tmp_path, monkeypatch, None, _MON, run_url=url)
     except common.DigestError as err:
-        pytest.fail(f'the run link was refused: {err}')
-    assert rc == 0 and posted == ['PROTEUS weekly digest, 24 November 2026']
+        out = f'the run link was refused: {err}'
+    assert out == (0, ['PROTEUS weekly digest, 24 November 2026'])
+
+
+def test_publish_refuses_the_profile_link_of_a_listed_bot(tmp_path, monkeypatch):
+    """The bots list of the settings reaches the scan, so a bot with a user account gets no profile link."""
+    with pytest.raises(common.DigestError, match=r'^not posted: \d+ link problems$'):
+        _publish(
+            tmp_path,
+            monkeypatch,
+            None,
+            _MON,
+            prs=[_pr(author='renovate', kind='User')],
+            entry=_entry(logins=[]),
+            tamper=('The default', '[r](https://github.com/renovate) The default'),
+        )
 
 
 # links and summary
@@ -2722,6 +2737,10 @@ def test_results_and_capabilities_link_their_served_docs_pages():
         '\n###'
     )[0]
     assert f'Docs: {link}' in cap
+    assert any(
+        line.startswith('Docs: ') and line.endswith('and 2 more pages.')
+        for line in cap.splitlines()
+    )
     for key in set(by_section) - {'results', 'capabilities'}:
         part = body.split(f'### {render.plain(by_section[key]["title"])}')[1].split('\n###')[0]
         assert 'ocs:' not in part, key
@@ -2807,20 +2826,28 @@ def test_page_status_reads_the_answer_and_never_raises(monkeypatch):
             raise urllib.error.HTTPError(req.full_url, 404, 'Not Found', {}, None)
         if 'down' in req.full_url:
             raise urllib.error.URLError('no route')
-        return _Ok()
+        return _NoContent() if 'empty' in req.full_url else _Ok()
+
+    class _NoContent(_Ok):
+        status = 204
 
     monkeypatch.setattr(collect.PAGE_OPENER, 'open', fake)
     assert _PAGE_STATUS('https://d/ok.html') == 200
     assert _PAGE_STATUS('https://d/gone.html') == 404
+    assert _PAGE_STATUS('https://d/empty.html') == 204
     assert 'no route' in _PAGE_STATUS('https://d/down.html')
-    assert calls[0] == ('HEAD', 'https://d/ok.html', 15, 'weekly-digest') and len(calls) == 3
+    assert calls[0] == ('HEAD', 'https://d/ok.html', 15, 'weekly-digest') and len(calls) == 4
     for err in (http.client.BadStatusLine('x'), http.client.InvalidURL('bad'), ValueError('v')):
 
         def raise_it(req, timeout, err=err):
             raise err
 
         monkeypatch.setattr(collect.PAGE_OPENER, 'open', raise_it)
-        assert isinstance(_PAGE_STATUS('https://d/x.html'), str), err
+        try:
+            out = _PAGE_STATUS('https://d/x.html')
+        except Exception as exc:  # noqa: BLE001
+            out = exc
+        assert isinstance(out, str), repr(out)
 
 
 def test_a_deleted_author_is_unknown_and_gets_no_link():
@@ -3361,3 +3388,24 @@ def test_a_served_page_stays_served_after_a_network_error_on_its_site(monkeypatc
     assert docs == {'JANUS#94': ['x'], 'JANUS#103': ['x']}
     assert asked == ['https://d.x/x.html', 'https://d.x/y.html']
     assert out['docs_left_out'] == {'https://d.x': 1}
+
+
+def test_docs_links_keep_two_pages_with_one_path_on_two_sites():
+    """Pages are told apart by URL, so the same page path on two docs sites gives 2 links."""
+    items = [
+        {'docs': [{'path': 'Reference/index', 'url': 'https://a.x/Reference/index.html'}]},
+        {'docs': [{'path': 'Reference/index', 'url': 'https://b.x/Reference/index.html'}]},
+    ]
+    assert render.docs_links(items) == (
+        '[Reference/index](https://a.x/Reference/index.html), '
+        '[Reference/index](https://b.x/Reference/index.html)'
+    )
+
+
+def test_check_main_counts_two_entries_in_the_plural(tmp_path, capsys):
+    """The count line of a draft with 2 failures in 2 entries reads with plural nouns."""
+    src, bad = tmp_path / 'c.json', tmp_path / 'bad.json'
+    src.write_text(json.dumps(_data()))
+    bad.write_text(json.dumps(_draft(_entry(title='x' * 400), _entry(title='y' * 400))))
+    assert check.main([str(src), str(bad)]) == 1
+    assert capsys.readouterr().out.splitlines()[-1] == '2 failures and 0 warnings in 2 entries'
