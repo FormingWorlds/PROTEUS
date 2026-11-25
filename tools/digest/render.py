@@ -220,6 +220,15 @@ def allowed_urls(data: dict, run_url: str, bots: list[str]) -> list[str]:
     )
 
 
+def not_read(data: dict) -> str:
+    """One sentence per repository on its commits of the window over ``max_commits``."""
+    return ''.join(
+        f' {count(n, "more commit")} of {r.split("/", 1)[1]} in the window '
+        f'{"is" if n == 1 else "are"} not read.'
+        for r, n in data.get('commits_left_out', {}).items()
+    )
+
+
 def summary(data: dict, run_url: str) -> str:
     """The window, the counts, the linked repositories and the run link that open the post."""
     merged = sum(p['status'] == 'merged' for p in data['prs'])
@@ -252,7 +261,7 @@ def summary(data: dict, run_url: str) -> str:
     return (
         f'Collected between {window_dates(data["window"])} from '
         f'{count(merged, "merged pull request")}, {count(opened, "open pull request")} '
-        f'and {count(len(data["releases"]), "release")} in {names}.{also} '
+        f'and {count(len(data["releases"]), "release")} in {names}.{also}{not_read(data)} '
         f'The model read {read}. [Workflow run]({run_url}).'
     )
 
@@ -280,9 +289,10 @@ def render_body(
     if not live:
         lines[:0] = ['**Dry run: not posted.**', '']
     if draft['empty']:
+        left = not_read(data)
         lines.append(
             'Quiet week: no pull request was merged, no release was published and no commit '
-            f'was read between {window_dates(window)}.'
+            f'was {"kept" if left else "read"} between {window_dates(window)}.{left}'
         )
         lines.append('')
     for key, heading in SECTIONS.items():
