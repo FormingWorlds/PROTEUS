@@ -2729,7 +2729,9 @@ def test_every_author_is_a_profile_link_and_nobody_is_mentioned(live):
                 else f'[{login}](https://github.com/{login})'
             )
             assert want in tail, (entry['title'], want)
-    assert not re.search(r'@\w', re.sub(r'<!--.*?-->', '', body)), 'a mention is left'
+    assert not re.search(r'@\w', re.sub(r'<!--.*?-->', '', body, flags=re.S)), (
+        'a mention is left'
+    )
     urls = render.allowed_urls(data, 'https://run', _VALID['bots'])
     assert render.scan_body(body, urls, []) == []
     assert 'https://github.com/dependabot' not in body, 'a bot got a profile link'
@@ -4683,9 +4685,12 @@ def test_deposit_refuses_a_run_off_the_default_branch(tmp_path, monkeypatch):
 def test_deposit_skips_a_second_digest_for_the_same_meeting(tmp_path, monkeypatch, capsys):
     """A live digest with the same title as the newest one deposits nothing and says why."""
     last = _last('2026-11-20T10:00:00Z', '8', 'PROTEUS weekly digest, 24 November 2026')
+    last['url'] = 'https://github.com/x/actions/runs/8'
     rc, posted = _publish(tmp_path, monkeypatch, last, _MON, '9')
     assert rc == 0 and posted == []
-    assert 'has the same title' in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert 'the newest live digest of run 8 has the same title' in out
+    assert last['url'] not in out
     assert (tmp_path / 'gh_output').read_text() == 'deposited=false\n'
 
 
