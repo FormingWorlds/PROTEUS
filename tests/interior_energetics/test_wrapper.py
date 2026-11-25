@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import re
 import sys
 from contextlib import nullcontext
 from pathlib import Path
@@ -29,9 +30,12 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from aragog.solver.entropy_solver import CMBClosureError
 
+from proteus.interior_energetics.aragog import RetryLadderExhaustedError
 from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.wrapper import (
+    _ARAGOG_CALL_ENERGY_KEYS,
     _RESUME_STRUCT_DPHI_BACKSTOP_CAP,
     _RESUME_STRUCT_DR_REL_TOL,
     _clear_jax_caches_after_resolve,
@@ -39,6 +43,7 @@ from proteus.interior_energetics.wrapper import (
     _prevent_warming_clamp_active,
     _refresh_composition_sentinels,
     remelt_mantle,
+    run_interior,
     update_structure_from_interior,
 )
 
@@ -4875,7 +4880,7 @@ def test_a_value_error_of_an_interior_step_writes_the_status_for_the_core_module
 
 @pytest.mark.unit
 def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
-    """Aragog's retry-ladder exhaustion (RuntimeError) increments the
+    """Aragog's retry-ladder exhaustion (RetryLadderExhaustedError) increments the
     consecutive counter and falls back to the previous step's hf_row.
     """
     from unittest.mock import patch as _patch
@@ -4892,7 +4897,7 @@ def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
     interior_o.aragog_fail_count = 0
 
     runner_mock = MagicMock()
-    runner_mock.run_solver.side_effect = RuntimeError('retry ladder exhausted')
+    runner_mock.run_solver.side_effect = RetryLadderExhaustedError('retry ladder exhausted')
 
     with (
         _patch(
@@ -4939,7 +4944,7 @@ def test_a_skipped_aragog_step_adds_nothing_to_the_energy_ledgers():
     interior_o.dt = 0.0
     interior_o.aragog_fail_count = 0
     runner_mock = MagicMock()
-    runner_mock.run_solver.side_effect = RuntimeError('retry ladder exhausted')
+    runner_mock.run_solver.side_effect = RetryLadderExhaustedError('retry ladder exhausted')
     with (
         patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
         patch('proteus.interior_energetics.timestep.next_step', return_value=42.0),
@@ -5040,6 +5045,77 @@ def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
     assert interior_o.aragog_fail_count == _w._ARAGOG_MAX_CONSECUTIVE_FAILS
 
     interior_o.aragog_fail_count = 0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('error', 'cause'),
+    [
+        (
+            CMBClosureError('ledger miss 5 above 10x the bound'),
+            'Aragog CMB closure check failed (CMBClosureError) #1/3.',
+        ),
+        (RuntimeError('setup fault'), 'Aragog call failed (RuntimeError) #1/3.'),
+        (
+            type('CMBClosureError', (RuntimeError,), {})('same name, other class'),
+            'Aragog call failed (CMBClosureError) #1/3.',
+        ),
+        (RetryLadderExhaustedError('ladder out'), 'Aragog retry-ladder exhaustion #1/3.'),
+        (
+            type('Sub', (RetryLadderExhaustedError,), {})('sub'),
+            'Aragog retry-ladder exhaustion #1/3.',
+        ),
+    ],
+)
+def test_a_skipped_aragog_step_names_the_error_that_stopped_the_call(error, cause, caplog):
+    """The skip-step warning names the error class and its message; only an exhausted ladder
+    reads as a retry-ladder exhaustion. The skip itself is the same for every cause."""
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+    hf_row.update(dict.fromkeys(_ARAGOG_CALL_ENERGY_KEYS, 1.0e27))
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic, interior_o.dt, interior_o.aragog_fail_count = 2, 0.0, 0
+    runner_mock = MagicMock()
+    runner_mock.run_solver.side_effect = error
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
+        patch('proteus.interior_energetics.timestep.next_step', return_value=42.0),
+        caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
+    assert len(caplog.messages) == 1
+    assert caplog.messages[0].startswith(cause)
+    assert str(error) in caplog.messages[0]
+    assert interior_o.aragog_fail_count == 1
+    assert interior_o.dt == 42.0
+    assert all(hf_row[k] == 0.0 for k in _ARAGOG_CALL_ENERGY_KEYS)
+
+
+@pytest.mark.unit
+def test_the_abort_after_the_last_skipped_aragog_step_names_its_cause(caplog):
+    """The third failed call in a row stops the run, and the abort line names its cause."""
+    from proteus.interior_energetics import wrapper as _w
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic, interior_o.dt = 2, 0.0
+    interior_o.aragog_fail_count = _w._ARAGOG_MAX_CONSECUTIVE_FAILS - 1
+    runner_mock = MagicMock()
+    runner_mock.run_solver.side_effect = CMBClosureError('ledger miss 5 above 10x the bound')
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
+        caplog.at_level('ERROR', logger='fwl.proteus.interior_energetics.wrapper'),
+        pytest.raises(CMBClosureError),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
+    # the campaign census counts run deaths with this pattern
+    assert re.search(r'Aragog failed .* consecutive times\. Aborting\.', caplog.messages[0])
+    assert caplog.messages == [
+        'Aragog failed 3 consecutive times. Aborting. Last cause: Aragog CMB closure check '
+        'failed (CMBClosureError)'
+    ]
 
 
 # ============================================================================
@@ -5901,6 +5977,8 @@ def _dtmagma_scenario(update_dphi_abs=0.05):
         'T_magma': 2800.0,
         'Phi_global': 0.80,
         'R_int': 6.371e6,
+        # a solve writes R_int and M_int; a stub solve that leaves M_int keeps this one
+        'M_int': 5.972e24,
         'gravity': 9.81,
     }
     # Baselines passed as last_struct_*: dT/T = |2800-3000|/3000 = 0.067.
@@ -8010,7 +8088,7 @@ def test_a_stalled_interior_ends_the_run_instead_of_being_absorbed():
         'stalled run looks the same from outside as one still going'
     )
 
-    absorbed, absorbed_interior, _ = _drive(RuntimeError('retry ladder exhausted'))
+    absorbed, absorbed_interior, _ = _drive(RetryLadderExhaustedError('retry ladder exhausted'))
     assert absorbed is None, (
         f'an ordinary solver failure was passed up ({absorbed!r}) instead of '
         'being absorbed by the keep-previous-state fallback'
