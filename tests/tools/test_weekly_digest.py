@@ -4619,7 +4619,11 @@ def test_github_reads_json_and_one_file_of_an_artifact(monkeypatch):
     assert gh.get_json('https://api.github.com/none') is None
     assert seen == [{}, {}], 'a REST read keeps its retries'
     art = {'archive_download_url': 'https://z/1', 'url': 'https://api.github.com/none'}
-    assert gh.artifact_json(art, 'digest.json') == {'live': True}
+    try:
+        got = gh.artifact_json(art, 'digest.json')
+    except ValueError as err:
+        got = repr(err)
+    assert got == {'live': True}
     assert gh.artifact_json(art, 'other.json') is None
     assert gh.artifact_json({'archive_download_url': 'https://z/9'}, 'digest.json') is None
 
@@ -4729,15 +4733,18 @@ def test_deposit_records_the_event_and_keeps_earlier_output_lines(tmp_path, monk
     """A manual live run writes its event, and the output file keeps the lines before it."""
     (tmp_path / 'live').mkdir()
     (tmp_path / 'gh_output').write_text('live=true\n')
-    rc, posted = _publish(
-        tmp_path,
-        monkeypatch,
-        None,
-        _MON,
-        event='workflow_dispatch',
-        post_input='true',
-        keep_output=True,
-    )
+    try:
+        rc, posted = _publish(
+            tmp_path,
+            monkeypatch,
+            None,
+            _MON,
+            event='workflow_dispatch',
+            post_input='true',
+            keep_output=True,
+        )
+    except OSError as err:
+        rc, posted = repr(err), []
     assert rc == 0 and posted
     doc = json.loads((tmp_path / 'live' / 'digest.json').read_text())
     assert doc['event'] == 'workflow_dispatch'
