@@ -77,8 +77,12 @@ nav:
           - Transparent black-body limit (agni.py): Validation/atmos_clim/agni.md
           - Lid and open surface in the call (common.py): Validation/atmos_clim/common.md
       - Interior energetics:
+          - Mantle adiabat and melt fraction (adiabat.py): Validation/interior_energetics/adiabat.md
+          - Boundary backend on a mantle adiabat (boundary.py): Validation/interior_energetics/boundary.md
+          - Radiogenic decay and solidification front (common.py): Validation/interior_energetics/common.md
           - Mixing length at the core-mantle boundary (aragog.py): Validation/interior_energetics/aragog.md
           - Partial giant-impact re-melt (remelt.py): Validation/interior_energetics/remelt.md
+          - Melt curve and mantle shells (resolved_mantle.py): Validation/interior_energetics/resolved_mantle.md
       - Interior structure:
           - Core temperature in the structure solve (core_temperature.py): Validation/interior_struct/core_temperature.md
           - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
