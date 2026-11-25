@@ -1890,17 +1890,18 @@ def _publish(
     tamper=None,
     run_url='',
     prs=None,
+    commits=False,
     **window,
 ):
     """Render a digest for ``until`` and run publish against a newest post ``last``.
 
     ``entry`` replaces the draft after the render, as a draft that failed the check.
     """
-    data = _data(prs=prs)
+    data = _cdata(prs=prs) if commits else _data(prs=prs)
     data['window'].update({'until': until, 'backdated': False, **window})
     src, dft, out = tmp_path / 'c.json', tmp_path / 'd.json', tmp_path / 'out'
     src.write_text(json.dumps(data))
-    dft.write_text(json.dumps(_draft(_entry())))
+    dft.write_text(json.dumps(_draft(_centry() if commits else _entry())))
     render.main(
         [str(src), str(dft), str(out), '--run-id', run_id, '--run-url', run_url]
         + (['--live'] if live else [])
@@ -3748,7 +3749,7 @@ def test_github_commit_files_reads_the_rest_answer(monkeypatch):
     ]
     assert seen == ['https://api.github.com/repos/maraattia/PALEOS/commits/abc']
     monkeypatch.setattr(common.GitHub, '_request', lambda *a, **k: None)
-    assert common.GitHub('t').commit_files(PALEOS, 'abc') == []
+    assert common.GitHub('t').commit_files(PALEOS, 'abc') is None
 
 
 def test_collect_reads_a_commits_only_repository_by_its_commits():
@@ -3884,7 +3885,8 @@ def test_a_window_with_only_commits_is_not_empty():
     assert (
         body.count(
             'Quiet week: no pull request was merged, no release was published and no commit '
-            f'was read between {render.window_dates(quiet["window"])}.'
+            'was read between 1 and 29 September 2026 (UTC 2026-09-01T00:00:00Z to '
+            '2026-09-30T00:00:00Z).'
         )
         == 1
     )
@@ -3942,7 +3944,7 @@ def test_render_links_each_commit_with_its_short_id_and_author():
     link = f'[PALEOS {_oid(1)[:7]}]({url})'
     assert body.splitlines().count(f'{link}, by [maraattia](https://github.com/maraattia)') == 1
     row = next(line for line in body.splitlines() if line.startswith('| Checked tables |'))
-    assert f'| {render.short_date(_commit()["committed_at"])} | {link}, by ' in row
+    assert f'| 10 Sep | {link}, by ' in row
     urls = render.allowed_urls(data, 'https://run', _VALID['bots'])
     assert url in urls and 'https://github.com/maraattia' in urls
     assert render.scan_body(body, urls, []) == []
@@ -4050,3 +4052,94 @@ def test_render_disclaimer_asks_to_check_every_linked_item():
 def test_author_link_of_a_bot_commit_or_an_empty_login(item, want):
     """A bot that authored a commit is a code span; an empty or missing login is unknown."""
     assert render.author_link(item, ['dependabot']) == want
+
+
+def _not_read(n):
+    verb = 'is' if n == 1 else 'are'
+    return f'{n} more commit{"" if n == 1 else "s"} of PALEOS in the window {verb} not read.'
+
+
+@pytest.mark.parametrize('left', [1, 50])
+def test_summary_names_the_commits_over_the_cap(left):
+    """Commits of the window over max_commits are counted in the post, once per repository."""
+    settings_ = {**_VALID, 'repos': [PALEOS], 'commits_only': [PALEOS], 'max_commits': 100}
+    nodes = [_cnode(_oid(i), SINCE) for i in range(1, 101)]
+    out = collect.collect(
+        _FakeGH([_cpage(nodes, total=100 + left)]), settings_, {'since': SINCE, 'until': UNTIL}
+    )
+    assert out['commits_left_out'] == {PALEOS: left}
+    text = render.summary(out, 'https://run')
+    want = (
+        'The digest also covers 100 commits to the default branch of PALEOS, a repository '
+        f'without pull requests. {_not_read(left)}'
+    )
+    assert text.count(want) == 1, text
+
+
+def test_summary_without_a_cut_names_no_commit_over_the_cap():
+    """A repository with every commit read gets no sentence on commits not read."""
+    assert 'not read' not in render.summary(_cdata(), 'https://run')
+
+
+def test_quiet_week_names_the_commits_over_the_cap():
+    """A window whose only commits were over the cap says so and does not say that none was read."""
+    data = _data(prs=[], fact_list=[])
+    data['repos'] = [*data['repos'], PALEOS]
+    data['commits'], data['commits_left_out'] = [], {PALEOS: 3}
+    assert check.is_empty(data)
+    body, _ = render.render_body(data, _draft(empty=True), False, 'r', [])
+    assert body.count(_not_read(3)) == 2, body
+    assert 'no commit was read' not in body
+    assert (
+        body.count(
+            'Quiet week: no pull request was merged, no release was published and no commit '
+            'was kept between 1 and 29 September 2026'
+        )
+        == 1
+    )
+
+
+def test_scan_body_refuses_a_commit_link_that_was_not_collected():
+    """A link to an uncollected commit of PALEOS or to a commit of another repository fails."""
+    urls = render.allowed_urls(_cdata(), 'https://run', [])
+    other = f'https://github.com/{PALEOS}/commit/{_oid(7)}'
+    foreign = f'https://github.com/FormingWorlds/PROTEUS/commit/{_oid(1)}'
+    body = f'[a]({_commit()["url"]}) [b]({other}) [c]({foreign})'
+    assert render.scan_body(body, urls, []) == [f'a link to {other}', f'a link to {foreign}']
+
+
+def test_publish_refuses_a_body_with_a_tampered_commit_link(tmp_path, monkeypatch):
+    """Publish scans the final body, so a commit link swapped for another commit is never posted."""
+    url = _commit()['url']
+    code, posted = _publish(tmp_path, monkeypatch, None, _MON, commits=True)
+    assert code == 0 and len(posted) == 1
+    assert (tmp_path / 'out' / 'digest.md').read_text().count(url) == 1
+    with pytest.raises(common.DigestError, match=r'^not posted: 1 link problems$'):
+        _publish(tmp_path, monkeypatch, None, _MON, commits=True, tamper=(url, url[:-1] + '1'))
+
+
+def test_collect_commits_reads_every_tracked_file_when_the_file_list_is_missing(capsys):
+    """A commit whose file list GitHub does not give is marked as cut and named in the run log."""
+    gh = _FakeGH([_cpage([_cnode(_oid(1), SINCE)])], commit_files={_oid(1): None})
+    commits, _, _ = collect.collect_commits(gh, PALEOS, {'since': SINCE, 'until': UNTIL}, 9)
+    assert (commits[0]['files'], commits[0]['files_truncated']) == ([], True)
+    printed = capsys.readouterr().out.splitlines()
+    assert (
+        printed.count(
+            f'Commit PALEOS:c1 {_oid(1)}: no file list from GitHub; facts read every tracked file'
+        )
+        == 1
+    )
+
+
+def test_attach_facts_reads_a_tracked_file_of_a_commit_without_a_file_list():
+    """A cut file list makes the facts step read every tracked file of the commit."""
+    files = {
+        (PALEOS, 'pyproject.toml', 'p1'): '[project]\ndependencies = ["numpy>=1"]\n',
+        (PALEOS, 'pyproject.toml', _oid(1)): '[project]\ndependencies = ["numpy>=2"]\n',
+    }
+    data = {'prs': [], 'commits': [_commit(files=[], files_truncated=True)]}
+    facts.attach_facts(_FakeGH(files=files), data, {'tracked': {}})
+    assert [(f['pr'], f['key'], f['new']) for f in data['facts']] == [
+        ('PALEOS:c1', 'dependencies:numpy', '>=2')
+    ]
