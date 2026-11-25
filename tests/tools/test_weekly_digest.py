@@ -2088,19 +2088,6 @@ def test_previous_state_pages_until_a_bot_post():
     assert state['until'] == '2026-11-16T22:30:00Z' and gh.queries[2]['cursor'] == 'c1'
 
 
-def test_create_discussion_refuses_an_author_the_next_run_would_not_trust():
-    """The author of the new post is read back; a post the state reader would skip stops the run."""
-    made = {
-        'createDiscussion': {
-            'discussion': {'url': 'https://d/5', 'author': {'login': 'x', '__typename': 'User'}}
-        }
-    }
-    with pytest.raises(common.DigestError, match='https://d/5'):
-        post.create_discussion(
-            _FakeGH([_CATS, made]), 'FormingWorlds/PROTEUS', 'weekly-digest', 'T', 'B'
-        )
-
-
 def test_check_enforces_the_schema_lengths():
     """A title or text longer than the schema allows fails the check."""
     fails = check.check(_data(), _draft(_entry(title='a' * 81, text='b ' * 201)))
@@ -2251,16 +2238,16 @@ def test_body_limit_boundary(tmp_path, monkeypatch):
 
 
 def test_post_step_alone_carries_the_live_inputs():
-    """The env lines and arguments that publish needs sit in the Post step itself."""
+    """The env lines and arguments that deposit needs sit in the deposit step itself."""
     _, jobs = _jobs()
-    step = jobs['publish'].split('- name: Post\n', 1)[1]
+    step = jobs['publish'].split('- name: Deposit the live digest\n', 1)[1].split('      - ')[0]
     assert (
         'EVENT: ${{ github.event_name }}' in step
         and 'POST: ${{ inputs.post || false }}' in step
         and 'RUN_URL: ${{ github.server_url }}' in step
     )
     assert (
-        'post.py publish collected.json draft.json out --event "$EVENT" --post-input "$POST"'
+        'post.py deposit collected.json draft.json out --event "$EVENT" --post-input "$POST"'
         ' --run-url "$RUN_URL"' in step
     )
 
@@ -2560,7 +2547,7 @@ def test_real_windows_pass_the_check_and_the_link_scan(name):
 def test_workflow_overwrites_artifacts_and_reports_unreadable_files():
     """Each upload overwrites an artifact of a re-run, and facts.py writes the summary."""
     text, jobs = _jobs()
-    assert text.count('actions/upload-artifact@v6') == text.count('overwrite: true') == 3
+    assert text.count('actions/upload-artifact@v6') == text.count('overwrite: true') == 4
     assert (
         'python tools/digest/facts.py collected.json --summary "$GITHUB_STEP_SUMMARY"'
         in jobs['collect']
@@ -3251,7 +3238,7 @@ def test_collect_main_reads_no_pull_request_state(tmp_path, monkeypatch):
     monkeypatch.setattr(collect, 'GitHub', lambda: 'gh')
     monkeypatch.setattr(
         collect,
-        'previous_state',
+        'window_state',
         lambda *a: {'until': '2026-11-10T00:00:00Z', 'announced_open': ['PROTEUS#900']},
     )
     monkeypatch.setattr(
