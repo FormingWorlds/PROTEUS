@@ -15,6 +15,7 @@ import io
 import itertools
 import json
 import re
+import shutil
 import socket
 import stat
 import sys
@@ -22,7 +23,8 @@ import unicodedata
 import urllib.parse
 import urllib.request
 import urllib.response
-from datetime import datetime, timezone
+import zipfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -483,9 +485,17 @@ def test_release_record_window_and_draft():
 class _FakeGH:
     """Answers GraphQL queries from a list of pages and files from a dict."""
 
-    def __init__(self, pages=(), files=None, commit_files=None):
+    def __init__(self, pages=(), files=None, commit_files=None, rest=None, zips=None):
         self.pages, self.files, self.queries = list(pages), files or {}, []
         self.commit_map, self.asked = commit_files or {}, []
+        self.rest, self.zips, self.got = rest or {}, zips or {}, []
+
+    def get_json(self, url):
+        self.got.append(url)
+        return self.rest.get(url)
+
+    def artifact_json(self, artifact, member):
+        return self.zips.get((artifact['id'], member))
 
     def graphql(self, query, **variables):
         self.queries.append(variables)
@@ -1275,43 +1285,6 @@ def test_decide_command_prints_the_output_line(tmp_path, capsys, monkeypatch):
     assert capsys.readouterr().out.strip() == 'live=false'
 
 
-def test_create_discussion_finds_the_category_by_slug():
-    """The category id is looked up by slug; a missing slug stops before any mutation."""
-    cats = {
-        'repository': {
-            'id': 'R',
-            'discussionCategories': {'nodes': [{'id': 'C9', 'slug': 'weekly-digest'}]},
-        }
-    }
-    bot = {'login': 'github-actions', '__typename': 'Bot'}
-    made = {'createDiscussion': {'discussion': {'url': 'https://d/5', 'author': bot}}}
-    gh = _FakeGH([cats, made])
-    assert (
-        post.create_discussion(gh, 'FormingWorlds/PROTEUS', 'weekly-digest', 'T', 'B')
-        == 'https://d/5'
-    )
-    assert gh.queries[1] == {
-        'retry': False,
-        'repo': 'R',
-        'category': 'C9',
-        'title': 'T',
-        'body': 'B',
-    }
-    gh = _FakeGH(
-        [
-            {
-                'repository': {
-                    'id': 'R',
-                    'discussionCategories': {'nodes': [{'id': 'C1', 'slug': 'general'}]},
-                }
-            }
-        ]
-    )
-    with pytest.raises(common.DigestError, match='no discussion category'):
-        post.create_discussion(gh, 'FormingWorlds/PROTEUS', 'weekly-digest', 'T', 'B')
-    assert len(gh.queries) == 1
-
-
 def _jobs():
     """The jobs of the workflow as text blocks, read without a YAML parser."""
     text = (_ROOT / '.github' / 'workflows' / 'weekly-digest.yml').read_text()
@@ -1326,8 +1299,10 @@ def test_workflow_jobs_keep_the_model_token_away_from_write_tokens():
     assert '\npermissions: {}\n' in text and 'shell: bash' in text
     assert '    permissions: {}\n' in jobs['draft']
     perms = re.search(r'    permissions:\n((?:      .*\n)+)', jobs['publish']).group(1)
-    assert perms == '      contents: read\n      discussions: write\n'
-    assert all(not re.search(r""":\s*['"]?write\b""", jobs[j]) for j in ('collect', 'draft'))
+    assert perms == '      contents: read\n      actions: read\n'
+    perms = re.search(r'    permissions:\n((?:      .*\n)+)', jobs['collect']).group(1)
+    assert perms == '      contents: read\n      discussions: read\n      actions: read\n'
+    assert not re.search(r':\s*write\b', text)
     assert 'github.token' not in jobs['draft'] and 'GITHUB_TOKEN' not in jobs['draft']
     for name, job in jobs.items():
         assert ('CLAUDE_CODE_OAUTH_TOKEN' in job) is (name == 'draft'), name
@@ -1363,7 +1338,7 @@ def test_collect_main_marks_a_dated_run_and_skips_the_state(tmp_path, monkeypatc
     """With --since the previous post is not read and the window is back-dated."""
     seen = []
     monkeypatch.setattr(collect, 'GitHub', lambda: 'gh')
-    monkeypatch.setattr(collect, 'previous_state', lambda *a: seen.append(a))
+    monkeypatch.setattr(collect, 'window_state', lambda *a: seen.append(a))
     monkeypatch.setattr(
         collect, 'collect', lambda gh, s, w: {'window': w, 'prs': [], 'releases': []}
     )
@@ -1374,7 +1349,7 @@ def test_collect_main_marks_a_dated_run_and_skips_the_state(tmp_path, monkeypatc
     window = json.loads(out.read_text())['window']
     assert window == {'since': SINCE, 'until': UNTIL, 'backdated': True}
     assert seen == []
-    monkeypatch.setattr(collect, 'previous_state', lambda *a: {'until': '2026-11-10T00:00:00Z'})
+    monkeypatch.setattr(collect, 'window_state', lambda *a: {'until': '2026-11-10T00:00:00Z'})
     assert collect.main(['--out', str(out), '--until', '2026-11-17']) == 0
     window = json.loads(out.read_text())['window']
     assert window['since'] == '2026-11-10T00:00:00Z' and 'previous' not in window
@@ -1891,9 +1866,10 @@ def _publish(
     run_url='',
     prs=None,
     commits=False,
+    ref='refs/heads/main',
     **window,
 ):
-    """Render a digest for ``until`` and run publish against a newest post ``last``.
+    """Render a digest for ``until`` and run deposit against a newest live digest ``last``.
 
     ``entry`` replaces the draft after the render, as a draft that failed the check.
     """
@@ -1913,15 +1889,17 @@ def _publish(
         (out / 'digest.json').write_text(
             json.dumps(dict(doc, body=doc['body'].replace(*tamper)))
         )
-    posted = []
+    live_dir, ghout = tmp_path / 'live', tmp_path / 'gh_output'
+    shutil.rmtree(live_dir, ignore_errors=True)
     monkeypatch.setattr(post, 'load_settings', lambda: {**_VALID, 'publish': True})
     monkeypatch.setattr(post, 'GitHub', lambda: 'gh')
-    monkeypatch.setattr(post, 'previous_state', lambda *a: last)
-    monkeypatch.setattr(
-        post, 'create_discussion', lambda *a: posted.append(a[3]) or 'https://d/2'
-    )
+    monkeypatch.setattr(post, 'live_state', lambda *a: last)
+    monkeypatch.setenv('GITHUB_REF', ref)
     args = ['--event', event, '--post-input', post_input, '--run-url', run_url]
-    return post.main(['publish', str(src), str(dft), str(out), *args]), posted
+    args += ['--live-dir', str(live_dir), '--output', str(ghout)]
+    rc = post.main(['deposit', str(src), str(dft), str(out), *args])
+    doc = live_dir / 'digest.json'
+    return rc, [json.loads(doc.read_text())['title']] if doc.exists() else []
 
 
 _MON = '2026-11-23T22:23:00Z'
@@ -1940,15 +1918,15 @@ def test_publish_refuses_a_failed_check_a_backdated_window_or_publish_off(
     for kwargs, reason in cases:
         with pytest.raises(common.DigestError) as err:
             _publish(tmp_path, monkeypatch, None, _MON, **kwargs)
-        assert str(err.value) == f'not posted: {reason}', kwargs
+        assert str(err.value) == f'not deposited: {reason}', kwargs
     rc, posted = _publish(
         tmp_path, monkeypatch, None, _MON, event='workflow_dispatch', post_input='true'
     )
     assert rc == 0 and posted == ['PROTEUS weekly digest, 24 November 2026']
     monkeypatch.setattr(post, 'load_settings', lambda: {**_VALID, 'publish': False})
     args = ['--event', 'schedule', '--post-input', 'false']
-    with pytest.raises(common.DigestError, match='^not posted: posting is switched off$'):
-        post.main(['publish', *(str(tmp_path / f) for f in ('c.json', 'd.json', 'out')), *args])
+    with pytest.raises(common.DigestError, match='^not deposited: posting is switched off$'):
+        post.main(['deposit', *(str(tmp_path / f) for f in ('c.json', 'd.json', 'out')), *args])
 
 
 def _last(until, run_id='8', title='PROTEUS weekly digest, 24 November 2026'):
@@ -2420,7 +2398,7 @@ def test_scan_body_allows_only_collected_links_and_authors(bad, reason):
 
 def test_publish_refuses_a_body_with_a_foreign_link(tmp_path, monkeypatch):
     """Publish scans the final body, so a link that the check missed is never posted."""
-    with pytest.raises(common.DigestError, match=r'^not posted: \d+ link problems$'):
+    with pytest.raises(common.DigestError, match=r'^not deposited: \d+ link problems$'):
         _publish(
             tmp_path,
             monkeypatch,
@@ -2692,7 +2670,7 @@ def test_publish_allows_the_link_to_its_own_run(tmp_path, monkeypatch):
 
 def test_publish_refuses_the_profile_link_of_a_listed_bot(tmp_path, monkeypatch):
     """The bots list of the settings reaches the scan, so a bot with a user account gets no profile link."""
-    with pytest.raises(common.DigestError, match=r'^not posted: \d+ link problems$'):
+    with pytest.raises(common.DigestError, match=r'^not deposited: \d+ link problems$'):
         _publish(
             tmp_path,
             monkeypatch,
@@ -3224,7 +3202,7 @@ def test_link_text_of_any_text_is_one_trimmed_line_with_escaped_markup(text):
 
 def test_publish_refuses_a_body_that_mentions_a_cited_author(tmp_path, monkeypatch):
     """An @mention of a real author is refused too: the post notifies nobody."""
-    with pytest.raises(common.DigestError, match=r'^not posted: \d+ link problems$'):
+    with pytest.raises(common.DigestError, match=r'^not deposited: \d+ link problems$'):
         _publish(
             tmp_path, monkeypatch, None, _MON, tamper=('The default', '@alice The default')
         )
@@ -4114,7 +4092,7 @@ def test_publish_refuses_a_body_with_a_tampered_commit_link(tmp_path, monkeypatc
     code, posted = _publish(tmp_path, monkeypatch, None, _MON, commits=True)
     assert code == 0 and len(posted) == 1
     assert (tmp_path / 'out' / 'digest.md').read_text().count(url) == 1
-    with pytest.raises(common.DigestError, match=r'^not posted: 1 link problems$'):
+    with pytest.raises(common.DigestError, match=r'^not deposited: 1 link problems$'):
         _publish(tmp_path, monkeypatch, None, _MON, commits=True, tamper=(url, url[:-1] + '1'))
 
 
@@ -4439,3 +4417,248 @@ def test_settings_refuse_a_docs_site_that_is_not_text():
         err = exc
     assert isinstance(err, common.DigestError), repr(err)
     assert 'setting docs is missing or invalid' in str(err)
+
+
+# Artifact-only publication
+
+HOME = 'FormingWorlds/PROTEUS'
+_ARTS = (
+    f'https://api.github.com/repos/{HOME}/actions/artifacts?name=digest-live&per_page=100&page='
+)
+
+
+def _run(**over):
+    return {
+        'path': '.github/workflows/weekly-digest.yml',
+        'event': 'schedule',
+        'head_branch': 'main',
+        'head_repository': {'full_name': HOME},
+        'conclusion': 'success',
+        **over,
+    }
+
+
+def _art(i, expired=False):
+    return {'id': i, 'expired': expired, 'workflow_run': {'id': 100 + i}}
+
+
+def _doc(until='2026-11-30T22:23:00Z', **over):
+    return {
+        'live': True,
+        'run_id': '7',
+        'run_url': f'https://github.com/{HOME}/actions/runs/7',
+        'event': 'schedule',
+        'since': '2026-11-24T06:09:28Z',
+        'until': until,
+        'title': 'PROTEUS weekly digest, 1 December 2026',
+        'body': 'B',
+        **over,
+    }
+
+
+def _live_gh(arts, runs, docs, pages=1):
+    rest = {f'{_ARTS}{p}': {'artifacts': arts if p == 1 else []} for p in range(1, pages + 1)}
+    rest.update(
+        {
+            f'https://api.github.com/repos/{HOME}/actions/runs/{100 + i}': r
+            for i, r in runs.items()
+        }
+    )
+    return _FakeGH(rest=rest, zips={(i, 'digest.json'): d for i, d in docs.items()})
+
+
+@pytest.mark.parametrize(
+    'over',
+    [
+        {'path': '.github/workflows/other.yml'},
+        {'event': 'pull_request'},
+        {'event': 'push'},
+        {'head_branch': 'tl/x'},
+        {'head_repository': {'full_name': 'fork/PROTEUS'}},
+        {'head_repository': None},
+        {'conclusion': 'failure'},
+        {'conclusion': None},
+    ],
+)
+def test_trusted_run_needs_our_scheduled_or_dispatched_run_on_main(over):
+    """Only a finished run of the digest workflow on main of this repository counts."""
+    assert collect.trusted_run(_run(), HOME)
+    assert not collect.trusted_run(_run(**over), HOME)
+    assert not collect.trusted_run(None, HOME)
+
+
+def test_trusted_run_takes_a_manual_run():
+    """A manual run on main counts; its artifact exists only when it was live."""
+    assert collect.trusted_run(_run(event='workflow_dispatch'), HOME)
+
+
+@pytest.mark.parametrize(
+    ('doc', 'ok'),
+    [
+        (_doc(), True),
+        (_doc(live=False), False),
+        (_doc(live='true'), False),
+        (_doc(until='never'), False),
+        (_doc(until=None), False),
+        ({k: v for k, v in _doc().items() if k != 'until'}, False),
+        (None, False),
+        ([], False),
+    ],
+)
+def test_live_doc_state_reads_only_a_live_digest_with_a_valid_end(doc, ok):
+    """The window end comes from a live digest.json with a parseable until."""
+    got = collect.live_doc_state(doc)
+    if ok:
+        assert got == {
+            'until': '2026-11-30T22:23:00Z',
+            'run_id': '7',
+            'title': 'PROTEUS weekly digest, 1 December 2026',
+            'url': f'https://github.com/{HOME}/actions/runs/7',
+        }
+    else:
+        assert got is None
+
+
+def test_live_state_takes_the_newest_trusted_live_artifact():
+    """An expired artifact, an untrusted run and a dry document are passed over."""
+    arts = [_art(1, expired=True), _art(2), _art(3), _art(4)]
+    runs = {2: _run(event='pull_request'), 3: _run(), 4: _run()}
+    docs = {
+        1: _doc('2026-12-30T00:00:00Z'),
+        2: _doc('2026-12-20T00:00:00Z'),
+        3: _doc(live=False),
+        4: _doc(),
+    }
+    gh = _live_gh(arts, runs, docs)
+    assert collect.live_state(gh, HOME)['until'] == '2026-11-30T22:23:00Z'
+    assert f'https://api.github.com/repos/{HOME}/actions/runs/101' not in gh.got
+
+
+def test_live_state_reads_the_next_page_and_stops_at_the_end():
+    """A page without a trusted artifact leads to the next page; an empty page ends the search."""
+    rest = {
+        f'{_ARTS}1': {'artifacts': [_art(2)]},
+        f'{_ARTS}2': {'artifacts': [_art(4)]},
+        f'https://api.github.com/repos/{HOME}/actions/runs/102': _run(head_branch='x'),
+        f'https://api.github.com/repos/{HOME}/actions/runs/104': _run(),
+    }
+    gh = _FakeGH(rest=rest, zips={(4, 'digest.json'): _doc()})
+    assert collect.live_state(gh, HOME)['until'] == '2026-11-30T22:23:00Z'
+    gh = _FakeGH(rest={f'{_ARTS}1': {'artifacts': []}})
+    assert collect.live_state(gh, HOME) is None
+    assert collect.live_state(_FakeGH(), HOME) is None
+
+
+def test_window_state_falls_back_to_the_last_post_while_no_live_digest_exists(monkeypatch):
+    """The first artifact-only window starts at the marker of discussion 1121."""
+    now = datetime(2026, 11, 30, 22, 23, tzinfo=timezone.utc)
+    marker = {
+        'until': '2026-11-24T06:09:28Z',
+        'url': 'https://github.com/FormingWorlds/PROTEUS/discussions/1121',
+    }
+    monkeypatch.setattr(collect, 'live_state', lambda gh, home: None)
+    monkeypatch.setattr(collect, 'previous_state', lambda gh, home, cat: marker)
+    state = collect.window_state('gh', HOME, 'weekly-digest', now)
+    assert state == marker
+    assert collect.resolve_window(None, None, state, now)['since'] == '2026-11-24T06:09:28Z'
+    monkeypatch.setattr(
+        collect, 'live_state', lambda gh, home: {'until': '2026-11-30T22:23:00Z'}
+    )
+    monkeypatch.setattr(collect, 'previous_state', lambda *a: pytest.fail('post read'))
+    assert collect.window_state('gh', HOME, 'weekly-digest', now) == {
+        'until': '2026-11-30T22:23:00Z'
+    }
+
+
+@pytest.mark.parametrize(('days', 'kept'), [(35, True), (36, False)])
+def test_window_state_drops_a_fallback_older_than_35_days(monkeypatch, capsys, days, kept):
+    """A post marker more than 35 days old gives the 7-day window and a notice."""
+    now = datetime(2027, 3, 1, tzinfo=timezone.utc)
+    until = common.iso(now - timedelta(days=days))
+    monkeypatch.setattr(collect, 'live_state', lambda gh, home: None)
+    monkeypatch.setattr(collect, 'previous_state', lambda *a: {'until': until})
+    state = collect.window_state('gh', HOME, 'weekly-digest', now)
+    assert (state == {'until': until}) is kept
+    assert ('::notice::' in capsys.readouterr().out) is not kept
+
+
+def test_window_state_keeps_an_old_live_digest(monkeypatch, capsys):
+    """The 35-day limit applies to the post fallback only, not to a live digest."""
+    now = datetime(2027, 3, 1, tzinfo=timezone.utc)
+    old = {'until': '2026-12-01T00:00:00Z'}
+    monkeypatch.setattr(collect, 'live_state', lambda gh, home: old)
+    assert collect.window_state('gh', HOME, 'weekly-digest', now) == old
+    assert '::notice::' not in capsys.readouterr().out
+
+
+def test_github_reads_json_and_one_file_of_an_artifact(monkeypatch):
+    """A REST answer is JSON; an artifact zip gives one member, and a missing one gives None."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w') as z:
+        z.writestr('digest.json', json.dumps({'live': True}))
+    answers = {'https://api.github.com/x': b'{"a": 1}', 'https://z/1': buf.getvalue()}
+    monkeypatch.setattr(common.GitHub, '_request', lambda self, url, **k: answers.get(url))
+    gh = common.GitHub('t')
+    assert gh.get_json('https://api.github.com/x') == {'a': 1}
+    assert gh.get_json('https://api.github.com/none') is None
+    art = {'archive_download_url': 'https://z/1'}
+    assert gh.artifact_json(art, 'digest.json') == {'live': True}
+    assert gh.artifact_json(art, 'other.json') is None
+    assert gh.artifact_json({'archive_download_url': 'https://z/9'}, 'digest.json') is None
+
+
+def test_deposit_writes_the_live_digest_for_the_copy_workflow(tmp_path, monkeypatch):
+    """A live run writes digest.json with the fields the copy needs and digest.md with the body."""
+    url = f'https://github.com/{HOME}/actions/runs/9'
+    rc, posted = _publish(tmp_path, monkeypatch, None, _MON, run_url=url)
+    assert rc == 0 and posted == ['PROTEUS weekly digest, 24 November 2026']
+    doc = json.loads((tmp_path / 'live' / 'digest.json').read_text())
+    body = json.loads((tmp_path / 'out' / 'digest.json').read_text())['body']
+    assert doc == {
+        'live': True,
+        'run_id': '9',
+        'run_url': url,
+        'event': 'schedule',
+        'since': SINCE,
+        'until': _MON,
+        'title': 'PROTEUS weekly digest, 24 November 2026',
+        'body': body,
+    }
+    assert (tmp_path / 'live' / 'digest.md').read_text() == body
+    assert '@' not in body and '](https://github.com/alice)' in body
+    assert (tmp_path / 'gh_output').read_text() == 'deposited=true\n'
+
+
+def test_deposit_refuses_a_run_off_the_default_branch(tmp_path, monkeypatch):
+    """A run on another branch never deposits a live digest, even with post ticked."""
+    with pytest.raises(common.DigestError, match='^not deposited: not on the default branch$'):
+        _publish(tmp_path, monkeypatch, None, _MON, ref='refs/heads/tl/x')
+    assert not (tmp_path / 'live').exists()
+
+
+def test_deposit_skips_a_second_digest_for_the_same_meeting(tmp_path, monkeypatch, capsys):
+    """A live digest with the same title as the newest one deposits nothing and says why."""
+    last = _last('2026-11-20T10:00:00Z', '8', 'PROTEUS weekly digest, 24 November 2026')
+    rc, posted = _publish(tmp_path, monkeypatch, last, _MON, '9')
+    assert rc == 0 and posted == []
+    assert 'has the same title' in capsys.readouterr().out
+    assert (tmp_path / 'gh_output').read_text() == 'deposited=false\n'
+
+
+def test_post_has_no_discussion_writer():
+    """The digest is published only as an artifact."""
+    assert not hasattr(post, 'create_discussion')
+    assert 'createDiscussion' not in (_ROOT / 'tools' / 'digest' / 'post.py').read_text()
+
+
+def test_workflow_uploads_the_live_digest_last_and_keeps_it_90_days():
+    """The live artifact is uploaded only after a deposit, as the last step, for 90 days."""
+    _, jobs = _jobs()
+    steps = jobs['publish'].split('      - ')
+    last = steps[-1]
+    assert 'uses: actions/upload-artifact@v6' in last and 'name: digest-live' in last
+    assert "if: steps.deposit.outputs.deposited == 'true'" in last
+    assert 'retention-days: 90' in last and 'path: live/' in last
+    deposit = steps[-2]
+    assert 'id: deposit' in deposit and 'post.py deposit' in deposit
+    assert '--live-dir live --output "$GITHUB_OUTPUT"' in deposit
