@@ -59,11 +59,13 @@ For each merged pull request and each commit that changes a tracked file, `facts
 - a config key that was added or removed, or whose default, choices, bounds or description changed;
 - a helpfile column (a column of the PROTEUS output table) that was added or removed, or whose unit changed;
 - a dependency that was added or removed, or whose version changed. This covers a new floor (the lowest version a package accepts), a Julia `[compat]` entry in `Project.toml`, and a changed module pin (a module version under `tool.proteus.modules` in `pyproject.toml`);
+- a dataset of a data manifest (`src/fwl_io/data/shared_manifest.toml` in fwl-io, `src/proteus/data/proteus_manifest.toml` in PROTEUS) whose Zenodo DOI, Dataverse DOI or file list changed, or a file of a PALEOS registry (`src/fwl_io/data/interior.eos.paleos_*.registry.txt`) whose md5 sum changed. A new Zenodo version of a table gives such a fact (kind `dataset` or `dataset file`). Runs then download the new table, so the fact can go into "Changes that affect your results";
+- a dataset or a registry file that was added or removed (kind `dataset list`). This is new or dropped data, not a change of earlier results, so an entry of "Changes that affect your results" needs another fact or a release;
 - a key that was added, removed or changed in another tracked TOML file.
 
 A file that gains more than 8 keys in one pull request gives one fact for the added keys. A file that loses more than 8 keys gives one fact for the removed keys. Each of these facts holds the number of keys and their names, cut at 600 characters. A date in a TOML file becomes text, and a longer array or table is cut at 600 characters.
 
-A tracked file that does not parse, or is not valid UTF-8, gives no facts. The other tracked files of the same pull request still give their facts. `facts.py` names the pull request, the file and the error in the run log and the job summary, and the run goes on. A pull request with no fact cannot go into the section "Changes that affect your results" unless it cites a release. A tracked file that does not parse on the default branch gives no keys for the key check and is named the same way.
+A tracked file that does not parse, or is not valid UTF-8, gives no facts. The other tracked files of the same pull request still give their facts. `facts.py` names the pull request, the file and the error in the run log and the job summary, and the run goes on. A pull request with no fact, or with only `dataset list` facts, cannot go into the section "Changes that affect your results" unless it cites a release. A tracked file that does not parse on the default branch gives no keys for the key check and is named the same way.
 
 ### Draft the entries
 
@@ -250,6 +252,8 @@ What a digest can miss:
 - A fact comes from the merge commit of a pull request and the commit before it. For a pull request merged as several rebased commits, only the last commit is compared.
 - For a pull request with more than 100 changed files, every tracked file of its repository is compared, and its docs pages come from its first 100 files only.
 - For a commit with 300 or more changed files, every tracked file of its repository is compared.
+- A new Zenodo version of a dataset gives no fact until a pull request puts its DOI into a manifest. Runs get the new table once they use a version of fwl-io or PROTEUS that holds the manifest, but the fact appears in the window of the pull request.
+- Only the 4 PALEOS datasets have tracked registries. For the other datasets, the DOIs and the file lists are compared, not the md5 sums.
 - The commits of a window over `max_commits` are not read. The post summary gives their number for each repository, but the model does not see them.
 - A commit that a digest reported and that is then rewritten on the default branch (a force push or a rebase of published history) gets a new commit id. It appears again in the digest of the window of its new commit date.
 - A commit to a repository without pull requests whose commit date is before the window start, but that reaches the default branch after it, is in no scheduled digest: for example a commit made before the run and pushed after it, or the commits of a side branch that a merge commit brings in. A back-dated run with an earlier start reads it when it is among the newest `max_commits` commits of that window, and a back-dated run never posts.
