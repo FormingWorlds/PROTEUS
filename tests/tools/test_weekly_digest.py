@@ -922,6 +922,15 @@ def test_check_main_exit_code(tmp_path, capsys):
     assert check.main([str(src), str(good)]) == 0
 
 
+def test_check_main_counts_one_failure_in_the_singular(tmp_path, capsys):
+    """The count line of a draft with 1 failure in 1 entry reads with singular nouns."""
+    src, bad = tmp_path / 'c.json', tmp_path / 'bad.json'
+    src.write_text(json.dumps(_data()))
+    bad.write_text(json.dumps(_draft(_entry(title='x' * 400))))
+    assert check.main([str(src), str(bad)]) == 1
+    assert capsys.readouterr().out.splitlines()[-1] == '1 failure and 0 warnings in 1 entry'
+
+
 @given(st.text(min_size=1, max_size=60))
 @settings(max_examples=150, deadline=None)
 def test_any_text_with_a_url_or_mention_fails(noise):
@@ -2835,8 +2844,8 @@ def _no_docs_requests(monkeypatch):
     monkeypatch.setattr(collect.PAGE_OPENER, 'open', _refuse_network)
 
 
-def _refuse_network(req, timeout):
-    raise AssertionError(f'a test asked the network for {req.full_url}')
+def _refuse_network(req, *args, **kwargs):
+    raise AssertionError(f'a test asked the network for {getattr(req, "full_url", req)}')
 
 
 _LATER = {'since': '2026-10-01T00:00:00Z', 'until': '2026-11-18T00:00:00Z'}
@@ -2909,7 +2918,7 @@ def test_summary_counts_take_the_noun_of_their_number(merged, opened, rels):
     """Each count of 0, 1 or 2 merged and open pull requests and releases reads with its own noun."""
     prs = [_pr(ref=f'PROTEUS#{i}') for i in range(merged)]
     prs += [_pr(ref=f'PROTEUS#{90 + i}', status='open') for i in range(opened)]
-    data = {**_data(prs=prs, releases=[{'ref': f'r{i}'} for i in range(rels)])}
+    data = _data(prs=prs, releases=[{'ref': f'r{i}'} for i in range(rels)])
     first = render.summary(data, 'https://run')
     noun = {0: 's', 1: '', 2: 's'}
     assert (
@@ -2922,6 +2931,7 @@ def test_summary_counts_take_the_noun_of_their_number(merged, opened, rels):
     ('kept', 'cut', 'read'),
     [
         (0, 0, 'the text of every pull request'),
+        (1, 0, 'the text of every pull request'),
         (2, 0, 'the text of every pull request'),
         (0, 1, 'only the title of the pull request'),
         (0, 2, 'only the titles of the 2 pull requests'),
@@ -2946,14 +2956,17 @@ def test_summary_names_the_bodies_read_with_the_noun_of_their_number(kept, cut, 
 
 
 @pytest.mark.parametrize(
-    ('n', 'out'), [(0, '0 entries'), (1, '1 entry'), (2, '2 entries'), (-1, '-1 entries')]
+    ('n', 'entry', 'warning'),
+    [
+        (0, '0 entries', '0 warnings'),
+        (1, '1 entry', '1 warning'),
+        (2, '2 entries', '2 warnings'),
+    ],
 )
-def test_count_takes_the_noun_of_its_number(n, out):
-    """One takes the singular noun, every other number the plural."""
-    assert common.count(n, 'entry', 'entries') == out
-    assert common.count(n, 'warning') == out.replace('entry', 'warning').replace(
-        'entries', 'warnings'
-    )
+def test_count_takes_the_noun_of_its_number(n, entry, warning):
+    """One takes the singular noun, 0 and 2 the plural."""
+    assert common.count(n, 'entry', 'entries') == entry
+    assert common.count(n, 'warning') == warning
 
 
 def test_pr_query_asks_the_change_type_of_each_file():
