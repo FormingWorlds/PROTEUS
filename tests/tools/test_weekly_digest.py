@@ -4295,6 +4295,7 @@ def test_attach_facts_reads_a_new_paleos_version_from_an_fwl_io_pull_request():
     files = {
         (FWL, MANIFEST, 'p1'): _MAN_OLD,
         (FWL, MANIFEST, 'm1'): _man(**{'zenodo.1"': 'zenodo.2"'}),
+        (FWL, MANIFEST, None): _man(**{'zenodo.1"': 'zenodo.2"'}),
     }
     data = {'prs': [pr]}
     facts.attach_facts(_FakeGH(files=files), data, {'tracked': {FWL: [MANIFEST]}})
