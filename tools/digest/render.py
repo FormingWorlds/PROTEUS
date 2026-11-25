@@ -282,8 +282,7 @@ def render_body(
     if draft['empty']:
         lines.append(
             'Quiet week: no pull request was merged, no release was published and no commit '
-            f'was read between '
-            f'{window_dates(window)}.'
+            f'was read between {window_dates(window)}.'
         )
         lines.append('')
     for key, heading in SECTIONS.items():

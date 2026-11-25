@@ -35,7 +35,7 @@ Some repositories take their changes as commits to the default branch, with no p
 
 A commit counts by its commit date in UTC, not by its author date. A commit that was written before the window and rebased onto the default branch in the window counts in this window. A merge commit (a commit with 2 or more parents) is left out.
 
-`collect.py` asks GitHub for at most the newest `max_commits` commits of each repository and window, and then leaves out the merge commits. The job summary gives the number of commits that it did not ask for. Both numbers include merge commits. The model reads the headline and the message of every commit kept, cut to 300 and to `body_chars` characters; `max_bodies` applies to pull requests only. Each commit gets its changed files from one request to the GitHub API, at most 300 files. The run log lists every commit read, with its reference, its full commit id and its commit date.
+`collect.py` asks GitHub for at most the newest `max_commits` commits of each repository and window, and then leaves out the merge commits. The job summary gives the number of commits that it did not ask for. Both numbers include merge commits. The model reads the headline and the message of every commit kept, cut to 300 and to `body_chars` characters; `max_bodies` applies to pull requests only. Each commit gets its changed files from one request to the GitHub API, at most 300 files. The run log lists every commit kept, with its reference, its full commit id and its commit date.
 
 Each commit has a reference of the form `PALEOS:c1`, numbered from the oldest commit kept. Commits with the same commit date keep the reverse order of the GitHub history, which puts a parent before its child in a history without merges. The reference holds no commit id. The model groups related commits into one entry. In the post, a commit links as the repository name and the first 7 characters of its id, and its author links to the GitHub profile.
 
@@ -249,7 +249,7 @@ What a digest can miss:
 - A fact comes from the merge commit of a pull request and the commit before it. For a pull request merged as several rebased commits, only the last commit is compared.
 - For a pull request with more than 100 changed files, every tracked file of its repository is compared, and its docs pages come from its first 100 files only.
 - For a commit with 300 or more changed files, every tracked file of its repository is compared.
-- A commit to a repository without pull requests whose commit date is before the window start, but that reaches the default branch after it, is in no scheduled digest: for example a commit made before the run and pushed after it, or the commits of a side branch that a merge commit brings in. A back-dated run with an earlier start reads it.
+- A commit to a repository without pull requests whose commit date is before the window start, but that reaches the default branch after it, is in no scheduled digest: for example a commit made before the run and pushed after it, or the commits of a side branch that a merge commit brings in. A back-dated run with an earlier start reads it when it is among the newest `max_commits` commits of that window, and a back-dated run never posts.
 - A docs page is checked once, when the data is collected; a page that the docs deployment removes later stays linked.
 - Only pull requests whose base is the default branch of their repository are read, merged or open. A pull request closed without a merge does not appear.
 - An open pull request counts only when it was updated after the window start.

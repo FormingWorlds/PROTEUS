@@ -236,7 +236,7 @@ def check_entry(entry: dict, index: dict) -> list[str]:
             for r, x in zip(refs, found)
             if not x
         ]
-    prs, rels, cms, facts = (list(filter(None, xs)) for xs in (prs, rels, cms, facts))
+    prs, rels, cms, facts = ([x for x in xs if x] for xs in (prs, rels, cms, facts))
     if not prs and not rels and not cms:
         fails.append(f'{name}: cites no pull request, release or commit')
     want_open = entry['section'] in ('design', 'open')
