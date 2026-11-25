@@ -214,10 +214,16 @@ class GitHub:
         return json.loads(raw) if raw is not None else None
 
     def artifact_json(self, artifact: dict, member: str) -> dict | None:
-        """Return one JSON file of an Actions artifact, or None when the zip or the file is absent."""
+        """Return one JSON file of an Actions artifact, or None when the file is absent.
+
+        Raises
+        ------
+        DigestError
+            When the zip answers 404.
+        """
         raw = self._request(artifact['archive_download_url'])
         if raw is None:
-            return None
+            raise DigestError(f'artifact {artifact["archive_download_url"]} answered 404')
         with zipfile.ZipFile(io.BytesIO(raw)) as archive:
             if member not in archive.namelist():
                 return None

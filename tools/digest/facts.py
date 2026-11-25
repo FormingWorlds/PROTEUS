@@ -30,6 +30,7 @@ GROUP_LIMIT = 8
 CONFIG_FIELDS = ('default', 'choices', 'bounds', 'description')
 DATASET_FIELDS = ('zenodo', 'dataverse', 'files')
 UNREADABLE = (ValueError, KeyError, TypeError, AttributeError, RecursionError)
+NO_FILE = 'no file list and no file at the commit'  # a 404 commit, not a removal
 REQ_RE = re.compile(r'^\s*([A-Za-z0-9][A-Za-z0-9._-]*)(\[[^\]]*\])?\s*(.*)$')
 
 
@@ -83,12 +84,12 @@ def toml_map(text: str | None) -> dict:
 
 
 def manifest_map(text: str | None) -> dict:
-    """Map each dataset of an fwl-io manifest (a table with a ``zenodo`` DOI) to its source fields."""
+    """Map each dataset of an fwl-io manifest (a table with a ``zenodo`` DOI as text) to its source fields."""
     out = {}
 
     def walk(table: dict, prefix: str) -> None:
         for key, value in table.items():
-            if isinstance(value, dict) and 'zenodo' in value:
+            if isinstance(value, dict) and isinstance(value.get('zenodo'), str):
                 out[prefix + key] = {f: value[f] for f in DATASET_FIELDS if f in value}
             elif isinstance(value, dict):
                 walk(value, f'{prefix}{key}.')
@@ -246,9 +247,18 @@ def attach_facts(gh: GitHub, data: dict, settings: dict) -> None:
                 continue
             try:
                 old = gh.raw_file(pr['repo'], path, pr['parent_oid'])
-                found = diff_file(path, old, gh.raw_file(pr['repo'], path, pr['merge_oid']))
+                new = gh.raw_file(pr['repo'], path, pr['merge_oid'])
+                found = diff_file(path, old, new)
             except UNREADABLE as err:
                 unreadable.append(_unreadable(pr['ref'], path, err))
+                continue
+            if (
+                new is None
+                and old is not None
+                and not pr['files']
+                and pr.get('files_truncated')
+            ):
+                unreadable.append({'pr': pr['ref'], 'file': path, 'error': NO_FILE})
                 continue
             for fact in group_facts(found):
                 facts.append({'id': f'F{len(facts) + 1}', 'pr': pr['ref'], **fact})

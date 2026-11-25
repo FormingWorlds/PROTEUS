@@ -5,7 +5,8 @@ Usage::
     python tools/digest/post.py decide collected.json --event EVENT --post-input BOOL
     python tools/digest/post.py deposit collected.json draft.json OUTDIR --event EVENT --post-input BOOL --run-url URL --live-dir DIR --output FILE
 
-``decide`` prints ``live=true`` or ``live=false`` for ``$GITHUB_OUTPUT``. ``deposit``
+``decide`` prints ``live=true`` or ``live=false`` for ``$GITHUB_OUTPUT``; it is false
+off the default branch and in a rerun. ``deposit``
 repeats every guard (posting switched on, a run on the default branch, a window that
 is not back-dated, a scheduled run or a ticked post box, a draft that passes the
 check, a body that is not a dry run, a body whose links all come from
@@ -34,9 +35,20 @@ def live_event(event: str, post_input: bool) -> bool:
     return event == 'schedule' or post_input
 
 
-def decide(settings: dict, event: str, post_input: bool, backdated: bool) -> bool:
-    """True only when posting is switched on and the run is a scheduled or confirmed live run."""
-    return settings['publish'] and not backdated and live_event(event, post_input)
+def decide(
+    settings: dict, event: str, post_input: bool, backdated: bool, ref: str, attempt: str
+) -> bool:
+    """True only for a first attempt on main of a scheduled or confirmed live run with posting on.
+
+    A run off main or a rerun deposits nothing, so its body is rendered as a dry run.
+    """
+    return (
+        settings['publish']
+        and not backdated
+        and live_event(event, post_input)
+        and ref == 'refs/heads/main'
+        and attempt == '1'
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -51,6 +63,8 @@ def main(argv: list[str] | None = None) -> int:
             opts['--event'],
             opts['--post-input'] == 'true',
             data['window']['backdated'],
+            os.environ.get('GITHUB_REF', ''),
+            os.environ.get('GITHUB_RUN_ATTEMPT', '1'),
         )
         print(f'live={str(live).lower()}')
         return 0

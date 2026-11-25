@@ -125,9 +125,14 @@ def number_in(token: str, sources: set[str]) -> bool:
 
 
 def key_forms(keys: set[str]) -> set[str]:
-    """Lower-case keys, their dotted suffixes, and their last segments that hold an underscore."""
+    """Lower-case keys, their dotted suffixes, and their last segments that hold an underscore.
+
+    A registry key ``<dataset>:<file>`` also gives the forms of its dataset.
+    """
     out = set()
     for key in keys:
+        if ':' in key:
+            out |= key_forms({key.split(':', 1)[0]})
         parts = key.lower().split('.')
         out |= {
             '.'.join(parts[i:])

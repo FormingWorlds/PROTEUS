@@ -23,9 +23,10 @@ from datetime import timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from common import SECTIONS, DigestError, count, is_bot, load_settings, parse_time
+from common import LIST_KIND, SECTIONS, DigestError, count, is_bot, load_settings, parse_time
 
 MAX_FACTS = 4
+DATA_KINDS = ('dataset', 'dataset file', LIST_KIND)
 MAX_DOCS = 5
 GITHUB = 'https://github.com/'
 VALUE_CHARS = 60
@@ -220,11 +221,11 @@ def allowed_urls(data: dict, run_url: str, bots: list[str]) -> list[str]:
     )
 
 
-def not_read(data: dict) -> str:
+def not_read(data: dict, more: str = 'more ') -> str:
     """One sentence per repository on its commits of the window over ``max_commits``."""
     return ''.join(
-        f' {count(n, "more commit")} of {r.split("/", 1)[1]} in the window '
-        f'{"is" if n == 1 else "are"} not read.'
+        f' {count(n, more + "commit")} of {r.split("/", 1)[1]} in the window '
+        f'{"is" if n == 1 else "are"} not read, merge commits included.'
         for r, n in data.get('commits_left_out', {}).items()
     )
 
@@ -243,6 +244,11 @@ def summary(data: dict, run_url: str) -> str:
         for name, n in per.items()
     )
     kept, cut = data['bodies_kept'], data['bodies_cut']
+    first = (
+        ' No earlier digest was found; this digest covers the last 7 days.'
+        if data['window'].get('no_earlier')
+        else ''
+    )
     other = (
         'the title of the other pull request' if cut == 1 else f'the titles of the other {cut}'
     )
@@ -261,7 +267,7 @@ def summary(data: dict, run_url: str) -> str:
     return (
         f'Collected between {window_dates(data["window"])} from '
         f'{count(merged, "merged pull request")}, {count(opened, "open pull request")} '
-        f'and {count(len(data["releases"]), "release")} in {names}.{also}{not_read(data)} '
+        f'and {count(len(data["releases"]), "release")} in {names}.{also}{not_read(data)}{first} '
         f'The model read {read}. [Workflow run]({run_url}).'
     )
 
@@ -289,7 +295,7 @@ def render_body(
     if not live:
         lines[:0] = ['**Dry run: not posted.**', '']
     if draft['empty']:
-        left = not_read(data)
+        left = not_read(data, '')
         lines.append(
             'Quiet week: no pull request was merged, no release was published and no commit '
             f'was {"kept" if left else "read"} between {window_dates(window)}.{left}'
@@ -330,8 +336,12 @@ def render_body(
             if entry.get('action'):
                 text = f'**Action for everyone:** {text}'
             lines += [f'### {plain(entry["title"])}', '', text, '']
-            if detail:
-                lines += [f'Settings: {detail}.', '']
+            for label, group in (
+                ('Settings', [f for f in cited if f['kind'] not in DATA_KINDS]),
+                ('Data', [f for f in cited if f['kind'] in DATA_KINDS]),
+            ):
+                if group:
+                    lines += [f'{label}: {facts_text(group)}.', '']
             if key == 'capabilities' and (pages := docs_links(items)):
                 lines += [f'Docs: {pages}.', '']
             lines += [f'{links(items)}, by {authors(items, bots)}', '']

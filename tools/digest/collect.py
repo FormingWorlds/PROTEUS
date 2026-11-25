@@ -4,8 +4,9 @@ Usage::
 
     python tools/digest/collect.py --out collected.json [--since DATE] [--until DATE]
 
-Without ``--since`` the window starts where the last digest post of
-``github-actions`` ended (its state marker), or 7 days before ``--until``.
+Without ``--since`` the window starts where the newest trusted live digest ended,
+else at the state marker of the last digest post of ``github-actions``, else 7 days
+before ``--until``; without either and without ``--until`` the run prints a warning.
 A given ``--since`` or ``--until`` marks the window as back-dated, which keeps
 the run a dry run. Pull-request and release text is untrusted: links, images,
 HTML and mentions are removed before anything reaches the model.
@@ -33,7 +34,8 @@ REST_FILES = 300  # files in the REST answer for one commit
 RAW_CHARS = 20000  # raw text read per title or body; the largest body_chars allowed
 LIVE_ARTIFACT = 'digest-live'
 WORKFLOW = '.github/workflows/weekly-digest.yml'
-ARTIFACT_PAGES = 10  # pages of 100 artifacts searched for a trusted live digest
+ARTIFACT_PAGES = 10  # pages of PER_PAGE artifacts searched for a trusted live digest
+PER_PAGE = 100
 FALLBACK_DAYS = 35
 STATE_RE = re.compile(r'<!-- weekly-digest-state (\{.*?\}) -->', re.S)
 
@@ -190,12 +192,16 @@ def trusted_run(run: dict | None, home: str) -> bool:
     )
 
 
-def live_doc_state(doc: object) -> dict | None:
-    """The window state of a ``digest.json`` of ``digest-live``: only a live one with a valid end."""
+def live_doc_state(doc: object, ended: str | None) -> dict | None:
+    """The window state of a ``digest.json`` of ``digest-live``: only a live one with a valid end.
+
+    The end must not be later than ``ended``, the last update of the run that uploaded it.
+    """
     if not isinstance(doc, dict) or doc.get('live') is not True:
         return None
     try:
-        parse_time(doc['until'])
+        if parse_time(doc['until']) > parse_time(ended):
+            return None
     except (KeyError, TypeError, ValueError):
         return None
     return {
@@ -210,26 +216,45 @@ def live_state(gh: GitHub, home: str) -> dict | None:
     """Return the state of the trusted ``digest-live`` with the latest window end, or None.
 
     Anybody who can open a pull request can upload an artifact with that name, so each
-    candidate counts only when its run passes ``trusted_run``. GitHub lists artifacts by
-    id, not by time, so every page is read and the latest ``until`` wins.
+    candidate counts only when its run passes ``trusted_run``. Artifacts off main or from
+    another repository are dropped before the run is read. GitHub lists artifacts by id,
+    not by time, so every page is read and the latest ``until`` wins.
+
+    Raises
+    ------
+    DigestError
+        When the list answers 404, when the zip of a trusted candidate answers 404, or
+        when the last of ``ARTIFACT_PAGES`` pages is full, so that artifacts stay unread.
     """
-    best = None
+    best, artifacts = None, []
     for page in range(1, ARTIFACT_PAGES + 1):
-        url = f'{API}/repos/{home}/actions/artifacts?name={LIVE_ARTIFACT}&per_page=100&page={page}'
-        artifacts = (gh.get_json(url) or {}).get('artifacts', [])
-        if not artifacts:
+        url = f'{API}/repos/{home}/actions/artifacts?name={LIVE_ARTIFACT}&per_page={PER_PAGE}&page={page}'
+        if (answer := gh.get_json(url)) is None:
+            raise DigestError(f'{url} answered 404')
+        if not (artifacts := answer.get('artifacts', [])):
             break
         for art in artifacts:
-            if art.get('expired'):
+            wr = art.get('workflow_run') or {}
+            if (
+                art.get('expired')
+                or wr.get('head_branch') != 'main'
+                or wr.get('head_repository_id') != wr.get('repository_id')
+            ):
                 continue
-            run = gh.get_json(f'{API}/repos/{home}/actions/runs/{art["workflow_run"]["id"]}')
+            run = gh.get_json(f'{API}/repos/{home}/actions/runs/{wr["id"]}')
             state = trusted_run(run, home) and live_doc_state(
-                gh.artifact_json(art, 'digest.json')
+                gh.artifact_json(art, 'digest.json'), run.get('updated_at')
             )
             if state and (
                 best is None or parse_time(state['until']) > parse_time(best['until'])
             ):
                 best = state
+    else:
+        if len(artifacts) == PER_PAGE:
+            raise DigestError(
+                f'more than {ARTIFACT_PAGES * PER_PAGE} {LIVE_ARTIFACT} artifacts; '
+                'the newest trusted one can be unread'
+            )
     return best
 
 
@@ -571,6 +596,9 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now(timezone.utc)
     state = None if args.since else window_state(gh, home, settings['category'], now)
     window = resolve_window(args.since, args.until, state, now)
+    if state is None and not window['backdated']:
+        print('::warning::No earlier digest was found; the window is the last 7 days')
+        window['no_earlier'] = True
     data = collect(gh, settings, window)
     with open(args.out, 'w') as fh:
         json.dump(data, fh)
