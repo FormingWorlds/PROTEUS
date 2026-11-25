@@ -24,6 +24,7 @@ from common import DIGEST_DIR, DigestError, load_settings
 
 PR_FIELDS = ('ref', 'status', 'title', 'body', 'author', 'labels', 'size')
 RELEASE_FIELDS = ('ref', 'name', 'body', 'author', 'prerelease')
+COMMIT_FIELDS = ('ref', 'title', 'body', 'author', 'size')
 FACT_FIELDS = ('id', 'pr', 'kind', 'change', 'key', 'old', 'new')
 
 
@@ -33,6 +34,7 @@ def model_input(data: dict) -> dict:
         'window': {k: data['window'][k] for k in ('since', 'until')},
         'pull_requests': [{k: p[k] for k in PR_FIELDS} for p in data['prs']],
         'releases': [{k: r[k] for k in RELEASE_FIELDS} for r in data['releases']],
+        'commits': [{k: c[k] for k in COMMIT_FIELDS} for c in data.get('commits', [])],
         'facts': [{k: f[k] for k in FACT_FIELDS} for f in data.get('facts', [])],
     }
 

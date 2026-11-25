@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import re
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,15 +29,19 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from aragog.solver.entropy_solver import CMBClosureError
 
+from proteus.interior_energetics.aragog import RetryLadderExhaustedError
 from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.wrapper import (
+    _ARAGOG_CALL_ENERGY_KEYS,
     _RESUME_STRUCT_DPHI_BACKSTOP_CAP,
     _RESUME_STRUCT_DR_REL_TOL,
     _eos_grid_extent_up_step,
     _prevent_warming_clamp_active,
     _refresh_composition_sentinels,
     remelt_mantle,
+    run_interior,
     update_structure_from_interior,
 )
 
@@ -821,6 +826,94 @@ def test_handoff_callable_anchors_cmb_for_aragog_ascending_profile():
     assert np.all(T_arr > 0.0)
     assert T_arr[0] == pytest.approx(7740.0, rel=1e-12)
     assert T_arr[-1] == pytest.approx(2500.0, rel=1e-12)
+
+
+def _boundary_adiabat_interior(t_p=2600.0, dtdp=2.0e-8, n_levels=60, n_shells=8):
+    """Interior state as the boundary adiabat model publishes it.
+
+    The adiabat is linear in pressure, T = T_p + dtdp (P - P_top), on a mantle
+    whose pressure falls linearly from 140 GPa at the CMB to 1 bar at the top,
+    so the exact value at any pressure is known. The shell temperatures are the
+    shell means, hotter than T_p in the top shell.
+    """
+    radius = np.linspace(3.4e6, 6.371e6, n_levels)
+    pressure = np.linspace(1.4e11, 1.0e5, n_levels)
+    temp = t_p + dtdp * (pressure - pressure[-1])
+    edges = np.linspace(radius[0], radius[-1], n_shells + 1)
+    mid = 0.5 * (edges[:-1] + edges[1:])
+    interior_o = _mock_interior_o(n_stag=n_shells)
+    interior_o.radius = edges
+    interior_o.temp = np.interp(mid, radius, temp)
+    interior_o.temp_profile = (radius, pressure, temp)
+    return interior_o, radius, pressure, temp
+
+
+def _capture_solver_kwargs(config, interior_o):
+    """Run a forced structure update and return the keyword arguments Zalmoxis received."""
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 2600.0,
+        'Phi_global': 0.3,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.4e6, None)
+        ) as mock_solver,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        update_structure_from_interior(
+            _mock_dirs(), config, hf_row, interior_o, 0.0, 2600.0, 0.3, force=True
+        )
+    mock_solver.assert_called_once()
+    return mock_solver.call_args.kwargs
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_handoff_follows_the_boundary_adiabat_on_pressure():
+    """The boundary adiabat reaches the re-solve on pressure, with the top at T_p.
+
+    With T = 2600 K + 2e-8 K/Pa (P - 1 bar) every pressure has a known value:
+    the top of the mantle 2600 K wherever the re-solve puts it, 1.4e11 Pa
+    5000 K, and the core, deeper than the mantle, the CMB value. The re-solve
+    must also leave the boundary's T_magma and T_surf to the backend. The
+    shell-mean hand-off the other backends use would start the top at the mean
+    of the top shell, 175 K above T_p.
+    """
+    config = _mock_config(update_interval=0)
+    config.interior_energetics.module = 'boundary'
+    interior_o, radius, pressure, temp = _boundary_adiabat_interior()
+    kwargs = _capture_solver_kwargs(config, interior_o)
+    tf = kwargs['temperature_function']
+    r_arr, t_arr = kwargs['temperature_arrays']
+
+    assert kwargs['seed_boundary_temperatures'] is False
+    # The top of the mantle sits at T_p, at its own radius or one the re-solve moved.
+    for r_top in (radius[-1], radius[-1] - 2.0e4, radius[-1] + 2.0e4):
+        assert tf(r_top, 1.0e5) == pytest.approx(2600.0, rel=1e-12)
+    # Edge case: above the mantle (P below 1 bar) the top value holds.
+    assert tf(radius[-1], 0.0) == pytest.approx(2600.0, rel=1e-12)
+    # Off the levels, on pressure and not on radius.
+    p_probe = 0.5 * (pressure[20] + pressure[21])
+    assert tf(radius[0], p_probe) == pytest.approx(
+        2600.0 + 2.0e-8 * (p_probe - 1.0e5), rel=1e-12
+    )
+    assert tf(radius[-1], p_probe) == pytest.approx(tf(radius[0], p_probe), rel=1e-15)
+    # The core, deeper than the mantle, holds T_cmb.
+    assert tf(0.0, 3.0e11) == pytest.approx(temp[0], rel=1e-12)
+    assert temp[0] == pytest.approx(2600.0 + 2.0e-8 * (1.4e11 - 1.0e5), rel=1e-12)
+    # The r-indexed arrays for the JAX path are the adiabat itself, ascending in radius.
+    np.testing.assert_allclose(r_arr, radius, rtol=1e-15)
+    np.testing.assert_allclose(t_arr, temp, rtol=1e-15)
+
+    # Discrimination guard: the shell-mean hand-off starts the top of the mantle hotter.
+    config.interior_energetics.module = 'aragog'
+    shell_tf = _capture_solver_kwargs(config, interior_o)['temperature_function']
+    assert shell_tf(radius[-1], 1.0e5) - 2600.0 > 100.0
+    assert shell_tf(radius[-1], 1.0e5) == pytest.approx(interior_o.temp[-1], rel=1e-12)
 
 
 @pytest.mark.unit
@@ -3139,17 +3232,20 @@ def test_the_wet_planet_mass_holds_while_outgassing_moves_mass_between_solves():
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'module,expected',
+    'module,melt_model,expected',
     [
-        ('spider', 50),
-        ('aragog', 75),
-        ('boundary', 2),
-        ('dummy', 2),
+        ('spider', 'linear', 50),
+        ('aragog', 'linear', 75),
+        ('boundary', 'linear', 2),
+        ('boundary', 'adiabat', 63),
+        ('dummy', 'linear', 2),
     ],
+    ids=['spider', 'aragog', 'boundary-linear', 'boundary-adiabat', 'dummy'],
 )
-def test_get_nlevb_returns_per_module_levels(module, expected):
-    """get_nlevb returns config.num_levels for spider/aragog and the
-    fixed integer 2 for boundary/dummy.
+def test_get_nlevb_returns_per_module_levels(module, melt_model, expected):
+    """get_nlevb returns config.num_levels for spider, aragog and the boundary
+    adiabat model, whose shells the tides modules read, and the fixed integer 2
+    for dummy and the boundary linear model.
     """
     from types import SimpleNamespace
 
@@ -3157,14 +3253,42 @@ def test_get_nlevb_returns_per_module_levels(module, expected):
 
     # Use distinct num_levels to discriminate spider vs aragog dispatch.
     config = SimpleNamespace(
-        interior_energetics=SimpleNamespace(module=module, num_levels=expected),
+        interior_energetics=SimpleNamespace(
+            module=module,
+            num_levels=expected,
+            boundary=SimpleNamespace(melt_model=melt_model),
+        ),
     )
-    if module in ('boundary', 'dummy'):
+    if expected == 2:
         # num_levels is ignored; set to a different value to discriminate.
         config.interior_energetics.num_levels = 999
     assert get_nlevb(config) == expected
     # Type discrimination: must be a Python int.
     assert isinstance(get_nlevb(config), int)
+
+
+@pytest.mark.unit
+def test_boundary_adiabat_interior_has_num_levels_minus_one_shells():
+    """An Interior_t sized by get_nlevb gives the boundary adiabat num_levels - 1 shells.
+
+    The tides arrays and the shells the backend publishes have this length, so
+    the tides modules see the resolved mantle rather than a single layer.
+    """
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.wrapper import get_nlevb
+
+    config = SimpleNamespace(
+        interior_energetics=SimpleNamespace(
+            module='boundary', num_levels=80, boundary=SimpleNamespace(melt_model='adiabat')
+        ),
+    )
+    interior_o = Interior_t(get_nlevb(config))
+    assert interior_o.nlev_s == 79
+    assert interior_o.tides.shape == (79,)
+    assert interior_o.radius.shape == (80,)
+    # Edge case: the profile slot exists and is empty until the backend publishes one.
+    assert interior_o.temp_profile is None
 
 
 @pytest.mark.unit
@@ -4615,7 +4739,7 @@ def test_a_value_error_of_an_interior_step_writes_the_status_for_the_core_module
 
 @pytest.mark.unit
 def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
-    """Aragog's retry-ladder exhaustion (RuntimeError) increments the
+    """Aragog's retry-ladder exhaustion (RetryLadderExhaustedError) increments the
     consecutive counter and falls back to the previous step's hf_row.
     """
     from unittest.mock import patch as _patch
@@ -4632,7 +4756,7 @@ def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
     interior_o.aragog_fail_count = 0
 
     runner_mock = MagicMock()
-    runner_mock.run_solver.side_effect = RuntimeError('retry ladder exhausted')
+    runner_mock.run_solver.side_effect = RetryLadderExhaustedError('retry ladder exhausted')
 
     with (
         _patch(
@@ -4679,7 +4803,7 @@ def test_a_skipped_aragog_step_adds_nothing_to_the_energy_ledgers():
     interior_o.dt = 0.0
     interior_o.aragog_fail_count = 0
     runner_mock = MagicMock()
-    runner_mock.run_solver.side_effect = RuntimeError('retry ladder exhausted')
+    runner_mock.run_solver.side_effect = RetryLadderExhaustedError('retry ladder exhausted')
     with (
         patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
         patch('proteus.interior_energetics.timestep.next_step', return_value=42.0),
@@ -4780,6 +4904,77 @@ def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
     assert interior_o.aragog_fail_count == _w._ARAGOG_MAX_CONSECUTIVE_FAILS
 
     interior_o.aragog_fail_count = 0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('error', 'cause'),
+    [
+        (
+            CMBClosureError('ledger miss 5 above 10x the bound'),
+            'Aragog CMB closure check failed (CMBClosureError) #1/3.',
+        ),
+        (RuntimeError('setup fault'), 'Aragog call failed (RuntimeError) #1/3.'),
+        (
+            type('CMBClosureError', (RuntimeError,), {})('same name, other class'),
+            'Aragog call failed (CMBClosureError) #1/3.',
+        ),
+        (RetryLadderExhaustedError('ladder out'), 'Aragog retry-ladder exhaustion #1/3.'),
+        (
+            type('Sub', (RetryLadderExhaustedError,), {})('sub'),
+            'Aragog retry-ladder exhaustion #1/3.',
+        ),
+    ],
+)
+def test_a_skipped_aragog_step_names_the_error_that_stopped_the_call(error, cause, caplog):
+    """The skip-step warning names the error class and its message; only an exhausted ladder
+    reads as a retry-ladder exhaustion. The skip itself is the same for every cause."""
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+    hf_row.update(dict.fromkeys(_ARAGOG_CALL_ENERGY_KEYS, 1.0e27))
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic, interior_o.dt, interior_o.aragog_fail_count = 2, 0.0, 0
+    runner_mock = MagicMock()
+    runner_mock.run_solver.side_effect = error
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
+        patch('proteus.interior_energetics.timestep.next_step', return_value=42.0),
+        caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
+    assert len(caplog.messages) == 1
+    assert caplog.messages[0].startswith(cause)
+    assert str(error) in caplog.messages[0]
+    assert interior_o.aragog_fail_count == 1
+    assert interior_o.dt == 42.0
+    assert all(hf_row[k] == 0.0 for k in _ARAGOG_CALL_ENERGY_KEYS)
+
+
+@pytest.mark.unit
+def test_the_abort_after_the_last_skipped_aragog_step_names_its_cause(caplog):
+    """The third failed call in a row stops the run, and the abort line names its cause."""
+    from proteus.interior_energetics import wrapper as _w
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic, interior_o.dt = 2, 0.0
+    interior_o.aragog_fail_count = _w._ARAGOG_MAX_CONSECUTIVE_FAILS - 1
+    runner_mock = MagicMock()
+    runner_mock.run_solver.side_effect = CMBClosureError('ledger miss 5 above 10x the bound')
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
+        caplog.at_level('ERROR', logger='fwl.proteus.interior_energetics.wrapper'),
+        pytest.raises(CMBClosureError),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
+    # the campaign census counts run deaths with this pattern
+    assert re.search(r'Aragog failed .* consecutive times\. Aborting\.', caplog.messages[0])
+    assert caplog.messages == [
+        'Aragog failed 3 consecutive times. Aborting. Last cause: Aragog CMB closure check '
+        'failed (CMBClosureError)'
+    ]
 
 
 # ============================================================================
@@ -5641,6 +5836,8 @@ def _dtmagma_scenario(update_dphi_abs=0.05):
         'T_magma': 2800.0,
         'Phi_global': 0.80,
         'R_int': 6.371e6,
+        # a solve writes R_int and M_int; a stub solve that leaves M_int keeps this one
+        'M_int': 5.972e24,
         'gravity': 9.81,
     }
     # Baselines passed as last_struct_*: dT/T = |2800-3000|/3000 = 0.067.
@@ -7717,7 +7914,7 @@ def test_a_stalled_interior_ends_the_run_instead_of_being_absorbed():
         'stalled run looks the same from outside as one still going'
     )
 
-    absorbed, absorbed_interior, _ = _drive(RuntimeError('retry ladder exhausted'))
+    absorbed, absorbed_interior, _ = _drive(RetryLadderExhaustedError('retry ladder exhausted'))
     assert absorbed is None, (
         f'an ordinary solver failure was passed up ({absorbed!r}) instead of '
         'being absorbed by the keep-previous-state fallback'

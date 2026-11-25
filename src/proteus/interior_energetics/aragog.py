@@ -788,6 +788,10 @@ class InteriorStalledError(RuntimeError):
     """
 
 
+class RetryLadderExhaustedError(RuntimeError):
+    """Every attempt of the retry ladder of one Aragog call failed."""
+
+
 class AragogRunner:
     def __init__(
         self,
@@ -2680,8 +2684,8 @@ class AragogRunner:
         started from (``S0_entry``, the state vector of the solver) and
         keeps the compression work of the structure re-solve before the
         call, which a reset on an unchanged mesh sets to 0. On final failure
-        this raises RuntimeError so the caller can apply its skip-step
-        fallback.
+        this raises RetryLadderExhaustedError so the caller can apply its
+        skip-step fallback.
 
         Parameters
         ----------
@@ -2701,7 +2705,7 @@ class AragogRunner:
 
         Raises
         ------
-        RuntimeError
+        RetryLadderExhaustedError
             When every attempt of the ladder failed.
         AcceptedStateRangeError
             When the last attempt still leaves the EOS tables at an accepted state; earlier
@@ -2979,11 +2983,11 @@ class AragogRunner:
                             reason += f' (cvode_flag={cvode_flag}, {flag_name})'
                     log.error(
                         'Aragog solver failed after %d attempts (%s). '
-                        'Raising RuntimeError so wrapper can apply skip-step fallback.',
+                        'Raising RetryLadderExhaustedError; the wrapper skips the step.',
                         attempt,
                         reason,
                     )
-                    raise RuntimeError(
+                    raise RetryLadderExhaustedError(
                         f'Aragog retry ladder exhausted: {reason} '
                         f'after {attempt} attempts at t={hf_row.get("Time", 0.0):.3e} yr'
                     )

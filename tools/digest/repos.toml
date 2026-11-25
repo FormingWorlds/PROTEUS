@@ -22,15 +22,34 @@ repos = [
     "FormingWorlds/atmodeller",
     "FormingWorlds/Zalmoxis",
     "FormingWorlds/Obliqua",
-    "FormingWorlds/Erebus.jl",
     "FormingWorlds/Morrigan",
     "nichollsh/AGNI",
+    "maraattia/PALEOS",
 ]
+# Repositories without pull requests: the commits of the window to their default branch
+# are read instead, the newest max_commits of them (1 to 100); the job summary counts the rest.
+commits_only = ["maraattia/PALEOS"]
+max_commits = 100
 
 # Files whose changes become facts, per repository; every repository also gets
 # pyproject.toml and Project.toml when it has them.
 [tracked]
-"FormingWorlds/PROTEUS" = ["docs/Reference/config/config_schema.json", "docs/Reference/output_schema.json"]
+"FormingWorlds/PROTEUS" = ["docs/Reference/config/config_schema.json", "docs/Reference/output_schema.json", "src/proteus/data/proteus_manifest.toml"]
+"FormingWorlds/fwl-io" = ["src/fwl_io/data/shared_manifest.toml", "src/fwl_io/data/interior.eos.paleos_iron.registry.txt", "src/fwl_io/data/interior.eos.paleos_mgsio3.registry.txt", "src/fwl_io/data/interior.eos.paleos_mgsio3_unified.registry.txt", "src/fwl_io/data/interior.eos.paleos_h2o.registry.txt"]
 "FormingWorlds/Zalmoxis" = ["input/default.toml"]
-"FormingWorlds/Erebus.jl" = ["configs/default.toml"]
 "nichollsh/AGNI" = ["res/config/default.toml"]
+
+# Served docs site of each repository: a page docs/<path>.md is linked as <site>/<path>.html
+# when that URL answers 200 at collect time. A repository without a site here gets no docs links.
+[docs]
+"FormingWorlds/PROTEUS" = "https://proteus-framework.org/PROTEUS"
+"FormingWorlds/aragog" = "https://proteus-framework.org/aragog"
+"FormingWorlds/CALLIOPE" = "https://proteus-framework.org/CALLIOPE"
+"FormingWorlds/JANUS" = "https://proteus-framework.org/JANUS"
+"FormingWorlds/MORS" = "https://proteus-framework.org/MORS"
+"FormingWorlds/ZEPHYRUS" = "https://proteus-framework.org/ZEPHYRUS"
+"FormingWorlds/SPIDER" = "https://proteus-framework.org/SPIDER"
+"FormingWorlds/VULCAN" = "https://proteus-framework.org/VULCAN"
+"FormingWorlds/SOCRATES" = "https://proteus-framework.org/SOCRATES"
+"FormingWorlds/Zalmoxis" = "https://proteus-framework.org/Zalmoxis"
+"FormingWorlds/Morrigan" = "https://proteus-framework.org/Morrigan"

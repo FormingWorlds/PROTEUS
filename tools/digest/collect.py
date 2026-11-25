@@ -4,8 +4,9 @@ Usage::
 
     python tools/digest/collect.py --out collected.json [--since DATE] [--until DATE]
 
-Without ``--since`` the window starts where the last digest post of
-``github-actions`` ended (its state marker), or 7 days before ``--until``.
+Without ``--since`` the window starts where the newest trusted live digest ended,
+else at the state marker of the last digest post of ``github-actions``, else 7 days
+before ``--until``; without either and without ``--until`` the run prints a warning.
 A given ``--since`` or ``--until`` marks the window as back-dated, which keeps
 the run a dry run. Pull-request and release text is untrusted: links, images,
 HTML and mentions are removed before anything reaches the model.
@@ -14,17 +15,28 @@ HTML and mentions are removed before anything reaches the model.
 from __future__ import annotations
 
 import argparse
+import collections
 import html
+import http.client
 import json
 import re
 import sys
 import unicodedata
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 
-from common import DigestError, GitHub, find_category, iso, load_settings, parse_time
+from common import API, DigestError, GitHub, find_category, iso, load_settings, parse_time
 
 MEMBERS = ('OWNER', 'MEMBER', 'COLLABORATOR', 'CONTRIBUTOR')
+REST_FILES = 300  # files in the REST answer for one commit
 RAW_CHARS = 20000  # raw text read per title or body; the largest body_chars allowed
+LIVE_ARTIFACT = 'digest-live'
+WORKFLOW = '.github/workflows/weekly-digest.yml'
+ARTIFACT_PAGES = 10  # pages of PER_PAGE artifacts searched for a trusted live digest
+PER_PAGE = 100
+FALLBACK_DAYS = 35
 STATE_RE = re.compile(r'<!-- weekly-digest-state (\{.*?\}) -->', re.S)
 
 PR_QUERY = """
@@ -39,10 +51,11 @@ query($owner: String!, $name: String!, $cursor: String) {
         additions deletions
         author { login __typename }
         labels(first: 10) { nodes { name } }
-        files(first: 100) { totalCount nodes { path } }
+        files(first: 100) { totalCount nodes { path changeType } }
         mergeCommit { oid parents(first: 1) { nodes { oid } } }
       }
-    }
+    }"""
+RELEASES_FIELD = """
     releases(first: 20, orderBy: {field: CREATED_AT, direction: DESC}) {
       nodes { tagName name url publishedAt isDraft isPrerelease description
               author { login __typename } }
@@ -50,6 +63,21 @@ query($owner: String!, $name: String!, $cursor: String) {
   }
 }
 """
+PR_QUERY += RELEASES_FIELD
+COMMIT_QUERY = (
+    """
+query($owner: String!, $name: String!, $since: GitTimestamp!, $until: GitTimestamp!, $max: Int!) {
+  repository(owner: $owner, name: $name) {
+    isPrivate isArchived
+    defaultBranchRef { target { ... on Commit {
+      history(since: $since, until: $until, first: $max) {
+        totalCount
+        nodes { oid url committedDate messageHeadline messageBody additions deletions
+                parents(first: 2) { totalCount nodes { oid } }
+                author { user { login __typename } } }
+      } } } }"""
+    + RELEASES_FIELD
+)
 
 POSTS_QUERY = """
 query($owner: String!, $name: String!, $category: ID!, $cursor: String) {
@@ -60,12 +88,6 @@ query($owner: String!, $name: String!, $category: ID!, $cursor: String) {
       nodes { url title createdAt body author { login __typename } }
     }
   }
-}
-"""
-
-PR_STATE_QUERY = """
-query($owner: String!, $name: String!, $number: Int!) {
-  repository(owner: $owner, name: $name) { pullRequest(number: $number) { state } }
 }
 """
 
@@ -158,28 +180,99 @@ def previous_state(gh: GitHub, home: str, category: str) -> dict | None:
         cursor = posts['pageInfo']['endCursor']
 
 
-def still_open(gh: GitHub, repos: list[str], refs: list[str]) -> list[str]:
-    """Return the announced pull requests (``name#number``) that GitHub reports open."""
-    full = {short_name(r): r for r in repos}
-    out = []
-    for ref in refs:
-        name, number = ref.split('#')
-        if name not in full:
-            print(
-                f'Announced pull request {ref} leaves the state: its repository is not in the settings'
+def trusted_run(run: dict | None, home: str) -> bool:
+    """True for a successful scheduled or manual run of the digest workflow on main of ``home``."""
+    run = run or {}
+    return (
+        run.get('path') == WORKFLOW
+        and run.get('event') in ('schedule', 'workflow_dispatch')
+        and run.get('head_branch') == 'main'
+        and (run.get('head_repository') or {}).get('full_name') == home
+        and run.get('conclusion') == 'success'
+    )
+
+
+def live_doc_state(doc: object, ended: str | None) -> dict | None:
+    """The window state of a ``digest.json`` of ``digest-live``: only a live one with a valid end.
+
+    The end must not be later than ``ended``, the last update of the run that uploaded it.
+    """
+    if not isinstance(doc, dict) or doc.get('live') is not True:
+        return None
+    try:
+        if parse_time(doc['until']) > parse_time(ended):
+            return None
+    except (KeyError, TypeError, ValueError):
+        return None
+    return {
+        'until': doc['until'],
+        'run_id': doc.get('run_id'),
+        'title': doc.get('title'),
+        'url': doc.get('run_url'),
+    }
+
+
+def live_state(gh: GitHub, home: str) -> dict | None:
+    """Return the state of the trusted ``digest-live`` with the latest window end, or None.
+
+    Anybody who can open a pull request can upload an artifact with that name, so each
+    candidate counts only when its run passes ``trusted_run``. Artifacts off main or from
+    another repository are dropped before the run is read. GitHub lists artifacts by id,
+    not by time, so every page is read and the latest ``until`` wins.
+
+    Raises
+    ------
+    DigestError
+        When the list answers 404, when the zip of a trusted candidate answers 404, or
+        when the last of ``ARTIFACT_PAGES`` pages is full, so that artifacts stay unread.
+    """
+    best, artifacts = None, []
+    for page in range(1, ARTIFACT_PAGES + 1):
+        url = f'{API}/repos/{home}/actions/artifacts?name={LIVE_ARTIFACT}&per_page={PER_PAGE}&page={page}'
+        if (answer := gh.get_json(url)) is None:
+            raise DigestError(f'{url} answered 404')
+        if not (artifacts := answer.get('artifacts', [])):
+            break
+        for art in artifacts:
+            wr = art.get('workflow_run') or {}
+            if (
+                art.get('expired')
+                or wr.get('head_branch') != 'main'
+                or wr.get('head_repository_id') != wr.get('repository_id')
+            ):
+                continue
+            run = gh.get_json(f'{API}/repos/{home}/actions/runs/{wr["id"]}')
+            state = trusted_run(run, home) and live_doc_state(
+                gh.artifact_json(art, 'digest.json'), run.get('updated_at')
             )
-            continue
-        owner, repo = full[name].split('/')
-        try:
-            found = gh.graphql(PR_STATE_QUERY, owner=owner, name=repo, number=int(number))
-        except DigestError as err:
-            if not re.search(r'NOT_FOUND|Could not resolve', str(err)):
-                out.append(ref)
-            print(f'Announced pull request {ref} cannot be read: {err}')
-            continue
-        if ((found['repository'] or {}).get('pullRequest') or {}).get('state') == 'OPEN':
-            out.append(ref)
-    return out
+            if state and (
+                best is None or parse_time(state['until']) > parse_time(best['until'])
+            ):
+                best = state
+    else:
+        if len(artifacts) == PER_PAGE:
+            raise DigestError(
+                f'more than {ARTIFACT_PAGES * PER_PAGE} {LIVE_ARTIFACT} artifacts; '
+                'the newest trusted one can be unread'
+            )
+    return best
+
+
+def window_state(gh: GitHub, home: str, category: str, now: datetime) -> dict | None:
+    """The state that starts the window: the newest live digest, else the last post marker.
+
+    The post marker counts only while it ends at most ``FALLBACK_DAYS`` days before ``now``.
+    """
+    if state := live_state(gh, home):
+        return state
+    state = previous_state(gh, home, category)
+    if state and parse_time(state['until']) < now - timedelta(days=FALLBACK_DAYS):
+        print(
+            f'::notice::The last post ends at {state["until"]}, more than {FALLBACK_DAYS} days '
+            'ago; the window is the last 7 days'
+        )
+        return None
+    return state
 
 
 def resolve_window(
@@ -226,6 +319,7 @@ def pr_record(repo: str, node: dict, since: str, until: str) -> dict | None:
         'size': node['additions'] + node['deletions'],
         'labels': [label['name'] for label in node['labels']['nodes']],
         'files': [f['path'] for f in node['files']['nodes']],
+        'deleted': [f['path'] for f in node['files']['nodes'] if f['changeType'] == 'DELETED'],
         'files_truncated': node['files'].get('totalCount', 0) > len(node['files']['nodes']),
         'merge_oid': commit['oid'] if commit else None,
         'parent_oid': parents[0]['oid'] if parents else None,
@@ -250,6 +344,70 @@ def release_record(repo: str, node: dict, since: str, until: str) -> dict | None
         'author_kind': author.get('__typename'),
         'published_at': published,
     }
+
+
+def commit_record(repo: str, node: dict, since: str, until: str) -> dict | None:
+    """Return a commit as a record when it is no merge commit and its commit date is in the window.
+
+    The commit date in UTC, not the author date, places a commit, so a commit rebased
+    onto the default branch in the window counts in it.
+    """
+    committed = iso(parse_time(node['committedDate']))
+    if node['parents']['totalCount'] > 1 or not since <= committed < until:
+        return None
+    user = (node['author'] or {}).get('user') or {}
+    parents = node['parents']['nodes']
+    return {
+        'repo': repo,
+        'oid': node['oid'],
+        'url': node['url'],
+        'title': node['messageHeadline'],
+        'raw_body': node['messageBody'] or '',
+        'author': user.get('login'),
+        'author_kind': user.get('__typename'),
+        'committed_at': committed,
+        'size': node['additions'] + node['deletions'],
+        'merge_oid': node['oid'],
+        'parent_oid': parents[0]['oid'] if parents else None,
+    }
+
+
+def collect_commits(gh: GitHub, repo: str, window: dict, cap: int) -> tuple[list, list, int]:
+    """Return the commit and release records of a repository without pull requests.
+
+    The newest ``cap`` commits of the window to the default branch are read, and each
+    kept commit gets its changed files from one REST call. Refs count up from the
+    oldest commit date (``PALEOS:c1``); on one date they keep the reverse order of the
+    history, a parent before its child. The third value is the number of commits over the cap.
+
+    Raises
+    ------
+    DigestError
+        When the repository is private, archived, missing or has no default branch.
+    """
+    owner, name = repo.split('/')
+    since, until = window['since'], window['until']
+    asked = {'owner': owner, 'name': name, 'since': since, 'until': until, 'max': cap}
+    data = gh.graphql(COMMIT_QUERY, **asked)['repository']
+    if data is None or data['isPrivate'] or data['isArchived'] or not data['defaultBranchRef']:
+        raise DigestError(f'{repo} is not a public, active repository')
+    history = data['defaultBranchRef']['target']['history']
+    commits = sorted(
+        (c for n in reversed(history['nodes']) if (c := commit_record(repo, n, since, until))),
+        key=lambda c: c['committed_at'],
+    )
+    for i, c in enumerate(commits, 1):
+        files = gh.commit_files(repo, c['oid'])
+        c['ref'] = f'{short_name(repo)}:c{i}'
+        if files is None:
+            print(
+                f'Commit {c["ref"]} {c["oid"]}: no file list from GitHub; facts read every tracked file'
+            )
+        c['files'] = [f['filename'] for f in files or []]
+        c['deleted'] = [f['filename'] for f in files or [] if f['status'] == 'removed']
+        c['files_truncated'] = files is None or len(files) >= REST_FILES
+    releases = [release_record(repo, n, since, until) for n in data['releases']['nodes']]
+    return commits, [r for r in releases if r], history['totalCount'] - len(history['nodes'])
 
 
 def collect_repo(gh: GitHub, repo: str, window: dict) -> tuple[list, list]:
@@ -303,28 +461,123 @@ def add_bodies(prs: list, releases: list, max_bodies: int, body_chars: int) -> d
     return {'bodies_kept': len(keep), 'bodies_cut': len(prs) - len(keep)}
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Give a redirect back as its 3xx answer, so only a page served at its own URL counts."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+PAGE_OPENER = urllib.request.build_opener(NoRedirect)
+
+
+def page_status(url: str) -> int | str:
+    """HTTP status of one HEAD request to a docs page, or the error text; it never raises."""
+    try:
+        req = urllib.request.Request(
+            url, method='HEAD', headers={'User-Agent': 'weekly-digest'}
+        )
+        with PAGE_OPENER.open(req, timeout=15) as resp:
+            return resp.status
+    except urllib.error.HTTPError as err:
+        return err.code
+    except (OSError, http.client.HTTPException, ValueError) as err:
+        return f'{type(err).__name__}: {err}'
+
+
+def docs_pages(files: list[str], base: str | None, status) -> list[dict]:
+    """Return the served docs pages among the files of a pull request.
+
+    A file ``docs/<path>.md`` maps to ``<base>/<path>.html``; it is kept only when
+    ``status(url)`` gives 200, so a page that is deleted or not yet deployed is left out.
+    A page name of other characters than ASCII letters, digits, ``_``, space, ``.``, ``/``
+    and ``-``, or with no letter or digit, is left out unasked, so its link is visible text.
+
+    Parameters
+    ----------
+    files : list of str
+        Paths of the pull request.
+    base : str or None
+        Docs site of the repository; None gives no pages.
+    status : callable
+        Maps a URL to its HTTP status, or to an error text.
+
+    Returns
+    -------
+    list of dict
+        ``{'path': <path>, 'url': <url>}`` in file order.
+    """
+    pages = []
+    for path in files if base else []:
+        if not (path.startswith('docs/') and path.endswith('.md')):
+            continue
+        page = path[len('docs/') : -len('.md')]
+        if not re.fullmatch(r'[\w ./-]*[^\W_][\w ./-]*', page, re.ASCII):
+            print(f'Docs page left out: {path!r} has a character a link text cannot hold')
+            continue
+        url = f'{base}/{urllib.parse.quote(page)}.html'
+        if (code := status(url)) == 200:
+            pages.append({'path': page, 'url': url})
+        else:
+            print(f'Docs page left out: {url} answered {code}')
+    return pages
+
+
 def collect(gh: GitHub, settings: dict, window: dict) -> dict:
     """Collect all repositories of the settings into one JSON-ready dict."""
     names = [short_name(r) for r in settings['repos']]
     if len(set(names)) != len(names):
         raise DigestError('two repositories share a name; references would be ambiguous')
-    prs, releases = [], []
+    prs, releases, commits, over = [], [], [], {}
     for repo in settings['repos']:
-        got_prs, got_releases = collect_repo(gh, repo, window)
-        prs += got_prs
+        if repo in settings['commits_only']:
+            got, got_releases, n = collect_commits(gh, repo, window, settings['max_commits'])
+            commits += got
+            if n:
+                over[repo] = n
+        else:
+            got_prs, got_releases = collect_repo(gh, repo, window)
+            prs += got_prs
         releases += got_releases
+    for c in commits:
+        c['title'] = clean_text(c['title'], 300)
+        c['body'] = clean_text(c.pop('raw_body'), settings['body_chars'])
     dropped = [p for p in prs if p['status'] == 'open' and p['association'] not in MEMBERS]
     prs = [p for p in prs if p not in dropped]
     cut = add_bodies(prs, releases, settings['max_bodies'], settings['body_chars'])
+    down, answers, left = set(), {}, collections.defaultdict(set)
+    for p in prs:
+        base = settings['docs'].get(p['repo']) if p['status'] == 'merged' else None
+
+        def status(url: str, base: str | None = base) -> int | str:
+            """One request per URL, and none to a docs site after a network error on it."""
+            if url not in answers:
+                if base in down:
+                    return 'not asked: the site failed before'
+                answers[url] = page_status(url)
+                if isinstance(answers[url], str):
+                    down.add(base)
+            return answers[url]
+
+        files = [f for f in p['files'] if f not in p['deleted']]
+        p['docs'] = docs_pages(files, base, status)
+        if base:
+            kept = {f'docs/{d["path"]}.md' for d in p['docs']}
+            left[base] |= {
+                f for f in files if f.startswith('docs/') and f.endswith('.md')
+            } - kept
     return {
         'window': window,
         'repos': settings['repos'],
         'prs': prs,
         'releases': releases,
+        'commits': commits,
+        'commits_left_out': over,
         'dropped_open': [
             {'ref': p['ref'], 'login': p['author'], 'association': p['association']}
             for p in dropped
         ],
+        'docs_left_out': {site: len(paths) for site, paths in left.items() if paths},
         **cut,
     }
 
@@ -340,20 +593,32 @@ def main(argv: list[str] | None = None) -> int:
     settings = load_settings()
     gh = GitHub()
     home = settings['repos'][0]
-    state = None if args.since else previous_state(gh, home, settings['category'])
-    window = resolve_window(args.since, args.until, state, datetime.now(timezone.utc))
-    window['previous'] = state
+    now = datetime.now(timezone.utc)
+    state = None if args.since else window_state(gh, home, settings['category'], now)
+    window = resolve_window(args.since, args.until, state, now)
+    if state is None and not window['backdated']:
+        print('::warning::No earlier digest was found; the window is the last 7 days')
+        window['no_earlier'] = True
     data = collect(gh, settings, window)
-    data['still_open'] = still_open(
-        gh, settings['repos'], (state or {}).get('announced_open', [])
-    )
     with open(args.out, 'w') as fh:
         json.dump(data, fh)
     print(f'{len(data["prs"])} PRs, {len(data["releases"])} releases in {window}')
-    lines = [
-        f'Open pull request left out: {d["ref"]} by {d["login"]} (association {d["association"]})'
-        for d in data.get('dropped_open', [])
-    ]
+    for c in data.get('commits', []):
+        print(f'Commit {c["ref"]} {c["oid"]} {c["committed_at"]}')
+    lines = (
+        [
+            f'Open pull request left out: {d["ref"]} by {d["login"]} (association {d["association"]})'
+            for d in data.get('dropped_open', [])
+        ]
+        + [
+            f'Docs pages left out of {site}: {n}'
+            for site, n in data.get('docs_left_out', {}).items()
+        ]
+        + [
+            f'Commits left out of {repo}: {n}'
+            for repo, n in data.get('commits_left_out', {}).items()
+        ]
+    )
     if lines:
         print(*lines, sep='\n')
     if args.summary and lines:
