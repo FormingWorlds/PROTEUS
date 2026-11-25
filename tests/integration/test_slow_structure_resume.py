@@ -5,7 +5,7 @@ row (``store_structure_trigger_state``) and restores on resume
 (``restore_structure_trigger_state``, ``src/proteus/interior_energetics/wrapper.py``).
 
 A run of ``tests/integration/zalmoxis_aragog_calliope.toml`` with a fixed 50 yr step and a
-structure update at most every 150 yr runs to 500 yr in one go. The same run stops at 250 yr
+structure update at most every 150 yr runs to 500 yr in one go. The same run stops at 252 yr
 and resumes to 500 yr. A copy of the stopped run with the references of its last row set to
 0, which is what a resume read before they were stored, resumes as well.
 
@@ -32,11 +32,12 @@ pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 CONFIG = pathlib.Path(__file__).parent / 'zalmoxis_aragog_calliope.toml'
 REF_KEYS = ('struct_ref_time', 'struct_ref_T_magma', 'struct_ref_Phi')
 
-# Fixed 50 yr steps and a 150 yr ceiling put re-solves at 150, 300 and 450 yr. A resume at
-# 250 yr that takes its own row as the reference moves the next one to 400 yr.
+# After the init rows (0, 1, 2 yr) the steps are 50 yr, and the 150 yr ceiling re-solves at 152, 302
+# and 452 yr. A stop at 252 yr keeps the step grid; a resume that takes its row as the reference
+# moves the next re-solve to 402 yr.
 DT_YR = 50.0
 CEILING_YR = 150.0
-T_STOP_YR = 250.0
+T_STOP_YR = 252.0
 T_END_YR = 500.0
 
 
@@ -58,9 +59,9 @@ def _runner(outdir, tmax):
 
 
 def _resolve_times(hf):
-    """Model times [yr] of the rows whose structure reference moved: the re-solves."""
-    ref = hf['struct_ref_time'].to_numpy()
-    return hf['Time'].to_numpy()[1:][np.diff(ref) != 0]
+    """Model times [yr] of the re-solves: the rows whose structure reference is their own time."""
+    t, ref = hf['Time'].to_numpy(), hf['struct_ref_time'].to_numpy()
+    return t[(t > 0) & np.isclose(ref, t, rtol=1e-12, atol=0)]
 
 
 def _drop_references(outdir):
@@ -99,7 +100,7 @@ def runs(tmp_path_factory):
 
 @pytest.mark.physics_invariant
 def test_resumed_run_resolves_the_structure_at_the_rows_of_the_run_in_one_go(runs):
-    """Zalmoxis and Aragog with CALLIOPE outgassing: the run stopped at 250 yr and resumed
+    """Zalmoxis and Aragog with CALLIOPE outgassing: the run stopped at 252 yr and resumed
     re-solves at the rows of the run in one go; the resume without references does not."""
     whole, resumed, no_refs = runs['whole'], runs['resumed'], runs['no_refs']
     t_whole = _resolve_times(whole)
@@ -108,8 +109,10 @@ def test_resumed_run_resolves_the_structure_at_the_rows_of_the_run_in_one_go(run
 
     np.testing.assert_allclose(resumed['Time'], whole['Time'], rtol=1e-12)
     np.testing.assert_allclose(_resolve_times(resumed), t_whole, rtol=1e-12)
-    for key in REF_KEYS:
-        np.testing.assert_allclose(resumed[key], whole[key], rtol=1e-9)
+    np.testing.assert_allclose(resumed['struct_ref_time'], whole['struct_ref_time'], rtol=1e-12)
+    # A resumed Aragog run reproduces T and Phi within STATE_RTOL of test_slow_aragog_resume.py.
+    for key in ('struct_ref_T_magma', 'struct_ref_Phi'):
+        np.testing.assert_allclose(resumed[key], whole[key], rtol=1e-5)
 
     t_no_refs = _resolve_times(no_refs)
     assert len(t_no_refs) != len(t_whole) or not np.allclose(t_no_refs, t_whole)
