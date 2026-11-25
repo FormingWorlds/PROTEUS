@@ -3487,20 +3487,19 @@ def _cnode(oid, committed, parents=1, authored=None, login='maraattia', headline
         'deletions': 2,
         'parents': {'totalCount': parents, 'nodes': [{'oid': f'p{oid}'}] * parents},
         'author': {
-            'name': 'M',
             'user': {'login': login, '__typename': 'User'} if login else None,
         },
     }
 
 
-def _cpage(nodes, total=None, private=False):
+def _cpage(nodes, total=None, private=False, releases=()):
     history = {'totalCount': len(nodes) if total is None else total, 'nodes': nodes}
     return {
         'repository': {
             'isPrivate': private,
             'isArchived': False,
             'defaultBranchRef': {'target': {'history': history}},
-            'releases': {'nodes': []},
+            'releases': {'nodes': list(releases)},
         }
     }
 
@@ -3605,6 +3604,20 @@ def test_commit_record_takes_the_commit_date_and_drops_merges(node, kept):
         assert rec['committed_at'] == node['committedDate'] and rec['merge_oid'] == node['oid']
 
 
+@pytest.mark.parametrize(
+    ('stamp', 'utc'),
+    [
+        ('2026-09-30T00:30:00+01:00', '2026-09-29T23:30:00Z'),
+        ('2026-09-01T00:30:00+01:00', None),
+        ('2026-09-29T20:00:00-05:00', None),
+    ],
+)
+def test_commit_record_compares_the_commit_date_in_utc(stamp, utc):
+    """A commit date with an offset is placed by its UTC time and stored in UTC."""
+    rec = collect.commit_record(PALEOS, _cnode(_oid(1), stamp), SINCE, UNTIL)
+    assert (rec['committed_at'] if rec else None) == utc
+
+
 def test_commit_record_without_an_account_or_a_parent():
     """A git author with no account has no login; a root commit has no parent."""
     rec = collect.commit_record(
@@ -3616,12 +3629,12 @@ def test_commit_record_without_an_account_or_a_parent():
 def test_collect_commits_numbers_by_commit_date_and_reads_files():
     """Refs count up from the oldest commit date; each kept commit gets its file list."""
     nodes = [
-        _cnode(_oid(3), '2026-09-20T00:00:00Z'),
+        _cnode(_oid(1), '2026-09-20T00:00:00Z'),
         _cnode(_oid(2), '2026-09-12T00:00:00Z', parents=2),
-        _cnode(_oid(1), '2026-09-05T00:00:00Z', authored='2026-08-01T00:00:00Z'),
+        _cnode(_oid(9), '2026-09-05T00:00:00+02:00', authored='2026-08-01T00:00:00Z'),
     ]
     files = {
-        _oid(3): [
+        _oid(1): [
             {'filename': 'pyproject.toml', 'status': 'modified'},
             {'filename': 'old.py', 'status': 'removed'},
         ]
@@ -3630,8 +3643,8 @@ def test_collect_commits_numbers_by_commit_date_and_reads_files():
     window = {'since': SINCE, 'until': UNTIL}
     commits, releases, left = collect.collect_commits(gh, PALEOS, window, 3)
     assert [(c['ref'], c['oid']) for c in commits] == [
-        ('PALEOS:c1', _oid(1)),
-        ('PALEOS:c2', _oid(3)),
+        ('PALEOS:c1', _oid(9)),
+        ('PALEOS:c2', _oid(1)),
     ]
     assert commits[1]['files'] == ['pyproject.toml', 'old.py']
     assert (commits[1]['deleted'], commits[0]['files']) == (['old.py'], [])
@@ -3639,8 +3652,37 @@ def test_collect_commits_numbers_by_commit_date_and_reads_files():
     assert gh.queries == [
         {'owner': 'maraattia', 'name': 'PALEOS', 'since': SINCE, 'until': UNTIL, 'max': 3}
     ]
-    assert gh.asked == [(PALEOS, _oid(1)), (PALEOS, _oid(3))]
+    assert gh.asked == [(PALEOS, _oid(9)), (PALEOS, _oid(1))]
     assert (releases, left) == ([], 2)
+
+
+def test_collect_commits_keeps_the_parent_order_on_one_commit_date():
+    """A rebased stack shares one commit date; the parent, later in the history, comes first."""
+    stamp = '2026-09-10T00:00:00Z'
+    nodes = [_cnode(_oid(1), stamp), _cnode(_oid(9), stamp), _cnode(_oid(5), stamp)]
+    commits, _, _ = collect.collect_commits(
+        _FakeGH([_cpage(nodes)]), PALEOS, {'since': SINCE, 'until': UNTIL}, 9
+    )
+    assert [c['oid'] for c in commits] == [_oid(5), _oid(9), _oid(1)]
+
+
+def test_collect_commits_returns_the_releases_of_the_window():
+    """A repository without pull requests still gives its releases of the window."""
+    node = {
+        'tagName': '1.0.0',
+        'name': 'PALEOS 1.0.0',
+        'url': 'u',
+        'publishedAt': '2026-09-10T00:00:00Z',
+        'isDraft': False,
+        'isPrerelease': False,
+        'description': 'd',
+        'author': {'login': 'maraattia', '__typename': 'User'},
+    }
+    page = _cpage([], releases=[node, {**node, 'tagName': '0.9.0', 'publishedAt': UNTIL}])
+    _, releases, _ = collect.collect_commits(
+        _FakeGH([page]), PALEOS, {'since': SINCE, 'until': UNTIL}, 9
+    )
+    assert [r['ref'] for r in releases] == ['PALEOS@1.0.0']
 
 
 def test_collect_commits_marks_a_full_file_page_as_cut():
@@ -3656,6 +3698,7 @@ def test_collect_commits_marks_a_full_file_page_as_cut():
     [
         {'repository': None},
         _cpage([], private=True),
+        {'repository': {**_cpage([])['repository'], 'isArchived': True}},
         {'repository': {**_cpage([])['repository'], 'defaultBranchRef': None}},
     ],
 )
@@ -3711,12 +3754,26 @@ def test_collect_reads_a_commits_only_repository_by_its_commits():
         headline='Fix <b>iron</b> @bob',
         body='Ask @bob, see https://x.y/z ' + 'x' * 40,
     )
-    out = collect.collect(_FakeGH([_janus(), _cpage([node], total=4)]), settings_, window)
+    rel = {
+        'tagName': '1.0.0',
+        'name': None,
+        'url': 'u',
+        'publishedAt': '2026-11-06T00:00:00Z',
+        'isDraft': False,
+        'isPrerelease': False,
+        'description': 'd',
+        'author': {'login': 'maraattia', '__typename': 'User'},
+    }
+    gh = _FakeGH([_janus(), _cpage([node], total=4, releases=[rel])])
+    out = collect.collect(gh, settings_, window)
+    assert gh.queries[1]['max'] == 2 and 'PALEOS@1.0.0' in [r['ref'] for r in out['releases']]
     assert [c['ref'] for c in out['commits']] == ['PALEOS:c1']
     got = out['commits'][0]
     assert got['title'] == 'Fix iron bob' and got['body'] == 'Ask bob, see xxxxxxx'
     assert 'raw_body' not in got and out['commits_left_out'] == {PALEOS: 3}
     assert [p['ref'] for p in out['prs']] == ['JANUS#105', 'JANUS#104', 'JANUS#103']
+    out = collect.collect(_FakeGH([_janus(), _cpage([node])]), settings_, window)
+    assert out['commits_left_out'] == {}
 
 
 def test_collect_main_lists_the_commits_and_the_cut(tmp_path, monkeypatch, capsys):
@@ -3773,6 +3830,9 @@ def test_a_window_with_only_commits_is_not_empty():
     """A commit is merged work, so a window with one is not a quiet week."""
     data = _cdata(prs=[_pr(status='open')], fact_list=[])
     assert not check.is_empty(data)
+    assert check.check(data, _draft()) == [
+        'the model returned no entries for a window with merged pull requests, releases or commits'
+    ]
     data['commits'] = []
     assert check.is_empty(data)
 
@@ -3797,6 +3857,7 @@ def test_prompt_and_schema_name_the_commit_list():
         == 1
     )
     assert prompt.count('the authors of the cited pull requests, releases and commits') == 1
+    assert prompt.count('in the title or body of a cited pull request, release or commit') == 1
     item = json.loads((_ROOT / 'tools' / 'digest' / 'entry_schema.json').read_text())
     item = item['properties']['entries']['items']
     assert 'commits' in item['required']
@@ -3817,6 +3878,7 @@ def test_render_links_each_commit_with_its_short_id_and_author():
     urls = render.allowed_urls(data, 'https://run', _VALID['bots'])
     assert url in urls and 'https://github.com/maraattia' in urls
     assert render.scan_body(body, urls, []) == []
+    assert body.count('releases and the commits of repositories without pull requests;') == 1
 
 
 @pytest.mark.parametrize('n', [0, 1, 2])
@@ -3825,9 +3887,9 @@ def test_summary_counts_the_commits_of_a_repository_without_pull_requests(n):
     data = _cdata()
     data['commits'] = [_commit(f'PALEOS:c{i + 1}') for i in range(n)]
     text = render.summary(data, 'https://run')
-    noun = {1: 'the 1 commit', 2: 'the 2 commits'}.get(n)
+    noun = {1: '1 commit', 2: '2 commits'}.get(n)
     if noun:
-        want = f'It also reads {noun} to the default branch of PALEOS, a repository without pull requests.'
+        want = f'It also read {noun} to the default branch of PALEOS, a repository without pull requests.'
         assert text.count(want) == 1, text
     else:
         assert 'commit' not in text
@@ -3841,7 +3903,11 @@ def test_attach_facts_reads_the_tracked_files_of_a_commit():
     }
     data = {
         'prs': [],
-        'commits': [_commit(files=['pyproject.toml']), _commit('PALEOS:c2', files=['a.py'])],
+        'commits': [
+            _commit(files=['pyproject.toml']),
+            _commit('PALEOS:c2', files=['a.py']),
+            _commit('PALEOS:c3', files=['pyproject.toml'], parent_oid=None),
+        ],
     }
     facts.attach_facts(_FakeGH(files=files), data, {'tracked': {}})
     assert [(f['id'], f['pr'], f['key'], f['new']) for f in data['facts']] == [
