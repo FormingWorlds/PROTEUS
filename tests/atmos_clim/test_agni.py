@@ -2257,7 +2257,7 @@ def _make_run_agni_config(
         planet=SimpleNamespace(prevent_warming=prevent_warming),
         escape=SimpleNamespace(
             xuv_defined_by_radius=xuv_defined_by_radius,
-            hill_clamp=hill_clamp,
+            effective_hill_clamp=hill_clamp,
             hill_clamp_frac=1.0,
         ),
         params=SimpleNamespace(

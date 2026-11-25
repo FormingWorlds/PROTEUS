@@ -418,13 +418,20 @@ def unreachable_mass(hf_row: dict, element: str, config: Config | None = None) -
     step subtracts this mass from the mass available to escape, and the desiccation
     gate subtracts it from the inventory it tests, so a planet whose atmosphere and
     melt have both emptied still registers as desiccated. The gate adds the sealed
-    mass back: a planet that holds sealed volatiles is not desiccated.
+    mass back: a planet that holds sealed volatiles is not desiccated. Graphite
+    that escape left over a frozen mantle (``esc_graphite_kg``) counts whatever
+    ``outgas.prevent_desaturation`` says, up to the carbon still condensed.
     """
-    return (
-        locked_solid_mass(hf_row, element)
-        + sealed_mass(hf_row, element)
-        + locked_condensed_mass(hf_row, element, config)
-    )
+    condensed = locked_condensed_mass(hf_row, element, config)
+    if element == 'C':
+        # Capped at the condensed carbon, which a remelt can return to the gas.
+        held = (
+            float(hf_row.get('esc_graphite_kg', 0.0)),
+            float(hf_row.get('C_kg_condensed', 0.0)),
+        )
+        if all(np.isfinite(held)):
+            condensed = max(condensed, min(held))
+    return locked_solid_mass(hf_row, element) + sealed_mass(hf_row, element) + condensed
 
 
 def escapable_inventory(hf_row: dict, element: str, config: Config | None = None) -> float:

@@ -4,7 +4,7 @@
 # ----------------------------------------------------
 
 # Config file format version (must match the PROTEUS version you are running)
-config_version = "3.0"
+config_version = "3.1"
 
 # Code execution, outputs, time-stepping, convergence
 [params]
@@ -455,8 +455,7 @@ config_version = "3.0"
     # Grid and spectral setup (shared by agni + janus)
     spectral_group            = "Cliffshade"  # opacity k-table set
     spectral_bands            = "64"         # wavenumber bands in k-table
-    num_levels                = 40           # vertical atmosphere levels (min 15)
-    p_top                     = 2.0e-4       # top-of-atmosphere pressure [bar]
+    num_levels                = 50           # vertical atmosphere levels (min 15)
     p_obs                     = 'none'       # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
@@ -544,7 +543,6 @@ config_version = "3.0"
 # Atmospheric escape
 [escape]
     module                    = "zephyrus"   # zephyrus | dummy
-    reservoir                 = "outgas"     # reservoir setting escaping composition
     step_max_frac             = 0.90         # max timestep fraction of PROTEUS step
     step_dt_floor_frac        = 0.50         # min timestep fraction of PROTEUS step
 
@@ -552,7 +550,6 @@ config_version = "3.0"
     [escape.zephyrus]
         Pxuv                  = 5e-5         # XUV opacity pressure level [bar]
         efficiency            = 0.1          # escape efficiency
-        tidal                 = false        # tidal contribution
 
     [escape.dummy]
         rate                  = 0.0          # bulk escape rate [kg s-1]

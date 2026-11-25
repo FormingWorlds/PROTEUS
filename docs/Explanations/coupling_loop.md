@@ -89,10 +89,7 @@ upstream modules.
    the instellation flux and XUV flux. The stellar spectrum is updated on a
    separate, longer cadence controlled by `params.dt.starspec`.
 
-7. **Atmospheric escape** (`run_escape`): Computes mass loss rates for each
-   element (H, C, N, S, O) based on the XUV flux, planet mass, and current
-   atmospheric composition. Updates element inventories by debiting the
-   escaped mass. Only active after the initialisation stage.
+7. **Atmospheric escape** (`run_escape`): Computes mass loss rates for each element (H, C, N, S, O) based on the XUV flux, planet mass, and current atmospheric composition. Under the default ZEPHYRUS dispatcher the rates come from the atmosphere column of the last converged climate solve, so escape at step $n$ reads the structure solved at step $n - 1$. Updates element inventories by debiting the escaped mass. Only active after the initialisation stage.
 
 8. **Outgassing** (`run_outgassing_and_vapourisation`): Given the updated
    element inventories, mantle temperature, and melt fraction, computes the thermodynamic
@@ -317,11 +314,7 @@ diagnostic message identifying the stuck state.
 
 ## Levels from a rejected atmosphere solve
 
-A solver that rejects its solution still returns an atmospheric structure, and
-the photospheric and XUV levels read off that structure can sit far outside the
-planet. Escape reads $R_\mathrm{xuv}$ from the previous iteration, and the
-energy-limited rate goes as $R_\mathrm{xuv}^3$, so an unusable structure would
-otherwise become a large mass-loss rate that looks like a physical result.
+A solver that rejects its solution still returns an atmospheric structure, and the photospheric and XUV levels read off that structure can sit far outside the planet. Escape reads $R_\mathrm{xuv}$ from the previous iteration, and the energy-limited rate goes as $R_\mathrm{xuv}^3$, so an unusable structure would otherwise become a large mass-loss rate that looks like a physical result. The ZEPHYRUS dispatcher reads the whole column, so a rejected solve also keeps the column of the last converged one for escape, and the helpfile column `esc_profile_source` records which column each escape step read (1 the latest solve, 2 an earlier converged one, 3 an isothermal column at the equilibrium temperature, used with the dummy atmosphere, under AGNI's transparent mode, and before the first converged solve). An envelope so weakly bound that the isothermal column holds fewer than three bound levels (a surface Jeans parameter near 2.5 or below) gets a short isothermal column out to twice the surface radius, on which the dispatcher reads boil-off. A step on which escape does not run writes -1 to `esc_kn_sonic`, `esc_lambda`, `esc_T_exo`, `esc_T_esc_neutral`, `esc_T_esc_plasma`, `esc_f_ion_exo`, `esc_efficiency`, and `esc_T_wind`, and 0 to the regime, branch, column-source, base-clamp, and flag columns. These diagnostics start a run at -1, so they also read -1 under the `el` scheme and every other escape model, and a resumed run whose helpfile predates these columns reads them in the same way.
 
 When the atmosphere solve does not converge, PROTEUS therefore substitutes the
 radius, pressure, temperature and gravity of both levels ($R_\mathrm{obs}$,
@@ -370,7 +363,7 @@ Independently of convergence, the XUV level itself is bounded: gas beyond the
 Hill radius is not bound to the planet, so an XUV radius outside it would size
 the escape cross-section with material the planet does not hold, and the
 energy-limited rate grows as the cube of the excess. With `escape.hill_clamp`
-enabled (the default), each atmosphere module limits $R_\mathrm{xuv}$ to
+enabled (the default under the energy-limited `el` scheme), each atmosphere module limits $R_\mathrm{xuv}$ to
 `escape.hill_clamp_frac` of the Hill radius, floored at $R_\mathrm{int}$ since
 the solid body is always bound. The level moves as a whole: $p_\mathrm{xuv}$,
 $T_\mathrm{xuv}$, $g_\mathrm{xuv}$ and the XUV-level mixing ratios are read at
@@ -378,6 +371,7 @@ the clipped radius, so escape never sees a radius from one level combined with
 a composition from another. Each engagement is logged as a warning. The
 observed level is not clipped; a transit radius beyond the Hill radius is
 reported as computed and flagged by the orbit module's existing warning.
+Under the ZEPHYRUS dispatcher the clip is off unless set: the dispatcher tests the flow radius of each escape branch against the Roche lobe and carries the mass transfer through the inner Lagrange point as a rate of its own.
 
 ## Energy conservation diagnostics
 

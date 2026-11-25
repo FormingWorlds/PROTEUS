@@ -247,6 +247,32 @@ def test_resume_matches_the_ps_tables_after_restoring_the_accreted_mass(tmp_path
 
 
 @pytest.mark.unit
+def test_resume_restores_the_escape_column_before_the_first_step(tmp_path):
+    """start(resume=True) hands the resumed helpfile to restore_escape_profile.
+
+    Escape runs before the first climate solve of a resumed run, so the column
+    it reads has to be restored during setup, from the resumed rows, into the
+    run's own atmosphere state.
+    """
+    p = _make_proteus_instance(tmp_path, struct_module='dummy', interior_module='aragog')
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    hf = _make_hf_df()
+    restore = MagicMock()
+
+    _resume_with_patches(
+        p,
+        hf,
+        patch('proteus.atmos_clim.escape_profile.restore_escape_profile', restore),
+    )
+
+    assert restore.call_count == 1
+    atmos_o, config, hf_all, output = restore.call_args.args
+    assert atmos_o is p.atmos_o and config is p.config
+    assert output == p.directories['output']
+    np.testing.assert_allclose(hf_all['Time'].to_numpy(), hf['Time'].to_numpy(), rtol=0)
+
+
+@pytest.mark.unit
 def test_resume_without_accretion_leaves_the_ps_tables_alone(tmp_path):
     """A resume without an accretion module keeps the restored tables, as before."""
     p = _make_proteus_instance(tmp_path, struct_module='dummy', interior_module='aragog')
@@ -570,7 +596,11 @@ def test_the_escape_step_records_the_removed_mass_for_the_zalmoxis_target(
     config, hf_row, dirs, dt, kwargs = calls[0]
     assert (config, hf_row, dirs) == (p.config, p.hf_row, p.directories)
     assert dt == pytest.approx(100.0, rel=1e-15)
-    assert kwargs == {'atmosphere_only': frozen, 'interior_o': p.interior_o}
+    assert kwargs == {
+        'atmosphere_only': frozen,
+        'interior_o': p.interior_o,
+        'atmos_o': p.atmos_o,
+    }
     assert p.hf_row['H_kg_total'] == pytest.approx(2.0e21, rel=1e-15)
     assert p.hf_row.get('M_volatile_change', 0.0) == pytest.approx(expected, rel=1e-12, abs=0.0)
 

@@ -762,7 +762,7 @@ def test_rundummyatm_clips_the_xuv_radius_to_the_hill_radius():
     config.atmos_clim.surf_greyalbedo = 0.1
     config.atmos_clim.surf_state = 'fixed'
     config.planet.prevent_warming = False
-    config.escape.hill_clamp = True
+    config.escape.effective_hill_clamp = True
     config.escape.hill_clamp_frac = 1.0
 
     hf_row = {

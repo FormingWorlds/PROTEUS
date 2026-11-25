@@ -552,6 +552,7 @@ class Proteus:
             self.interior_o.dt,
             atmosphere_only=frozen,
             interior_o=self.interior_o,
+            atmos_o=self.atmos_o,
         )
         debit_escaped_mass(self.config, self.hf_row, kg_before - readable_total(self.hf_row))
         return True
@@ -723,6 +724,7 @@ class Proteus:
 
         #   other utilities
         from proteus.utils.coupler import (
+            ESCAPE_NOT_EVALUATED_KEYS,
             CreateHelpfileFromDict,
             CreateLockFile,
             ExtendHelpfile,
@@ -894,6 +896,8 @@ class Proteus:
 
             # Create an empty initial row for helpfile
             self.hf_row = ZeroHelpfileRow()
+            for key in ESCAPE_NOT_EVALUATED_KEYS:
+                self.hf_row[key] = -1.0
 
             # Stellar mass
             update_stellar_mass(self.hf_row, self.config)
@@ -1121,6 +1125,14 @@ class Proteus:
             # which read as a run that has not stalled.
             stale = self.hf_row.get('atm_levels_stale', 0.0)
             self.atmos_o.levels_stale_iters = int(stale) if np.isfinite(stale) else 0
+
+            # Escape runs before the first climate solve, so give it the column
+            # the uninterrupted run would hold, not the isothermal stand-in.
+            from proteus.atmos_clim.escape_profile import restore_escape_profile
+
+            restore_escape_profile(
+                self.atmos_o, self.config, self.hf_all, self.directories['output']
+            )
 
             # Interior initial condition
             self.interior_o.ic = 2

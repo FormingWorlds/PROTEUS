@@ -819,7 +819,9 @@ def _clip_config(enabled: bool = True, frac: float = 1.0):
     """Escape-config namespace carrying only what the clip reads."""
     from types import SimpleNamespace
 
-    return SimpleNamespace(escape=SimpleNamespace(hill_clamp=enabled, hill_clamp_frac=frac))
+    return SimpleNamespace(
+        escape=SimpleNamespace(effective_hill_clamp=enabled, hill_clamp_frac=frac)
+    )
 
 
 @pytest.mark.physics_invariant

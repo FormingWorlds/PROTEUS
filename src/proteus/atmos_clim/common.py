@@ -83,6 +83,13 @@ class Atmos_t:
         # record means this run's own rows carry rejected levels too.
         self.solves_seen: int = 0
 
+        # Last converged column for the escape dispatcher (p [Pa], r [m], T [K], vmr),
+        # base to top; see atmos_clim.escape_profile. Transient.
+        self.escape_profile: dict | None = None
+
+        # Whether escape_profile comes from the most recent solve.
+        self.escape_profile_current: bool = False
+
 
 def ncdf_flag_to_bool(var) -> bool | None:
     """Convert NetCDF flag (y/n) to Python bool (true/false)"""
@@ -782,7 +789,7 @@ def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:
         float
             The radius, limited when the clip is enabled and applicable.
     """
-    if not getattr(config.escape, 'hill_clamp', False):
+    if not getattr(config.escape, 'effective_hill_clamp', False):
         return radius
 
     # Zero before the first orbit update; nothing to clip against yet.

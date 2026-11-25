@@ -13,7 +13,7 @@ import attr
 import cattrs
 from cattrs.errors import AttributeValidationNote, IterableValidationNote
 
-from ._config import Config
+from ._config import Config, valid_config_version
 from ._interior import _STEP_CAP_FIELDS
 from .orphans import (
     UnknownConfigKeyError,
@@ -41,6 +41,13 @@ def structure_bool(val, _cls):
     return val
 
 
+def structure_optional_bool(val, _cls):
+    """Return a TOML boolean, or None for the string "none"; refuse any other value."""
+    if val == 'none':
+        return None
+    return structure_bool(val, _cls)
+
+
 def structure_float_or_str(val, _cls):
     """Return a number or a string as it is; the field validator checks the value."""
     if isinstance(val, bool) or not isinstance(val, (int, float, str)):
@@ -55,10 +62,22 @@ def structure_number(val, _cls):
     return val
 
 
+def structure_float(val, _cls):
+    """Return a number as a float, and refuse a bool or a string, which float() would take.
+
+    Without this, ``P_photo = true`` loads as 1.0 and passes a positivity check.
+    """
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        raise TypeError(f'must be a number, got {val!r}')
+    return float(val)
+
+
 # PROTEUS's own converter, so importing PROTEUS leaves the global cattrs converter as it is
 converter = cattrs.Converter()
 converter.register_structure_hook(Union[int, Literal['none']], structure_k_val)
 converter.register_structure_hook(bool, structure_bool)
+converter.register_structure_hook(float, structure_float)
+converter.register_structure_hook(bool | None, structure_optional_bool)
 converter.register_structure_hook(float | str, structure_float_or_str)
 converter.register_structure_hook(float | int, structure_number)
 
@@ -238,6 +257,18 @@ def structure_config(raw: dict, path: Path | str) -> Config:
         stops at the first validator that fails in a section, so a section reports one
         validator error at a time.
     """
+
+    # The version decides how the rest of the file reads, so a file of another
+    # version is refused before any other check can report a symptom of it. A 3.0
+    # file could leave the key out, so a file without it is read as 3.0.
+    version = str(raw.get('config_version', '3.0'))
+    try:
+        valid_config_version(None, None, version)
+    except ValueError as exc:
+        missing = '' if 'config_version' in raw else 'no config_version, read as "3.0". '
+        raise ValueError(
+            f'Invalid configuration in {path}:\n  config_version: {missing}{exc}'
+        ) from None
 
     _check_step_cap_zeros(raw, path)
 

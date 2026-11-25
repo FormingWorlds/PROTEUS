@@ -16,7 +16,7 @@ python tools/check_test_quality.py --check  # see below
 python tools/agents/check_agents_md.py && python tools/agents/sync_core.py --check .
 ```
 
-The committed baseline `tools/test_quality_baseline.json` lags, so `check_test_quality.py --check` exits 1 on `origin/main` too: compare its per-rule Current counts on `origin/main` and the branch; no count may rise.
+The committed baseline `tools/test_quality_baseline.json` lags, so `check_test_quality.py --check` exits 1 on `origin/main` too: no per-rule Current count may exceed its `origin/main` value.
 
 The shared blocks (`<!-- fwl-<name>:begin ... -->`) come from `tools/agents/`. To change one, edit it there, run `python tools/agents/sync_core.py <repo>` on PROTEUS and every module repository with the block, and land them together: the daily `agents-md-sync.yml` stays red until each module it lists is synced.
 
@@ -74,7 +74,7 @@ Commit messages, pull-request text, code comments, docstrings, test names, test 
 - Install with `bash install.sh` (`docs/How-to/installation.md`; manual steps in `docs/How-to/manual_installation.md`). Install every Python module editable (`pip install -e`), and PROTEUS with `pip install -e ".[develop,vulcan,atmodeller,inference]"`, as CI does: `bash install.sh` also clones VULCAN, atmodeller, Morrigan and Obliqua into the PROTEUS folder, while with `[develop]` alone VULCAN, atmodeller and the inference stack are absent and their tests skip. Morrigan (`accretion.module = 'morrigan'`) comes from the `morrigan` extra or, editable, from `bash tools/get_morrigan.sh`; its unit tests mock it.
 - Python 3.12: PETSc and SPIDER do not support a later version. Linux and macOS only.
 - `FWL_DATA` and `RAD_DIR` must point at populated directories before a run. Reference data downloads on first use unless `--offline` is given.
-- Use one conda env per git worktree. `conda create --clone` hardlinks the editable-install pointers, so a `pip install -e .` in one env can repoint `import proteus` in another. Before an A/B comparison run `python -c "import proteus; print(proteus.__file__)"`.
+- Use one conda env per git worktree. `conda create --clone` hardlinks the editable-install pointers, so a `pip install -e .` in one env can repoint `import proteus` in another. Check `python -c "import proteus; print(proteus.__file__)"` before an A/B comparison.
 - The pre-commit hook runs `ruff check --fix`, not the formatter; run `ruff format` on the files you change, as CI checks `ruff format --check`.
 - A PROTEUS change that needs a new module version bumps that module's pin in the same pull request: in `pyproject.toml`, `[project] dependencies` for the required `fwl-*` packages, `[project.optional-dependencies]` for `fwl-vulcan`, `atmodeller`, and `fwl-morrigan` (the `fwl-vulcan` and `fwl-morrigan` floors also set the tag their `tools/get_*.sh` check out), `[tool.proteus.modules]` for the modules cloned outside pip (AGNI, SOCRATES, SPIDER and others), which CI and `tools/get_*.sh` read. atmodeller has both: its floor and the commit under `[tool.proteus.modules.atmodeller]` that `tools/get_atmodeller.sh` checks out; a bump changes both.
 - SOCRATES builds with `-Ofast -march=native`, so a built tree is tied to its CPU and not bit-reproducible; `SOCRATES_PORTABLE_FLAGS=1` switches to `-O2 -fno-fast-math`. Read `.github/agent-rules/socrates-build.md` before you change `tools/get_socrates.sh` or need bit-reproducible numbers.
@@ -82,16 +82,16 @@ Commit messages, pull-request text, code comments, docstrings, test names, test 
 ## Running PROTEUS
 
 - `proteus start -c <config.toml> --offline`. Detach long runs (`nohup ... &`, output into the run directory); a foreground run dies with the shell.
-- Add `--deterministic` to `proteus start` when a coupled run fails on floating-point noise (for example Aragog T_core jump-guard exhaustion): PROTEUS re-executes itself once with `JAX_ENABLE_X64=1` and `XLA_FLAGS=--xla_cpu_enable_fast_math=false`.
-- Resume a stopped run with `proteus start -r -c <config.toml>`. It needs more than `init_loops + 1` helpfile rows and, under the run's `data/`, an interior snapshot (the dummy and boundary interiors write none) plus the matching atmosphere snapshot unless `atmos_clim.module = 'dummy'`; the files are named by simulation time in a form that depends on the module (`select_resumable_snapshot` in `src/proteus/utils/coupler.py`). Shorter runs refuse to resume. Read `.github/agent-rules/resume.md` before you change resume, `restore_accretion_state` or the state files of an accretion module.
+- Add `--deterministic` to `proteus start` when a coupled run fails on floating-point noise (e.g., Aragog T_core jump-guard exhaustion): PROTEUS re-executes itself once with `JAX_ENABLE_X64=1` and `XLA_FLAGS=--xla_cpu_enable_fast_math=false`.
+- Resume a stopped run with `proteus start -r -c <config.toml>`. It needs more than `init_loops + 1` helpfile rows and, under the run's `data/`, an interior snapshot (the dummy and boundary interiors write none) plus the matching atmosphere snapshot unless `atmos_clim.module = 'dummy'`, named by simulation time (`select_resumable_snapshot` in `src/proteus/utils/coupler.py`). Shorter runs refuse to resume. Read `.github/agent-rules/resume.md` before you change resume, `restore_accretion_state` or the state files of an accretion module.
 - A new helpfile column goes in `GetHelpfileKeys` with its unit. On resume of an older run, `ReadHelpfileFromCSV` reads a missing column as zero if it is in `_DIAGNOSTIC_KEYS` or `RESUMABLE_ZERO_FILL_KEYS` or is a solid-phase trapping column (`GetHelpfileTrappingKeys`; an accumulating column then loses its earlier history) and raises `HelpfileSchemaDriftError` for any other missing column.
 
 ## Physics and coupling contract
 
 - Do not change `Config` during a run. The one exception is a giant impact: `apply_impact`, and `restore_accretion_state` on resume, set `config.planet.mass_tot` (configured mass plus accreted rock), `config.orbit.semimajoraxis` and `config.orbit.eccentricity` to the grown planet and its new orbit. With the Zalmoxis structure the delivered, stripped and escaped volatile mass, and the mass removed at desiccation, goes into the `M_volatile_change` helpfile column, which the Zalmoxis target adds to `mass_tot`; `config` is not changed for it. `Proteus.start()` sets `config.params.resume` and `config.params.offline` once; a module call that needs a different setting changes it for that call and restores it in a `finally` block, as the Zalmoxis structure call does with `config.orbit.module`.
-- A temporary override of `hf_row` for a module call is restored in a `finally` block; without it the helpfile records the override instead of the planet state.
+- A temporary override of `hf_row` for a module call is restored in a `finally` block, or the helpfile records the override.
 - An `hf_row` key that two modules both write keeps one source: with a Zalmoxis mesh, SPIDER derives `rho_core` from the Zalmoxis `M_core` (`spider.py`), so the `M_core` it returns matches. A new module that returns a key another module sets derives it the same way or does not write it.
-- The main loop advances `Time` before the atmosphere step, so a comparison of `hf_row` with `hf_all.iloc[-1]` compares the new step with the previous one.
+- The main loop advances `Time` before the atmosphere step, so `hf_row` against `hf_all.iloc[-1]` compares the new step with the previous one.
 - A user value that a solver derives again gets a one-time check at the initial condition that fails loudly on a large difference (`check_ic_oxygen_budget` for oxygen).
 
 ### Oxygen and mass accounting
@@ -103,7 +103,7 @@ Commit messages, pull-request text, code comments, docstrings, test names, test 
 Check each change against these points and against `.github/agent-rules/code-review.md`. `.github/copilot-instructions.md` repeats this section and the physics and coupling rules above; change them together.
 
 - Physics: T > 0 K; P > 0 and increasing with depth; mass fractions sum to 1; the mass escaped in one step stays within its reservoir (`limit_escape_step` caps it at `ESCAPE_STEP_MAX_FRAC`); outgassing >= 0; radiative flux uses `sigma * T**4`.
-- EOS tables: SPIDER and the Aragog entropy solver read P-S tables (complete rectangles, uniform P spacing); each Aragog P-T table is a full rectangular grid, because a grid filtered by phase makes scipy fall back to slow unstructured interpolation.
+- EOS tables: SPIDER and the Aragog entropy solver read P-S tables (complete rectangles, uniform P spacing); each Aragog P-T table is a full rectangular grid, as scipy interpolates a phase-filtered grid slowly.
 - Every attrs validator has a test with a valid and an invalid input; a validator that compares an instance with a primitive never fires.
 
 ## Code organisation
@@ -113,6 +113,10 @@ Many people edit PROTEUS in parallel, so keep changes local (conventions: `docs/
 - Files: aim for fewer than 500 lines; split past about 800 along concern boundaries. Functions: aim for fewer than 50 lines; extract helpers past about 80, and write long orchestration as named stage functions.
 - A new module option gets its own `<option>.py` and a branch in that process's dispatch (its `wrapper.py`, where it has one), never a second option inside an existing file.
 - Central registries (output-schema keys, config fields): one entry per line, trailing comma, grouped by module, alphabetical within a group.
+
+## Documentation
+
+The pages under `docs/`, the tutorials, and `README.md` use UK spelling (behaviour, colour, modelling). Identifiers, config keys, and quoted titles keep their own.
 
 ## Plots and output
 

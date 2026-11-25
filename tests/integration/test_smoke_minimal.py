@@ -39,7 +39,7 @@ def test_proteus_dummy_init():
     # Validate that config loaded successfully
     assert runner.config is not None
     assert isinstance(runner.config, Config)
-    assert runner.config.config_version == '3.0'
+    assert runner.config.config_version == '3.1'
 
     # Validate that directories are initialized
     assert runner.directories is not None

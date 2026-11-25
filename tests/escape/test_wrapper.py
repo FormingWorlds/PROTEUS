@@ -84,7 +84,7 @@ def test_run_escape_dummy():
     config = MagicMock()
     config.escape.module = 'dummy'
     config.escape.dummy.rate = 1e5  # kg/s
-    config.escape.reservoir = 'bulk'
+    config.escape.effective_reservoir = 'bulk'
     config.outgas.mass_thresh = 1e10  # kg
 
     # Minimal hf_row with initial element inventories (all elements from element_list)
@@ -143,7 +143,7 @@ def test_run_escape_atmosphere_only_sources_loss_from_atmosphere():
         config = MagicMock()
         config.escape.module = 'dummy'
         config.escape.dummy.rate = rate
-        config.escape.reservoir = 'bulk'  # configured (interior-inclusive) reservoir
+        config.escape.effective_reservoir = 'bulk'  # configured (interior-inclusive) reservoir
         config.outgas.mass_thresh = 1.0  # kg, low enough that nothing is zeroed
         return config
 
@@ -208,10 +208,11 @@ def test_run_escape_zephyrus(mock_el_escape):
     # Mock config with ZEPHYRUS escape
     config = MagicMock()
     config.escape.module = 'zephyrus'
-    config.escape.zephyrus.tidal = False
+    config.escape.uses_dispatcher = False
+    config.escape.zephyrus.effective_tidal = False
     config.escape.zephyrus.efficiency = 0.15
     config.escape.zephyrus.Pxuv = 5e-5  # bar
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.outgas.mass_thresh = 1e10  # kg
     config.star.mass = 1.0e30  # kg (Sun-like)
 
@@ -275,10 +276,11 @@ def test_run_escape_zephyrus_atmosphere_only_overrides_bulk(mock_el_escape):
 
     config = MagicMock()
     config.escape.module = 'zephyrus'
-    config.escape.zephyrus.tidal = False
+    config.escape.uses_dispatcher = False
+    config.escape.zephyrus.effective_tidal = False
     config.escape.zephyrus.efficiency = 0.15
     config.escape.zephyrus.Pxuv = 5e-5
-    config.escape.reservoir = 'bulk'  # configured reservoir, to be overridden
+    config.escape.effective_reservoir = 'bulk'  # configured reservoir, to be overridden
     config.outgas.mass_thresh = 1.0
     config.star.mass = 1.0e30
 
@@ -362,7 +364,7 @@ def test_run_escape_snapshots_baseline_on_first_call():
     config = MagicMock()
     config.escape.module = 'dummy'
     config.escape.dummy.rate = 1e3  # kg/s
-    config.escape.reservoir = 'bulk'
+    config.escape.effective_reservoir = 'bulk'
     config.outgas.mass_thresh = 1e10
 
     hf_row = {
@@ -518,7 +520,7 @@ def test_run_escape_baseline_persists_across_calls():
     config = MagicMock()
     config.escape.module = 'dummy'
     config.escape.dummy.rate = 1e9  # very high rate to make change visible
-    config.escape.reservoir = 'bulk'
+    config.escape.effective_reservoir = 'bulk'
     config.outgas.mass_thresh = 1e10
 
     hf_row = {
@@ -562,7 +564,7 @@ def test_run_escape_resets_baseline_if_corrupt():
     config = MagicMock()
     config.escape.module = 'dummy'
     config.escape.dummy.rate = 1e3
-    config.escape.reservoir = 'bulk'
+    config.escape.effective_reservoir = 'bulk'
     config.outgas.mass_thresh = 1e10
 
     hf_row = {
@@ -613,7 +615,7 @@ def test_run_zephyrus_no_tidal(mock_el_escape):
 
     # Mock config
     config = MagicMock()
-    config.escape.zephyrus.tidal = False
+    config.escape.zephyrus.effective_tidal = False
     config.escape.zephyrus.efficiency = 0.1
     config.star.mass = 2.0e30  # kg
 
@@ -655,7 +657,7 @@ def test_run_zephyrus_with_tidal(mock_el_escape):
 
     # Mock config with tidal enabled
     config = MagicMock()
-    config.escape.zephyrus.tidal = True
+    config.escape.zephyrus.effective_tidal = True
     config.escape.zephyrus.efficiency = 0.2
     config.star.mass = 1.5e30  # kg
 
@@ -894,43 +896,85 @@ def test_calc_new_elements_prevent_negative_mass():
 
 
 @pytest.mark.unit
-def test_calc_new_elements_pxuv_not_supported():
-    """Test that pxuv reservoir raises NotImplementedError.
+@pytest.mark.physics_invariant
+def test_calc_new_elements_pxuv_debits_each_element_by_its_own_rate():
+    """Under ``pxuv`` the loss is split by the per-element rates, not the abundances.
 
-    Physical scenario: Fractionated escape at XUV optical depth level.
-    Validates that pxuv mode is not yet implemented.
+    Physical scenario: a fractionating wind carries hydrogen at 90 % of the
+    bulk rate from an atmosphere where hydrogen is a tenth of the element mass.
+    Each element loses its rate share of the escaping mass; carbon, which the
+    wind does not carry, keeps its whole inventory. An abundance split would
+    take 10 % hydrogen and 90 % oxygen, so the hydrogen debit separates them.
     """
     from proteus.escape.wrapper import calc_new_elements
+    from proteus.utils.constants import element_list
 
-    hf_row = {
-        'esc_rate_total': 1e5,
-        'H_kg_total': 1e20,
-        'C_kg_total': 1e18,
-        'N_kg_total': 1e19,
-        'S_kg_total': 1e17,
-        'Si_kg_total': 1e18,
-        'Mg_kg_total': 1e17,
-        'Fe_kg_total': 1e19,
-        'Na_kg_total': 1e16,
-    }
+    hf_row = {f'{e}_kg_total': 0.0 for e in element_list}
+    hf_row.update({f'{e}_kg_atm': 0.0 for e in element_list})
+    hf_row.update({f'esc_rate_{e}': 0.0 for e in element_list})
+    hf_row.update(
+        {
+            'H_kg_total': 2.0e20,
+            'O_kg_total': 2.0e21,
+            'C_kg_total': 5.0e19,
+            'H_kg_atm': 1.0e20,
+            'O_kg_atm': 8.5e20,
+            'C_kg_atm': 5.0e19,
+            'esc_rate_total': 1.0e5,
+            'esc_rate_H': 0.9e5,
+            'esc_rate_O': 0.1e5,
+        }
+    )
+    esc_mass = 1.0e18  # kg over the step, 0.1 % of the atmosphere
 
-    dt = 1000.0
-    reservoir = 'pxuv'
-    min_thresh = 1e10
+    tgt = calc_new_elements(
+        hf_row, 1.0, 'pxuv', min_thresh=1e10, esc_mass=esc_mass, floor=False
+    )
 
-    # Snapshot hf_row to verify the raise is side-effect-free.
-    snapshot = dict(hf_row)
+    assert hf_row['H_kg_total'] - tgt['H'] == pytest.approx(0.9 * esc_mass, rel=1e-9)
+    assert hf_row['O_kg_total'] - tgt['O'] == pytest.approx(0.1 * esc_mass, rel=1e-9)
+    assert tgt['C'] == pytest.approx(hf_row['C_kg_total'], rel=1e-15)
+    # Closure: the debits sum to the escaping mass.
+    lost = sum(hf_row[f'{e}_kg_total'] - tgt[e] for e in element_list)
+    assert lost == pytest.approx(esc_mass, rel=1e-12)
+    # Discrimination: the abundance split would have taken 1e17 kg of hydrogen.
+    assert abs((hf_row['H_kg_total'] - tgt['H']) - 0.1 * esc_mass) > 0.5 * esc_mass
 
-    # Verify ValueError is raised for pxuv
-    with pytest.raises(ValueError, match='Fractionation at p_xuv is not yet supported'):
-        calc_new_elements(hf_row, dt, reservoir, min_thresh)
 
-    # No-side-effect discriminator: the reservoir match-case raises in
-    # the pxuv branch before any partition arithmetic runs. A regression
-    # that fell through to the bulk path and only logged a warning
-    # would leave H_kg_total and the other inventories debited on the
-    # caller's dict.
-    assert hf_row == snapshot
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_calc_new_elements_pxuv_caps_an_element_at_its_atmospheric_mass():
+    """An element cannot lose more than the atmosphere holds of it.
+
+    Physical scenario: a hydrogen-carrying wind over an atmosphere holding
+    only 1e15 kg of hydrogen asks for 1e17 kg of it in one step. The debit
+    stops at the atmospheric hydrogen, and the other elements still lose their
+    own shares; the planet total, which includes dissolved hydrogen, is not
+    drawn below its non-atmospheric part.
+    """
+    from proteus.escape.wrapper import calc_new_elements
+    from proteus.utils.constants import element_list
+
+    hf_row = {f'{e}_kg_total': 0.0 for e in element_list}
+    hf_row.update({f'{e}_kg_atm': 0.0 for e in element_list})
+    hf_row.update({f'esc_rate_{e}': 0.0 for e in element_list})
+    hf_row.update(
+        {
+            'H_kg_total': 1.0e18,
+            'O_kg_total': 1.0e21,
+            'H_kg_atm': 1.0e15,
+            'O_kg_atm': 1.0e20,
+            'esc_rate_total': 1.0,
+            'esc_rate_H': 0.5,
+            'esc_rate_O': 0.5,
+        }
+    )
+
+    tgt = calc_new_elements(hf_row, 1.0, 'pxuv', min_thresh=1e10, esc_mass=2.0e17, floor=False)
+
+    assert hf_row['H_kg_total'] - tgt['H'] == pytest.approx(1.0e15, rel=1e-12)
+    assert hf_row['O_kg_total'] - tgt['O'] == pytest.approx(1.0e17, rel=1e-12)
+    assert tgt['H'] > 0.0
 
 
 @pytest.mark.unit
@@ -1031,7 +1075,7 @@ def test_run_escape_recomputes_baseline_when_m_vol_initial_is_unparseable():
     # 'dummy' (not disabled) so we reach the baseline-rebuild branch
     # at lines 50-71; rate=0 keeps the post-dispatch arithmetic trivial.
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'bulk'
+    config.escape.effective_reservoir = 'bulk'
     config.escape.dummy.rate = 0.0
     config.outgas.mass_thresh = 1.0e10
     config.escape.step_max_frac = 0.25
@@ -1080,7 +1124,7 @@ def test_run_escape_dummy_zeroes_elemental_rates_when_unfract_raises():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'bulk'
+    config.escape.effective_reservoir = 'bulk'
     config.escape.dummy.rate = 0.0
     config.outgas.mass_thresh = 1.0e10
     config.escape.step_max_frac = 0.25
@@ -1130,8 +1174,9 @@ def test_run_escape_zephyrus_zeroes_elemental_rates_when_unfract_raises():
 
     config = MagicMock()
     config.escape.module = 'zephyrus'
-    config.escape.reservoir = 'bulk'
-    config.escape.zephyrus.tidal = True
+    config.escape.uses_dispatcher = False
+    config.escape.effective_reservoir = 'bulk'
+    config.escape.zephyrus.effective_tidal = True
     config.escape.zephyrus.efficiency = 0.3
     config.escape.zephyrus.Pxuv = 1.0e-2
     config.star.mass = 1.0  # M_sun units
@@ -1426,7 +1471,7 @@ def test_run_escape_cumulative_matches_the_mass_actually_removed():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = rate
     config.outgas.mass_thresh = 1.0e10
     config.escape.step_max_frac = 0.25
@@ -1614,7 +1659,7 @@ def test_run_escape_publishes_the_step_limit_and_clears_it_again():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.outgas.mass_thresh = 1.0e10
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -1695,7 +1740,7 @@ def test_crystallized_atmosphere_scaling_uses_the_capped_loss():
     over_rate = 2.0e23 / (secs_per_year * dt)  # asks for 2.5x the atmosphere
 
     config = MagicMock()
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.module = 'dummy'
 
     capped = 0.25 * m_atm
@@ -1748,7 +1793,7 @@ def test_cumulative_counter_ignores_a_step_that_debited_nothing():
     rate = 1.0e4  # kg/s, live rate against nothing to lose
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = rate
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -1791,7 +1836,7 @@ def test_thin_atmosphere_does_not_erase_the_mantle_inventory():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0e5  # kg/s
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -1845,7 +1890,7 @@ def test_cumulative_counter_excludes_the_threshold_truncation():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = rate
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -1901,7 +1946,7 @@ def test_crystallized_step_moves_the_same_mass_in_every_record():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0e5  # kg/s
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -1959,7 +2004,7 @@ def test_unreadable_reservoir_debits_nothing_and_credits_nothing():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0e5  # kg/s, a live rate against a bad reservoir
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -2042,7 +2087,7 @@ def test_frozen_mantle_sizes_the_loss_from_the_column_it_will_rescale():
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'bulk'  # the whole planet, not the frozen column
+    config.escape.effective_reservoir = 'bulk'  # the whole planet, not the frozen column
     config.escape.dummy.rate = 1.0e9  # kg/s
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -2206,7 +2251,7 @@ def test_an_element_escaping_below_the_threshold_on_a_frozen_mantle_keeps_its_co
     hf.update(M_atm=4.012e12, P_surf=1.0, esc_kg_cumulative=0.0, M_vol_initial=1.0012e13)
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0e5  # kg/s, capped at a quarter of the atmosphere
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -2262,7 +2307,7 @@ def test_a_frozen_mantle_escapes_to_desiccation_with_closed_books(H_kg, N_kg):
     hf.update(M_volatile_change=0.0, atm_kg_per_mol=0.002, Phi_global=0.5)
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0e9  # kg/s, capped at a quarter of the atmosphere
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -2314,7 +2359,7 @@ def test_a_new_escape_baseline_clears_the_desiccation_ledger():
     hf.update(M_vol_initial=0.0, esc_kg_cumulative=0.0, M_desiccated=5.0e15)
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -2347,7 +2392,7 @@ def _quarter_loss_config():
     """Dummy escape capped at a quarter of the atmosphere, at mass_thresh 1e16 kg."""
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'outgas'
+    config.escape.effective_reservoir = 'outgas'
     config.escape.dummy.rate = 1.0e9  # kg/s, capped at a quarter of the atmosphere
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
@@ -2421,3 +2466,89 @@ def test_the_escape_floor_is_off_on_a_step_a_remelt_returned_mass():
         assert not remelt_returned_mass(hf)
         run_escape(config, hf, dt=1.0e4, atmosphere_only=False)
         assert hf['N_kg_total'] == pytest.approx(5.0e14, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_frozen_atmosphere_under_pxuv_loses_each_element_from_its_own_gases():
+    """With the mantle frozen, a hydrogen-carrying wind takes hydrogen out of the water.
+
+    Physical scenario: a 1e20 kg water atmosphere over a frozen mantle that
+    also traps 1e21 kg of water-derived hydrogen and oxygen. The dispatcher
+    reports a wind of pure hydrogen at 1e3 kg/s for 1000 yr, 3.16e13 kg. The
+    whole-planet hydrogen total falls by that mass and oxygen keeps its total;
+    the water that lost its hydrogen leaves its oxygen in the atmosphere, held
+    for the outgassing step as O2. The trapped hydrogen is not touched.
+    """
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.fractionated_debit import FROZEN_DEBIT_KEY as ATM_DEBIT_KEY
+    from proteus.utils.constants import element_list, gas_list, secs_per_year
+
+    dt = 1000.0
+    m_h = 1e20 * 2 * 1.008 / 18.015
+    m_o = 1e20 - m_h
+    row = {f'{e}_kg_total': 0.0 for e in element_list}
+    row.update({f'{e}_kg_atm': 0.0 for e in element_list})
+    row.update({f'{g}_kg_atm': 0.0 for g in gas_list})
+    row.update(
+        {
+            'Time': 3.0e8,
+            'H2O_kg_atm': 1e20,
+            'H_kg_atm': m_h,
+            'O_kg_atm': m_o,
+            'H_kg_total': m_h + 1e20,
+            'O_kg_total': m_o + 9e20,
+        }
+    )
+
+    def fake_dispatch(config, hf_row, atmos_o=None, dt=0.0):
+        hf_row['esc_rate_total'] = 1e3
+        for e in element_list:
+            hf_row[f'esc_rate_{e}'] = 0.0
+        hf_row['esc_rate_H'] = 1e3
+        return 1e3
+
+    config = SimpleNamespace(
+        escape=SimpleNamespace(
+            module='zephyrus',
+            uses_dispatcher=True,
+            effective_reservoir='pxuv',
+            step_max_frac=0.25,
+        ),
+        outgas=SimpleNamespace(mass_thresh=1e10, prevent_desaturation=False),
+    )
+    before_h, before_o = row['H_kg_total'], row['O_kg_total']
+    with patch('proteus.escape.dispatcher.run_dispatcher', side_effect=fake_dispatch):
+        run_escape(config, row, dt=dt, atmosphere_only=True)
+
+    lost = 1e3 * secs_per_year * dt
+    assert before_h - row['H_kg_total'] == pytest.approx(lost, rel=1e-9)
+    assert row['O_kg_total'] == pytest.approx(before_o, rel=1e-12)
+    assert row['esc_step_kg'] == pytest.approx(lost, rel=1e-9)
+    debit = row[ATM_DEBIT_KEY]
+    assert debit['Time'] == pytest.approx(3.0e8)
+    n_h2o_lost = lost / (2 * 1.008e-3)
+    assert debit['kg']['O2'] == pytest.approx(0.5 * n_h2o_lost * 31.998e-3, rel=2e-3)
+    assert debit['kg']['H2O'] == pytest.approx(1e20 - n_h2o_lost * 18.015e-3, rel=1e-9)
+    # Discrimination: an abundance split would have taken 89 % of the loss as oxygen.
+    assert before_o - row['O_kg_total'] < 1e-6 * lost
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_escaping_fractions_follow_the_rates_and_vanish_without_any():
+    """Under pxuv the fractions are the rate shares; with no rate they are all zero.
+
+    A negative per-element rate is a defect upstream and counts as zero, so
+    the fractions stay in [0, 1] and sum to one.
+    """
+    from proteus.escape.wrapper import escaping_fractions
+
+    res = {'H': 1.0, 'O': 9.0, 'C': 0.0}
+    row = {'esc_rate_H': 3.0, 'esc_rate_O': 1.0, 'esc_rate_C': -1.0}
+    f = escaping_fractions(row, 'pxuv', res, 10.0)
+    assert f == pytest.approx({'H': 0.75, 'O': 0.25, 'C': 0.0})
+    assert escaping_fractions({}, 'pxuv', res, 10.0) == {'H': 0.0, 'O': 0.0, 'C': 0.0}
+    assert escaping_fractions(row, 'outgas', res, 10.0) == pytest.approx(
+        {'H': 0.1, 'O': 0.9, 'C': 0.0}
+    )

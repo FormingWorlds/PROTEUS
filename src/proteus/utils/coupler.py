@@ -973,7 +973,22 @@ def CreateLockFile(output_dir: str):
 RESUMABLE_ZERO_FILL_KEYS = frozenset(
     {
         'boundary_layer_conductivity',
+        # the escape dispatcher: zero is a row it did not set
+        'esc_base_clamp_dex',
+        'esc_efficiency',
+        'esc_f_ion_exo',
+        'esc_flags',
+        'esc_graphite_kg',
         'esc_kg_cumulative',
+        'esc_kn_sonic',
+        'esc_lambda',
+        'esc_profile_source',
+        'esc_rate_branch',
+        'esc_regime',
+        'esc_T_esc_neutral',
+        'esc_T_esc_plasma',
+        'esc_T_exo',
+        'esc_T_wind',
         'f_remelt',
         # the Aragog lid: zero is no lid, and the interior writes them at every step
         'lid_conductance',
@@ -1000,6 +1015,22 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'struct_core_T_excess',
         'struct_core_T_used',
         'T_magma_clipped',
+    }
+)
+
+# Escape diagnostics that use -1 for "not evaluated". A run starts with them at -1, and a
+# resumed run whose helpfile predates them reads them as -1. Must match the keys that
+# escape.dispatcher._no_escape sets to -1.
+ESCAPE_NOT_EVALUATED_KEYS = frozenset(
+    {
+        'esc_efficiency',
+        'esc_f_ion_exo',
+        'esc_kn_sonic',
+        'esc_lambda',
+        'esc_T_esc_neutral',
+        'esc_T_esc_plasma',
+        'esc_T_exo',
+        'esc_T_wind',
     }
 )
 
@@ -1359,6 +1390,20 @@ def GetHelpfileKeys():
     keys.append('esc_rate_total')       # bulk escape rate [kg s-1]
     for e in element_list:
         keys.append('esc_rate_' + e)    # escape rate of each element [kg s-1]
+    keys.append('esc_regime')           # dispatcher regime code, see escape.dispatcher.REGIME_CODES, 0 if not set [1]
+    keys.append('esc_rate_branch')      # code of the branch that set the rate, 0 if not set [1]
+    keys.append('esc_kn_sonic')         # Knudsen number at the sonic point, -1 if not evaluated [1]
+    keys.append('esc_lambda')           # restricted Jeans parameter at the launch level, -1 if not evaluated [1]
+    keys.append('esc_T_exo')            # exobase temperature of the hydrostatic branch, -1 if not evaluated [K]
+    keys.append('esc_T_esc_neutral')    # neutral escape temperature at the exobase, -1 if not evaluated [K]
+    keys.append('esc_T_esc_plasma')     # plasma escape temperature at the exobase, -1 if not evaluated [K]
+    keys.append('esc_f_ion_exo')        # ionization fraction at the exobase, -1 if not evaluated [1]
+    keys.append('esc_efficiency')       # escape efficiency of the energy-limited wind, -1 if not evaluated [1]
+    keys.append('esc_T_wind')           # wind temperature of the hydrodynamic branch, -1 if not evaluated [K]
+    keys.append('esc_base_clamp_dex')   # decades between the wind base and the level used [1]
+    keys.append('esc_profile_source')   # column read: 1 latest solve, 2 earlier solve, 3 isothermal, 0 not set [1]
+    keys.append('esc_flags')            # dispatcher flags as bits, see escape.dispatcher.FLAG_BITS, 0 if none or not set [1]
+    keys.append('esc_graphite_kg')      # carbon escape left as graphite over a frozen mantle [kg]
 
     # Climate quantities
     keys.append('P_surf_clim')          # total surface pressure, after rainout [bar]
@@ -2070,14 +2115,17 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     if fillable:
         log.warning(
             'Helpfile predates %d column(s) in the current schema, and they are read '
-            'as zero for the rest of this run: %s. Zero is exact for a column that '
-            'resets every step; for one that accumulates, any history from before '
-            'this column existed is not recoverable.',
+            'as zero for the rest of this run, except the escape diagnostics %s, read '
+            'as -1 (not evaluated): %s. Zero is exact for a column that resets every '
+            'step. For one that accumulates, any history from before this column '
+            'existed is not recoverable.',
             len(fillable),
+            ', '.join(sorted(ESCAPE_NOT_EVALUATED_KEYS)),
             ', '.join(sorted(fillable)),
         )
-        zeros_fillable = pd.DataFrame(0.0, index=hf_all.index, columns=fillable)
-        hf_all = pd.concat([hf_all, zeros_fillable], axis=1)
+        fill = {k: -1.0 if k in ESCAPE_NOT_EVALUATED_KEYS else 0.0 for k in fillable}
+        filled = pd.DataFrame(fill, index=hf_all.index, columns=fillable)
+        hf_all = pd.concat([hf_all, filled], axis=1)
 
     backfill = [k for k in GetHelpfileDiagnosticKeys() if k not in hf_all.columns]
     if backfill:

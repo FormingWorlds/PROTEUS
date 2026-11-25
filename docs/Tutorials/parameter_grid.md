@@ -22,7 +22,7 @@ A grid is described by its own TOML file, separate from a normal run config.
 The one used here is committed at `input/tutorials/tutorial_grid.toml`:
 
 ```toml
-config_version = "3.0"
+config_version = "3.1"
 
 # Base config: each grid point starts from this all-dummy file
 ref_config = "input/dummy.toml"

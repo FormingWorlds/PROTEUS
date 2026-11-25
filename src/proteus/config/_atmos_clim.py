@@ -203,7 +203,8 @@ class Agni:
     convection: bool
         Account for convective heat transport, using MLT.
     conduction: bool
-        Account for conductive heat transport, using Fourier's law.
+        Account for conductive heat transport, using Fourier's law. On by default,
+        for a more stable temperature in the optically thin upper atmosphere.
     sens_heat: bool
         Include sensible heat flux at surface
     real_gas: bool
@@ -447,7 +448,9 @@ class AtmosClim:
     num_levels: int
         Number of vertical atmosphere levels.
     p_top: float
-        Top-of-atmosphere pressure [bar].
+        Top-of-atmosphere pressure [bar]. The default, 1e-10 bar, keeps the
+        XUV wind base of the ZEPHYRUS dispatcher, near a nanobar for hydrogen,
+        inside the column.
     p_obs: float | Literal['none']
         Observation pressure level [bar] (transit radius). Set to 'none'
         (-> None) to instead let AGNI determine this pressure level
@@ -499,7 +502,7 @@ class AtmosClim:
     spectral_bands: str = field(default='48')
     spectral_cache: str | None = field(default=None, converter=none_if_none)
     num_levels: int = field(default=50, validator=ge(15))
-    p_top: float = field(default=1e-6, validator=gt(0))
+    p_top: float = field(default=1e-10, validator=gt(0))
     p_obs: Union[float, Literal['none']] = field(
         default=20e-3, validator=valid_p_obs, converter=none_if_none
     )

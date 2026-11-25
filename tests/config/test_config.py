@@ -286,8 +286,8 @@ def _set_path(node, keys, value):
             "interior_energetics.aragog.solver_method: 'solver_method' must be in "
             "('cvode', 'radau', 'bdf') (got 'rk4')",
         ),
-        (['planet', 'mass_tot'], 'heavy', 'planet.mass_tot: could not convert string'),
-        (['outgas', 'fO2_shift_IW'], [1], 'outgas.fO2_shift_IW: float() argument'),
+        (['planet', 'mass_tot'], 'heavy', "planet.mass_tot: must be a number, got 'heavy'"),
+        (['outgas', 'fO2_shift_IW'], [1], 'outgas.fO2_shift_IW: must be a number, got [1]'),
     ],
     ids=['depth1', 'depth2', 'depth3', 'depth2_type', 'depth2_list'],
 )
@@ -564,6 +564,19 @@ def test_read_config_object_reports_each_bad_value_on_its_own_line(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    'keys', [['escape', 'zephyrus', 'P_photo'], ['escape', 'zephyrus', 'Pxuv']]
+)
+def test_a_boolean_is_refused_for_a_float_setting(tmp_path, keys):
+    """``P_photo = true`` is refused, where a cast would have read it as 1 bar."""
+    with pytest.raises(ValueError) as excinfo:
+        read_config_object(
+            _write_variant(tmp_path, 'bad.toml', lambda raw: _set_path(raw, keys, True))
+        )
+    assert f'{".".join(keys)}: must be a number, got True' in str(excinfo.value)
+
+
+@pytest.mark.unit
 def test_read_config_object_names_the_list_index_of_a_bad_element(tmp_path):
     """A bad element of a list value is named by its index in the key path."""
 
@@ -574,7 +587,7 @@ def test_read_config_object_names_the_list_index_of_a_bad_element(tmp_path):
         read_config_object(_write_variant(tmp_path, 'bad.toml', _bad))
     lines = [row.strip() for row in str(excinfo.value).splitlines()]
     assert any(
-        row.startswith('accretion.morrigan.masses[1]: could not convert string')
+        row.startswith("accretion.morrigan.masses[1]: must be a number, got 'x'")
         for row in lines
     ), lines
 
@@ -620,7 +633,7 @@ def test_valid_config_version_rejects_old():
     from proteus.config._config import valid_config_version
 
     instance = SimpleNamespace()
-    with pytest.raises(ValueError, match='config_version = "3.0"'):
+    with pytest.raises(ValueError, match='config_version = "3.1"'):
         valid_config_version(instance, SimpleNamespace(), '2.0')
 
     # Discrimination: the rejection path must not mutate the input instance.
@@ -640,7 +653,7 @@ def test_valid_config_version_accepts_current():
     from proteus.config._config import valid_config_version
 
     instance = SimpleNamespace()
-    result = valid_config_version(instance, SimpleNamespace(), '3.0')
+    result = valid_config_version(instance, SimpleNamespace(), '3.1')
     assert result is None  # contract: validator returns None silently on accepted version
     assert vars(instance) == {}  # validator must not mutate the input instance
 
@@ -1303,6 +1316,28 @@ def test_spada_zephyrus_requires_mors_spada():
     # tracks) would fail this second invocation.
     inst.star.mors.tracks = 'spada'
     assert spada_zephyrus(inst, None, None) is None
+
+
+@pytest.mark.unit
+def test_spada_zephyrus_only_warns_under_the_dispatcher(caplog):
+    """The dispatcher runs without the Spada tracks, with a warning.
+
+    Boil-off and Jeans escape need no XUV flux, so the dispatcher stays
+    meaningful under a star model without one; energy-limited escape does
+    not, and keeps the hard requirement.
+    """
+    import logging
+
+    inst = SimpleNamespace(
+        escape=SimpleNamespace(module='zephyrus', uses_dispatcher=True),
+        star=SimpleNamespace(module='dummy'),
+    )
+    with caplog.at_level(logging.WARNING):
+        assert spada_zephyrus(inst, None, None) is None
+    assert 'Spada' in caplog.text
+    inst.escape.uses_dispatcher = False
+    with pytest.raises(ValueError, match='Spada'):
+        spada_zephyrus(inst, None, None)
 
 
 @pytest.mark.unit
@@ -3479,7 +3514,7 @@ def test_planet_config_parses_on_the_current_schema(path):
 
     raw = read_config(path)
 
-    assert raw['config_version'] == '3.0'
+    assert raw['config_version'] == '3.1'
     assert 'interior' not in raw
 
     block = raw.get('orbit', {}).get('parameterized')
@@ -3765,3 +3800,25 @@ def test_an_interrupted_write_leaves_the_previous_file_whole(tmp_path):
         cfg.write(str(out))
     assert out.read_bytes() == before
     assert [f.name for f in tmp_path.iterdir()] == ['init_coupler.toml']
+
+
+@pytest.mark.unit
+def test_default_config_with_a_dummy_star_loads_and_warns(caplog):
+    """The default dispatcher runs with a non-MORS star; the config loads with a warning.
+
+    A full Config with the default escape and a dummy star constructs, while
+    the same Config under the energy-limited scheme is refused.
+    """
+    import logging
+
+    from proteus.config import Config
+    from proteus.config._escape import Escape, Zephyrus
+    from proteus.config._star import Star, StarDummy
+
+    star = Star(module='dummy', dummy=StarDummy(calculate_radius=True))
+    with caplog.at_level(logging.WARNING):
+        cfg = Config(star=star)
+    assert cfg.escape.uses_dispatcher is True
+    assert 'Spada' in caplog.text
+    with pytest.raises(ValueError, match='Spada'):
+        Config(star=star, escape=Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el')))

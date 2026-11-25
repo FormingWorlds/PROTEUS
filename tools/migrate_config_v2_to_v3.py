@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Translate a PROTEUS configuration file from format version 2.0 to 3.0.
+"""Translate a PROTEUS configuration file from format version 2.0 to the current format.
+
+The output carries the current format version, 3.1, and is compared against the
+current defaults, so a 2.0 file goes to 3.1 in one step.
 
 The 2.0 to 3.0 change is a structural refactor, not a value tweak: the interior
 splits into ``[interior_struct]`` and ``[interior_energetics]``, the volatile
@@ -224,7 +227,7 @@ INTERIOR_RENAMES = {
 
 # Value transforms keyed on the 2.0 path.
 TRANSFORMS = {
-    'version': lambda v: '3.0',
+    'version': lambda v: '3.1',
     'struct.module': _struct_module,
     'interior.spider.mixing_length': _mixing_length,
     'delivery.initial': _volatile_mode,
@@ -261,6 +264,9 @@ OVERRIDES = {
     # 2.0 sized escape from the unmodified XUV radius; the 3.0 default clips
     # it to the Hill radius. Pin off so migrated runs reproduce 2.0 rates.
     'escape.hill_clamp': False,
+    # 2.0 had energy-limited escape only; the 3.0 default is the ZEPHYRUS regime
+    # dispatcher. Pin the energy-limited scheme so migrated runs keep their 2.0 rates.
+    'escape.zephyrus.scheme': 'el',
     # 2.0 hardcoded a 4.0 K poststep-change cap when tidal heating was active
     # (not configurable); the 3.0 default of 10.0 K would relax that cap for
     # migrated tidal-heating runs. Pin 4.0 to reproduce 2.0 behaviour.
@@ -915,7 +921,7 @@ def translate(v2_toml: dict):
             keep[path] = val
             if deviates and path not in provenance_explicit and path not in OVERRIDES:
                 report.pinned_divergent.append((path, val))
-    keep['config_version'] = '3.0'
+    keep['config_version'] = '3.1'
 
     nested = _unflatten(keep)
     _validate(nested)
@@ -974,7 +980,7 @@ def translate_grid(grid_toml: dict):
     The base config referenced by ``ref_config`` must be migrated separately.
     """
     report = MigrationReport()
-    out = {'config_version': '3.0'}
+    out = {'config_version': '3.1'}
     for key, val in grid_toml.items():
         if key in ('version', 'config_version'):
             continue

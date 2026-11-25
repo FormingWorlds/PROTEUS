@@ -22,7 +22,7 @@
 # recorded again in the same commit. Running the golden-run test with
 # --record-golden does that, and the comparison refuses a reference recorded
 # against different text.
-config_version = "3.0"
+config_version = "3.1"
 
 [params]
     [params.out]

@@ -55,7 +55,7 @@ The top-level settings are:
 | `max_days`, `max_mem` | Walltime (days) and memory (GB) per case. Only the Slurm dispatch uses them. |
 | `cores_per_job` | CPU cores per Slurm job; each core runs one case at a time. Default 1. Only the Slurm dispatch uses it. |
 | `jax_cache` | Share a JAX compilation cache across Slurm array tasks (see below). Default `false`; only affects Slurm dispatch. |
-| `config_version` | Config format version, for example `"3.0"`. Accepted so that a grid file can state it; the grid manager does not read it. |
+| `config_version` | Config format version, for example `"3.1"`. Accepted so that a grid file can state it; the grid manager does not read it. |
 
 `use_slurm` and `jax_cache` take only a TOML `true` or `false`; a quoted `"false"`, a `0` or a `1` stops the grid at load with an error that names the setting and the grid file.
 

@@ -160,15 +160,15 @@ def test_zephyrus_efficiency_in_unit_interval_closed_at_both_ends():
     from proteus.config._escape import Escape, Zephyrus
 
     for boundary in (0.0, 1.0):
-        e = Escape(module='zephyrus', zephyrus=Zephyrus(efficiency=boundary))
+        e = Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el', efficiency=boundary))
         assert e.zephyrus.efficiency == pytest.approx(boundary, abs=1e-12)
     # Outside the interval rejects.
     with pytest.raises(ValueError, match=r'(?i)efficiency'):
-        Escape(module='zephyrus', zephyrus=Zephyrus(efficiency=-0.01))
+        Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el', efficiency=-0.01))
     with pytest.raises(ValueError, match=r'(?i)efficiency'):
-        Escape(module='zephyrus', zephyrus=Zephyrus(efficiency=1.01))
+        Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el', efficiency=1.01))
     # Default round-trip.
-    e_default = Escape(module='zephyrus')
+    e_default = Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el'))
     assert e_default.zephyrus.efficiency == pytest.approx(0.1, rel=1e-12)
 
 
@@ -188,7 +188,7 @@ def test_spada_zephyrus_rejects_zephyrus_with_dummy_star():
     """
     from proteus.config import Config
     from proteus.config._atmos_clim import AtmosClim
-    from proteus.config._escape import Escape
+    from proteus.config._escape import Escape, Zephyrus
 
     # Build a minimal Config kwargs dict using defaults for everything
     # except the slots we deliberately set. The Config constructor
@@ -203,7 +203,7 @@ def test_spada_zephyrus_rejects_zephyrus_with_dummy_star():
     )
     # Zephyrus with dummy star: spada_zephyrus must raise.
     with pytest.raises(ValueError, match=r'(?i)(MORS|spada)'):
-        Config(escape=Escape(module='zephyrus'), **base)
+        Config(escape=Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el')), **base)
     # Same config with escape.module='dummy' constructs cleanly,
     # confirming the error is specific to zephyrus + non-mors.
     cfg_ok = Config(escape=Escape(module='dummy'), **base)
@@ -219,7 +219,7 @@ def test_spada_zephyrus_rejects_zephyrus_with_baraffe_tracks():
     """
     from proteus.config import Config
     from proteus.config._atmos_clim import AtmosClim
-    from proteus.config._escape import Escape
+    from proteus.config._escape import Escape, Zephyrus
     from proteus.config._planet import Elements, Planet
     from proteus.config._star import Mors, Star
 
@@ -229,10 +229,18 @@ def test_spada_zephyrus_rejects_zephyrus_with_baraffe_tracks():
     )
     star_baraffe = Star(module='mors', mors=Mors(tracks='baraffe'))
     with pytest.raises(ValueError, match=r'(?i)(MORS|spada)'):
-        Config(escape=Escape(module='zephyrus'), star=star_baraffe, **base)
+        Config(
+            escape=Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el')),
+            star=star_baraffe,
+            **base,
+        )
     # Adjacent-valid: same star with spada tracks must round-trip.
     star_spada = Star(module='mors', mors=Mors(tracks='spada'))
-    cfg_ok = Config(escape=Escape(module='zephyrus'), star=star_spada, **base)
+    cfg_ok = Config(
+        escape=Escape(module='zephyrus', zephyrus=Zephyrus(scheme='el')),
+        star=star_spada,
+        **base,
+    )
     assert cfg_ok.star.mors.tracks == 'spada'
 
 

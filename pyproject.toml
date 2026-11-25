@@ -47,7 +47,7 @@ dependencies = [
     "fwl-janus>=26.11.5",
     "fwl-mors>=26.10.6",
     "fwl-calliope>=26.10.05",
-    "fwl-zephyrus>=26.10.10",
+    "fwl-zephyrus>=26.11.14",
     "fwl-aragog>=26.11.24",
 
     # 26.11.22: the structure solve takes core_temperature_arrays, the core temperature table that

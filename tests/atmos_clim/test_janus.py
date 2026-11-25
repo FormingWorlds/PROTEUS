@@ -355,7 +355,7 @@ def _build_run_config(*, hill_clamp=False):
         ),
         planet=SimpleNamespace(prevent_warming=False),
         escape=SimpleNamespace(
-            xuv_defined_by_radius=False, hill_clamp=hill_clamp, hill_clamp_frac=1.0
+            xuv_defined_by_radius=False, effective_hill_clamp=hill_clamp, hill_clamp_frac=1.0
         ),
     )
 

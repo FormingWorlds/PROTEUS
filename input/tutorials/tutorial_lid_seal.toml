@@ -2,7 +2,7 @@
 # An Earth-mass planet at 1 AU cools from a magma ocean; a crust closing over the melt holds its volatiles.
 # Every option that is not set here takes its default (see all_options.toml).
 
-config_version = "3.0"
+config_version = "3.1"
 
 [params]
     [params.out]
@@ -53,3 +53,6 @@ config_version = "3.0"
     [outgas.lid_seal]
         enabled = true
         tau_leak = 1.0e5             # [yr]; delta_close stays at its default, 10 km
+
+[escape.zephyrus]
+    scheme = "el"                    # energy-limited escape, split by atmospheric abundance
