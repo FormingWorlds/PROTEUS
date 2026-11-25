@@ -11,7 +11,8 @@ The post opens with a summary of what the digest covers:
 - the collection window;
 - the number of merged pull requests, open pull requests and releases;
 - the number of commits read from each repository without pull requests, when it has commits in the window;
-- the number of commits of the window over `max_commits` that are not read, for each repository that has such commits;
+- the number of commits of the window over `max_commits` that are not read, merge commits included, for each repository that has such commits;
+- a sentence when no earlier digest starts the window, so that it covers the last 7 days;
 - the repositories, each a link to its GitHub repository;
 - whether the model read the text of every pull request or only of the largest ones (the others by title only);
 - a link to the workflow run.
@@ -22,9 +23,9 @@ A dry run puts the line **Dry run: not posted.** before this summary. After the 
 
 The workflow is `.github/workflows/weekly-digest.yml`, with its scripts in `tools/digest/`. It runs every Monday at 22:23 UTC (23:23 in Amsterdam in winter, 00:23 on Tuesday in summer). You can also start it by hand. It has 3 jobs, shown in the Actions tab as `Collect pull requests, releases and facts`, `Draft the entries` and `Check, render and deposit`. This page calls them the collect job, the draft job and the check job (its job id in the workflow is `publish`). The check job checks the draft, renders it, and deposits it only in a live run. It uploads its files as the artifact `digest`, a file set that you can download from the run page; this artifact is not the publication. A scheduled run and a manual run with the box **Deposit the live digest** ticked and no window share one queue: a run waits while another runs, and a new run cancels a run that waits. Every other manual run runs on its own and cannot cancel a waiting scheduled run.
 
-A digest covers a window of time. The window starts where the window of the last live digest ended. `collect.py` lists the artifacts `digest-live` of this repository and keeps those that are not expired and whose run is a successful scheduled or manual run of this workflow on `main` of this repository. It reads the window end from `digest.json` in each of them, only when the file says `live: true`, and takes the latest window end. Anybody who can open a pull request can upload an artifact with that name, so the run is checked, not the name.
+A digest covers a window of time. The window starts where the window of the last live digest ended. `collect.py` lists the artifacts `digest-live` of this repository and keeps those that are not expired and whose run is a successful scheduled or manual run of this workflow on `main` of this repository. It reads the window end from `digest.json` in each of them, only when the file says `live: true` and the end is not later than the last update of its run, and takes the latest window end. Anybody who can open a pull request can upload an artifact with that name, so the run is checked, not the name. An artifact whose list entry names another branch or another repository is dropped before its run is read. `collect.py` reads at most 10 pages of 100 artifacts. The run fails when the list answers 404, when the download of a candidate from a trusted run answers 404, or when the 10th page is full, so that artifacts stay unread.
 
-While no live digest exists, the window starts at the hidden state marker (an HTML comment) at the end of the newest post by the login (GitHub user name) `github-actions` in the Discussions category Weekly digest, where earlier digests were posted. A marker that ends more than 35 days before the run is not used. With neither, the window is the last 7 days. The window ends at the time of the run. A window that you set by hand, with a start or an end, is back-dated, and a back-dated run never deposits.
+While no live digest exists, the window starts at the hidden state marker (an HTML comment) at the end of the newest post by the login (GitHub user name) `github-actions` in the Discussions category Weekly digest. A marker that ends more than 35 days before the run is not used. With neither, the window is the last 7 days: the collect job gives a warning on the run page, and the post summary says "No earlier digest was found; this digest covers the last 7 days." The window ends at the time of the run. A window that you set by hand, with a start or an end, is back-dated, and a back-dated run never deposits.
 
 ### Collect the data
 
@@ -38,7 +39,7 @@ Some repositories take their changes as commits to the default branch, with no p
 
 A commit counts by its commit date in UTC, not by its author date. A commit that was written before the window and rebased onto the default branch in the window counts in this window. A merge commit (a commit with 2 or more parents) is left out.
 
-`collect.py` asks GitHub for at most the newest `max_commits` commits of each repository and window, and then leaves out the merge commits. The post summary and the job summary give the number of commits that it did not ask for. Both numbers include merge commits. The model reads the headline and the message of every commit kept, cut to 300 and to `body_chars` characters; `max_bodies` applies to pull requests only. Each commit gets its changed files from one request to the GitHub API, at most 300 files. When GitHub gives no file list for a commit, the run log names the commit, and the facts step compares every tracked file of its repository. The run log lists every commit kept, with its reference, its full commit id and its commit date.
+`collect.py` asks GitHub for at most the newest `max_commits` commits of each repository and window, and then leaves out the merge commits. The post summary and the job summary give the number of commits that it did not ask for. This number includes merge commits, and the post says so. The model reads the headline and the message of every commit kept, cut to 300 and to `body_chars` characters; `max_bodies` applies to pull requests only. Each commit gets its changed files from one request to the GitHub API, at most 300 files. When GitHub gives no file list for a commit, the run log names the commit, and the facts step compares every tracked file of its repository. A tracked file that is absent at such a commit but present before it is named as unreadable, not read as removed. The run log lists every commit kept, with its reference, its full commit id and its commit date.
 
 Each commit has a reference of the form `PALEOS:c1`, numbered from the oldest commit kept. Commits with the same commit date keep the reverse order of the GitHub history, which puts a parent before its child in a history without merges. The reference holds no commit id. The model groups related commits into one entry. In the post, a commit links as the repository name and the first 7 characters of its id, and its author links to the GitHub profile.
 
@@ -61,7 +62,7 @@ For each merged pull request and each commit that changes a tracked file, `facts
 - a config key that was added or removed, or whose default, choices, bounds or description changed;
 - a helpfile column (a column of the PROTEUS output table) that was added or removed, or whose unit changed;
 - a dependency that was added or removed, or whose version changed. This covers a new floor (the lowest version a package accepts), a Julia `[compat]` entry in `Project.toml`, and a changed module pin (a module version under `tool.proteus.modules` in `pyproject.toml`);
-- a dataset of a data manifest (`src/fwl_io/data/shared_manifest.toml` in fwl-io, `src/proteus/data/proteus_manifest.toml` in PROTEUS) whose Zenodo DOI, Dataverse DOI or file list changed, or a file of a PALEOS registry (`src/fwl_io/data/interior.eos.paleos_*.registry.txt`) whose md5 sum changed. A new Zenodo version of a table gives such a fact (kind `dataset` or `dataset file`). Runs then download the new table, so the fact can go into "Changes that affect your results";
+- a dataset of a data manifest (`src/fwl_io/data/shared_manifest.toml` in fwl-io, `src/proteus/data/proteus_manifest.toml` in PROTEUS), a table with a Zenodo DOI as text, whose Zenodo DOI, Dataverse DOI or file list changed, or a file of a PALEOS registry (`src/fwl_io/data/interior.eos.paleos_*.registry.txt`) whose md5 sum changed. A new Zenodo version of a table gives such a fact (kind `dataset` or `dataset file`). Runs then download the new table, so the fact can go into "Changes that affect your results";
 - a dataset or a registry file that was added or removed (kind `dataset list`). This is new or dropped data, not a change of earlier results, so an entry of "Changes that affect your results" needs another fact or a release;
 - a key that was added, removed or changed in another tracked TOML file.
 
@@ -107,7 +108,7 @@ The run also fails when the text as the model wrote it has:
 
 - an invisible character, a fraction or a letter number such as a Roman numeral;
 - a number that is not in a cited pull request, release or commit (cited fact values do not count);
-- a config key or helpfile column that is not in a cited fact.
+- a config key or helpfile column that is not in a cited fact. The dataset of a cited registry fact counts as in the fact: `paleos_iron` for `interior.eos.paleos_iron:iron.dat`.
 
 How the check reads numbers:
 
@@ -132,6 +133,7 @@ The check prints each failure as one line, `FAIL` and a quoted JSON string, so e
 - Each author is a link to the GitHub profile (see [Authors](#authors)).
 - A row of the section "Changes that affect your results" and an entry of the section "New capabilities" link the docs pages of their pull requests, at most 5, then the number of the other pages.
 - The model text is escaped, so any markdown in it shows as plain text.
+- In an entry outside "Changes that affect your results", the config, column and dependency facts follow the label Settings:, and the dataset facts follow the label Data:.
 - An empty fact value shows as (empty), a null or missing one as (none), and a value of only `|` or backtick characters as (not shown).
 - The title is the date of the Tuesday of the week (Monday to Sunday, Amsterdam time) in which the window ends. The scheduled Monday run takes the next day. A run from Tuesday to Sunday takes the Tuesday that is already past, the meeting of its own week.
 - A body longer than 65,536 characters stops the run.
@@ -154,7 +156,8 @@ The deposit step runs only in a live run, a run that is allowed to deposit (see 
 
 | Situation | Result |
 | --- | --- |
-| Rerun of failed jobs or of all jobs of any run | Nothing deposited |
+| Rerun of failed jobs or of all jobs of any run | Dry run: nothing deposited |
+| Manual run on another branch with the box ticked | Dry run: nothing deposited |
 | Second manual live run for the same meeting | Nothing deposited |
 | Manual run on a Monday before the scheduled run | It takes the title of the scheduled run, which then deposits nothing; the next window starts at the end of the manual run, so no pull request is left out |
 
@@ -168,8 +171,8 @@ A skipped deposit gives a notice annotation on the run page, and the run stays g
 A workflow in another repository finds the newest live digest in 3 steps:
 
 1. List the artifacts with `GET https://api.github.com/repos/FormingWorlds/PROTEUS/actions/artifacts?name=digest-live`. GitHub sorts them by artifact id, which is close to, but not always the same as, the order of creation.
-2. Keep the entries with `expired` false, `workflow_run.head_branch` equal to `main`, and `workflow_run.head_repository_id` equal to `workflow_run.repository_id`. For the full check of `collect.py`, also read `GET https://api.github.com/repos/FormingWorlds/PROTEUS/actions/runs/<workflow_run.id>` and require the path `.github/workflows/weekly-digest.yml`, the event `schedule` or `workflow_dispatch`, and the conclusion `success`.
-3. Download the `archive_download_url` of each entry kept, read `digest.json`, and take the one with the latest `until`. The download needs a token that can read this repository, also though the repository is public.
+2. Keep the entries with `expired` false, `workflow_run.head_branch` equal to `main`, and `workflow_run.head_repository_id` equal to `workflow_run.repository_id`. Then read `GET https://api.github.com/repos/FormingWorlds/PROTEUS/actions/runs/<workflow_run.id>` for each entry, and keep it only when the run has the path `.github/workflows/weekly-digest.yml`, the event `schedule` or `workflow_dispatch`, and the conclusion `success`. All of these conditions are necessary. A `digest-live` of a run that is red, cancelled or still running is not a publication: `collect.py` does not count it, so the next digest covers its window again.
+3. Download the `archive_download_url` of each entry kept, read `digest.json`, and take the one with the latest `until`. The download needs a token that can read this repository, even though the repository is public.
 
 `digest.json` holds:
 
@@ -214,7 +217,7 @@ The draft step needs the `claude` command line and either a signed-in `claude` s
 `publish` in `tools/digest/repos.toml` controls the deposit:
 
 - `publish = false`: every run is a dry run.
-- `publish = true`: the scheduled run deposits. A manual run on `main` deposits only when its box **Deposit the live digest** is ticked and no window is given.
+- `publish = true`: the scheduled run deposits. A manual run on `main` deposits only when its box **Deposit the live digest** is ticked and no window is given. A rerun and a run on another branch are dry runs.
 
 To switch the deposit on:
 
@@ -231,7 +234,9 @@ If the check job is red before the deposit step, nothing is deposited. Read the 
 
 If the deposit step is red with `not deposited:`, nothing is deposited, and the message names each failed guard. For link problems, the log has one `Link problem:` line for each link or mention in the final body that the collected data does not allow. The check stops such text earlier, so a link problem means a gap in `check.py`: read `out/digest.md` in the artifact `digest`.
 
-A run that fails after the deposit step, in the upload of `digest-live`, deposits nothing. The next run starts at the window end of the last live digest, so no pull request is left out.
+A run that fails in the upload of `digest-live` deposits nothing. If a step fails after the upload, the artifact exists, but its run is red: `collect.py` does not count it, and a copy workflow must not copy it. The next run starts at the window end of the last live digest of a green run, so no pull request is left out.
+
+If the collect job stops with `answered 404` or `more than 1000 digest-live artifacts`, it cannot find the newest live digest, and nothing is collected. Read the URL in the message. For too many artifacts, delete the artifacts `digest-live` that other runs uploaded, then start a new run.
 
 ## Sections of a digest
 
@@ -283,7 +288,7 @@ What a digest can miss:
 - Only the 4 PALEOS datasets have tracked registries. For the other datasets, the DOIs and the file lists are compared, not the md5 sums.
 - The commits of a window over `max_commits` are not read. The post summary gives their number for each repository, but the model does not see them.
 - A commit that a digest reported and that is then rewritten on the default branch (a force push or a rebase of published history) gets a new commit id. It appears again in the digest of the window of its new commit date.
-- A commit to a repository without pull requests whose commit date is before the window start, but that reaches the default branch after it, is in no scheduled digest: for example a commit made before the run and pushed after it, or the commits of a side branch that a merge commit brings in. A back-dated run with an earlier start reads it when it is among the newest `max_commits` commits of that window, and a back-dated run never posts.
+- A commit to a repository without pull requests whose commit date is before the window start, but that reaches the default branch after it, is in no scheduled digest: for example a commit made before the run and pushed after it, or the commits of a side branch that a merge commit brings in. A back-dated run with an earlier start reads it when it is among the newest `max_commits` commits of that window, and a back-dated run never deposits.
 - A docs page is checked once, when the data is collected; a page that the docs deployment removes later stays linked.
 - Only pull requests whose base is the default branch of their repository are read, merged or open. A pull request closed without a merge does not appear.
 - An open pull request counts only when it was updated after the window start.
