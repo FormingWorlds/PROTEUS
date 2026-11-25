@@ -3504,6 +3504,19 @@ def _cpage(nodes, total=None, private=False, releases=()):
     }
 
 
+def _rnode(tag, published):
+    return {
+        'tagName': tag,
+        'name': None,
+        'url': 'u',
+        'publishedAt': published,
+        'isDraft': False,
+        'isPrerelease': False,
+        'description': 'd',
+        'author': {'login': 'maraattia', '__typename': 'User'},
+    }
+
+
 def _commit(ref='PALEOS:c1', author='maraattia', **extra):
     return {
         'ref': ref,
@@ -3668,17 +3681,7 @@ def test_collect_commits_keeps_the_parent_order_on_one_commit_date():
 
 def test_collect_commits_returns_the_releases_of_the_window():
     """A repository without pull requests still gives its releases of the window."""
-    node = {
-        'tagName': '1.0.0',
-        'name': 'PALEOS 1.0.0',
-        'url': 'u',
-        'publishedAt': '2026-09-10T00:00:00Z',
-        'isDraft': False,
-        'isPrerelease': False,
-        'description': 'd',
-        'author': {'login': 'maraattia', '__typename': 'User'},
-    }
-    page = _cpage([], releases=[node, {**node, 'tagName': '0.9.0', 'publishedAt': UNTIL}])
+    page = _cpage([], releases=[_rnode('1.0.0', SINCE), _rnode('0.9.0', UNTIL)])
     _, releases, _ = collect.collect_commits(
         _FakeGH([page]), PALEOS, {'since': SINCE, 'until': UNTIL}, 9
     )
@@ -3754,17 +3757,9 @@ def test_collect_reads_a_commits_only_repository_by_its_commits():
         headline='Fix <b>iron</b> @bob',
         body='Ask @bob, see https://x.y/z ' + 'x' * 40,
     )
-    rel = {
-        'tagName': '1.0.0',
-        'name': None,
-        'url': 'u',
-        'publishedAt': '2026-11-06T00:00:00Z',
-        'isDraft': False,
-        'isPrerelease': False,
-        'description': 'd',
-        'author': {'login': 'maraattia', '__typename': 'User'},
-    }
-    gh = _FakeGH([_janus(), _cpage([node], total=4, releases=[rel])])
+    gh = _FakeGH(
+        [_janus(), _cpage([node], total=4, releases=[_rnode('1.0.0', window['since'])])]
+    )
     out = collect.collect(gh, settings_, window)
     assert gh.queries[1]['max'] == 2 and 'PALEOS@1.0.0' in [r['ref'] for r in out['releases']]
     assert [c['ref'] for c in out['commits']] == ['PALEOS:c1']
@@ -3817,6 +3812,34 @@ def test_check_fails_closed_on_commits(change, message):
     assert any(message in f for f in fails), fails
 
 
+@pytest.mark.parametrize(
+    ('field', 'ref', 'kind'),
+    [
+        ('prs', 'PROTEUS#1', 'PR'),
+        ('releases', 'AGNI@9', 'release'),
+        ('commits', 'PALEOS:c9', 'commit'),
+        ('facts', 'F9', 'fact'),
+    ],
+)
+def test_check_lists_an_unknown_citation_beside_known_ones(field, ref, kind):
+    """An unknown citation next to known ones gives one failure line, and the other rules still run."""
+    data = _cdata(releases=[_release()])
+    entry = _centry(
+        section='results',
+        prs=['PROTEUS#849'],
+        releases=['AGNI@1.13.0'],
+        facts=['F1'],
+        logins=['alice', 'bob', 'maraattia'],
+    )
+    assert check.check(data, _draft(entry)) == []
+    entry[field] = [*entry[field], ref]
+    try:
+        out = check.check(data, _draft(entry))
+    except (KeyError, TypeError) as err:
+        out = [repr(err)]
+    assert out == [f'entry "One consistency check": {kind} {ref} is not in the collected set']
+
+
 def test_check_accepts_a_commit_entry_with_its_numbers_and_facts():
     """A commit cites its own facts, its author and the numbers of its message."""
     data = _cdata(fact_list=[_fact(pr='PALEOS:c1')])
@@ -3831,8 +3854,10 @@ def test_a_window_with_only_commits_is_not_empty():
     data = _cdata(prs=[_pr(status='open')], fact_list=[])
     assert not check.is_empty(data)
     assert check.check(data, _draft()) == [
-        'the model returned no entries for a window with merged pull requests, releases or commits'
+        'the model returned no entries for a window that is not empty'
     ]
+    body, _ = render.render_body(_data(prs=[]), _draft(empty=True), False, 'r', [])
+    assert body.count('no release was published and no commit was read between') == 1
     data['commits'] = []
     assert check.is_empty(data)
 
@@ -3869,7 +3894,12 @@ def test_render_links_each_commit_with_its_short_id_and_author():
     data = _cdata(fact_list=[_fact(pr='PALEOS:c1')])
     cap = _centry()
     res = _centry(section='results', facts=['F1'], title='Checked tables')
-    body, _ = render.render_body(data, _draft(cap, res), True, 'https://run', _VALID['bots'])
+    try:
+        body, _ = render.render_body(
+            data, _draft(cap, res), True, 'https://run', _VALID['bots']
+        )
+    except (KeyError, ValueError) as err:
+        body = repr(err)
     url = _commit()['url']
     link = f'[PALEOS {_oid(1)[:7]}]({url})'
     assert body.splitlines().count(f'{link}, by [maraattia](https://github.com/maraattia)') == 1
@@ -3889,7 +3919,7 @@ def test_summary_counts_the_commits_of_a_repository_without_pull_requests(n):
     text = render.summary(data, 'https://run')
     noun = {1: '1 commit', 2: '2 commits'}.get(n)
     if noun:
-        want = f'It also read {noun} to the default branch of PALEOS, a repository without pull requests.'
+        want = f'The digest also covers {noun} to the default branch of PALEOS, a repository without pull requests.'
         assert text.count(want) == 1, text
     else:
         assert 'commit' not in text
