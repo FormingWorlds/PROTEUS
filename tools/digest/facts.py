@@ -252,12 +252,7 @@ def attach_facts(gh: GitHub, data: dict, settings: dict) -> None:
             except UNREADABLE as err:
                 unreadable.append(_unreadable(pr['ref'], path, err))
                 continue
-            if (
-                new is None
-                and old is not None
-                and not pr['files']
-                and pr.get('files_truncated')
-            ):
+            if new is None and old is not None and not pr['files']:  # an empty list here is a cut one
                 unreadable.append({'pr': pr['ref'], 'file': path, 'error': NO_FILE})
                 continue
             for fact in group_facts(found):
