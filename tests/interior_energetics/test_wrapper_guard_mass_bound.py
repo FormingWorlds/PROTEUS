@@ -25,7 +25,6 @@ from proteus.interior_energetics.wrapper import (
     _MASS_ESCAPE_RADIUS_SLOPE,
     _ZALMOXIS_MASS_ANCHOR_TOL,
     _warn_committed_mass_miss,
-    _warn_mass_escape_radius_step,
 )
 from tests.interior_energetics.test_wrapper import _composition_trigger_scenario
 from tests.interior_energetics.test_wrapper_guard_mass_target import (
@@ -246,20 +245,56 @@ def test_the_bound_uses_the_mass_the_solve_reached(caplog):
 
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(
-    ('radius', 'mass'),
+    ('radius', 'mass', 'target', 'reason'),
     [
-        pytest.param(float('nan'), M_RETAINED * 1.01, id='non-finite radius'),
-        pytest.param(R_RETAINED * 1.001, float('nan'), id='non-finite reached mass'),
+        pytest.param(math.inf, 1.01, 1.01, 'non-finite structure', id='infinite radius'),
+        pytest.param(math.nan, 1.0, 1.0, 'non-finite structure', id='NaN radius'),
+        pytest.param(1.001, math.nan, 1.01, 'mass-anchor violation', id='NaN mass on a target'),
+        pytest.param(0.999, math.nan, None, 'non-finite structure', id='NaN mass, no target'),
     ],
 )
-def test_a_non_finite_kept_step_warns_about_its_radius_step(caplog, radius, mass):
-    """A kept step with a non-finite radius or reached mass warns: no bound can hold for it."""
-    with caplog.at_level(logging.WARNING):
-        _warn_mass_escape_radius_step(
-            {'R_int': radius, 'M_int': mass}, R_RETAINED, M_RETAINED, M_RETAINED * 1.01
-        )
+def test_a_non_finite_solve_falls_back_to_the_retained_structure(
+    caplog, radius, mass, target, reason
+):
+    """A solve that returns a non-finite R_int or M_int fails: the previous structure comes back.
 
+    The structure turns stale and the failure counts; no step is kept and no bound warns. A NaN
+    mass on a target fails the mass anchor; without a target the finiteness check refuses it.
+    """
+    config, hf_row, base = _cooling_case()
+
+    def _solve(*args, **kwargs):
+        args[2].update(
+            R_int=R_RETAINED * radius,
+            M_int=M_RETAINED * mass,
+            M_int_target=0.0 if target is None else M_RETAINED * target,
+        )
+        return (3.504e6, None)
+
+    msgs, _, interior_o = run_guard(caplog, hf_row, config, base, _solve)
+
+    fell_back = [m for m in msgs if 'Falling back to previous structure' in m]
+    assert len(fell_back) == 1
+    assert reason in fell_back[0]
+    assert hf_row['R_int'] == R_RETAINED
+    assert hf_row['M_int'] == M_RETAINED
+    assert interior_o.structure_stale is True
+    assert interior_o.zalmoxis_fail_count == 1
+    assert not any(ACCEPT_MSG in m for m in msgs)
+    assert not _warnings(caplog, BOUND_MSG)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('radius', [50.0, 1e300 / R_RETAINED], ids=['50 R', '1e300 m'])
+def test_a_finite_absurd_radius_at_an_anchor_trip_is_kept_with_a_warning(caplog, radius):
+    """The mass escape keeps every finite solve: a 50-fold or a 1e300 m radius at an anchor trip
+    is kept, and the radius bound warning names it."""
+    config, hf_row, base = _cooling_case()
+    msgs, _, _ = run_guard(caplog, hf_row, config, base, _solve_to(1.01, radius))
+
+    assert hf_row['R_int'] == R_RETAINED * radius
     assert len(_warnings(caplog, BOUND_MSG)) == 1
+    assert not any('Falling back to previous structure' in m for m in msgs)
 
 
 @pytest.mark.physics_invariant
@@ -460,20 +495,3 @@ def test_a_non_positive_committed_mass_warns(caplog, m_int, m_target):
         _warn_committed_mass_miss({'M_int': m_int, 'M_int_target': m_target})
 
     assert len(_warnings(caplog, MISS_MSG)) == 1
-
-
-@pytest.mark.physics_invariant
-def test_a_non_finite_committed_mass_warns(caplog):
-    """A solve that returns a NaN mass on its target commits it; the step warns."""
-    config, hf_row, base = _cooling_case()
-
-    def _solve(*args, **kwargs):
-        args[2].update(R_int=R_RETAINED * 0.999, M_int_target=M_RETAINED, M_int=float('nan'))
-        return (3.504e6, None)
-
-    run_guard(caplog, hf_row, config, base, _solve)
-
-    assert math.isnan(hf_row['M_int'])
-    warned = _warnings(caplog, MISS_MSG)
-    assert len(warned) == 1
-    assert 'M_int=nan kg' in warned[0]
