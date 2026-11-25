@@ -4401,3 +4401,41 @@ def test_an_added_key_outside_a_manifest_keeps_its_kind():
     old, new = '[project]\ndependencies = []\n', '[project]\ndependencies = ["numpy>=2"]\n'
     got = facts.diff_file('pyproject.toml', old, new)
     assert [(f['kind'], f['change']) for f in got] == [('dependency', 'added')]
+
+
+def test_github_commit_files_without_a_files_key_gives_an_empty_list(monkeypatch):
+    """A REST answer with no files key is a commit with no changed files, not a missing commit."""
+    monkeypatch.setattr(common.GitHub, '_request', lambda *a, **k: b'{}')
+    assert common.GitHub('t').commit_files(PALEOS, 'abc') == []
+
+
+def test_commit_record_reads_a_null_message_body_as_empty():
+    """A commit whose message body is null gets an empty raw body."""
+    node = _cnode(_oid(1), SINCE)
+    node['messageBody'] = None
+    assert collect.commit_record(PALEOS, node, SINCE, UNTIL)['raw_body'] == ''
+
+
+def test_a_window_with_an_open_then_a_merged_pull_request_is_not_empty():
+    """Any merged pull request makes the window not empty, whatever its place in the list."""
+    data = _data(prs=[_pr('PROTEUS#900', status='open'), _pr()], fact_list=[])
+    assert not check.is_empty(data)
+
+
+def test_schema_sections_are_the_sections_of_the_post():
+    """The model can return an entry for every section of the post, and for no other."""
+    schema = json.loads((_ROOT / 'tools' / 'digest' / 'entry_schema.json').read_text())
+    enum = schema['properties']['entries']['items']['properties']['section']['enum']
+    assert enum == ['results', 'capabilities', 'install', 'data', 'design', 'open']
+    assert enum == list(common.SECTIONS)
+
+
+def test_settings_refuse_a_docs_site_that_is_not_text():
+    """A docs site given as a number fails the docs rule with a settings error."""
+    try:
+        common.validate_settings({**_VALID, 'docs': {'FormingWorlds/PROTEUS': 3}})
+        err = None
+    except Exception as exc:
+        err = exc
+    assert isinstance(err, common.DigestError), repr(err)
+    assert 'setting docs is missing or invalid' in str(err)
