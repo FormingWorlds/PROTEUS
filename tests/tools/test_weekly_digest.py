@@ -4941,9 +4941,7 @@ def test_render_prints_dataset_facts_under_data():
         )
         == 1
     ), body
-    assert (
-        body.count('Settings: `interior_energetics.grain_size` default: `0.1` → `0.001`.') == 1
-    )
+    assert body.count('Settings: `interior_energetics.grain_size`: `0.1` → `0.001`.') == 1
     entry['facts'] = ['F1']
     body, _ = _render(_draft(entry), data)
     assert 'Settings:' not in body
