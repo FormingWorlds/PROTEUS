@@ -5858,6 +5858,8 @@ def _dtmagma_scenario(update_dphi_abs=0.05):
         'T_magma': 2800.0,
         'Phi_global': 0.80,
         'R_int': 6.371e6,
+        # a solve writes R_int and M_int; a stub solve that leaves M_int keeps this one
+        'M_int': 5.972e24,
         'gravity': 9.81,
     }
     # Baselines passed as last_struct_*: dT/T = |2800-3000|/3000 = 0.067.
