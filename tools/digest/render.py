@@ -5,25 +5,30 @@ Usage::
     python tools/digest/render.py collected.json draft.json OUTDIR [--live] [--run-url URL] [--run-id ID]
 
 Writes ``OUTDIR/digest.md`` (title and body, for reading) and ``OUTDIR/digest.json``
-(``title``, ``body`` for the post). Settings, values, links, dates and mentions
-come from the collected data, never from the model text. Without ``--live`` the
-mentions are shown in code spans, so a dry run notifies nobody.
+(``title``, ``body`` for the deposit). Settings, values, links, dates and author
+names come from the collected data, never from the model text. Without ``--live``
+the body starts with the dry-run line, which stops the deposit step.
 """
 
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import re
 import sys
+import unicodedata
 import urllib.parse
 from datetime import timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from common import SECTIONS, DigestError, is_bot, load_settings, parse_time
+from common import LIST_KIND, SECTIONS, DigestError, count, is_bot, load_settings, parse_time
 
 MAX_FACTS = 4
+DATA_KINDS = ('dataset', 'dataset file', LIST_KIND)
+MAX_DOCS = 5
+GITHUB = 'https://github.com/'
 VALUE_CHARS = 60
 BODY_LIMIT = 65536
 LINK_RE = re.compile(r'\[((?:\\.|[^\\\[\]])*)\]\(([^()\s]*)\)')
@@ -122,26 +127,14 @@ def facts_text(facts: list[dict]) -> str:
     return '; '.join(lines)
 
 
-class Mentions:
-    """Mention each person once per post, never a bot, never in a dry run, and not again for
-    an open pull request that the previous post announced."""
-
-    def __init__(self, live: bool, bots: list[str], announced: set[str]):
-        self.live, self.bots, self.announced, self.done = live, bots, announced, set()
-
-    def name(self, item: dict) -> str:
-        """Render the author of a cited pull request or release; a name that is not a mention is a code span."""
-        login = item['author']
-        if not login:
-            return 'unknown'
-        if (
-            is_bot(login, item['author_kind'], self.bots)
-            or login in self.done
-            or (item.get('status') == 'open' and item['ref'] in self.announced)
-        ):
-            return f'`{login}`'
-        self.done.add(login)
-        return f'@{login}' if self.live else f'`@{login}`'
+def author_link(item: dict, bots: list[str]) -> str:
+    """The author of a cited item: a link to the GitHub profile, or a code span for a bot."""
+    login = item['author']
+    if not login:
+        return 'unknown'
+    if is_bot(login, item['author_kind'], bots):
+        return f'`{login}`'
+    return f'[{link_text(login)}]({link_url(GITHUB + login)})'
 
 
 def link_url(url: str) -> str:
@@ -149,13 +142,33 @@ def link_url(url: str) -> str:
     return urllib.parse.quote(url, safe=':/#?=&%@+.,-_~')
 
 
+def link_text(text: str) -> str:
+    """Trimmed one-line link text with no ``@``, pipe or control character, markdown escaped."""
+    text = ''.join(' ' if unicodedata.category(c) in ('Cc', 'Cf') else c for c in text)
+    text = re.sub(r'\s+', ' ', text.replace('@', ' ').replace('|', '/')).strip()
+    return re.sub(r'([\\\[\]()`<>*_])', r'\\\1', text)
+
+
+def ref_text(item: dict) -> str:
+    """Link text of a cited item: its ref, or for a commit the repository name and the 7-character id."""
+    return (
+        f'{item["repo"].split("/", 1)[1]} {item["oid"][:7]}' if 'oid' in item else item['ref']
+    )
+
+
 def links(items: list[dict]) -> str:
-    """Markdown links to the cited pull requests and releases."""
-    texts = [
-        re.sub(r'([\\\[\]()`<>*_])', r'\\\1', i['ref'].replace('@', ' ').replace('|', '/'))
-        for i in items
-    ]
-    return ', '.join(f'[{text}]({link_url(i["url"])})' for text, i in zip(texts, items))
+    """Markdown links to the cited pull requests, releases and commits."""
+    return ', '.join(f'[{link_text(ref_text(i))}]({link_url(i["url"])})' for i in items)
+
+
+def docs_links(items: list[dict]) -> str:
+    """Links to the served docs pages of the cited pull requests, at most ``MAX_DOCS``."""
+    pages = list({d['url']: d for i in items for d in i.get('docs', [])}.values())
+    texts = [f'[{link_text(d["path"])}]({link_url(d["url"])})' for d in pages[:MAX_DOCS]]
+    if len(pages) > MAX_DOCS:
+        more = len(pages) - MAX_DOCS
+        texts.append(f'and {more} more page' + ('s' if more > 1 else ''))
+    return ', '.join(texts)
 
 
 def scan_body(body: str, urls: list[str], logins: list[str]) -> list[str]:
@@ -184,45 +197,110 @@ def scan_body(body: str, urls: list[str], logins: list[str]) -> list[str]:
     return problems + [what for what, rx in RAW.items() if rx.search(raw)]
 
 
-def authors(items: list[dict], mentions: Mentions) -> str:
+def authors(items: list[dict], bots: list[str]) -> str:
     """Authors of the cited items, each once, in order of first appearance."""
     first = {}
     for item in items:
         first.setdefault(item['author'], item)
-    return ', '.join(mentions.name(item) for item in first.values())
+    return ', '.join(author_link(item, bots) for item in first.values())
+
+
+def allowed_urls(data: dict, run_url: str, bots: list[str]) -> list[str]:
+    """Every URL the body may link: cited items, the run, repositories, profiles and docs pages."""
+    items = data['prs'] + data['releases'] + data.get('commits', [])
+    return (
+        [i['url'] for i in items]
+        + [run_url]
+        + [GITHUB + r for r in data['repos']]
+        + [
+            GITHUB + i['author']
+            for i in items
+            if not is_bot(i['author'], i['author_kind'], bots)
+        ]
+        + [d['url'] for p in data['prs'] for d in p.get('docs', [])]
+    )
+
+
+def not_read(data: dict, more: str = 'more ') -> str:
+    """One sentence per repository on its commits of the window over ``max_commits``."""
+    return ''.join(
+        f' {count(n, more + "commit")} of {r.split("/", 1)[1]} in the window '
+        f'{"is" if n == 1 else "are"} not read, merge commits included.'
+        for r, n in data.get('commits_left_out', {}).items()
+    )
+
+
+def summary(data: dict, run_url: str) -> str:
+    """The window, the counts, the linked repositories and the run link that open the post."""
+    merged = sum(p['status'] == 'merged' for p in data['prs'])
+    opened = sum(p['status'] == 'open' for p in data['prs'])
+    names = ', '.join(
+        f'[{link_text(r.split("/", 1)[1])}]({link_url(GITHUB + r)})' for r in data['repos']
+    )
+    per = collections.Counter(c['repo'].split('/', 1)[1] for c in data.get('commits', []))
+    also = ''.join(
+        f' The digest also covers {count(n, "commit")} to the default branch of {name}, '
+        'a repository without pull requests.'
+        for name, n in per.items()
+    )
+    kept, cut = data['bodies_kept'], data['bodies_cut']
+    first = (
+        ' No earlier digest was found; this digest covers the last 7 days.'
+        if data['window'].get('no_earlier')
+        else ''
+    )
+    other = (
+        'the title of the other pull request' if cut == 1 else f'the titles of the other {cut}'
+    )
+    if not cut:
+        read = 'the text of every pull request'
+    elif not kept:
+        read = (
+            'only the title of the pull request'
+            if cut == 1
+            else f'only the titles of the {cut} pull requests'
+        )
+    elif kept == 1:
+        read = f'the body of the largest pull request and only {other}'
+    else:
+        read = f'the bodies of the {kept} largest pull requests and only {other}'
+    return (
+        f'Collected between {window_dates(data["window"])} from '
+        f'{count(merged, "merged pull request")}, {count(opened, "open pull request")} '
+        f'and {count(len(data["releases"]), "release")} in {names}.{also}{not_read(data)}{first} '
+        f'The model read {read}. [Workflow run]({run_url}).'
+    )
 
 
 def render_body(
     data: dict, draft: dict, live: bool, run_url: str, bots: list[str], run_id: str = ''
 ) -> tuple[str, dict]:
     """Return the markdown body and the state marker of the next post."""
-    window, prev = data['window'], data['window'].get('previous') or {}
-    announced_before = set(prev.get('announced_open', []))
-    mentions = Mentions(live, bots, announced_before)
+    window, home = data['window'], data['repos'][0]
     prs = {p['ref']: p for p in data['prs']}
     rels = {r['ref']: r for r in data['releases']}
+    cms = {c['ref']: c for c in data.get('commits', [])}
     facts = {f['id']: f for f in data.get('facts', [])}
     lines = [
+        summary(data, run_url),
+        '',
         'Additions and changes from across the ecosystem that affect more than one project. '
         'This is a selection, not a complete change list.',
         '',
-        'This digest is written automatically by a workflow in FormingWorlds/PROTEUS from merged '
-        'pull requests, open pull requests and releases; check the linked pull requests before you '
-        'act on it.',
+        f'This digest is written automatically by a workflow in [{link_text(home)}]({link_url(GITHUB + home)}) from '
+        'merged pull requests, open pull requests, releases and the commits of repositories '
+        'without pull requests; check the linked items before you act on it.',
         '',
     ]
     if not live:
-        lines[:0] = [
-            '**Dry run: not posted. Mentions are shown in code spans and notify nobody.**',
-            '',
-        ]
+        lines[:0] = ['**Dry run: not posted.**', '']
     if draft['empty']:
+        left = not_read(data, '')
         lines.append(
-            f'Quiet week: no pull request was merged and no release was published between '
-            f'{window_dates(window)}.'
+            'Quiet week: no pull request was merged, no release was published and no commit '
+            f'was {"kept" if left else "read"} between {window_dates(window)}.{left}'
         )
         lines.append('')
-    announced_now = set()
     for key, heading in SECTIONS.items():
         entries = [e for e in draft['entries'] if e['section'] == key]
         if not entries:
@@ -239,48 +317,37 @@ def render_body(
             ]
         for entry in entries:
             items = [prs[r] for r in entry['prs']] + [rels[r] for r in entry['releases']]
+            items += [cms[r] for r in entry['commits']]
             cited = [facts[f] for f in entry['facts']]
-            if key == 'open':
-                announced_now |= {i['ref'] for i in items}
             text = plain(entry['text'])
             detail = facts_text(cited)
             if key == 'results':
-                when = min(i.get('merged_at') or i['published_at'] for i in items)
+                when = min(
+                    i.get('merged_at') or i.get('committed_at') or i['published_at']
+                    for i in items
+                )
                 change = f'{text} {detail}.' if detail else text
+                docs = f'; docs: {pages};' if (pages := docs_links(items)) else ','
                 lines.append(
-                    f'| {plain(entry["title"])} | {change} | {short_date(when)} | {links(items)}, '
-                    f'by {authors(items, mentions)} |'
+                    f'| {plain(entry["title"])} | {change} | {short_date(when)} | {links(items)}'
+                    f'{docs} by {authors(items, bots)} |'
                 )
                 continue
             if entry.get('action'):
                 text = f'**Action for everyone:** {text}'
             lines += [f'### {plain(entry["title"])}', '', text, '']
-            if detail:
-                lines += [f'Settings: {detail}.', '']
-            lines += [f'{links(items)}, by {authors(items, mentions)}', '']
+            for label, group in (
+                ('Settings', [f for f in cited if f['kind'] not in DATA_KINDS]),
+                ('Data', [f for f in cited if f['kind'] in DATA_KINDS]),
+            ):
+                if group:
+                    lines += [f'{label}: {facts_text(group)}.', '']
+            if key == 'capabilities' and (pages := docs_links(items)):
+                lines += [f'Docs: {pages}.', '']
+            lines += [f'{links(items)}, by {authors(items, bots)}', '']
         lines.append('')
-    open_now = {r for r, p in prs.items() if p['status'] == 'open'}
-    still = open_now | set(data.get('still_open', []))
-    state = {
-        'until': window['until'],
-        'run_id': run_id,
-        'announced_open': sorted(announced_now | (announced_before & still)),
-    }
-    merged = sum(p['status'] == 'merged' for p in data['prs'])
-    names = ', '.join(r.split('/', 1)[1] for r in data['repos'])
-    read = (
-        f'the bodies of the {data["bodies_kept"]} largest pull requests '
-        f'and only the titles of the other {data["bodies_cut"]}'
-        if data['bodies_cut']
-        else 'the text of every pull request'
-    )
+    state = {'until': window['until'], 'run_id': run_id}
     lines += [
-        '---',
-        '',
-        f'Collected between {window_dates(window)} from {merged} merged '
-        f'and {len(open_now)} open pull requests and {len(data["releases"])} releases in {names}. '
-        f'The model read {read}. [Workflow run]({run_url}).',
-        '',
         f'<!-- weekly-digest-state {json.dumps(state, separators=(",", ":"))} -->',
     ]
     return '\n'.join(lines).replace('\n\n\n', '\n\n') + '\n', state
