@@ -4676,3 +4676,11 @@ def test_deposit_skips_a_rerun_of_a_run_that_deposited(tmp_path, monkeypatch, ca
         assert ghout.read_text() == f'deposited={str(deposited).lower()}\n'
         assert gh.got == [own]
     capsys.readouterr()
+
+
+def test_live_state_takes_the_latest_window_end_not_the_list_order():
+    """GitHub lists artifacts by id, not by time, so the latest window end wins."""
+    arts = [_art(2), _art(3)]
+    runs = {2: _run(), 3: _run()}
+    docs = {2: _doc('2026-11-30T22:23:00Z'), 3: _doc('2026-12-07T22:23:00Z', run_id='8')}
+    assert collect.live_state(_live_gh(arts, runs, docs), HOME)['run_id'] == '8'
