@@ -1,8 +1,8 @@
 name: Weekly ecosystem digest
 
-# Collects ecosystem pull requests and releases, drafts the digest with the model, checks it
-# against the collected data and posts it when publish is on in tools/digest/repos.toml. Every
-# run uploads the digest as an artifact; no job holds both the model token and a write token.
+# Collects ecosystem pull requests, releases and commits, drafts the digest with the model and
+# checks it. Every run uploads the artifact digest; a live run on main also deposits digest-live,
+# the published digest that other repositories copy. No job has a write permission.
 
 on:
   schedule:
@@ -16,7 +16,7 @@ on:
         description: 'Window end (ISO date or time, UTC); setting it makes a back-dated dry run'
         required: false
       post:
-        description: 'Post the digest (only when publish = true and the window is not back-dated)'
+        description: 'Deposit the live digest (only on main, with publish = true and a window that is not back-dated)'
         type: boolean
         default: false
 
@@ -38,6 +38,7 @@ jobs:
     permissions:
       contents: read
       discussions: read
+      actions: read
     steps:
       - uses: actions/checkout@v6
         with:
@@ -91,13 +92,13 @@ jobs:
           overwrite: true
 
   publish:
-    name: Check, render and post
+    name: Check, render and deposit
     needs: draft
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
-      discussions: write
+      actions: read
     steps:
       - uses: actions/checkout@v6
         with:
@@ -113,7 +114,7 @@ jobs:
           name: draft
       - name: Check the draft
         run: python tools/digest/check.py collected.json draft.json --out check.txt --summary "$GITHUB_STEP_SUMMARY"
-      - name: Decide whether to post
+      - name: Decide whether the run is live
         id: mode
         env:
           EVENT: ${{ github.event_name }}
@@ -137,11 +138,19 @@ jobs:
             collected.json
             draft.json
             check.txt
-      - name: Post
+      - name: Deposit the live digest
+        id: deposit
         if: steps.mode.outputs.live == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           POST: ${{ inputs.post || false }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: python tools/digest/post.py publish collected.json draft.json out --event "$EVENT" --post-input "$POST" --run-url "$RUN_URL"
+        run: python tools/digest/post.py deposit collected.json draft.json out --event "$EVENT" --post-input "$POST" --run-url "$RUN_URL" --live-dir live --output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v6
+        if: steps.deposit.outputs.deposited == 'true'
+        with:
+          name: digest-live
+          overwrite: true
+          path: live/
+          retention-days: 90

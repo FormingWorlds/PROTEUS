@@ -26,11 +26,15 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-from common import DigestError, GitHub, find_category, iso, load_settings, parse_time
+from common import API, DigestError, GitHub, find_category, iso, load_settings, parse_time
 
 MEMBERS = ('OWNER', 'MEMBER', 'COLLABORATOR', 'CONTRIBUTOR')
 REST_FILES = 300  # files in the REST answer for one commit
 RAW_CHARS = 20000  # raw text read per title or body; the largest body_chars allowed
+LIVE_ARTIFACT = 'digest-live'
+WORKFLOW = '.github/workflows/weekly-digest.yml'
+ARTIFACT_PAGES = 10  # pages of 100 artifacts searched for a trusted live digest
+FALLBACK_DAYS = 35
 STATE_RE = re.compile(r'<!-- weekly-digest-state (\{.*?\}) -->', re.S)
 
 PR_QUERY = """
@@ -172,6 +176,73 @@ def previous_state(gh: GitHub, home: str, category: str) -> dict | None:
         if not posts['pageInfo']['hasNextPage']:
             return None
         cursor = posts['pageInfo']['endCursor']
+
+
+def trusted_run(run: dict | None, home: str) -> bool:
+    """True for a successful scheduled or manual run of the digest workflow on main of ``home``."""
+    run = run or {}
+    return (
+        run.get('path') == WORKFLOW
+        and run.get('event') in ('schedule', 'workflow_dispatch')
+        and run.get('head_branch') == 'main'
+        and (run.get('head_repository') or {}).get('full_name') == home
+        and run.get('conclusion') == 'success'
+    )
+
+
+def live_doc_state(doc: object) -> dict | None:
+    """The window state of a ``digest.json`` of ``digest-live``: only a live one with a valid end."""
+    if not isinstance(doc, dict) or doc.get('live') is not True:
+        return None
+    try:
+        parse_time(doc['until'])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return {
+        'until': doc['until'],
+        'run_id': doc.get('run_id'),
+        'title': doc.get('title'),
+        'url': doc.get('run_url'),
+    }
+
+
+def live_state(gh: GitHub, home: str) -> dict | None:
+    """Return the state of the newest ``digest-live`` artifact of a trusted run, or None.
+
+    Anybody who can open a pull request can upload an artifact with that name, so each
+    candidate is accepted only when its run passes ``trusted_run``.
+    """
+    for page in range(1, ARTIFACT_PAGES + 1):
+        url = f'{API}/repos/{home}/actions/artifacts?name={LIVE_ARTIFACT}&per_page=100&page={page}'
+        artifacts = (gh.get_json(url) or {}).get('artifacts', [])
+        if not artifacts:
+            return None
+        for art in artifacts:
+            if art.get('expired'):
+                continue
+            run = gh.get_json(f'{API}/repos/{home}/actions/runs/{art["workflow_run"]["id"]}')
+            if trusted_run(run, home) and (
+                state := live_doc_state(gh.artifact_json(art, 'digest.json'))
+            ):
+                return state
+    return None
+
+
+def window_state(gh: GitHub, home: str, category: str, now: datetime) -> dict | None:
+    """The state that starts the window: the newest live digest, else the last post marker.
+
+    The post marker counts only while it ends at most ``FALLBACK_DAYS`` days before ``now``.
+    """
+    if state := live_state(gh, home):
+        return state
+    state = previous_state(gh, home, category)
+    if state and parse_time(state['until']) < now - timedelta(days=FALLBACK_DAYS):
+        print(
+            f'::notice::The last post ends at {state["until"]}, more than {FALLBACK_DAYS} days '
+            'ago; the window is the last 7 days'
+        )
+        return None
+    return state
 
 
 def resolve_window(
@@ -492,8 +563,9 @@ def main(argv: list[str] | None = None) -> int:
     settings = load_settings()
     gh = GitHub()
     home = settings['repos'][0]
-    state = None if args.since else previous_state(gh, home, settings['category'])
-    window = resolve_window(args.since, args.until, state, datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
+    state = None if args.since else window_state(gh, home, settings['category'], now)
+    window = resolve_window(args.since, args.until, state, now)
     data = collect(gh, settings, window)
     with open(args.out, 'w') as fh:
         json.dump(data, fh)

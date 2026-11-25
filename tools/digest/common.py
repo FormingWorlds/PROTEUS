@@ -7,6 +7,7 @@ step beyond Python itself.
 from __future__ import annotations
 
 import http.client
+import io
 import json
 import os
 import re
@@ -15,6 +16,7 @@ import tomllib
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -205,6 +207,21 @@ class GitHub:
         if out.get('errors'):
             raise DigestError(f'GraphQL error: {out["errors"]}')
         return out['data']
+
+    def get_json(self, url: str) -> dict | None:
+        """Return the JSON answer of a REST GET, or None for a 404."""
+        raw = self._request(url)
+        return json.loads(raw) if raw is not None else None
+
+    def artifact_json(self, artifact: dict, member: str) -> dict | None:
+        """Return one JSON file of an Actions artifact, or None when the zip or the file is absent."""
+        raw = self._request(artifact['archive_download_url'])
+        if raw is None:
+            return None
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            if member not in archive.namelist():
+                return None
+            return json.loads(archive.read(member))
 
     def raw_file(self, repo: str, path: str, ref: str | None) -> str | None:
         """Return a file's text at ``ref`` (None: the default branch), or None when it is absent."""
