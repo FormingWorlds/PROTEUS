@@ -229,7 +229,7 @@ def summary(data: dict, run_url: str) -> str:
     )
     per = collections.Counter(c['repo'].split('/', 1)[1] for c in data.get('commits', []))
     also = ''.join(
-        f' It also read {count(n, "commit")} to the default branch of {name}, '
+        f' The digest also covers {count(n, "commit")} to the default branch of {name}, '
         'a repository without pull requests.'
         for name, n in per.items()
     )
@@ -281,7 +281,8 @@ def render_body(
         lines[:0] = ['**Dry run: not posted.**', '']
     if draft['empty']:
         lines.append(
-            f'Quiet week: no pull request was merged and no release was published between '
+            'Quiet week: no pull request was merged, no release was published and no commit '
+            f'was read between '
             f'{window_dates(window)}.'
         )
         lines.append('')

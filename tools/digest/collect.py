@@ -276,7 +276,8 @@ def collect_commits(gh: GitHub, repo: str, window: dict, cap: int) -> tuple[list
 
     The newest ``cap`` commits of the window to the default branch are read, and each
     kept commit gets its changed files from one REST call. Refs count up from the
-    oldest commit date (``PALEOS:c1``), a parent before its child on one date. The third value is the number of commits over the cap.
+    oldest commit date (``PALEOS:c1``); on one date they keep the reverse order of the
+    history, a parent before its child. The third value is the number of commits over the cap.
 
     Raises
     ------
