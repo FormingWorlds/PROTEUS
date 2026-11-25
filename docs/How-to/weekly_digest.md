@@ -150,17 +150,18 @@ The deposit step runs only in a live run, a run that is allowed to deposit (see 
 
 `post.py` then writes `digest.json` and `digest.md` to `live/`, and the workflow uploads them as the artifact `digest-live`, kept 90 days. This upload is the last step of the run.
 
-`post.py` deposits at most one live digest per run and per meeting. It reads the newest live digest as `collect.py` does, and deposits nothing when that digest has the same workflow run id (the number of the Actions run, which a rerun keeps), the same title, or a window end that is the same as or later than the window end of this run. It also deposits nothing when its own run already holds `digest-live`. During a rerun the earlier attempt is not a finished run, so this second rule is what stops a rerun.
+`post.py` deposits at most one live digest per run and per meeting. It reads the newest live digest as `collect.py` does, and deposits nothing when that digest has the same workflow run id (the number of the Actions run), the same title, or a window end that is the same as or later than the window end of this run. It also deposits nothing in a rerun, a run whose attempt number (`GITHUB_RUN_ATTEMPT`) is above 1.
 
 | Situation | Result |
 | --- | --- |
-| Rerun of failed jobs or of all jobs of a run that deposited, on any day | Nothing deposited |
+| Rerun of failed jobs or of all jobs of any run | Nothing deposited |
 | Second manual live run for the same meeting | Nothing deposited |
-| Rerun of the failed jobs of an older run after a newer live digest | Nothing deposited, so the next window does not move back |
-| Rerun of all jobs of an older run that deposited nothing | It collects a new window from the newest live digest and deposits for the meeting of its week, unless that meeting has a live digest |
 | Manual run on a Monday before the scheduled run | It takes the title of the scheduled run, which then deposits nothing; the next window starts at the end of the manual run, so no pull request is left out |
 
-A skipped deposit gives a notice annotation on the run page, and the run stays green.
+A skipped deposit gives a notice annotation on the run page, and the run stays green. To recover a live run that failed, start a new manual run with the box **Deposit the live digest** ticked and no window, not a rerun.
+
+!!! warning "Do not rerun a live run"
+    Do not rerun a run that deposited a live digest. When GitHub reruns all jobs of a run, it deletes the artifacts of the earlier attempt, so the `digest-live` of that run is gone. The next run then starts its window at the live digest before it, and the pull requests of that week appear a second time.
 
 ### For a workflow that copies the digest
 
