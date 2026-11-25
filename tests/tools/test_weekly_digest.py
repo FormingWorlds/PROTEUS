@@ -4854,7 +4854,7 @@ def test_collect_main_warns_when_no_earlier_digest_is_found(tmp_path, monkeypatc
     out = tmp_path / 'c.json'
     assert collect.main(['--out', str(out)]) == 0
     window = json.loads(out.read_text())['window']
-    assert window['no_earlier'] is True and window['backdated'] is False
+    assert window.get('no_earlier') is True and window['backdated'] is False
     want = '::warning::No earlier digest was found; the window is the last 7 days'
     assert capsys.readouterr().out.splitlines().count(want) == 1
     assert collect.main(['--out', str(out), '--until', '2026-11-01']) == 0
@@ -4944,4 +4944,76 @@ def test_render_prints_dataset_facts_under_data():
     assert body.count('Settings: `interior_energetics.grain_size`: `0.1` → `0.001`.') == 1
     entry['facts'] = ['F1']
     body, _ = _render(_draft(entry), data)
+    assert 'Settings:' not in body
+
+
+def test_live_state_stops_at_the_first_empty_page(monkeypatch):
+    """A page after an empty page is not read, so it cannot move the window end."""
+    monkeypatch.setattr(collect, 'ARTIFACT_PAGES', 3)
+    rest = {
+        f'{_ARTS}1': {'artifacts': [_art(2)]},
+        f'{_ARTS}2': {'artifacts': []},
+        f'{_ARTS}3': {'artifacts': [_art(3)]},
+        f'https://api.github.com/repos/{HOME}/actions/runs/102': _run(),
+        f'https://api.github.com/repos/{HOME}/actions/runs/103': _run(),
+    }
+    zips = {(2, 'digest.json'): _doc(), (3, 'digest.json'): _doc('2026-12-07T22:23:00Z')}
+    gh = _FakeGH(rest=rest, zips=zips)
+    assert (collect.live_state(gh, HOME) or {}).get('until') == '2026-11-30T22:23:00Z'
+
+
+def test_live_state_refuses_a_run_without_an_update_time():
+    """A run answer without updated_at gives no bound for the window end, so it is not used."""
+    run = {k: v for k, v in _run().items() if k != 'updated_at'}
+    gh = _live_gh(
+        [_art(2), _art(3)], {2: run, 3: _run()}, {2: _doc('2026-12-07T22:23:00Z'), 3: _doc()}
+    )
+    assert (collect.live_state(gh, HOME) or {}).get('until') == '2026-11-30T22:23:00Z'
+
+
+def test_decide_takes_a_branch_named_main_elsewhere_as_a_dry_run():
+    """Only refs/heads/main is the default branch; tl/main is not."""
+    args = ({'publish': True}, 'schedule', False, False)
+    assert post.decide(*args, 'refs/heads/main', '1')
+    assert post.decide(*args, 'refs/heads/tl/main', '1') is False
+    assert post.decide(*args, 'refs/tags/main', '1') is False
+
+
+def test_decide_command_without_the_runner_variables(tmp_path, capsys, monkeypatch):
+    """Without GITHUB_REF the run is not on main; without GITHUB_RUN_ATTEMPT it is a first attempt."""
+    src = tmp_path / 'c.json'
+    data = _data()
+    data['window']['backdated'] = False
+    src.write_text(json.dumps(data))
+    args = ['decide', str(src), '--event', 'schedule', '--post-input', 'false']
+    monkeypatch.setattr(post, 'load_settings', lambda: {**_VALID, 'publish': True})
+    monkeypatch.delenv('GITHUB_RUN_ATTEMPT', raising=False)
+    monkeypatch.setenv('GITHUB_REF', 'refs/heads/main')
+    post.main(args)
+    assert capsys.readouterr().out.strip() == 'live=true'
+    monkeypatch.delenv('GITHUB_REF')
+    post.main(args)
+    assert capsys.readouterr().out.strip() == 'live=false'
+
+
+def test_summary_puts_the_no_earlier_sentence_after_the_commits_not_read():
+    """The summary reads: counts, commits not read, no earlier digest, then the model reading."""
+    data = _data()
+    data['repos'] = [*data['repos'], PALEOS]
+    data['commits_left_out'] = {PALEOS: 2}
+    data['window']['no_earlier'] = True
+    text = render.summary(data, 'https://run')
+    want = f'{_not_read(2)} No earlier digest was found; this digest covers the last 7 days. The model'
+    assert text.count(want) == 1, text
+    data['window']['no_earlier'] = False
+    assert 'No earlier digest' not in render.summary(data, 'https://run')
+
+
+@pytest.mark.parametrize('kind', ['dataset', 'dataset file', 'dataset list'])
+def test_render_prints_every_dataset_kind_under_data(kind):
+    """A dataset, a registry file and an added or removed dataset all follow Data:."""
+    data, entry = _dataset_case(kind, 'zenodo')
+    entry.update(section='data')
+    body, _ = _render(_draft(entry), data)
+    assert body.count('\nData: `interior.eos.paleos_iron` zenodo: ') == 1, body
     assert 'Settings:' not in body
