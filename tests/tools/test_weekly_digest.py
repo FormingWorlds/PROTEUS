@@ -1868,6 +1868,8 @@ def _publish(
     commits=False,
     ref='refs/heads/main',
     attempt='1',
+    keep_output=False,
+    unset=None,
     **window,
 ):
     """Render a digest for ``until`` and run deposit against a newest live digest ``last``.
@@ -1891,12 +1893,16 @@ def _publish(
             json.dumps(dict(doc, body=doc['body'].replace(*tamper)))
         )
     live_dir, ghout = tmp_path / 'live', tmp_path / 'gh_output'
-    shutil.rmtree(live_dir, ignore_errors=True)
+    if not keep_output:
+        shutil.rmtree(live_dir, ignore_errors=True)
+        ghout.unlink(missing_ok=True)
     monkeypatch.setattr(post, 'load_settings', lambda: {**_VALID, 'publish': True})
     monkeypatch.setattr(post, 'GitHub', lambda: 'gh')
     monkeypatch.setattr(post, 'live_state', lambda *a: last)
     monkeypatch.setenv('GITHUB_REF', ref)
     monkeypatch.setenv('GITHUB_RUN_ATTEMPT', attempt)
+    if unset:
+        monkeypatch.delenv(unset)
     args = ['--event', event, '--post-input', post_input, '--run-url', run_url]
     args += ['--live-dir', str(live_dir), '--output', str(ghout)]
     rc = post.main(['deposit', str(src), str(dft), str(out), *args])
@@ -4473,7 +4479,11 @@ def test_trusted_run_needs_our_scheduled_or_dispatched_run_on_main(over):
     """Only a finished run of the digest workflow on main of this repository counts."""
     assert collect.trusted_run(_run(), HOME)
     assert not collect.trusted_run(_run(**over), HOME)
-    assert not collect.trusted_run(None, HOME)
+    try:
+        none = collect.trusted_run(None, HOME)
+    except Exception as err:
+        none = repr(err)
+    assert none is False
 
 
 def test_trusted_run_takes_a_manual_run():
@@ -4496,7 +4506,10 @@ def test_trusted_run_takes_a_manual_run():
 )
 def test_live_doc_state_reads_only_a_live_digest_with_a_valid_end(doc, ok):
     """The window end comes from a live digest.json with a parseable until."""
-    got = collect.live_doc_state(doc)
+    try:
+        got = collect.live_doc_state(doc)
+    except Exception as err:
+        got = repr(err)
     if ok:
         assert got == {
             'until': '2026-11-30T22:23:00Z',
@@ -4519,7 +4532,7 @@ def test_live_state_takes_the_newest_trusted_live_artifact():
         4: _doc(),
     }
     gh = _live_gh(arts, runs, docs)
-    assert collect.live_state(gh, HOME)['until'] == '2026-11-30T22:23:00Z'
+    assert (collect.live_state(gh, HOME) or {}).get('until') == '2026-11-30T22:23:00Z'
     assert f'https://api.github.com/repos/{HOME}/actions/runs/101' not in gh.got
 
 
@@ -4531,8 +4544,14 @@ def test_live_state_reads_the_next_page_and_stops_at_the_end():
         f'https://api.github.com/repos/{HOME}/actions/runs/102': _run(head_branch='x'),
         f'https://api.github.com/repos/{HOME}/actions/runs/104': _run(),
     }
-    gh = _FakeGH(rest=rest, zips={(4, 'digest.json'): _doc()})
-    assert collect.live_state(gh, HOME)['until'] == '2026-11-30T22:23:00Z'
+    rest[f'{_ARTS}3'] = {'artifacts': []}
+    rest[f'{_ARTS}4'] = {'artifacts': [_art(6)]}
+    gh = _FakeGH(
+        rest=rest,
+        zips={(4, 'digest.json'): _doc(), (6, 'digest.json'): _doc('2027-01-01T00:00:00Z')},
+    )
+    assert (collect.live_state(gh, HOME) or {}).get('until') == '2026-11-30T22:23:00Z'
+    assert [u for u in gh.got if '?name=' in u] == [f'{_ARTS}1', f'{_ARTS}2', f'{_ARTS}3']
     gh = _FakeGH(rest={f'{_ARTS}1': {'artifacts': []}})
     assert collect.live_state(gh, HOME) is None
     assert collect.live_state(_FakeGH(), HOME) is None
@@ -4576,6 +4595,7 @@ def test_window_state_keeps_an_old_live_digest(monkeypatch, capsys):
     now = datetime(2027, 3, 1, tzinfo=timezone.utc)
     old = {'until': '2026-12-01T00:00:00Z'}
     monkeypatch.setattr(collect, 'live_state', lambda gh, home: old)
+    monkeypatch.setattr(collect, 'previous_state', lambda *a: {'until': '2027-02-28T00:00:00Z'})
     assert collect.window_state('gh', HOME, 'weekly-digest', now) == old
     assert '::notice::' not in capsys.readouterr().out
 
@@ -4584,13 +4604,21 @@ def test_github_reads_json_and_one_file_of_an_artifact(monkeypatch):
     """A REST answer is JSON; an artifact zip gives one member, and a missing one gives None."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w') as z:
+        z.writestr('digest.md', 'B')
         z.writestr('digest.json', json.dumps({'live': True}))
     answers = {'https://api.github.com/x': b'{"a": 1}', 'https://z/1': buf.getvalue()}
-    monkeypatch.setattr(common.GitHub, '_request', lambda self, url, **k: answers.get(url))
+    seen = []
+
+    def fake(self, url, **k):
+        seen.append(k)
+        return answers.get(url)
+
+    monkeypatch.setattr(common.GitHub, '_request', fake)
     gh = common.GitHub('t')
     assert gh.get_json('https://api.github.com/x') == {'a': 1}
     assert gh.get_json('https://api.github.com/none') is None
-    art = {'archive_download_url': 'https://z/1'}
+    assert seen == [{}, {}], 'a REST read keeps its retries'
+    art = {'archive_download_url': 'https://z/1', 'url': 'https://api.github.com/none'}
     assert gh.artifact_json(art, 'digest.json') == {'live': True}
     assert gh.artifact_json(art, 'other.json') is None
     assert gh.artifact_json({'archive_download_url': 'https://z/9'}, 'digest.json') is None
@@ -4673,3 +4701,60 @@ def test_live_state_takes_the_latest_window_end_not_the_list_order():
     runs = {2: _run(), 3: _run()}
     docs = {2: _doc('2026-11-30T22:23:00Z'), 3: _doc('2026-12-07T22:23:00Z', run_id='8')}
     assert collect.live_state(_live_gh(arts, runs, docs), HOME)['run_id'] == '8'
+
+
+def test_live_state_keeps_the_latest_end_when_it_comes_first():
+    """A newer live digest listed before an older one keeps the window from moving back."""
+    arts = [_art(3), _art(2)]
+    runs = {2: _run(), 3: _run()}
+    docs = {3: _doc('2026-12-07T22:23:00Z', run_id='8'), 2: _doc('2026-11-30T22:23:00Z')}
+    assert (collect.live_state(_live_gh(arts, runs, docs), HOME) or {}).get('run_id') == '8'
+
+
+def test_collect_main_starts_the_window_at_the_state(tmp_path, monkeypatch):
+    """Without a window the run starts at the window state, not at the last 7 days."""
+    monkeypatch.setattr(collect, 'GitHub', lambda: 'gh')
+    monkeypatch.setattr(collect, 'window_state', lambda *a: {'until': '2026-11-24T06:09:28Z'})
+    monkeypatch.setattr(collect, 'previous_state', lambda *a: {'until': '2020-01-01T00:00:00Z'})
+    monkeypatch.setattr(
+        collect, 'collect', lambda gh, s, w: {'window': w, 'prs': [], 'releases': []}
+    )
+    out = tmp_path / 'c.json'
+    assert collect.main(['--out', str(out)]) == 0
+    window = json.loads(out.read_text())['window']
+    assert window['since'] == '2026-11-24T06:09:28Z' and window['backdated'] is False
+
+
+def test_deposit_records_the_event_and_keeps_earlier_output_lines(tmp_path, monkeypatch):
+    """A manual live run writes its event, and the output file keeps the lines before it."""
+    (tmp_path / 'live').mkdir()
+    (tmp_path / 'gh_output').write_text('live=true\n')
+    rc, posted = _publish(
+        tmp_path,
+        monkeypatch,
+        None,
+        _MON,
+        event='workflow_dispatch',
+        post_input='true',
+        keep_output=True,
+    )
+    assert rc == 0 and posted
+    doc = json.loads((tmp_path / 'live' / 'digest.json').read_text())
+    assert doc['event'] == 'workflow_dispatch'
+    assert (tmp_path / 'gh_output').read_text() == 'live=true\ndeposited=true\n'
+
+
+@pytest.mark.parametrize(
+    ('name', 'deposited'), [('GITHUB_REF', False), ('GITHUB_RUN_ATTEMPT', True)]
+)
+def test_deposit_without_a_runner_variable(tmp_path, monkeypatch, name, deposited):
+    """No branch name refuses the deposit; no attempt number counts as a first attempt."""
+    try:
+        rc, posted = _publish(tmp_path, monkeypatch, None, _MON, unset=name)
+        got = bool(posted)
+    except common.DigestError as err:
+        got = str(err)
+    if deposited:
+        assert got is True
+    else:
+        assert got == 'not deposited: not on the default branch'
