@@ -3986,8 +3986,12 @@ def test_attach_facts_reads_the_tracked_files_of_a_commit():
 @pytest.mark.parametrize('bad', [[3], [None], [(PALEOS,)]])
 def test_settings_refuse_a_commits_only_item_that_is_not_a_name(bad):
     """A commits_only item that is not a string fails the type rule, not only the repos rule."""
-    with pytest.raises(common.DigestError, match='setting commits_only is missing or invalid'):
+    try:
         common.validate_settings({**_VALID, 'commits_only': bad})
+        err = None
+    except common.DigestError as exc:
+        err = str(exc)
+    assert err == f'setting commits_only is missing or invalid: {bad!r}'
 
 
 def test_collect_reads_every_commits_only_repository_and_cuts_long_titles():
