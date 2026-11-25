@@ -1895,6 +1895,7 @@ def _publish(
     monkeypatch.setattr(post, 'GitHub', lambda: 'gh')
     monkeypatch.setattr(post, 'live_state', lambda *a: last)
     monkeypatch.setenv('GITHUB_REF', ref)
+    monkeypatch.delenv('GITHUB_RUN_ID', raising=False)
     args = ['--event', event, '--post-input', post_input, '--run-url', run_url]
     args += ['--live-dir', str(live_dir), '--output', str(ghout)]
     rc = post.main(['deposit', str(src), str(dft), str(out), *args])
@@ -4649,3 +4650,29 @@ def test_workflow_uploads_the_live_digest_last_and_keeps_it_90_days():
     deposit = steps[-2]
     assert 'id: deposit' in deposit and 'post.py deposit' in deposit
     assert '--live-dir live --output "$GITHUB_OUTPUT"' in deposit
+
+
+def test_deposit_skips_a_rerun_of_a_run_that_deposited(tmp_path, monkeypatch, capsys):
+    """A rerun keeps its run id; when that run already holds digest-live, nothing is deposited."""
+    own = f'https://api.github.com/repos/{HOME}/actions/runs/9/artifacts?name=digest-live'
+    for count, deposited in ((1, False), (0, True)):
+        gh = _FakeGH(rest={own: {'total_count': count, 'artifacts': []}})
+        monkeypatch.setattr(post, 'GitHub', lambda gh=gh: gh)
+        monkeypatch.setattr(post, 'live_state', lambda *a: None)
+        monkeypatch.setenv('GITHUB_RUN_ID', '9')
+        src, dft, out = tmp_path / 'c.json', tmp_path / 'd.json', tmp_path / 'out'
+        data = _data()
+        data['window'].update({'until': _MON, 'backdated': False})
+        src.write_text(json.dumps(data))
+        dft.write_text(json.dumps(_draft(_entry())))
+        render.main([str(src), str(dft), str(out), '--run-id', '9', '--live'])
+        monkeypatch.setattr(post, 'load_settings', lambda: {**_VALID, 'publish': True})
+        monkeypatch.setenv('GITHUB_REF', 'refs/heads/main')
+        live, ghout = tmp_path / f'live{count}', tmp_path / f'o{count}'
+        args = ['--event', 'schedule', '--post-input', 'false', '--run-url', '']
+        args += ['--live-dir', str(live), '--output', str(ghout)]
+        assert post.main(['deposit', str(src), str(dft), str(out), *args]) == 0
+        assert (live / 'digest.json').exists() is deposited
+        assert ghout.read_text() == f'deposited={str(deposited).lower()}\n'
+        assert gh.got == [own]
+    capsys.readouterr()
