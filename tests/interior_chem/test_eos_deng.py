@@ -523,18 +523,20 @@ def test_unknown_melt_eos_model_is_rejected(bad):
     )
 
 
-def test_missing_keane_table_raises_with_the_expected_location(monkeypatch, tmp_path):
-    """The table is not part of the repository: without it in FWL_DATA, the
-    keane_table model raises FileNotFoundError naming FWL_DATA/interior_chem,
-    and the deng2020 model is unaffected."""
+def test_keane_table_needs_no_file_in_fwl_data(monkeypatch, tmp_path):
+    """keane_table builds its table from the fitted parameters, so it evaluates with
+    an empty FWL_DATA, while a test-variant table still names its FWL_DATA location
+    when it is missing."""
     monkeypatch.setenv('FWL_DATA', str(tmp_path))
-    monkeypatch.setattr(eos_deng, '_TABLE', None)
+    monkeypatch.setattr(eos_deng, '_TABLES', {})
 
-    assert table_path() == tmp_path / 'interior_chem' / 'keane_deng_table.npz'
-    with pytest.raises(FileNotFoundError, match='interior_chem'):
-        int_dV_dP_oxidation(3000.0, 50.0, model='keane_table')
-    value, valid = int_dV_dP_oxidation(3000.0, 50.0)
+    value, valid = int_dV_dP_oxidation(3000.0, 50.0, model='keane_table')
     assert bool(valid) and 1.0e4 < float(value) < 1.0e6
+    assert table_path('keane_table_flat') == (
+        tmp_path / 'interior_chem' / 'keane_deng_table_flat.npz'
+    )
+    with pytest.raises(FileNotFoundError, match='interior_chem'):
+        int_dV_dP_oxidation(3000.0, 50.0, model='keane_table_flat')
 
 
 # ── feo_volume = 'lange_carmichael' (Schaefer et al. 2024 archived code) ──────

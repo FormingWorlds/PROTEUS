@@ -2,8 +2,8 @@
 
 This page tracks the `@pytest.mark.reference_pinned` tests of the pressure term of the Fe3+/Fe2+ equilibria:
 the integral of the FeO -> FeO1.5 volume change of the melt, for the Deng et al. (2020) fourth-order
-Birch-Murnaghan model (`model = 'deng2020'`, the default) and for the Keane + Deng-thermal lookup table
-(`model = 'keane_table'`, `planet.interior_chem.redox_dV_eos`). The marker is registered in `pyproject.toml`. Last
+Birch-Murnaghan model (`model = 'deng2020'`) and for the Keane + Deng-thermal lookup table
+(`model = 'keane_table'`, the default of `planet.interior_chem.redox_dV_eos`). The marker is registered in `pyproject.toml`. Last
 comparison of the `keane_table` and Komabayashi tests: 2026-10-23; the comparison dates of the two `deng2020` tests were not
 recorded when they were added.
 
@@ -17,8 +17,8 @@ recorded when they were added.
 
 ## The `keane_table` model
 
-The table `FWL_DATA/interior_chem/keane_deng_table.npz` (1.9 MB, kept out of the repository by the 500 KB
-pre-commit limit; the `keane_table` tests skip when it is absent) holds the oxidation integral of
+The table, built in memory once per process by `src/proteus/interior_chem/keane_table.py` (about 1.5 s)
+from the fitted parameters in that file, holds the oxidation integral of
 P(V, T) = P_Keane(V) + (a - b x + c x^2)/1000 (T - 3000 K), x = V/V0, for the 12.5 mol% Fe melts
 Mg14Fe2Si16O48 and Mg14Fe2Si16O49, on a grid uniform in log10 P (1 bar - 4 TPa) and log10 T
 (1000 - 20000 K), 100 points per decade. The Keane cold curve (Attia et al. 2026, A&A 713, A225, Eq. 12) and the

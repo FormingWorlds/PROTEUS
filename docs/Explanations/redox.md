@@ -47,7 +47,7 @@ Setting `planet.fO2_source = "from_mantle_redox"` enables this calculation. PROT
 | `planet.fO2_source` | Set to `"from_mantle_redox"` to enable the tracker. Other values disable it. | `"user_constant"` |
 | `planet.interior_chem.ferric_fraction_initial` | Initial melt Fe$^{3+}$/Fe$_{\rm T}$, $f_0$, in the interval $(0,1)$. | `0.1` |
 | `planet.interior_chem.metal_saturation` | Off by default. `true` adds a check for Fe-metal saturation (3FeO = 2FeO$_{1.5}$ + Fe) between crystallization steps, following Schaefer et al. (2024, Section 2.7), and counts cells below $\phi=0.15$ as solid. This page describes the model with `false`; the module docstring of `interior_chem/redox.py` describes the metal step. | `false` |
-| `planet.interior_chem.partition_coefficients` | Fe$^{2+}$ and Fe$^{3+}$ partition coefficients: `"mgsio3"` (bridgmanite and pyroxenes) or `"bulk_BSE"` (bulk values of the Schaefer et al. layers); see [step 4](#4-partition-iron-into-the-new-solid). | `"mgsio3"` |
+| `planet.interior_chem.partition_coefficients` | Fe$^{2+}$ and Fe$^{3+}$ partition coefficients: `"mgsio3"` (bridgmanite and pyroxenes), `"bulk_BSE"` (bulk values of the Schaefer et al. layers) or `"mgsio3_kd"` (`"mgsio3"` with a pressure- and temperature-dependent Fe$^{2+}$ coefficient in bridgmanite and post-perovskite); see [step 4](#4-partition-iron-into-the-new-solid). | `"mgsio3_kd"` |
 | `planet.interior_chem.fO2_pressure_term` | `true` adds $\int \Delta V\,dP$ of FeO + ¼O$_2$ = FeO$_{1.5}$ (melt EOS `redox_dV_eos`) to the radial fO$_2$ profile, and takes its ΔIW against the IW buffer at the cell pressure, without the metal step. The profile is a diagnostic: Fe$^{3+}$/Fe$_{\rm T}$ and the 1 bar surface fO$_2$ are unchanged. Always on with `metal_saturation = true`. | `false` |
 
 The tracker needs a melt fraction for every radial cell, so `interior_energetics.module` must be `spider` or `aragog`.
@@ -198,7 +198,7 @@ Each term lies between 0 and $n_i$ for any $s_i$ and $D_i\geq0$, and a cell whos
 
 Both coefficients depend on the mineral assemblage, selected from the cell pressure at the first step. `planet.interior_chem.partition_coefficients` chooses between three prescriptions; the third, `"mgsio3_kd"`, recomputes the lower-mantle $D^{2+}$ at every step.
 
-#### `"mgsio3"` (default): bridgmanite and pyroxenes
+#### `"mgsio3"`: bridgmanite and pyroxenes
 
 | Assemblage | Pressure | $D^{3+}$ | $D^{2+}$ | Source |
 |---|---:|---:|---:|---|
@@ -239,7 +239,7 @@ Each cell takes the bulk coefficient of the full mineral assemblage of the Schae
 
 Their runs never reach $P<1$ GPa, so that layer repeats the 1-2.5 GPa values. On their crystallization sequence this prescription follows their mean Fe$^{3+}$/Fe$_{\rm T}$ within 0.005; the `"mgsio3"` prescription follows its shape but differs by up to 0.04, because it has no transition-zone phases and no olivine. [The validation page](../Validation/interior_chem/redox.md) gives both comparisons.
 
-#### `"mgsio3_kd"`: pressure- and temperature-dependent Fe$^{2+}$ in bridgmanite and post-perovskite
+#### `"mgsio3_kd"` (default): pressure- and temperature-dependent Fe$^{2+}$ in bridgmanite and post-perovskite
 
 Below 22 GPa and for Fe$^{3+}$ everywhere this prescription keeps the `"mgsio3"` values. At $P\geq22$ GPa the Fe$^{2+}$ split follows the Fe-Mg exchange coefficient
 

@@ -3703,6 +3703,21 @@
       "consumers_possible": []
     },
     {
+      "name": "tau_metal_mantle",
+      "unit": "yr",
+      "description": "convective delivery time to the metal cell (-1: not evaluated)",
+      "group": "Atmospheric composition from outgassing",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_chem/redox.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
       "name": "M_vol_initial",
       "unit": "kg",
       "description": "bulk volatile inventory baseline",

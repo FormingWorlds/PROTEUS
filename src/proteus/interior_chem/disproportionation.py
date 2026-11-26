@@ -128,7 +128,7 @@ def K_eq(
 
     ``valid`` is all-True when the pressure term is off; with it on, it marks
     points inside the validity envelope of the melt EOS ``eos_model``
-    ('deng2020' or 'keane_table', see eos_deng). ``feo_volume`` selects the
+    (one of eos_deng.MODELS). ``feo_volume`` selects the
     liquid FeO volume of the pressure term (eos_deng.FEO_VOLUMES).
     """
     T = np.asarray(T, dtype=float)

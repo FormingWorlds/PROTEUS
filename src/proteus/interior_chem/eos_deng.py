@@ -84,9 +84,9 @@ An alternative to the Deng BM4 for the FeO -> FeO1.5 volume change, for
 super-Earth conditions: P(V, T) = P_Keane(V) + (a - b x + c x^2)/1000 (T - 3000 K),
 x = V/V0, with a Keane cold curve (3000 K isotherm; Attia et al. 2026 Eq 12) and
 the Deng et al. (2020) thermal term, fitted to the Deng FPMD points of the two
-12.5 mol% Fe melts (2000, 3000, 4000 K). int dV_Deng dP is read from the table
-``FWL_DATA/interior_chem/keane_deng_table.npz`` (bilinear in log10 P, log10 T; 1 bar - 4 TPa,
-1000 - 20000 K); the FeO and Fe terms of ``int_dV_dP`` are those of the
+12.5 mol% Fe melts (2000, 3000, 4000 K). int dV_Deng dP is interpolated from a table
+that ``keane_table.py`` builds once per process from the fitted parameters (bilinear in
+log10 P, log10 T; 1 bar - 4 TPa, 1000 - 20000 K); the FeO and Fe terms of ``int_dV_dP`` are those of the
 deng2020 model. Above 4206 K the fit has no liquid at 1 bar, so the table
 integral evaluates dV at the hottest temperature with a liquid volume along the
 low-pressure part of the path. Inside the Deng FPMD coverage its oxidation
@@ -104,6 +104,8 @@ from pathlib import Path
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
 
+from proteus.interior_chem import keane_table
+
 log = logging.getLogger('fwl.' + __name__)
 
 # Melt EOS of the FeO -> FeO1.5 volume change. Test variants: '_flat' holds the integral beyond
@@ -119,19 +121,17 @@ MODELS = (
 # Liquid FeO volume of the disproportionation -V_FeO term (Schaefer et al. 2024 Eq 11-12)
 FEO_VOLUMES = ('komabayashi2014', 'lange_carmichael')
 _K0_FEO_LC, _KP_FEO_LC = 30.33, 4.0  # GPa, -: Murnaghan constants of deltaGFeOFeO15_Deng.m
-TABLE_RELPATH = (
-    Path('interior_chem') / 'keane_deng_table.npz'
-)  # below FWL_DATA, not in the repository
+TABLE_RELPATH = Path('interior_chem')  # below FWL_DATA, not in the repository
+TABLE_MODELS = MODELS[1:]  # interpolated from a lookup table
+# Tables of the test variants; 'keane_table' and '_komafit' build theirs (keane_table.py).
 TABLE_FILES = {
-    'keane_table': 'keane_deng_table.npz',
     'keane_table_flat': 'keane_deng_table_flat.npz',
     'keane_table_constdV': 'keane_deng_table_constdV.npz',
-    'keane_table_komafit': 'keane_deng_table.npz',
 }
 KOMAFIT_FILE = 'komabayashi_komafit_ext.npz'  # int_{350 GPa}^{P} V dP of the fitted extension
 _KOMAFIT = None
-_TABLE = None  # the 'keane_table' table
-_TABLES = {}  # the other table models
+_TABLE = None  # the 'keane_table' table, built once per process
+_TABLES = {}  # the test-variant tables read from FWL_DATA
 _TABLE_EXTRAPOLATION_WARNED = False
 
 # Deng et al. (2020) BM4 + thermal pressure; rows: reduced Mg14Fe2Si16O48,
@@ -411,37 +411,28 @@ def _integrals(T, P, deng_only=False, feo_volume='komabayashi2014'):
     return (I_deng, *_fe_feo_terms(T, P, feo_volume))
 
 
-def table_path(model: str = 'keane_table') -> Path:
-    """Location of the table of a table model: FWL_DATA/interior_chem/."""
+def table_path(model: str) -> Path:
+    """Location of the table of a test-variant model (``TABLE_FILES``): FWL_DATA/interior_chem/."""
     from proteus.utils.helper import resolve_fwl_data_dir
 
-    return resolve_fwl_data_dir() / TABLE_RELPATH.parent / TABLE_FILES[model]
+    return resolve_fwl_data_dir() / TABLE_RELPATH / TABLE_FILES[model]
 
 
 def _load_table(path: Path) -> dict:
-    """Read a melt-EOS lookup table (make_keane_deng_table*.py) into interpolators."""
+    """Read a test-variant melt-EOS table (make_keane_deng_table*.py) into interpolators."""
     if not path.is_file():
         raise FileNotFoundError(
             f'Keane + Deng-thermal table not found at {path}. Copy {path.name} '
             '(written by make_keane_deng_table*.py) there, or set FWL_DATA.'
         )
-    t = np.load(path)
-    lt, lp = t['log10_T_K'], t['log10_P_Pa']
-    return {
-        'interp': RegularGridInterpolator((lt, lp), t['int_dV_dP_ox']),
-        'in_fpmd': RegularGridInterpolator(
-            (lt, lp), t['in_fpmd'].astype(float), method='nearest'
-        ),
-        'T_range': (10 ** lt[0], 10 ** lt[-1]),
-        'P_range': (10 ** lp[0] / 1e9, 10 ** lp[-1] / 1e9),
-    }
+    return keane_table.interpolators(np.load(path))
 
 
 def komafit_path() -> Path:
     """Location of the komafit extension table: FWL_DATA/interior_chem/."""
     from proteus.utils.helper import resolve_fwl_data_dir
 
-    return resolve_fwl_data_dir() / TABLE_RELPATH.parent / KOMAFIT_FILE
+    return resolve_fwl_data_dir() / TABLE_RELPATH / KOMAFIT_FILE
 
 
 def _komafit():
@@ -483,16 +474,16 @@ def _komafit_terms(T, P, feo_volume):
 
 
 def _keane_table():
-    """Load the Keane + Deng-thermal lookup table once per process."""
+    """Build the Keane + Deng-thermal lookup table once per process (keane_table.py)."""
     global _TABLE
     if _TABLE is None:
-        _TABLE = _load_table(table_path())
+        _TABLE = keane_table.interpolators(keane_table.build_table())
     return _TABLE
 
 
 def _table(model: str) -> dict:
-    """The lookup table of a table model, loaded once per process."""
-    if model == 'keane_table':
+    """The lookup table of a table model, built or loaded once per process."""
+    if model in ('keane_table', 'keane_table_komafit'):
         return _keane_table()
     if model not in _TABLES:
         _TABLES[model] = _load_table(table_path(model))
@@ -577,8 +568,11 @@ def int_dV_dP(T, P, model='deng2020', feo_volume='komabayashi2014'):
     P : array_like, GPa
     model : str
         Melt EOS of the FeO -> FeO1.5 volume change (``MODELS``): 'deng2020'
-        (Deng BM4, Schaefer's construction) or 'keane_table' (Keane +
-        Deng-thermal lookup table). The FeO and Fe terms are the same in both.
+        (Deng BM4, Schaefer's construction), 'keane_table' (Keane +
+        Deng-thermal lookup table), or its test variants 'keane_table_flat',
+        'keane_table_constdV' and 'keane_table_komafit' (``MODELS``). The FeO
+        and Fe terms are those of 'deng2020', except that beyond 350 GPa
+        '_flat' holds the Komabayashi integrals and '_komafit' refits them.
     feo_volume : str
         Liquid FeO volume of the -V_FeO term (``FEO_VOLUMES``): 'komabayashi2014'
         (Schaefer et al. 2024 Eq 11 text) or 'lange_carmichael' (their archived
@@ -590,11 +584,11 @@ def int_dV_dP(T, P, model='deng2020', feo_volume='komabayashi2014'):
         ``valid``), valid is a boolean array marking points inside the
         validity envelope of the model: for 'deng2020' the temperature
         ceiling and the pressure range Schaefer et al. exercised, for
-        'keane_table' the table range.
+        the table models the table range.
     """
     _check_model(model)
     _check_feo_volume(feo_volume)
-    if model in TABLE_FILES:
+    if model in TABLE_MODELS:
         return _evaluate_table(T, P, oxidation_only=False, feo_volume=feo_volume, model=model)
     return _evaluate(T, P, lambda deng, feo, fe: 2.0 * deng - feo + fe, feo_volume=feo_volume)
 
@@ -620,6 +614,6 @@ def int_dV_dP_oxidation(T, P, model='deng2020'):
     (I, valid) : as for ``int_dV_dP``.
     """
     _check_model(model)
-    if model in TABLE_FILES:
+    if model in TABLE_MODELS:
         return _evaluate_table(T, P, oxidation_only=True, model=model)
     return _evaluate(T, P, lambda deng, feo, fe: deng, deng_only=True)

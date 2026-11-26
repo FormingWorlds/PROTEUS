@@ -304,6 +304,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `ferric_frac_mantle` | `1` | global melt Fe3+/FeT from the tracker | `interior_chem/redox.py` | always | interior_chem |
 | `n_fe_metal_mantle` | `mol` | cumulative Fe metal formed in the mantle | `interior_chem/redox.py` | always | interior_chem |
 | `n_fe_metal_step_mantle` | `mol` | Fe metal formed on this step | `interior_chem/redox.py` | always |   |
+| `tau_metal_mantle` | `yr` | convective delivery time to the metal cell (-1: not evaluated) | `interior_chem/redox.py` | always |   |
 | `M_vol_initial` | `kg` | bulk volatile inventory baseline | `accretion/wrapper.py`<br>`escape/wrapper.py` | always | accretion, escape, outgas |
 | `esc_kg_cumulative` | `kg` | cumulative mass lost to space (escape + impact stripping) | `accretion/wrapper.py`<br>`escape/wrapper.py` | always | accretion, escape, outgas |
 | `M_desiccated` | `kg` | element mass removed at desiccation without escape | `escape/wrapper.py`<br>`outgas/wrapper.py` | always | outgas |

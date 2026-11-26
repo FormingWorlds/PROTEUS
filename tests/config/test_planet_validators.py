@@ -61,9 +61,9 @@ def test_non_finite_ini_dsdr_is_rejected_in_every_mode(mode, dsdr):
 
 @pytest.mark.parametrize('choice', ['mgsio3', 'bulk_BSE', 'mgsio3_kd'])
 def test_partition_coefficient_prescriptions_are_accepted(choice):
-    """Every redox-tracker prescription is valid, and mgsio3 is the default."""
+    """Every redox-tracker prescription is valid, and mgsio3_kd is the default."""
     assert InteriorChem(partition_coefficients=choice).partition_coefficients == choice
-    assert InteriorChem().partition_coefficients == 'mgsio3'
+    assert InteriorChem().partition_coefficients == 'mgsio3_kd'
 
 
 @pytest.mark.parametrize('bad', ['bulk_bse', 'MgSiO3', 'schaefer', ''])
@@ -82,7 +82,7 @@ def test_unknown_partition_coefficient_prescription_is_rejected(bad):
     chem = InteriorChem()
     with pytest.raises(ValueError):
         chem.partition_coefficients = bad
-    assert chem.partition_coefficients == 'mgsio3'
+    assert chem.partition_coefficients == 'mgsio3_kd'
 
 
 @pytest.mark.parametrize(
@@ -96,10 +96,10 @@ def test_unknown_partition_coefficient_prescription_is_rejected(bad):
     ],
 )
 def test_redox_melt_eos_choices_are_accepted(choice):
-    """Every melt EOS of the redox pressure term is valid, and deng2020 is the
-    default, so existing configurations keep their results."""
+    """Every melt EOS of the redox pressure term is valid, and keane_table, the
+    one valid to super-Earth mantle pressures, is the default."""
     assert InteriorChem(redox_dV_eos=choice).redox_dV_eos == choice
-    assert InteriorChem().redox_dV_eos == 'deng2020'
+    assert InteriorChem().redox_dV_eos == 'keane_table'
 
 
 @pytest.mark.parametrize('bad', ['Deng2020', 'keane', 'keane_deng', ''])
@@ -115,17 +115,15 @@ def test_unknown_redox_melt_eos_is_rejected(bad):
     chem = InteriorChem()
     with pytest.raises(ValueError):
         chem.redox_dV_eos = bad
-    assert chem.redox_dV_eos == 'deng2020'
+    assert chem.redox_dV_eos == 'keane_table'
 
 
 def test_redox_options_sit_in_the_interior_chem_section():
     """The tracker options are read from [planet.interior_chem], which a Planet
     builds with its defaults when the TOML omits the section."""
-    planet = Planet(
-        interior_chem=InteriorChem(metal_saturation=True, redox_dV_eos='keane_table')
-    )
+    planet = Planet(interior_chem=InteriorChem(metal_saturation=True, redox_dV_eos='deng2020'))
     assert planet.interior_chem.metal_saturation is True
-    assert planet.interior_chem.redox_dV_eos == 'keane_table'
+    assert planet.interior_chem.redox_dV_eos == 'deng2020'
     default = Planet().interior_chem
     assert default == InteriorChem()
     assert default.ferric_fraction_initial == pytest.approx(0.1, abs=0.0)

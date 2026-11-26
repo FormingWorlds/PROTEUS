@@ -216,7 +216,7 @@ class InteriorChem:
         Solid/melt partition coefficients of Fe2+ and Fe3+ in the
         melt-redox tracker (``interior_chem/redox.py``, Step 5-6), chosen
         per cell from its pressure at the first tracker call.
-        'mgsio3' (default): the MgSiO3 phases only, bridgmanite at
+        'mgsio3': the MgSiO3 phases only, bridgmanite at
         P >= 22 GPa and a 1:1 Cpx/Opx mix below, with the mineral values of
         Schaefer et al. (2024) Table S1 (Fe2+) and Table 3 (Fe3+).
         'bulk_BSE': the bulk coefficients of the full mineral assemblage of
@@ -224,7 +224,7 @@ class InteriorChem:
         22 GPa) for their bulk-silicate-Earth magma ocean, the medians over
         all draws of their archived 1000 km run; this follows their mean
         Fe3+/FeT.
-        'mgsio3_kd': 'mgsio3', but at P >= 22 GPa the Fe2+ split follows the
+        'mgsio3_kd' (default): 'mgsio3', but at P >= 22 GPa the Fe2+ split follows the
         Fe-Mg exchange coefficient K_D(P, T) of bridgmanite (Dragulet &
         Stixrude 2024) and, at P >= 180 GPa, post-perovskite (Dragulet &
         Stixrude 2026), recomputed every step from the cell temperature and
@@ -241,13 +241,14 @@ class InteriorChem:
         term with ``metal_saturation`` or ``fO2_pressure_term`` True, the
         equilibrium only with ``metal_saturation`` True; otherwise the choice
         has no effect.
-        'deng2020' (default): the Deng et al. (2020) fourth-order
+        'deng2020': the Deng et al. (2020) fourth-order
         Birch-Murnaghan fit as constructed by Schaefer et al. (2024), valid to
         6500 K and 136 GPa.
-        'keane_table': a Keane cold curve with the Deng et al. (2020) thermal
-        term, fitted to the Deng FPMD points of the 12.5 mol% Fe melts and
-        tabulated over 1 bar - 4 TPa and 1000 - 20000 K for super-Earth
-        mantles. It agrees with 'deng2020' inside the FPMD coverage
+        'keane_table' (default): a Keane cold curve with the Deng et al. (2020)
+        thermal term, fitted to the Deng FPMD points of the 12.5 mol% Fe melts
+        and tabulated over 1 bar - 4 TPa and 1000 - 20000 K for super-Earth
+        mantles; the table is built in memory once per process
+        (``interior_chem/keane_table.py``). It agrees with 'deng2020' inside the FPMD coverage
         (2000-4000 K, up to about 74-94 GPa) and is an extrapolation beyond.
         'keane_table_flat': test variant of 'keane_table' with int dV dP held
         at its value at 90 GPa (deepest Deng FPMD point of both melts), i.e.
@@ -316,14 +317,14 @@ class InteriorChem:
     # Partition-coefficient prescription of the redox tracker
     # (redox.py Step 5-6). Only read under planet.fO2_source = 'from_mantle_redox'.
     partition_coefficients: str = field(
-        default='mgsio3', validator=in_(('mgsio3', 'bulk_BSE', 'mgsio3_kd'))
+        default='mgsio3_kd', validator=in_(('mgsio3', 'bulk_BSE', 'mgsio3_kd'))
     )
 
     # Melt EOS of the redox pressure term (eos_deng.MODELS). Only read under
     # planet.fO2_source = 'from_mantle_redox' with metal_saturation or
     # fO2_pressure_term True.
     redox_dV_eos: str = field(
-        default='deng2020',
+        default='keane_table',
         validator=in_(
             (
                 'deng2020',
