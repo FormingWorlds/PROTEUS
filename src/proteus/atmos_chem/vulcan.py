@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 # Import PROTEUS
-from proteus.atmos_chem.common import chem_csv_name, snapshot_star_file
+from proteus.atmos_chem.common import chem_csv_name, escape_atom_fluxes, snapshot_star_file
 from proteus.atmos_chem.vulcan_agni import VULCAN_TMP_FLOOR
 from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.star.wrapper import flux_weighted_distance, scale_spectrum_to_stellar_surface
@@ -29,6 +29,13 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
+
+# Smallest initial mixing ratio of an escaping atom: about 1e4 cm-3 in a top layer of
+# 1e14 cm-3, far above VULCAN's absolute tolerance, so the sink starts on a non-zero amount
+ESCAPE_ATOM_VMR_MIN = 1e-10
+
+# Gases outside the network that together exceed this surface mixing ratio trigger a warning
+NETWORK_DROPPED_VMR_WARN = 0.01
 
 
 def network_condensation(network_path: str) -> dict[str, str]:
@@ -73,6 +80,19 @@ def _write_boundary_file(fpath: str, fixed_vmr: dict) -> None:
             hdl.write(f'{gas}  0.0  0.0  {vmr:.8e}\n')
 
 
+def _write_top_flux_file(fpath: str, escape_flux: dict) -> None:
+    """Write a VULCAN top boundary file of constant escape fluxes.
+
+    Each row is a species and its flux [cm-2 s-1], the columns VULCAN reads from
+    `top_BC_flux_file`. VULCAN counts a negative flux as outflow, so each escape flux
+    in `escape_flux`, given as a positive magnitude, is written with a minus sign.
+    """
+    with open(fpath, 'w') as hdl:
+        hdl.write('# species  flux(cm-2 s-1); negative is outflow\n')
+        for gas, flux in escape_flux.items():
+            hdl.write(f'{gas}  {-flux:.8e}\n')
+
+
 def read_vulcan_netcdf(fpath: str) -> dict:
     """Read the result of a VULCAN run from its NetCDF output file.
 
@@ -105,6 +125,56 @@ def read_vulcan_netcdf(fpath: str) -> dict:
     return out
 
 
+def _set_escape_top_bc(config: Config, hf_row: dict, ele_arr: list, fpath: str) -> None:
+    """Write the PROTEUS escape rates of the network elements as atom fluxes at the top.
+
+    The flux of each element is `escape_atom_fluxes`; it leaves VULCAN's top layer as the
+    atom of that element.
+    """
+    escape_flux = escape_atom_fluxes(hf_row, ele_arr)
+    _write_top_flux_file(fpath, escape_flux)
+    if not any(escape_flux.values()):
+        log.warning('escape_bc = true, but every escape rate is zero')
+        return
+    for e, flux in escape_flux.items():
+        log.info(f'    escape top boundary: {e} {flux:.3e} cm-2 s-1')
+    if not config.atmos_chem.photo_on:
+        log.warning(
+            'Escape top boundary without photochemistry: atoms form slowly in the top '
+            'layer, so VULCAN may struggle to supply the escape fluxes'
+        )
+
+
+def _warn_dropped_gases(surface: dict, ele_arr: list, network: str) -> None:
+    """Warn when the gases outside the chemical network are a major part of the atmosphere.
+
+    VULCAN renormalises the gases it keeps, so leaving out a major gas changes the mean
+    molar mass of its column, and with it the scale height and the height grid; with a
+    light remainder on a small planet the grid may not exist at all.
+
+    Parameters
+    ----------
+    surface : dict
+        Surface volume mixing ratio [1] of each volatile.
+    ele_arr : list
+        Elements of the network.
+    network : str
+        Name of the network.
+    """
+    dropped = {g: x for g, x in surface.items() if x > 0 and set(mol_to_ele(g)) - set(ele_arr)}
+    total = sum(dropped.values())
+    if total <= NETWORK_DROPPED_VMR_WARN:
+        return
+    major = sorted(
+        (g for g in dropped if dropped[g] >= 0.01 * total), key=lambda g: -dropped[g]
+    )
+    log.warning(
+        f'{100 * total:.1f}% of the atmosphere ('
+        + ', '.join(f'{g} {dropped[g]:.2g}' for g in major)
+        + f') is outside the {network} network and left out of VULCAN'
+    )
+
+
 def network_settings(config: Config) -> tuple[str, list, list, list] | None:
     """VULCAN network file and species lists for `atmos_chem.vulcan.network`.
 
@@ -134,6 +204,9 @@ def network_settings(config: Config) -> tuple[str, list, list, list] | None:
                 network_file = 'NCHO_thermo_network.txt'
 
         case 'SNCHO':
+            if not config.atmos_chem.photo_on:
+                log.error('VULCAN has no SNCHO network without photochemistry')
+                return None
             plt_arr = [
                 'H2',
                 'H',
@@ -159,13 +232,51 @@ def network_settings(config: Config) -> tuple[str, list, list, list] | None:
     return network_file, ele_arr, plt_arr, sct_arr
 
 
-def _write_ini_table(fpath: str, pco: np.ndarray, p_src: np.ndarray, vmr_src: dict) -> None:
+def _network_path(network_file: str) -> str:
+    """Path of a network file in VULCAN's thermo folder; FileNotFoundError if absent."""
+    import vulcan
+
+    path = os.path.join(vulcan.paths.THERMO_DIR, network_file)
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f'VULCAN network file not found: {path}. VULCAN reads its data from its '
+            'git clone; install it with tools/get_vulcan.sh.'
+        )
+    return path
+
+
+def compile_network(config: Config) -> str:
+    """Compile the network of `config` for the VULCAN runs.
+
+    VULCAN writes the compiled network into one file of its install and renumbers the
+    network file in place, so runs that compile at the same time can corrupt both.
+    `proteus offchem --grid` compiles once here, then runs its cases without compiling.
+    """
+    import vulcan
+    from vulcan.make_chem_funs import make_all
+
+    network_file = network_settings(config)[0]
+    vcfg = vulcan.Config()
+    vcfg.network = _network_path(network_file)
+    vcfg.use_photo = config.atmos_chem.photo_on
+    make_all(vcfg)
+    return network_file
+
+
+def _write_ini_table(
+    fpath: str,
+    pco: np.ndarray,
+    p_src: np.ndarray,
+    vmr_src: dict,
+    vmr_min: dict | None = None,
+) -> None:
     """Write initial mixing ratios as a VULCAN `table` file on VULCAN's own grid.
 
     VULCAN reads the rows by index, from the bottom of the column up, so the
     mixing ratios are interpolated in log pressure onto `pco` and written in
     that order. Outside the source range the end values are held constant.
-    Linear interpolation keeps the sum of the mixing ratios on each row.
+    Linear interpolation keeps the sum of the mixing ratios on each row; a floor
+    from `vmr_min` raises it by at most the sum of the floors.
 
     Parameters
     ----------
@@ -177,15 +288,21 @@ def _write_ini_table(fpath: str, pco: np.ndarray, p_src: np.ndarray, vmr_src: di
         Pressures of the source profile, in the same unit as `pco`, in any order.
     vmr_src : dict
         Volume mixing ratio arrays on `p_src`, keyed by species name.
+    vmr_min : dict, optional
+        Smallest volume mixing ratio of each listed species on every row; a species
+        missing from `vmr_src` is added as a column at that value.
     """
     order = np.argsort(p_src)
     logp_src = np.log10(np.asarray(p_src, dtype=float)[order])
     logp_tgt = np.log10(pco)
-    cols = [np.asarray(pco, dtype=float)]
-    header = '#Input composition arrays\nPressure'
-    for gas, vmr in vmr_src.items():
-        cols.append(np.interp(logp_tgt, logp_src, np.asarray(vmr, dtype=float)[order]))
-        header += '\t' + gas
+    rows = {
+        gas: np.interp(logp_tgt, logp_src, np.asarray(vmr, dtype=float)[order])
+        for gas, vmr in vmr_src.items()
+    }
+    for gas, low in (vmr_min or {}).items():
+        rows[gas] = np.maximum(rows.get(gas, 0.0), low) * np.ones(len(pco))
+    cols = [np.asarray(pco, dtype=float), *rows.values()]
+    header = '#Input composition arrays\nPressure' + ''.join('\t' + gas for gas in rows)
     np.savetxt(fpath, np.array(cols).T, delimiter='\t', comments='', header=header)
 
 
@@ -355,6 +472,17 @@ def run_vulcan(
     P_t = float(np.amin(atmos['pl'])) * 10
     pco = np.logspace(np.log10(P_b), np.log10(P_t), len(p_arr))  # as VULCAN builds it
 
+    # Determine network and species of interest
+    settings = network_settings(config)
+    if settings is None:
+        return False
+    network_file, ele_arr, plt_arr, sct_arr = settings
+
+    # Escaping atoms start above zero, so that the top boundary sink has gas to remove
+    atom_min = None
+    if config.atmos_chem.vulcan.escape_bc:
+        atom_min = {e: ESCAPE_ATOM_VMR_MIN for e in ele_arr}
+
     # Write initial mixing ratios on the VULCAN grid
     vmr_write = os.path.join(dirs['output/offchem'], 'vmrs.dat')
     ini_mix = config.atmos_chem.vulcan.ini_mix
@@ -367,10 +495,10 @@ def run_vulcan(
         log.debug(f'Initialising from the earlier chemistry result {prev_chem}')
         prev = read_vulcan_netcdf(prev_chem)
         vmr_src = {gas: prev['x_gas'][:, i] for i, gas in enumerate(prev['species'])}
-        _write_ini_table(vmr_write, pco, prev['p'], vmr_src)
+        _write_ini_table(vmr_write, pco, prev['p'], vmr_src, atom_min)
     else:
         vmr_src = {k.split('_')[0]: atmos[k] for k in atmos.keys() if '_vmr' in k}
-        _write_ini_table(vmr_write, pco, np.array(atmos['p']) * 10.0, vmr_src)
+        _write_ini_table(vmr_write, pco, np.array(atmos['p']) * 10.0, vmr_src, atom_min)
 
     # ------------------------------------------------------------
     # CREATE VULCAN CONFIG
@@ -380,19 +508,8 @@ def run_vulcan(
     log.debug('Creating VULCAN config')
     vcfg = vulcan.Config()
 
-    # Determine network and species of interest
-    settings = network_settings(config)
-    if settings is None:
-        return False
-    network_file, ele_arr, plt_arr, sct_arr = settings
-
     log.info(f"    using '{network_file}' network")
-    vcfg.network = os.path.join(vulcan.paths.THERMO_DIR, network_file)
-    if not os.path.isfile(vcfg.network):
-        raise FileNotFoundError(
-            f'VULCAN network file not found: {vcfg.network}. VULCAN reads its data from its '
-            'git clone; install it with tools/get_vulcan.sh.'
-        )
+    vcfg.network = _network_path(network_file)
     vcfg.atom_list = ele_arr
     vcfg.use_photo = config.atmos_chem.photo_on
     vcfg.use_ion = False
@@ -415,6 +532,12 @@ def run_vulcan(
         # set constant mixing ratio and bottom BC if above the threshold
         if vmr > config.atmos_chem.vulcan.clip_vmr:
             vcfg.const_mix[gas] = vmr
+
+    _warn_dropped_gases(
+        {gas: hf_row[gas + '_vmr'] for gas in vol_list},
+        ele_arr,
+        config.atmos_chem.vulcan.network,
+    )
 
     # Translate initial composition to VULCAN's string
     if ini_mix == 'outgas':
@@ -445,9 +568,17 @@ def run_vulcan(
     _write_boundary_file(vcfg.bot_BC_flux_file, dict(vcfg.const_mix))
 
     # TOA boundary condition
-    vcfg.use_topflux = False
     vcfg.top_BC_flux_file = os.path.join(vulcan_out, 'bc_top.dat')
-    _write_boundary_file(vcfg.top_BC_flux_file, dict(vcfg.const_mix))
+    if config.atmos_chem.vulcan.escape_bc:
+        _set_escape_top_bc(config, hf_row, ele_arr, vcfg.top_BC_flux_file)
+        vcfg.use_topflux = True
+        # 'outgas' starts from const_mix; seeded after the bottom boundary copied it
+        if vcfg.ini_mix == 'const_mix':
+            for e, low in atom_min.items():
+                vcfg.const_mix[e] = max(vcfg.const_mix.get(e, 0.0), low)
+    else:
+        vcfg.use_topflux = False
+        _write_boundary_file(vcfg.top_BC_flux_file, dict(vcfg.const_mix))
     vcfg.diff_esc = []  # species for diffusion-limit escape at TOA
     vcfg.max_flux = 1e90  # cap on diffusion-limited escape flux (cm-2 s-1)
 

@@ -36,7 +36,6 @@ from proteus.utils.constants import (
 )
 from proteus.utils.helper import (
     UpdateStatusfile,
-    create_tmp_folder,
     format_subyear_time,
     get_proteus_dir,
     parse_subyear_time,
@@ -62,44 +61,15 @@ def _get_current_time():
 
 
 def _get_git_revision(dir: str) -> str:
-    """
-    Get git hash for repository in `dir`.
-    """
-    # change dir
-    cwd = os.getcwd()
+    """Git hash of the repository in `dir`, or 'unknown'. Leaves the working directory
+    alone, so a process whose own working directory is gone still gets the hash."""
     try:
-        os.chdir(dir)
-    except Exception:
-        # If we can't change to the directory, return unknown
-        return 'unknown'
-
-    # get hash (https://stackoverflow.com/a/21901260)
-    try:
-        hash = (
-            subprocess.check_output(
-                ['git', 'rev-parse', 'HEAD'],
-                stderr=subprocess.DEVNULL,
-                timeout=5,  # Add timeout to prevent hanging
-            )
-            .decode('ascii')
-            .strip()
+        out = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'], cwd=dir, stderr=subprocess.DEVNULL, timeout=5
         )
-    except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        subprocess.TimeoutExpired,
-        Exception,
-    ):
-        # Handle: git not found, not a git repo, git command failed, or any other error
-        hash = 'unknown'
-    finally:
-        # Always change dir back, even if an exception occurred
-        try:
-            os.chdir(cwd)
-        except Exception:
-            pass  # If we can't change back, continue anyway
-
-    return hash
+    except Exception:
+        return 'unknown'
+    return out.decode('ascii').strip()
 
 
 def _get_socrates_version():
@@ -710,10 +680,11 @@ def assert_mass_conservation(
 
     Issue #677 invariant. M_atm sums atmospheric oxygen (over gas_list of
     *_kg_atm, including the O atoms in H2O / CO2 / SO2), and M_planet =
-    M_int + M_ele counts the same oxygen in M_ele, so whole-planet O
-    accounting keeps the two sides symmetric and M_atm <= M_planet holds
-    by construction. This assertion catches any regression that
-    re-introduces an asymmetry by dropping O from one side.
+    M_int - M_dissolved_target + M_ele counts the same oxygen in M_ele, so
+    whole-planet O accounting keeps the two sides symmetric and M_atm <=
+    M_planet holds by construction (M_dissolved_target is part of M_int).
+    This assertion catches any regression that re-introduces an asymmetry by
+    dropping O from one side.
 
     Rock vapourisation (``outgas.vapourise``) moves vapourised rock mass into
     M_atm without debiting it from the interior, so M_planet does not track it
@@ -1010,17 +981,25 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'lid_delta_on',
         'lid_F_diff',
         'lid_F_open',
+        'lid_F_resid',
+        'lid_slope_guard',
         'lid_T_base',
         'lid_T_node',
         'lid_T_surface',
         'lid_weight',
+        'lid_weight_max',
         'M_accreted_rock',
         'M_core_solve',
         'M_core_target',
         'M_desiccated',
+        'M_dissolved_target',
         'M_volatile_change',
         'n_impacts_applied',
         'step_dE_impact_J',
+        # structure-solve flags: zero is no core temperature table, as in a run that predates it
+        'struct_core_T_excess',
+        'struct_core_T_used',
+        'T_magma_clipped',
     }
 )
 
@@ -1093,6 +1072,8 @@ def GetHelpfileKeys():
         'core_heatcap',     # core heat capacity [J kg-1 K-1]
         'X_H2_int',         # H2 mass fraction in interior (sub-Neptune mode) [1]
         'struct_mass_desync_frac',  # |trapezoid - ODE accumulator| / accumulator structure mass self-consistency [1]
+        'struct_core_T_used',       # 1 when the last Zalmoxis solve set its core temperature from the core temperature table, else 0 [1]
+        'struct_core_T_excess',     # largest distance of a core node of that solve beyond the core temperature table, as a fraction of its pressure range [1]
 
         # Temperatures
         'T_surf',           # global surface temperature [K]
@@ -1104,8 +1085,12 @@ def GetHelpfileKeys():
         'lid_T_surface',    # surface temperature of the Aragog sub-grid lid [K]
         'lid_T_base',       # base temperature of the Aragog sub-grid lid [K]
         'lid_T_node',       # top basic node of the Aragog mesh [K]
-        'lid_F_open',       # flux of the open part 1 - w of the surface [W m-2]
+        'lid_F_open',       # start flux of the open part 1 - w, per open area [W m-2]
+        'lid_F_resid',      # residual F_atm - B of the atmosphere solve against the skin balance B of the call, per total area; 0 without a lid; a call with a size above 1 W m-2 or not finite logs a warning [W m-2]
         'lid_F_diff',       # F_int of the step minus the F_atm it started from; 0 in grey_body mode [W m-2]
+        'lid_weight_max',   # largest weight of the Aragog sub-grid lid over the accepted states of the step [1]
+        'lid_slope_guard',  # slope guard of the lid slope (cap and open part) in the step that ends at this row: 0 none, 2 slope cut at the grey secant of the 2 rows, 3 a live lid took the newest usable earlier secant, 4 a live lid took the grey tangent (no usable secant in the run), 5 as 3 with that secant cut at the grey tangent; a cap re-solve records the code of its own secant [1]
+        'T_magma_clipped',  # 1 where the step clipped a rise of T_magma, else 0 [1]
         'T_cmb',           # core temperature: the bottom mantle cell, or the core state with core_bc = core_module or bower2018 [K]
         'T_cmb_node',      # mantle temperature at the core-mantle boundary basic node; with core_bc = core_module the temperature of the bottom-cell entropy at P_cmb, so the CMB contrast is T_cmb - T_cmb_node, or core_T_top - T_cmb_node with stratification [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]
@@ -1142,10 +1127,11 @@ def GetHelpfileKeys():
         'Phi_global',       # mantle melt mass-fraction [1]
         'Phi_global_vol',   # mantle melt volume-fraction [1]
         'RF_depth',         # depth of rheological front [1]
-        'M_core',           # dry mass of core; with Zalmoxis the mass inside R_core, with the mantle silicate between M_core_solve and R_core [kg]
+        'M_core',           # dry mass of core; with Zalmoxis the core mass of the solve, the mass inside R_core [kg]
         'M_mantle',         # dry mass of mantle [kg]
         'M_core_target',    # core mass target of the Zalmoxis structure; 0 with another structure module [kg]
-        'M_core_solve',     # core mass of the last accepted Zalmoxis solve; 0 with another structure module [kg]
+        'M_core_solve',     # core mass of the last accepted Zalmoxis solve, equal to M_core; 0 with another structure module [kg]
+        'M_dissolved_target',  # dissolved volatile and noble-gas element mass inside the target of the last accepted Zalmoxis solve (0 with zalmoxis.dry_mantle = true or another structure module) [kg]
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
@@ -2849,6 +2835,7 @@ def get_proteus_directories(outdir='_unset') -> dict[str, str]:
         'output/observe': os.path.join(output_root, outdir, 'observe'),
         'output/offchem': os.path.join(output_root, outdir, 'offchem'),
         'output/plots': os.path.join(output_root, outdir, 'plots'),
+        'temp': os.path.join(output_root, outdir),
     }
 
 
@@ -2906,13 +2893,6 @@ def set_directories(config: Config) -> dict[str, str]:
             )
         else:
             dirs['rad'] = os.environ.get('RAD_DIR')
-
-    # Temporary directory
-    if config.params.out.logging == 'DEBUG':
-        dirs['temp'] = dirs['output']
-    else:
-        dirs['temp'] = create_tmp_folder()
-    log.debug(f'Temporary-file working dir: {dirs["temp"]}')
 
     # Get abspaths
     for key in dirs.keys():

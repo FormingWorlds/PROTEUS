@@ -45,13 +45,14 @@ url = "https://zenodo.org/records/15805756/files/petsc.zip?download=1"
 
 
 class FakeGitHub:
-    """Answers ``get_json`` from a dict of REST paths; an unknown path is a 404."""
+    """Answers ``get_json`` from a dict of REST paths (URL without the API root); an unknown path is a 404."""
 
     def __init__(self, answers: dict):
         self.answers = answers
         self.asked = []
 
     def get_json(self, path: str):
+        path = path.removeprefix(graph.API + '/')
         self.asked.append(path)
         return self.answers.get(path)
 

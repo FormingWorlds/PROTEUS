@@ -14,7 +14,7 @@ The `planet.elements.O_mode` details that `AGENTS.md` leaves out:
 Every site that sums element masses includes oxygen; that keeps `M_atm` below `M_planet` at high H budgets. If one site sums over `gas_list` (oxygen included) while another sums over `element_list` with `if e == 'O': continue`, `M_atm` can exceed `M_planet`. Each site names its element list explicitly; a new `if e == 'O': continue` in any of them is a red flag. The sites:
 
 1. Initial-budget population (`calc_target_elemental_inventories`, `_resolve_oxygen_budget`)
-2. M_planet bookkeeping (`update_planet_mass`)
+2. M_planet bookkeeping (`update_planet_mass`, which takes `M_dissolved_target` off `M_int`)
 3. Structure dry-mass target (`_structure_target_masses`, called by `load_zalmoxis_configuration`)
 4. Escape rate distribution (`calc_unfract_fluxes`, `calc_new_elements`); O is in the unfractionated partitioning, so `sum(esc_rate_e) == esc_rate_total` to within rounding
 5. Desiccation gate (`check_desiccation`)
@@ -23,6 +23,8 @@ Every site that sums element masses includes oxygen; that keeps `M_atm` below `M
 Sites 1 and 2 sum `vol_element_list + noble_gases` and leave the rock-vapour elements of `vap_element_list` out on purpose, because rock vapour enters the atmosphere without being debited from the interior; sites 3, 4 and 6 sum `element_list`; site 5 tests `vol_element_list + noble_gases` against the threshold and sums `element_list` (finite totals only) for the escape balance, to match the site-6 baseline, leaving out the mass earlier desiccations removed (`M_desiccated`). The different lists are intended, not an asymmetry to repair.
 
 Site 3 holds a second sum for the core mass: the kept inventories, `vol_element_list + noble_gases` without O when `outgassing_derives_o_kg_total(config)` holds. The core target is `core_frac` of the planet without the kept sum: the solves at `Time = 0` compute it from their row, `set_core_target_at_init_end` writes it from the row on which the init stage ends, and later solves read it from `M_core_target`. Oxygen stays in the structure-target sum of site 3; it is left out of the kept sum on purpose, because an oxygen inventory that the outgassing derives from the fO2 buffer takes none of the core, like rock vapour: it is mass of the mantle, and of the ice layer when the structure has one.
+
+Site 3 holds a third sum with `dry_mantle = false`: the dissolved mass `<e>_kg_total - <e>_kg_atm` over `vol_element_list + noble_gases`, the list of site 2. Each accepted solve writes it to `M_dissolved_target`, and site 2 takes it off `M_int`, so it has to cover the elements that site 2 adds to `M_ele`, oxygen included, and no others: a dissolved noble gas left out counts twice in `M_planet`, and rock vapour put in takes off `M_planet` a mass that `M_ele` never added.
 
 ## Mass-conservation check
 

@@ -7,19 +7,23 @@ step beyond Python itself.
 from __future__ import annotations
 
 import http.client
+import io
 import json
 import os
+import re
 import time
 import tomllib
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 DIGEST_DIR = Path(__file__).resolve().parent
 API = 'https://api.github.com'
 TRACKED_ALWAYS = ('pyproject.toml', 'Project.toml')
+LIST_KIND = 'dataset list'  # a dataset or file added or removed; not a result change
 SECTIONS = {
     'results': 'Changes that affect your results',
     'capabilities': 'New capabilities',
@@ -83,10 +87,22 @@ def validate_settings(settings: dict) -> dict:
                 isinstance(p, list) and all(isinstance(x, str) for x in p) for p in v.values()
             )
         ),
+        'commits_only': lambda v: isinstance(v, list) and all(isinstance(r, str) for r in v),
+        'max_commits': lambda v: _is_int(v) and 1 <= v <= 100,
+        'docs': lambda v: (
+            isinstance(v, dict)
+            and all(
+                isinstance(u, str) and re.fullmatch(r'https://[^\s/]+(/[^\s]*)?(?<!/)', u)
+                for u in v.values()
+            )
+        ),
     }
     for key, ok in rules.items():
         if key not in settings or not ok(settings[key]):
             raise DigestError(f'setting {key} is missing or invalid: {settings.get(key)!r}')
+    for key in ('docs', 'commits_only'):
+        if extra := set(settings[key]) - set(settings['repos']):
+            raise DigestError(f'setting {key} names repositories not in repos: {sorted(extra)}')
     return settings
 
 
@@ -109,13 +125,18 @@ def parse_time(text: str) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def count(n: int, noun: str, plural: str = '') -> str:
+    """``n`` with its noun: singular for 1, ``plural`` (default ``noun + 's'``) otherwise."""
+    return f'{n} {noun if n == 1 else plural or noun + "s"}'
+
+
 def iso(value: datetime) -> str:
     """Format a UTC time as ``YYYY-MM-DDTHH:MM:SSZ``."""
     return value.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
 def is_bot(login: str | None, kind: str | None, bots: list[str]) -> bool:
-    """Return True for an account that must never be mentioned.
+    """Return True for an account shown as a code span, never as a profile link.
 
     Parameters
     ----------
@@ -187,10 +208,26 @@ class GitHub:
             raise DigestError(f'GraphQL error: {out["errors"]}')
         return out['data']
 
-    def get_json(self, path: str):
-        """Return the decoded JSON of a REST path such as ``repos/o/r``, or None on 404."""
-        raw = self._request(f'{API}/{path}')
-        return None if raw is None else json.loads(raw)
+    def get_json(self, url: str) -> dict | None:
+        """Return the JSON answer of a REST GET, or None for a 404."""
+        raw = self._request(url)
+        return json.loads(raw) if raw is not None else None
+
+    def artifact_json(self, artifact: dict, member: str) -> dict | None:
+        """Return one JSON file of an Actions artifact, or None when the file is absent.
+
+        Raises
+        ------
+        DigestError
+            When the zip answers 404.
+        """
+        raw = self._request(artifact['archive_download_url'])
+        if raw is None:
+            raise DigestError(f'artifact {artifact["archive_download_url"]} answered 404')
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            if member not in archive.namelist():
+                return None
+            return json.loads(archive.read(member))
 
     def raw_file(self, repo: str, path: str, ref: str | None) -> str | None:
         """Return a file's text at ``ref`` (None: the default branch), or None when it is absent."""
@@ -200,6 +237,11 @@ class GitHub:
             accept='application/vnd.github.raw',
         )
         return None if raw is None else raw.decode()
+
+    def commit_files(self, repo: str, oid: str) -> list[dict] | None:
+        """Changed files of one commit, at most 300 (one REST page); None for a missing commit."""
+        raw = self._request(f'{API}/repos/{repo}/commits/{oid}')
+        return json.loads(raw).get('files', []) if raw is not None else None
 
 
 def find_category(gh: GitHub, home: str, slug: str) -> tuple[str, str | None]:

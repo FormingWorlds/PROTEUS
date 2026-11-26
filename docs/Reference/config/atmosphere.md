@@ -74,7 +74,7 @@ interior heat flux. The `fastchem_*` parameters apply when
 |---|---|---|---|
 | `solve_energy` | bool | `true` | Solve for an energy-conserving atmosphere solution. |
 | `convection` | bool | `true` | Account for convective heat transport, using MLT. |
-| `conduction` | bool | `false` | Account for conductive heat transport, using Fourier's law. |
+| `conduction` | bool | `true` | Account for conductive heat transport, using Fourier's law. |
 | `sens_heat` | bool | `true` | Include sensible heat flux at surface. |
 | `rainout` | bool | `true` | Enable volatile condensation and evaporation in the atmosphere. |
 | `oceans` | bool | `true` | Enable volatile ocean formation at the surface. |
@@ -207,7 +207,7 @@ for when it runs, which snapshots it processes and the files it writes.
 | `module` | str or none | `none` | Chemistry module. Choices: `none`, `"vulcan"`, `"dummy"`. |
 | `mode` | str or none | `none` | When to run the chemistry module automatically. Options: none (only with `proteus offchem`), offline (after the simulation ends), online (not yet implemented). Choices: `none`, `"offline"`, `"online"`. |
 | `times` | str or list or dict | `"end"` | Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), a list of times \[yr\], each selecting the first helpfile row at or after it, or a table of helpfile keys, each with a list of values in the unit of that column, such as `{Time = [1e2, 1e3], Phi_global = [0.01], T_surf = [1500]}`; each value selects every helpfile row at which its column reaches or crosses it, and `end = true` in the table adds the final state. With a list or a table, the run also writes an atmosphere snapshot at each target row; the chemistry of a target uses the latest atmosphere snapshot at or before its row. |
-| `photo_on` | bool | `true` | Use photochemistry. |
+| `photo_on` | bool | `true` | Use photochemistry. Required with the VULCAN network SNCHO, which VULCAN has only with photochemistry. |
 | `Kzz_on` | bool | `true` | Use Kzz. |
 | `Kzz_const` | float or none | `none` | Constant Kzz value \[cm2/s\]. If 'none', Kzz is read from NetCDF file. |
 | `moldiff_on` | bool | `true` | Use molecular diffusion. |
@@ -228,6 +228,7 @@ steady-state mixing ratios from a chemical reaction network.
 | `make_funs` | bool | `true` | Make functions from chemical network. |
 | `ini_mix` | str | `"profile"` | Initial mixing ratios. Options: profile (the climate profile), outgas (the surface mixing ratios at every level), previous (the result of the latest earlier chemistry snapshot, interpolated in log pressure; needs fix_surf = true; falls back to profile when there is none). Choices: `"profile"`, `"outgas"`, `"previous"`. |
 | `fix_surf` | bool | `false` | Fix the surface mixing ratios based on outgassed composition. |
+| `escape_bc` | bool | `false` | Upper boundary condition. If true, each atom in the network leaves the top layer at the PROTEUS escape rate; requires fix_surf = true. If false, no gas crosses the top. |
 | `network` | str | `"SNCHO"` | Chemical network. Options: CHO, NCHO, SNCHO. Choices: `"CHO"`, `"NCHO"`, `"SNCHO"`. |
 | `save_frames` | bool | `false` | Save simulation state as plots. |
 | `yconv_cri` | float | `0.05` | Steady state - max change in mixing ratio over test period. |
@@ -266,10 +267,12 @@ Cross-field constraints enforced when the config file loads:
 - A skin from saturation stays fixed unless atmodeller forms condensates.
 - Aerosol scattering needs band-resolved RT.
 - Validate AGNI settings: pressure ordering, surface-state support, rainout, spectral file.
+- Refuse `escape_bc = true` unless the surface mixing ratios are fixed.
 - Refuse `ini_mix = 'previous'` unless the surface mixing ratios are fixed.
 - Validate JANUS settings: spectral file selection and temperature-bound ordering.
 - Refuse coupled chemistry, and automatic chemistry without a module.
 - p_obs is either a positive pressure \[bar\], or None ('none' in the config file), which lets AGNI determine the photosphere self-consistently from optical depth instead. The latter is only meaningful for AGNI.
+- Refuse VULCAN's SNCHO network without photochemistry, which VULCAN does not have.
 - Reject Rayleigh scattering with the dummy module or AGNI in grey-gas mode.
 - surface_d and surface_k are each a positive number, or both 'saturation'.
 - Reject enabling this option when the dummy atmos_clim module is selected.

@@ -31,7 +31,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT / 'tools' / 'digest'))
-from common import GitHub, iso  # noqa: E402
+from common import API, GitHub, iso  # noqa: E402
 
 GITHUB_URL = re.compile(r'github\.com[/:]([\w.-]+)/([\w.-]+?)(?:\.git)?(?=[/"\'\s]|$)')
 REQ = re.compile(r'^\s*([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]*\])?\s*(.*)$')
@@ -69,7 +69,7 @@ def list_repos(gh: GitHub, settings: dict, pinned: list[str]) -> dict:
     """``{owner/repo: default branch}`` of the public, active repositories to read."""
     repos, page = {}, 1
     while True:
-        got = gh.get_json(f'orgs/{settings["org"]}/repos?per_page=100&page={page}') or []
+        got = gh.get_json(f'{API}/orgs/{settings["org"]}/repos?per_page=100&page={page}') or []
         repos |= {
             r['full_name']: r['default_branch']
             for r in got
@@ -80,7 +80,7 @@ def list_repos(gh: GitHub, settings: dict, pinned: list[str]) -> dict:
         page += 1
     known = {r.lower() for r in repos}
     for name in sorted({*settings['extra_repos'], *settings['digest_repos'], *pinned}):
-        if name.lower() not in known and (info := gh.get_json(f'repos/{name}')):
+        if name.lower() not in known and (info := gh.get_json(f'{API}/repos/{name}')):
             if not (info['archived'] or info['private']):
                 repos[info['full_name']] = info['default_branch']
     return repos
@@ -259,12 +259,12 @@ def pin_status(gh: GitHub, nodes: dict, edges: dict) -> None:
             spec = how.get('spec') or ''
             if how['kind'] == 'git pin' and SHA.match(spec):
                 branch = nodes[dst]['default_branch']
-                found = gh.get_json(f'repos/{dst}/compare/{spec}...{branch}') or {}
+                found = gh.get_json(f'{API}/repos/{dst}/compare/{spec}...{branch}') or {}
                 how['behind'] = found.get('ahead_by')
                 how['status'] = found.get('status')
             elif how['kind'] != 'git pin' and '>=' in spec:
                 if dst not in latest:
-                    latest[dst] = (gh.get_json(f'repos/{dst}/releases/latest') or {}).get(
+                    latest[dst] = (gh.get_json(f'{API}/repos/{dst}/releases/latest') or {}).get(
                         'tag_name'
                     )
                 floor = version(spec.split('>=')[1].split(',')[0])
@@ -358,7 +358,7 @@ def resolve_ref(gh: GitHub, number: int, repos: list[str], date: str) -> dict | 
     before ``date`` (``YYYY-MM-DD``), the date the comment that names it was written."""
     found = []
     for repo in repos:
-        item = gh.get_json(f'repos/{repo}/issues/{number}')
+        item = gh.get_json(f'{API}/repos/{repo}/issues/{number}')
         if item and item['created_at'][:10] <= date:
             found.append((item['created_at'], repo, item['title']))
     if not found:
@@ -500,8 +500,10 @@ def module_interfaces(gh: GitHub, graph: dict) -> list[dict]:
     out = []
     for e in (e for e in graph['edges'] if e['from'] == graph['home'] and e['symbols']):
         node = graph['nodes'][e['to']]
-        head = gh.get_json(f'repos/{e["to"]}/commits/{node["default_branch"]}') or {}
-        tree = gh.get_json(f'repos/{e["to"]}/git/trees/{head.get("sha")}?recursive=1') or {}
+        head = gh.get_json(f'{API}/repos/{e["to"]}/commits/{node["default_branch"]}') or {}
+        tree = (
+            gh.get_json(f'{API}/repos/{e["to"]}/git/trees/{head.get("sha")}?recursive=1') or {}
+        )
         paths = [t['path'] for t in tree.get('tree', []) if t['type'] == 'blob']
         found = defaultdict(lambda: {'files': set(), 'symbols': set(), 'unresolved': set()})
         for key in e['symbols']:

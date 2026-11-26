@@ -26,7 +26,7 @@ from pathlib import Path
 from graph import ROOT, load_settings
 
 sys.path.insert(0, str(ROOT / 'tools' / 'digest'))
-from common import GitHub, is_bot, iso  # noqa: E402
+from common import API, GitHub, is_bot, iso  # noqa: E402
 
 
 def load_people(path: Path):
@@ -42,7 +42,10 @@ def committers(
     """Logins with their number of commits on the default branch since ``since``."""
     counts, last = Counter(), {}
     for page in range(1, pages + 1):
-        got = gh.get_json(f'repos/{repo}/commits?since={since}&per_page=100&page={page}') or []
+        got = (
+            gh.get_json(f'{API}/repos/{repo}/commits?since={since}&per_page=100&page={page}')
+            or []
+        )
         for c in got:
             author = c.get('author') or {}
             if not is_bot(author.get('login'), author.get('type'), bots):
@@ -55,7 +58,7 @@ def committers(
 
 def open_issues(gh: GitHub, repo: str, bots: list[str]) -> list[dict]:
     """Open issues (not pull requests) of a repository, newest 100."""
-    got = gh.get_json(f'repos/{repo}/issues?state=open&per_page=100') or []
+    got = gh.get_json(f'{API}/repos/{repo}/issues?state=open&per_page=100') or []
     return [
         {
             'ref': f'{repo}#{i["number"]}',

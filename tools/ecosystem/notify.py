@@ -33,7 +33,7 @@ from pathlib import Path
 from graph import ROOT, load_settings, module_files, norm, version
 
 sys.path.insert(0, str(ROOT / 'tools' / 'digest'))
-from common import GitHub, is_bot  # noqa: E402
+from common import API, GitHub, is_bot  # noqa: E402
 
 LEVELS = {'action': 'Action needed', 'check': 'Please check', 'fyi': 'For information'}
 DEV_EXTRAS = {'extra dev', 'extra develop', 'extra docs', 'extra test', 'extra tests'}
@@ -97,7 +97,7 @@ class Window:
             for page in range(1, 31):
                 got = (
                     self.gh.get_json(
-                        f'repos/{pr["repo"]}/pulls/{pr["number"]}/files?per_page=100&page={page}'
+                        f'{API}/repos/{pr["repo"]}/pulls/{pr["number"]}/files?per_page=100&page={page}'
                     )
                     or []
                 )
@@ -155,7 +155,7 @@ def pin_owner(w: Window, edge: dict, exclude: str) -> list[str]:
     if not last:
         return []
     repo, number = last['ref'].split('#')
-    login = ((w.gh.get_json(f'repos/{repo}/pulls/{number}') or {}).get('user') or {}).get(
+    login = ((w.gh.get_json(f'{API}/repos/{repo}/pulls/{number}') or {}).get('user') or {}).get(
         'login'
     )
     return [login] if login and login.lower() != exclude else []
@@ -248,7 +248,7 @@ def handled_by(
     for pr in (p for p in w.prs.values() if p['repo'] == w.home):
         if pr['ref'] not in w.bodies:
             w.bodies[pr['ref']] = (
-                w.gh.get_json(f'repos/{w.home}/pulls/{pr["number"]}') or {}
+                w.gh.get_json(f'{API}/repos/{w.home}/pulls/{pr["number"]}') or {}
             ).get('body') or ''
         lines = [x for f in files & set(pr['files']) for x in changed(w.files(pr).get(f))]
         if (

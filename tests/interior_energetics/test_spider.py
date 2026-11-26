@@ -386,6 +386,7 @@ def test_mesh_convergence_trigger():
     # Patch zalmoxis_solver at its source module (locally imported)
     with (
         patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)),
+        patch('proteus.interior_energetics.wrapper._structure_core_table', return_value=None),
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):

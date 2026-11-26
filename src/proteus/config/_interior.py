@@ -75,6 +75,28 @@ def _valid_number(instance, attribute, value):
         raise TypeError(f'`{attribute.name}` must be a number, got {value!r}')
 
 
+RA_CRIT_EQ16 = 'eq16'
+RA_CRIT_PHASE = 'phase'
+
+
+def _ra_crit_cmb_number(value):
+    """Store a number of ``ra_crit_cmb`` as a float; leave a string or a bool for the check."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return float(value)
+    return value
+
+
+def _valid_ra_crit_cmb(instance, attribute, value):
+    """``ra_crit_cmb`` is 'phase', 'eq16' or a positive, finite number."""
+    if isinstance(value, str) and value in (RA_CRIT_PHASE, RA_CRIT_EQ16):
+        return
+    if not (isinstance(value, float) and 0.0 < value < math.inf):
+        raise ValueError(
+            f"`{attribute.name}` must be '{RA_CRIT_PHASE}', '{RA_CRIT_EQ16}' or a positive, "
+            f'finite number, got {value!r}'
+        )
+
+
 def _valid_cell_thickness(instance, attribute, value):
     """Accept 0 or a finite number of at least 2 m, and "uniform" for the surface cell."""
     surface = attribute.name == 'surface_cell_thickness'
@@ -148,6 +170,12 @@ def valid_interiorboundary(instance, attribute, value):
     tliq = instance.boundary.T_liquidus
     if tliq <= tsol:
         raise ValueError(f'Boundary liquidus ({tliq}K) must be greater than solidus ({tsol}K)')
+
+    if instance.boundary.viscosity_phi == 'top' and instance.boundary.melt_model != 'adiabat':
+        raise ValueError(
+            'interior_energetics.boundary.viscosity_phi = "top" needs '
+            'melt_model = "adiabat" (the linear model has no depth profile)'
+        )
 
 
 @define
@@ -263,6 +291,29 @@ def _check_aragog_lid(interior) -> None:
         )
 
 
+def _check_aragog_cmb_phase_band(interior) -> None:
+    """Reject a transition band of the CMB law by phase that leaves [0, 1].
+
+    The band is ``[rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2]``, checked where the
+    law acts: the Aragog module with ``core_bc = 'core_module'`` and ``ra_crit_cmb = 'phase'``.
+    """
+    aragog = interior.aragog
+    if not (
+        interior.module == 'aragog'
+        and aragog.core_bc == 'core_module'
+        and aragog.core_module.ra_crit_cmb == RA_CRIT_PHASE
+    ):
+        return
+    lo = interior.rfront_loc - 0.5 * interior.rfront_wid
+    hi = interior.rfront_loc + 0.5 * interior.rfront_wid
+    if lo < 0.0 or hi > 1.0:
+        raise ValueError(
+            "interior_energetics.aragog.core_module.ra_crit_cmb = 'phase' blends across "
+            f'[rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2] = [{lo:g}, {hi:g}], which '
+            'must lie inside [0, 1]'
+        )
+
+
 def _check_aragog_top_cell_dt_limit_surface_bc(interior) -> None:
     """Reject Aragog top_cell_dt_limit with grey_body surface boundary conditions."""
     if (
@@ -303,9 +354,11 @@ class AragogCoreModule:
     Attributes
     ----------
     alpha: float
-        Core thermal expansion coefficient [K-1].
+        Core thermal expansion coefficient [K-1]. Without a running core module (any other
+        core_bc, or SPIDER) also the expansion coefficient of the Gaussian core fitted to the
+        Zalmoxis structure, whose adiabat sets the core temperature of the next structure solve.
     c_p: float
-        Core specific heat capacity [J kg-1 K-1].
+        Core specific heat capacity [J kg-1 K-1]. Used for that Gaussian core in the same way.
     melting_curve: str
         'iron' (Anzellini et al. (2013)[^cite-anzellini2013] via PALEOS, with light-element
         depression) or 'quadratic' (Nimmo (2015)[^cite-nimmo2015] Eq. 6 parameterisation).
@@ -356,10 +409,18 @@ class AragogCoreModule:
     f_ohm: float
         Ohmic fraction of the dissipation in the field-strength scaling,
         in (0, 1]; Christensen et al. (2009)[^cite-christensen2009] adopt 1 for planets.
-    ra_crit_cmb: float
+    ra_crit_cmb: float | str
         Critical Rayleigh number of the mantle-side boundary layer that sets
-        the CMB heat flux from the core-mantle temperature contrast; the
-        default is the theoretical value of Thiriet et al. (2019)[^cite-thiriet2019], Table 2.
+        the CMB heat flux from the core-mantle temperature contrast. 'phase' (the default)
+        takes 450 while the bottom cell is liquid and eq. 16 while it is solid (the switch of
+        Miyazaki & Korenaga (2019b)[^cite-miyazaki2019b] at the critical melt fraction),
+        blended in the logarithm with the weight (1 + tanh((phi - rfront_loc)/w_s))/2 at the
+        bottom-cell melt fraction phi, w_s = (rfront_wid/2)/atanh(0.9), so the weight is 0.05 and
+        0.95 at the edges of the band [rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2],
+        which must lie inside [0, 1]. 'eq16' takes the lower-layer law of Thiriet et al.
+        (2019)[^cite-thiriet2019], eq. 16, from the internal Rayleigh number of the mantle; a
+        positive, finite number fixes it, for example 450, their Table 2 value for the upper
+        boundary layer.
     flux_geometry: str
         Which printed Earth-core efficiency factor converts the
         superadiabatic flux into the field-strength scaling's F:
@@ -384,7 +445,9 @@ class AragogCoreModule:
     layer_k_mix: float = field(default=1.0e7, validator=gt(0))
     layer_g_mix: float = field(default=1.0e-3, validator=gt(0))
     f_ohm: float = field(default=1.0, validator=(gt(0), le(1)))
-    ra_crit_cmb: float = field(default=450.0, validator=(gt(0), lt(float('inf'))))
+    ra_crit_cmb: float | str = field(
+        default=RA_CRIT_PHASE, converter=_ra_crit_cmb_number, validator=_valid_ra_crit_cmb
+    )
     flux_geometry: str = field(
         default='const_flux', validator=in_(('const_flux', 'zero_outer'))
     )
@@ -757,10 +820,29 @@ class InteriorBoundary:
 
     Attributes
     ----------
+    melt_model: str
+        How the mantle melt fraction follows from the potential temperature.
+        With ``"linear"`` (default) the mantle is a single isothermal,
+        uniform-density layer whose melt fraction is linear between the
+        constant `T_solidus` and `T_liquidus`. With ``"adiabat"`` the potential
+        temperature is integrated down the mantle along an adiabat, on the
+        radial profile written by the interior structure module and with the
+        adiabatic gradient taken from the Zalmoxis equation of state; the melt
+        fraction is the mass integral of the local melt fraction between the
+        pressure-dependent solidus and liquidus: the PALEOS MgSiO3 curves when
+        the structure module is Zalmoxis (solidus set by
+        `interior_struct.zalmoxis.mushy_zone_factor`), otherwise the folder
+        named by `interior_struct.melting_dir`. The
+        latent heat follows from how that melt fraction responds to the
+        potential temperature, and the mantle is handed to the tides modules as
+        ``num_levels - 1`` shells, each with its own melt fraction, temperature
+        and viscosity.
     T_solidus: float
-        Mantle solidus temperature [K].
+        Mantle solidus temperature [K]. Read only when
+        ``melt_model = "linear"``.
     T_liquidus: float
-        Mantle liquidus temperature [K].
+        Mantle liquidus temperature [K]. Read only when
+        ``melt_model = "linear"``.
     critical_rayleigh_number: float
         Critical Rayleigh number for onset of convection [-].
     nusselt_exponent: float
@@ -768,9 +850,12 @@ class InteriorBoundary:
     silicate_heat_capacity: float
         Silicate heat capacity [J/kg/K].
     atm_heat_capacity_const: bool
-        Always use fallback atmosphere heat capacity?
+        Give the atmosphere reservoir that the surface temperature carries the constant
+        `atm_heat_capacity`. With false it takes the layer-mass-weighted mean heat capacity
+        of the last atmosphere solve, so it follows the composition.
     atm_heat_capacity: float
-        Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].
+        Atmosphere heat capacity when `atm_heat_capacity_const` is true, and the fallback
+        before the first atmosphere solve otherwise [J/kg/K].
     silicate_density: float or None
         Deprecated and ignored: the boundary interior takes its mantle mass and radius from the structure.
     core_density: float or None
@@ -797,10 +882,46 @@ class InteriorBoundary:
         Viscosity prefactor [Pa s] for Vogel-Fulcher-Tammann magma ocean model.
     viscosity_activation_temp: float
         Activation temperature [K] for Vogel-Fulcher-Tammann magma ocean model.
+    include_core_heat_capacity: bool
+        Whether the core's heat capacity (`interior_struct.core_heatcap` times
+        the core mass) is added to the mantle's, as in the dummy backend. The
+        core sits at the core-mantle boundary temperature, so with
+        ``melt_model = "adiabat"`` its share is scaled by dT_cmb/dT_p on the
+        adiabat. With false only the mantle stores and releases heat.
+    sensible_heat: str
+        Which part of a partly molten mantle the sensible heat counts with
+        ``melt_model = "linear"``. With ``"molten"`` only the shell above the
+        solidification front cools with the potential temperature, the
+        solidification-front picture this backend was built on. With
+        ``"whole"`` the whole mantle does (c_p M), as in the dummy backend. The
+        latent heat of the front is added in both cases. Not read with
+        ``melt_model = "adiabat"``: the adiabat moves the temperature of every
+        level, solid or molten, so the sensible heat is always that of the whole
+        mantle, c_p M times the mass mean of dT/dT_p at constant pressure.
+    tidal_viscosity: str
+        Viscosity of each mantle shell handed to the tides modules. With
+        ``"boundary"`` it is this backend's own `viscosity_model`, the same
+        viscosity that sets its convective heat flux. With ``"kervazo"`` it is
+        the melt-fraction rheology of Kervazo et al. (2021)[^cite-kervazo2021] that the dummy
+        backend hands them, which matches the shear and bulk moduli the
+        interior wrapper sets for every 0-D backend. The convective heat flux
+        always uses `viscosity_model`.
+    viscosity_phi: str
+        Which melt fraction sets the viscosity of the convective heat flux
+        (Rayleigh number, flux and boundary-layer thickness). With
+        ``"global"`` it is the mantle's mass-averaged melt fraction. With
+        ``"top"`` it is the melt fraction at the top of the mantle on the
+        adiabat, at the structure's top level: the material just beneath the
+        thermal boundary layer, which is what the lid rests on. A lid then forms
+        only once that material passes the rheological transition, not once the
+        mantle average does. Needs ``melt_model = "adiabat"``. Heat capacity,
+        latent heat, the reported melt fraction and outgassing always use the
+        mass-averaged melt fraction.
     logging: bool
         Whether to create diagnostic CSV data files from boundary interior module.
     """
 
+    melt_model: str = field(default='linear', validator=in_(('adiabat', 'linear')))
     T_solidus: float = field(default=1420.0, validator=ge(0))
     T_liquidus: float = field(default=2020.0, validator=gt(0))
 
@@ -828,6 +949,12 @@ class InteriorBoundary:
     # Arrhenius magma ocean parameters (Vogel-Fulcher-Tammann)
     viscosity_prefactor: float = field(default=2.4e-4, validator=gt(0))  # Pa s
     viscosity_activation_temp: float = field(default=4600, validator=gt(0))  # K
+
+    # Choices the dummy backend makes differently; the defaults keep this backend's own.
+    include_core_heat_capacity: bool = field(default=False)
+    sensible_heat: str = field(default='molten', validator=in_(('molten', 'whole')))
+    tidal_viscosity: str = field(default='boundary', validator=in_(('boundary', 'kervazo')))
+    viscosity_phi: str = field(default='global', validator=in_(('global', 'top')))
 
     logging: bool = field(default=False)
 
@@ -1245,8 +1372,9 @@ class Interior:
 
         All aliases will be removed in a future release. The Aragog cross-field
         checks run last: the top_cell_dt_rel_dT pair (again, for an aragog section
-        changed after its own construction) and top_cell_dt_limit against
-        surface_bc_mode = 'grey_body'.
+        changed after its own construction), top_cell_dt_limit against
+        surface_bc_mode = 'grey_body', the solid rheology against the module, the
+        sub-grid lid, and the transition band of the CMB law by phase.
         """
         # Whether each field was supplied is tracked via the sentinel
         # default, not by value-comparison against the resolved default.
@@ -1305,6 +1433,7 @@ class Interior:
         _check_aragog_top_cell_dt_limit_surface_bc(self)
         _check_aragog_rheology_module(self)
         _check_aragog_lid(self)
+        _check_aragog_cmb_phase_band(self)
 
 
 # Thematic grouping for the generated configuration reference. Each entry is

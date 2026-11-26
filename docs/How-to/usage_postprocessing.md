@@ -58,6 +58,32 @@ VULCAN integrates from an initial composition to a steady state, and the initial
 
 `"previous"` is meant for `times = "all"` or a list, where consecutive snapshots are close in time and in composition, to help convergence.
 
+### Bottom boundary condition
+
+The bottom of the VULCAN column is the planet's surface. With `atmos_chem.vulcan.fix_surf = true` the mixing ratios are held at the outgassed surface values. With `false` (default), the surface VMRs are allowed to vary.
+
+### Top boundary condition
+
+The top of the column is set by `atmos_chem.vulcan.escape_bc`:
+
+| `escape_bc` | Upper boundary | Requirement |
+|---|---|---|
+| `false` (default) | No gas crosses the top | |
+| `true` | Each atom escapes at the rate PROTEUS computed for the snapshot | `fix_surf = true` |
+
+With `escape_bc = true`, the escape rate of each element $e$ in the helpfile, `esc_rate_<e>` in kg s$^{-1}$, becomes a number flux of atoms through a sphere of radius `R_xuv`, the radius where the escape module evaluates escape:
+
+$$F_e = \frac{\dot{M}_e \, N_A}{M_e \, 4 \pi R_\mathrm{xuv}^2}$$
+
+A value of `R_xuv` below the surface radius `R_int`, including zero when the escape module leaves it unset, is replaced by `R_int`.
+
+- Only the atoms in the network get a non-zero flux.
+- VULCAN keeps the total number density of every layer fixed by hydrostatic balance, so escape changes the composition, not the pressure.
+- The fluxes are constant during the VULCAN run, at the rates of the snapshot.
+- VULCAN treats the column as plane-parallel, one unit of surface area. Spread over an `R_xuv` surface, the column loses atoms at a rate of $(R_\mathrm{int}/R_\mathrm{xuv})^2$ the PROTEUS escape rate.
+- Atomic species are generated mostly by photolysis, so without photochemistry (`atmos_chem.photo_on = false`) PROTEUS logs a warning.
+- With a free surface boundary condition, the mass budget will not be closed, so `escape_bc = true` requires `fix_surf = true`.
+
 ### Chemistry and climate together: `atmos_chem.vulcan.couple_agni`
 
 By default VULCAN keeps the temperature and eddy diffusion ($K_{zz}$) profiles of the snapshot, which AGNI solved with the outgassed composition, the same at every height. The gases that VULCAN makes and destroys change the radiation, and so the temperature. With `couple_agni = true` the climate is solved again from the composition VULCAN computes, until the two agree:
@@ -123,11 +149,25 @@ Run nothing automatically, then postprocess three chosen times with `proteus off
     times  = [1e3, 1e5, 1e7]   # yr
 ```
 
+### Grids
+
+`proteus offchem --grid` (or `-g`) runs the chemistry on every case of a [grid](usage_grids.md) that has a helpfile:
+
+```console
+proteus offchem -g output/<grid folder>           # run the cases here
+proteus offchem -g output/<grid folder> --slurm   # write a Slurm job array instead
+```
+
+- Each case runs `proteus offchem` with its own config, so `atmos_chem.module` must be set in every case.
+- `max_jobs` of the grid file sets how many cases run at once, at most one per CPU core of the machine. With `--slurm`, the command writes `slurm_offchem.sh` to submit with `sbatch`, which packs the cases into jobs by `cores_per_job`, with `max_days` and `max_mem` per case, as the grid run does. Its jobs are named `proteusoffchem.grid.array`, so `scancel -n` stops them apart from those of the grid run.
+- VULCAN compiles one chemical network file per local installation, so this command compiles it once, before any case runs, and refuses cases that use different networks.
+- The command adds its log to `offchem.log` in the grid output folder, and the output of each case is in `logs/offchem/`.
+
 ### Chemistry configuration
 
 The chemistry behaviour is further controlled by settings under `[atmos_chem]` and `[atmos_chem.vulcan]` in the configuration file. Key options include:
 
-- `atmos_chem.vulcan.network`: Chemical network to use (`"CHO"`, `"NCHO"`, or `"SNCHO"`)
+- `atmos_chem.vulcan.network`: Chemical network to use (`"CHO"`, `"NCHO"`, or `"SNCHO"`; VULCAN has SNCHO only with photochemistry)
 - `atmos_chem.photo_on`: Enable photochemistry
 - `atmos_chem.Kzz_on`: Enable eddy diffusion mixing
 

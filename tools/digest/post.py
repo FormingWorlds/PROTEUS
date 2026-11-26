@@ -1,38 +1,33 @@
-"""Decide whether to post the rendered digest, and post it as a discussion.
+"""Decide whether a run is live, and deposit the live digest as the artifact ``digest-live``.
 
 Usage::
 
     python tools/digest/post.py decide collected.json --event EVENT --post-input BOOL
-    python tools/digest/post.py publish collected.json draft.json OUTDIR --event EVENT --post-input BOOL --run-url URL
+    python tools/digest/post.py deposit collected.json draft.json OUTDIR --event EVENT --post-input BOOL --run-url URL --live-dir DIR --output FILE
 
-``decide`` prints ``live=true`` or ``live=false`` for ``$GITHUB_OUTPUT``. ``publish``
-repeats every guard (posting switched on, a window that is not back-dated, a
-scheduled run or a ticked post box, a draft that passes the check, a body that is
-not a dry run, a body that links only to collected items and the run and mentions
-only their authors), then creates the discussion in the digest category of the first
-repository in the settings. It skips with a notice when the newest digest post has
-the same run id or title, or a window end that is not earlier than this one: one
-post per run and per meeting, and no stale post after a newer one.
+``decide`` prints ``live=true`` or ``live=false`` for ``$GITHUB_OUTPUT``; it is false
+off the default branch and in a rerun. ``deposit``
+repeats every guard (posting switched on, a run on the default branch, a window that
+is not back-dated, a scheduled run or a ticked post box, a draft that passes the
+check, a body that is not a dry run, a body whose links all come from
+``render.allowed_urls`` and that mentions nobody), then writes ``digest.json`` and
+``digest.md`` to DIR, which the workflow uploads as ``digest-live``. It deposits
+nothing, with a notice, in a rerun (``GITHUB_RUN_ATTEMPT`` above 1), and when the
+newest live digest has the same run id or title, or a window end that is not earlier
+than this one: one live digest per run and per meeting. It writes ``deposited=true`` or ``deposited=false`` to FILE.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 from check import check
-from collect import parse_state, previous_state, trusted
-from common import DigestError, GitHub, find_category, is_bot, load_settings, parse_time
-from render import scan_body
-
-CREATE = """
-mutation($repo: ID!, $category: ID!, $title: String!, $body: String!) {
-  createDiscussion(input: {repositoryId: $repo, categoryId: $category, title: $title, body: $body}) {
-    discussion { url author { login __typename } }
-  }
-}
-"""
+from collect import live_state, parse_state
+from common import DigestError, GitHub, load_settings, parse_time
+from render import allowed_urls, scan_body
 
 
 def live_event(event: str, post_input: bool) -> bool:
@@ -40,30 +35,20 @@ def live_event(event: str, post_input: bool) -> bool:
     return event == 'schedule' or post_input
 
 
-def decide(settings: dict, event: str, post_input: bool, backdated: bool) -> bool:
-    """True only when posting is switched on and the run is a scheduled or confirmed live run."""
-    return settings['publish'] and not backdated and live_event(event, post_input)
+def decide(
+    settings: dict, event: str, post_input: bool, backdated: bool, ref: str, attempt: str
+) -> bool:
+    """True only for a first attempt on main of a scheduled or confirmed live run with posting on.
 
-
-def create_discussion(gh: GitHub, home: str, category: str, title: str, body: str) -> str:
-    """Create the discussion and return its URL.
-
-    Raises
-    ------
-    DigestError
-        When the category does not exist, or when the new post has an author that
-        the state reader does not trust, so the next run would not find it.
+    A run off main or a rerun deposits nothing, so its body is rendered as a dry run.
     """
-    repo, cat = find_category(gh, home, category)
-    if cat is None:
-        raise DigestError(f'no discussion category with slug "{category}" in {home}')
-    out = gh.graphql(CREATE, retry=False, repo=repo, category=cat, title=title, body=body)
-    made = out['createDiscussion']['discussion']
-    if not trusted(made['author']):
-        raise DigestError(
-            f'posted {made["url"]} as {made["author"]}, which the next run ignores'
-        )
-    return made['url']
+    return (
+        settings['publish']
+        and not backdated
+        and live_event(event, post_input)
+        and ref == 'refs/heads/main'
+        and attempt == '1'
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -78,23 +63,18 @@ def main(argv: list[str] | None = None) -> int:
             opts['--event'],
             opts['--post-input'] == 'true',
             data['window']['backdated'],
+            os.environ.get('GITHUB_REF', ''),
+            os.environ.get('GITHUB_RUN_ATTEMPT', '1'),
         )
         print(f'live={str(live).lower()}')
         return 0
-    if args[0] != 'publish':
+    if args[0] != 'deposit':
         raise SystemExit(f'unknown command {args[0]}')
     opts = dict(zip(args[4::2], args[5::2]))
     fails = check(data, json.loads(Path(args[2]).read_text()))
     post = json.loads((Path(args[3]) / 'digest.json').read_text())
-    items = data['prs'] + data['releases']
     problems = scan_body(
-        post['body'],
-        [i['url'] for i in items] + [opts.get('--run-url', '')],
-        [
-            i['author']
-            for i in items
-            if not is_bot(i['author'], i['author_kind'], settings['bots'])
-        ],
+        post['body'], allowed_urls(data, opts.get('--run-url', ''), settings['bots']), []
     )
     for problem in problems:
         print(f'Link problem: {json.dumps(problem)}')
@@ -102,6 +82,7 @@ def main(argv: list[str] | None = None) -> int:
         reason
         for reason, bad in (
             ('posting is switched off', not settings['publish']),
+            ('not on the default branch', os.environ.get('GITHUB_REF') != 'refs/heads/main'),
             ('the window is back-dated', data['window']['backdated']),
             ('not a live run', not live_event(opts['--event'], opts['--post-input'] == 'true')),
             (f'{len(fails)} check failures', fails),
@@ -111,24 +92,42 @@ def main(argv: list[str] | None = None) -> int:
         if bad
     ]
     if reasons:
-        raise DigestError(f'not posted: {", ".join(reasons)}')
+        raise DigestError(f'not deposited: {", ".join(reasons)}')
     gh, home = GitHub(), settings['repos'][0]
-    last = previous_state(gh, home, settings['category']) or {}
+    last = live_state(gh, home) or {}
     mine = {**(parse_state(post['body']) or {}), 'title': post['title']}
     same = [
         f'the same {k.replace("_", " ")}'
         for k in ('run_id', 'title')
         if mine.get(k) and last.get(k) == mine[k]
     ]
+    rerun = os.environ.get('GITHUB_RUN_ATTEMPT', '1') != '1'
     if last.get('until') and parse_time(mine['until']) <= parse_time(last['until']):
         same.append('a window end that is not earlier')
     if same:
         print(
-            f'::notice::Not posted: the newest digest {last.get("url")} has {", ".join(same)}'
+            f'::notice::Not deposited: the newest live digest of run {last.get("run_id")} has {", ".join(same)}'
         )
-        return 0
-    url = create_discussion(gh, home, settings['category'], post['title'], post['body'])
-    print(f'Posted {url}')
+    if rerun:
+        print('::notice::Not deposited: this is a rerun; start a new manual run instead')
+    if not same and not rerun:
+        doc = {
+            'live': True,
+            'run_id': mine.get('run_id', ''),
+            'run_url': opts.get('--run-url', ''),
+            'event': opts['--event'],
+            'since': data['window']['since'],
+            'until': data['window']['until'],
+            'title': post['title'],
+            'body': post['body'],
+        }
+        live = Path(opts['--live-dir'])
+        live.mkdir(parents=True, exist_ok=True)
+        (live / 'digest.json').write_text(json.dumps(doc))
+        (live / 'digest.md').write_text(post['body'])
+        print(f'Deposited {post["title"]} for the artifact digest-live')
+    with open(opts['--output'], 'a') as fh:
+        fh.write(f'deposited={str(not same and not rerun).lower()}\n')
     return 0
 
 

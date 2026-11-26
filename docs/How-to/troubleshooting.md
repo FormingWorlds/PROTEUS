@@ -12,6 +12,7 @@ step-by-step guide or the advice below,
 | Error / symptom | Section |
 |---|---|
 | `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
+| `Aragog CMB closure check failed (CMBClosureError)` | [The CMB closure check of Aragog fails](#the-cmb-closure-check-of-aragog-fails) |
 | `was written before N column(s) of the current output schema existed` | [Resuming an older run](#resuming-a-run-written-by-an-older-proteus) |
 | `Resume: no Zalmoxis structure file matches the helpfile row` | [Resume stops on the Zalmoxis structure](#resume-stops-no-zalmoxis-structure-file-matches-the-row) |
 | `interior_energetics.aragog.<law>` or `interior_energetics.mixing_length is ... but the run was written with`, or `... is not recorded in`, after `Resume refused:` | [Resume stops on a separation law](#resume-stops-on-a-separation-law) |
@@ -28,6 +29,7 @@ step-by-step guide or the advice below,
 | `libudev.so.1` not found | [libudev](#libudevso1-not-found) |
 | `OpenSSL_jll` / Julia error | [Julia compatibility](#julia-compatibility-error) |
 | `PythonCall ... is required but does not seem to be installed` / `failed to find source of parent package` | [Julia depot with no packages](#julia-depot-with-no-packages) |
+| `could not load library ".../.juliaup/bin/../lib/julia/sys.so"`, or pytest exits with code 1 and prints nothing | [Julia system image not found](#julia-system-image-not-found) |
 | PETSc fails on Apple Silicon | [PETSc Apple Silicon](#petsc-compilation-fails-on-apple-silicon) |
 | `x86-pad-for-align` / SOCRATES | [SOCRATES compilation](#errors-during-the-socrates-compilation) |
 | `libcrypto.3.dylib` not found | [netCDF error](#python-netcdf-library-error) |
@@ -39,7 +41,7 @@ step-by-step guide or the advice below,
 
 ### Numerically fragile coupled runs {#numerically-fragile-coupled-runs}
 
-Some coupled atmosphere-interior-outgassing configurations occasionally fail with messages such as `RuntimeError: Aragog retry ladder exhausted` or with warnings about T_core jumping >1500 K despite Aragog reporting `status=0`. The same config may succeed on one launch and fail on the next.
+Some coupled atmosphere-interior-outgassing configurations occasionally fail with messages such as `proteus.interior_energetics.aragog.RetryLadderExhaustedError: Aragog retry ladder exhausted` or with warnings about T_core jumping >1500 K despite Aragog reporting `status=0`. The same config may succeed on one launch and fail on the next.
 
 The cause is sub-1e-7 floating-point noise in JAX/XLA reduction order that compounds through Aragog's tight tolerances and lands the solver on a wrong P-S branch within ~15 iterations.
 
@@ -55,6 +57,17 @@ The flag intercepts itself in `sys.argv` *before* any heavy imports, sets `JAX_E
 Do not enable by default; the flag has a small per-step cost. Use only when a config shows noise-floor divergence between launches.
 
 For broader convergence problems,see [stabilising simulations](stabilise_run.md).
+
+### The CMB closure check of Aragog fails {#the-cmb-closure-check-of-aragog-fails}
+
+With `interior_energetics.aragog.core_bc = "energy_balance"`, `"gradient"` or `"core_module"`, Aragog checks the heat budget at the core-mantle boundary (CMB) after each call; `"quasi_steady"` and `"bower2018"` have no such check. With `"energy_balance"` or `"gradient"`, the change of the core heat in the call must match the heat that crossed the CMB. With `"core_module"`, the CMB node must follow the change of the core top. A miss above the bound of the check gives a warning. A miss above 10 times that bound, or a slope (dT/dS)_P of the CMB node that is not finite and positive, raises `CMBClosureError`.
+
+PROTEUS then logs `Aragog CMB closure check failed (CMBClosureError) #n/3` with the message of Aragog. It keeps the interior state of the previous step for this step, sets the energy columns of the call to 0, and goes on with the other modules. Three failed Aragog calls in a row stop the run. The retry ladder does not run for this error.
+
+What to check, by the message of Aragog:
+
+- `node slope (dT/dS)_P = ...`: the CMB node is in a part of the P-S tables where the temperature does not rise with entropy, or the slope there is not a number. Compare the temperature or entropy in the message with the range of the tables at the CMB pressure.
+- `ledger miss ... is above 10x the solver bound`: the core heat and the CMB heat of the call disagree. The bound adds the error that the solver tolerance allows at the CMB node, the error of the tabulated slope there and the error of the time integral of the CMB heat. Aragog takes it as a worst case, so a miss above 10 times the bound points to the closure at the CMB, not to the tolerance.
 
 ### Aragog stops at setup: CVODE cannot be imported {#aragog-stops-at-setup-cvode-cannot-be-imported}
 
@@ -278,6 +291,28 @@ LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --project=AGNI -e 'using Pkg; Pkg.inst
 ```
 
 A project that you set yourself with `PYTHON_JULIAPKG_PROJECT` needs the same command; the installer leaves it alone.
+
+### Julia system image not found {#julia-system-image-not-found}
+
+`import proteus`, `import juliacall` or a run with AGNI stops with `could not load library ".../.juliaup/bin/../lib/julia/sys.so"`, or pytest exits with code 1 and prints nothing. This happens in some shells, not all. juliapkg has recorded the juliaup launcher (`~/.juliaup/bin/julia`) as the Julia program, and juliacall looks for the Julia system image (`sys.so`) next to it, where there is none. Julia then ends the Python process, so there is no Python traceback.
+
+Point juliacall at the real Julia program and at the Julia project of your Python environment. Set both variables together, because juliacall refuses one without the other, in the shell before any PROTEUS, AGNI or test command:
+
+```console
+export PYTHON_JULIACALL_EXE="$(julia --startup-file=no -e 'print(joinpath(Sys.BINDIR, "julia"))')"
+export PYTHON_JULIACALL_PROJECT="$(python -c 'import juliapkg; print(juliapkg.project())')"
+```
+
+The first line asks Julia, through the launcher, for the path of the program it runs, for example `~/.julia/juliaup/julia-1.13.1+0.x64.linux.gnu/bin/julia`. The second prints the Julia project that juliacall uses for the active Python environment, which is `$CONDA_PREFIX/julia_env` in a conda environment. Run both with the `proteus` environment active.
+
+To keep the values in every new shell, store them in the environment and activate it again:
+
+```console
+conda env config vars set -n proteus PYTHON_JULIACALL_EXE="$PYTHON_JULIACALL_EXE" PYTHON_JULIACALL_PROJECT="$PYTHON_JULIACALL_PROJECT"
+conda deactivate && conda activate proteus
+```
+
+Set them again after a Julia update, since the path of the program changes with the version. Where juliacall starts Julia without them, leave both unset.
 
 ### Julia compatibility error {#julia-compatibility-error}
 

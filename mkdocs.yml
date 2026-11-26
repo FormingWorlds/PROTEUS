@@ -53,6 +53,7 @@ nav:
       - Orbit and tidal evolution: Tutorials/orbit_tides.md
       - Giant impacts with a partial re-melt: Tutorials/giant_impact_remelt.md
       - Volatiles held under a closed crust: Tutorials/lid_seal.md
+      - The core temperature of the structure solve: Tutorials/core_table.md
 
   - Explanations:
       - Scientific background:
@@ -76,9 +77,14 @@ nav:
           - Transparent black-body limit (agni.py): Validation/atmos_clim/agni.md
           - Lid and open surface in the call (common.py): Validation/atmos_clim/common.md
       - Interior energetics:
+          - Mantle adiabat and melt fraction (adiabat.py): Validation/interior_energetics/adiabat.md
+          - Boundary backend on a mantle adiabat (boundary.py): Validation/interior_energetics/boundary.md
+          - Radiogenic decay and solidification front (common.py): Validation/interior_energetics/common.md
           - Mixing length at the core-mantle boundary (aragog.py): Validation/interior_energetics/aragog.md
           - Partial giant-impact re-melt (remelt.py): Validation/interior_energetics/remelt.md
+          - Melt curve and mantle shells (resolved_mantle.py): Validation/interior_energetics/resolved_mantle.md
       - Interior structure:
+          - Core temperature in the structure solve (core_temperature.py): Validation/interior_struct/core_temperature.md
           - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
       - Orbit:
           - Orbital evolution (orbit.py): Validation/orbit/orbit.md
@@ -108,6 +114,7 @@ nav:
           - Escape and outgassing: Reference/config/escape_outgas.md
           - Accretion: Reference/config/accretion.md
           - Observations: Reference/config/observe.md
+      - Lid coupling details: Reference/lid_coupling.md
       - Melting curves: Reference/melting_curves.md
       - Module map: Reference/module_map.md
       - Module versions: Reference/module_versions.md
@@ -235,6 +242,7 @@ extra:
 extra_javascript:
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
   - javascripts/header-links.js
+  - javascripts/grid-explorer.js
 
 extra_css:
   - stylesheets/extra.css

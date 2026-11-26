@@ -4579,7 +4579,7 @@
           "value": 0
         }
       ],
-      "description": "Minimum time between structure updates [yr]; prevents thrashing.",
+      "description": "Minimum time between structure updates [yr]; prevents thrashing. Every trigger waits for it, the recovery of `update_stale_ceiling` included. Only mesh convergence skips it: the extra re-solves, spaced by `mesh_convergence_interval`, that follow an update whose mesh shift was limited to `mesh_max_shift`.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 4,
@@ -4675,7 +4675,7 @@
           "value": 0
         }
       ],
-      "description": "Time since the last successful re-solve after which a trigger refires [yr]; 0 disables.",
+      "description": "Recovery after a failed re-solve [yr]: if no other trigger fires, a new re-solve starts once this time has passed since the last attempt. The other triggers can start one sooner, after `update_min_interval`. On resume the resumed time counts as the last attempt. Has an effect only if smaller than `update_interval`, and only while the last re-solve has failed; 0 disables.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 5,
@@ -5711,7 +5711,7 @@
           "value": 0
         }
       ],
-      "description": "Core thermal expansion coefficient [K-1].",
+      "description": "Core thermal expansion coefficient [K-1]. Without a running core module (any other core_bc, or SPIDER) also the expansion coefficient of the Gaussian core fitted to the Zalmoxis structure, whose adiabat sets the core temperature of the next structure solve.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5732,7 +5732,7 @@
           "value": 0
         }
       ],
-      "description": "Core specific heat capacity [J kg-1 K-1].",
+      "description": "Core specific heat capacity [J kg-1 K-1]. Used for that Gaussian core in the same way.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6078,21 +6078,12 @@
       "path": "interior_energetics.aragog.core_module.ra_crit_cmb",
       "toml_section": "interior_energetics.aragog.core_module",
       "class": "AragogCoreModule",
-      "type": "float",
+      "type": "float or str",
       "accepts_none": false,
-      "default": "450.0",
+      "default": "\"phase\"",
       "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        },
-        {
-          "op": "<",
-          "value": Infinity
-        }
-      ],
-      "description": "Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast; the default is the theoretical value of Thiriet et al. (2019)[^cite-thiriet2019], Table 2.",
+      "bounds": null,
+      "description": "Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast. 'phase' (the default) takes 450 while the bottom cell is liquid and eq. 16 while it is solid (the switch of Miyazaki & Korenaga (2019b)[^cite-miyazaki2019b] at the critical melt fraction), blended in the logarithm with the weight (1 + tanh((phi - rfront_loc)/w_s))/2 at the bottom-cell melt fraction phi, w_s = (rfront_wid/2)/atanh(0.9), so the weight is 0.05 and 0.95 at the edges of the band [rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2], which must lie inside [0, 1]. 'eq16' takes the lower-layer law of Thiriet et al. (2019)[^cite-thiriet2019], eq. 16, from the internal Rayleigh number of the mantle; a positive, finite number fixes it, for example 450, their Table 2 value for the upper boundary layer.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6378,6 +6369,25 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.boundary.melt_model",
+      "toml_section": "interior_energetics.boundary",
+      "class": "InteriorBoundary",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"linear\"",
+      "choices": [
+        "adiabat",
+        "linear"
+      ],
+      "bounds": null,
+      "description": "How the mantle melt fraction follows from the potential temperature. With ``\"linear\"`` (default) the mantle is a single isothermal, uniform-density layer whose melt fraction is linear between the constant `T_solidus` and `T_liquidus`. With ``\"adiabat\"`` the potential temperature is integrated down the mantle along an adiabat, on the radial profile written by the interior structure module and with the adiabatic gradient taken from the Zalmoxis equation of state; the melt fraction is the mass integral of the local melt fraction between the pressure-dependent solidus and liquidus: the PALEOS MgSiO3 curves when the structure module is Zalmoxis (solidus set by `interior_struct.zalmoxis.mushy_zone_factor`), otherwise the folder named by `interior_struct.melting_dir`. The latent heat follows from how that melt fraction responds to the potential temperature, and the mantle is handed to the tides modules as ``num_levels - 1`` shells, each with its own melt fraction, temperature and viscosity.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.boundary.T_solidus",
       "toml_section": "interior_energetics.boundary",
       "class": "InteriorBoundary",
@@ -6391,7 +6401,7 @@
           "value": 0
         }
       ],
-      "description": "Mantle solidus temperature [K].",
+      "description": "Mantle solidus temperature [K]. Read only when ``melt_model = \"linear\"``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6412,7 +6422,7 @@
           "value": 0
         }
       ],
-      "description": "Mantle liquidus temperature [K].",
+      "description": "Mantle liquidus temperature [K]. Read only when ``melt_model = \"linear\"``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6533,7 +6543,7 @@
       "default": "true",
       "choices": null,
       "bounds": null,
-      "description": "Always use fallback atmosphere heat capacity?",
+      "description": "Give the atmosphere reservoir that the surface temperature carries the constant `atm_heat_capacity`. With false it takes the layer-mass-weighted mean heat capacity of the last atmosphere solve, so it follows the composition.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6554,7 +6564,7 @@
           "value": 0
         }
       ],
-      "description": "Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].",
+      "description": "Atmosphere heat capacity when `atm_heat_capacity_const` is true, and the fallback before the first atmosphere solve otherwise [J/kg/K].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6743,6 +6753,79 @@
         }
       ],
       "description": "Activation temperature [K] for Vogel-Fulcher-Tammann magma ocean model.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.boundary.include_core_heat_capacity",
+      "toml_section": "interior_energetics.boundary",
+      "class": "InteriorBoundary",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Whether the core's heat capacity (`interior_struct.core_heatcap` times the core mass) is added to the mantle's, as in the dummy backend. The core sits at the core-mantle boundary temperature, so with ``melt_model = \"adiabat\"`` its share is scaled by dT_cmb/dT_p on the adiabat. With false only the mantle stores and releases heat.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.boundary.sensible_heat",
+      "toml_section": "interior_energetics.boundary",
+      "class": "InteriorBoundary",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"molten\"",
+      "choices": [
+        "molten",
+        "whole"
+      ],
+      "bounds": null,
+      "description": "Which part of a partly molten mantle the sensible heat counts with ``melt_model = \"linear\"``. With ``\"molten\"`` only the shell above the solidification front cools with the potential temperature, the solidification-front picture this backend was built on. With ``\"whole\"`` the whole mantle does (c_p M), as in the dummy backend. The latent heat of the front is added in both cases. Not read with ``melt_model = \"adiabat\"``: the adiabat moves the temperature of every level, solid or molten, so the sensible heat is always that of the whole mantle, c_p M times the mass mean of dT/dT_p at constant pressure.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.boundary.tidal_viscosity",
+      "toml_section": "interior_energetics.boundary",
+      "class": "InteriorBoundary",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"boundary\"",
+      "choices": [
+        "boundary",
+        "kervazo"
+      ],
+      "bounds": null,
+      "description": "Viscosity of each mantle shell handed to the tides modules. With ``\"boundary\"`` it is this backend's own `viscosity_model`, the same viscosity that sets its convective heat flux. With ``\"kervazo\"`` it is the melt-fraction rheology of Kervazo et al. (2021)[^cite-kervazo2021] that the dummy backend hands them, which matches the shear and bulk moduli the interior wrapper sets for every 0-D backend. The convective heat flux always uses `viscosity_model`.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.boundary.viscosity_phi",
+      "toml_section": "interior_energetics.boundary",
+      "class": "InteriorBoundary",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"global\"",
+      "choices": [
+        "global",
+        "top"
+      ],
+      "bounds": null,
+      "description": "Which melt fraction sets the viscosity of the convective heat flux (Rayleigh number, flux and boundary-layer thickness). With ``\"global\"`` it is the mantle's mass-averaged melt fraction. With ``\"top\"`` it is the melt fraction at the top of the mantle on the adiabat, at the structure's top level: the material just beneath the thermal boundary layer, which is what the lid rests on. A lid then forms only once that material passes the rheological transition, not once the mantle average does. Needs ``melt_model = \"adiabat\"``. Heat capacity, latent heat, the reported melt fraction and outgassing always use the mass-averaged melt fraction.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -9363,7 +9446,7 @@
       "class": "Agni",
       "type": "bool",
       "accepts_none": false,
-      "default": "false",
+      "default": "true",
       "choices": null,
       "bounds": null,
       "description": "Account for conductive heat transport, using Fourier's law.",
@@ -10619,6 +10702,22 @@
       "group_qualifier": null
     },
     {
+      "path": "atmos_chem.vulcan.escape_bc",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Upper boundary condition. If true, each atom in the network leaves the top layer at the PROTEUS escape rate; requires fix_surf = true. If false, no gas crosses the top.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "atmos_chem.vulcan.network",
       "toml_section": "atmos_chem.vulcan",
       "class": "Vulcan",
@@ -11151,7 +11250,7 @@
       "default": "true",
       "choices": null,
       "bounds": null,
-      "description": "Use photochemistry.",
+      "description": "Use photochemistry. Required with the VULCAN network SNCHO, which VULCAN has only with photochemistry.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12761,6 +12860,17 @@
       "doc": "The Morrigan module requires as many embryo masses as planets, all positive, and a valid selector value when the selector is a semi-major axis or planet id."
     },
     {
+      "validator": "valid_escape_bc",
+      "module": "_atmos_chem.py",
+      "attached_to": [
+        "atmos_chem.vulcan.escape_bc"
+      ],
+      "touches": [
+        "fix_surf"
+      ],
+      "doc": "Refuse `escape_bc = true` unless the surface mixing ratios are fixed."
+    },
+    {
       "validator": "valid_ini_mix",
       "module": "_atmos_chem.py",
       "attached_to": [
@@ -12781,6 +12891,18 @@
         "module"
       ],
       "doc": "Refuse coupled chemistry, and automatic chemistry without a module."
+    },
+    {
+      "validator": "valid_photo_on",
+      "module": "_atmos_chem.py",
+      "attached_to": [
+        "atmos_chem.photo_on"
+      ],
+      "touches": [
+        "module",
+        "vulcan.network"
+      ],
+      "doc": "Refuse VULCAN's SNCHO network without photochemistry, which VULCAN does not have."
     },
     {
       "validator": "valid_aerosols_enabled",
@@ -12900,6 +13022,19 @@
         "escape.module"
       ],
       "doc": "BOREAS escape requires a radiative atmosphere (not dummy)."
+    },
+    {
+      "validator": "boundary_melting_dir_advisory",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_energetics.boundary.melt_model",
+        "interior_energetics.module",
+        "interior_struct"
+      ],
+      "doc": "Advise when a configured melting curve folder is bypassed by the boundary backend."
     },
     {
       "validator": "boundary_requires_fixed_surface_state",
@@ -13457,6 +13592,8 @@
       "touches": [
         "boundary.T_liquidus",
         "boundary.T_solidus",
+        "boundary.melt_model",
+        "boundary.viscosity_phi",
         "module"
       ],
       "doc": "Validate Boundary backend's solidus/liquidus ordering."

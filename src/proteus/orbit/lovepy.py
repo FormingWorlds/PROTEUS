@@ -127,7 +127,10 @@ def run_lovepy(
 
     # Get viscous region and check if fully liquid
     i_top = 0  # index of topmost cell which has visc>visc_thresh
-    if config.interior_energetics.module in ('dummy', 'boundary'):
+    # The boundary backend publishes one layer under its linear melt model, shells under the adiabat.
+    module = config.interior_energetics.module
+    single_layer = module == 'dummy' or (module == 'boundary' and interior_o.nlev_s == 1)
+    if single_layer:
         if lov['visc'][0] < config.orbit.lovepy.visc_thresh:
             # Store empty tidal mode information
             store_lovepy_tides(omega, 0.0, config, tides_o)
@@ -181,7 +184,7 @@ def run_lovepy(
         raise RuntimeError('Encountered problem when running lovepy module')
 
     # Extract result and store
-    if config.interior_energetics.module in ('dummy', 'boundary'):
+    if single_layer:
         interior_o.tides[0] = power_prf[1]
 
     else:
