@@ -5640,11 +5640,12 @@ def _stellar_steps(p, rows, steps):
 
     Each row starts as a copy of the last, 100 yr later and on a slightly wider orbit,
     so a spectrum taken at another row differs in age and in distance. Returns per step
-    whether the spectrum changed, the spectrum, and whether the stellar quantities changed.
+    whether the spectrum changed, the spectrum, how often the stellar quantities were
+    updated, and the keyword arguments of the stellar calls.
     """
     log = []
     with (
-        patch('proteus.star.wrapper.get_new_spectrum', side_effect=_toy_spectrum),
+        patch('proteus.star.wrapper.get_new_spectrum', side_effect=_toy_spectrum) as spectrum,
         patch('proteus.star.wrapper.update_stellar_quantities') as quantities,
         patch('proteus.star.wrapper.write_spectrum') as write,
     ):
@@ -5654,8 +5655,12 @@ def _stellar_steps(p, rows, steps):
             p.hf_row['age_star'] += _STEP_YR
             p.hf_row['semimajorax'] *= 1.001
             changed = p._run_stellar_step()
-            log.append((changed, p.star_fl.copy(), quantities.call_count))
+            calls = quantities.call_args_list + spectrum.call_args_list
+            log.append(
+                (changed, p.star_fl.copy(), quantities.call_count, [c.kwargs for c in calls])
+            )
             quantities.reset_mock()
+            spectrum.reset_mock()
             rows.append(dict(p.hf_row))
             p.loops['total'] += 1
         assert write.call_count == sum(entry[0] for entry in log)
@@ -5701,7 +5706,7 @@ def test_a_resumed_run_updates_the_star_as_the_run_in_one_go(tmp_path, starspec,
 
     assert [entry[0] for entry in log_b] == [entry[0] for entry in log_a[4:]]
     assert [entry[2] for entry in log_b] == [entry[2] for entry in log_a[4:]]
-    for (_, fl_a, _), (_, fl_b, _) in zip(log_a[4:], log_b):
+    for (_, fl_a, _, _), (_, fl_b, _, _) in zip(log_a[4:], log_b):
         np.testing.assert_array_equal(fl_b, fl_a)
 
     resume_row = rows[5]
@@ -5718,7 +5723,7 @@ def test_a_resume_restores_the_first_spectrum_when_none_followed(tmp_path):
     p = _stellar_proteus(tmp_path / 'b', 1.0e9, 1.0e9)
     p.loops['total'] = 4
 
-    ((changed, fl, quantities),) = _stellar_steps(p, rows, 1)
+    ((changed, fl, quantities, _),) = _stellar_steps(p, rows, 1)
 
     assert (changed, quantities) == (False, 0)
     assert p.hf_row['star_spec_time'] == pytest.approx(1.0, rel=1e-15)
@@ -5745,10 +5750,51 @@ def test_a_resume_from_a_helpfile_without_the_spectrum_columns_computes_a_new_sp
     p = _stellar_proteus(tmp_path, starspec=1.0e9, starinst=150.0)
     p.loops['total'] = 4
 
-    ((changed, fl, quantities),) = _stellar_steps(p, [row], 1)
+    ((changed, fl, quantities, _),) = _stellar_steps(p, [row], 1)
 
     assert (changed, quantities) == (True, 1)
     assert p.hf_row['star_spec_time'] == pytest.approx(400.0, rel=1e-15)
     assert p.hf_row['star_spec_dist'] == pytest.approx(1.001e11, rel=1e-12)
     _, fl_now = _toy_spectrum(_AGE_INI_YR + 400.0, None)
     np.testing.assert_allclose(fl, fl_now * (_AU_M / 1.001e11) ** 2, rtol=1e-12)
+
+
+@pytest.mark.unit
+def test_the_star_is_updated_once_more_than_an_interval_has_passed(tmp_path):
+    """With 200 yr intervals and 100 yr steps after the first update at 1 yr, the star
+    is updated at 300, 600 and 900 yr: a difference of exactly 200 yr (at 500 yr) is not
+    enough. Each update gets the star models of the run."""
+    p = _stellar_proteus(tmp_path, starspec=200.0, starinst=200.0)
+    p.star_struct, p.star_props, p.stellar_track = 'struct', 'props', 'track'
+    p.star_modern_wl, p.star_modern_fl = 'modern_wl', 'modern_fl'
+
+    rows, log = _run_in_one_go(p, 9)
+
+    updated = [row['Time'] for row, entry in zip(rows[1:], log) if entry[0]]
+    assert updated == [300.0, 600.0, 900.0]
+    assert [entry[2] for entry in log] == [int(entry[0]) for entry in log]
+    models = {
+        'star_struct_modern': 'struct',
+        'star_props_modern': 'props',
+        'stellar_track': 'track',
+        'modern_wl': 'modern_wl',
+        'modern_fl': 'modern_fl',
+    }
+    assert log[2][3] == [{'stellar_track': 'track'}, models]
+    assert (rows[-1]['star_spec_time'], rows[-1]['star_inst_time']) == (900.0, 900.0)
+
+
+@pytest.mark.unit
+def test_a_clamped_step_updates_the_stellar_quantities_but_not_the_spectrum(tmp_path):
+    """A step whose size the interior clamped updates the stellar quantities before
+    their interval has passed, and keeps the spectrum."""
+    rows, _ = _run_in_one_go(_stellar_proteus(tmp_path / 'a', 1.0e9, 1.0e9), 2)
+    p = _stellar_proteus(tmp_path / 'b', 1.0e9, 1.0e9)
+    p.loops['total'] = 3
+    p.interior_o.timestep_clamped = True
+
+    ((changed, fl, quantities, _),) = _stellar_steps(p, rows, 1)
+
+    assert (changed, quantities) == (False, 1)
+    assert p.hf_row['star_inst_time'] == pytest.approx(300.0, rel=1e-15)
+    assert p.hf_row['star_spec_time'] == pytest.approx(1.0, rel=1e-15)
