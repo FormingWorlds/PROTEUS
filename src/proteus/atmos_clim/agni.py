@@ -954,8 +954,8 @@ def _load_stored_profile(atmos, nc_path: str):
             Path to an atmosphere file written by `write_atmos_ncdf`
     """
     with Dataset(nc_path) as ds:
-        p = np.asarray(ds['p'][:], dtype=float)
-        tmp = np.asarray(ds['tmp'][:], dtype=float)
+        p = ds['p'][:]
+        tmp = ds['tmp'][:]
 
     if len(p) != len(atmos.p):
         jl.AGNI.setpt.fromncdf_b(atmos, nc_path)
