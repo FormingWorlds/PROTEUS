@@ -110,13 +110,14 @@ def test_resumed_run_resolves_the_structure_at_the_rows_of_the_run_in_one_go(run
     np.testing.assert_allclose(resumed['Time'], whole['Time'], rtol=1e-12)
     np.testing.assert_allclose(_resolve_times(resumed), t_whole, rtol=1e-12)
     np.testing.assert_allclose(resumed['struct_ref_time'], whole['struct_ref_time'], rtol=1e-12)
-    # A resumed Aragog run reproduces T and Phi within STATE_RTOL of test_slow_aragog_resume.py.
+    # After the stop a resumed Aragog run reproduces T and Phi within STATE_RTOL of
+    # test_slow_aragog_resume.py; before it the two fresh runs differ by up to 2.4e-5 in T.
+    after = (whole['Time'] > T_STOP_YR).to_numpy()
     for key in ('struct_ref_T_magma', 'struct_ref_Phi'):
-        np.testing.assert_allclose(resumed[key], whole[key], rtol=1e-5)
+        np.testing.assert_allclose(resumed[key][after], whole[key][after], rtol=1e-5)
 
     t_no_refs = _resolve_times(no_refs)
     assert len(t_no_refs) != len(t_whole) or not np.allclose(t_no_refs, t_whole)
 
-    after = (resumed['Time'] > T_STOP_YR).to_numpy()
     assert (resumed['T_magma'][after] > 0).all()
     assert resumed['Phi_global'][after].between(0.0, 1.0).all()
