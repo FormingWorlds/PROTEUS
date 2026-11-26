@@ -163,6 +163,10 @@ def _restored_crystallization(hf_all, phi_crit: float, remelt_mode: str) -> bool
     return latched
 
 
+# Helpfile keys of the time [yr], T_magma [K] and Phi_global of the last structure update
+_STRUCT_REF_KEYS = ('struct_ref_time', 'struct_ref_T_magma', 'struct_ref_Phi')
+
+
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
         # Read and parse configuration file. Keys the schema cannot accept are
@@ -452,10 +456,7 @@ class Proteus:
             self._baseline_structure_done = True
             return
 
-        refs = {
-            k: self.hf_row[k]
-            for k in ('struct_ref_time', 'struct_ref_T_magma', 'struct_ref_Phi')
-        }
+        refs = {k: self.hf_row[k] for k in _STRUCT_REF_KEYS}
         update_structure_from_interior(
             self.directories, self.config, self.hf_row, self.interior_o, force=True
         )
@@ -1173,6 +1174,11 @@ class Proteus:
                 if os.path.isfile(liquidus_ps):
                     self.directories['spider_liquidus_ps'] = liquidus_ps
                 log.info('Restored spider_eos_dir: %s', eos_dir_restored)
+
+            # A helpfile older than the structure references takes its last row as the reference
+            if not self.hf_row.get('struct_ref_T_magma', 0.0) > 0:
+                for ref, key in zip(_STRUCT_REF_KEYS, ('Time', 'T_magma', 'Phi_global')):
+                    self.hf_row[ref] = self.hf_row[key]
 
             if (
                 self.config.interior_struct.module == 'zalmoxis'

@@ -688,6 +688,7 @@ def _make_hf_df():
             'R_int': [6.371e6] * 5,
             'gravity': [9.81] * 5,
             'T_magma': [3000.0, 2800.0, 2600.0, 2400.0, 2200.0],
+            'Phi_global': [1.0, 0.9, 0.8, 0.7, 0.6],
             'T_eqm': [255.0] * 5,
             'F_atm': [100.0] * 5,
         }
@@ -1552,8 +1553,8 @@ def test_resume_runs_the_resync_for_zalmoxis_and_aragog_only(
 
     # _resume_with_patches stops at init_star, so a recorded call came before it.
     assert resync.called is called
-    # A row without structure references gets none from the resume.
-    assert 'struct_ref_time' not in p.hf_row
+    # A row without structure references takes its own state as the reference.
+    assert tuple(p.hf_row[k] for k in _STRUCT_REF_KEYS) == (400.0, 2200.0, 0.6)
 
 
 @pytest.mark.unit
@@ -1579,22 +1580,67 @@ def test_resume_takes_the_structure_trigger_references_from_the_row(tmp_path):
 
 
 @pytest.mark.unit
-def test_resume_of_a_helpfile_without_trigger_references_keeps_zero_references(tmp_path):
-    """A helpfile written before the references were stored (columns read as 0) resumes with
-    zero references: the next structure update counts the time since t = 0 and has no
-    T_magma reference. The row's own time, T_magma and Phi are not taken."""
+class _Resolved(Exception):
+    """Raised by the patched Zalmoxis solver, so a test sees whether a re-solve started."""
+
+
+def _first_resumed_step_resolves(hf_row):
+    """Whether the structure update of the step after the resumed row (150 yr later, inside
+    the 1000 yr ceiling, T_magma and Phi unchanged) starts a re-solve."""
+    from proteus.interior_energetics.wrapper import update_structure_from_interior
+    from tests.interior_energetics.test_wrapper import (
+        _mock_config,
+        _mock_dirs,
+        _mock_interior_o,
+        _solver_patches,
+    )
+
+    structure = {
+        'R_int': 6.371e6,
+        'M_int': 5e24,
+        'M_core': 2e24,
+        'M_mantle': 3e24,
+        'P_surf': 1e5,
+        'R_core': 3.5e6,
+        'P_center': 3.6e11,
+        'P_cmb': 1.4e11,
+        'rho_avg': 5500.0,
+    }
+    row = {**hf_row, **structure, 'Time': hf_row['Time'] + 150.0}
+    s, ns, cp = _solver_patches(side_effect=_Resolved)
+    no_core_table = patch(
+        'proteus.interior_energetics.wrapper._structure_core_table', return_value=None
+    )
+    with s, ns, cp, no_core_table:
+        try:
+            update_structure_from_interior(
+                _mock_dirs(), _mock_config(), row, _mock_interior_o()
+            )
+        except _Resolved:
+            return True
+    return False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('columns', ['zero', 'missing'])
+def test_resume_of_a_helpfile_without_trigger_references_starts_from_the_row(tmp_path, columns):
+    """A helpfile written before the references were stored (columns read as 0, or absent)
+    resumes with its last row's time, T_magma and Phi as the references, as before they were
+    stored, so the first resumed step does not re-solve the structure. With the zero
+    references kept, the same step would re-solve (Phi 0.6 against 0)."""
     p = _make_proteus_instance(tmp_path)
     (tmp_path / 'data').mkdir(exist_ok=True)
     hf = _make_hf_df()
-    hf['Phi_global'] = [1.0, 0.9, 0.8, 0.7, 0.6]
-    for key in _STRUCT_REF_KEYS:
-        hf[key] = [0.0] * 5
+    if columns == 'zero':
+        for key in _STRUCT_REF_KEYS:
+            hf[key] = [0.0] * 5
 
     _resume_with_patches(p, hf)
 
     refs = tuple(p.hf_row[k] for k in _STRUCT_REF_KEYS)
-    assert refs == (0.0, 0.0, 0.0)
-    assert refs != pytest.approx((400.0, 2200.0, 0.6))
+    assert refs == (400.0, 2200.0, 0.6)
+    assert not _first_resumed_step_resolves(p.hf_row)
+    assert _first_resumed_step_resolves({**p.hf_row, **dict.fromkeys(_STRUCT_REF_KEYS, 0.0)})
 
 
 class _StopAtRunningStatus(Exception):
@@ -1703,6 +1749,7 @@ def test_resume_walks_back_past_an_impact_step_to_its_own_structure(tmp_path):
             'R_int': [6.4e6] * 6 + [6.5e6],
             'gravity': 9.81,
             'T_magma': 3000.0,
+            'Phi_global': 0.5,
             'T_eqm': 255.0,
             'F_atm': 100.0,
             'M_accreted_rock': [0.0] * 6 + [0.05 * M_earth],
