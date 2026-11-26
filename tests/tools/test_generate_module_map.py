@@ -139,10 +139,41 @@ def test_verify_flags_broken_entry_and_option_drift(schema, monkeypatch):
     assert any('escape.module' in p and 'do not match' in p for p in problems)
 
 
+def test_verify_reports_a_non_option_comparison_unless_allowlisted(
+    schema, tmp_path, monkeypatch
+):
+    """A guard that compares a module field to a value no validator accepts is reported
+    with its file and value; only the matching triple in KNOWN_DEAD_ARMS suppresses it."""
+    src = tmp_path / 'src' / 'proteus'
+    src.mkdir(parents=True)
+    (src / 'guard.py').write_text(
+        "def guard(config):\n    return config.escape.module == 'not_an_option'\n"
+    )
+    monkeypatch.setattr(_gmm, 'SRC', src)
+    monkeypatch.setattr(_gmm, 'REPO_ROOT', tmp_path)
+    # Only the escape site, scanning the temp file, so verify needs no real wrapper.
+    escape = next(s for s in _gmm.DISPATCH_SITES if s['config_path'] == 'escape.module')
+    monkeypatch.setattr(_gmm, 'DISPATCH_SITES', [{**escape, 'wrapper': 'guard.py'}])
+    expected = (
+        'src/proteus/guard.py compares escape.module against "not_an_option", '
+        'which is not a validator option'
+    )
+    assert expected in _gmm.verify(schema)
+
+    # An entry for another value leaves the report in place.
+    other = ('src/proteus/guard.py', 'escape.module', 'other_value')
+    monkeypatch.setattr(_gmm, 'KNOWN_DEAD_ARMS', {other})
+    assert expected in _gmm.verify(schema)
+
+    exact = ('src/proteus/guard.py', 'escape.module', 'not_an_option')
+    monkeypatch.setattr(_gmm, 'KNOWN_DEAD_ARMS', {exact})
+    assert expected not in _gmm.verify(schema)
+
+
 def test_known_dead_arms_allowlist_is_current():
     """Every allowlisted dead arm still exists in the source; a stale entry
     would quietly re-open the door it documents."""
-    assert len(_gmm.KNOWN_DEAD_ARMS) == 1  # grows only with a documented reason
+    assert len(_gmm.KNOWN_DEAD_ARMS) == 0  # grows only with a documented reason
     for rel_file, dotted, value in _gmm.KNOWN_DEAD_ARMS:
         path = _REPO_ROOT / rel_file
         assert path.is_file(), f'{rel_file} vanished; prune KNOWN_DEAD_ARMS'

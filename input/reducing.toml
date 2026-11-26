@@ -250,7 +250,7 @@ config_version = "3.0"
         update_dw_comp_abs    = 0.05         # composition trigger: relative change in dissolved H2O/H2 mass fraction
         update_interval       = 1e9          # time-cadence ceiling [yr]; the large default leaves refreshes to the dphi/dtmagma/dw triggers; 0 = init only
         update_min_interval   = 0            # min time between updates [yr]
-        update_stale_ceiling  = 2.5e4        # max time since last successful re-solve [yr]; 0 = disabled
+        update_stale_ceiling  = 2.5e4        # recovery after a failed re-solve: re-solve once this time [yr] has passed since the last attempt, if no other trigger fires; 0 = disabled
         mesh_max_shift        = 0.05         # max fractional radius shift per update
         mesh_convergence_interval = 10.0     # convergence time after mesh update [yr]
 
@@ -307,18 +307,25 @@ config_version = "3.0"
     # Heating
     heat_tidal                = false        # tidal heating (requires orbit.module != "none")
     heat_radiogenic           = true         # radiogenic heating
-    radio_tref                = 4.567        # reference age for concentrations [Gyr]; 4.567 = present-day BSE
-    radio_Al                  = 0.0          # 26Al [ppmw]; 1.23 = canonical (26Al/27Al = 5.25e-5)
-    radio_Fe                  = 0.0          # 60Fe [ppmw]; 6.3e-4 = canonical (60Fe/56Fe = 1e-8)
-    radio_K                   = 310.0        # 40K [ppmw of element]; BSE value
-    radio_U                   = 0.031        # U [ppmw of element]; BSE value
-    radio_Th                  = 0.124        # Th [ppmw of element]; BSE value
+    # Isotope ratios are mass ratios; the atom ratios of Ruedas (2017) converted with isotope masses
+    radio_tref                = 4.567        # stellar age of the values below [Gyr]; 4.567 = present day
+    radio_Al                  = 2.35e4       # total Al [ppmw]
+    radio_Al26_abund          = 0.0          # 26Al/Al [kg/kg]; 5.0563e-5 at Solar System formation
+    radio_Fe                  = 6.26e4       # total Fe [ppmw]
+    radio_Fe60_abund          = 0.0          # 60Fe/Fe [kg/kg]; ~1e-8 at Solar System formation
+    radio_K                   = 310.0        # total K [ppmw]
+    radio_K40_abund           = 1.1926e-4    # 40K/K [kg/kg]
+    radio_U                   = 0.031        # total U [ppmw]
+    radio_U235_abund          = 0.0071141    # 235U/U [kg/kg]
+    radio_U238_abund          = 0.9928859    # 238U/U [kg/kg]
+    radio_Th                  = 0.124        # total Th [ppmw]
+    radio_Th232_abund         = 1.0          # 232Th/Th [kg/kg]
 
     # Rheology and convection
     rfront_loc                = 0.40         # rheological front centre [melt fraction]
     rfront_wid                = 0.20         # rheological front width [melt fraction]
     grain_size                = 0.1          # crystal grain size [m]
-    mixing_length             = "nearest"    # MLT length scale: nearest (boundary) | constant (D/4)
+    mixing_length             = "constant"   # MLT length scale: constant (D/4) | nearest (boundary)
     kappah_floor              = 10.0         # eddy diffusivity floor [m2/s]; prevents MLT freeze
 
     # Coupling limits (max T_magma change per PROTEUS step)
@@ -373,7 +380,6 @@ config_version = "3.0"
     [interior_energetics.dummy]
         mantle_tliq           = 2700.0       # liquidus [K]
         mantle_tsol           = 1700.0       # solidus [K]
-        mantle_rho            = 4550.0       # mantle density [kg m-3]; mantle mass uses M_int-M_core when the structure provides it
         mantle_cp             = 1792.0       # mantle heat capacity [J K-1 kg-1]
         heat_internal         = 0.0          # internal heating rate [W kg-1]
 
@@ -385,8 +391,6 @@ config_version = "3.0"
         nusselt_exponent          = 0.33         # Nusselt-Rayleigh scaling exponent
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
         atm_heat_capacity         = 1.7e4        # fallback atmosphere heat capacity [J/kg/K]
-        silicate_density          = 4103.0       # silicate density [kg/m^3]
-        core_density              = 10738        # core density if not defined by structure module [kg/m^3]
         thermal_conductivity      = 4.2          # thermal conductivity [W/m/K]
         thermal_diffusivity       = 1.0e-6       # thermal diffusivity [m^2/s]
         thermal_expansivity       = 2.0e-5       # thermal expansivity [1/K]

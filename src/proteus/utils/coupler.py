@@ -23,25 +23,25 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import (
-    condensate_list,
+    condensate_density,
     element_list,
     gas_list,
     noble_gases,
     secs_per_hour,
     secs_per_minute,
+    soluble_gases,
     vol_element_list,
     vol_gas_list,
     vol_list,
 )
 from proteus.utils.helper import (
     UpdateStatusfile,
-    create_tmp_folder,
     format_subyear_time,
     get_proteus_dir,
     parse_subyear_time,
     safe_rm,
 )
-from proteus.utils.plot import sample_times
+from proteus.utils.plot import profile_sample_tmin, sample_times
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 LOCKFILE_NAME = 'keepalive'
-AGNI_MIN_VERSION = '1.14.0'
+AGNI_MIN_VERSION = '1.15.0'
 OBLIQUA_MIN_VERSION = '0.1.0'
 
 
@@ -61,44 +61,15 @@ def _get_current_time():
 
 
 def _get_git_revision(dir: str) -> str:
-    """
-    Get git hash for repository in `dir`.
-    """
-    # change dir
-    cwd = os.getcwd()
+    """Git hash of the repository in `dir`, or 'unknown'. Leaves the working directory
+    alone, so a process whose own working directory is gone still gets the hash."""
     try:
-        os.chdir(dir)
-    except Exception:
-        # If we can't change to the directory, return unknown
-        return 'unknown'
-
-    # get hash (https://stackoverflow.com/a/21901260)
-    try:
-        hash = (
-            subprocess.check_output(
-                ['git', 'rev-parse', 'HEAD'],
-                stderr=subprocess.DEVNULL,
-                timeout=5,  # Add timeout to prevent hanging
-            )
-            .decode('ascii')
-            .strip()
+        out = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'], cwd=dir, stderr=subprocess.DEVNULL, timeout=5
         )
-    except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        subprocess.TimeoutExpired,
-        Exception,
-    ):
-        # Handle: git not found, not a git repo, git command failed, or any other error
-        hash = 'unknown'
-    finally:
-        # Always change dir back, even if an exception occurred
-        try:
-            os.chdir(cwd)
-        except Exception:
-            pass  # If we can't change back, continue anyway
-
-    return hash
+    except Exception:
+        return 'unknown'
+    return out.decode('ascii').strip()
 
 
 def _get_socrates_version():
@@ -228,7 +199,8 @@ def vulcan_problem(config: Config) -> str | None:
     """Return what is wrong with VULCAN and its fix, when the config uses VULCAN.
 
     The check is the doctor's: VULCAN missing, or below the ``fwl-vulcan`` floor in
-    ``pyproject.toml``. It holds in every ``atmos_chem.mode``, since ``proteus offchem`` runs
+    ``pyproject.toml``. A VULCAN without the network files of its git clone (the PyPI
+    wheel) fails too. It holds in every ``atmos_chem.mode``, since ``proteus offchem`` runs
     VULCAN whatever the mode is; ``validate_module_versions`` calls it only when the run does.
     """
     if config.atmos_chem.module != 'vulcan':
@@ -236,9 +208,19 @@ def vulcan_problem(config: Config) -> str | None:
     from proteus.doctor import PASS, _dependency_specs, check_python_package
 
     vulcan = check_python_package('fwl-vulcan', _dependency_specs().get('fwl-vulcan'))
-    if vulcan.status == PASS:
-        return None
-    return f'VULCAN module is missing or out of date: {vulcan.message}. Fix: {vulcan.fix_cmd}'
+    if vulcan.status != PASS:
+        return (
+            f'VULCAN module is missing or out of date: {vulcan.message}. Fix: {vulcan.fix_cmd}'
+        )
+    from vulcan.paths import THERMO_DIR
+
+    network = os.path.join(THERMO_DIR, 'CHO_photo_network.txt')
+    if not os.path.isfile(network):
+        return (
+            f'VULCAN network file not found: {network}. VULCAN reads its data from its git '
+            'clone. Fix: bash tools/get_vulcan.sh'
+        )
+    return None
 
 
 def fwl_io_problem() -> str | None:
@@ -698,10 +680,11 @@ def assert_mass_conservation(
 
     Issue #677 invariant. M_atm sums atmospheric oxygen (over gas_list of
     *_kg_atm, including the O atoms in H2O / CO2 / SO2), and M_planet =
-    M_int + M_ele counts the same oxygen in M_ele, so whole-planet O
-    accounting keeps the two sides symmetric and M_atm <= M_planet holds
-    by construction. This assertion catches any regression that
-    re-introduces an asymmetry by dropping O from one side.
+    M_int - M_dissolved_target + M_ele counts the same oxygen in M_ele, so
+    whole-planet O accounting keeps the two sides symmetric and M_atm <=
+    M_planet holds by construction (M_dissolved_target is part of M_int).
+    This assertion catches any regression that re-introduces an asymmetry by
+    dropping O from one side.
 
     Rock vapourisation (``outgas.vapourise``) moves vapourised rock mass into
     M_atm without debiting it from the interior, so M_planet does not track it
@@ -870,7 +853,7 @@ def assert_mass_conservation(
             continue
         parts = sum(
             float(hf_row.get(f'{e}_kg_{r}', 0.0))
-            for r in ('atm', 'liquid', 'solid', 'condensed')
+            for r in ('atm', 'liquid', 'solid', 'condensed', 'sealed')
         )
         if not np.isfinite(parts):
             continue
@@ -878,12 +861,13 @@ def assert_mass_conservation(
         if abs(parts - total) > max(closure_atol_kg, closure_tol * total):
             raise RuntimeError(
                 f'Per-element reservoir closure failed for {e}: '
-                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid+condensed='
+                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid+condensed+sealed='
                 f'{parts:.6e} kg (relative difference {rel * 100:.4f}%). '
                 f'atm={float(hf_row.get(f"{e}_kg_atm", 0.0)):.3e}, '
                 f'liquid={float(hf_row.get(f"{e}_kg_liquid", 0.0)):.3e}, '
                 f'solid={float(hf_row.get(f"{e}_kg_solid", 0.0)):.3e}, '
-                f'condensed={float(hf_row.get(f"{e}_kg_condensed", 0.0)):.3e} kg. '
+                f'condensed={float(hf_row.get(f"{e}_kg_condensed", 0.0)):.3e}, '
+                f'sealed={float(hf_row.get(f"{e}_kg_sealed", 0.0)):.3e} kg. '
                 f'A reservoir was debited without the matching credit.'
             )
 
@@ -988,14 +972,34 @@ def CreateLockFile(output_dir: str):
 # Other columns carry physical state, where zero is invalid; see ReadHelpfileFromCSV.
 RESUMABLE_ZERO_FILL_KEYS = frozenset(
     {
+        'boundary_layer_conductivity',
         'esc_kg_cumulative',
         'f_remelt',
+        # the Aragog lid: zero is no lid, and the interior writes them at every step
+        'lid_conductance',
+        'lid_delta',
+        'lid_delta_on',
+        'lid_F_diff',
+        'lid_F_open',
+        'lid_F_resid',
+        'lid_slope_guard',
+        'lid_T_base',
+        'lid_T_node',
+        'lid_T_surface',
+        'lid_weight',
+        'lid_weight_max',
         'M_accreted_rock',
+        'M_core_solve',
         'M_core_target',
         'M_desiccated',
+        'M_dissolved_target',
         'M_volatile_change',
         'n_impacts_applied',
         'step_dE_impact_J',
+        # structure-solve flags: zero is no core temperature table, as in a run that predates it
+        'struct_core_T_excess',
+        'struct_core_T_used',
+        'T_magma_clipped',
         # Melt-redox offset: rewritten by update_melt_redox every step before the
         # outgassing reads it, so a stored value is never read back.
         'fO2_shift_IW_mantle',
@@ -1071,10 +1075,25 @@ def GetHelpfileKeys():
         'core_heatcap',     # core heat capacity [J kg-1 K-1]
         'X_H2_int',         # H2 mass fraction in interior (sub-Neptune mode) [1]
         'struct_mass_desync_frac',  # |trapezoid - ODE accumulator| / accumulator structure mass self-consistency [1]
+        'struct_core_T_used',       # 1 when the last Zalmoxis solve set its core temperature from the core temperature table, else 0 [1]
+        'struct_core_T_excess',     # largest distance of a core node of that solve beyond the core temperature table, as a fraction of its pressure range [1]
 
         # Temperatures
         'T_surf',           # global surface temperature [K]
         'T_magma',          # global outgassing temperature [K]
+        'lid_weight',       # weight of the Aragog sub-grid lid [1]
+        'lid_conductance',  # conductance of the Aragog sub-grid lid [W m-2 K-1]
+        'lid_delta',        # thickness of the Aragog sub-grid lid; 0 without the lid, read with lid_weight [m]
+        'lid_delta_on',     # onset thickness of the Aragog sub-grid lid; 0 without the lid [m]
+        'lid_T_surface',    # surface temperature of the Aragog sub-grid lid [K]
+        'lid_T_base',       # base temperature of the Aragog sub-grid lid [K]
+        'lid_T_node',       # top basic node of the Aragog mesh [K]
+        'lid_F_open',       # start flux of the open part 1 - w, per open area [W m-2]
+        'lid_F_resid',      # residual F_atm - B of the atmosphere solve against the skin balance B of the call, per total area; 0 without a lid; a call with a size above 1 W m-2 or not finite logs a warning [W m-2]
+        'lid_F_diff',       # F_int of the step minus the F_atm it started from; 0 in grey_body mode [W m-2]
+        'lid_weight_max',   # largest weight of the Aragog sub-grid lid over the accepted states of the step [1]
+        'lid_slope_guard',  # slope guard of the lid slope (cap and open part) in the step that ends at this row: 0 none, 2 slope cut at the grey secant of the 2 rows, 3 a live lid took the newest usable earlier secant, 4 a live lid took the grey tangent (no usable secant in the run), 5 as 3 with that secant cut at the grey tangent; a cap re-solve records the code of its own secant [1]
+        'T_magma_clipped',  # 1 where the step clipped a rise of T_magma, else 0 [1]
         'T_cmb',           # core temperature: the bottom mantle cell, or the core state with core_bc = core_module or bower2018 [K]
         'T_cmb_node',      # mantle temperature at the core-mantle boundary basic node; with core_bc = core_module the temperature of the bottom-cell entropy at P_cmb, so the CMB contrast is T_cmb - T_cmb_node, or core_T_top - T_cmb_node with stratification [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]
@@ -1111,13 +1130,16 @@ def GetHelpfileKeys():
         'Phi_global',       # mantle melt mass-fraction [1]
         'Phi_global_vol',   # mantle melt volume-fraction [1]
         'RF_depth',         # depth of rheological front [1]
-        'M_core',           # dry mass of core [kg]
+        'M_core',           # dry mass of core; with Zalmoxis the core mass of the solve, the mass inside R_core [kg]
         'M_mantle',         # dry mass of mantle [kg]
         'M_core_target',    # core mass target of the Zalmoxis structure; 0 with another structure module [kg]
+        'M_core_solve',     # core mass of the last accepted Zalmoxis solve, equal to M_core; 0 with another structure module [kg]
+        'M_dissolved_target',  # dissolved volatile and noble-gas element mass inside the target of the last accepted Zalmoxis solve (0 with zalmoxis.dry_mantle = true or another structure module) [kg]
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
-        'boundary_layer_thickness',  # thermal boundary layer thickness [m]
+        'boundary_layer_thickness',  # conductive skin thickness given to the atmosphere, written by the skin step over any interior value; 0 for a fixed surface under 'saturation' [m]
+        'boundary_layer_conductivity',  # conductive skin conductivity given to the atmosphere, 0 for a fixed surface under 'saturation' [W m-1 K-1]
 
         # Core evolution diagnostic keys for core_module mode
         'core_r_icb',           # inner-core boundary radius; computed only with core_bc = core_module, 0 otherwise [m]
@@ -1243,7 +1265,7 @@ def GetHelpfileKeys():
     ]
 
     # Condensates from atmodeller; zero when a condensate was not solved for
-    for c in condensate_list:
+    for c in condensate_density.keys():
         keys.append(c + '_cd_activity')  # activity of the condensate in the solved inventory; 1 = saturated, and below 1 beside a layer held by prevent_desaturation [1]
         keys.append(c + '_cd_kg')        # condensed mass [kg]
 
@@ -1284,6 +1306,36 @@ def GetHelpfileKeys():
     # Element mass held in outgassing condensates (e.g. graphite), apart from the mantle
     for e in vol_element_list:
         keys.append(e + '_kg_condensed')  # mass in condensed phases at the surface [kg]
+
+    # Melt inventory held under a closed crust (outgas.lid_seal), and its leak
+    keys.append('seal_active')       # whether the lid seal holds the melt inventory [1]
+    keys.append('seal_path')         # crust a closed seal reads: 0 open, 1 mesh crust, 2 sub-grid lid [1]
+    keys.append('seal_t_close')      # time the seal last closed [yr]
+    keys.append('seal_Tmagma_close')  # T_magma of the closing chemistry solve [K]
+    keys.append('seal_phi_close')  # global melt fraction of the closing step [1]
+    keys.append('seal_xtal_kg')  # crystals formed since closure, under front trapping [kg]
+    keys.append('seal_tl_kg')    # melt trapped in those crystals [kg]
+    keys.append('seal_delta')        # crust thickness the seal reads [m]
+    keys.append('seal_phi_top')      # melt fraction of the top mesh cell [1]
+    keys.append('seal_crust_rate')   # melt mass reaching the crust over the step [kg yr-1]
+    keys.append('seal_volc_capped')  # whether crust_rate dt was cut to the melt mass [1]
+    keys.append('seal_open_kg')      # sealed mass returned to the melt on an opening step [kg]
+    keys.append('seal_leak_kg_cum')  # mass leaked to the atmosphere since the run began [kg]
+    for s in vol_list:
+        keys.append(s + '_kg_sealed')   # mass held under the closed crust [kg]
+        keys.append(s + '_mol_sealed')  # number held under the closed crust [mol]
+    for s in noble_gases:
+        keys.append(s + '_kg_sealed')   # mass held under the closed crust [kg]
+        keys.append(s + '_mol_sealed')  # number held under the closed crust [mol]
+    for s in soluble_gases:
+        keys.append(s + '_kg_eq')  # dissolved equilibrium of the sealed reservoir [kg]
+    for e in vol_element_list:
+        keys.append(e + '_kg_sealed')     # mass held under the closed crust [kg]
+        keys.append(e + '_kg_leak_tau')   # sealed mass leaked by relaxation over the step [kg]
+        keys.append(e + '_kg_leak_volc')  # sealed mass leaked by volcanism over the step [kg]
+    for s in noble_gases:
+        keys.append(s + '_kg_leak_tau')   # sealed mass leaked by relaxation over the step [kg]
+        keys.append(s + '_kg_leak_volc')  # sealed mass leaked by volcanism over the step [kg]
 
     # element mass ratios in atmosphere
     for e1 in element_list:
@@ -1817,9 +1869,9 @@ _DIAGNOSTIC_KEYS = (
     'step_dE_core_J',
     'E_core_residual_J',
     'E_core_residual_frac',
-    # Condensate activity from atmodeller, written each solve and never read back. The
-    # condensed mass is not here: prevent_desaturation reads it back to hold the layer.
-    *(f'{c}_cd_activity' for c in condensate_list),
+    # Condensate activity from atmodeller; the saturation skin reads it, and a zero-filled
+    # value is still safe there. The mass is state: prevent_desaturation holds the layer.
+    *(f'{c}_cd_activity' for c in condensate_density.keys()),
     # Melt-redox tracker outputs (interior_chem/redox.py): written each step,
     # read by no module (the tracker keeps its own state on Interior_t).
     'a_fe_max_mantle',
@@ -1863,6 +1915,27 @@ def GetHelpfileTrappingKeys():
         Column names, all of which are also in `GetHelpfileKeys()`.
     """
     return [k for k in GetHelpfileKeys() if k.startswith('trap_') or k.endswith('_kg_trapped')]
+
+
+def GetHelpfileLidSealKeys():
+    """
+    Helpfile columns written by the lid seal (``outgas.lid_seal``).
+
+    A run without the seal holds zero in each, which is also the state of a run
+    written before they existed: open, nothing sealed. `ReadHelpfileFromCSV`
+    therefore reads them as zero.
+
+    Returns
+    -------
+    list of str
+        Column names, all of which are also in `GetHelpfileKeys()`.
+    """
+    return [
+        k
+        for k in GetHelpfileKeys()
+        if k.startswith('seal_')
+        or k.endswith(('_sealed', '_kg_eq', '_kg_leak_tau', '_kg_leak_volc'))
+    ]
 
 
 def GetHelpfileCoreKeys():
@@ -1980,8 +2053,13 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     # `_kg_solid`, so reading the new columns as zero keeps its totals; the
     # per-condensate mass is zero with them, so no layer is held on resume.
     condensed_keys = {e + '_kg_condensed' for e in vol_element_list}
-    condensed_keys |= {c + '_cd_kg' for c in condensate_list}
-    zero_fill = RESUMABLE_ZERO_FILL_KEYS | set(GetHelpfileTrappingKeys()) | condensed_keys
+    condensed_keys |= {c + '_cd_kg' for c in condensate_density.keys()}
+    zero_fill = (
+        RESUMABLE_ZERO_FILL_KEYS
+        | set(GetHelpfileTrappingKeys())
+        | set(GetHelpfileLidSealKeys())
+        | condensed_keys
+    )
     fillable = [key for key in missing if key in zero_fill]
     unfillable = sorted(set(missing) - set(fillable))
 
@@ -2387,27 +2465,48 @@ def variable_is_logarithmic(varname: str) -> bool:
 
 
 def select_profile_plot_times(
-    interior_times: list, nc_times: list, no_int_snapshots: bool
+    interior_times: list,
+    nc_times: list,
+    no_int_snapshots: bool,
+    interior_rounds_to_year: bool = False,
 ) -> list:
     """Select the times at which to plot atmosphere/interior profiles.
+
+    SPIDER names its JSON snapshots by the time rounded to a whole year, while the
+    atmosphere snapshots keep the sub-year time. With `interior_rounds_to_year`, an
+    atmosphere time t matches the interior snapshot that `read_jsons` opens for it,
+    ``'%.0f' % t``, when it lies within half a year of it; of several atmosphere times
+    that round to one interior snapshot, the nearest is kept. Otherwise the times must
+    match exactly.
 
     Parameters
     ----------
     interior_times : list
-        Interior snapshot times (empty for dummy/boundary interiors).
+        Interior snapshot times [yr] (empty for dummy/boundary interiors).
     nc_times : list
-        Atmosphere ``*_atm.nc`` snapshot times.
+        Atmosphere ``*_atm.nc`` snapshot times [yr].
     no_int_snapshots : bool
         True when the interior module writes no per-time snapshot.
+    interior_rounds_to_year : bool
+        True when the interior snapshots are named by the time rounded to a year.
 
     Returns
     -------
     list
-        Sorted list of times at which profiles can be plotted.
+        Sorted list of atmosphere times [yr] at which profiles can be plotted.
     """
     if no_int_snapshots:
         return sorted(nc_times)
-    return sorted(set(interior_times) & set(nc_times))
+    if not interior_rounds_to_year:
+        return sorted(set(interior_times) & set(nc_times))
+    interior = {float(t) for t in interior_times}
+    nearest = {}
+    for t in set(nc_times):
+        year = float('%.0f' % t)
+        if year in interior and abs(t - year) < 0.5:
+            if year not in nearest or abs(t - year) < abs(nearest[year] - year):
+                nearest[year] = t
+    return sorted(nearest.values())
 
 
 def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num_snapshots=7):
@@ -2520,13 +2619,13 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     if not dummy_atm:
         ncs = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
         nc_times = [parse_subyear_time(f.split('/')[-1].split('_atm')[0]) for f in ncs]
-        output_times = select_profile_plot_times(output_times, nc_times, no_int_snapshots)
+        output_times = select_profile_plot_times(
+            output_times, nc_times, no_int_snapshots, interior_rounds_to_year=spider
+        )
 
     # Samples for plotting profiles
     if len(output_times) > 0:
-        tmin = 1.0
-        if np.amax(output_times) > 1e3:
-            tmin = 1e3
+        tmin = profile_sample_tmin(output_times)
         plot_times, _ = sample_times(output_times, num_snapshots, tmin=tmin)
         log.debug('Snapshots to plot:' + str(plot_times))
 
@@ -2741,6 +2840,7 @@ def get_proteus_directories(outdir='_unset') -> dict[str, str]:
         'output/observe': os.path.join(output_root, outdir, 'observe'),
         'output/offchem': os.path.join(output_root, outdir, 'offchem'),
         'output/plots': os.path.join(output_root, outdir, 'plots'),
+        'temp': os.path.join(output_root, outdir),
     }
 
 
@@ -2798,13 +2898,6 @@ def set_directories(config: Config) -> dict[str, str]:
             )
         else:
             dirs['rad'] = os.environ.get('RAD_DIR')
-
-    # Temporary directory
-    if config.params.out.logging == 'DEBUG':
-        dirs['temp'] = dirs['output']
-    else:
-        dirs['temp'] = create_tmp_folder()
-    log.debug(f'Temporary-file working dir: {dirs["temp"]}')
 
     # Get abspaths
     for key in dirs.keys():

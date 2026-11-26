@@ -103,7 +103,11 @@ def postproc_once(simdir: str, plot: bool = True):
     out['phi(vol_frac)'] = np.array(hf_all['Phi_global_vol'])
     out['fO2_melt(bar)'] = np.array(hf_all['O2_bar'])
     out['fO2_solid(bar)'] = out['fO2_melt(bar)']  # assumes homogeneous fO2
-    out['thick_surf_bl(m)'] = np.ones_like(out['t(yr)']) * config.atmos_clim.surface_d
+    # A skin from saturation changes in time; the helpfile holds the skin in effect
+    if config.atmos_clim.surface_d == 'saturation':
+        out['thick_surf_bl(m)'] = np.array(hf_all['boundary_layer_thickness'], dtype=float)
+    else:
+        out['thick_surf_bl(m)'] = np.ones_like(out['t(yr)']) * config.atmos_clim.surface_d
 
     out['massC_solid(kg)'] = np.array(hf_all['C_kg_solid'])
     out['massC_melt(kg)'] = np.array(hf_all['C_kg_liquid'])

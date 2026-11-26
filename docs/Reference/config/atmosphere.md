@@ -47,8 +47,8 @@ parameter selects the surface energy balance scheme (`mixed_layer`,
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `surf_state` | str | `"skin"` | Surface energy balance scheme. Choices: `"mixed_layer"`, `"fixed"`, `"skin"`. |
-| `surface_d` | float | `0.01` | Conductive skin thickness \[m\]. Must be > 0. |
-| `surface_k` | float | `2.0` | Conductive skin thermal conductivity \[W m-1 K-1\]. Must be > 0. |
+| `surface_d` | float or str | `0.01` | Conductive skin thickness \[m\], or 'saturation' (together with `surface_k`) to use the total thickness of the saturated condensate layers, such as graphite, that float on the surface. 'saturation' needs `surf_state='skin'`; while the layers are negligible the surface is fixed (T_surf = T_magma). |
+| `surface_k` | float or str | `2.0` | Conductive skin thermal conductivity \[W m-1 K-1\], or 'saturation' to combine the conductivities of the stacked condensate layers in series, k = d / sum(d_i / k_i). |
 
 **Solver limits**
 
@@ -74,7 +74,7 @@ interior heat flux. The `fastchem_*` parameters apply when
 |---|---|---|---|
 | `solve_energy` | bool | `true` | Solve for an energy-conserving atmosphere solution. |
 | `convection` | bool | `true` | Account for convective heat transport, using MLT. |
-| `conduction` | bool | `false` | Account for conductive heat transport, using Fourier's law. |
+| `conduction` | bool | `true` | Account for conductive heat transport, using Fourier's law. |
 | `sens_heat` | bool | `true` | Include sensible heat flux at surface. |
 | `rainout` | bool | `true` | Enable volatile condensation and evaporation in the atmosphere. |
 | `oceans` | bool | `true` | Enable volatile ocean formation at the surface. |
@@ -88,7 +88,7 @@ interior heat flux. The `fastchem_*` parameters apply when
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `surf_material` | str | `"greybody"` | Surface scattering material: the file name of a Hammond et al. (2024) spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo. |
+| `surf_material` | str | `"greybody"` | Surface scattering material: the file name of a Hammond et al. (2024)[^cite-hammond2024] spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo. |
 | `surf_roughness` | float | `0.001` | Characteristic surface roughness scale \[metres\]. Must be > 0. |
 | `surf_windspeed` | float | `2.0` | Characteristic surface wind speed \[m/s\]. Must be > 0. |
 
@@ -121,6 +121,7 @@ interior heat flux. The `fastchem_*` parameters apply when
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `spectral_file` | str or none | `none` | Path to AGNI spectral file, or 'greygas' to enable the grey-gas RT scheme. If None, will use atmos_clim.spectral_group and atmos_clim.spectral_bands. |
+| `load_all_opacities` | bool | `true` | Load the opacities of every gas in the spectral file into SOCRATES. If false, only the gases that PROTEUS models are loaded, which makes each radiative transfer calculation faster with spectral files that hold other gases. Has no effect with `chemistry = "eq"`, which loads every gas. |
 | `grey_opacity_lw` | float | `10.0` | Grey longwave opacity \[m2 kg-1\], used when `spectral_file='greygas'`. Must be > 0. |
 | `grey_opacity_sw` | float | `0.0001` | Grey shortwave opacity \[m2 kg-1\], used when `spectral_file='greygas'`. Must be > 0. |
 | `check_safe_gas` | bool | `true` | Require at least one "safe" gas (dry, has opacity, has thermo) when allocating AGNI atmosphere. Set False to allow compositions that AGNI would otherwise reject (e.g. for tests or exotic setups). |
@@ -205,8 +206,8 @@ for when it runs, which snapshots it processes and the files it writes.
 |---|---|---|---|
 | `module` | str or none | `none` | Chemistry module. Choices: `none`, `"vulcan"`, `"dummy"`. |
 | `mode` | str or none | `none` | When to run the chemistry module automatically. Options: none (only with `proteus offchem`), offline (after the simulation ends), online (not yet implemented). Choices: `none`, `"offline"`, `"online"`. |
-| `times` | str or list | `"end"` | Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), or a list of times \[yr\], each mapped to the nearest atmosphere snapshot. |
-| `photo_on` | bool | `true` | Use photochemistry. |
+| `times` | str or list or dict | `"end"` | Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), a list of times \[yr\], each selecting the first helpfile row at or after it, or a table of helpfile keys, each with a list of values in the unit of that column, such as `{Time = [1e2, 1e3], Phi_global = [0.01], T_surf = [1500]}`; each value selects every helpfile row at which its column reaches or crosses it, and `end = true` in the table adds the final state. With a list or a table, the run also writes an atmosphere snapshot at each target row; the chemistry of a target uses the latest atmosphere snapshot at or before its row. |
+| `photo_on` | bool | `true` | Use photochemistry. Required with the VULCAN network SNCHO, which VULCAN has only with photochemistry. |
 | `Kzz_on` | bool | `true` | Use Kzz. |
 | `Kzz_const` | float or none | `none` | Constant Kzz value \[cm2/s\]. If 'none', Kzz is read from NetCDF file. |
 | `moldiff_on` | bool | `true` | Use molecular diffusion. |
@@ -227,6 +228,7 @@ steady-state mixing ratios from a chemical reaction network.
 | `make_funs` | bool | `true` | Make functions from chemical network. |
 | `ini_mix` | str | `"profile"` | Initial mixing ratios. Options: profile (the climate profile), outgas (the surface mixing ratios at every level), previous (the result of the latest earlier chemistry snapshot, interpolated in log pressure; needs fix_surf = true; falls back to profile when there is none). Choices: `"profile"`, `"outgas"`, `"previous"`. |
 | `fix_surf` | bool | `false` | Fix the surface mixing ratios based on outgassed composition. |
+| `escape_bc` | bool | `false` | Upper boundary condition. If true, each atom in the network leaves the top layer at the PROTEUS escape rate; requires fix_surf = true. If false, no gas crosses the top. |
 | `network` | str | `"SNCHO"` | Chemical network. Options: CHO, NCHO, SNCHO. Choices: `"CHO"`, `"NCHO"`, `"SNCHO"`. |
 | `save_frames` | bool | `false` | Save simulation state as plots. |
 | `yconv_cri` | float | `0.05` | Steady state - max change in mixing ratio over test period. |
@@ -248,6 +250,10 @@ steady-state mixing ratios from a chemical reaction network.
 | `flux_atol` | float | `1.0` | Absolute tolerance on the actinic flux \[photons cm-2 s-1 nm-1\]. Must be > 0. |
 | `rtol` | float | `0.9` | Relative tolerance for adjusting the solver step size. Must be > 0. |
 | `post_conden_rtol` | float | `0.1` | Relative tolerance used once condensation stops. Must be > 0. |
+| `couple_agni` | bool | `false` | Solve the climate again with AGNI while the chemistry runs, from the composition VULCAN computes, until the temperature and the chemistry agree. The eddy diffusion then also comes from AGNI, unless `atmos_chem.Kzz_const` is set. Needs `atmos_clim.module = 'agni'` with `atmos_clim.agni.solve_energy = true`. |
+| `agni_call_frq` | int | `0` | With `couple_agni`, VULCAN solver steps between climate updates; 0 updates the climate only when the chemistry reaches a steady state. Must be >= 0. |
+| `agni_T_rtol` | float | `0.01` | With `couple_agni`, the run ends when the climate update made at a steady state changes the temperature by at most this fraction in every layer. Must be > 0. |
+| `agni_max_calls` | int | `10` | With `couple_agni`, climate updates made at steady states before VULCAN stops with the temperature still changing. Must be > 0. |
 <!-- END GENERATED: config-table [atmos_chem.vulcan] -->
 
 ## Constraints
@@ -256,16 +262,24 @@ steady-state mixing ratios from a chemical reaction network.
 <!-- Generated by tools/generate_config_reference.py; edit src/proteus/config/, not this table -->
 Cross-field constraints enforced when the config file loads:
 
+- Refuse coupling the chemistry to AGNI unless AGNI solves the climate.
+- A live Aragog lid acts on the atmosphere only through the skin of AGNI or the dummy.
+- A skin from saturation stays fixed unless atmodeller forms condensates.
 - Aerosol scattering needs band-resolved RT.
 - Validate AGNI settings: pressure ordering, surface-state support, rainout, spectral file.
+- Refuse `escape_bc = true` unless the surface mixing ratios are fixed.
 - Refuse `ini_mix = 'previous'` unless the surface mixing ratios are fixed.
 - Validate JANUS settings: spectral file selection and temperature-bound ordering.
 - Refuse coupled chemistry, and automatic chemistry without a module.
 - p_obs is either a positive pressure \[bar\], or None ('none' in the config file), which lets AGNI determine the photosphere self-consistently from optical depth instead. The latter is only meaningful for AGNI.
+- Refuse VULCAN's SNCHO network without photochemistry, which VULCAN does not have.
 - Reject Rayleigh scattering with the dummy module or AGNI in grey-gas mode.
+- surface_d and surface_k are each a positive number, or both 'saturation'.
 - Reject enabling this option when the dummy atmos_clim module is selected.
 <!-- END GENERATED: config-constraints atmosphere -->
 
 ---
 
 **See also:** [Atmosphere modules](../../Explanations/model.md#atmosphere-climate-agni-janus) | [Earth analogue tutorial](../../Tutorials/earth_analogue.md)
+
+[^cite-hammond2024]: Hammond, M., Guimond, C.M., Lichtenberg, T. et al., *[Reliable Detections of Atmospheres on Rocky Exoplanets with Photometric JWST Phase Curves](https://doi.org/10.3847/2041-8213/ada0bc)*, The Astrophysical Journal Letters, 978, L40, 2025 (preprint [arXiv:2409.04386](https://arxiv.org/abs/2409.04386), 2024); the surface spectra PROTEUS downloads are [Zenodo record 15880455](https://zenodo.org/records/15880455).

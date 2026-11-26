@@ -25,8 +25,14 @@ Without `--validation-plots` the tests write nothing, but each plot test compare
 | Accretion | `accretion/dummy.py` | [Analytical accretion](accretion/dummy.md) | [collision speed](accretion/dummy.md#collision-speed-and-the-mutual-escape-speed) |
 | Accretion | `accretion/wrapper.py` | [Impact atmosphere-loss dispatch](accretion/wrapper.md) | [Kegerreis loss law](accretion/wrapper.md#kegerreis-et-al-2020-loss-law) |
 | Atmosphere climate | `atmos_clim/agni.py` | [Transparent black-body limit](atmos_clim/agni.md) | [grey-gas column](atmos_clim/agni.md#black-body-emission-of-a-grey-gas-transparent-column) |
+| Atmosphere climate | `atmos_clim/common.py` | [Lid and open surface in the call](atmos_clim/common.md) | [parallel sum](atmos_clim/common.md#the-atmosphere-call-sees-the-lid-and-the-open-surface-in-parallel) |
+| Interior energetics | `interior_energetics/adiabat.py` | [Mantle adiabat and melt fraction](interior_energetics/adiabat.md) | |
+| Interior energetics | `interior_energetics/boundary.py` | [Boundary backend on a mantle adiabat](interior_energetics/boundary.md) | |
+| Interior energetics | `interior_energetics/common.py` | [Radiogenic decay and solidification front](interior_energetics/common.md) | |
+| Interior energetics | `interior_energetics/aragog.py` | [Mixing length at the core-mantle boundary](interior_energetics/aragog.md) | [core heat flux](interior_energetics/aragog.md#the-constant-length-keeps-the-heat-flux-out-of-the-core-on-every-mesh) |
 | Interior chemistry | `interior_chem/redox.py` | [Melt Fe3+/Fe2+ against Schaefer et al. (2024)](interior_chem/redox.md) |
 | Interior energetics | `interior_energetics/remelt.py` | [Partial giant-impact re-melt](interior_energetics/remelt.md) | [melt front](interior_energetics/remelt.md#melt-front-against-the-closed-form) |
+| Interior structure | `interior_struct/core_temperature.py` | [Core temperature in the structure solve](interior_struct/core_temperature.md) | [2 independent paths](interior_struct/core_temperature.md#the-core-table-gives-the-structure-of-2-independent-paths) |
 | Interior structure | `interior_struct/zalmoxis.py` | [Liquidus-super IC anchor](interior_struct/zalmoxis.md) | [MgSiO3 liquidus](interior_struct/zalmoxis.md#mgsio3-liquidus-at-135-gpa) |
 | Orbit | `orbit/orbit.py` | [Orbital evolution](orbit/orbit.md) | [eccentricity rate](orbit/orbit.md#eccentricity-rate-of-sp0d) |
 | Orbit | `orbit/parameterized.py` | [Prescribed migration laws](orbit/parameterized.md) | [eccentricity decay](orbit/parameterized.md#eccentricity-decay-of-high-eccentricity-migration) |
@@ -38,6 +44,7 @@ Without `--validation-plots` the tests write nothing, but each plot test compare
 | Outgassing | `outgas/burial_ledger.py` | [Burial ledger for remelting](outgas/burial_ledger.md) | [ledger against a fine grid](outgas/burial_ledger.md#the-ledger-against-a-fine-grid) |
 | Outgassing | `outgas/compaction.py` | [Melt drainage across the freezing front](outgas/compaction.md) | [drainage velocity](outgas/compaction.md#drainage-velocity-in-each-regime) |
 | Outgassing | `outgas/lavatmos.py` | [Rock-vapour molar masses](outgas/lavatmos.md) | [molar masses](outgas/lavatmos.md#molar-masses-from-fastchem-formulas) |
+| Outgassing | `outgas/lid_seal.py` | [Volatiles under a closed crust](outgas/lid_seal.md) | [held mass against the exponential at a constant floor](outgas/lid_seal.md#at-a-constant-floor-the-held-mass-relaxes-as-the-exponential-for-any-step-length) |
 | Outgassing | `outgas/trapping.py` | [Solid-phase volatile trapping](outgas/trapping.md) | [interstitial-melt trapping](outgas/trapping.md#trapping-through-the-interstitial-melt) |
 | Star | `star/dummy.py` | [Stellar luminosity and instellation](star/dummy.md) | [solar luminosity](star/dummy.md#luminosity-of-the-sun) |
 | Star | `star/wrapper.py` | [Stellar wrapper dispatch](star/wrapper.md) | [equilibrium temperature](star/wrapper.md#equilibrium-temperature-of-an-earth-like-planet) |

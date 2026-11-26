@@ -69,6 +69,106 @@ def eval_rheoparam(phi: float, which: str):
     return par.dotl * numer / denom
 
 
+def melt_fraction_linear(tmp: float, tmp_sol: float, tmp_liq: float) -> float:
+    """
+    Mantle melt fraction under a linear-in-temperature melting parameterisation.
+
+    Parameters
+    ----------
+        tmp : float
+            Mantle temperature [K].
+        tmp_sol : float
+            Solidus temperature [K].
+        tmp_liq : float
+            Liquidus temperature [K].
+
+    Returns
+    ----------
+        phi : float
+            Melt fraction, clipped to [0, 1].
+    """
+    if tmp_liq <= tmp_sol:
+        # Degenerate melting curve: the mantle is either wholly solid or wholly
+        # molten, with no mushy zone to interpolate across.
+        return 1.0 if tmp >= tmp_liq else 0.0
+    return float(np.clip((tmp - tmp_sol) / (tmp_liq - tmp_sol), 0.0, 1.0))
+
+
+def solidification_radius(
+    tmp: float, tmp_sol: float, tmp_liq: float, r_int: float, r_core: float
+) -> float:
+    """
+    Radius of the crystallisation front within the mantle.
+
+    The melt fraction is read as a volume fraction of the mantle shell, so the
+    front sits at the core-mantle boundary for a wholly molten mantle and at the
+    surface for a wholly solid one.
+
+    Parameters
+    ----------
+        tmp : float
+            Mantle temperature [K].
+        tmp_sol : float
+            Solidus temperature [K].
+        tmp_liq : float
+            Liquidus temperature [K].
+        r_int : float
+            Radius of the top of the mantle [m].
+        r_core : float
+            Radius of the core-mantle boundary [m].
+
+    Returns
+    ----------
+        r_sol : float
+            Solidification radius [m].
+    """
+    phi = melt_fraction_linear(tmp, tmp_sol, tmp_liq)
+
+    if phi >= 1.0:
+        return r_core
+    if phi <= 0.0:
+        return r_int
+    return float((r_int**3 - phi * (r_int**3 - r_core**3)) ** (1.0 / 3.0))
+
+
+def d_solidification_radius_dT(
+    tmp: float, tmp_sol: float, tmp_liq: float, r_int: float, r_core: float
+) -> float:
+    """
+    Derivative of the solidification radius with respect to mantle temperature.
+
+    Obtained by the chain rule from `solidification_radius`, using
+    dphi/dT = 1 / (tmp_liq - tmp_sol) within the mushy zone.
+
+    Parameters
+    ----------
+        tmp : float
+            Mantle temperature [K].
+        tmp_sol : float
+            Solidus temperature [K].
+        tmp_liq : float
+            Liquidus temperature [K].
+        r_int : float
+            Radius of the top of the mantle [m].
+        r_core : float
+            Radius of the core-mantle boundary [m].
+
+    Returns
+    ----------
+        drdt : float
+            Derivative dr_sol/dT [m K-1]. Negative: the front retreats inward
+            as the mantle warms.
+    """
+    if tmp_liq <= tmp_sol:
+        return 0.0
+
+    r_sol = solidification_radius(tmp, tmp_sol, tmp_liq, r_int, r_core)
+    volume_diff = r_int**3 - r_core**3
+    tmp_range = tmp_liq - tmp_sol
+
+    return float(-volume_diff / (3.0 * tmp_range * r_sol**2))
+
+
 def _verify_initial_entropy(
     eos: EntropyEOS,
     P: float,
@@ -1170,14 +1270,8 @@ class Interior_t:
         # pairs in years, tracking phase-change stalls across valid solves.
         self.aragog_step_progress: list[tuple[float, float]] = []
 
-        # True when the interior is running on a fallback (previous-step)
-        # structure because the last Zalmoxis re-solve did not converge; set on
-        # that fall-back and cleared on the next successful re-solve. Downstream
-        # consumers (Aragog's stale-mesh visibility counter, the baseline-commit
-        # guard) read it here rather than from hf_row so it stays out of the
-        # floats-only helpfile schema. Persisted to disk (write_structure_stale)
-        # and restored on resume (resume_structure_stale) so a crash right after
-        # a fall-back does not resume believing the on-disk mesh is fresh.
+        # True from a failed Zalmoxis re-solve (previous structure kept) to the next success;
+        # it arms the recovery (update_stale_ceiling) and is saved for a resume.
         self.structure_stale = False
 
         # Cumulative SPIDER time [yr]. Used by the CVode failure
@@ -1254,19 +1348,6 @@ class Interior_t:
         # budget; this counter is for visibility, not enforcement.
         self._stale_struct_steps = 0
 
-        # Simulation-time of the last SUCCESSFUL Zalmoxis structure
-        # refresh. Distinct from the main-loop's `last_struct_time`
-        # (which is reset on every call regardless of success). Drives
-        # the stale-aware ceiling trigger in
-        # update_structure_from_interior, which fires when
-        # Time - last_successful_struct_time >= update_stale_ceiling.
-        # Without this tracker, a fall-back keeps the trigger clock
-        # ticking past the next ceiling and Aragog can advance through
-        # an entire structure-update window with a frozen mesh. Set to
-        # -inf at __init__; updated to hf_row['Time'] on every Zalmoxis
-        # success (wrapper.py).
-        self.last_successful_struct_time = float('-inf')
-
         # Number of levels
         self.nlev_b = int(nlev_b)
         self.nlev_s = self.nlev_b - 1
@@ -1283,6 +1364,9 @@ class Interior_t:
         self.bulk = np.zeros(self.nlev_s)  # Bulk modulus [Pa]
         self.pres = np.zeros(self.nlev_s)  # Pressure [Pa]
         self.temp = np.zeros(self.nlev_s)  # Temperature [K]
+        # Resolved mantle adiabat (radius [m], pressure [Pa], temperature [K]) for the
+        # structure re-solve; set by the boundary backend's adiabat model, None otherwise.
+        self.temp_profile = None
 
         # Basic-node profiles, length N+1, written by the aragog interior only.
         self.phi_b = None  # Melt fraction.
@@ -1403,13 +1487,8 @@ class Interior_t:
                 hdl.write('%.7e %.7e \n' % (self.phi[i], self.tides[i]))
 
     def write_structure_stale(self, outdir: str):
-        # Persist the stale-structure flag so a resumed run recovers it. Written
-        # whenever the flag changes (the Zalmoxis success and fall-back paths in
-        # wrapper.py), so the on-disk value tracks the in-memory one. A write
-        # failure (disk full, absent data/ directory) must not abort the run or,
-        # on the fall-back path, skip the mesh and zalmoxis_output.dat rollback
-        # that follows this call: the flag is only a resume-visibility bit, so
-        # log and continue rather than propagate.
+        # Saved at each change of the flag. A failed write is logged, not raised: a resume
+        # then reads the older flag, and a lost True waits for the next failure to recover.
         try:
             with open(get_file_structure_stale(outdir), 'w') as hdl:
                 hdl.write('%d\n' % (1 if self.structure_stale else 0))
@@ -1417,10 +1496,7 @@ class Interior_t:
             log.warning('Could not persist stale-structure flag file: %s', exc)
 
     def resume_structure_stale(self, outdir: str):
-        # Restore the stale-structure flag from disk on resume. A missing file
-        # means no fall-back was recorded, so the mesh
-        # is fresh and the flag stays False. A malformed file is treated the
-        # same way rather than aborting the resume over a visibility bit.
+        # A missing or malformed file reads as no failed re-solve (flag False).
         path = get_file_structure_stale(outdir)
         if not os.path.exists(path):
             self.structure_stale = False

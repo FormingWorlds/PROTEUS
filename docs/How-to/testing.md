@@ -20,10 +20,12 @@ open htmlcov/index.html                 # View coverage in browser
 
 Tests covering package extras skip when that extra is absent, so
 `[develop]` alone runs fewer tests than CI does. To match the CI selection
-locally, install the extras as well:
+locally, install the extras as well, and VULCAN from its clone (the fwl-vulcan
+wheel has no network files; `--force` replaces an existing `VULCAN/` folder):
 
 ```bash
 pip install -e ".[develop,vulcan,atmodeller,inference]"
+bash tools/get_vulcan.sh --force
 ```
 
 Before committing:
@@ -84,6 +86,7 @@ from proteus.utils.helper import my_function
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+
 def test_my_function_returns_expected_value():
     """Verify my_function computes the correct result for standard input."""
     result = my_function(input_value=10)
@@ -109,6 +112,7 @@ Unit tests mock external calls (SOCRATES, AGNI, SPIDER, file I/O):
 
 ```python
 from unittest.mock import patch, MagicMock
+
 
 @pytest.mark.unit
 def test_run_atmosphere_dispatches_to_agni():

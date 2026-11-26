@@ -39,10 +39,13 @@ See also:
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from proteus.atmos_clim import janus as janus_mod
@@ -87,7 +90,7 @@ def _build_overlap_config(overlap_method: str) -> SimpleNamespace:
 def _build_update_config() -> SimpleNamespace:
     """Build a Config object for ``UpdateStateAtm``."""
     return SimpleNamespace(
-        atmos_clim=SimpleNamespace(p_top=1e-5),
+        atmos_clim=SimpleNamespace(p_top=1e-5, surface_d=0.01, surface_k=2.0),
     )
 
 
@@ -106,6 +109,8 @@ def _build_update_hf_row(*, T_surf=1500.0, P_surf=10.0, vap_vmr=0.0):
         'albedo_pl': 0.3,
         'T_magma': 2000.0,
         'T_skin': 250.0,
+        'boundary_layer_thickness': 0.01,  # m, written by the skin step
+        'boundary_layer_conductivity': 2.0,  # W m-1 K-1
     }
     for gas in vol_list:
         hf_row[gas + '_vmr'] = 1.0 / len(vol_list)
@@ -344,6 +349,8 @@ def _build_run_config(*, hill_clamp=False):
             p_obs=1e-3,  # bar
             rayleigh=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
             janus=SimpleNamespace(tropopause=None, F_atm_bc=0),
         ),
         planet=SimpleNamespace(prevent_warming=False),
@@ -412,11 +419,11 @@ def test_run_janus_gobs_inverse_square_of_robs(monkeypatch, tmp_path):
         'p_xuv': 1e-3,  # bar
         'T_surf': 1400.0,
     }
-    dirs = {'output': str(tmp_path)}
+    dirs = {'output': str(tmp_path), 'temp': str(tmp_path)}
 
     # Run JANUS. The solved column comes back alongside the outputs; it is what
     # a snapshot must be written from, so the caller can reach it.
-    solved, output = RunJANUS(seed_atm, dirs, config, hf_row, None, write_in_tmp_dir=False)
+    solved, output = RunJANUS(seed_atm, dirs, config, hf_row, None)
 
     # Discrimination: the seed and the solved column are different objects, so
     # handing back the seed, which is what the caller used to be left holding,
@@ -485,11 +492,10 @@ def test_run_janus_failed_hydrostatic_falls_back_to_surface_values(monkeypatch, 
 
     _, output = RunJANUS(
         SimpleNamespace(),
-        {'output': str(tmp_path)},
+        {'output': str(tmp_path), 'temp': str(tmp_path)},
         config,
         hf_row,
         None,
-        write_in_tmp_dir=False,
     )
 
     # Surface fallbacks on both levels, not values read off the failed column.
@@ -599,11 +605,10 @@ def test_run_janus_clips_the_xuv_radius_to_the_hill_radius(monkeypatch, tmp_path
 
     _, output = RunJANUS(
         SimpleNamespace(),
-        {'output': str(tmp_path)},
+        {'output': str(tmp_path), 'temp': str(tmp_path)},
         config,
         hf_row,
         None,
-        write_in_tmp_dir=False,
     )
 
     assert output['R_xuv'] == pytest.approx(6.4e6, rel=1e-12)
@@ -611,3 +616,222 @@ def test_run_janus_clips_the_xuv_radius_to_the_hill_radius(monkeypatch, tmp_path
     assert output['g_xuv'] == pytest.approx(expected_g, rel=1e-10)
     # Discrimination: the unclipped column top gives a discriminably weaker g.
     assert output['g_xuv'] != pytest.approx(g_surf * (R_int / 6.451e6) ** 2, rel=1e-3)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_update_state_atm_pushes_the_saturation_skin_only_once_a_layer_forms():
+    """With surface_d = surface_k = 'saturation', each call copies the skin the skin
+    step wrote into the row onto the JANUS column: zeros while the surface is fixed,
+    and the graphite skin (5.9 m, 2.89 W/m/K) once a layer has formed."""
+    from types import SimpleNamespace
+
+    cfg = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            p_top=1e-5, surface_d='saturation', surface_k='saturation', surf_state='skin'
+        )
+    )
+    atm = SimpleNamespace(
+        skin_d=0.01,  # JANUS default [m]
+        skin_k=2.0,  # JANUS default [W m-1 K-1]
+        setSurfaceTemperature=lambda T: None,
+        setSurfacePressure=lambda P: None,
+        setPlanetProperties=lambda R, M: None,
+        setVolatiles=lambda v: None,
+    )
+    hf_row = _build_update_hf_row()
+    hf_row.update(boundary_layer_thickness=0.0, boundary_layer_conductivity=0.0)
+    UpdateStateAtm(atm, cfg, hf_row, tropopause=None)
+    # Zeros while the surface is fixed; the fixed-surface solver never reads them
+    assert (atm.skin_d, atm.skin_k) == (0.0, 0.0)
+
+    hf_row.update(boundary_layer_thickness=5.9, boundary_layer_conductivity=2.89)
+    UpdateStateAtm(atm, cfg, hf_row, tropopause=None)
+    assert atm.skin_d == pytest.approx(5.9, rel=1e-12)
+    assert atm.skin_k == pytest.approx(2.89, rel=1e-12)
+    # The flux the column would conduct follows the new skin, not the default
+    assert atm.skin_k / atm.skin_d * 100.0 == pytest.approx(48.983, rel=1e-4)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('thickness', 'solver'),
+    [(0.0, 'MCPA'), (5.9, 'MCPA_CBL')],
+    ids=['no-layer-fixed-surface', 'graphite-layer-conductive-lid'],
+)
+def test_run_janus_picks_the_solver_from_the_saturation_skin(
+    monkeypatch, tmp_path, thickness, solver
+):
+    """With surface_d = surface_k = 'saturation' and surf_state = 'skin', RunJANUS
+    solves the fixed-surface column (MCPA) while no layer has formed and the
+    conductive-lid column (MCPA_CBL) once the skin step has written a thickness."""
+    calls = []
+    solved_atm = _build_run_atm(g_surf=3.7, z_obs_height=5.0e4, stale_grav=3.7)
+    monkeypatch.setattr(
+        'janus.modules.MCPA', lambda *a, **kw: calls.append('MCPA') or solved_atm
+    )
+    monkeypatch.setattr(
+        'janus.modules.MCPA_CBL', lambda *a, **kw: calls.append('MCPA_CBL') or solved_atm
+    )
+    monkeypatch.setattr(janus_mod, 'UpdateStateAtm', lambda *a, **kw: None)
+    monkeypatch.setattr(
+        janus_mod, 'get_oarr_from_parr', lambda p_arr, o_arr, val: (0, o_arr[-1])
+    )
+    config = _build_run_config()
+    config.atmos_clim.surf_state = 'skin'
+    config.atmos_clim.surface_d = 'saturation'
+    config.atmos_clim.surface_k = 'saturation'
+    hf_row = {
+        'Time': 0.0,
+        'R_int': 2.4397e6,
+        'gravity': 3.7,
+        'p_xuv': 1e-3,  # bar
+        'T_surf': 1400.0,
+        'boundary_layer_thickness': thickness,  # m
+        'boundary_layer_conductivity': 2.89 if thickness > 0 else 0.0,  # W m-1 K-1
+    }
+
+    RunJANUS(
+        SimpleNamespace(),
+        {'output': str(tmp_path), 'temp': str(tmp_path)},
+        config,
+        hf_row,
+        None,
+    )
+
+    assert calls == [solver]
+    # The configured surf_state alone would pick the conductive lid in both cases
+    assert (solver == 'MCPA_CBL') is (thickness > 0)
+
+
+def _run_janus_hf_row(time):
+    """Helpfile row with the fields RunJANUS reads, for an Earth-sized planet."""
+    return {'Time': time, 'R_int': 6.371e6, 'gravity': 9.81, 'p_xuv': 1e-3, 'T_surf': 1400.0}
+
+
+def _patch_run_janus_helpers(monkeypatch):
+    """Mock the state push and the observed-level lookup, covered by their own tests."""
+    monkeypatch.setattr(janus_mod, 'UpdateStateAtm', lambda *a, **kw: None)
+    monkeypatch.setattr(
+        janus_mod, 'get_oarr_from_parr', lambda p_arr, o_arr, val: (0, o_arr[-1])
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('solver_fails', [False, True], ids=['solve-succeeds', 'solver-raises'])
+def test_run_janus_removes_its_socrates_folder_and_restores_cwd(
+    monkeypatch, tmp_path, solver_fails
+):
+    """SOCRATES runs in a folder under ``dirs['temp']`` that is gone after the call.
+
+    The working directory is restored and the folder removed whether the solve
+    returns or raises; a raise used to leave the process inside the folder and
+    the folder on disk.
+    """
+    run_temp = tmp_path / 'run_temp'
+    run_temp.mkdir()
+    seen = {}
+
+    def _solver(*a, **kw):
+        seen['cwd'] = os.getcwd()
+        # SOCRATES leaves working files in the current directory
+        open('currentsw.mtx', 'w').close()
+        if solver_fails:
+            raise RuntimeError('SOCRATES failed')
+        return _build_run_atm(g_surf=9.81, z_obs_height=5.0e4, stale_grav=9.81)
+
+    monkeypatch.setattr('janus.modules.MCPA', _solver)
+    _patch_run_janus_helpers(monkeypatch)
+    hf_row = _run_janus_hf_row(100.0)
+    dirs = {'output': str(tmp_path / 'out'), 'temp': str(run_temp)}
+    cwd_before = os.getcwd()
+
+    if solver_fails:
+        with pytest.raises(RuntimeError, match='SOCRATES failed'):
+            RunJANUS(SimpleNamespace(), dirs, _build_run_config(), hf_row, None)
+    else:
+        _, output = RunJANUS(SimpleNamespace(), dirs, _build_run_config(), hf_row, None)
+        assert output['T_surf'] == pytest.approx(1400.0, rel=1e-12)
+
+    assert Path(seen['cwd']).parent == run_temp.resolve()
+    assert os.getcwd() == cwd_before
+    assert os.listdir(run_temp) == []
+
+
+@pytest.mark.unit
+def test_run_janus_refuses_an_unknown_surface_state_and_cleans_up(monkeypatch, tmp_path):
+    """A surface state JANUS cannot solve writes status 20 and raises.
+
+    The SOCRATES folder is removed and the working directory restored even so.
+    """
+    run_temp = tmp_path / 'run_temp'
+    run_temp.mkdir()
+    _patch_run_janus_helpers(monkeypatch)
+    status = []
+    monkeypatch.setattr(janus_mod, 'UpdateStatusfile', lambda dirs, code: status.append(code))
+    config = _build_run_config()
+    config.atmos_clim.surf_state = 'mixed_layer'
+    dirs = {'output': str(tmp_path / 'out'), 'temp': str(run_temp)}
+    cwd_before = os.getcwd()
+
+    with pytest.raises(Exception, match='Invalid surface state'):
+        RunJANUS(SimpleNamespace(), dirs, config, _run_janus_hf_row(1e3), None)
+
+    assert status == [20]
+    assert os.getcwd() == cwd_before
+    assert os.listdir(run_temp) == []
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('time', 'with_history', 'prevent_warming', 'atol', 'guess', 't_surf_max'),
+    [
+        (1e3, True, False, 1e-4 * 250.0 + 1e-5, 1849.0, -1.0),
+        (1e3, True, True, 1e-4 * 250.0 + 1e-5, 1849.0, 1850.0),
+        (0.0, True, True, 0.1, -2.0, -1.0),
+        (1e3, False, True, 0.1, -2.0, -1.0),
+    ],
+    ids=['interior-may-warm', 'interior-warming-capped', 'first-step', 'no-history'],
+)
+def test_run_janus_conductive_lid_starts_from_the_previous_step(
+    monkeypatch, tmp_path, time, with_history, prevent_warming, atol, guess, t_surf_max
+):
+    """The conductive-lid solve starts from the previous step when there is one.
+
+    After the first step the tolerance is 1e-4 * |F_atm| + 1e-5 W m-2 from the
+    last row, the initial guess is 1 K below its T_surf, and prevent_warming caps
+    the solution at that T_surf so the interior does not heat up. At Time = 0 or
+    without earlier rows the tolerance is 0.1 W m-2, the guess -2 K (the unset
+    -1 K minus 1 K) and there is no cap.
+    """
+    seen = {}
+
+    def _mcpa_cbl(*a, **kw):
+        seen.update(kw)
+        return _build_run_atm(g_surf=9.81, z_obs_height=5.0e4, stale_grav=9.81)
+
+    monkeypatch.setattr('janus.modules.MCPA_CBL', _mcpa_cbl)
+    _patch_run_janus_helpers(monkeypatch)
+    config = _build_run_config()
+    config.atmos_clim.surf_state = 'skin'
+    config.planet.prevent_warming = prevent_warming
+    # A cooling planet: negative net flux, so a missing abs() gives a negative tolerance
+    history = pd.DataFrame({'T_surf': [1900.0, 1850.0], 'F_atm': [-300.0, -250.0]})
+    dirs = {'output': str(tmp_path), 'temp': str(tmp_path)}
+
+    RunJANUS(
+        SimpleNamespace(),
+        dirs,
+        config,
+        _run_janus_hf_row(time),
+        history if with_history else None,
+    )
+
+    assert seen['atol'] == pytest.approx(atol, rel=1e-12)
+    assert seen['atol'] > 0
+    assert seen['T_surf_guess'] == pytest.approx(guess, rel=1e-12)
+    assert seen['T_surf_max'] == pytest.approx(t_surf_max, rel=1e-12)
+    # The cap, when set, is the last row's T_surf and not an earlier one
+    assert seen['T_surf_max'] != pytest.approx(1900.0, rel=1e-6)

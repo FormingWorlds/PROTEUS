@@ -43,13 +43,19 @@ STALL_MAX_CONFIGURED = 41
 
 
 def _record_matching_separation_laws(config, output, buoyancy='mixture'):
-    """Give a mock config the 'mixture' separation laws and its run directory an
-    init_coupler.toml that records ``buoyancy``; return the text of that record."""
+    """Give a mock config the 'mixture' separation laws, the rheology and the lid off, and its run
+    directory an init_coupler.toml that records ``buoyancy``; return the text of that record."""
     aragog = config.interior_energetics.aragog
     aragog.separation_viscosity = aragog.separation_buoyancy = 'mixture'
     aragog.allow_resume_law_change = False
+    aragog.rheology.enabled = False  # a record without the rheology table ran with it off
+    aragog.lid_mush_base = False  # and without the lid
+    aragog.cmb_cell_thickness = 0.0  # and on the uniform mesh
+    aragog.surface_cell_thickness = 'uniform'
+    config.interior_energetics.mixing_length = 'constant'  # the record holds it too
     text = (
-        "[interior_energetics]\nmodule = 'aragog'\n\n[interior_energetics.aragog]\n"
+        "[interior_energetics]\nmodule = 'aragog'\nmixing_length = 'constant'\n\n"
+        '[interior_energetics.aragog]\n'
         f"separation_viscosity = 'mixture'\nseparation_buoyancy = '{buoyancy}'\n"
     )
     (Path(output) / 'init_coupler.toml').write_text(text)
@@ -380,6 +386,24 @@ def _resume_to_main_loop(p, *extra, restore=None):
     )
 
 
+def _resume_through_first_interior_step(p, interior, restore=None):
+    """Resume ``p`` into the main loop; ``interior`` stands in for run_interior, and the run
+    stops at the step after it; ``restore`` stands in for restore_accretion_state. Return
+    what start() raised, None at that stop."""
+    stop = patch.object(type(p), '_advance_to_step_end', side_effect=_StopAfterMeshRestore)
+    return _resume_to_init_star(
+        p,
+        patch('proteus.star.wrapper.init_star'),
+        patch('proteus.orbit.wrapper.init_orbit'),
+        patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
+        patch('proteus.accretion.wrapper.restore_accretion_state', side_effect=restore),
+        patch('proteus.interior_struct.common.volatile_mass_change', return_value=0.0),
+        patch('proteus.proteus.is_write_snapshot', return_value=False),
+        patch('proteus.interior_energetics.wrapper.run_interior', side_effect=interior),
+        stop,
+    )
+
+
 @pytest.mark.unit
 def test_a_resume_that_changes_the_separation_law_stops_before_init_coupler_is_written(
     tmp_path,
@@ -397,18 +421,38 @@ def test_a_resume_that_changes_the_separation_law_stops_before_init_coupler_is_w
 
 
 @pytest.mark.unit
-def test_an_allowed_switch_is_recorded_only_once_the_resume_reaches_the_main_loop(tmp_path):
-    """Under the allow switch, a resume that stops before the main loop leaves the record of
-    the old law, so the next attempt meets the check again; one that reaches the main loop
-    records the new law with the switch off."""
+def test_an_allowed_switch_is_recorded_only_once_the_first_interior_step_passes(tmp_path):
+    """Under the allow switch, a resume that stops before its first interior step leaves the
+    record of the old law, so the next attempt meets the check again; one whose first
+    interior step passes records the new law with the switch off."""
     p, stored_text = _resumable_run_with_buoyancy(tmp_path, 'solid')
     p.config.interior_energetics.aragog.allow_resume_law_change = True
     assert _resume_to_init_star(p) is None  # stopped at init_star, after the law check
-    assert (tmp_path / 'init_coupler.toml').read_text() == stored_text
     assert _resume_to_main_loop(p) is None
+    assert (tmp_path / 'init_coupler.toml').read_text() == stored_text
+    assert _resume_through_first_interior_step(p, lambda *a, **k: None) is None
     overrides = p.config.write.call_args.kwargs['overrides']
     assert overrides['interior_energetics.aragog.allow_resume_law_change'] is False
     assert (tmp_path / 'init_coupler.toml').read_text() == repr(overrides)
+
+
+@pytest.mark.unit
+def test_a_resume_refused_by_its_first_interior_step_keeps_the_record(tmp_path):
+    """The mesh check of the snapshot runs when the interior sets up its solver; a resume it
+    refuses leaves the record of the run, so the next attempt meets the same check."""
+    from proteus.interior_energetics.resume_laws import ResumeSeparationLawError
+
+    p, stored_text = _resumable_run_with_buoyancy(tmp_path, 'solid')
+    p.config.interior_energetics.aragog.allow_resume_law_change = True
+
+    def refuse(*args, **kwargs):
+        raise ResumeSeparationLawError('Resume refused: another mesh')
+
+    err = _resume_through_first_interior_step(p, refuse)
+    assert isinstance(err, ResumeSeparationLawError), repr(err)
+    assert (tmp_path / 'status').read_text().split()[0] == '20'
+    assert (tmp_path / 'init_coupler.toml').read_text() == stored_text
+    p.config.write.assert_not_called()
 
 
 @pytest.mark.unit
@@ -450,7 +494,7 @@ def test_a_resume_records_the_config_as_loaded_not_as_the_accretion_restore_left
         proteus.config.planet.mass_tot = 1.25
         proteus.config.orbit.semimajoraxis, proteus.config.orbit.eccentricity = 2.0, 0.1
 
-    assert _resume_to_main_loop(p, restore=grow) is None
+    assert _resume_through_first_interior_step(p, lambda *a, **k: None, restore=grow) is None
     assert p.config.planet.mass_tot == pytest.approx(1.25, rel=1e-15)  # the restore ran
     assert (tmp_path / 'init_coupler.toml').read_text() == (
         'planet.mass_tot = 1.0 orbit.semimajoraxis = 1.0 orbit.eccentricity = 0.0'
@@ -490,16 +534,17 @@ def test_a_fresh_run_records_its_config_with_the_allow_switch_off(tmp_path):
 @pytest.mark.unit
 @pytest.mark.parametrize('struct, expected', [('zalmoxis', -3.0e21), ('dummy', 0.0)])
 @pytest.mark.parametrize(
-    'crystallized, freeze, phi, frozen',
+    'crystallized, freeze, phi, sealed, frozen',
     [
-        (False, False, 0.0, False),
-        (True, False, 0.5, True),
-        (False, True, 0.01, True),
-        (False, True, 0.5, False),
+        (False, False, 0.0, False, False),
+        (True, False, 0.5, False, True),
+        (False, True, 0.01, False, True),
+        (False, True, 0.5, False, False),
+        (False, False, 0.5, True, True),  # a closed lid seal draws on the atmosphere alone
     ],
 )
 def test_the_escape_step_records_the_removed_mass_for_the_zalmoxis_target(
-    tmp_path, struct, expected, crystallized, freeze, phi, frozen
+    tmp_path, struct, expected, crystallized, freeze, phi, sealed, frozen
 ):
     """The main-loop escape step books the element mass escape removed into
     M_volatile_change with the Zalmoxis structure, and nothing with the dummy
@@ -510,7 +555,7 @@ def test_the_escape_step_records_the_removed_mass_for_the_zalmoxis_target(
     p.hf_row = {'H_kg_total': 5.0e21, 'O_kg_total': 2.0e22, 'Phi_global': phi}
     p.interior_o = SimpleNamespace(dt=100.0)
     p.loops = {'total': 5, 'init_loops': 2}  # the first loop that runs escape
-    p.desiccated, p.crystallized = False, crystallized
+    p.desiccated, p.crystallized, p.lid_sealed = False, crystallized, sealed
     p.config.params.stop.solid.freeze_volatiles = freeze
     calls = []
 
@@ -732,7 +777,6 @@ def test_require_paleos_tables_runs_only_for_the_zalmoxis_structure(
     'error, site',
     [
         ('missing', 'solve'),
-        ('other', 'solve'),
         ('missing', 'start check'),
         ('melting curve', 'solve'),
         ('P-S table', 'solve'),
@@ -745,7 +789,7 @@ def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(
     """Missing reference data raised at the start check or mid-run, here from the
     structure solve, leaves status 20, so the run does not read as still running: a
     Zalmoxis EOS table, a melting curve or a SPIDER P-S table, each from its real raise
-    site. Other errors leave the status as is."""
+    site."""
     from types import SimpleNamespace as NS
 
     import proteus.interior_energetics.spider as spider
@@ -772,9 +816,7 @@ def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(
     )
     p.config.interior_energetics.flux_guess = 100.0
     p.config.star.age_ini = 0.1
-    exc = real_site.get(error) or (
-        ZalmoxisMissingEOSFilesError('pair') if error == 'missing' else RuntimeError('x')
-    )
+    exc = real_site.get(error) or ZalmoxisMissingEOSFilesError('pair')
     with ExitStack() as stack:
         for target in _START_PATCHES:
             stack.enter_context(patch(target))
@@ -789,10 +831,144 @@ def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(
             stack.enter_context(
                 patch('proteus.interior_energetics.wrapper.solve_structure', side_effect=exc)
             )
-        with pytest.raises(Exception, match='pair|x|not found'):
+        with pytest.raises(Exception, match='pair|not found'):
             p.start(resume=False, offline=True)
     status = (tmp_path / 'status').read_text().splitlines()[0]
-    assert status == ('0' if error == 'other' else '20')
+    assert status == '20'
+
+
+_MODULE_CONFIG = 'proteus.utils.coupler.print_module_configuration'
+
+
+def _stop_with(exc, code_first, seen, dirs):
+    """A start-up step that records the status it finds and raises `exc`, after writing
+    its own stop code if given."""
+
+    def step(*_args, **_kwargs):
+        from proteus.utils.helper import ReadStatus
+
+        seen.append(ReadStatus(dirs['output']))
+        if code_first is not None:
+            from proteus.utils.helper import UpdateStatusfile
+
+            UpdateStatusfile(dirs, code_first)
+        raise exc
+
+    return step
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'site, exc, code_first, expected',
+    [
+        (_MODULE_CONFIG, FileNotFoundError(2, 'cwd is gone'), None, '20'),
+        (_MODULE_CONFIG, KeyboardInterrupt(), None, '25'),
+        (_MODULE_CONFIG, SystemExit(143), None, '25'),
+        (_MODULE_CONFIG, RuntimeError('AGNI deadlock'), 22, '22'),
+        ('proteus.proteus.setup_logger', OSError(28, 'disk full'), None, '20'),
+    ],
+    ids=[
+        'startup-error',
+        'ctrl-c',
+        'system-exit',
+        'own-stop-code-kept',
+        'logger-setup-error',
+    ],
+)
+def test_a_run_stopped_after_the_output_is_cleaned_records_why(
+    tmp_path, site, exc, code_first, expected
+):
+    """A fresh run that stops between cleaning its output folder and the main loop leaves
+    a stop code, not a missing status file (#778, #744): 20 for an error, 25 for an interrupt
+    or a requested exit, and the code the raise site wrote itself when it wrote one. The
+    logger setup is the first step after the clean. While it initialises the run reads 0
+    (Started), so a run killed there without a handler (SIGKILL, out of memory) does not read
+    as a stale code or no file. The output folder is cleaned for real, so a status written
+    before the clean would be gone."""
+    p = _make_proteus_instance(tmp_path)
+    p.directories.update(
+        {k: str(tmp_path / k) for k in ('output/observe', 'output/offchem', 'output/plots')}
+    )
+    (tmp_path / 'status').write_text('13\nCompleted (target time)\n')
+    seen = []
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch(
+                site,
+                side_effect=_stop_with(exc, code_first, seen, p.directories),
+            )
+        )
+        with pytest.raises(type(exc)):
+            p.start(resume=False, offline=True)
+    assert seen == [0]
+    lines = (tmp_path / 'status').read_text().splitlines()
+    assert lines[0] == expected
+    assert lines[1].startswith('Error (')
+
+
+def _lid_stop(site, then_exit, dirs):
+    """A start-up step that stops the run at a real lid raise site; with then_exit a SIGTERM
+    exit (SystemExit 143) follows the stop."""
+
+    def step(*_args, **_kwargs):
+        from tests.atmos_clim.test_common import _row
+
+        try:
+            if site == 'open flux':
+                from proteus.atmos_clim.common import lid_open_flux
+                from proteus.atmos_clim.wrapper import lid_or_stop
+
+                lid_or_stop(dirs, lid_open_flux, _row(0.3, T_surf=900.0, F_atm=np.nan))
+            else:
+                from proteus.interior_energetics.wrapper import guard_t_magma_clip
+
+                guard_t_magma_clip(dirs, {'Time': 1e5, 'lid_weight': 0.2}, 0.0, 1500.0)
+        except Exception:
+            if then_exit:
+                raise SystemExit(143)
+            raise
+
+    return step
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('site', 'code'), [('open flux', '22'), ('T_magma clip', '21')], ids=['open-flux', 'clip']
+)
+@pytest.mark.parametrize('then_exit', [False, True], ids=['raise', 'sigterm-after'])
+def test_a_lid_stop_keeps_its_status_through_the_exit_guard(tmp_path, site, code, then_exit):
+    """The lid stops write their own code (22 for an open-part input that is not finite, 21
+    for a T_magma clip under a live lid). The guard on Proteus.start keeps it, also when a
+    SIGTERM exit (SystemExit 143, status 25 for a running run) follows the stop."""
+    p = _make_proteus_instance(tmp_path)
+    p.directories.update(
+        {k: str(tmp_path / k) for k in ('output/observe', 'output/offchem', 'output/plots')}
+    )
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch(_MODULE_CONFIG, side_effect=_lid_stop(site, then_exit, p.directories))
+        )
+        with pytest.raises(SystemExit if then_exit else Exception):
+            p.start(resume=False, offline=True)
+    assert (tmp_path / 'status').read_text().splitlines()[0] == code
+
+
+@pytest.mark.unit
+def test_resume_reads_the_stale_sidecar_of_the_output_folder(tmp_path):
+    """A resume restores the stale-structure flag from the sidecar of the output folder, and
+    the resumed time is the last attempt from which the recovery counts."""
+    p = _make_proteus_instance(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    hf = _make_hf_df()
+
+    _resume_with_patches(p, hf)
+
+    p.interior_o.resume_structure_stale.assert_called_once_with(p.directories['output'])
+    assert p.last_struct_time == hf['Time'].iloc[-1]
 
 
 @pytest.mark.unit
@@ -1495,6 +1671,8 @@ def _resume_at_helpfile_load(p, *, read_effect=None):
     their call history after the patches are lifted, plus the exception the
     run ended on.
     """
+    from proteus.utils.helper import UpdateStatusfile
+
     with ExitStack() as stack:
         for target in _START_PATCHES:
             stack.enter_context(patch(target))
@@ -1514,7 +1692,9 @@ def _resume_at_helpfile_load(p, *, read_effect=None):
                 side_effect=_StopAfterHelpfileLoad,
             )
         )
-        mock_status = stack.enter_context(patch('proteus.proteus.UpdateStatusfile'))
+        mock_status = stack.enter_context(
+            patch('proteus.proteus.UpdateStatusfile', wraps=UpdateStatusfile)
+        )
 
         with pytest.raises(Exception) as excinfo:
             p.start(resume=True, offline=True)
@@ -3216,6 +3396,27 @@ def test_plot_cadence_is_independent_of_write_snapshot_gate(tmp_path):
     )
 
 
+def test_main_loop_archives_only_old_snapshots_until_the_final_pass(tmp_path):
+    """Each rolling archive cycle moves only the snapshots older than 0.99 times
+    the current model time into data.tar; the whole directory is archived once,
+    at the end of the run.
+
+    Discrimination: the last rolling call runs at Time = 100 yr, so it
+    carries a cutoff of 99 yr, not 100 yr or 0; a rolling call that archived
+    the whole directory would show up as an extra `update` call.
+    """
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    p.config.params.out.archive_mod = 1
+    with patch('proteus.proteus.archive') as mock_archive:
+        _run_main_loop_capturing_plots(p, stop_at_loop=5)
+
+    data_dir = p.directories['output/data']
+    rolling = mock_archive.archive_old.call_args_list
+    assert [c.args[0] for c in rolling] == [data_dir] * 4
+    assert [c.args[1] for c in rolling] == pytest.approx([0.0, 0.0, 0.0, 99.0])
+    assert mock_archive.update.call_args_list == [call(data_dir)]
+
+
 @pytest.mark.parametrize(
     ('mode', 'times', 'has_archive', 'desiccated', 'n_chem', 'n_extract'),
     [
@@ -3254,7 +3455,7 @@ def test_offline_chemistry_runs_once_after_the_main_loop(
 
     chem_calls = []
 
-    def _record_chem(dirs, config, hf_all):
+    def _record_chem(dirs, config, hf_all, network_compiled=False):
         chem_calls.append((p.loops['total'], p.finished_both, hf_all))
 
     mock_extract = MagicMock()
@@ -4279,6 +4480,51 @@ def test_a_resumed_run_outgasses_with_first_iter_false(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_saturation_skin_is_set_from_this_iterations_condensates_before_the_atmosphere(
+    tmp_path,
+):
+    """With surface_d = surface_k = 'saturation', the skin the atmosphere step reads
+    comes from the condensate the outgassing step of the same iteration formed
+    (1e18 kg of graphite over R_int = 6.371e6 m is 0.8675 m), and it overwrites the
+    boundary_layer_thickness the interior step wrote earlier in the iteration."""
+    import math
+
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='aragog')
+    p.config.atmos_clim.surface_d = 'saturation'
+    p.config.atmos_clim.surface_k = 'saturation'
+    p.config.atmos_clim.surf_state = 'skin'
+    seen = {}
+
+    def _fake_interior(*args, **kwargs):
+        args[3]['boundary_layer_thickness'] = 123.0  # m, a stale interior value
+
+    def _fake_outgas(_dirs, _config, hf_row, first_iter):
+        hf_row['C_cd_kg'] = 1.0e18
+        hf_row['C_cd_activity'] = 1.0
+
+    def _fake_atmosphere(*args, **kwargs):
+        row = args[8]
+        seen['d'] = row['boundary_layer_thickness']
+        seen['k'] = row['boundary_layer_conductivity']
+        raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(
+        p,
+        _make_resume_checkpoint_df(),
+        _fake_interior,
+        _fake_atmosphere,
+        fake_outgas=_fake_outgas,
+    )
+
+    d_expected = 1.0e18 / (2260.0 * 4.0 * math.pi * 6.371e6**2)  # m
+    assert seen['d'] == pytest.approx(d_expected, rel=1e-12)
+    assert seen['d'] == pytest.approx(0.8675, rel=1e-3)
+    assert seen['k'] == pytest.approx(100.0, rel=1e-12)  # one graphite layer
+    assert abs(seen['d'] - 123.0) > 100.0  # the interior value did not survive
+
+
+@pytest.mark.unit
 def test_solvus_override_restores_the_magma_ocean_state(tmp_path):
     """With global miscibility the loop hands the atmosphere the solvus as its
     lower boundary (T_solvus, P_solvus in bar, R_solvus) and afterwards
@@ -4508,6 +4754,8 @@ def test_start_stops_before_touching_output_when_aragog_lacks_cvode(
     """
     p = _make_proteus_instance(tmp_path, interior_module='aragog')
     p.config.interior_energetics.aragog.solver_method = 'cvode'
+    # An earlier run's final status in the folder, which the stop must leave as it is.
+    (tmp_path / 'status').write_text('13\nCompleted (target time)\n')
 
     with ExitStack() as stack:
         for target in _START_PATCHES:
@@ -4519,6 +4767,7 @@ def test_start_stops_before_touching_output_when_aragog_lacks_cvode(
 
     status.assert_not_called()
     clean.assert_not_called()
+    assert (tmp_path / 'status').read_text().splitlines()[0] == '13'
 
 
 @pytest.mark.parametrize(
@@ -4961,3 +5210,394 @@ def test_a_frozen_mantle_escapes_over_many_steps_with_every_element_closing(
     # hydrogen that escaped, beyond the 1e-4 closure limit on the final total.
     gap = (1.0 - 1.0 / _CALLIOPE_SPECIES_OVER_ELEMENTS) * (h_start - h_end)
     assert gap / h_end > 1.0e-4
+
+
+class _TempDirRunner:
+    """Stand-in for Proteus carrying only what `_run_temp_dir` reads."""
+
+    def __init__(self, output, logging_level='INFO'):
+        self.config = MagicMock()
+        self.config.params.out.logging = logging_level
+        self.directories = {'output': str(output) + '/', 'temp': str(output) + '/'}
+
+
+@pytest.mark.parametrize(
+    ('raised', 'writes', 'warns'),
+    [
+        (None, True, False),
+        (RuntimeError('solver failed'), True, True),
+        (RuntimeError('solver failed'), False, False),
+        (KeyboardInterrupt(), True, True),
+        (SystemExit(143), True, True),
+        (SystemExit(0), True, False),
+    ],
+    ids=[
+        'run-ends',
+        'run-raises',
+        'run-raises-with-empty-folder',
+        'run-interrupted',
+        'run-terminated',
+        'run-exits-cleanly',
+    ],
+)
+def test_run_temp_dir_is_private_and_removed_when_the_run_ends_or_fails(
+    tmp_path, system_tmp, caplog, raised, writes, warns
+):
+    """A run works in its own 0700 folder under $TMPDIR, removed when start returns or raises.
+
+    A failed, interrupted (Ctrl-C) or terminated (SIGTERM, exit 143) run also
+    says how to keep the files, because they are gone. KeyboardInterrupt and
+    SystemExit are not an Exception, so a handler that catches only Exception
+    would drop that hint. A clean exit (status 0) is no failure and gives none,
+    and nor does an empty folder, as when AGNI verbosity >= 2 writes to the output folder.
+    """
+    from proteus.proteus import _run_temp_dir
+
+    runner = _TempDirRunner(tmp_path / 'out')
+    seen = {}
+
+    @_run_temp_dir
+    def start(self):
+        seen['temp'] = Path(self.directories['temp'])
+        seen['mode'] = seen['temp'].stat().st_mode & 0o777
+        if writes:
+            (seen['temp'] / 'fastchem').mkdir()
+            (seen['temp'] / 'runtime.sf_k').write_bytes(b'\0' * 1024)
+        if raised is not None:
+            raise raised
+        return 'done'
+
+    with caplog.at_level(logging.WARNING, logger='fwl'):
+        if raised is None:
+            assert start(runner) == 'done'
+        else:
+            with pytest.raises(type(raised)):
+                start(runner)
+
+    assert seen['temp'].parent == system_tmp
+    assert seen['temp'].name.startswith('proteus_')
+    assert seen['mode'] == 0o700
+    assert os.listdir(system_tmp) == []
+    assert runner.directories['temp'] == runner.directories['output']
+    assert ("'DEBUG'" in caplog.text) is warns
+
+
+def test_concurrent_runs_with_the_same_numpy_seed_get_separate_temp_dirs(tmp_path, system_tmp):
+    """Two runs on one node never share a temp folder, even with identical RNG state.
+
+    The old name came from NumPy's global RNG and the folder was emptied first,
+    so a second run seeded like the first took over and wiped its folder.
+    """
+    from proteus.proteus import _run_temp_dir
+
+    outer, inner = _TempDirRunner(tmp_path / 'a'), _TempDirRunner(tmp_path / 'b')
+    seen = {}
+
+    @_run_temp_dir
+    def start_inner(self):
+        seen['inner'] = self.directories['temp']
+
+    @_run_temp_dir
+    def start_outer(self):
+        seen['outer'] = self.directories['temp']
+        marker = Path(seen['outer']) / 'runtime.sf'
+        marker.write_text('outer run file')
+        # Same RNG state as when the outer folder was named
+        np.random.seed(7)
+        start_inner(inner)
+        seen['outer_file_survives'] = marker.read_text() == 'outer run file'
+
+    np.random.seed(7)
+    start_outer(outer)
+
+    assert seen['outer'] != seen['inner']
+    assert seen['outer_file_survives']
+    assert os.listdir(system_tmp) == []
+
+
+def test_debug_run_uses_and_keeps_the_output_folder(tmp_path, system_tmp):
+    """With DEBUG logging the temporary files go to the output folder and are kept."""
+    from proteus.proteus import _run_temp_dir
+
+    output = tmp_path / 'out'
+    output.mkdir()
+    runner = _TempDirRunner(output, logging_level='DEBUG')
+
+    @_run_temp_dir
+    def start(self):
+        (Path(self.directories['temp']) / 'fastchem').mkdir()
+        raise RuntimeError('solver failed')
+
+    with pytest.raises(RuntimeError):
+        start(runner)
+
+    assert runner.directories['temp'] == runner.directories['output']
+    assert (output / 'fastchem').is_dir()
+    assert os.listdir(system_tmp) == []
+
+
+def test_proteus_start_gives_modules_a_temp_dir_and_removes_it(
+    tmp_path, system_tmp, monkeypatch
+):
+    """Proteus.start sets directories['temp'] before the modules run, then removes the folder.
+
+    The run is stopped at the module-configuration printout, which is the first
+    step that reads the folder.
+    """
+    # A fresh start empties the output folder, so it must not contain $TMPDIR
+    output = tmp_path / 'run'
+    output.mkdir()
+    p = _make_proteus_instance(output)
+    for sub in ('observe', 'offchem', 'plots'):
+        p.directories[f'output/{sub}'] = str(output / sub)
+    p.directories['fwl'] = str(tmp_path / 'fwl')
+    assert 'temp' not in p.directories
+    seen = {}
+
+    def _stop(dirs, *_a):
+        seen['temp'] = dirs['temp']
+        seen['is_dir'] = os.path.isdir(dirs['temp'])
+        raise RuntimeError('stop here')
+
+    monkeypatch.setattr('proteus.utils.coupler.print_module_configuration', _stop)
+    with pytest.raises(RuntimeError, match='stop here'):
+        p.start()
+
+    assert Path(seen['temp']).parent == system_tmp
+    assert seen['is_dir']
+    assert os.listdir(system_tmp) == []
+    assert p.directories['temp'] == p.directories['output']
+
+
+def test_a_temp_dir_that_cannot_be_removed_is_reported_not_raised(
+    tmp_path, system_tmp, monkeypatch, caplog
+):
+    """A failed removal logs a warning naming the folder and keeps the run's result.
+
+    The run itself succeeded, so a busy or vanished folder must not turn it into
+    a failure.
+    """
+    from proteus.proteus import _run_temp_dir
+
+    runner = _TempDirRunner(tmp_path / 'out')
+    seen = {}
+
+    def _refuse(path):
+        raise OSError(16, 'Device or resource busy', path)
+
+    monkeypatch.setattr('proteus.proteus.shutil.rmtree', _refuse)
+
+    @_run_temp_dir
+    def start(self):
+        seen['temp'] = self.directories['temp'].rstrip('/')
+        return 'done'
+
+    with caplog.at_level(logging.WARNING, logger='fwl'):
+        assert start(runner) == 'done'
+
+    assert f'Could not remove temporary folder {seen["temp"]}' in caplog.text
+    assert 'Device or resource busy' in caplog.text
+    # The warning about removing files of a failed run is not given here
+    assert "'DEBUG'" not in caplog.text
+    assert runner.directories['temp'] == runner.directories['output']
+
+
+def test_run_folder_follows_tmpdir_for_habrok(tmp_path, system_tmp, monkeypatch):
+    """With only $TMPDIR set, the run's temporary folder is created under it.
+
+    This supports Habrok, which sets $TMPDIR for jobs: runs there must use it,
+    not /tmp or a fixed folder.
+    """
+    from proteus.proteus import _run_temp_dir
+
+    monkeypatch.setattr('tempfile.tempdir', None)
+    runner = _TempDirRunner(tmp_path / 'out')
+    seen = {}
+
+    @_run_temp_dir
+    def start(self):
+        seen['temp'] = Path(self.directories['temp'])
+        seen['listing'] = os.listdir(system_tmp)
+
+    start(runner)
+
+    assert seen['temp'].parent == system_tmp
+    assert seen['listing'] == [seen['temp'].name]
+    assert os.listdir(system_tmp) == []
+
+
+def _run_seal_loop(tmp_path, enabled, make_seal_step=lambda _p: None):
+    """Drive 3 main-loop steps with the lid seal ``enabled`` or not, the seal step
+    replaced by ``make_seal_step(p)``; return the instance, the recorded outgas
+    rows, the mass-check calls and the patched seal step."""
+    p = _make_main_loop_proteus(
+        tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
+    )
+    p.config.outgas.lid_seal.enabled = enabled
+    rows, guard_calls = [], []
+    with patch(
+        'proteus.outgas.lid_seal.run_lid_seal_step', side_effect=make_seal_step(p)
+    ) as step:
+        _run_main_loop_recording_mass(
+            p,
+            stop_at_loop=3,
+            rows=rows,
+            row_writer=lambda row, n: _write_post_outgas_row(row, n, vapour=False),
+            guard_calls=guard_calls,
+        )
+    return p, rows, guard_calls, step
+
+
+def test_with_the_lid_seal_off_the_loop_keeps_the_chemistry_solve(tmp_path):
+    """With outgas.lid_seal.enabled false every step runs the chemistry solve,
+    never the seal step, and the element closure check stays off without trapping."""
+    p, rows, guard_calls, step = _run_seal_loop(tmp_path, False)
+    step.assert_not_called()
+    assert len(rows) == len(guard_calls) > 0
+    assert {kw['check_element_closure'] for _, kw in guard_calls} == {False}
+    assert p.lid_sealed is False
+
+
+def test_with_the_lid_seal_on_the_loop_carries_its_state_and_clears_it_on_desiccation(
+    tmp_path,
+):
+    """With the seal on the loop calls the seal step instead of the chemistry
+    solve, hands each step the state the previous one returned, and checks the
+    element closure. Once the run is desiccated the closure check is off, and the
+    next step takes the desiccated branch, which clears the seal. Each step gets
+    the completed rows of the run, which a remelt under front trapping reads."""
+    states, seen, history = [True, True, True], [], []
+
+    def _make(p):
+        def _seal_step(_dirs, _config, hf_row, _interior, sealed, **kw):
+            seen.append(sealed)
+            history.append(kw['hf_all'] is p.hf_all)
+            _write_post_outgas_row(hf_row, len(seen) - 1, vapour=False)
+            p.desiccated = len(seen) >= 2  # the run desiccates on the second step
+            return states[len(seen) - 1]
+
+        return _seal_step
+
+    p, rows, guard_calls, step = _run_seal_loop(tmp_path, True, _make)
+    assert rows == []
+    assert seen == [False, True] and history == [True, True]
+    closure = [kw['check_element_closure'] for _, kw in guard_calls]
+    assert closure[0] is True and set(closure[1:]) == {False} and len(closure) > 2
+    assert p.desiccated is True and p.lid_sealed is False
+
+
+@pytest.mark.parametrize('sealed', [True, False])
+def test_a_resume_restores_the_lid_seal_state_from_the_last_row(tmp_path, caplog, sealed):
+    """A resume reads the seal state from the last row and logs when a closed
+    seal closed."""
+    p = _make_proteus_instance(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    df = _make_hf_df()
+    df['seal_t_close'] = [0.0, 0.0, 0.0, 250.0, 250.0]
+    with (
+        caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'),
+        patch('proteus.outgas.lid_seal.restore_seal_state', return_value=sealed) as restore,
+    ):
+        _resume_with_patches(p, df)
+    restore.assert_called_once()
+    assert restore.call_args.args[0] is p.config
+    assert restore.call_args.args[1]['seal_t_close'] == pytest.approx(250.0, abs=0.0)
+    assert p.lid_sealed is sealed
+    logged = 'Resuming with the lid seal closed since t = 2.500e+02 yr' in caplog.text
+    assert logged is sealed
+
+
+# ---------------------------------------------------------------------------
+# Atmosphere snapshots at chemistry targets
+# ---------------------------------------------------------------------------
+
+
+def _chemistry_target_proteus(tmp_path, times, *, module='vulcan', init_stage=False):
+    """A Proteus instance whose helpfile cools past 2000 K between its last two rows."""
+    p = _make_proteus_instance(tmp_path)
+    p.config.atmos_chem.module = module
+    p.config.atmos_chem.times = times
+    p.init_stage = init_stage
+    p.hf_all = pd.DataFrame({'Time': [10.0, 20.0], 'T_surf': [2100.0, 1900.0]})
+    p.hf_row = p.hf_all.iloc[-1].to_dict()
+    p.atmos_o = MagicMock()
+    return p
+
+
+@pytest.mark.parametrize(
+    ('times', 'module', 'init_stage', 'written'),
+    [
+        ({'T_surf': [2000.0]}, 'vulcan', False, True),
+        ([15.0], 'vulcan', False, True),
+        ({'T_surf': [1500.0]}, 'vulcan', False, False),
+        ([25.0], 'vulcan', False, False),
+        ('end', 'vulcan', False, False),
+        ({'T_surf': [2000.0]}, None, False, False),
+        ({'T_surf': [2000.0]}, 'vulcan', True, False),
+    ],
+    ids=[
+        'table_value_crossed',
+        'listed_time_reached',
+        'table_value_not_reached',
+        'listed_time_later',
+        'end_has_no_target_inside_the_run',
+        'no_chemistry_module',
+        'init_stage',
+    ],
+)
+def test_chemistry_target_snapshot_written_only_at_a_crossed_target(
+    tmp_path, times, module, init_stage, written
+):
+    """The step that cools T_surf from 2100 to 1900 K writes an atmosphere snapshot for a
+    target of 2000 K or a listed time of 15 yr; not for an unreached target, for 'end', with
+    no chemistry module, or during the init stage, whose rows all hold t = 0."""
+    p = _chemistry_target_proteus(tmp_path, times, module=module, init_stage=init_stage)
+
+    with (
+        patch('proteus.atmos_clim.wrapper.write_atmosphere_snapshot') as mock_write,
+        patch('proteus.utils.coupler.WriteHelpfileToCSV') as mock_csv,
+    ):
+        result = p._write_chemistry_target_snapshot()
+
+    assert result is written
+    assert mock_write.call_count == int(written)
+    # the helpfile goes to disk with the snapshot, so a resume sees the snapshot's row
+    assert mock_csv.call_count == int(written)
+    if written:
+        mock_csv.assert_called_once_with(p.directories['output'], p.hf_all)
+    if written:
+        _, _, _, hf_row = mock_write.call_args.args
+        assert hf_row['Time'] == pytest.approx(20.0, abs=1e-12)
+
+
+def test_main_loop_checks_chemistry_targets_only_on_steps_without_a_snapshot(tmp_path):
+    """With write_mod = 2 the loop writes every other step; the chemistry-target check runs
+    on the other steps only, since a snapshot step already wrote its atmosphere."""
+    from proteus.proteus import Proteus
+
+    def _calls(write_mod, folder):
+        folder.mkdir()
+        p = _make_main_loop_proteus(
+            folder, plot_mod=None, write_mod=write_mod, dt_write_rel=0.0
+        )
+        calls = []
+
+        def _record(handler):
+            calls.append(handler.loops['total'])
+            return False
+
+        _run_main_loop_capturing_plots(
+            p,
+            patch.object(
+                Proteus, '_write_chemistry_target_snapshot', autospec=True, side_effect=_record
+            ),
+            stop_at_loop=6,
+        )
+        return calls
+
+    calls = _calls(2, tmp_path / 'every_other')
+    assert _calls(1, tmp_path / 'every_step') == []  # every step writes its atmosphere
+
+    # is_snapshot reads the count before its increment, so steps 0, 2 and 4 write; the
+    # check runs on steps 1, 3 and 5, by which time the count reads 2, 4 and 6
+    assert calls == [2, 4, 6]

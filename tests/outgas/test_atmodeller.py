@@ -828,7 +828,7 @@ def test_unavailable_condensate_values_log_as_na(caplog):
     assert hf_row['C_cd_kg'] == 0.0
 
 
-def test_condensate_list_is_every_atmodeller_condensate_of_the_outgassing_elements():
+def test_condensate_tables_hold_every_atmodeller_condensate_of_the_outgassing_elements():
     """include_condensates adds all of atmodeller's condensates the chemistry can form.
 
     A condensate can only join a solve when every element it holds has a budget,
@@ -840,7 +840,12 @@ def test_condensate_list_is_every_atmodeller_condensate_of_the_outgassing_elemen
     pytest.importorskip('atmodeller')
     from atmodeller import ChemicalSpecies, SpeciesNetwork
 
-    from proteus.utils.constants import condensate_list, vol_element_list
+    from proteus.utils.constants import (
+        condensate_conductivity,
+        condensate_density,
+        condensate_names,
+        vol_element_list,
+    )
 
     allowed = set(vol_element_list) | set(noble_gases)
     available = [
@@ -854,8 +859,9 @@ def test_condensate_list_is_every_atmodeller_condensate_of_the_outgassing_elemen
     # Discrimination: atmodeller also has condensates of rock-forming elements
     # (e.g. FeO, SiO2), which the element filter must leave out.
     assert len(available) > len(reachable)
-    assert reachable == set(condensate_list)
-    assert len(condensate_list) == len(set(condensate_list))
+    assert reachable == set(condensate_density)
+    # The condensates are the keys of condensate_density; the other tables match them
+    assert set(condensate_names) == set(condensate_conductivity) == set(condensate_density)
 
 
 def test_condensates_need_their_elements_and_their_data_range():
@@ -900,13 +906,13 @@ def test_no_budget_left_resets_every_condensate_column_to_zero(source):
     element closure.
     """
     pytest.importorskip('atmodeller')
-    from proteus.utils.constants import condensate_list, vol_element_list
+    from proteus.utils.constants import condensate_density, vol_element_list
 
     config, hf_row = _carbon_only_condensate_case()
     config.planet.fO2_source = source
     hf_row['C_kg_total'] = 0.0  # every element, O included, now below threshold
     hf_row['O_kg_total'] = 0.0
-    stale = [f'{c}_cd_{q}' for c in condensate_list for q in ('activity', 'kg')]
+    stale = [f'{c}_cd_{q}' for c in condensate_density for q in ('activity', 'kg')]
     stale += [f'{e}_kg_condensed' for e in vol_element_list]
     hf_row.update(dict.fromkeys(stale, 1.0e20))
 

@@ -13,11 +13,17 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 from proteus.atmos_clim.common import (
+    LID_RESID_WARN,
     Atmos_t,
     LevelsSource,
+    LidOpenFluxError,
+    check_lid_inputs,
     clip_radius_to_hill,
+    lid_open_flux,
+    lid_open_residual,
     require_spfile_path,
 )
+from proteus.atmos_clim.surface_skin import effective_surf_state
 from proteus.star.wrapper import flux_weighted_distance
 from proteus.utils.constants import const_R, gas_list
 from proteus.utils.helper import UpdateStatusfile, safe_rm
@@ -219,6 +225,15 @@ def realign_xuv_gravity(hf_row: dict, radius: float):
         hf_row['g_xuv'] = gravity * (r_int / radius) ** 2
 
 
+def lid_or_stop(dirs: dict, fn, hf_row: dict):
+    """``fn(hf_row)`` for :func:`check_lid_inputs` or :func:`lid_open_flux`; a refusal writes status 22."""
+    try:
+        return fn(hf_row)
+    except LidOpenFluxError:
+        UpdateStatusfile(dirs, 22)
+        raise
+
+
 def run_atmosphere(
     atmos_o: Atmos_t,
     config: Config,
@@ -262,6 +277,7 @@ def run_atmosphere(
     """
 
     log.info('Solving atmosphere...')
+    lid_or_stop(dirs, check_lid_inputs, hf_row)
 
     # Update bond albedo
     if config.atmos_clim.albedo_pl > 1.0e-9:
@@ -285,19 +301,20 @@ def run_atmosphere(
         # Held at zero
         hf_row['albedo_pl'] = 0.0
 
-    # Handle new surface temperature
+    # Handle new surface temperature; a saturation skin is 'fixed' until a layer forms
+    surf_state = effective_surf_state(config, hf_row)
     if config.interior_energetics.module == 'boundary':
         # T_surf is already advanced by the Boundary backend's ODE, so the
         # atmosphere wrapper must not overwrite it.
         pass
 
-    elif config.atmos_clim.surf_state == 'mixed_layer':
+    elif surf_state == 'mixed_layer':
         # Argument order: (current hf_row, previous committed row). The
         # function integrates forward from hf_pre['Time'] to hf_cur['Time']
         # starting at hf_pre['T_surf'].
         hf_row['T_surf'] = ShallowMixedOceanLayer(hf_row, hf_all.iloc[-1].to_dict())
 
-    elif config.atmos_clim.surf_state == 'fixed':
+    elif surf_state == 'fixed':
         hf_row['T_surf'] = hf_row['T_magma']
 
     # elif surf_state=='skin':
@@ -429,6 +446,16 @@ def run_atmosphere(
     # Copy special cases
     hf_row['rho_obs'] = 3 * hf_row['M_planet'] / (4 * pi * hf_row['R_obs'] ** 3)
     hf_row['F_net'] = hf_row['F_int'] - hf_row['F_atm']
+    hf_row['lid_F_open'] = lid_or_stop(dirs, lid_open_flux, hf_row)
+    hf_row['lid_F_resid'] = lid_open_residual(hf_row)
+    if not abs(hf_row['lid_F_resid']) <= LID_RESID_WARN:  # 0 without a live lid; NaN warns
+        log.warning(
+            'Lid open part: atmosphere residual %.4g W m-2 per total area at t = %.6e yr '
+            '(above %g W m-2 or not finite): the atmosphere flux and the skin balance of the call differ',
+            hf_row['lid_F_resid'],
+            float(hf_row.get('Time', float('nan'))),
+            LID_RESID_WARN,
+        )
     hf_row['bond_albedo'] = atm_output['albedo']
 
     # Calculate bolometric observables (measured at infinite distance)

@@ -337,14 +337,24 @@ class TestSetupLogger:
         assert logger.name == 'fwl'  # FormingWorlds standard logger
 
     @pytest.mark.unit
-    def test_setup_logger_removes_existing_file(self, tmpdir_that_closes_logger_files):
-        """setup_logger removes pre-existing logfile."""
-        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
-        # Create existing file
-        pathlib.Path(logpath).touch()
-        assert os.path.exists(logpath)
-        logger = setup_logger(logpath=logpath, logterm=False)
-        assert logger is not None
+    def test_setup_logger_adds_to_an_existing_logfile(self, tmpdir_that_closes_logger_files):
+        """An earlier log keeps its lines and the new ones follow them, so that a second
+        command on one folder, such as `proteus offchem -g` on a run folder, loses no log;
+        a missing logfile is created."""
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'offchem.log')
+        pathlib.Path(logpath).write_text('[ INFO  ] earlier run\n')
+
+        setup_logger(logpath=logpath, logterm=False).info('grid run')
+        logging.getLogger('fwl').handlers[0].flush()
+        assert pathlib.Path(logpath).read_text().splitlines() == [
+            '[ INFO  ] earlier run',
+            '[ INFO  ] grid run',
+        ]
+
+        fresh = os.path.join(tmpdir_that_closes_logger_files, 'fresh.log')
+        setup_logger(logpath=fresh, logterm=False).info('first run')
+        logging.getLogger('fwl').handlers[0].flush()
+        assert pathlib.Path(fresh).read_text().splitlines() == ['[ INFO  ] first run']
 
     @pytest.mark.unit
     def test_setup_logger_default_level_info(self, tmpdir_that_closes_logger_files):

@@ -79,7 +79,14 @@ fitted core profile and, with `stratification = true`, the shell temperatures
 from the interior snapshot. A snapshot without a core temperature restarts the
 core from `T_cmb` of the resumed row.
 
-A structure update moves the CMB radius and pressure. The structure is updated
+A structure update moves the CMB radius and pressure. Each structure update gives
+the core nodes of the Zalmoxis structure the temperatures of the Aragog core
+adiabat, which goes through the core temperature at the CMB
+([the core temperature in the structure solve](../Explanations/model.md#the-core-temperature-in-the-structure-solve)).
+That adiabat has a constant expansion coefficient and heat capacity;
+[the limits of the core temperature table](../Explanations/model.md#limits-of-the-core-temperature-table)
+give its difference from the PALEOS liquid iron isentrope.
+The structure is updated
 during the run when `interior_struct.zalmoxis.update_interval > 0` (the
 default), and once after the start for every initial condition except
 `planet.temperature_mode = "liquidus_super"`. The core keeps its mass and its

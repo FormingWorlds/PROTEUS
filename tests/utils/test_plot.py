@@ -21,6 +21,7 @@ from proteus.utils.plot import (
     get_colour,
     latex_float,
     latexify,
+    profile_sample_tmin,
     sample_output,
     sample_times,
 )
@@ -304,3 +305,13 @@ def test_get_colourmap_falls_back_from_proteus_without_proteus_mpl(caplog):
             cmap = get_colourmap('proteus')
     assert DEFAULT_COLOURMAP in cmap.name
     assert any("'proteus'" in rec.message for rec in caplog.records)
+
+
+@pytest.mark.unit
+def test_profile_sample_tmin_starts_late_only_once_a_run_passes_1e3_yr():
+    """Profile snapshots are sampled from 1 yr in a run up to 1e3 yr, from 1e3 yr in a
+    longer run, and from 1 yr when there are no times yet."""
+    assert profile_sample_tmin([1.0, 278.0]) == pytest.approx(1.0)
+    assert profile_sample_tmin([1.0, 1000.0]) == pytest.approx(1.0)  # the limit itself
+    assert profile_sample_tmin([1.0, 1110.5]) == pytest.approx(1.0e3)
+    assert profile_sample_tmin([]) == pytest.approx(1.0)

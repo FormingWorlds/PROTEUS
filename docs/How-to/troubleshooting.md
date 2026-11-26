@@ -12,11 +12,14 @@ step-by-step guide or the advice below,
 | Error / symptom | Section |
 |---|---|
 | `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
+| `Aragog CMB closure check failed (CMBClosureError)` | [The CMB closure check of Aragog fails](#the-cmb-closure-check-of-aragog-fails) |
 | `was written before N column(s) of the current output schema existed` | [Resuming an older run](#resuming-a-run-written-by-an-older-proteus) |
 | `Resume: no Zalmoxis structure file matches the helpfile row` | [Resume stops on the Zalmoxis structure](#resume-stops-no-zalmoxis-structure-file-matches-the-row) |
-| `interior_energetics.aragog.separation_... but the run was written with` or `... is not recorded in`, after `Resume refused:` | [Resume stops on a separation law](#resume-stops-on-a-separation-law) |
+| `interior_energetics.aragog.<law>` or `interior_energetics.mixing_length is ... but the run was written with`, or `... is not recorded in`, after `Resume refused:` | [Resume stops on a separation law](#resume-stops-on-a-separation-law) |
+| `Resume refused: the interior snapshot ... holds a mesh of` | [Resume stops on a separation law](#resume-stops-on-a-separation-law) |
 | `Resume: the interior snapshot at t = ... is on an earlier structure` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
 | `Resume: a structure update was pending at the stop` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
+| `the sub-grid lid restarts as the phantom lid` / `Resume: the lid of the snapshot at t = ... yr is refused` | [A resumed run with the sub-grid lid](#a-resumed-run-with-the-sub-grid-lid) |
 | Simulation fails to converge (general) | [Stabilise a simulation](stabilise_run.md) |
 | `Aragog needs the SUNDIALS CVODE solver` / `scikits_odes_sundials.cvode cannot be imported` | [Aragog stops at setup](#aragog-stops-at-setup-cvode-cannot-be-imported) |
 | `Permission denied (publickey)` | [SSH keys](#cannot-clone-module-or-permission-denied-publickey) |
@@ -25,6 +28,8 @@ step-by-step guide or the advice below,
 | Slow Zenodo downloads | [Data downloads](#data-download-errors-or-slow-zenodo-downloads) |
 | `libudev.so.1` not found | [libudev](#libudevso1-not-found) |
 | `OpenSSL_jll` / Julia error | [Julia compatibility](#julia-compatibility-error) |
+| `PythonCall ... is required but does not seem to be installed` / `failed to find source of parent package` | [Julia depot with no packages](#julia-depot-with-no-packages) |
+| `could not load library ".../.juliaup/bin/../lib/julia/sys.so"`, or pytest exits with code 1 and prints nothing | [Julia system image not found](#julia-system-image-not-found) |
 | PETSc fails on Apple Silicon | [PETSc Apple Silicon](#petsc-compilation-fails-on-apple-silicon) |
 | `x86-pad-for-align` / SOCRATES | [SOCRATES compilation](#errors-during-the-socrates-compilation) |
 | `libcrypto.3.dylib` not found | [netCDF error](#python-netcdf-library-error) |
@@ -36,7 +41,7 @@ step-by-step guide or the advice below,
 
 ### Numerically fragile coupled runs {#numerically-fragile-coupled-runs}
 
-Some coupled atmosphere-interior-outgassing configurations occasionally fail with messages such as `RuntimeError: Aragog retry ladder exhausted` or with warnings about T_core jumping >1500 K despite Aragog reporting `status=0`. The same config may succeed on one launch and fail on the next.
+Some coupled atmosphere-interior-outgassing configurations occasionally fail with messages such as `proteus.interior_energetics.aragog.RetryLadderExhaustedError: Aragog retry ladder exhausted` or with warnings about T_core jumping >1500 K despite Aragog reporting `status=0`. The same config may succeed on one launch and fail on the next.
 
 The cause is sub-1e-7 floating-point noise in JAX/XLA reduction order that compounds through Aragog's tight tolerances and lands the solver on a wrong P-S branch within ~15 iterations.
 
@@ -52,6 +57,17 @@ The flag intercepts itself in `sys.argv` *before* any heavy imports, sets `JAX_E
 Do not enable by default; the flag has a small per-step cost. Use only when a config shows noise-floor divergence between launches.
 
 For broader convergence problems,see [stabilising simulations](stabilise_run.md).
+
+### The CMB closure check of Aragog fails {#the-cmb-closure-check-of-aragog-fails}
+
+With `interior_energetics.aragog.core_bc = "energy_balance"`, `"gradient"` or `"core_module"`, Aragog checks the heat budget at the core-mantle boundary (CMB) after each call; `"quasi_steady"` and `"bower2018"` have no such check. With `"energy_balance"` or `"gradient"`, the change of the core heat in the call must match the heat that crossed the CMB. With `"core_module"`, the CMB node must follow the change of the core top. A miss above the bound of the check gives a warning. A miss above 10 times that bound, or a slope (dT/dS)_P of the CMB node that is not finite and positive, raises `CMBClosureError`.
+
+PROTEUS then logs `Aragog CMB closure check failed (CMBClosureError) #n/3` with the message of Aragog. It keeps the interior state of the previous step for this step, sets the energy columns of the call to 0, and goes on with the other modules. Three failed Aragog calls in a row stop the run. The retry ladder does not run for this error.
+
+What to check, by the message of Aragog:
+
+- `node slope (dT/dS)_P = ...`: the CMB node is in a part of the P-S tables where the temperature does not rise with entropy, or the slope there is not a number. Compare the temperature or entropy in the message with the range of the tables at the CMB pressure.
+- `ledger miss ... is above 10x the solver bound`: the core heat and the CMB heat of the call disagree. The bound adds the error that the solver tolerance allows at the CMB node, the error of the tabulated slope there and the error of the time integral of the CMB heat. Aragog takes it as a worst case, so a miss above 10 times the bound points to the closure at the CMB, not to the tolerance.
 
 ### Aragog stops at setup: CVODE cannot be imported {#aragog-stops-at-setup-cvode-cannot-be-imported}
 
@@ -79,7 +95,7 @@ version that wrote it.
 
 PROTEUS records one column per output quantity, and a resumed run reads its starting state from the last line of that file. A run paused before a quantity was added holds no value for it, so the run stops.
 
-Either run the configuration again from `t = 0`, or check out the PROTEUS version the run was launched with and read it under that version. There is deliberately no option to continue anyway. The absent columns cannot be filled with a placeholder, because several modules decide what to do by testing whether a quantity is present at all: CALLIOPE refuses a run whose oxygen budget is missing, the dummy and boundary interiors fall back to a configured core size, and the atmosphere lower boundary moves to the solvus only when a solvus radius exists. Supplying a placeholder satisfies each of those tests and passes the placeholder to the solver behind it, which produces a result that looks ordinary and is wrong.
+Either run the configuration again from `t = 0`, or check out the PROTEUS version the run was launched with and read it under that version. There is deliberately no option to continue anyway. The absent columns cannot be filled with a placeholder, because several modules decide what to do by testing whether a quantity is present at all: CALLIOPE refuses a run whose oxygen budget is missing, the dummy interior falls back to a configured core size where the boundary interior requires the core radius from the structure, and the atmosphere lower boundary moves to the solvus only when a solvus radius exists. Supplying a placeholder satisfies each of those tests and passes the placeholder to the solver behind it, which produces a result that looks ordinary and is wrong.
 
 `proteus observe` and `proteus offchem` are held to a smaller set of columns, because reading a stored run to synthesise an observation or run offline chemistry touches only a small part of the schema. An archived run stays postprocessable after a schema addition it never used, and stops only when a column those commands actually read is absent. When that happens, the practical remedy for a run that is expensive or no longer possible to reproduce is the second one: check out the PROTEUS version the run was launched with and postprocess it under that version. Re-running from `t = 0` under current code does not reproduce the archived run, it produces a different one.
 
@@ -106,9 +122,30 @@ Resume refused:
   interior_energetics.aragog.separation_buoyancy is 'mixture' in run.toml, but the run was written with 'solid' (output/run/init_coupler.toml); set it to 'solid' to keep the law, or set interior_energetics.aragog.allow_resume_law_change = true to switch it at the resume
 ```
 
-The run's `init_coupler.toml` records the config of its last start; a resume writes it again only once every resume check has passed, just before the main loop. A resume under another `separation_viscosity` or `separation_buoyancy` would change the drainage of melt from the resume row on, so the resume stops; the refused attempt writes only its own `proteus_NN.log` and status 20. Set the field to the recorded value to continue under the same law, or set `interior_energetics.aragog.allow_resume_law_change = true` to switch the law at the resume: the log records one warning per switched law, and `init_coupler.toml` then records the new law with the switch off, so a run that stops before its first new row needs the switch again to go back to the old law. A resume with `-c` pointing at the run's own `init_coupler.toml` compares that file with itself, so an edit of a law in that file is not detected.
+The run's `init_coupler.toml` records the config of its last start; a resume writes it again only after its first interior step, once every resume check and the mesh check of the interior snapshot have passed. A resume under another `separation_viscosity` or `separation_buoyancy` would change the drainage of melt from the resume row on, so the resume stops; the refused attempt writes only its own `proteus_NN.log` and status 20. Set the field to the recorded value to continue under the same law, or set `interior_energetics.aragog.allow_resume_law_change = true` to switch the law at the resume: the log records one warning per switched law, and `init_coupler.toml` then records the new law with the switch off, so a run that stops before its first new row needs the switch again to go back to the old law. A resume with `-c` pointing at the run's own `init_coupler.toml` compares that file with itself, so an edit of a law in that file is not detected.
 
 A record that names the Aragog module and lacks `separation_viscosity` counts as `'melt'`. Any other law the record does not hold must be set in the config file: a `separation_buoyancy` it lacks, a `separation_viscosity` it lacks when it names no interior module, and both laws when `init_coupler.toml` is missing or unreadable or names another interior module (as after a resume with `interior_energetics.module = 'dummy'`). The allow switch does not cover them. A run without a recorded `separation_buoyancy` ran under `'solid'` with an aragog below 26.10.22 and under `'mixture'` from 26.10.22; each start writes the aragog version to its `proteus_NN.log`.
+
+The same check keeps the solid rheology (`interior_energetics.aragog.rheology.enabled`) and the sub-grid lid (`interior_energetics.aragog.lid_mush_base`) of the run, with the same allow switch. A record that names the Aragog module and lacks either counts as off. A missing record, or one that names no module and holds no Aragog table, leaves both unchecked, with a note in the log.
+
+The same check keeps the mixing length (`interior_energetics.mixing_length`) of an Aragog run and of a SPIDER run. The default is `'constant'`, so a run that was written with `'nearest'` and is resumed with a config file that does not set the field stops with status 20:
+
+```console
+Resume refused:
+  interior_energetics.mixing_length is 'constant' (the default; run.toml does not set it), but the run was written with 'nearest' (output/run/init_coupler.toml); set it to 'nearest' to keep the law, or set interior_energetics.aragog.allow_resume_law_change = true to switch it at the resume
+```
+
+Set `mixing_length = 'nearest'` in the `[interior_energetics]` table of the config file to continue under the law of the run, or set `interior_energetics.aragog.allow_resume_law_change = true` to switch to `'constant'` at the resume row. The switch also covers a SPIDER run.
+
+A resumed Aragog run must also build the mesh of the run, because the snapshot entropy is put back node by node. In its first interior step the resume compares the node radii it builds with the `radius_b` of the interior snapshot, and stops with status 20 and a message such as:
+
+```console
+Resume refused: the interior snapshot output/run/data/5000p000_int.nc holds a mesh of 80 nodes, bottom cell 3000.0 m, top cell 65798.8 m, but the config of the resume builds 80 nodes, bottom cell 35561.0 m, top cell 65798.8 m (num_levels = 80, cmb_cell_thickness = 0.0, surface_cell_thickness = 'uniform'); the snapshot entropy is put back node by node, so the resume must build the mesh of the run: set these fields to the values the run used
+```
+
+Set `num_levels`, `cmb_cell_thickness` and `surface_cell_thickness` to the values the run used; `allow_resume_law_change` does not cover the mesh. When the resume builds the solver on a structure that moved since the snapshot (see the structure update below), the check compares the node count and the 2 end cells: a set cell must keep its length to 1 m, and a uniform cell, scaled with the mantle thickness, must agree to 10 %. It does not compare `mass_coordinates`. An older snapshot without `radius_b` is not checked.
+
+A run on the uniform mesh whose config file sets no cell field builds the default 3000 m cell at the CMB when it is resumed with the same file, and stops with status 20 on the mesh check: the snapshot holds a bottom cell of 35561.0 m on 80 nodes for an Earth-mass planet, the resume builds 3000.0 m. Set `cmb_cell_thickness = 0` in the `[interior_energetics.aragog]` table to resume it. The default `surface_cell_thickness = 'uniform'` builds the top cell of the uniform mesh, so set `surface_cell_thickness` only when the run used another value. If the record of such a run holds `mixing_length = 'nearest'` and the config file does not set the field, the resume stops on the mixing length first, before its first interior step and so before the mesh check; set `mixing_length = 'nearest'` as well.
 
 ### A resumed run and the uninterrupted run {#a-resumed-run-and-the-uninterrupted-run}
 
@@ -121,7 +158,17 @@ Resume: the interior snapshot at t = 3.220037e+02 yr is on an earlier structure 
 Resume: a structure update was pending at the stop. With core_bc = 'core_module' the solver is built on the structure of the row and the update is not replayed from the earlier mesh
 ```
 
-The first appears when no mesh file of the earlier structure is left. The second appears for a core boundary condition other than `energy_balance`, and when a giant impact landed between the snapshot and the row. In both cases, the run continues on the structure of its row: the first resumed step records no compression work, and the entropy is handed over by node. The resumed run then differs from the uninterrupted one from that step on. A structure update that moves both radii by less than 1 m is not detected and is handled in the same way, without a warning. A snapshot with no entropy profile on the node count of the run gives neither warning: the run starts from a fresh initial condition on its row, as on any resume with such a snapshot. If the solver is built on the earlier structure and the snapshot entropy does not fit its cells, the resume stops with an error, and the run must start again from t = 0.
+The first appears when no mesh file of the earlier structure is left. The second appears for a core boundary condition other than `energy_balance`, and when a giant impact landed between the snapshot and the row. In both cases, the run continues on the structure of its row: the first resumed step records no compression work, and the entropy is handed over by node. The resumed run then differs from the uninterrupted one from that step on. A structure update that moves both radii by less than 1 m is not detected and is handled in the same way, without a warning. A snapshot that holds its node radii and another node count stops the resume (see the mesh check below); only an older snapshot without node radii and with another node count starts from a fresh initial condition on its row. If the solver is built on the earlier structure and the snapshot entropy does not fit its cells, the resume stops with an error, and the run must start again from t = 0.
+
+### A resumed run with the sub-grid lid {#a-resumed-run-with-the-sub-grid-lid}
+
+With the Aragog sub-grid lid on (`interior_energetics.aragog.lid_mush_base = true`), each interior snapshot `data/<time>_int.nc` holds the lid thickness `lid_delta_state` \[m\] and the lid energy `lid_E_state` \[J m-2\], and for a lid handed over to the mesh its hand-over time `lid_handover_time_state` \[yr\]. A resume starts the lid from these values. A snapshot without them, or with a value that is not finite, gives the warning
+
+```text
+Snapshot lid thickness is absent and lid energy is absent; the sub-grid lid restarts as the phantom lid at lid_delta_lo.
+```
+
+The lid then starts at `lid_delta_lo` with a linear temperature profile, and the resumed run differs from the uninterrupted one. A run written without the lid and resumed with it stops before this at the check of [Resume stops on a separation law](#resume-stops-on-a-separation-law), unless `allow_resume_law_change` is true. A stored lid that Aragog refuses stops the resume with `Resume: the lid of the snapshot at t = ... yr is refused`: a thickness at or below 0 other than the handed-over lid (thickness and energy both 0), a negative hand-over time, or a hand-over time with a live lid. A stored live lid over a top cell that Aragog does not accept at a start stops the run with `lid_mush_base: the top cell starts at ...`: below the floor of the step check ($S_\mathrm{sol}$ + 0.5 J/kg/K), or where the heat jump of the lid base is below 1000 J/kg (up to about $S_\mathrm{sol} + 1000/T_\mathrm{sol}$ J/kg/K). For a solidus below 2000 K that band reaches above the floor of the step check, so a top cell the step check accepted at the end of a step can still be refused at the next start. The check runs at every live start of the solver, and PROTEUS starts the solver at every coupling step, not only on a resume. The phantom lid of a snapshot without a lid needs the top cell 1 J/kg/K above $S_\mathrm{sol}$ and stops the run with the same message below it. Run the configuration again from t = 0.
 
 ### Cannot clone module, or Permission denied (publickey) {#cannot-clone-module-or-permission-denied-publickey}
 
@@ -233,6 +280,39 @@ First, check that you are in the correct directory when running `make` or `./con
 ### `libudev.so.1` not found {#libudevso1-not-found}
 
 This happens when compiling SPIDER within a Python environment that is incompatible with PETSc. Try compiling SPIDER (and/or PETSc) in your system's base Python environment, and ensure that you are not using Python >= 3.13, as SPIDER is only supported for Python versions <= 3.12 currently.
+
+### Julia depot with no packages {#julia-depot-with-no-packages}
+
+`import juliacall` stops with `Package PythonCall ... is required but does not seem to be installed`, or `using AGNI` stops with `failed to find source of parent package`. The project of Julia records its packages, but the folder in `JULIA_DEPOT_PATH` does not hold them. This happens when the value changed by hand, or when a move to a new depot had no network; the installer then stops at its import check, or earlier at a Python package it cannot download. Run `bash install.sh` again with network, or install the packages of each project from the PROTEUS folder; this changes no `Manifest.toml`:
+
+```console
+LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --project="$CONDA_PREFIX/julia_env" -e 'using Pkg; Pkg.instantiate()'
+LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --project=AGNI -e 'using Pkg; Pkg.instantiate()'
+```
+
+A project that you set yourself with `PYTHON_JULIAPKG_PROJECT` needs the same command; the installer leaves it alone.
+
+### Julia system image not found {#julia-system-image-not-found}
+
+`import proteus`, `import juliacall` or a run with AGNI stops with `could not load library ".../.juliaup/bin/../lib/julia/sys.so"`, or pytest exits with code 1 and prints nothing. This happens in some shells, not all. juliapkg has recorded the juliaup launcher (`~/.juliaup/bin/julia`) as the Julia program, and juliacall looks for the Julia system image (`sys.so`) next to it, where there is none. Julia then ends the Python process, so there is no Python traceback.
+
+Point juliacall at the real Julia program and at the Julia project of your Python environment. Set both variables together, because juliacall refuses one without the other, in the shell before any PROTEUS, AGNI or test command:
+
+```console
+export PYTHON_JULIACALL_EXE="$(julia --startup-file=no -e 'print(joinpath(Sys.BINDIR, "julia"))')"
+export PYTHON_JULIACALL_PROJECT="$(python -c 'import juliapkg; print(juliapkg.project())')"
+```
+
+The first line asks Julia, through the launcher, for the path of the program it runs, for example `~/.julia/juliaup/julia-1.13.1+0.x64.linux.gnu/bin/julia`. The second prints the Julia project that juliacall uses for the active Python environment, which is `$CONDA_PREFIX/julia_env` in a conda environment. Run both with the `proteus` environment active.
+
+To keep the values in every new shell, store them in the environment and activate it again:
+
+```console
+conda env config vars set -n proteus PYTHON_JULIACALL_EXE="$PYTHON_JULIACALL_EXE" PYTHON_JULIACALL_PROJECT="$PYTHON_JULIACALL_PROJECT"
+conda deactivate && conda activate proteus
+```
+
+Set them again after a Julia update, since the path of the program changes with the version. Where juliacall starts Julia without them, leave both unset.
 
 ### Julia compatibility error {#julia-compatibility-error}
 

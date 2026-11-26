@@ -412,7 +412,7 @@ config_version = "3.0"
         update_dw_comp_abs    = 0.05         # composition trigger: relative change in dissolved H2O/H2 mass fraction
         update_interval       = 1e9          # time-cadence ceiling [yr]; the large default leaves refreshes to the dphi/dtmagma/dw triggers; 0 = init only
         update_min_interval   = 0            # min time between updates [yr]
-        update_stale_ceiling  = 2.5e4        # max time since last successful re-solve [yr]; 0 = disabled
+        update_stale_ceiling  = 2.5e4        # recovery after a failed re-solve: re-solve once this time [yr] has passed since the last attempt, if no other trigger fires; 0 = disabled
         mesh_max_shift        = 0.05         # max fractional radius shift per update
         mesh_convergence_interval = 10.0     # convergence time after mesh update [yr]
 
@@ -449,7 +449,6 @@ config_version = "3.0"
     rtol                      = -1.0         # relative ODE solver tolerance; unset: 1e-8 Aragog, 1e-10 SPIDER
     atol                      = 1.0e-10      # absolute ODE solver tolerance
     flux_guess                = -1           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
-    num_tolerance             = -1           # deprecated alias for rtol; leave at -1 (unset)
     surface_bc_mode           = "flux"       # flux (F_atm from the atmosphere) | grey_body (native BC)
 
     # Constant-properties mode: bypass EOS tables, use analytical T(S) = T_ref * exp((S - S_ref) / Cp)
@@ -471,18 +470,25 @@ config_version = "3.0"
     # Heating
     heat_tidal                = false        # tidal heating (requires orbit.module != "none")
     heat_radiogenic           = true         # radiogenic heating
-    radio_tref                = 4.567        # reference age for concentrations [Gyr]; 4.567 = present-day BSE
-    radio_Al                  = 0.0          # 26Al [ppmw]; 1.23 = canonical (26Al/27Al = 5.25e-5)
-    radio_Fe                  = 0.0          # 60Fe [ppmw]; 6.3e-4 = canonical (60Fe/56Fe = 1e-8)
-    radio_K                   = 310.0        # 40K [ppmw of element]; BSE value
-    radio_U                   = 0.031        # U [ppmw of element]; BSE value
-    radio_Th                  = 0.124        # Th [ppmw of element]; BSE value
+    # Isotope ratios are mass ratios; the atom ratios of Ruedas (2017) converted with isotope masses
+    radio_tref                = 4.567        # stellar age of the values below [Gyr]; 4.567 = present day
+    radio_Al                  = 2.35e4       # total Al [ppmw]
+    radio_Al26_abund          = 0.0          # 26Al/Al [kg/kg]; 5.0563e-5 at Solar System formation
+    radio_Fe                  = 6.26e4       # total Fe [ppmw]
+    radio_Fe60_abund          = 0.0          # 60Fe/Fe [kg/kg]; ~1e-8 at Solar System formation
+    radio_K                   = 310.0        # total K [ppmw]
+    radio_K40_abund           = 1.1926e-4    # 40K/K [kg/kg]
+    radio_U                   = 0.031        # total U [ppmw]
+    radio_U235_abund          = 0.0071141    # 235U/U [kg/kg]
+    radio_U238_abund          = 0.9928859    # 238U/U [kg/kg]
+    radio_Th                  = 0.124        # total Th [ppmw]
+    radio_Th232_abund         = 1.0          # 232Th/Th [kg/kg]
 
     # Rheology and convection
     rfront_loc                = 0.40         # rheological front centre [melt fraction]
     rfront_wid                = 0.20         # rheological front width [melt fraction]
     grain_size                = 1e-3          # crystal grain size [m]
-    mixing_length             = "nearest"    # MLT length scale: nearest (boundary) | constant (D/4)
+    mixing_length             = "constant"   # MLT length scale: constant (D/4) | nearest (boundary)
     kappah_floor              = 10.0         # eddy diffusivity floor [m2/s]; prevents MLT freeze
 
     # Coupling limits (max T_magma and T_surf change per PROTEUS step; disabled on Aragog steps with finite tau_drain when top_cell_dt_limit = true)
@@ -520,6 +526,8 @@ config_version = "3.0"
     # Aragog-only parameters
     [interior_energetics.aragog]
         mass_coordinates              = true     # mass coordinate mesh spacing
+        cmb_cell_thickness            = 3000.0   # radial thickness of the CMB cell [m]; 0 = uniform at that end
+        surface_cell_thickness        = "uniform" # top cell [m], or "uniform" = the top cell of the uniform mesh of the same coordinate mode
         backend                       = "jax"    # jax (CVODE + analytic Jacobian) | numpy (CVODE + FD Jacobian)
         solver_method                 = "cvode"  # cvode (SUNDIALS, required unless a scipy solver is chosen) | radau (scipy) | bdf (scipy)
         atol_temperature_equivalent   = 1.0e-8   # CVODE atol [K]
@@ -539,13 +547,17 @@ config_version = "3.0"
         # it (1 yr steps with "fixed", which can stall a run; 1 to 100 yr segments with "rate").
         phase_boundary_entropy_margin = 200.0    # phase-boundary max_step band [J/kg/K]
         phase_boundary_cap            = "rate"     # phase-boundary max_step policy: "rate" (default) | "fixed"
+        rheology.enabled              = false    # temperature- and pressure-dependent solid viscosity; Aragog only
+        rheology.mlt_bottom_slope     = 1.0      # viscous mixing length above the CMB, l = slope (r - r_cmb); in (0, 1]
+        lid_mush_base                 = false    # sub-grid lid with its base at the solidus; needs rheology.enabled and the skin surface of AGNI or the dummy (not fixed_flux), not with prevent_warming
+        lid_delta_on                  = "none"   # lid onset thickness [m]; none = solid_cond * surface_d / surface_k (0.02 m for the default skin)
         top_cell_dt_limit             = false    # bound dt by tau_drain (down to dt.minimum * escape.step_dt_floor_frac) and keep T_magma, T_surf, and Phi_global unclipped by tmagma_atol/tmagma_rtol when tau_drain is finite and the step does not exceed tau_drain
         top_cell_dt_rel_dT            = 0.08     # relative surface-temperature change allowance in the mushy regime (phi_s[-1] >= 0.40); in (0, 0.15]
         top_cell_dt_rel_dT_solid      = 0.08     # relative surface-temperature change allowance at a fully solid top cell (phi_s[-1] = 0); in (0, top_cell_dt_rel_dT]
 
-        # Core evolution, read when core_bc = "core_module": the CMB radius and pressure come
-        # from the mesh and the central density and length scale from fits to the interior
-        # structure, so only material and model choices appear here.
+        # Core evolution, read when core_bc = "core_module"; alpha and c_p also set the Gaussian core of
+        # a Zalmoxis solve with a core temperature table and no live core (SPIDER, other core_bc).
+        # The CMB radius, pressure, central density and length scale come from the mesh and fits.
         [interior_energetics.aragog.core_module]
             alpha                  = 1.35e-5   # core thermal expansion coefficient [K-1]
             c_p                    = 840.0     # core specific heat capacity [J kg-1 K-1]
@@ -565,14 +577,13 @@ config_version = "3.0"
             layer_k_mix            = 1.0e7     # eddy diffusivity of shell mixing [m2 s-1]
             layer_g_mix            = 1.0e-3    # reference superadiabatic gradient of shell mixing, fraction of the CMB adiabatic gradient
             f_ohm                  = 1.0       # ohmic fraction of the dissipation in the field-strength scaling
-            ra_crit_cmb            = 450.0     # critical Rayleigh number of the mantle-side CMB boundary layer that sets the core-mantle heat flux
+            ra_crit_cmb            = "phase"   # critical Rayleigh number of the mantle-side CMB boundary layer that sets the core-mantle heat flux: "phase" (450 while the bottom cell is liquid, Thiriet et al. 2019 eq. 16 while solid, blended by a tanh of its melt fraction that is 0.05 and 0.95 at rfront_loc -+ rfront_wid/2), "eq16", or a number, e.g. 450
             flux_geometry          = "const_flux"  # field-strength efficiency geometry: const_flux | zero_outer
 
     # SPIDER-only parameters
     [interior_energetics.spider]
         solver_type           = "bdf"        # SUNDIALS method: adams | bdf
         matprop_smooth_width  = 1.0e-2       # melt-fraction smoothing window across solidus/liquidus
-        tolerance_rel         = -1           # deprecated alias for interior_energetics.rtol; leave at -1 (unset)
         tolerance_struct      = 100          # absolute mass tolerance [kg] for the radius secant solver
         log_output            = true         # write SPIDER solver log output
 
@@ -580,21 +591,19 @@ config_version = "3.0"
     [interior_energetics.dummy]
         mantle_tliq           = 2700.0       # liquidus [K]
         mantle_tsol           = 1700.0       # solidus [K]
-        mantle_rho            = 4550.0       # mantle density [kg m-3]; mantle mass uses M_int-M_core when the structure provides it
         mantle_cp             = 1792.0       # mantle heat capacity [J K-1 kg-1]
         heat_internal         = 0.0          # internal heating rate [W kg-1]
 
     # Boundary backend (Schaefer+2016 0-D box model with prescribed solidus/liquidus)
     [interior_energetics.boundary]
-        T_solidus                 = 1420.0       # mantle solidus [K]
-        T_liquidus                = 2020.0       # mantle liquidus [K]
+        melt_model                = "linear"     # melt fraction from T_p against the constants below in one layer ("linear"), or from a mantle adiabat against the tabulated melting curves, with the mantle split into shells ("adiabat")
+        T_solidus                 = 1420.0       # mantle solidus [K]; read only when melt_model = "linear"
+        T_liquidus                = 2020.0       # mantle liquidus [K]; read only when melt_model = "linear"
         critical_rayleigh_number  = 1100.0       # critical Rayleigh number for onset of convection
         nusselt_exponent          = 0.33         # Nusselt-Rayleigh scaling exponent
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
-        atm_heat_capacity         = 1.7e4        # fallback atmosphere heat capacity [J/kg/K]
-        atm_heat_capacity_const   = true         # use the constant fallback heat capacity above
-        silicate_density          = 4103.0       # silicate density [kg/m^3]
-        core_density              = 10738        # core density if not defined by structure module [kg/m^3]
+        atm_heat_capacity         = 1.7e4        # atmosphere heat capacity [J/kg/K]; the fallback before the first atmosphere solve when atm_heat_capacity_const = false
+        atm_heat_capacity_const   = true         # true: constant atm_heat_capacity; false: layer-mass-weighted mean of the last atmosphere solve
         core_shear                = 1.0e9        # core shear modulus [Pa]
         core_bulk                 = 1.0e12       # core bulk modulus [Pa]
         thermal_conductivity      = 4.2          # thermal conductivity [W/m/K]
@@ -606,6 +615,10 @@ config_version = "3.0"
         creep_parameter           = 26.0         # Arrhenius creep parameter
         viscosity_prefactor       = 2.4e-4       # VFT magma-ocean prefactor [Pa s]
         viscosity_activation_temp = 4600.0       # VFT magma-ocean activation temperature [K]
+        include_core_heat_capacity = false       # add core_heatcap * M_core to the heat capacity, as the dummy does (times dT_cmb/dT_p with melt_model = "adiabat")
+        sensible_heat             = "molten"     # linear model, partly molten mantle: sensible heat of the molten part ("molten") or the whole mantle ("whole", as the dummy); the adiabat model always takes the whole mantle
+        tidal_viscosity           = "boundary"   # viscosity handed to the tides modules: own viscosity_model ("boundary") or the dummy's Kervazo+21 rheology ("kervazo")
+        viscosity_phi             = "global"     # melt fraction behind the convective viscosity: mantle average ("global") or the top of the mantle on the adiabat ("top", needs melt_model = "adiabat")
         logging                   = false        # write Boundary diagnostic CSVs
 
 # ----------------------------------------------------
@@ -699,6 +712,17 @@ config_version = "3.0"
         xatol                 = 1e-5         # absolute tolerance on LavAtmos' fO2 solve
         fO2_buffer_model      = "oneill"     # IW buffer used for LavAtmos' fO2 solve
 
+    [outgas.lid_seal]                        # volatiles held under a closed crust (requires aragog)
+        enabled               = false        # seal the melt inventory when a crust closes
+        delta_close           = 1e4          # crust thickness at which the seal closes [m]
+        phi_close             = 0.3          # top-cell melt fraction below which it closes [1]
+        delta_open            = "none"       # thickness below which it opens [m]; none = 0.5 delta_close
+        phi_open              = "none"       # top-cell melt fraction at which it opens [1]; none = phi_close + 0.05
+        tau_leak              = inf          # relaxation time of the sealed inventory [yr]; inf holds it
+        chi_d                 = 0.02         # degassing efficiency of melt reaching the crust [1]
+        crust_rate            = 0.0          # melt mass reaching the crust [kg yr-1]
+        phi_solid             = 1e-3         # melt fraction below which a cell counts as crust [1]
+
 # Atmosphere climate (radiative-convective structure)
 [atmos_clim]
     module                    = "agni"       # agni | janus | dummy
@@ -732,7 +756,7 @@ config_version = "3.0"
         # Physics switches
         solve_energy          = true         # iterative energy-conserving T(p) profile
         convection            = true         # convective adjustment (MLT)
-        conduction            = false        # conductive heat transport (Fourier)
+        conduction            = true         # conductive heat transport (Fourier)
         sens_heat             = true         # sensible heat flux at surface
         rainout               = true         # volatile condensation and evaporation
         oceans                = true         # surface liquid water oceans
@@ -767,6 +791,7 @@ config_version = "3.0"
         broyden               = true         # Broyden jacobian updates between finite-difference evaluations; intended for ls_default = 3
         fdo                   = 2            # finite-difference order for Jacobian: 2 | 4
         check_safe_gas        = true         # require at least one gas with opacity+thermo data
+        load_all_opacities    = true         # load every gas of the spectral file; false loads only the modelled gases
         verbosity             = 1            # AGNI log level: 0 (silent) | 1 (info) | 2 (debug)
 
         # FastChem equilibrium chemistry (only used when chemistry = "eq")
@@ -904,7 +929,7 @@ config_version = "3.0"
     # or alone with `bash tools/get_vulcan.sh`.
     module                    = "none"       # none | vulcan | dummy
     mode                      = "none"       # none | offline (online is not yet implemented)
-    times                     = "end"        # end | all | list of times [yr]
+    times                     = "end"        # end | all | list of times [yr] | table, e.g. {Phi_global = [0.01], T_surf = [1500.0]}
 
     # Transport processes
     photo_on                  = true         # photochemistry
@@ -918,6 +943,7 @@ config_version = "3.0"
         network               = "SNCHO"      # chemical network: CHO | NCHO | SNCHO
         ini_mix               = "profile"    # initial mixing ratios: profile | outgas | previous
         fix_surf              = false        # hold surface mixing ratios fixed
+        escape_bc             = false        # PROTEUS escape as top boundary (needs fix_surf)
         make_funs             = true         # generate reaction network functions
 
         # Processes
@@ -946,6 +972,12 @@ config_version = "3.0"
         post_conden_rtol      = 0.1          # relative tolerance once condensation stops
         clip_fl               = 1e-20        # stellar flux floor [erg/s/cm2/nm]
         clip_vmr              = 1e-10        # neglect species below this VMR
+
+        # Climate coupled to the chemistry (needs atmos_clim.module = "agni")
+        couple_agni           = false        # solve the AGNI climate again with VULCAN's composition
+        agni_call_frq         = 0            # steps between climate updates; 0: at steady states only
+        agni_T_rtol           = 0.01         # settled when an update changes T by at most this fraction
+        agni_max_calls        = 10           # climate updates at steady states before giving up
 
         # Output
         save_frames           = false        # save plot frames during iterations

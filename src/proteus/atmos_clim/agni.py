@@ -15,9 +15,13 @@ from scipy.interpolate import PchipInterpolator
 from proteus.atmos_clim.common import (
     clip_radius_to_hill,
     get_oarr_from_parr,
+    lid_boundary,
     require_spfile_path,
 )
 from proteus.atmos_clim.spectral_cache import cache_key, seed_from_cache, store_in_cache
+from proteus.atmos_clim.surface_skin import (
+    agni_sol_type,
+)
 from proteus.data import (
     REFRACTIVE,
     SCATTERING,
@@ -28,7 +32,6 @@ from proteus.data import (
 from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
-    create_tmp_folder,
     format_subyear_time,
     mol_to_ele,
     multiple,
@@ -45,6 +48,10 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Constant
 AGNI_LOGFILE_NAME = 'agni_recent.log'
+
+# Length in bytes of the file name variables of the SOCRATES tools (prep_spec.f90, open_file_in.f)
+SOCRATES_MAX_PATH = 132
+
 # Gases kept out of the condensate set. The noble gases are chemically inert
 # and are tracked as conserved reservoirs, so they never rain out.
 ALWAYS_DRY = ('CO', 'N2', 'H2', *noble_gases)
@@ -577,7 +584,14 @@ def _resolve_surface_material(name: str, fwl_dir: str) -> str:
     return os.path.join(fwl_dir, name)
 
 
-def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = True):
+def init_agni_atmos(
+    dirs: dict,
+    config: Config,
+    hf_row: dict,
+    use_cache: bool = True,
+    star_file: str | None = None,
+    io_dir: str | None = None,
+):
     """Initialise atmosphere struct for use by AGNI.
 
     Does not set the temperature profile.
@@ -592,11 +606,24 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
             Dictionary containing simulation variables for current iteration
         use_cache : bool
             Whether to read from and store into `atmos_clim.spectral_cache`.
+        star_file : str or None
+            Stellar spectrum (``.sflux``) to prepare the spectral file with, instead of
+            the newest in ``data/``; the prepared ``runtime.sf`` of the run is then not
+            reused. Postprocessing a snapshot passes the spectrum that snapshot used.
+        io_dir : str or None
+            Folder for AGNI's working files, instead of the output folder or the run's
+            temporary folder.
 
     Returns
     ----------
         atmos : atmosphere.Atmos_t
             Atmosphere struct
+
+    Raises
+    ----------
+        ValueError
+            The stellar spectrum goes into the spectral file and the path of
+            ``io_dir/socstar.dat`` is longer than ``SOCRATES_MAX_PATH`` bytes.
 
     """
 
@@ -612,10 +639,12 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
 
     # Fast I/O folder. Decided before the spectral file, because AGNI writes the
     # prepared runtime.sf pair here and so this is where the cache reads from.
-    if (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == 'DEBUG'):
+    if io_dir is not None:
+        os.makedirs(io_dir, exist_ok=True)
+    elif config.atmos_clim.agni.verbosity >= 2:
         io_dir = dirs['output']
     else:
-        io_dir = create_tmp_folder()
+        io_dir = dirs['temp']
     log.info(f'Temporary-file working dir: {io_dir}')
 
     # Set when this run built a prepared spectral file that the cache does not
@@ -637,8 +666,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
                 )
     else:
         # No spectral file provided: use existing runtime.sf in output, or
-        # let AGNI copy from FWL_DATA + modify as required.
-        try_spfile = os.path.join(dirs['output'], 'runtime.sf')
+        # let AGNI copy from FWL_DATA + modify as required (always, for a given star file).
+        try_spfile = '' if star_file else os.path.join(dirs['output'], 'runtime.sf')
 
     # Obtain spectral file
     if try_spfile == 'greygas':
@@ -653,16 +682,19 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
         # doesn't exist in output folder => AGNI will copy from FWL_DATA + modify.
         # Resolve the stellar spectrum path here, where it is actually needed.
         sflux_files = glob.glob(os.path.join(dirs['output'], 'data', '*.sflux'))
-        if not sflux_files:
+        if star_file:
+            sflux_path = star_file
+        elif not sflux_files:
             UpdateStatusfile(dirs, 20)
             raise FileNotFoundError(
                 f'No stellar spectrum (*.sflux) found in {dirs["output"]}/data; '
                 'AGNI cannot construct a fresh spectral file without it'
             )
-        sflux_times = [int(s.split('/')[-1].split('.')[0]) for s in sflux_files]
-        sflux_path = os.path.join(
-            dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1])
-        )
+        else:
+            sflux_times = [int(s.split('/')[-1].split('.')[0]) for s in sflux_files]
+            sflux_path = os.path.join(
+                dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1])
+            )
         input_sf = require_spfile_path(dirs, config)
         input_star = sflux_path
 
@@ -767,6 +799,17 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
         else:
             cache_store_key = key
 
+    # prep_spec reads io_dir/runtime.sf and io_dir/socstar.dat, the longer name, as bytes
+    socstar = os.path.join(io_dir, 'socstar.dat')
+    nbytes = len(os.fsencode(socstar))
+    if input_star and nbytes > SOCRATES_MAX_PATH:
+        UpdateStatusfile(dirs, 22)
+        raise ValueError(
+            f'AGNI writes runtime.sf and socstar.dat in {io_dir}; {socstar} is {nbytes} bytes '
+            f'long, and the SOCRATES tools read file names of at most {SOCRATES_MAX_PATH} bytes. '
+            'Use a shorter output path, or a shorter TMPDIR when AGNI works in a temporary folder.'
+        )
+
     # Build the AGNI setup! kwargs.
     setup_kwargs = dict(
         IO_DIR=io_dir,
@@ -775,6 +818,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
         flag_cloud=config.atmos_clim.cloud_enabled,
         flag_aerosol=config.atmos_clim.aerosols_enabled,
         overlap_method=config.atmos_clim.overlap_method,
+        # AGNI also loads every opacity when use_all_gases is true
+        load_all_opacities=bool(config.atmos_clim.agni.load_all_opacities),
         # surface reflectance
         albedo_s=config.atmos_clim.surf_greyalbedo,
         surface_material=surface_material,
@@ -797,9 +842,6 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
         check_integrity=False,  # don't check thermo files every time
         # convection
         mlt_criterion=convert(jl.Char, config.atmos_clim.agni.mlt_criterion),
-        # surface CBL
-        skin_d=config.atmos_clim.surface_d,
-        skin_k=config.atmos_clim.surface_k,
         # temperatures
         tmp_magma=hf_row['T_surf'],
         tmp_floor=config.atmos_clim.tmp_minimum,
@@ -824,6 +866,11 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
         transspec_ref_wl=config.atmos_clim.agni.wl_obs,
     )
     setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
+
+    # Surface CBL; setup! refuses a zero skin, so a fixed surface keeps AGNI's defaults
+    if hf_row['boundary_layer_thickness'] > 0:
+        setup_kwargs['skin_d'] = float(hf_row['boundary_layer_thickness'])
+        setup_kwargs['skin_k'] = float(hf_row['boundary_layer_conductivity'])
 
     succ = jl.AGNI.atmosphere.setup_b(
         atmos,
@@ -1159,7 +1206,9 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     # Update surface temperature(s)
     _validate_surface_state(hf_row, dirs)
     atmos.tmp_surf = float(hf_row['T_surf'])
-    atmos.tmp_magma = float(hf_row['T_magma'])
+
+    # Surface CBL
+    atmos.skin_d, atmos.skin_k, atmos.tmp_magma = lid_boundary(hf_row)
 
     # ---------------------
     # Transparent mode?
@@ -1213,7 +1262,9 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     return atmos
 
 
-def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
+def _solve_energy(
+    atmos, loops_total: int, dirs: dict, config: Config, sol_type: int | None = None
+):
     """Use AGNI to solve for energy-conserving solution.
 
     Parameters
@@ -1226,6 +1277,9 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
             Dictionary containing paths to directories
         config : Config
             Configuration options and other variables
+        sol_type : int or None
+            AGNI surface boundary condition for this iteration; None uses the
+            configured `surf_state`.
 
     Returns
     ----------
@@ -1240,6 +1294,9 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
     modplot = 0
     if config.params.out.logging == 'DEBUG':
         modplot = 1
+
+    if sol_type is None:
+        sol_type = config.atmos_clim.surf_state_int
 
     # tracking
     agni_success = False  # success?
@@ -1309,7 +1366,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
         try:
             agni_success = jl.AGNI.solver.solve_energy_b(
                 atmos,
-                sol_type=int(config.atmos_clim.surf_state_int),
+                sol_type=int(sol_type),
                 method=int(1),
                 chem=chemistry,
                 conduct=config.atmos_clim.agni.conduction,
@@ -1446,7 +1503,7 @@ def _solve_once(atmos, config: Config):
     return atmos
 
 
-def _solve_transparent(atmos, config: Config):
+def _solve_transparent(atmos, config: Config, sol_type: int | None = None):
     """
     Use AGNI to solve for the surface temperature under a transparent atmosphere
 
@@ -1456,6 +1513,9 @@ def _solve_transparent(atmos, config: Config):
             Atmosphere struct
         config : Config
             PROTEUS config object
+        sol_type : int or None
+            AGNI surface boundary condition for this iteration; None uses the
+            configured `surf_state`.
 
     Returns
     ----------
@@ -1466,10 +1526,12 @@ def _solve_transparent(atmos, config: Config):
     atol = float(config.atmos_clim.agni.solution_atol)
     rtol = float(config.atmos_clim.agni.solution_rtol)
     max_steps = 120
+    if sol_type is None:
+        sol_type = config.atmos_clim.surf_state_int
 
     jl.AGNI.solver.solve_transparent_b(
         atmos,
-        sol_type=int(config.atmos_clim.surf_state_int),
+        sol_type=int(sol_type),
         conv_atol=atol,
         conv_rtol=rtol,
         max_steps=int(max_steps),
@@ -1477,8 +1539,11 @@ def _solve_transparent(atmos, config: Config):
     return atmos
 
 
-def write_atmos_ncdf(atmos, dirs: dict, time: float) -> None:
-    """Write the AGNI atmosphere struct to a timestamped NetCDF file."""
+def write_atmos_ncdf(atmos, dirs: dict, time: float, suffix: str = '_atm.nc') -> None:
+    """Write the AGNI atmosphere struct to the NetCDF file ``data/<time><suffix>``.
+
+    The default suffix names an atmosphere snapshot; another keeps that snapshot intact.
+    """
 
     # Only a successfully allocated struct can be used.
     if not bool(atmos.is_alloc):
@@ -1486,7 +1551,7 @@ def write_atmos_ncdf(atmos, dirs: dict, time: float) -> None:
         return
 
     # Write the file
-    ncdf_path = os.path.join(dirs['output'], 'data', format_subyear_time(time) + '_atm.nc')
+    ncdf_path = os.path.join(dirs['output'], 'data', format_subyear_time(time) + suffix)
     log.debug(f'Write AGNI atmosphere to {ncdf_path}')
     jl.AGNI.save.write_ncdf(atmos, ncdf_path)
 
@@ -1535,12 +1600,15 @@ def run_agni(
     # True and override only in the energy branch.
     agni_converged = True
 
+    # Surface state for this iteration: a saturation skin is 'fixed' until a layer forms
+    sol_type = agni_sol_type(config, hf_row)
+
     # Transparent case
     if bool(atmos.transparent):
         log.info('Using transparent solver')
         atmos.transspec_ref_p = float(atmos.p_boa)
         photosphere_setby = 'prs'  # set photosphere as surface pressure
-        atmos = _solve_transparent(atmos, config)
+        atmos = _solve_transparent(atmos, config, sol_type=sol_type)
 
     # Opaque case
     else:
@@ -1554,7 +1622,9 @@ def run_agni(
         # full solver
         if config.atmos_clim.agni.solve_energy:
             log.info('Using nonlinear solver to conserve fluxes')
-            atmos, agni_converged = _solve_energy(atmos, loops_total, dirs, config)
+            atmos, agni_converged = _solve_energy(
+                atmos, loops_total, dirs, config, sol_type=sol_type
+            )
 
         # simplified T(p)
         else:

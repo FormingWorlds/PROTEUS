@@ -27,9 +27,10 @@ ref_config = "input/dummy.toml"
 
 # SLURM settings
 use_slurm = false
-max_jobs = 10       # max concurrent tasks (e.g. 500 on Habrok)
-max_days = 1        # max walltime [days]
-max_mem  = 12       # max memory per CPU [GB]
+max_jobs = 10       # max cases running at once (e.g. 500 on Habrok)
+max_days = 1        # max walltime per case [days]
+max_mem  = 12       # max memory per case [GB]
+cores_per_job = 1   # cores per Slurm job, one case per core (16 fills 1/8 of a Snellius rome node)
 
 # Shared JAX compilation cache for Slurm array jobs. When true, each job
 # script exports JAX_COMPILATION_CACHE_DIR (a jax_cache/ subdirectory of the

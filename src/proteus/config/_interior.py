@@ -6,6 +6,8 @@ import warnings
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le, lt
 
+from ._converters import none_if_none
+
 _TOL_UNSET = -1.0
 
 
@@ -67,12 +69,76 @@ def _valid_bool(instance, attribute, value):
         raise TypeError(f'`{attribute.name}` must be a bool, got {value!r}')
 
 
+def _valid_number(instance, attribute, value):
+    """Require an int or a float; refuse a bool, which a TOML true would give."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f'`{attribute.name}` must be a number, got {value!r}')
+
+
+RA_CRIT_EQ16 = 'eq16'
+RA_CRIT_PHASE = 'phase'
+
+
+def _ra_crit_cmb_number(value):
+    """Store a number of ``ra_crit_cmb`` as a float; leave a string or a bool for the check."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return float(value)
+    return value
+
+
+def _valid_ra_crit_cmb(instance, attribute, value):
+    """``ra_crit_cmb`` is 'phase', 'eq16' or a positive, finite number."""
+    if isinstance(value, str) and value in (RA_CRIT_PHASE, RA_CRIT_EQ16):
+        return
+    if not (isinstance(value, float) and 0.0 < value < math.inf):
+        raise ValueError(
+            f"`{attribute.name}` must be '{RA_CRIT_PHASE}', '{RA_CRIT_EQ16}' or a positive, "
+            f'finite number, got {value!r}'
+        )
+
+
+def _valid_cell_thickness(instance, attribute, value):
+    """Accept 0 or a finite number of at least 2 m, and "uniform" for the surface cell."""
+    surface = attribute.name == 'surface_cell_thickness'
+    if surface and value == 'uniform':
+        return
+    rule = ('"uniform", 0, or ' if surface else '0 or ') + 'finite and at least 2 m'
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f'`{attribute.name}` must be {rule}, got {value!r}')
+    try:
+        ok = value == 0 or (math.isfinite(value) and value >= 2.0)
+    except OverflowError:  # an int that no float holds
+        ok = False
+    if not ok:
+        raise ValueError(f'`{attribute.name}` must be {rule}, got {value}')
+
+
+def _valid_lid_delta_on(instance, attribute, value):
+    """Accept None or a finite number above 0; reject a bool, a string, NaN and the rest."""
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f'`{attribute.name}` must be None or a number, got {value!r}')
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError(f'`{attribute.name}` must be finite and above 0, got {value}')
+
+
 def _check_top_cell_dt_rel_dT_pair(aragog) -> None:
     """Require top_cell_dt_rel_dT_solid <= top_cell_dt_rel_dT."""
     if aragog.top_cell_dt_rel_dT_solid > aragog.top_cell_dt_rel_dT:
         raise ValueError(
             f'`top_cell_dt_rel_dT_solid` ({aragog.top_cell_dt_rel_dT_solid}) must be <= '
             f'top_cell_dt_rel_dT ({aragog.top_cell_dt_rel_dT})'
+        )
+
+
+def valid_uranium_abund(instance, attribute, value):
+    """Reject 235U/U + 238U/U above 1 (both mass ratios, kg/kg)."""
+    total = instance.radio_U235_abund + value
+    if total > 1.0 + 1e-9:
+        raise ValueError(
+            'interior_energetics.radio_U235_abund + radio_U238_abund must not '
+            f'exceed 1, got {instance.radio_U235_abund} + {value} = {total}'
         )
 
 
@@ -104,6 +170,12 @@ def valid_interiorboundary(instance, attribute, value):
     tliq = instance.boundary.T_liquidus
     if tliq <= tsol:
         raise ValueError(f'Boundary liquidus ({tliq}K) must be greater than solidus ({tsol}K)')
+
+    if instance.boundary.viscosity_phi == 'top' and instance.boundary.melt_model != 'adiabat':
+        raise ValueError(
+            'interior_energetics.boundary.viscosity_phi = "top" needs '
+            'melt_model = "adiabat" (the linear model has no depth profile)'
+        )
 
 
 @define
@@ -162,6 +234,86 @@ class Spider:
     log_output: bool = field(default=True)
 
 
+def _check_aragog_rheology_module(interior) -> None:
+    """Reject the Aragog solid rheology when another interior module runs."""
+    if interior.module != 'aragog' and interior.aragog.rheology.enabled:
+        raise ValueError(
+            'interior_energetics.aragog.rheology.enabled = true needs interior_energetics.'
+            f"module = 'aragog', got {interior.module!r}"
+        )
+
+
+def _check_aragog_lid(interior) -> None:
+    """Reject the Aragog sub-grid lid where Aragog refuses it or where it cannot act.
+
+    ``lid_mush_base`` needs the Aragog module, the solid rheology, the flux surface mode, a
+    diffusivity floor ``kappah_floor > 0`` and the EOS tables, and refuses the ``gradient``
+    and ``bower2018`` core boundaries and ``param_utbl``. Aragog refuses an onset thickness at
+    or above 0.7 of the top-cell width at setup; the atmosphere-side rules are in
+    ``lid_requires_the_skin_atmosphere``.
+    """
+    aragog = interior.aragog
+    if not aragog.lid_mush_base:
+        return
+    key = 'interior_energetics.aragog.lid_mush_base = true'
+    if interior.module != 'aragog':
+        raise ValueError(
+            f"{key} needs interior_energetics.module = 'aragog', got {interior.module!r}"
+        )
+    if not aragog.rheology.enabled:
+        raise ValueError(
+            f'{key} needs interior_energetics.aragog.rheology.enabled = true: the lid base of the '
+            'mush base needs the solid rheology'
+        )
+    if interior.surface_bc_mode != 'flux':
+        raise ValueError(
+            f"{key} needs interior_energetics.surface_bc_mode = 'flux', got "
+            f'{interior.surface_bc_mode!r}: the lid takes its surface from the atmosphere'
+        )
+    if aragog.core_bc in ('gradient', 'bower2018'):
+        raise ValueError(
+            f'{key} cannot be used with interior_energetics.aragog.core_bc = {aragog.core_bc!r}'
+        )
+    if interior.param_utbl:
+        raise ValueError(
+            f'{key} cannot be used with interior_energetics.param_utbl = true: the lid replaces '
+            'the surface flux that the ultra-thin boundary layer acts on'
+        )
+    if not interior.kappah_floor > 0.0:
+        raise ValueError(
+            f'{key} needs interior_energetics.kappah_floor > 0, got {interior.kappah_floor!r}: '
+            'the base flux of the mush base is the floor flux'
+        )
+    if interior.const_properties:
+        raise ValueError(
+            f'{key} cannot be used with interior_energetics.const_properties = true: the lid '
+            'needs the EOS tables'
+        )
+
+
+def _check_aragog_cmb_phase_band(interior) -> None:
+    """Reject a transition band of the CMB law by phase that leaves [0, 1].
+
+    The band is ``[rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2]``, checked where the
+    law acts: the Aragog module with ``core_bc = 'core_module'`` and ``ra_crit_cmb = 'phase'``.
+    """
+    aragog = interior.aragog
+    if not (
+        interior.module == 'aragog'
+        and aragog.core_bc == 'core_module'
+        and aragog.core_module.ra_crit_cmb == RA_CRIT_PHASE
+    ):
+        return
+    lo = interior.rfront_loc - 0.5 * interior.rfront_wid
+    hi = interior.rfront_loc + 0.5 * interior.rfront_wid
+    if lo < 0.0 or hi > 1.0:
+        raise ValueError(
+            "interior_energetics.aragog.core_module.ra_crit_cmb = 'phase' blends across "
+            f'[rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2] = [{lo:g}, {hi:g}], which '
+            'must lie inside [0, 1]'
+        )
+
+
 def _check_aragog_top_cell_dt_limit_surface_bc(interior) -> None:
     """Reject Aragog top_cell_dt_limit with grey_body surface boundary conditions."""
     if (
@@ -202,12 +354,14 @@ class AragogCoreModule:
     Attributes
     ----------
     alpha: float
-        Core thermal expansion coefficient [K-1].
+        Core thermal expansion coefficient [K-1]. Without a running core module (any other
+        core_bc, or SPIDER) also the expansion coefficient of the Gaussian core fitted to the
+        Zalmoxis structure, whose adiabat sets the core temperature of the next structure solve.
     c_p: float
-        Core specific heat capacity [J kg-1 K-1].
+        Core specific heat capacity [J kg-1 K-1]. Used for that Gaussian core in the same way.
     melting_curve: str
-        'iron' (Anzellini et al. 2013 via PALEOS, with light-element
-        depression) or 'quadratic' (Nimmo 2015 Eq. 6 parameterisation).
+        'iron' (Anzellini et al. (2013)[^cite-anzellini2013] via PALEOS, with light-element
+        depression) or 'quadratic' (Nimmo (2015)[^cite-nimmo2015] Eq. 6 parameterisation).
     light_element_fraction: float
         Mole fraction of light elements depressing the iron melting curve.
     depression: float
@@ -239,7 +393,7 @@ class AragogCoreModule:
     k_core: float
         Core thermal conductivity [W m-1 K-1] for conduction in the
         stratified shell and the entropy and dynamo diagnostics; the default is the
-        Nimmo (2015) Table 2 value.
+        Nimmo (2015)[^cite-nimmo2015] Table 2 value.
     layer_base_fraction: float
         Base of the stratified shell as a fraction of the CMB radius, in (0, 1);
         the inner core must stay below it. Used with the experimental
@@ -254,11 +408,19 @@ class AragogCoreModule:
         stratification.
     f_ohm: float
         Ohmic fraction of the dissipation in the field-strength scaling,
-        in (0, 1]; Christensen et al. (2009) adopt 1 for planets.
-    ra_crit_cmb: float
+        in (0, 1]; Christensen et al. (2009)[^cite-christensen2009] adopt 1 for planets.
+    ra_crit_cmb: float | str
         Critical Rayleigh number of the mantle-side boundary layer that sets
-        the CMB heat flux from the core-mantle temperature contrast; the
-        default is the theoretical value of Thiriet et al. (2019, Table 2).
+        the CMB heat flux from the core-mantle temperature contrast. 'phase' (the default)
+        takes 450 while the bottom cell is liquid and eq. 16 while it is solid (the switch of
+        Miyazaki & Korenaga (2019b)[^cite-miyazaki2019b] at the critical melt fraction),
+        blended in the logarithm with the weight (1 + tanh((phi - rfront_loc)/w_s))/2 at the
+        bottom-cell melt fraction phi, w_s = (rfront_wid/2)/atanh(0.9), so the weight is 0.05 and
+        0.95 at the edges of the band [rfront_loc - rfront_wid/2, rfront_loc + rfront_wid/2],
+        which must lie inside [0, 1]. 'eq16' takes the lower-layer law of Thiriet et al.
+        (2019)[^cite-thiriet2019], eq. 16, from the internal Rayleigh number of the mantle; a
+        positive, finite number fixes it, for example 450, their Table 2 value for the upper
+        boundary layer.
     flux_geometry: str
         Which printed Earth-core efficiency factor converts the
         superadiabatic flux into the field-strength scaling's F:
@@ -283,7 +445,9 @@ class AragogCoreModule:
     layer_k_mix: float = field(default=1.0e7, validator=gt(0))
     layer_g_mix: float = field(default=1.0e-3, validator=gt(0))
     f_ohm: float = field(default=1.0, validator=(gt(0), le(1)))
-    ra_crit_cmb: float = field(default=450.0, validator=(gt(0), lt(float('inf'))))
+    ra_crit_cmb: float | str = field(
+        default=RA_CRIT_PHASE, converter=_ra_crit_cmb_number, validator=_valid_ra_crit_cmb
+    )
     flux_geometry: str = field(
         default='const_flux', validator=in_(('const_flux', 'zero_outer'))
     )
@@ -296,6 +460,28 @@ class AragogCoreModule:
                 'interior_energetics.aragog.core_module: depression * light_element_fraction '
                 f'= {product:g} must be below 1.'
             )
+
+
+@define
+class Rheology:
+    """Solid-state mantle rheology of the Aragog solver.
+
+    Attributes
+    ----------
+    enabled : bool
+        Use the temperature- and pressure-dependent solid viscosity and the stagnant-lid
+        closure of ``aragog.rheology.SolidRheologyParams``, with its defaults for every
+        other parameter but ``mlt_bottom_slope``. False uses the constant ``solid_log10visc``.
+    mlt_bottom_slope : float
+        Slope of the viscous-branch mixing length above the CMB, l = slope (r - r_cmb), in
+        (0, 1]. The default 1.0 is the slope with which aragog's top slope ``s_top_inf`` was
+        calibrated. Aragog's viscous flux carries a factor 1/18 that the mixing-length flux of
+        Tachinami et al. (2011)[^cite-tachinami2011] (Eq. 13 and 14) does not, so a slope of 1
+        is a mixing length of 0.49 times the distance in their terms. Read only with ``enabled``.
+    """
+
+    enabled: bool = field(default=False, validator=_valid_bool)
+    mlt_bottom_slope: float | int = field(default=1.0, validator=(_valid_number, gt(0), le(1)))
 
 
 @define
@@ -345,6 +531,22 @@ class Aragog:
     """
 
     mass_coordinates: bool = field(default=True)
+    cmb_cell_thickness: float | int = field(default=3000.0, validator=_valid_cell_thickness)
+    """Radial thickness [m] of the mesh cell at the CMB: 0 (the uniform mesh at that end) or a
+    finite value of at least 2 m. The cells grow away from the CMB with a tanh stretching. A
+    value at or above the bottom cell of the uniform mesh of the same coordinate mode gives no
+    CMB refinement, and aragog logs it: with the 'uniform' or 0 surface cell the mesh keeps that
+    uniform bottom cell. A resume keeps the value its run was written with."""
+    surface_cell_thickness: float | str = field(
+        default='uniform', validator=_valid_cell_thickness
+    )
+    """Radial thickness [m] of the mesh cell at the surface: 0 (the uniform mesh at that end),
+    'uniform' (the top cell of the uniform mesh of the same coordinate mode; with
+    mass_coordinates the top cell of the uniform mass-coordinate mesh), or a finite value of at
+    least 2 m and below the uniform radial cell (R_int - R_core)/(num_levels - 1). It has no
+    fallback: aragog refuses a larger value when it builds the mesh. With cmb_cell_thickness = 0
+    and 'uniform' the mesh is the uniform mesh. A resume keeps the value its run was written
+    with."""
     backend: str = field(default='jax', validator=in_(('numpy', 'jax')))
     atol_temperature_equivalent: float = field(default=1.0e-8, validator=gt(0))
     """Effective temperature-scale absolute tolerance [K] for Aragog's ODE integrator.
@@ -376,7 +578,7 @@ class Aragog:
     melt fraction instead, which is why the default here is 'mixture'
     while Aragog's own default stays 'melt' for SPIDER parity. The
     regime boundaries are the porosities where adjacent permeability
-    laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c). The melt
+    laws cross (Bower et al. (2018)[^cite-bower2018], Section 2.1, Eqs. 13a to 13c). The melt
     drainage of front trapping (outgas.trap_mode 'front') takes the melt
     viscosity whatever this setting."""
     separation_buoyancy: str = field(
@@ -384,28 +586,33 @@ class Aragog:
         validator=in_(('mixture', 'solid')),
     )
     """Buoyancy of the gravitational-separation velocity. 'mixture' takes it
-    against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie 1984, Eq. 3.7),
+    against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie (1984)[^cite-mckenzie1984], Eq. 3.7),
     on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes
     regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes
-    (rho_s - rho_l) g on every regime (Abe 1995, Eq. 40), as SPIDER does, so
+    (rho_s - rho_l) g on every regime (Abe (1995)[^cite-abe1995], Eq. 40), as SPIDER does, so
     'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt
     drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy.
     Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5;
     from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2."""
     allow_resume_law_change: bool = field(default=False, validator=_valid_bool)
-    """Let a resume change separation_viscosity or separation_buoyancy from the values
-    in the run's init_coupler.toml, with one warning per switched law in the log. False
-    stops such a resume, because the changed law would act from the resume row on. A law
-    the record does not hold must be set in the config file either way; a record that
-    names the Aragog module and lacks separation_viscosity counts as 'melt', and a record
-    of another interior module holds neither law. init_coupler.toml records false."""
+    """Let a resume change separation_viscosity, separation_buoyancy, rheology.enabled,
+    lid_mush_base or interior_energetics.mixing_length (also of a SPIDER run) from the
+    values in the run's init_coupler.toml, with one warning per
+    switched law in the log. False stops such a resume, because the changed law would act
+    from the resume row on. A law the record does not hold must be set in the config file
+    either way; a record that names the Aragog module and lacks separation_viscosity counts
+    as 'melt', one that lacks the rheology or lid_mush_base counts as off. A SPIDER record
+    holds only the mixing length, a record that names no module holds the mixing length and
+    the laws of its Aragog table, and a record of another interior module holds none of these
+    laws. A missing record, or one that names no module and holds no Aragog table, leaves the
+    rheology and the lid unchecked. init_coupler.toml records false."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),
     )
     """ODE solver: 'cvode' (SUNDIALS, SPIDER parity; needs scikits-odes-sundials and stops the run at setup without it), 'radau' (scipy), 'bdf' (scipy)."""
     scalar_gravity_override: bool = field(default=False)
-    """Scalar-gravity comparison knob. When True, the external mesh file that
+    """Scalar-gravity comparison setting. When True, the external mesh file that
     Zalmoxis writes has its gravity column overwritten with a uniform scalar
     (the surface value from ``hf_row['gravity']``) before Aragog reads it, so
     Aragog's per-node gravity path interpolates to that scalar everywhere.
@@ -424,6 +631,23 @@ class Aragog:
     to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is
     rejected at load, since it cannot be told apart from the unset default;
     any other negative, NaN, or infinity is rejected too."""
+
+    rheology: Rheology = field(factory=Rheology)
+    """Solid-state mantle rheology of the Aragog solver."""
+
+    lid_mush_base: bool = field(default=False, validator=_valid_bool)
+    """Run the sub-grid lid with its base at the solidus. It needs the Aragog module with the
+    solid rheology, surface_bc_mode = 'flux', kappah_floor > 0, the EOS tables and the dummy
+    (without fixed_flux) or AGNI atmosphere with surf_state = 'skin' and a numeric surface_d,
+    and is refused with core_bc gradient or bower2018, with param_utbl and with
+    planet.prevent_warming. A resume that changes it stops unless allow_resume_law_change is true."""
+
+    lid_delta_on: float | str | None = field(
+        default=None, converter=none_if_none, validator=_valid_lid_delta_on
+    )
+    """Onset thickness [m] of the sub-grid lid. None takes solid_cond surface_d / surface_k, at
+    which a linear lid conducts like the skin (0.02 m for the default skin). A finite value above
+    0 is used as given, with a warning beyond 10 % of the skin value."""
 
     core_module: AragogCoreModule = field(factory=AragogCoreModule)
     """Core evolution module parameters, active when core_bc =
@@ -574,16 +798,51 @@ def valid_interiordummy(instance, attribute, value):
         raise ValueError(f'Dummy liquidus ({tliq}K) must be greater than solidus ({tsol}K)')
 
 
+def _warn_ignored_key(path: str, reason: str) -> None:
+    """Warn that a deprecated configuration key is set and ignored.
+
+    FutureWarning, not DeprecationWarning: Python shows it by default, so a
+    user loading an older configuration or run record sees it.
+    """
+    warnings.warn(
+        f'{path} is deprecated and ignored: {reason}.',
+        FutureWarning,
+        stacklevel=4,
+    )
+
+
 @define
 class InteriorBoundary:
     """Parameters for Boundary interior module. Default values taken from Schaefer et al. 2016 (https://iopscience.iop.org/article/10.3847/0004-637X/829/2/63/pdf).
 
+    The mantle and core masses and radii come from the interior structure
+    module, so the mantle and core densities are not set here.
+
     Attributes
     ----------
+    melt_model: str
+        How the mantle melt fraction follows from the potential temperature.
+        With ``"linear"`` (default) the mantle is a single isothermal,
+        uniform-density layer whose melt fraction is linear between the
+        constant `T_solidus` and `T_liquidus`. With ``"adiabat"`` the potential
+        temperature is integrated down the mantle along an adiabat, on the
+        radial profile written by the interior structure module and with the
+        adiabatic gradient taken from the Zalmoxis equation of state; the melt
+        fraction is the mass integral of the local melt fraction between the
+        pressure-dependent solidus and liquidus: the PALEOS MgSiO3 curves when
+        the structure module is Zalmoxis (solidus set by
+        `interior_struct.zalmoxis.mushy_zone_factor`), otherwise the folder
+        named by `interior_struct.melting_dir`. The
+        latent heat follows from how that melt fraction responds to the
+        potential temperature, and the mantle is handed to the tides modules as
+        ``num_levels - 1`` shells, each with its own melt fraction, temperature
+        and viscosity.
     T_solidus: float
-        Mantle solidus temperature [K].
+        Mantle solidus temperature [K]. Read only when
+        ``melt_model = "linear"``.
     T_liquidus: float
-        Mantle liquidus temperature [K].
+        Mantle liquidus temperature [K]. Read only when
+        ``melt_model = "linear"``.
     critical_rayleigh_number: float
         Critical Rayleigh number for onset of convection [-].
     nusselt_exponent: float
@@ -591,13 +850,16 @@ class InteriorBoundary:
     silicate_heat_capacity: float
         Silicate heat capacity [J/kg/K].
     atm_heat_capacity_const: bool
-        Always use fallback atmosphere heat capacity?
+        Give the atmosphere reservoir that the surface temperature carries the constant
+        `atm_heat_capacity`. With false it takes the layer-mass-weighted mean heat capacity
+        of the last atmosphere solve, so it follows the composition.
     atm_heat_capacity: float
-        Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].
-    silicate_density: float
-        Silicate density [kg/m^3]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F).
-    core_density: float
-        Core density [kg/m^3].
+        Atmosphere heat capacity when `atm_heat_capacity_const` is true, and the fallback
+        before the first atmosphere solve otherwise [J/kg/K].
+    silicate_density: float or None
+        Deprecated and ignored: the boundary interior takes its mantle mass and radius from the structure.
+    core_density: float or None
+        Deprecated and ignored: the boundary interior takes its core mass and radius from the structure.
     core_shear: float
         Core shear modulus [Pa].
     core_bulk: float
@@ -620,22 +882,56 @@ class InteriorBoundary:
         Viscosity prefactor [Pa s] for Vogel-Fulcher-Tammann magma ocean model.
     viscosity_activation_temp: float
         Activation temperature [K] for Vogel-Fulcher-Tammann magma ocean model.
+    include_core_heat_capacity: bool
+        Whether the core's heat capacity (`interior_struct.core_heatcap` times
+        the core mass) is added to the mantle's, as in the dummy backend. The
+        core sits at the core-mantle boundary temperature, so with
+        ``melt_model = "adiabat"`` its share is scaled by dT_cmb/dT_p on the
+        adiabat. With false only the mantle stores and releases heat.
+    sensible_heat: str
+        Which part of a partly molten mantle the sensible heat counts with
+        ``melt_model = "linear"``. With ``"molten"`` only the shell above the
+        solidification front cools with the potential temperature, the
+        solidification-front picture this backend was built on. With
+        ``"whole"`` the whole mantle does (c_p M), as in the dummy backend. The
+        latent heat of the front is added in both cases. Not read with
+        ``melt_model = "adiabat"``: the adiabat moves the temperature of every
+        level, solid or molten, so the sensible heat is always that of the whole
+        mantle, c_p M times the mass mean of dT/dT_p at constant pressure.
+    tidal_viscosity: str
+        Viscosity of each mantle shell handed to the tides modules. With
+        ``"boundary"`` it is this backend's own `viscosity_model`, the same
+        viscosity that sets its convective heat flux. With ``"kervazo"`` it is
+        the melt-fraction rheology of Kervazo et al. (2021)[^cite-kervazo2021] that the dummy
+        backend hands them, which matches the shear and bulk moduli the
+        interior wrapper sets for every 0-D backend. The convective heat flux
+        always uses `viscosity_model`.
+    viscosity_phi: str
+        Which melt fraction sets the viscosity of the convective heat flux
+        (Rayleigh number, flux and boundary-layer thickness). With
+        ``"global"`` it is the mantle's mass-averaged melt fraction. With
+        ``"top"`` it is the melt fraction at the top of the mantle on the
+        adiabat, at the structure's top level: the material just beneath the
+        thermal boundary layer, which is what the lid rests on. A lid then forms
+        only once that material passes the rheological transition, not once the
+        mantle average does. Needs ``melt_model = "adiabat"``. Heat capacity,
+        latent heat, the reported melt fraction and outgassing always use the
+        mass-averaged melt fraction.
     logging: bool
         Whether to create diagnostic CSV data files from boundary interior module.
     """
 
+    melt_model: str = field(default='linear', validator=in_(('adiabat', 'linear')))
     T_solidus: float = field(default=1420.0, validator=ge(0))
     T_liquidus: float = field(default=2020.0, validator=gt(0))
 
     critical_rayleigh_number: float = field(default=1.1e3, validator=gt(0))  # -
     nusselt_exponent: float = field(default=0.33, validator=gt(0))  # -
     silicate_heat_capacity: float = field(default=1.2e3, validator=gt(0))  # J/kg/K
-    core_density: float = field(default=10738.0, validator=gt(0))  # kg/m^3
     core_shear: float = field(default=1.0e-1, validator=gt(0))  # Pa
     core_bulk: float = field(default=5e11, validator=gt(0))  # Pa
     atm_heat_capacity_const: bool = field(default=True)
     atm_heat_capacity: float = field(default=1.7e4, validator=gt(0))  # J/kg/K
-    silicate_density: float = field(default=4103.0, validator=gt(0))  # kg/m^3
     thermal_conductivity: float = field(default=4.2, validator=gt(0))  # W/m/K
     thermal_diffusivity: float = field(default=1e-6, validator=gt(0))  # m^2/s
     thermal_expansivity: float = field(default=2e-5, validator=gt(0))  # 1/K
@@ -654,19 +950,43 @@ class InteriorBoundary:
     viscosity_prefactor: float = field(default=2.4e-4, validator=gt(0))  # Pa s
     viscosity_activation_temp: float = field(default=4600, validator=gt(0))  # K
 
+    # Choices the dummy backend makes differently; the defaults keep this backend's own.
+    include_core_heat_capacity: bool = field(default=False)
+    sensible_heat: str = field(default='molten', validator=in_(('molten', 'whole')))
+    tidal_viscosity: str = field(default='boundary', validator=in_(('boundary', 'kervazo')))
+    viscosity_phi: str = field(default='global', validator=in_(('global', 'top')))
+
     logging: bool = field(default=False)
+
+    # Deprecated and ignored; kept so that older configurations and run records load.
+    silicate_density: float | str | None = field(default=None, converter=none_if_none)
+    core_density: float | str | None = field(default=None, converter=none_if_none)
+
+    def __attrs_post_init__(self):
+        if self.silicate_density is not None:
+            _warn_ignored_key(
+                'interior_energetics.boundary.silicate_density',
+                'the boundary interior takes its mantle mass and radius from the structure',
+            )
+        if self.core_density is not None:
+            _warn_ignored_key(
+                'interior_energetics.boundary.core_density',
+                'the boundary interior takes its core mass and radius from the structure',
+            )
 
 
 @define
 class InteriorDummy:
     """Parameters for Dummy interior module.
 
+    The mantle density the dummy interior reports is its mantle mass over the
+    mantle shell volume.
+
     Attributes
     ----------
-    mantle_rho: float
-        Mantle density [kg m-3] for the dummy density profile and the
-        fallback mantle-mass estimate. When the interior structure provides
-        the masses, the mantle mass is taken as ``M_int - M_core`` instead.
+    mantle_rho: float or None
+        Deprecated and ignored: the dummy interior reports its mantle mass over
+        the mantle shell volume as its density.
     mantle_cp: float
         Mantle specific heat capacity [J kg-1 K-1]
     mantle_tliq: float
@@ -681,9 +1001,19 @@ class InteriorDummy:
 
     mantle_tliq: float = field(default=2700.0, validator=ge(0))
     mantle_tsol: float = field(default=1700.0, validator=ge(0))
-    mantle_rho: float = field(default=4.55e3, validator=gt(0))
     mantle_cp: float = field(default=1792.0, validator=ge(0))
     heat_internal: float = field(default=0.0, validator=ge(0))
+
+    # Deprecated and ignored; kept so that older configurations and run records load.
+    mantle_rho: float | str | None = field(default=None, converter=none_if_none)
+
+    def __attrs_post_init__(self):
+        if self.mantle_rho is not None:
+            _warn_ignored_key(
+                'interior_energetics.dummy.mantle_rho',
+                'the dummy interior reports its mantle mass over the mantle shell volume '
+                'as its density',
+            )
 
 
 @define
@@ -699,18 +1029,39 @@ class Interior:
         automatically as sigma * T_magma^4. Set to a positive value to
         prescribe a specific initial flux. Set to 0 for zero initial flux.
     radio_tref: float
-        Reference age for setting radioactive decay [Gyr].
-    radio_K: float
-        Concentration (ppmw) of potassium-40 at reference age t=radio_tref.
-    radio_U: float
-        Concentration (ppmw) of uranium at reference age t=radio_tref.
-    radio_Th: float
-        Concentration (ppmw) of thorium-232 at reference age t=radio_tref.
+        Stellar age at which the radionuclide inputs below apply [Gyr];
+        4.567 is the present day, 0 the formation of the Solar System.
     radio_Al: float
-        Concentration (ppmw) of aluminium-26 at reference age t=radio_tref;
-        1.23 is the canonical early solar system value.
+        Total aluminium concentration in the mantle at radio_tref [ppmw].
+    radio_Al26_abund: float
+        Mass ratio 26Al/Al at radio_tref [kg/kg]. The canonical early Solar
+        System 26Al/27Al = 5.25e-5 (atoms) is 5.0563e-5 kg/kg.
     radio_Fe: float
-        Concentration (ppmw) of iron-60 at reference age t=radio_tref.
+        Total iron concentration in the mantle at radio_tref [ppmw].
+    radio_Fe60_abund: float
+        Mass ratio 60Fe/Fe at radio_tref [kg/kg]. An early Solar System
+        60Fe/56Fe = 1e-8 (atoms) is 9.8472e-9 kg/kg.
+    radio_K: float
+        Total potassium concentration in the mantle at radio_tref [ppmw].
+    radio_K40_abund: float
+        Mass ratio 40K/K at radio_tref [kg/kg]. The default is the present-day
+        atom ratio 1.1668e-4 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a
+        mass ratio.
+    radio_U: float
+        Total uranium concentration in the mantle at radio_tref [ppmw].
+    radio_U235_abund: float
+        Mass ratio 235U/U at radio_tref [kg/kg]. The default is the present-day
+        atom ratio 0.0072045 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a
+        mass ratio.
+    radio_U238_abund: float
+        Mass ratio 238U/U at radio_tref [kg/kg]; radio_U235_abund +
+        radio_U238_abund must not exceed 1. The default is the present-day
+        atom ratio 0.9927955 of Ruedas (2017)[^cite-ruedas2017], Table 2, as a
+        mass ratio.
+    radio_Th: float
+        Total thorium concentration in the mantle at radio_tref [ppmw].
+    radio_Th232_abund: float
+        Mass ratio 232Th/Th at radio_tref [kg/kg].
     heat_radiogenic: bool
         Include radiogenic heat production?
     heat_tidal: bool
@@ -741,8 +1092,9 @@ class Interior:
     trans_mixing: bool
         Include the chemical mixing flux.
     mixing_length: str
-        Mixing-length scale: 'nearest' (distance to nearest boundary) or
-        'constant' (a quarter of the mantle depth).
+        Mixing-length scale of Aragog and SPIDER: 'constant' (0.25 of the mantle depth at
+        every node) or 'nearest' (distance to the nearest boundary). A resume that changes the recorded value is
+        refused unless interior_energetics.aragog.allow_resume_law_change is true.
     kappah_floor: float
         Eddy diffusivity floor [m2 s-1]; prevents mixing-length transport
         from freezing out.
@@ -831,18 +1183,26 @@ class Interior:
         factory=InteriorBoundary, validator=valid_interiorboundary
     )
 
-    mixing_length: str = field(default='nearest', validator=in_(('nearest', 'constant')))
+    mixing_length: str = field(default='constant', validator=in_(('constant', 'nearest')))
     grain_size: float = field(default=1e-3, validator=gt(0))
     flux_guess: float = field(default=-1)
     tmagma_atol: float = field(default=20.0, validator=ge(0))
     tmagma_rtol: float = field(default=0.02, validator=ge(0))
 
     radio_tref: float = field(default=4.567, validator=ge(0))
-    radio_Al: float = field(default=0.0, validator=ge(0))
-    radio_Fe: float = field(default=0.0, validator=ge(0))
+    radio_Al: float = field(default=2.35e4, validator=ge(0))
+    radio_Al26_abund: float = field(default=0.0, validator=(ge(0), le(1)))
+    radio_Fe: float = field(default=6.26e4, validator=ge(0))
+    radio_Fe60_abund: float = field(default=0.0, validator=(ge(0), le(1)))
     radio_K: float = field(default=310.0, validator=ge(0))
+    radio_K40_abund: float = field(default=1.1926e-4, validator=(ge(0), le(1)))
     radio_U: float = field(default=0.031, validator=ge(0))
+    radio_U235_abund: float = field(default=0.0071141, validator=(ge(0), le(1)))
+    radio_U238_abund: float = field(
+        default=0.9928859, validator=(ge(0), le(1), valid_uranium_abund)
+    )
     radio_Th: float = field(default=0.124, validator=ge(0))
+    radio_Th232_abund: float = field(default=1.0, validator=(ge(0), le(1)))
 
     rfront_loc: float = field(default=0.4, validator=(gt(0), lt(1)))
     rfront_wid: float = field(default=0.2, validator=(gt(0), lt(1)))
@@ -938,7 +1298,9 @@ class Interior:
     # For controlled parity comparisons with dummy structure + atmosphere.
     const_properties: bool = field(default=False)
     const_rho: float = field(default=4000.0, validator=gt(0))
-    """Constant density [kg/m3]."""
+    """Constant density [kg/m3]. SPIDER and Aragog read it only when
+    const_properties = true. The dummy interior also uses it for its mantle mass
+    when the helpfile row has no M_int or M_core."""
     const_Cp: float = field(default=1000.0, validator=gt(0))
     """Constant heat capacity [J/kg/K]."""
     const_alpha: float = field(default=1e-5, validator=gt(0))
@@ -970,12 +1332,12 @@ class Interior:
     _PhaseMixedParameters. Sets the width of the phase boundary in
     Aragog's mixed-phase blending (viscosity, thermal conductivity
     etc.). Distinct from ``[interior_energetics.spider].matprop_smooth_width``
-    which is SPIDER's analogous knob for its own solver."""
+    which is SPIDER's corresponding setting for its own solver."""
 
-    # Core thermal model (Bower+2018 Table 2).
+    # Core thermal model (Bower et al. 2018, Eq. 20 and Table 2).
     core_tfac_avg: float = field(default=1.147, validator=gt(0))
-    """Core T_avg / T_cmb ratio from adiabatic gradient (Bower+2018
-    Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg.
+    """Core T_avg / T_cmb ratio of an isentropic core (Bower et al. (2018)[^cite-bower2018],
+    Eq. 20 and Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg.
     SPIDER derives its own internally."""
 
     # Diagnostic flag for T_core investigations.
@@ -1010,8 +1372,9 @@ class Interior:
 
         All aliases will be removed in a future release. The Aragog cross-field
         checks run last: the top_cell_dt_rel_dT pair (again, for an aragog section
-        changed after its own construction) and top_cell_dt_limit against
-        surface_bc_mode = 'grey_body'.
+        changed after its own construction), top_cell_dt_limit against
+        surface_bc_mode = 'grey_body', the solid rheology against the module, the
+        sub-grid lid, and the transition band of the CMB law by phase.
         """
         # Whether each field was supplied is tracked via the sentinel
         # default, not by value-comparison against the resolved default.
@@ -1068,6 +1431,9 @@ class Interior:
 
         _check_top_cell_dt_rel_dT_pair(self.aragog)
         _check_aragog_top_cell_dt_limit_surface_bc(self)
+        _check_aragog_rheology_module(self)
+        _check_aragog_lid(self)
+        _check_aragog_cmb_phase_band(self)
 
 
 # Thematic grouping for the generated configuration reference. Each entry is
@@ -1107,10 +1473,16 @@ DOC_GROUPS = {
                 'heat_radiogenic',
                 'radio_tref',
                 'radio_Al',
+                'radio_Al26_abund',
                 'radio_Fe',
+                'radio_Fe60_abund',
                 'radio_K',
+                'radio_K40_abund',
                 'radio_U',
+                'radio_U235_abund',
+                'radio_U238_abund',
                 'radio_Th',
+                'radio_Th232_abund',
             ),
         ),
         (

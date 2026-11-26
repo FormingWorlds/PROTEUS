@@ -44,17 +44,16 @@ classifiers = [
 dependencies = [
     "attrs",
     "cattrs>=23.1.2",
-    "fwl-janus>=26.10.15",
+    "fwl-janus>=26.11.5",
     "fwl-mors>=26.10.6",
     "fwl-calliope>=26.10.05",
     "fwl-zephyrus>=26.10.10",
-    "fwl-aragog>=26.10.22",
+    "fwl-aragog>=26.11.24",
 
-    # 26.07.17 reads the liquid EOS table for fully molten entropy
-    # lookups, which the super-liquidus interior initial condition
-    # requires (Zalmoxis #79), on top of the JAX structure path for
-    # unified PALEOS and wet mantles (Zalmoxis #78).
-    "fwl-zalmoxis>=26.10.21",
+    # 26.11.22: the structure solve takes core_temperature_arrays, the core temperature table that
+    # PROTEUS builds from the core state (#135); 26.11.14 adds adiabat_seed and the full-adiabat
+    # start-up check (#133), the liquid EOS table (#79) and the JAX path for unified PALEOS (#78).
+    "fwl-zalmoxis>=26.11.22",
     # Aragog (the default interior solver) and atmodeller run on JAX and equinox. The three are
     # held to the combination the Aragog numerics are validated against (equinox 0.13.8 on jax
     # and jaxlib below 0.10); lift a bound only after the Aragog entropy solve is validated again.
@@ -79,8 +78,9 @@ dependencies = [
     "sympy",
     "astropy",
     "toml",
-    # 26.10.16 pins the RTPress melt tables at Zenodo 18822022 (DataverseNL QLCEBW).
-    "fwl-io>=26.10.16",
+    # 26.11.3 declares the 40 spectral files of #1063 (Snowline to Sovngarde).
+    # 26.10.16 pinned the RTPress melt tables at Zenodo 18822022 (DataverseNL QLCEBW).
+    "fwl-io>=26.11.3",
     "packaging",
 ]
 
@@ -101,9 +101,9 @@ changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 # via tools/get_atmodeller.sh.
 atmodeller = ["atmodeller>=1.0.2"]
 # vulcan: atmospheric photochemistry module, selected via
-# atmos_chem.module = "vulcan". Also installable editable via
-# tools/get_vulcan.sh.
-vulcan = ["fwl-vulcan>=26.10.16"]
+# atmos_chem.module = "vulcan". The wheel holds the package only; VULCAN
+# runs from the clone that tools/get_vulcan.sh sets up.
+vulcan = ["fwl-vulcan>=26.11.18"]
 # morrigan: protoplanet accretion module for giant-impact timelines,
 # selected via accretion.module = "morrigan". Also installable editable
 # via tools/get_morrigan.sh.
@@ -264,7 +264,7 @@ directory = "htmlcov"
 # Tracks nichollsh/AGNI main. Bump after every AGNI release that
 # PROTEUS depends on.
 url = "https://github.com/nichollsh/AGNI.git"
-ref = "34e47301a6957ba99726f8df0514c08a44c8d534"
+ref = "861d7a3375185b503f22cc6e0d6c4db2a920b46b"
 
 [tool.proteus.modules.socrates]
 # Spectral radiative transfer library (Fortran). Compiled in-place

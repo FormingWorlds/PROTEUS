@@ -47,6 +47,8 @@ written in Julia.
 bash tools/get_lovepy.sh
 ```
 
+LovePy goes into the default environment of your Julia depot. When an install moves to a new depot, `bash install.sh` runs this step again if the Julia 1.13 default environment of the old `~/.julia` holds LovePy, and prints the other packages of that environment, which stay behind. In any other move, run it again yourself, or a tidal run stops at `using LovePy` when it prepares the tides module. This step resolves LovePy again, so its dependencies can change, and `rev` is `main` and pins no commit. The stay command of the installation page keeps the old depot and its versions.
+
 ## Multi-phase tidal response (Obliqua)
 
 The installer sets Obliqua up automatically. Obliqua computes the multi-phase
@@ -174,11 +176,9 @@ VULCAN is an atmospheric photochemistry module, selected with
 bash tools/get_vulcan.sh
 ```
 
-For an installation without the installer, install the package via its extra:
-
-```console
-pip install "fwl-proteus[vulcan]"
-```
+An installation without the installer also needs this step. The `vulcan` extra
+(`pip install "fwl-proteus[vulcan]"`) installs the VULCAN package only, without
+the network files and FastChem that VULCAN reads from its clone.
 
 !!! warning "License"
     VULCAN is distributed under the GPL-3.0 license; review its terms
