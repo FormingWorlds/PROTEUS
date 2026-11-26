@@ -3060,6 +3060,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "main loop"
       ],
       "consumers_possible": []
