@@ -718,12 +718,18 @@ def test_proteus_resume_checks_the_eos_tables_after_unpacking(tmp_path):
     p = _make_proteus_instance(tmp_path)
     (tmp_path / 'data').mkdir(exist_ok=True)
     order = []
-    p.extract_archives = MagicMock(side_effect=lambda: order.append('extract'))
+    p.extract_archives = MagicMock()
     p._require_paleos_tables = MagicMock(side_effect=lambda: order.append('require'))
 
-    _resume_with_patches(p, _make_hf_df())
+    with patch(
+        'proteus.proteus.archive.extract_latest',
+        side_effect=lambda d: order.append(('extract', d)),
+    ):
+        _resume_with_patches(p, _make_hf_df())
 
-    assert order == ['extract', 'require']
+    # The resume unpacks only the latest snapshots, never the whole archive.
+    assert order == [('extract', p.directories['output/data']), 'require']
+    p.extract_archives.assert_not_called()
     p._require_paleos_tables.assert_called_once_with()
 
 

@@ -12,6 +12,10 @@ from proteus.utils.helper import parse_subyear_time, safe_rm
 
 log = logging.getLogger('fwl.' + __name__)
 
+# Snapshot times a resume unpacks: the resume row, the rows it may fall back to
+# when the latest pair is incomplete, and the mesh copy of an earlier structure.
+RESUME_SNAPSHOT_TIMES = 10
+
 
 def _tarfile_from_dir(dir: str) -> str:
     name = os.path.split(dir)[-1]
@@ -147,7 +151,8 @@ def append(dir: str, remove_files: bool = True, snapshots_only: bool = False) ->
     """
     Add files within `dir` into `dir/dir.tar`.
 
-    The tar file must already exist.
+    The tar file must already exist. A file whose last archived copy has the same
+    size and modification time is not added again.
 
     Arguments
     ---------
@@ -183,10 +188,19 @@ def append(dir: str, remove_files: bool = True, snapshots_only: bool = False) ->
     # Append files to existing tar file
     tar = _tarfile_from_dir(dir)
     with tarfile.open(tar, 'a') as tar_file:
+        archived = {m.name: m for m in tar_file.getmembers()}
+
+        def changed(info):
+            """Leave out a file whose last archived copy has its size and mtime."""
+            last = archived.get(info.name)
+            if info.isfile() and last and (last.size, last.mtime) == (info.size, info.mtime):
+                return None
+            return info
+
         for f in files:
             if snapshots_only and _snapshot_time(os.path.basename(f)) is None:
                 continue
-            tar_file.add(f, arcname=os.path.basename(f))
+            tar_file.add(f, arcname=os.path.basename(f), filter=changed)
 
     # Remove the files that were appended (never the tar file itself)
     if remove_files:
@@ -244,6 +258,43 @@ def extract(dir: str, remove_tar: bool = False, ignore_warnings: bool = False) -
     # Remove tar file
     if remove_tar:
         safe_rm(tar)
+
+
+def extract_latest(dir: str, count: int = RESUME_SNAPSHOT_TIMES) -> None:
+    """
+    Extract the entries a resume reads from the tar file in `dir`, leaving the tar file whole.
+
+    These are every entry that is not a snapshot (see :func:`_snapshot_time`) and
+    the snapshots of the latest `count` snapshot times. A name that is already
+    loose in `dir` keeps its loose copy. The tar file is only read, so a resume
+    that is stopped part way loses no data, and :func:`append` skips the
+    extracted files that are archived again unchanged.
+
+    Arguments
+    ---------
+    dir : str
+        The directory holding the tar file.
+    count : int
+        Number of latest snapshot times to extract.
+    """
+
+    dir = os.path.abspath(dir)
+    if not archive_exists(dir):
+        return
+
+    with tarfile.open(_tarfile_from_dir(dir), 'r') as tar_file:
+        # extractall lets the last copy of a name win, so only that copy counts
+        members = {m.name: m for m in tar_file.getmembers()}
+        times = {n: _snapshot_time(n) for n in members}
+        latest = sorted({t for t in times.values() if t is not None})[-count:]
+        wanted = [
+            m
+            for n, m in members.items()
+            if (times[n] is None or times[n] >= latest[0])
+            and not os.path.lexists(os.path.join(dir, n))
+        ]
+        log.info(f'Extracting {len(wanted)} of {len(members)} archived files in {dir}')
+        tar_file.extractall(dir, members=wanted, filter='data')
 
 
 def update(dir: str, remove_files: bool = True, snapshots_only: bool = False) -> None:

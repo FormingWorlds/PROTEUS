@@ -1,7 +1,7 @@
 """Unit tests for ``proteus.utils.archive``.
 
 Covers ``archive_exists``, ``create``, ``append``, ``extract``,
-``update``, and ``remove_old``. Uses real tarfile + tmp_path filesystem
+``extract_latest``, ``update``, and ``remove_old``. Uses real tarfile + tmp_path filesystem
 operations because the functions are thin wrappers around tarfile and
 os.* primitives; mocking those would amount to mocking the function
 under test.
@@ -251,6 +251,126 @@ def test_extract_returns_none_when_directory_missing(tmp_path, caplog):
 
 
 # ---------------------------------------------------------------------------
+# extract_latest
+# ---------------------------------------------------------------------------
+
+# Whole-year names sort as text in another order ('100' < '9'), and the sub-year
+# name 1000p500 sits between two whole years, so a text sort picks other times.
+_RUN_TIMES = ['0p000', '9', '10', '100', '1000', '1000p500', '2000']
+_LATEST_3 = ['1000', '1000p500', '2000']
+
+
+def _snapshot_names(stem):
+    return [f'{stem}_int.nc', f'{stem}_atm.nc', f'{stem}_zalmoxis.dat']
+
+
+def _archived_run(data_dir):
+    """Archive a run directory as the end-of-run pass leaves it; return the
+    content of every file by its name in the tar."""
+    data_dir.mkdir()
+    files = {'spider_eos/table.dat': b'eos' * 64, 'zalmoxis_output.dat': b'mesh' * 8}
+    for stem in _RUN_TIMES:
+        files.update({name: f'{name} content'.encode() for name in _snapshot_names(stem)})
+    (data_dir / 'spider_eos').mkdir()
+    for name, content in files.items():
+        (data_dir / name).write_bytes(content)
+        os.utime(data_dir / name, (1.0e9, 1.0e9))  # archived long before the resume
+    archive_mod.create(str(data_dir), remove_files=True)
+    return files
+
+
+def _loose_files(data_dir):
+    return {
+        p.relative_to(data_dir).as_posix(): p.read_bytes()
+        for p in data_dir.rglob('*')
+        if p.is_file() and p.name != f'{data_dir.name}.tar'
+    }
+
+
+def test_extract_latest_unpacks_runtime_files_and_latest_snapshots(tmp_path):
+    """A resume unpacks the runtime files and the snapshots of the latest
+    snapshot times by value, and leaves the tar as it was.
+
+    Discrimination: the times are chosen so that a sort of the names as text
+    selects other snapshots.
+    """
+    data_dir = tmp_path / 'data'
+    files = _archived_run(data_dir)
+    tar_bytes = (data_dir / 'data.tar').read_bytes()
+
+    archive_mod.extract_latest(str(data_dir), count=3)
+
+    expected = ['spider_eos/table.dat', 'zalmoxis_output.dat']
+    expected += [n for stem in _LATEST_3 for n in _snapshot_names(stem)]
+    assert _loose_files(data_dir) == {n: files[n] for n in expected}
+    assert (data_dir / 'data.tar').read_bytes() == tar_bytes
+
+
+def test_final_archive_after_resume_stores_changed_files_only(tmp_path):
+    """After a resume, the end-of-run archive adds the files that changed and
+    skips the unpacked ones that did not, and a full unpack gives back the
+    latest content of every file.
+
+    Discrimination: a skip by name alone loses the new zalmoxis_output.dat,
+    which keeps its size, and no skip stores the EOS table twice.
+    """
+    data_dir = tmp_path / 'data'
+    files = _archived_run(data_dir)
+
+    archive_mod.extract_latest(str(data_dir), count=3)
+    (data_dir / 'zalmoxis_output.dat').write_bytes(b'MESH' * 8)
+    (data_dir / '3000_int.nc').write_bytes(b'new step')
+    archive_mod.update(str(data_dir), remove_files=True)
+
+    counts = _tar_member_counts(data_dir / 'data.tar')
+    assert counts['spider_eos/table.dat'] == 1
+    assert counts['2000_int.nc'] == 1
+    assert counts['zalmoxis_output.dat'] == 2
+    assert counts['3000_int.nc'] == 1
+    assert _loose_files(data_dir) == {}
+    archive_mod.extract(str(data_dir), remove_tar=True)
+    latest = {'zalmoxis_output.dat': b'MESH' * 8, '3000_int.nc': b'new step'}
+    assert _loose_files(data_dir) == {**files, **latest}
+
+
+def test_extract_latest_keeps_loose_copies_and_takes_last_archived_copy(tmp_path):
+    """A loose file is newer than its archived copy, so it stays as it is,
+    and of two archived copies of one name the last one is unpacked."""
+    data_dir = tmp_path / 'data'
+    _archived_run(data_dir)
+    (data_dir / '2000_atm.nc').write_bytes(b'second copy')
+    archive_mod.append(str(data_dir), remove_files=True)
+    (data_dir / '2000_int.nc').write_bytes(b'loose')
+
+    archive_mod.extract_latest(str(data_dir), count=3)
+
+    assert (data_dir / '2000_int.nc').read_bytes() == b'loose'
+    assert (data_dir / '2000_atm.nc').read_bytes() == b'second copy'
+    assert _tar_member_counts(data_dir / 'data.tar')['2000_atm.nc'] == 2
+
+
+@pytest.mark.parametrize('count', [7, 50], ids=['all_times', 'more_than_all_times'])
+def test_extract_latest_unpacks_everything_when_count_covers_all_times(tmp_path, count):
+    """When the latest times cover every snapshot, all files are unpacked."""
+    data_dir = tmp_path / 'data'
+    files = _archived_run(data_dir)
+
+    archive_mod.extract_latest(str(data_dir), count=count)
+
+    assert _loose_files(data_dir) == files
+    assert (data_dir / 'data.tar').exists()
+
+
+def test_extract_latest_without_tar_changes_nothing(tmp_path, caplog):
+    """A run directory without a tar keeps its files and logs a warning."""
+    (tmp_path / '100_int.nc').write_bytes(b'snap')
+    with caplog.at_level('WARNING'):
+        archive_mod.extract_latest(str(tmp_path), count=1)
+    assert _loose_files(tmp_path) == {'100_int.nc': b'snap'}
+    assert any('does not exist' in record.message for record in caplog.records)
+
+
+# ---------------------------------------------------------------------------
 # remove_old
 # ---------------------------------------------------------------------------
 
@@ -452,8 +572,7 @@ def test_update_snapshots_only_bounds_tar_growth_across_cycles(tmp_path):
     Discrimination guard: an otherwise-identical directory archived with
     snapshots_only=False (the unfiltered behaviour) gains one EOS-dir copy
     every cycle, so after N cycles the EOS member count equals N there but
-    stays 0 under the fix. This proves the assertion fails for the
-    unfixed code path rather than passing trivially.
+    stays 0 under the fix, while the unchanged table file enters it once.
     """
 
     def build_dir(root):
@@ -484,10 +603,11 @@ def test_update_snapshots_only_bounds_tar_growth_across_cycles(tmp_path):
     assert fixed_counts['spider_eos'] == 0
     assert fixed_counts['spider_eos/table.dat'] == 0
     assert fixed_counts['zalmoxis_output.dat'] == 0
-    # The unfiltered path duplicates the EOS dir once per cycle: proves the
-    # guard would fail on the pre-fix code and is not trivially satisfied
+    # The unfiltered path archives the runtime files; append stores the
+    # unchanged ones once and repeats only the directory header
     assert unfixed_counts['spider_eos'] == n_cycles
-    assert unfixed_counts['zalmoxis_output.dat'] == n_cycles
+    assert unfixed_counts['spider_eos/table.dat'] == 1
+    assert unfixed_counts['zalmoxis_output.dat'] == 1
     # The fix still archives the snapshots themselves (archive is not empty)
     assert sum(v for k, v in fixed_counts.items() if k.endswith('_int.nc')) >= 1
     # The EOS directory is still on disk for the next interior solve
@@ -616,10 +736,10 @@ def test_lifecycle_final_pass_stores_reference_data_once(tmp_path):
     """Over the full lifecycle, including the end-of-run archive, the static EOS
     table and the fixed-name runtime files enter data.tar exactly once.
 
-    Discrimination: a rolling archive without snapshots_only stores the EOS
-    table once per cycle plus once at the end, as one distinct content, while
-    the evolving zalmoxis_output.dat keeps one distinct content per cycle. Only
-    a count by content tells these apart.
+    Discrimination: a rolling archive without snapshots_only stores the
+    unchanged EOS table once as well, while the evolving zalmoxis_output.dat
+    keeps one distinct content per cycle. Only a count by content tells these
+    apart.
     """
     n_cycles = len(_CYCLE_TIMES)
 
@@ -638,34 +758,21 @@ def test_lifecycle_final_pass_stores_reference_data_once(tmp_path):
     _replay_lifecycle(unfixed, rolling_snapshots_only=False)
     unfixed_stats = _tar_content_stats(unfixed / 'unfixed.tar')
 
-    # Discrimination: without the filter the unchanging EOS table enters the tar
-    # every cycle and once more at the end: many members, one distinct content.
-    assert unfixed_stats['counts']['spider_eos/table.dat'] == n_cycles + 1
+    # Without the filter append skips the unchanged EOS table after its first copy.
+    assert unfixed_stats['counts']['spider_eos/table.dat'] == 1
     assert unfixed_stats['distinct_by_name']['spider_eos/table.dat'] == 1
     # But zalmoxis_output.dat genuinely changed each cycle: content hashing
     # keeps all n_cycles distinct versions and must not treat them as waste.
     assert unfixed_stats['distinct_by_name']['zalmoxis_output.dat'] == n_cycles
 
 
-@pytest.mark.xfail(
-    reason=(
-        'The rolling archive appends every loose snapshot on each cycle, and '
-        'remove_old prunes a snapshot only after the next cycle appended it '
-        'again, so every snapshot but the newest enters data.tar twice; the '
-        'final pass appends the newest, still loose, a second time (inflation '
-        '1.44 on this fixture).'
-    ),
-    raises=AssertionError,
-    strict=True,
-)
 def test_lifecycle_snapshot_reappend_no_inflation(tmp_path):
-    """The archive should store each snapshot once: replaying the proteus.py
-    lifecycle must leave every timestamped snapshot in data.tar exactly once
+    """The archive stores each snapshot once: replaying the proteus.py
+    lifecycle leaves every timestamped snapshot in data.tar exactly once
     and an overall content-inflation factor of ~1.0.
 
-    The current archive stores every snapshot twice, so the test is a strict
-    xfail; it fails hard once each snapshot is stored once, which forces the
-    marker to be dropped.
+    The rolling archive appends every loose snapshot on each cycle, so a
+    snapshot is kept once only because append skips an unchanged file.
     """
     data_dir = _build_data_dir(tmp_path / 'run')
     _replay_lifecycle(data_dir, rolling_snapshots_only=True)
