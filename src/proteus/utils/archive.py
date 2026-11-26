@@ -22,6 +22,32 @@ def _tarfile_from_dir(dir: str) -> str:
     return os.path.join(dir, f'{name}.tar')
 
 
+def _move_into_tar(dir: str, files: list[str]) -> str:
+    """Add `files` to the tar file in `dir`, creating it if missing, then remove them.
+
+    A file whose last archived copy has the same size and modification time is not
+    added again: a resume unpacks files with their archived modification time, so
+    the unchanged ones go back into the tar only once.
+    """
+    tar = _tarfile_from_dir(dir)
+    with tarfile.open(tar, 'a') as tar_file:
+        archived = {m.name: m for m in tar_file.getmembers()}
+
+        def changed(info):
+            """Leave out a file whose last archived copy has its size and mtime."""
+            last = archived.get(info.name)
+            if info.isfile() and last and (last.size, last.mtime) == (info.size, info.mtime):
+                return None
+            return info
+
+        for f in files:
+            tar_file.add(f, arcname=os.path.basename(f), filter=changed)
+    for f in files:
+        if f != tar:
+            safe_rm(f)
+    return tar
+
+
 def _snapshot_time(name: str) -> float | None:
     """Parse the simulated time from a timestamped snapshot filename.
 
@@ -85,22 +111,16 @@ def archive_exists(dir: str, ignore_warnings: bool = False) -> bool:
     return exists
 
 
-def create(dir: str, remove_files: bool = True, snapshots_only: bool = False) -> str:
+def create(dir: str) -> str:
     """
     Create a new tar archive from a directory of files, placing the tar inside that directory.
 
-    Optionally removes all files in that directory (other than the tar file).
+    Removes the archived files from the directory.
 
     Arguments
     ---------
     dir : str
         The directory to archive.
-    remove_files:bool
-        Whether to remove the appended files from the directory.
-    snapshots_only : bool
-        When True, archive (and, if remove_files, remove) only timestamped
-        snapshots as recognised by :func:`_snapshot_time`. The fixed-name
-        runtime files and the runtime table directories are left in place.
 
     Returns
     -------
@@ -122,49 +142,19 @@ def create(dir: str, remove_files: bool = True, snapshots_only: bool = False) ->
         log.error(f'Archive tar file for {dir} already exists. Will not create a new one.')
         return
 
-    # List files in directory
-    files = glob.glob(os.path.join(dir, '*'))
-    files = [os.path.abspath(f) for f in files]
-
-    # Add files to new tar file
-    tar = _tarfile_from_dir(dir)
-    with tarfile.open(tar, 'w') as tar_file:
-        for f in files:
-            if snapshots_only and _snapshot_time(os.path.basename(f)) is None:
-                continue
-            tar_file.add(f, arcname=os.path.basename(f))
-
-    # Remove the files that were archived (never the tar file itself)
-    if remove_files:
-        for f in files:
-            if f == tar:
-                continue
-            if snapshots_only and _snapshot_time(os.path.basename(f)) is None:
-                continue
-            safe_rm(f)
-
-    # Return path to the tar file
-    return tar
+    return _move_into_tar(dir, glob.glob(os.path.join(dir, '*')))
 
 
-def append(dir: str, remove_files: bool = True, snapshots_only: bool = False) -> str:
+def append(dir: str) -> str:
     """
-    Add files within `dir` into `dir/dir.tar`.
+    Move the files within `dir` into `dir/dir.tar`.
 
-    The tar file must already exist. A file whose last archived copy has the same
-    size and modification time is not added again.
+    The tar file must already exist.
 
     Arguments
     ---------
     dir:str
         Path to the archived directory.
-    remove_files:bool
-        Whether to remove the appended files from the directory.
-    snapshots_only : bool
-        When True, append (and, if remove_files, remove) only timestamped
-        snapshots as recognised by :func:`_snapshot_time`. The fixed-name
-        runtime files and the runtime table directories are left in place,
-        so repeated appends do not accumulate duplicate copies of them.
 
     Returns
     -------
@@ -181,37 +171,7 @@ def append(dir: str, remove_files: bool = True, snapshots_only: bool = False) ->
         log.error('Cannot append to archive.')
         return
 
-    # List files in directory
-    files = glob.glob(os.path.join(dir, '*'))
-    files = [os.path.abspath(f) for f in files]
-
-    # Append files to existing tar file
-    tar = _tarfile_from_dir(dir)
-    with tarfile.open(tar, 'a') as tar_file:
-        archived = {m.name: m for m in tar_file.getmembers()}
-
-        def changed(info):
-            """Leave out a file whose last archived copy has its size and mtime."""
-            last = archived.get(info.name)
-            if info.isfile() and last and (last.size, last.mtime) == (info.size, info.mtime):
-                return None
-            return info
-
-        for f in files:
-            if snapshots_only and _snapshot_time(os.path.basename(f)) is None:
-                continue
-            tar_file.add(f, arcname=os.path.basename(f), filter=changed)
-
-    # Remove the files that were appended (never the tar file itself)
-    if remove_files:
-        for f in files:
-            if f == tar:
-                continue
-            if snapshots_only and _snapshot_time(os.path.basename(f)) is None:
-                continue
-            safe_rm(f)
-
-    return tar
+    return _move_into_tar(dir, glob.glob(os.path.join(dir, '*')))
 
 
 def _extract_missing(tar_file, dir: str, keep=None) -> None:
@@ -281,7 +241,7 @@ def extract_latest(dir: str, count: int = RESUME_SNAPSHOT_TIMES) -> None:
     These are every entry that is not a snapshot (see :func:`_snapshot_time`) and
     the snapshots of the latest `count` snapshot times. A name that is already
     loose in `dir` keeps its loose copy. The tar file is only read, so a resume
-    that is stopped part way loses no data, and :func:`append` skips the
+    that is stopped part way loses no data, and :func:`_move_into_tar` skips the
     extracted files that are archived again unchanged.
 
     Arguments
@@ -302,14 +262,13 @@ def extract_latest(dir: str, count: int = RESUME_SNAPSHOT_TIMES) -> None:
         _extract_missing(tar_file, dir, lambda n: times[n] is None or times[n] >= latest[0])
 
 
-def update(dir: str, remove_files: bool = True, snapshots_only: bool = False) -> None:
+def update(dir: str) -> None:
     """
     Create and/or update a data file archive.
 
-    This function archives the folder located at `dir/`. The files inside `dir/`
-    are stored inside a tar file called `dir.tar` located in `dir/`.
-    The tar file is created if it does not already exist, otherwise it is
-    updated with the contents of `dir/`.
+    This function moves the files inside `dir/` into a tar file called
+    `dir.tar` located in `dir/`. The tar file is created if it does not
+    already exist, otherwise it is updated with the contents of `dir/`.
 
     All paths should be absolute.
 
@@ -317,14 +276,6 @@ def update(dir: str, remove_files: bool = True, snapshots_only: bool = False) ->
     ---------
     dir : str
         The directory to archive.
-    remove_files : bool
-        Whether to remove the archived files from the directory.
-    snapshots_only : bool
-        When True, archive only timestamped snapshots and leave the
-        fixed-name runtime files and runtime table directories in place.
-        The rolling in-loop archive sets this so that the fixed-name
-        files, which must stay on disk for the interior modules and for
-        resume, are not re-appended on every archive cycle.
     """
 
     # Paths
@@ -332,45 +283,33 @@ def update(dir: str, remove_files: bool = True, snapshots_only: bool = False) ->
 
     # Update archive
     if archive_exists(dir, ignore_warnings=True):
-        append(dir, remove_files=remove_files, snapshots_only=snapshots_only)
+        append(dir)
 
     # Create new archive
     else:
-        create(dir, remove_files=remove_files, snapshots_only=snapshots_only)
+        create(dir)
 
 
-def remove_old(dir: str, before: float) -> None:
+def archive_old(dir: str, before: float) -> None:
     """
-    Prune archived snapshot files older than a cutoff time.
-
-    Only timestamped snapshot files are removed: names ending in ``.nc``,
-    ``.json`` or ``_zalmoxis.dat`` whose leading token parses as a simulated time (e.g.
-    ``1000p000_int.nc``), and only when that time is below `before`.
-    Every other entry is kept, notably the tar
-    archive itself and the fixed-name runtime files that the interior
-    modules re-read between structure re-solves (``zalmoxis_output.dat``
-    and its ``.prev`` backup, ``zalmoxis_output_temp.txt``,
-    ``spider_mesh.dat``, and the EOS table directories). Pruned
-    snapshots remain recoverable from the tar archive written by
-    :func:`update` before this function runs.
+    Move the snapshots (see :func:`_snapshot_time`) older than `before` into
+    the tar file, creating it if missing. Every other entry stays in `dir`.
 
     Arguments
     ---------
     dir : str
-        The directory to remove old files from.
+        The directory holding the snapshots and the tar file.
     before : float
-        Remove snapshot files corresponding to simulated times before
+        Archive snapshot files corresponding to simulated times before
         this time [years].
     """
 
-    # Paths
     dir = os.path.abspath(dir)
-
-    # Files
-    files = glob.glob(os.path.join(dir, '*'))
-
-    # Remove only recognized timestamped snapshots older than the cutoff
-    for f in files:
+    old = []
+    for f in glob.glob(os.path.join(dir, '*')):
         age = _snapshot_time(os.path.basename(f))
         if age is not None and age < before:
-            safe_rm(f)
+            old.append(f)
+    if old:
+        log.debug(f'Moving {len(old)} snapshot files into the archive in {dir}')
+        _move_into_tar(dir, old)

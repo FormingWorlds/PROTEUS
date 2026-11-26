@@ -744,7 +744,7 @@ def test_extract_archives_unpacks_the_whole_archive_and_removes_it(tmp_path, cap
     data.mkdir(exist_ok=True)
     (data / '100_int.nc').write_bytes(b'old snapshot')
     (data / 'zalmoxis_output.dat').write_bytes(b'mesh')
-    archive.create(str(data), remove_files=True)
+    archive.create(str(data))
 
     p.extract_archives()
 
@@ -3425,6 +3425,27 @@ def test_plot_cadence_is_independent_of_write_snapshot_gate(tmp_path):
         'not also a write_mod snapshot -- the plot cadence must not depend '
         'on the write/archive snapshot gate'
     )
+
+
+def test_main_loop_archives_only_old_snapshots_until_the_final_pass(tmp_path):
+    """Each rolling archive cycle moves only the snapshots older than 0.99 times
+    the current model time into data.tar; the whole directory is archived once,
+    at the end of the run.
+
+    Discrimination: the last rolling call runs at Time = 100 yr, so it
+    carries a cutoff of 99 yr, not 100 yr or 0; a rolling call that archived
+    the whole directory would show up as an extra `update` call.
+    """
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    p.config.params.out.archive_mod = 1
+    with patch('proteus.proteus.archive') as mock_archive:
+        _run_main_loop_capturing_plots(p, stop_at_loop=5)
+
+    data_dir = p.directories['output/data']
+    rolling = mock_archive.archive_old.call_args_list
+    assert [c.args[0] for c in rolling] == [data_dir] * 4
+    assert [c.args[1] for c in rolling] == pytest.approx([0.0, 0.0, 0.0, 99.0])
+    assert mock_archive.update.call_args_list == [call(data_dir)]
 
 
 @pytest.mark.parametrize(
