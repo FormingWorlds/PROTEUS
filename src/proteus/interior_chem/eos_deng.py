@@ -106,10 +106,16 @@ from scipy.interpolate import RegularGridInterpolator
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Melt EOS of the FeO -> FeO1.5 volume change. Test variants beyond the deepest Deng FPMD
-# pressure: '_flat' holds the integral there (and the Komabayashi FeO and Fe integrals
-# beyond P_KOMA_MAX), '_constdV' holds dV.
-MODELS = ('deng2020', 'keane_table', 'keane_table_flat', 'keane_table_constdV')
+# Melt EOS of the FeO -> FeO1.5 volume change. Test variants: '_flat' holds the integral beyond
+# the deepest Deng FPMD pressure (and the Komabayashi integrals beyond P_KOMA_MAX), '_constdV'
+# holds dV there; '_komafit' extends the Komabayashi liquids beyond P_KOMA_MAX with a fitted EOS.
+MODELS = (
+    'deng2020',
+    'keane_table',
+    'keane_table_flat',
+    'keane_table_constdV',
+    'keane_table_komafit',
+)
 # Liquid FeO volume of the disproportionation -V_FeO term (Schaefer et al. 2024 Eq 11-12)
 FEO_VOLUMES = ('komabayashi2014', 'lange_carmichael')
 _K0_FEO_LC, _KP_FEO_LC = 30.33, 4.0  # GPa, -: Murnaghan constants of deltaGFeOFeO15_Deng.m
@@ -120,7 +126,10 @@ TABLE_FILES = {
     'keane_table': 'keane_deng_table.npz',
     'keane_table_flat': 'keane_deng_table_flat.npz',
     'keane_table_constdV': 'keane_deng_table_constdV.npz',
+    'keane_table_komafit': 'keane_deng_table.npz',
 }
+KOMAFIT_FILE = 'komabayashi_komafit_ext.npz'  # int_{350 GPa}^{P} V dP of the fitted extension
+_KOMAFIT = None
 _TABLE = None  # the 'keane_table' table
 _TABLES = {}  # the other table models
 _TABLE_EXTRAPOLATION_WARNED = False
@@ -150,6 +159,7 @@ ENVELOPE = {
     'keane_table': '1000 K <= T <= 20000 K, P <= 4000 GPa',
     'keane_table_flat': '1000 K <= T <= 20000 K, P <= 4000 GPa',
     'keane_table_constdV': '1000 K <= T <= 20000 K, P <= 4000 GPa',
+    'keane_table_komafit': '1000 K <= T <= 20000 K, P <= 4000 GPa',
 }
 
 # ── Komabayashi (2014) liquids: Vinet at 298 K + Anderson-Gruneisen expansion ──
@@ -427,6 +437,51 @@ def _load_table(path: Path) -> dict:
     }
 
 
+def komafit_path() -> Path:
+    """Location of the komafit extension table: FWL_DATA/interior_chem/."""
+    from proteus.utils.helper import resolve_fwl_data_dir
+
+    return resolve_fwl_data_dir() / TABLE_RELPATH.parent / KOMAFIT_FILE
+
+
+def _komafit():
+    """Interpolators of the fitted Komabayashi extension beyond P_KOMA_MAX, J/mol, loaded once.
+
+    The table (make_komafit_table.py) holds J(P, T) = int_{350 GPa}^{P} V dP for liquid FeO
+    and Fe, V a Keane + Mie-Gruneisen fit to the Komabayashi (2014) volumes on 50-350 GPa,
+    scaled to his volume at 350 GPa so V is continuous there.
+    """
+    global _KOMAFIT
+    if _KOMAFIT is None:
+        path = komafit_path()
+        if not path.is_file():
+            raise FileNotFoundError(
+                f'Komabayashi extension table not found at {path}. Copy {path.name} '
+                '(written by make_komafit_table.py) there, or set FWL_DATA.'
+            )
+        t = np.load(path)
+        grid = (t['log10_T_K'], t['log10_P_Pa'])
+        _KOMAFIT = {ph: RegularGridInterpolator(grid, t[f'J_{ph}']) for ph in ('FeO', 'Fe')}
+    return _KOMAFIT
+
+
+def _komafit_terms(T, P, feo_volume):
+    """(int V_FeO dP, int V_Fe dP) [J/mol] of the komafit model: Komabayashi (2014) to
+    min(P, P_KOMA_MAX), plus the fitted extension beyond. Lange & Carmichael FeO is unchanged.
+    T [K], P [GPa], flat arrays inside the table range."""
+    Pk = np.minimum(P, P_KOMA_MAX)
+    ext = _komafit()
+    beyond = P > P_KOMA_MAX
+    q = np.column_stack([np.log10(T[beyond]), np.log10(P[beyond] * 1e9)])
+    I_fe = _int_V_Fe(T, Pk)
+    I_fe[beyond] += ext['Fe'](q)
+    if feo_volume == 'lange_carmichael':
+        return _int_V_FeO_LC(T, P), I_fe
+    I_feo = _int_V_FeO(T, Pk)
+    I_feo[beyond] += ext['FeO'](q)
+    return I_feo, I_fe
+
+
 def _keane_table():
     """Load the Keane + Deng-thermal lookup table once per process."""
     global _TABLE
@@ -475,6 +530,8 @@ def _evaluate_table(T, P, oxidation_only, feo_volume='komabayashi2014', model='k
                     Tv, Pv if feo_volume == 'lange_carmichael' else Pk, feo_volume
                 )[0]
                 I_fe = _int_V_Fe(Tv, Pk)
+            elif model == 'keane_table_komafit':
+                I_feo, I_fe = _komafit_terms(Tv, Pv, feo_volume)
             else:
                 I_feo, I_fe = _fe_feo_terms(Tv, Pv, feo_volume)
             out[valid] = 2.0 * I_ox - I_feo + I_fe

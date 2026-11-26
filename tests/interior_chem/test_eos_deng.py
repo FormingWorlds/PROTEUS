@@ -519,6 +519,7 @@ def test_unknown_melt_eos_model_is_rejected(bad):
         'keane_table',
         'keane_table_flat',
         'keane_table_constdV',
+        'keane_table_komafit',
     )
 
 
@@ -649,3 +650,85 @@ def test_flat_model_holds_the_komabayashi_terms_beyond_350_gpa():
     assert float(var) == pytest.approx(float(ref), rel=1e-12)
     ext, _ = int_dV_dP(T, 2000.0, model='keane_table')
     assert abs(float(ext) - full[-1]) > 1.0e5
+
+
+@pytest.mark.usefixtures('komafit_table')
+@pytest.mark.physics_invariant
+def test_komafit_equals_keane_table_inside_the_komabayashi_range():
+    """keane_table_komafit changes only the Komabayashi liquids beyond 350 GPa: the
+    full term equals keane_table up to 350 GPa, and the melt oxidation integral
+    equals it everywhere."""
+    for T in (2000.0, 4000.0, 9000.0):
+        P = np.array([1.0, 50.0, 136.0, 349.0, 350.0])
+        ref, _ = int_dV_dP(T, P, model='keane_table')
+        var, ok = int_dV_dP(T, P, model='keane_table_komafit')
+        assert np.all(ok)
+        np.testing.assert_allclose(var, ref, rtol=1e-12)
+        Pall = np.array([10.0, 500.0, 3000.0])
+        ref_ox, _ = int_dV_dP_oxidation(T, Pall, model='keane_table')
+        var_ox, _ = int_dV_dP_oxidation(T, Pall, model='keane_table_komafit')
+        np.testing.assert_allclose(var_ox, ref_ox, rtol=1e-12)
+
+
+@pytest.mark.usefixtures('komafit_table')
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('T', [2000.0, 4000.0, 7000.0])
+def test_komafit_volume_is_continuous_at_350_gpa(T):
+    """d(int V dP)/dP is the volume. Just beyond 350 GPa the extension's mean
+    volume over the first table interval equals the Komabayashi (2014) volume
+    there within 1 %: no jump in the integral (a missing or doubled 1 bar - 350
+    GPa part, or J vs kJ, would be off by orders of magnitude) and no step in V
+    (an unscaled fit is off by its 0.2-0.4 % residual at most, a wrong scale more)."""
+    P1 = 350.0 * 10**0.01  # first table node beyond the joint, GPa
+    Tv, Pv = np.array([T, T]), np.array([350.0, P1])
+    I_feo, I_fe = eos_deng._komafit_terms(Tv, Pv, 'komabayashi2014')
+    for name, I, phase in (('FeO', I_feo, 'FeO'), ('Fe', I_fe, 'Fe')):
+        V_ext = (I[1] - I[0]) / (P1 - 350.0) / 1e3  # cm3/mol
+        Pm = np.linspace(350.0, P1, 201)
+        V_kom = float(np.mean(eos_deng._VT(Pm, np.full_like(Pm, T), phase)))
+        assert V_ext == pytest.approx(V_kom, rel=1e-2), name
+
+
+@pytest.mark.usefixtures('komafit_table')
+@pytest.mark.physics_invariant
+def test_komafit_extension_volume_is_physical_to_4_tpa():
+    """Beyond 350 GPa the extension's volume (slope of the integral) is positive,
+    falls with pressure on every isotherm and rises with temperature at every
+    pressure, from 1000 to 20000 K and up to 4 TPa."""
+    P = np.geomspace(360.0, 4000.0, 40)
+    for phase, k in (('FeO', 0), ('Fe', 1)):
+        V = []
+        for T in (1000.0, 4000.0, 10000.0, 20000.0):
+            I = eos_deng._komafit_terms(np.full_like(P, T), P, 'komabayashi2014')[k]
+            V.append(np.diff(I) / np.diff(P))
+        V = np.array(V)
+        assert np.all(V > 0), phase
+        assert np.all(np.diff(V, axis=1) < 0), phase
+        assert np.all(np.diff(V, axis=0) > 0), phase
+
+
+@pytest.mark.usefixtures('komafit_table')
+@pytest.mark.reference_pinned
+def test_komafit_departs_from_the_komabayashi_extrapolation_as_fitted():
+    """At 4000 K, int V dP from 350 GPa to 4 TPa of the fitted extension exceeds
+    Komabayashi's own Vinet + Anderson-Gruneisen form extrapolated by +564 kJ/mol
+    (Fe) and +369 kJ/mol (FeO) (fit_komabayashi_liquids.py, Keane + DP form):
+    within 2 %. The extension is the stiffer of the two."""
+    T, P = np.array([4000.0, 4000.0]), np.array([350.0, 4000.0])
+    I_feo, I_fe = eos_deng._komafit_terms(T, P, 'komabayashi2014')
+    nat_feo = eos_deng._int_V_FeO(T, P)
+    nat_fe = eos_deng._int_V_Fe(T, P)
+    d_fe = (I_fe[1] - I_fe[0]) - (nat_fe[1] - nat_fe[0])
+    d_feo = (I_feo[1] - I_feo[0]) - (nat_feo[1] - nat_feo[0])
+    assert d_fe == pytest.approx(564e3, rel=2e-2)
+    assert d_feo == pytest.approx(369e3, rel=2e-2)
+
+
+def test_missing_komafit_table_raises_with_the_expected_location(monkeypatch, tmp_path):
+    """Without the extension table in FWL_DATA the komafit terms raise
+    FileNotFoundError naming FWL_DATA/interior_chem."""
+    monkeypatch.setenv('FWL_DATA', str(tmp_path))
+    monkeypatch.setattr(eos_deng, '_KOMAFIT', None)
+    assert eos_deng.komafit_path() == tmp_path / 'interior_chem' / 'komabayashi_komafit_ext.npz'
+    with pytest.raises(FileNotFoundError, match='interior_chem'):
+        eos_deng._komafit_terms(np.array([4000.0]), np.array([500.0]), 'komabayashi2014')

@@ -85,9 +85,18 @@ def test_unknown_partition_coefficient_prescription_is_rejected(bad):
     assert chem.partition_coefficients == 'mgsio3'
 
 
-@pytest.mark.parametrize('choice', ['deng2020', 'keane_table'])
+@pytest.mark.parametrize(
+    'choice',
+    [
+        'deng2020',
+        'keane_table',
+        'keane_table_flat',
+        'keane_table_constdV',
+        'keane_table_komafit',
+    ],
+)
 def test_redox_melt_eos_choices_are_accepted(choice):
-    """Both melt EOS of the redox pressure term are valid, and deng2020 is the
+    """Every melt EOS of the redox pressure term is valid, and deng2020 is the
     default, so existing configurations keep their results."""
     assert InteriorChem(redox_dV_eos=choice).redox_dV_eos == choice
     assert InteriorChem().redox_dV_eos == 'deng2020'
