@@ -87,7 +87,10 @@ upstream modules.
    stellar mass, radius, effective temperature, and luminosity from
    pre-computed evolutionary tracks at the current stellar age. Recomputes
    the instellation flux and XUV flux. The stellar spectrum is updated on a
-   separate, longer cadence controlled by `params.dt.starspec`.
+   separate, longer cadence controlled by `params.dt.starspec`. The helpfile
+   stores the times of the last updates and the star age and distance of the
+   last spectrum, so a resumed run computes that spectrum again and updates at
+   the same rows as a run that goes through in one go.
 
 7. **Atmospheric escape** (`run_escape`): Computes mass loss rates for each
    element (H, C, N, S, O) based on the XUV flux, planet mass, and current

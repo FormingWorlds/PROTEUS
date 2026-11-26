@@ -3031,6 +3031,74 @@
       "consumers_possible": []
     },
     {
+      "name": "star_inst_time",
+      "unit": "yr",
+      "description": "time of the last update of the stellar radius, temperature and fluxes",
+      "group": "Host star properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/proteus.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "main loop"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "star_spec_time",
+      "unit": "yr",
+      "description": "time of the last update of the stellar spectrum",
+      "group": "Host star properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/proteus.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "main loop"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "star_spec_age",
+      "unit": "yr",
+      "description": "star age of that spectrum",
+      "group": "Host star properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/proteus.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "main loop"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "star_spec_dist",
+      "unit": "m",
+      "description": "flux-weighted star-planet distance that spectrum is scaled to; 0 before the first",
+      "group": "Host star properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/proteus.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "main loop"
+      ],
+      "consumers_possible": []
+    },
+    {
       "name": "p_obs",
       "unit": "bar",
       "description": "transit pressure level",

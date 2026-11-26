@@ -995,6 +995,11 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'M_dissolved_target',
         'M_volatile_change',
         'n_impacts_applied',
+        # last stellar updates: zero, as in a run that predates them, makes the resume compute a new spectrum
+        'star_inst_time',
+        'star_spec_age',
+        'star_spec_dist',
+        'star_spec_time',
         'step_dE_impact_J',
         # structure-solve flags: zero is no core temperature table, as in a run that predates it
         'struct_core_T_excess',
@@ -1183,6 +1188,10 @@ def GetHelpfileKeys():
         'R_star',           # photospheric radius [m]
         'age_star',         # age relative to deuterium fusion 'stellar birthline' [yr]
         'T_star',           # photospheric temperature [K]
+        'star_inst_time',   # time of the last update of the stellar radius, temperature and fluxes [yr]
+        'star_spec_time',   # time of the last update of the stellar spectrum [yr]
+        'star_spec_age',    # star age of that spectrum [yr]
+        'star_spec_dist',   # flux-weighted star-planet distance that spectrum is scaled to; 0 before the first [m]
 
         # Planet observational properties
         'p_obs',            # transit pressure level [bar]
