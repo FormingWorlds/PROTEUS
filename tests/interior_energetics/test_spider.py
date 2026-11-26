@@ -341,7 +341,7 @@ def test_mesh_convergence_trigger():
     """
     from unittest.mock import MagicMock, patch
 
-    from proteus.interior_energetics.wrapper import update_structure_from_interior
+    from tests.interior_energetics.test_wrapper import _update_from_refs
 
     # Create minimal config mock
     config = MagicMock()
@@ -390,7 +390,7 @@ def test_mesh_convergence_trigger():
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
-        result = update_structure_from_interior(
+        result = _update_from_refs(
             dirs, config, hf_row, interior_o, last_struct_time, last_Tmagma, last_Phi
         )
     # Should have triggered (returned updated values)
@@ -400,7 +400,7 @@ def test_mesh_convergence_trigger():
     # Should NOT trigger (floor blocks)
     dirs['mesh_shift_active'] = False
     last_struct_time = 35.0
-    result = update_structure_from_interior(
+    result = _update_from_refs(
         dirs, config, hf_row, interior_o, last_struct_time, last_Tmagma, last_Phi
     )
     assert result[0] == last_struct_time
@@ -409,7 +409,7 @@ def test_mesh_convergence_trigger():
     # Should NOT trigger (below convergence interval)
     dirs['mesh_shift_active'] = True
     last_struct_time = 45.0  # elapsed = 50 - 45 = 5 yr
-    result = update_structure_from_interior(
+    result = _update_from_refs(
         dirs, config, hf_row, interior_o, last_struct_time, last_Tmagma, last_Phi
     )
     assert result[0] == last_struct_time

@@ -37,13 +37,11 @@ from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.wrapper import (
     _ARAGOG_CALL_ENERGY_KEYS,
     _clear_jax_caches_after_resolve,
+    _commit_structure_refs,
     _eos_grid_extent_up_step,
     _prevent_warming_clamp_active,
-    _refresh_composition_sentinels,
     remelt_mantle,
-    restore_structure_trigger_state,
     run_interior,
-    store_structure_trigger_state,
     update_structure_from_interior,
 )
 
@@ -55,6 +53,18 @@ pytestmark = [
 
 
 PROTEUS_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _update_from_refs(
+    dirs, config, hf_row, interior_o, ref_time, ref_T_magma, ref_Phi, **kwargs
+):
+    """Run update_structure_from_interior from the given references of the last update:
+    time [yr], T_magma [K] and Phi_global. Returns the references the row holds after it."""
+    hf_row.update(
+        struct_ref_time=ref_time, struct_ref_T_magma=ref_T_magma, struct_ref_Phi=ref_Phi
+    )
+    update_structure_from_interior(dirs, config, hf_row, interior_o, **kwargs)
+    return hf_row['struct_ref_time'], hf_row['struct_ref_T_magma'], hf_row['struct_ref_Phi']
 
 
 def _ns_prevent_warming(prevent_warming: bool, module: str = 'aragog'):
@@ -151,9 +161,7 @@ def test_update_disabled():
         'proteus.interior_struct.zalmoxis.zalmoxis_solver',
         return_value=(3.504e6, None),
     ) as mock_solver:
-        result = update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
-        )
+        result = _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
     assert result == (0.0, 3000.0, 0.8)
     # Side-effect discrimination: the disabled branch must NOT invoke
     # the Zalmoxis solver. Catches a regression that ran the solver
@@ -197,7 +205,7 @@ def test_force_baseline_solves_when_dynamic_updates_disabled():
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
-        result = update_structure_from_interior(
+        result = _update_from_refs(
             dirs, config, hf_row, interior_o, 0.0, 9999.0, 0.999, force=True
         )
 
@@ -240,9 +248,7 @@ def test_force_baseline_ignores_unmet_triggers():
         'proteus.interior_struct.zalmoxis.zalmoxis_solver',
         return_value=(3.504e6, None),
     ) as mock_unforced:
-        unforced = update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80
-        )
+        unforced = _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80)
     mock_unforced.assert_not_called()
     assert unforced == (0.0, 3000.0, 0.80)
 
@@ -255,7 +261,7 @@ def test_force_baseline_ignores_unmet_triggers():
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
-        forced = update_structure_from_interior(
+        forced = _update_from_refs(
             dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80, force=True
         )
     mock_forced.assert_called_once()
@@ -308,9 +314,7 @@ def test_force_baseline_warns_when_swap_exceeds_mesh_max_shift(tmp_path, caplog)
             patch('proteus.interior_energetics.wrapper.gc.collect'),
             caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'),
         ):
-            update_structure_from_interior(
-                dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8, force=True
-            )
+            _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8, force=True)
         return dirs
 
     interior_o = _mock_interior_o()
@@ -336,8 +340,6 @@ def _dirs_hf_with_composition_delta():
     """Build dirs + hf_row carrying a dissolved-H2O fraction change that is
     above the composition trigger threshold (w 1.0e-3 -> 2.0e-3, dw = 100%)."""
     dirs = _mock_dirs()
-    dirs['_last_w_H2O_liquid'] = 1.0e-3
-    dirs['_last_w_H2_liquid'] = 0.0
     hf_row = {
         'Time': 100.0,
         'T_magma': 3000.0,
@@ -347,6 +349,8 @@ def _dirs_hf_with_composition_delta():
         'M_mantle': 4.0e24,
         'H2O_kg_liquid': 8.0e21,  # / M_mantle -> w_new = 2.0e-3
         'H2_kg_liquid': 0.0,
+        'struct_ref_w_H2O_liquid': 1.0e-3,
+        'struct_ref_w_H2_liquid': 0.0,
     }
     return dirs, hf_row
 
@@ -389,7 +393,7 @@ def test_force_baseline_suppresses_composition_eos_regeneration():
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
-        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80)
+        _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80)
     mock_gen_ctrl.assert_called_once()
 
     # Treatment: force=True with the identical composition delta must NOT regen.
@@ -407,9 +411,7 @@ def test_force_baseline_suppresses_composition_eos_regeneration():
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
-        update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 9999.0, 0.999, force=True
-        )
+        _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 9999.0, 0.999, force=True)
     # Reached the solver (not a vacuous pass) but suppressed the regeneration.
     mock_solver.assert_called_once()
     mock_gen_forced.assert_not_called()
@@ -458,9 +460,7 @@ def test_force_baseline_lands_on_unclamped_callable_mesh():
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
-        update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 9999.0, 0.999, force=True
-        )
+        _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 9999.0, 0.999, force=True)
 
     mock_blend.assert_called_once()
     # Clamp disabled on the baseline: the full callable mesh is kept at any shift.
@@ -497,9 +497,7 @@ def test_ceiling_trigger():
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
-        result = update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
-        )
+        result = _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
     # Should have triggered: last_struct_time updated to current
     assert result[0] == pytest.approx(1100.0, rel=1e-12)
     # Trigger discrimination: the ceiling branch must actually invoke
@@ -540,9 +538,7 @@ def test_tmagma_trigger():
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
-        result = update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80
-        )
+        result = _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80)
     assert result[0] == pytest.approx(200.0, rel=1e-12)
     # Trigger discrimination: a 4% T change crosses the 3% threshold,
     # so the solver must run. Catches a regression that swapped the
@@ -572,9 +568,7 @@ def test_tmagma_no_trigger():
         'proteus.interior_struct.zalmoxis.zalmoxis_solver',
         return_value=(3.504e6, None),
     ) as mock_solver:
-        result = update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80
-        )
+        result = _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80)
     assert result[0] == pytest.approx(0.0, abs=1e-12)  # Not triggered
     # No-trigger discrimination: the solver must NOT run when dT/T is
     # below threshold. Catches a regression that fired the solver and
@@ -614,9 +608,7 @@ def test_phi_trigger():
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
-        result = update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 2990.0, 0.80
-        )
+        result = _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 2990.0, 0.80)
     assert result[0] == pytest.approx(200.0, rel=1e-12)
     # Trigger discrimination: a 0.1 absolute drop in Phi crosses the
     # 0.05 threshold, so the solver must run. The phi trigger branch
@@ -647,9 +639,7 @@ def test_phi_no_trigger():
         'proteus.interior_struct.zalmoxis.zalmoxis_solver',
         return_value=(3.504e6, None),
     ) as mock_solver:
-        result = update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80
-        )
+        result = _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80)
     assert result[0] == pytest.approx(0.0, abs=1e-12)  # Not triggered
     # No-trigger discrimination: dPhi = 0.02 < 0.05 threshold; the
     # solver must NOT run. Catches a regression that compared |dPhi|
@@ -683,9 +673,7 @@ def test_floor_blocks_update():
         'proteus.interior_struct.zalmoxis.zalmoxis_solver',
         return_value=(3.504e6, None),
     ) as mock_solver:
-        result = update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
-        )
+        result = _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
     assert result[0] == pytest.approx(0.0, abs=1e-12)  # Floor blocked
     # Floor discrimination: a 33% T change is well above the dT/T
     # threshold AND a 0.3 Phi drop is well above the Phi threshold;
@@ -719,7 +707,7 @@ def test_no_mesh_resets_convergence():
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
-        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
+        _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
     # No mesh file returned → convergence state reset
     assert dirs['mesh_shift_active'] is False
     assert dirs['mesh_convergence_steps'] == 0
@@ -773,7 +761,7 @@ def _capture_handoff(radius, temp):
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
-        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
+        _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
     mock_solver.assert_called_once()
     kwargs = mock_solver.call_args.kwargs
     return kwargs['temperature_function'], kwargs['temperature_arrays']
@@ -866,7 +854,7 @@ def _capture_solver_kwargs(config, interior_o):
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
-        update_structure_from_interior(
+        _update_from_refs(
             _mock_dirs(), config, hf_row, interior_o, 0.0, 2600.0, 0.3, force=True
         )
     mock_solver.assert_called_once()
@@ -950,9 +938,7 @@ def test_resolve_hands_the_core_table_of_the_live_state(monkeypatch):
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
-        update_structure_from_interior(
-            _mock_dirs(), config, hf_row, interior_o, 0.0, 3000.0, 0.8
-        )
+        _update_from_refs(_mock_dirs(), config, hf_row, interior_o, 0.0, 3000.0, 0.8)
     assert mock_solver.call_args.kwargs['core_temperature_arrays'] == ('core table',)
     assert len(calls) == 1
     assert calls[0][0] is config and calls[0][1] is interior_o and calls[0][3] is None
@@ -1040,9 +1026,7 @@ def test_full_update_with_mesh_blending(tmp_path):
         ),
         patch('proteus.interior_energetics.wrapper.gc.collect'),
     ):
-        result = update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
-        )
+        result = _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
 
     # Should have triggered (ceiling) and updated
     assert result[0] == pytest.approx(1100.0, rel=1e-12)
@@ -1090,9 +1074,7 @@ def test_convergence_max_exceeded(tmp_path):
         ),
         patch('proteus.interior_energetics.wrapper.gc.collect'),
     ):
-        result = update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
-        )
+        result = _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
 
     assert result[0] == pytest.approx(1100.0, rel=1e-12)
     # Exceeded max convergence steps → reset
@@ -1144,9 +1126,7 @@ def test_update_with_entropy_remap(tmp_path):
         patch('proteus.interior_energetics.spider.remap_entropy_for_new_mesh') as mock_remap,
         patch('proteus.interior_energetics.wrapper.gc.collect'),
     ):
-        result = update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
-        )
+        result = _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
 
     assert result[0] == pytest.approx(1100.0, rel=1e-12)
     # Remap should have been called with latest JSON
@@ -1203,9 +1183,7 @@ def test_entropy_remap_radius_with_miscibility(tmp_path, r_solvus_frac, expected
         patch('proteus.interior_energetics.spider.remap_entropy_for_new_mesh') as mock_remap,
         patch('proteus.interior_energetics.wrapper.gc.collect'),
     ):
-        update_structure_from_interior(
-            dirs, config, hf_row, _mock_interior_o(), 0.0, 3000.0, 0.8
-        )
+        _update_from_refs(dirs, config, hf_row, _mock_interior_o(), 0.0, 3000.0, 0.8)
 
     radius = mock_remap.call_args.kwargs['radius_phys']
     assert radius == pytest.approx(expected_frac * R_int, rel=1e-12)
@@ -1257,9 +1235,7 @@ def test_entropy_remap_exception(tmp_path):
         patch('proteus.interior_energetics.wrapper.gc.collect'),
     ):
         # Should not raise
-        result = update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
-        )
+        result = _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
 
     assert result[0] == pytest.approx(1100.0, rel=1e-12)
     # Exception-path discrimination: get_all_output_times raised, so it
@@ -1311,9 +1287,7 @@ def test_update_creates_prev_file(tmp_path):
         ),
         patch('proteus.interior_energetics.wrapper.gc.collect'),
     ):
-        result = update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
-        )
+        result = _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
 
     assert result[0] == pytest.approx(1100.0, rel=1e-12)
     # spider_mesh_prev should now be set
@@ -1713,7 +1687,7 @@ def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
             return_value=0.0,
         ),
     ):
-        update_structure_from_interior(dirs, config, hf_row_A, interior_o, 0.0, 3000.0, 0.8)
+        _update_from_refs(dirs, config, hf_row_A, interior_o, 0.0, 3000.0, 0.8)
     # Flag must be False after a successful call, and the flag must never
     # leak into the floats-only helpfile row.
     assert interior_o.structure_stale is False, (
@@ -1745,7 +1719,7 @@ def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
             return_value=0.0,
         ),
     ):
-        update_structure_from_interior(dirs, config, hf_row_B, interior_o, 0.0, 3000.0, 0.8)
+        _update_from_refs(dirs, config, hf_row_B, interior_o, 0.0, 3000.0, 0.8)
     assert interior_o.structure_stale is False, (
         'success path must keep the flag False on a fresh run'
     )
@@ -1778,7 +1752,7 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
         'proteus.interior_struct.zalmoxis.zalmoxis_solver',
         side_effect=RuntimeError('mock convergence failure'),
     ):
-        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
+        _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
     assert interior_o.structure_stale is True, 'fall-back path must set flag to True'
     assert '_structure_stale' not in hf_row, 'flag must not be written to hf_row'
     interior_o.write_structure_stale.assert_called_with(dirs['output'])
@@ -1788,7 +1762,7 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
         'proteus.interior_struct.zalmoxis.zalmoxis_solver',
         side_effect=RuntimeError('mock convergence failure 2'),
     ):
-        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
+        _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
     assert interior_o.structure_stale is True
 
     # Reset for any downstream tests.
@@ -1832,7 +1806,7 @@ def test_a_rejected_structure_update_restores_the_solve_keys_of_the_row(path):
             return_value=True,
         ),
     ):
-        update_structure_from_interior(_mock_dirs(), config, hf_row, interior_o, lt, lT, lP)
+        _update_from_refs(_mock_dirs(), config, hf_row, interior_o, lt, lT, lP)
     assert {k: hf_row[k] for k in before} == before
     assert interior_o.zalmoxis_fail_count == (0 if path == 'up_step' else 1)
     assert interior_o.structure_stale is (path != 'up_step')
@@ -1902,9 +1876,7 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
-        update_structure_from_interior(
-            dirs_over, config, hf_row_over, interior_o, 0.0, 3000.0, 0.8
-        )
+        _update_from_refs(dirs_over, config, hf_row_over, interior_o, 0.0, 3000.0, 0.8)
     assert interior_o.structure_stale is True, (
         'mass-anchor violation must trigger fall-back (-> structure_stale=True)'
     )
@@ -1931,9 +1903,7 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
             return_value=0.0,
         ),
     ):
-        update_structure_from_interior(
-            dirs_under, config, hf_row_under, interior_o, 0.0, 3000.0, 0.8
-        )
+        _update_from_refs(dirs_under, config, hf_row_under, interior_o, 0.0, 3000.0, 0.8)
     assert interior_o.structure_stale is False, (
         'sub-tolerance drift must NOT trigger fall-back '
         '(structure_stale=%r)' % interior_o.structure_stale
@@ -1964,9 +1934,7 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
             return_value=0.0,
         ),
     ):
-        update_structure_from_interior(
-            dirs_no, config, hf_row_no_target, interior_o, 0.0, 3000.0, 0.8
-        )
+        _update_from_refs(dirs_no, config, hf_row_no_target, interior_o, 0.0, 3000.0, 0.8)
     # Must not raise, must not fall-back (graceful degrade for legacy
     # callers that haven't been updated to write M_int_target).
     assert interior_o.structure_stale is False
@@ -2038,7 +2006,7 @@ def test_zalmoxis_output_restored_from_prev_on_wrapper_raise(tmp_path):
         ),
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
     ):
-        update_structure_from_interior(
+        _update_from_refs(
             dirs,
             config,
             hf_row,
@@ -2106,9 +2074,7 @@ def _call_with_success_solver(config, dirs, interior_o, hf_row, last_struct_time
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
         patch('proteus.interior_energetics.spider.blend_mesh_files', return_value=0.0),
     ):
-        out = update_structure_from_interior(
-            dirs, config, hf_row, interior_o, last_struct_time, 3000.0, 0.8
-        )
+        out = _update_from_refs(dirs, config, hf_row, interior_o, last_struct_time, 3000.0, 0.8)
     return out, solver
 
 
@@ -2119,9 +2085,7 @@ def _call_with_failing_solver(config, dirs, interior_o, hf_row, last_struct_time
         'proteus.interior_struct.zalmoxis.zalmoxis_solver',
         side_effect=RuntimeError('mock failure'),
     ) as solver:
-        out = update_structure_from_interior(
-            dirs, config, hf_row, interior_o, last_struct_time, 3000.0, 0.8
-        )
+        out = _update_from_refs(dirs, config, hf_row, interior_o, last_struct_time, 3000.0, 0.8)
     return out, solver
 
 
@@ -2393,7 +2357,7 @@ def _resolve_call(tmp_path, solver_side_effect, module='aragog'):
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
         patch('proteus.interior_energetics.spider.blend_mesh_files', return_value=0.0),
     ):
-        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
+        _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
     return interior_o
 
 
@@ -5799,12 +5763,11 @@ def test_composition_change_trigger_fires_when_dissolved_h2o_shifts():
         'H2O_kg_liquid': 3e21,
         'H2_kg_liquid': 0.0,
     }
-    dirs = _mock_dirs()
     # Set the sentinel to a value that makes dw > threshold
     # Previous w_H2O = 2e21 / 3e24 = 6.67e-4
     # Current w_H2O = 3e21 / 3e24 = 1e-3
     # dw = |1e-3 - 6.67e-4| / 6.67e-4 = 0.5 > 0.05 threshold
-    dirs['_last_w_H2O_liquid'] = 2e21 / 3e24  # previous
+    hf_row['struct_ref_w_H2O_liquid'] = 2e21 / 3e24  # previous
 
     # The trigger evaluation block from wrapper.py L1684-1698
     triggered = False
@@ -5812,7 +5775,7 @@ def test_composition_change_trigger_fires_when_dissolved_h2o_shifts():
     if M_mantle > 0:
         for species in ('H2O', 'H2'):
             w_new = float(hf_row.get(f'{species}_kg_liquid', 0.0)) / M_mantle
-            w_old = dirs.get(f'_last_w_{species}_liquid', w_new)
+            w_old = hf_row.get(f'struct_ref_w_{species}_liquid', 0.0)
             if w_old > 1e-6:
                 dw = abs(w_new - w_old) / w_old
                 dw_threshold = config.interior_struct.zalmoxis.update_dw_comp_abs
@@ -5844,15 +5807,14 @@ def test_composition_change_trigger_does_not_fire_below_threshold():
         'H2O_kg_liquid': 3.03e21,  # tiny change
         'H2_kg_liquid': 0.0,
     }
-    dirs = {}
-    dirs['_last_w_H2O_liquid'] = 3e21 / 3e24  # previous
+    hf_row['struct_ref_w_H2O_liquid'] = 3e21 / 3e24  # previous
 
     triggered = False
     M_mantle = float(hf_row.get('M_mantle', 0.0))
     if M_mantle > 0:
         for species in ('H2O', 'H2'):
             w_new = float(hf_row.get(f'{species}_kg_liquid', 0.0)) / M_mantle
-            w_old = dirs.get(f'_last_w_{species}_liquid', w_new)
+            w_old = hf_row.get(f'struct_ref_w_{species}_liquid', 0.0)
             if w_old > 1e-6:
                 dw = abs(w_new - w_old) / w_old
                 if dw >= config.interior_struct.zalmoxis.update_dw_comp_abs:
@@ -5918,35 +5880,30 @@ def test_fallback_restores_saved_structure_on_zalmoxis_failure():
 @pytest.mark.physics_invariant
 def test_composition_sentinel_update_after_structure_change():
     """After a successful structure update triggered by composition
-    change, the per-species _last_w_<species>_liquid sentinels must
-    be updated to the current values (L2056-2061).
+    change, the per-species struct_ref_w_<species>_liquid references must
+    be updated to the current values.
 
     Discrimination: a regression that skipped the sentinel update
     would cause the composition trigger to fire on every subsequent
     iteration (since the old sentinel remains stale).
     """
     hf_row = {
+        'Time': 250.0,
+        'T_magma': 2900.0,
+        'Phi_global': 0.7,
         'M_mantle': 3e24,
         'H2O_kg_liquid': 5e21,
         'H2_kg_liquid': 1e20,
-    }
-    dirs = {
-        '_last_w_H2O_liquid': 1e21 / 3e24,
-        '_last_w_H2_liquid': 0.0,
+        'struct_ref_w_H2O_liquid': 1e21 / 3e24,
+        'struct_ref_w_H2_liquid': 0.0,
     }
 
-    # Sentinel update logic from wrapper.py L2056-2061
-    M_mantle = float(hf_row.get('M_mantle', 0.0))
-    if M_mantle > 0:
-        for species in ('H2O', 'H2'):
-            dirs[f'_last_w_{species}_liquid'] = (
-                float(hf_row.get(f'{species}_kg_liquid', 0.0)) / M_mantle
-            )
+    _commit_structure_refs(hf_row)
 
-    assert dirs['_last_w_H2O_liquid'] == pytest.approx(5e21 / 3e24, rel=1e-12)
-    assert dirs['_last_w_H2_liquid'] == pytest.approx(1e20 / 3e24, rel=1e-12)
+    assert hf_row['struct_ref_w_H2O_liquid'] == pytest.approx(5e21 / 3e24, rel=1e-12)
+    assert hf_row['struct_ref_w_H2_liquid'] == pytest.approx(1e20 / 3e24, rel=1e-12)
     # Discrimination: the old values (1e21/3e24 and 0.0) are gone
-    assert dirs['_last_w_H2O_liquid'] != pytest.approx(1e21 / 3e24)
+    assert hf_row['struct_ref_w_H2O_liquid'] != pytest.approx(1e21 / 3e24)
 
 
 # ============================================================================
@@ -6010,7 +5967,7 @@ def test_a_rejected_up_step_keeps_the_jax_caches(monkeypatch):
             return_value=True,
         ),
     ):
-        update_structure_from_interior(dirs, config, hf_row, _mock_interior_o(), lt, lT, lP)
+        _update_from_refs(dirs, config, hf_row, _mock_interior_o(), lt, lT, lP)
     mock_solver.assert_called_once()
     assert hf_row['R_int'] == r_prev  # the reject path kept the structure
     assert stub.calls == 0
@@ -6063,7 +6020,7 @@ def test_monotonic_guard_permits_up_step_under_active_heating(caplog):
             return_value=True,
         ),
     ):
-        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+        _update_from_refs(dirs, config, hf_row, interior_o, lt, lT, lP)
 
     mock_solver.assert_called_once()
     msgs = [r.message for r in caplog.records]
@@ -6125,7 +6082,7 @@ def test_monotonic_guard_permits_up_step_under_remelting(caplog):
             return_value=True,
         ),
     ):
-        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+        _update_from_refs(dirs, config, hf_row, interior_o, lt, lT, lP)
 
     mock_solver.assert_called_once()
     msgs = [r.message for r in caplog.records]
@@ -6178,7 +6135,7 @@ def test_monotonic_guard_clamps_up_step_under_cooling(caplog):
             return_value=True,
         ),
     ):
-        result = update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+        result = _update_from_refs(dirs, config, hf_row, interior_o, lt, lT, lP)
 
     mock_solver.assert_called_once()
     msgs = [r.message for r in caplog.records]
@@ -6196,16 +6153,15 @@ def test_monotonic_guard_clamps_up_step_under_cooling(caplog):
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_monotonic_guard_rejects_up_step_on_first_solve_infinite_reference(caplog):
-    """A first-solve R_int up-step is rejected because no finite reference exists.
+def test_monotonic_guard_rejects_up_step_without_a_reference(caplog):
+    """An R_int up-step is rejected when the row holds no reference of a last update.
 
-    Before the first structure is committed the caller seeds the last-decision
-    thermal state with the +inf sentinel (last_Tmagma = last_Phi = +inf). The
-    +inf last_Phi makes the absolute-Phi trigger fire (|Phi - inf| = inf), so the
-    solve runs and reaches the guard, but the reinflation discriminator needs a
-    finite prior reference: np.isfinite(+inf) is False, so neither the T_magma
-    nor the Phi comparison can hold and the up-step falls to the conservative
-    reject default.
+    A row without references (a helpfile written before they were stored) holds 0
+    for T_magma and Phi. The zero Phi reference makes the absolute-Phi trigger fire
+    (|Phi - 0| >= 0.05), so the solve runs and reaches the guard, but the
+    reinflation discriminator needs a positive T_magma reference, so neither the
+    T_magma nor the Phi comparison can hold and the up-step falls to the
+    conservative reject default.
 
     Monotonicity invariant: R_int is non-increasing unless a finite prior
     structure demonstrates heating. Discrimination: the identical +1e-3 up-step
@@ -6217,10 +6173,8 @@ def test_monotonic_guard_rejects_up_step_on_first_solve_infinite_reference(caplo
     hf_row['M_mantle'] = 3.0e24
     hf_row['H2O_kg_liquid'] = 5.0e21
     hf_row['H2_kg_liquid'] = 1.0e20
-    # First solve: no committed structure yet, so the references are the +inf
-    # sentinels the caller initialises (proteus.py last_struct_Tmagma/Phi).
-    lT = np.inf
-    lP = np.inf
+    lT = 0.0
+    lP = 0.0
     dirs = _mock_dirs()
     interior_o = _mock_interior_o()
     r_prev = hf_row['R_int']
@@ -6240,11 +6194,11 @@ def test_monotonic_guard_rejects_up_step_on_first_solve_infinite_reference(caplo
             return_value=True,
         ),
     ):
-        result = update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+        result = _update_from_refs(dirs, config, hf_row, interior_o, lt, lT, lP)
 
     mock_solver.assert_called_once()
     msgs = [r.message for r in caplog.records]
-    # No finite reference: the conservative default rejects, accept log silent.
+    # No reference: the conservative default rejects, accept log silent.
     assert any('Rejected representation-artifact radius increase' in m for m in msgs)
     assert not any('Accepted R_int increase under active interior heating' in m for m in msgs)
     # The pre-solve (smaller) structure is restored, not the up-stepped radius.
@@ -6299,7 +6253,7 @@ def test_monotonic_guard_reject_preserves_structure_stale_flag(entry_stale, capl
             return_value=True,
         ),
     ):
-        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+        _update_from_refs(dirs, config, hf_row, interior_o, lt, lT, lP)
 
     mock_solver.assert_called_once()
     # The reject fired: the running-minimum structure is restored, not the up-step.
@@ -6316,13 +6270,13 @@ def test_monotonic_guard_reject_preserves_structure_stale_flag(entry_stale, capl
 #
 # The dissolved-volatile composition trigger compares the live mass fraction
 # w = {species}_kg_liquid / M_mantle against the stored baseline
-# _last_w_{species}_liquid. Under the super-liquidus adiabat IC a comp-driven
+# struct_ref_w_{species}_liquid. Under the super-liquidus adiabat IC a comp-driven
 # re-solve is a representation-artifact radius up-step that the monotonic-radius
 # guard rejects, returning early BEFORE the success-path sentinel refresh. With
 # the baseline frozen and outgassing still moving the live fraction, the same
 # delta re-fires every loop and the coupled clock never commits (the IWp3_oxauth
 # livelock). The fix refreshes the baseline on the reject path too, through the
-# shared _refresh_composition_sentinels helper, WITHOUT gating the trigger (so
+# shared _commit_structure_refs helper, WITHOUT gating the trigger (so
 # the crystallization-driving down-step re-solves and their EOS regeneration are
 # untouched). These exercise that refresh.
 # ============================================================================
@@ -6330,8 +6284,9 @@ def test_monotonic_guard_reject_preserves_structure_stale_flag(entry_stale, capl
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_refresh_composition_sentinels_sets_both_species_in_unit_interval():
-    """The helper writes w = {species}_kg_liquid / M_mantle for BOTH H2O and H2.
+def test_commit_structure_refs_sets_both_species_in_unit_interval():
+    """The helper writes w = {species}_kg_liquid / M_mantle for BOTH H2O and H2,
+    and the time [yr], T_magma [K] and Phi_global of the row as the other references.
 
     Boundedness invariant: a dissolved-volatile mass fraction is in [0, 1]
     (the dissolved mass cannot exceed the mantle mass). Both species baselines
@@ -6343,14 +6298,32 @@ def test_refresh_composition_sentinels_sets_both_species_in_unit_interval():
     (5e24) instead of the mantle mass (3e24), would miss at least one pin well
     beyond tolerance.
     """
-    hf_row = {'M_mantle': 3.0e24, 'H2O_kg_liquid': 5.0e21, 'H2_kg_liquid': 1.0e20}
-    # Stale seeds, distinct from the current fractions, so the refresh is visible.
-    dirs = {'_last_w_H2O_liquid': 1.0e21 / 3.0e24, '_last_w_H2_liquid': 0.0}
+    state = {'Time': 4.0e3, 'T_magma': 2700.0, 'Phi_global': 0.45}
+    hf_row = {**state, 'M_mantle': 3.0e24, 'H2O_kg_liquid': 5.0e21, 'H2_kg_liquid': 1.0e20}
+    # Stale seeds, distinct from the current state, so the refresh is visible.
+    hf_row.update(
+        struct_ref_time=1.0e3,
+        struct_ref_T_magma=3000.0,
+        struct_ref_Phi=0.8,
+        struct_ref_w_H2O_liquid=1.0e21 / 3.0e24,
+        struct_ref_w_H2_liquid=0.0,
+    )
 
-    _refresh_composition_sentinels(dirs, hf_row)
+    _commit_structure_refs(hf_row)
 
-    w_h2o = dirs['_last_w_H2O_liquid']
-    w_h2 = dirs['_last_w_H2_liquid']
+    # Asymmetric values catch a swapped key.
+    assert (
+        hf_row['struct_ref_time'],
+        hf_row['struct_ref_T_magma'],
+        hf_row['struct_ref_Phi'],
+    ) == (
+        4.0e3,
+        2700.0,
+        0.45,
+    )
+
+    w_h2o = hf_row['struct_ref_w_H2O_liquid']
+    w_h2 = hf_row['struct_ref_w_H2_liquid']
     assert w_h2o == pytest.approx(5.0e21 / 3.0e24, rel=1e-12)
     assert w_h2 == pytest.approx(1.0e20 / 3.0e24, rel=1e-12)
     # Boundedness invariant for both species.
@@ -6364,37 +6337,40 @@ def test_refresh_composition_sentinels_sets_both_species_in_unit_interval():
     # the 1e-12 pin tolerance.
     assert abs(w_h2o - 5.0e21 / 5.0e24) > 1e-4
 
-    # Upper-bound edge plus first-call (empty dirs) path: a fully dissolved
-    # species (liquid mass == mantle mass) pins the fraction at exactly 1.0,
-    # exercising the boundedness invariant at its edge, and an empty dirs gets
-    # the sentinels created rather than raising, so the first reject after t=0
-    # has a baseline to set.
-    dirs_full = {}
-    _refresh_composition_sentinels(
-        dirs_full, {'M_mantle': 3.0e24, 'H2O_kg_liquid': 3.0e24, 'H2_kg_liquid': 0.0}
-    )
-    assert dirs_full['_last_w_H2O_liquid'] == pytest.approx(1.0, rel=1e-12)
-    assert 0.0 <= dirs_full['_last_w_H2O_liquid'] <= 1.0
-    assert dirs_full['_last_w_H2_liquid'] == pytest.approx(0.0, abs=1e-30)
+    # Upper-bound edge plus first-call path: a fully dissolved species (liquid
+    # mass == mantle mass) pins the fraction at exactly 1.0, exercising the
+    # boundedness invariant at its edge, and a row without references gets them.
+    full = {**state, 'M_mantle': 3.0e24, 'H2O_kg_liquid': 3.0e24, 'H2_kg_liquid': 0.0}
+    _commit_structure_refs(full)
+    assert full['struct_ref_w_H2O_liquid'] == pytest.approx(1.0, rel=1e-12)
+    assert 0.0 <= full['struct_ref_w_H2O_liquid'] <= 1.0
+    assert full['struct_ref_w_H2_liquid'] == pytest.approx(0.0, abs=1e-30)
 
 
 @pytest.mark.unit
-def test_refresh_composition_sentinels_zero_mantle_leaves_baseline_untouched():
+def test_commit_structure_refs_zero_mantle_leaves_composition_baseline_untouched():
     """A non-positive mantle mass leaves the sentinels untouched.
 
     The trigger skips the dw comparison when M_mantle <= 0, so the refresh must
     not write a divide-by-zero or 0/0 baseline that would later fire a spurious
     composition trigger. Edge case: M_mantle = 0 with non-zero liquid masses.
     """
-    dirs = {'_last_w_H2O_liquid': 4.2e-4, '_last_w_H2_liquid': 7.0e-5}
+    hf_row = {
+        'Time': 4.0e3,
+        'T_magma': 2700.0,
+        'Phi_global': 0.45,
+        'M_mantle': 0.0,
+        'H2O_kg_liquid': 5.0e21,
+        'H2_kg_liquid': 1.0e20,
+        'struct_ref_w_H2O_liquid': 4.2e-4,
+        'struct_ref_w_H2_liquid': 7.0e-5,
+    }
 
-    _refresh_composition_sentinels(
-        dirs, {'M_mantle': 0.0, 'H2O_kg_liquid': 5.0e21, 'H2_kg_liquid': 1.0e20}
-    )
+    _commit_structure_refs(hf_row)
 
     # Untouched: the prior baselines survive intact (no zero/NaN written).
-    assert dirs['_last_w_H2O_liquid'] == pytest.approx(4.2e-4, rel=1e-12)
-    assert dirs['_last_w_H2_liquid'] == pytest.approx(7.0e-5, rel=1e-12)
+    assert hf_row['struct_ref_w_H2O_liquid'] == pytest.approx(4.2e-4, rel=1e-12)
+    assert hf_row['struct_ref_w_H2_liquid'] == pytest.approx(7.0e-5, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -6419,8 +6395,8 @@ def test_monotonic_noop_advances_composition_sentinels():
     hf_row['H2O_kg_liquid'] = 5.0e21
     hf_row['H2_kg_liquid'] = 1.0e20
     dirs = _mock_dirs()
-    dirs['_last_w_H2O_liquid'] = 1.0e21 / 3.0e24  # stale, distinct from current
-    dirs['_last_w_H2_liquid'] = 0.0  # stale
+    hf_row['struct_ref_w_H2O_liquid'] = 1.0e21 / 3.0e24  # stale, distinct from current
+    hf_row['struct_ref_w_H2_liquid'] = 0.0  # stale
     interior_o = _mock_interior_o()
     r_prev = hf_row['R_int']
 
@@ -6439,15 +6415,15 @@ def test_monotonic_noop_advances_composition_sentinels():
             return_value=True,
         ),
     ):
-        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+        _update_from_refs(dirs, config, hf_row, interior_o, lt, lT, lP)
 
     mock_solver.assert_called_once()
-    assert dirs['_last_w_H2O_liquid'] == pytest.approx(5.0e21 / 3.0e24, rel=1e-9)
-    assert dirs['_last_w_H2_liquid'] == pytest.approx(1.0e20 / 3.0e24, rel=1e-9)
+    assert hf_row['struct_ref_w_H2O_liquid'] == pytest.approx(5.0e21 / 3.0e24, rel=1e-9)
+    assert hf_row['struct_ref_w_H2_liquid'] == pytest.approx(1.0e20 / 3.0e24, rel=1e-9)
     # Discrimination: the stale baseline (which the livelock would persist) is
     # gone, and the H2 sentinel left its 0.0 seed.
-    assert dirs['_last_w_H2O_liquid'] != pytest.approx(1.0e21 / 3.0e24)
-    assert dirs['_last_w_H2_liquid'] > 0.0
+    assert hf_row['struct_ref_w_H2O_liquid'] != pytest.approx(1.0e21 / 3.0e24)
+    assert hf_row['struct_ref_w_H2_liquid'] > 0.0
 
 
 @pytest.mark.unit
@@ -6489,7 +6465,7 @@ def test_superliquidus_does_not_gate_composition_trigger():
     }
     dirs = _mock_dirs()
     # Stale baseline -> dw = |1e-3 - 6.67e-4| / 6.67e-4 = 0.5 >= 0.05 threshold.
-    dirs['_last_w_H2O_liquid'] = 2.0e21 / 3.0e24
+    hf_row['struct_ref_w_H2O_liquid'] = 2.0e21 / 3.0e24
     interior_o = _mock_interior_o()
     r_prev = hf_row['R_int']
 
@@ -6507,7 +6483,7 @@ def test_superliquidus_does_not_gate_composition_trigger():
             return_value=True,
         ),
     ):
-        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.5)
+        _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.5)
 
     # The composition trigger fired under super-liquidus: the solver ran.
     mock_solver.assert_called_once()
@@ -6517,7 +6493,7 @@ def test_superliquidus_does_not_gate_composition_trigger():
     assert hf_row['R_int'] == pytest.approx(r_prev, rel=1e-12)
     # And the reject path then refreshed the baseline to the current fraction,
     # so the same dw cannot re-fire next loop (the livelock break).
-    assert dirs['_last_w_H2O_liquid'] == pytest.approx(3.0e21 / 3.0e24, rel=1e-9)
+    assert hf_row['struct_ref_w_H2O_liquid'] == pytest.approx(3.0e21 / 3.0e24, rel=1e-9)
 
 
 def _composition_trigger_scenario(dry_mantle):
@@ -6553,7 +6529,7 @@ def _composition_trigger_scenario(dry_mantle):
     }
     dirs = _mock_dirs()
     # Stale baseline -> dw = |1e-3 - 6.67e-4| / 6.67e-4 = 0.5 >= 0.05 threshold.
-    dirs['_last_w_H2O_liquid'] = 2.0e21 / 3.0e24
+    hf_row['struct_ref_w_H2O_liquid'] = 2.0e21 / 3.0e24
     return config, hf_row, dirs
 
 
@@ -6592,7 +6568,7 @@ def test_composition_driven_up_step_accepted_on_wet_mantle(caplog):
             return_value=True,
         ),
     ):
-        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.5)
+        _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.5)
 
     mock_solver.assert_called_once()
     msgs = [r.message for r in caplog.records]
@@ -6606,7 +6582,7 @@ def test_composition_driven_up_step_accepted_on_wet_mantle(caplog):
     # An accepted re-solve records a non-zero radius change; a reject records 0.
     # The success-path sentinel refresh ran, so the trigger baseline tracks
     # the committed structure.
-    assert dirs['_last_w_H2O_liquid'] == pytest.approx(3.0e21 / 3.0e24, rel=1e-9)
+    assert hf_row['struct_ref_w_H2O_liquid'] == pytest.approx(3.0e21 / 3.0e24, rel=1e-9)
 
 
 @pytest.mark.unit
@@ -6640,7 +6616,7 @@ def test_composition_driven_up_step_still_rejected_on_dry_mantle(caplog):
             return_value=True,
         ),
     ):
-        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.5)
+        _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.5)
 
     mock_solver.assert_called_once()
     msgs = [r.message for r in caplog.records]
@@ -6649,7 +6625,7 @@ def test_composition_driven_up_step_still_rejected_on_dry_mantle(caplog):
     # The previous structure is restored and the baseline consumed (the
     # livelock break for dry runs is unchanged).
     assert hf_row['R_int'] == pytest.approx(r_prev, rel=1e-12)
-    assert dirs['_last_w_H2O_liquid'] == pytest.approx(3.0e21 / 3.0e24, rel=1e-9)
+    assert hf_row['struct_ref_w_H2O_liquid'] == pytest.approx(3.0e21 / 3.0e24, rel=1e-9)
 
 
 @pytest.mark.unit
@@ -6684,7 +6660,7 @@ def test_non_superliquidus_run_skips_grid_extent_table_read():
             'proteus.interior_energetics.wrapper._eos_grid_extent_up_step',
         ) as probe,
     ):
-        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.5)
+        _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.5)
 
     mock_solver.assert_called_once()
     probe.assert_not_called()
@@ -6712,8 +6688,8 @@ def test_accepted_resolve_advances_composition_sentinels_on_success_path():
     hf_row['H2O_kg_liquid'] = 5.0e21
     hf_row['H2_kg_liquid'] = 1.0e20
     dirs = _mock_dirs()  # forward run: no resume window, so the solve proceeds
-    dirs['_last_w_H2O_liquid'] = 1.0e21 / 3.0e24  # stale, distinct from current
-    dirs['_last_w_H2_liquid'] = 0.0  # stale
+    hf_row['struct_ref_w_H2O_liquid'] = 1.0e21 / 3.0e24  # stale, distinct from current
+    hf_row['struct_ref_w_H2_liquid'] = 0.0  # stale
     interior_o = _mock_interior_o()
     r_prev = hf_row['R_int']
 
@@ -6725,17 +6701,17 @@ def test_accepted_resolve_advances_composition_sentinels_on_success_path():
 
     s, ns, cp = _solver_patches(side_effect=_shrink_radius)
     with s as mock_solver, ns, cp:
-        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+        _update_from_refs(dirs, config, hf_row, interior_o, lt, lT, lP)
 
     mock_solver.assert_called_once()
     # Accepted down-step: R_int is the shrunk value, not the retained previous one.
     assert hf_row['R_int'] == pytest.approx(r_prev * (1.0 - 5e-4), rel=1e-9)
     # Success path refreshed both baselines to the current fractions.
-    assert dirs['_last_w_H2O_liquid'] == pytest.approx(5.0e21 / 3.0e24, rel=1e-9)
-    assert dirs['_last_w_H2_liquid'] == pytest.approx(1.0e20 / 3.0e24, rel=1e-9)
+    assert hf_row['struct_ref_w_H2O_liquid'] == pytest.approx(5.0e21 / 3.0e24, rel=1e-9)
+    assert hf_row['struct_ref_w_H2_liquid'] == pytest.approx(1.0e20 / 3.0e24, rel=1e-9)
     # Discrimination: the stale seeds are gone for both species.
-    assert dirs['_last_w_H2O_liquid'] != pytest.approx(1.0e21 / 3.0e24)
-    assert dirs['_last_w_H2_liquid'] > 0.0
+    assert hf_row['struct_ref_w_H2O_liquid'] != pytest.approx(1.0e21 / 3.0e24)
+    assert hf_row['struct_ref_w_H2_liquid'] > 0.0
 
 
 # ============================================================================
@@ -6877,8 +6853,8 @@ def test_grid_extent_up_step_rejected_through_real_wrapper(tmp_path, caplog):
 
     dirs = _mock_dirs()
     dirs['output'] = str(outdir)
-    dirs['_last_w_H2O_liquid'] = 1.0e21 / 3.0e24  # stale, distinct from current
-    dirs['_last_w_H2_liquid'] = 0.0
+    hf_row['struct_ref_w_H2O_liquid'] = 1.0e21 / 3.0e24  # stale, distinct from current
+    hf_row['struct_ref_w_H2_liquid'] = 0.0
     interior_o = _mock_interior_o()
 
     def _grid_up_step_no_scalar(*args, **kwargs):
@@ -6900,7 +6876,7 @@ def test_grid_extent_up_step_rejected_through_real_wrapper(tmp_path, caplog):
             return_value=True,
         ),
     ):
-        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+        _update_from_refs(dirs, config, hf_row, interior_o, lt, lT, lP)
 
     mock_solver.assert_called_once()
     msgs = [r.message for r in caplog.records]
@@ -6918,8 +6894,8 @@ def test_grid_extent_up_step_rejected_through_real_wrapper(tmp_path, caplog):
     # A rejected up-step is a clean no-op, not a solver failure.
     assert interior_o.zalmoxis_fail_count == 0
     # The composition sentinel advanced off its stale seed (reject-path refresh).
-    assert dirs['_last_w_H2O_liquid'] == pytest.approx(5.0e21 / 3.0e24, rel=1e-9)
-    assert dirs['_last_w_H2O_liquid'] != pytest.approx(1.0e21 / 3.0e24)
+    assert hf_row['struct_ref_w_H2O_liquid'] == pytest.approx(5.0e21 / 3.0e24, rel=1e-9)
+    assert hf_row['struct_ref_w_H2O_liquid'] != pytest.approx(1.0e21 / 3.0e24)
 
 
 def _remelt_config(
@@ -8948,49 +8924,3 @@ def test_a_partial_remelt_books_the_heat_of_the_blended_profile():
     np.testing.assert_allclose(interior_o._last_entropy[4:], [3600.0, 3900.0], rtol=1e-12)
     assert hf_row['step_dE_impact_J'] == pytest.approx(k * (9.45e6 + 7.2e6) / 2, rel=1e-12)
     assert hf_row['step_dE_impact_J'] < 0.99 * k * 0.3 * 6 * 9.45e6 / 2
-
-
-# ============================================================================
-# Structure-trigger references in the helpfile row
-# ============================================================================
-
-
-@pytest.mark.unit
-@pytest.mark.physics_invariant
-def test_structure_trigger_state_round_trips_through_the_row():
-    """The references stored in a row come back unchanged, with the composition baselines.
-
-    Asymmetric values (H2O 3.1e-3, H2 4.7e-5, Phi 0.37) catch a swapped key; the restored
-    T_magma stays positive and Phi in [0, 1].
-    """
-    hf_row = {'Time': 9.1e5, 'T_magma': 1800.0, 'Phi_global': 0.30}
-    dirs = {'_last_w_H2O_liquid': 3.1e-3, '_last_w_H2_liquid': 4.7e-5}
-    store_structure_trigger_state(hf_row, dirs, (8.7e5, 1832.5, 0.37))
-    restored_dirs = {}
-    refs = restore_structure_trigger_state(hf_row, restored_dirs)
-
-    assert refs == pytest.approx((8.7e5, 1832.5, 0.37), rel=0, abs=0)
-    assert restored_dirs == dirs
-    # The row's own state is not the reference: a resume from it would differ.
-    assert refs != (hf_row['Time'], hf_row['T_magma'], hf_row['Phi_global'])
-    assert refs[1] > 0.0 and 0.0 <= refs[2] <= 1.0
-
-
-@pytest.mark.unit
-def test_structure_trigger_state_before_the_first_update_is_stored_as_zero():
-    """Before the first update the sentinels are -inf and inf; the row holds 0, and a resume
-    from it reads no reference (None) and leaves the composition baselines unset."""
-    hf_row = {}
-    store_structure_trigger_state(hf_row, {}, (-np.inf, np.inf, np.inf))
-    assert hf_row == {
-        'struct_ref_time': 0.0,
-        'struct_ref_T_magma': 0.0,
-        'struct_ref_Phi': 0.0,
-        'struct_ref_w_H2O_liquid': 0.0,
-        'struct_ref_w_H2_liquid': 0.0,
-    }
-    dirs = {}
-    assert restore_structure_trigger_state(hf_row, dirs) is None
-    assert dirs == {}
-    # A row without the columns at all (a helpfile older than them) reads the same.
-    assert restore_structure_trigger_state({'Time': 5.0, 'T_magma': 2000.0}, dirs) is None

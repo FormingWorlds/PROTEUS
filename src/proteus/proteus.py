@@ -294,11 +294,6 @@ class Proteus:
         self.sspec_prev = -np.inf  # spectrum
         self.sinst_prev = -np.inf  # instellation and radius
 
-        # State at which structure was last re-computed via Zalmoxis
-        self.last_struct_time = -np.inf
-        self.last_struct_Tmagma = np.inf
-        self.last_struct_Phi = np.inf
-
     def _get_initial_tmagma(self) -> float:
         """Get the initial surface temperature from the solver config.
 
@@ -457,25 +452,19 @@ class Proteus:
             self._baseline_structure_done = True
             return
 
-        new_time, new_Tmagma, new_Phi = update_structure_from_interior(
-            self.directories,
-            self.config,
-            self.hf_row,
-            self.interior_o,
-            self.last_struct_time,
-            self.last_struct_Tmagma,
-            self.last_struct_Phi,
-            force=True,
+        refs = {
+            k: self.hf_row[k]
+            for k in ('struct_ref_time', 'struct_ref_T_magma', 'struct_ref_Phi')
+        }
+        update_structure_from_interior(
+            self.directories, self.config, self.hf_row, self.interior_o, force=True
         )
 
         # Commit the baseline only when the solve converged. On a fall-back the
         # structure is the stale initial-condition one; retry on the next step.
         if self.interior_o.structure_stale:
+            self.hf_row.update(refs)
             return
-
-        self.last_struct_time = new_time
-        self.last_struct_Tmagma = new_Tmagma
-        self.last_struct_Phi = new_Phi
         self._baseline_structure_done = True
 
     def _match_ps_tables_to_mass(self):
@@ -944,11 +933,10 @@ class Proteus:
             )
             _t_init['structure'] = time.perf_counter() - _t0
 
-            # Initialize structure-update sentinels so the first dynamic
-            # update uses the post-init state as its baseline
-            self.last_struct_time = 0.0
-            self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
-            self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
+            # The first dynamic structure update compares with the state after init
+            self.hf_row['struct_ref_time'] = 0.0
+            self.hf_row['struct_ref_T_magma'] = self.hf_row['T_magma']
+            self.hf_row['struct_ref_Phi'] = self.hf_row['Phi_global']
 
             # Store partial pressures and list of included volatiles
             inc_gases = []
@@ -1010,9 +998,8 @@ class Proteus:
                     self.directories['output'],
                 )
                 _t_init['equilibrate'] = time.perf_counter() - _t0
-                # Update sentinels with post-equilibration state
-                self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
-                self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
+                self.hf_row['struct_ref_T_magma'] = self.hf_row['T_magma']
+                self.hf_row['struct_ref_Phi'] = self.hf_row['Phi_global']
 
         else:
             # Resuming from disk
@@ -1187,19 +1174,6 @@ class Proteus:
                     self.directories['spider_liquidus_ps'] = liquidus_ps
                 log.info('Restored spider_eos_dir: %s', eos_dir_restored)
 
-            # Structure-update triggers: the references of the last update, stored in the row.
-            # A helpfile written before they were stored falls back to the row itself.
-            from proteus.interior_energetics.wrapper import restore_structure_trigger_state
-
-            refs = restore_structure_trigger_state(self.hf_row, self.directories)
-            if refs is None:
-                refs = (
-                    self.hf_row.get('Time', 0.0),
-                    self.hf_row.get('T_magma', np.inf),
-                    self.hf_row.get('Phi_global', np.inf),
-                )
-            self.last_struct_time, self.last_struct_Tmagma, self.last_struct_Phi = refs
-
             if (
                 self.config.interior_struct.module == 'zalmoxis'
                 and self.config.interior_energetics.module == 'aragog'
@@ -1356,18 +1330,8 @@ class Proteus:
                 from proteus.interior_energetics.wrapper import update_structure_from_interior
 
                 _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                (
-                    self.last_struct_time,
-                    self.last_struct_Tmagma,
-                    self.last_struct_Phi,
-                ) = update_structure_from_interior(
-                    self.directories,
-                    self.config,
-                    self.hf_row,
-                    self.interior_o,
-                    self.last_struct_time,
-                    self.last_struct_Tmagma,
-                    self.last_struct_Phi,
+                update_structure_from_interior(
+                    self.directories, self.config, self.hf_row, self.interior_o
                 )
                 if _IT_TIMING_ENABLED:
                     _t_mod['structure'] = time.perf_counter() - _t0
@@ -1663,13 +1627,6 @@ class Proteus:
                 self.interior_o.ic = 2
 
             # Update full helpfile
-            from proteus.interior_energetics.wrapper import store_structure_trigger_state
-
-            store_structure_trigger_state(
-                self.hf_row,
-                self.directories,
-                (self.last_struct_time, self.last_struct_Tmagma, self.last_struct_Phi),
-            )
             if self.loops['total'] > 1:
                 # append row
                 self.hf_all = ExtendHelpfile(self.hf_all, self.hf_row)

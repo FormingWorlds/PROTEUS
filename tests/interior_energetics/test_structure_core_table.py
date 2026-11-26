@@ -12,6 +12,7 @@ from proteus.interior_struct.core_temperature import (
     core_temperature_table,
     structure_core_table,
 )
+from tests.interior_energetics.test_wrapper import _update_from_refs
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -136,8 +137,6 @@ def test_a_re_solve_anchors_the_table_at_the_row_t_cmb_or_the_deepest_mantle_t(
     it hands to Zalmoxis, as the start-up passes do."""
     from unittest.mock import patch
 
-    from proteus.interior_energetics.wrapper import update_structure_from_interior
-
     config, dirs, interior_o, row = _re_solve_case(tmp_path)
     if row_t_cmb is None:
         del row['T_cmb']
@@ -154,7 +153,7 @@ def test_a_re_solve_anchors_the_table_at_the_row_t_cmb_or_the_deepest_mantle_t(
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
         patch('proteus.interior_energetics.spider.blend_mesh_files', return_value=0.0),
     ):
-        update_structure_from_interior(dirs, config, row, interior_o, 0.0, 2000.0, 0.8)
+        _update_from_refs(dirs, config, row, interior_o, 0.0, 2000.0, 0.8)
     kw = solver.call_args.kwargs
     want = kw['temperature_arrays'][1][0] if anchor == 'deepest' else anchor
     assert want == pytest.approx(3600.0 if anchor == 'deepest' else 4300.0, rel=1e-12)
@@ -185,8 +184,6 @@ def test_a_core_table_error_in_a_re_solve_stops_the_run(tmp_path, monkeypatch, e
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
         with pytest.raises(type(error)):
-            wrapper_mod.update_structure_from_interior(
-                dirs, config, row, interior_o, 0.0, 2000.0, 0.8
-            )
+            _update_from_refs(dirs, config, row, interior_o, 0.0, 2000.0, 0.8)
     assert solver.call_count == 0
     assert interior_o.zalmoxis_fail_count == 0

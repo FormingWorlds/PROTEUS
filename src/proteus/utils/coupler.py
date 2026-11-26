@@ -999,7 +999,7 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         # structure-solve flags: zero is no core temperature table, as in a run that predates it
         'struct_core_T_excess',
         'struct_core_T_used',
-        # structure-trigger references: zero, as in a run that predates them, makes the resume start from its row
+        # structure-trigger references: zero, as in a run that predates them, times the next update from t = 0 with no T_magma reference
         'struct_ref_Phi',
         'struct_ref_T_magma',
         'struct_ref_time',

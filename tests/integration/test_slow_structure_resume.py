@@ -1,19 +1,19 @@
 """Structure re-solves of a resumed run happen at the rows of the run it continues.
 
-Source under test: the structure-trigger references that ``Proteus`` stores in each helpfile
-row (``store_structure_trigger_state``) and restores on resume
-(``restore_structure_trigger_state``, ``src/proteus/interior_energetics/wrapper.py``).
+Source under test: the structure-trigger references (``struct_ref_*``) that
+``update_structure_from_interior`` (``src/proteus/interior_energetics/wrapper.py``) keeps in the
+helpfile row, which carries them to the next step and to a resume.
 
 A run of ``tests/integration/zalmoxis_aragog_calliope.toml`` with a fixed 50 yr step and a
 structure update at most every 100 yr runs to 302 yr in one go. The same run stops at 152 yr
-and resumes to 302 yr. A copy of the stopped run with the references of its last row set to
-0, which is what a resume read before they were stored, resumes as well.
+and resumes to 302 yr. A copy of the stopped run whose last row takes its own time, T_magma and
+Phi as the references, as a resume that did not keep them would, resumes as well.
 
 Invariants asserted:
 
 - The run in one go re-solves before the stop and at least twice after it.
 - The resumed run has the rows and the re-solve rows of the run in one go.
-- The copy without references re-solves at other rows (discrimination).
+- The copy with the row as reference re-solves at other rows (discrimination).
 - T_magma stays positive and Phi_global in [0, 1] in the resumed run.
 """
 
@@ -65,15 +65,15 @@ def _resolve_times(hf):
     return t[(t > 0) & np.isclose(ref, t, rtol=1e-12, atol=0)]
 
 
-def _drop_references(outdir):
-    """Set the trigger references of the last (tab-separated) helpfile row to 0, as an older
-    helpfile reads."""
+def _take_the_row_as_reference(outdir):
+    """Set the trigger references of the last (tab-separated) helpfile row to its own time,
+    T_magma and Phi_global."""
     path = outdir / 'runtime_helpfile.csv'
     lines = path.read_text().splitlines()
     header = lines[0].split('\t')
     values = lines[-1].split('\t')
-    for key in REF_KEYS:
-        values[header.index(key)] = '0.0'
+    for key, own in zip(REF_KEYS, ('Time', 'T_magma', 'Phi_global')):
+        values[header.index(key)] = values[header.index(own)]
     lines[-1] = '\t'.join(values)
     path.write_text('\n'.join(lines) + '\n')
 
@@ -85,25 +85,25 @@ def runs(tmp_path_factory):
     whole.start(resume=False, offline=True)
 
     _runner(base / 'resumed', T_STOP_YR).start(resume=False, offline=True)
-    shutil.copytree(base / 'resumed', base / 'no_refs')
-    _drop_references(base / 'no_refs')
+    shutil.copytree(base / 'resumed', base / 'row_refs')
+    _take_the_row_as_reference(base / 'row_refs')
 
     resumed = _runner(base / 'resumed', T_END_YR)
     resumed.start(resume=True, offline=True)
-    no_refs = _runner(base / 'no_refs', T_END_YR)
-    no_refs.start(resume=True, offline=True)
+    row_refs = _runner(base / 'row_refs', T_END_YR)
+    row_refs.start(resume=True, offline=True)
     return {
         'whole': whole.hf_all.reset_index(drop=True),
         'resumed': resumed.hf_all.reset_index(drop=True),
-        'no_refs': no_refs.hf_all.reset_index(drop=True),
+        'row_refs': row_refs.hf_all.reset_index(drop=True),
     }
 
 
 @pytest.mark.physics_invariant
 def test_resumed_run_resolves_the_structure_at_the_rows_of_the_run_in_one_go(runs):
     """Zalmoxis and Aragog with CALLIOPE outgassing: the run stopped at 152 yr and resumed
-    re-solves at the rows of the run in one go; the resume without references does not."""
-    whole, resumed, no_refs = runs['whole'], runs['resumed'], runs['no_refs']
+    re-solves at the rows of the run in one go; a resume from the row's own state does not."""
+    whole, resumed, row_refs = runs['whole'], runs['resumed'], runs['row_refs']
     t_whole = _resolve_times(whole)
     assert (t_whole < T_STOP_YR).any()
     assert (t_whole > T_STOP_YR).sum() >= 2
@@ -117,8 +117,8 @@ def test_resumed_run_resolves_the_structure_at_the_rows_of_the_run_in_one_go(run
     for key in ('struct_ref_T_magma', 'struct_ref_Phi'):
         np.testing.assert_allclose(resumed[key][after], whole[key][after], rtol=1e-5)
 
-    t_no_refs = _resolve_times(no_refs)
-    assert len(t_no_refs) != len(t_whole) or not np.allclose(t_no_refs, t_whole)
+    t_row_refs = _resolve_times(row_refs)
+    assert len(t_row_refs) != len(t_whole) or not np.allclose(t_row_refs, t_whole)
 
     assert (resumed['T_magma'][after] > 0).all()
     assert resumed['Phi_global'][after].between(0.0, 1.0).all()
