@@ -42,15 +42,12 @@ env:
   PROTEUS_CI_NIGHTLY: "1"
 
 jobs:
-  # Restores or builds the SOCRATES, AGNI, Julia depot and FWL_DATA caches once per OS,
-  # so the tiers below can start together without each rebuilding a cold cache.
+  # Restores or builds the Linux SOCRATES, AGNI, Julia depot and FWL_DATA caches once, so the
+  # tiers below start together; macOS is left out because its runners can wait long for a slot.
   build-caches:
-    name: Build caches (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
+    name: Build caches (ubuntu-latest)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
     # A cold FWL_DATA download takes about 30 min on top of the builds.
     timeout-minutes: 75
     steps:
