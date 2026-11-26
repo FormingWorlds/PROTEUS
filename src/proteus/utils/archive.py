@@ -198,7 +198,7 @@ def _extract_missing(tar_file, dir: str, keep=None) -> None:
             os.makedirs(target)
         else:
             os.replace(os.path.join(unpacking, m.name), target)
-    shutil.rmtree(unpacking)
+    shutil.rmtree(unpacking, ignore_errors=True)  # absent when nothing was missing
 
 
 def extract(dir: str, remove_tar: bool = False, ignore_warnings: bool = False) -> str:

@@ -439,6 +439,21 @@ def test_a_stopped_unpack_leaves_no_cut_file_for_later_unpacks(tmp_path, monkeyp
     assert os.listdir(elsewhere) == []
 
 
+def test_an_unpack_with_nothing_missing_changes_nothing(tmp_path):
+    """A second resume whose files are all loose already, as after a resume that
+    stopped before it archived again, unpacks nothing and keeps every loose file."""
+    data_dir = tmp_path / 'data'
+    _archived_run(data_dir)
+    archive_mod.extract(str(data_dir))
+    loose = _loose_files(data_dir)
+
+    archive_mod.extract_latest(str(data_dir), count=3)
+    archive_mod.extract(str(data_dir))
+
+    assert _loose_files(data_dir) == loose
+    assert not (data_dir / '.unpacking').exists()
+
+
 def test_extract_refuses_a_member_outside_the_data_folder(tmp_path):
     """An archive member whose name points above the data folder is refused, and
     nothing is written outside the data folder."""
