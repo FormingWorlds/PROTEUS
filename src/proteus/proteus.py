@@ -546,9 +546,7 @@ class Proteus:
             log.info(
                 'Restoring the stellar spectrum of t = %g yr', self.hf_row['star_spec_time']
             )
-            self.star_wl, self.star_fl = self._stellar_spectrum(
-                self.hf_row['star_spec_age'], self.hf_row['star_spec_dist']
-            )
+            self.star_wl, self.star_fl = self._stellar_spectrum()
 
         if self.star_wl is not None and (
             abs(self.hf_row['Time'] - self.hf_row['star_spec_time'])
@@ -561,23 +559,21 @@ class Proteus:
         self.hf_row['star_spec_time'] = self.hf_row['Time']
         self.hf_row['star_spec_age'] = self.hf_row['age_star']
         self.hf_row['star_spec_dist'] = flux_weighted_distance(self.hf_row)
-        self.star_wl, self.star_fl = self._stellar_spectrum(
-            self.hf_row['star_spec_age'], self.hf_row['star_spec_dist']
-        )
+        self.star_wl, self.star_fl = self._stellar_spectrum()
         write_spectrum(self.star_wl, self.star_fl, self.hf_row, self.directories['output'])
         return True
 
-    def _stellar_spectrum(self, age: float, distance: float):
-        """Stellar spectrum at star age `age` [yr], at the top of an atmosphere at `distance` [m].
+    def _stellar_spectrum(self):
+        """Stellar spectrum at the row's `star_spec_age` [yr] and `star_spec_dist` [m].
 
-        Returns the wavelengths [nm] and fluxes [erg s-1 cm-2 nm-1]. The distance is the
-        flux-weighted one, the orbital average that F_ins and F_xuv use, so the spectrum and
-        the scalar fluxes derived from the same star agree on an eccentric orbit.
+        Returns the wavelengths [nm] and fluxes [erg s-1 cm-2 nm-1] at the top of an
+        atmosphere at that distance, the flux-weighted one that F_ins and F_xuv use, so the
+        spectrum and the scalar fluxes derived from the same star agree on an eccentric orbit.
         """
         from proteus.star.wrapper import get_new_spectrum, scale_spectrum_to_toa
 
         wl, fl = get_new_spectrum(
-            age,
+            self.hf_row['star_spec_age'],
             self.config,
             # Variables needed for mors.spada
             star_struct_modern=self.star_struct,
@@ -587,7 +583,7 @@ class Proteus:
             modern_wl=self.star_modern_wl,
             modern_fl=self.star_modern_fl,
         )
-        return wl, scale_spectrum_to_toa(fl, distance)
+        return wl, scale_spectrum_to_toa(fl, self.hf_row['star_spec_dist'])
 
     def _run_escape_step(self) -> bool:
         """Run escape and record the element mass it removed for the Zalmoxis target.

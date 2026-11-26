@@ -376,7 +376,6 @@ def run_atmosphere(
                 # deallocate old atmosphere
                 deallocate_atmos(atmos_o._atm)
 
-            # allocate new
             # Only the first build can match another run's spectral file. A resumed run
             # takes the spectrum of its last update, not a newer file of a dropped row.
             star_file = None
