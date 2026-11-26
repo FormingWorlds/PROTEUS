@@ -6534,6 +6534,28 @@ def _composition_trigger_scenario(dry_mantle):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ('reference', 'resolves'),
+    [(None, False), (2.0e21 / 3.0e24, True)],
+    ids=['row_without_composition_reference', 'stale_composition_reference'],
+)
+def test_composition_trigger_needs_a_composition_reference(reference, resolves):
+    """A row without a composition reference (a helpfile older than the column) does not fire
+    the composition trigger, however much water is dissolved; with a stale reference the same
+    row re-solves. The thermal triggers are off, so the composition trigger alone decides."""
+    config, hf_row, dirs = _composition_trigger_scenario(dry_mantle=False)
+    del hf_row['struct_ref_w_H2O_liquid']
+    if reference is not None:
+        hf_row['struct_ref_w_H2O_liquid'] = reference
+    s, ns, cp = _solver_patches(side_effect=lambda *a, **k: (3.504e6, None))
+    with s as mock_solver, ns, cp:
+        refs = _update_from_refs(dirs, config, hf_row, _mock_interior_o(), 0.0, 3000.0, 0.5)
+
+    assert mock_solver.call_count == int(resolves)
+    assert refs == ((500.0, 3000.0, 0.5) if resolves else (0.0, 3000.0, 0.5))
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_composition_driven_up_step_accepted_on_wet_mantle(caplog):
     """A composition-triggered R_int up-step under cooling is KEPT when wet.
