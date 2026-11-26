@@ -128,6 +128,46 @@ SPECTRAL_RECORDS = {
     ('Honeyside', '256'): '15799731',
     ('Honeyside', '4096'): '15696457',
     ('Oak', '318'): '15743843',
+    ('Atmora', '32'): '23837505',
+    ('Atmora', '64'): '23837520',
+    ('Atmora', '128'): '23837548',
+    ('Atmora', '256'): '23837583',
+    ('Atmora', '2048'): '23837640',
+    ('Breezehome', '32'): '23808218',
+    ('Breezehome', '64'): '23808200',
+    ('Breezehome', '128'): '23808184',
+    ('Breezehome', '256'): '23808153',
+    ('Breezehome', '2048'): '23808117',
+    ('Cliffshade', '32'): '23836927',
+    ('Cliffshade', '64'): '23836953',
+    ('Cliffshade', '128'): '23837412',
+    ('Cliffshade', '256'): '23837359',
+    ('Cliffshade', '2048'): '23836979',
+    ('Proudspire', '32'): '23837929',
+    ('Proudspire', '64'): '23838157',
+    ('Proudspire', '128'): '23838187',
+    ('Proudspire', '256'): '23838213',
+    ('Proudspire', '2048'): '23838267',
+    ('Skyborn', '32'): '23838451',
+    ('Skyborn', '64'): '23838469',
+    ('Skyborn', '128'): '23838482',
+    ('Skyborn', '256'): '23838507',
+    ('Skyborn', '2048'): '23838562',
+    ('Snowline', '32'): '23806138',
+    ('Snowline', '64'): '23806186',
+    ('Snowline', '128'): '23806166',
+    ('Snowline', '256'): '23806212',
+    ('Snowline', '2048'): '23806236',
+    ('Sovngarde', '32'): '23838860',
+    ('Sovngarde', '64'): '23838886',
+    ('Sovngarde', '128'): '23838924',
+    ('Sovngarde', '256'): '23838984',
+    ('Sovngarde', '2048'): '23839054',
+    ('Volenfell', '32'): '23808230',
+    ('Volenfell', '64'): '23808244',
+    ('Volenfell', '128'): '23808253',
+    ('Volenfell', '256'): '23808259',
+    ('Volenfell', '2048'): '23808275',
 }
 
 # Datasets declared in proteus_manifest.toml: only data PROTEUS alone reads.
@@ -644,6 +684,33 @@ def test_every_spectral_folder_has_a_dataset():
     for folder in SPECTRAL_FILE_FOLDERS:
         group, bands = folder.split('/')
         assert _dataset(spectral_file_key(group, bands)).registry()
+
+
+def test_every_spectral_folder_ships_the_files_its_readers_open(tmp_path):
+    """Each listed (group, bands) dataset holds ``<Group>.sf`` and ``<Group>.sf_k``.
+
+    The manifest key lowercases the group, but AGNI and JANUS open the file named
+    with the group exactly as configured, so a deposit with other file names or
+    another case would download and then be reported missing at the run.
+    """
+    from types import SimpleNamespace
+
+    from proteus.atmos_clim.common import get_spfile_path
+    from proteus.utils.data import SPECTRAL_FILE_FOLDERS
+
+    for folder in SPECTRAL_FILE_FOLDERS:
+        group, bands = folder.split('/')
+        names = set(_dataset(spectral_file_key(group, bands)).registry())
+        assert {f'{group}.sf', f'{group}.sf_k'} <= names, folder
+        # Discrimination: the lowercased key segment is not the file name.
+        assert f'{group.lower()}.sf' not in names, folder
+        config = SimpleNamespace(
+            atmos_clim=SimpleNamespace(
+                module='agni', spectral_group=group, spectral_bands=bands
+            )
+        )
+        path = Path(get_spfile_path(str(tmp_path), config))
+        assert path.name in names and path.parent.name == f'r{SPECTRAL_RECORDS[(group, bands)]}'
 
 
 def test_get_spfile_path_resolves_into_the_versioned_dataset_dir(tmp_path):

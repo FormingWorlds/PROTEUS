@@ -137,17 +137,41 @@ def test_generate_spectrum_increases_with_radius():
 @pytest.mark.unit
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_calc_star_luminosity_solar():
+def test_calc_star_luminosity_solar(validation_plot):
     """Solar Teff and radius yields ~1 solar luminosity. Pin against
     the IAU 2015 nominal solar luminosity L_sun = 3.828e26 W
     (Resolution B3) via the Stefan-Boltzmann law F = sigma T**4."""
     l = star.calc_star_luminosity(Teff_sun, 1.0 * R_sun)
     l_sun = 3.828e26  # watts
-    assert l == pytest.approx(l_sun, rel=0.01)
+    rtol, lo, hi = 0.01, 1e26, 1e27
+    assert l == pytest.approx(l_sun, rel=rtol)
     # Scale guard: 4 pi R_sun**2 sigma T_sun**4 lands at ~3.85e26 W.
     # A R_sun-in-km vs R_sun-in-m unit slip would give 3.85e20 W; a
     # CGS-vs-SI slip on sigma would land 1e3 above or below.
-    assert 1e26 < l < 1e27
+    assert lo < l < hi
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        teff = np.linspace(5000.0, 6500.0, 61)
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.axhspan(lo, hi, alpha=0.15, label='Range check')
+        ax.plot(
+            teff,
+            [star.calc_star_luminosity(t, R_sun) for t in teff],
+            label='calc_star_luminosity',
+        )
+        ax.plot([Teff_sun], [l_sun], 's', mfc='none', ms=10, label='IAU 2015 $L_\\odot$')
+        ax.plot([Teff_sun], [l], 'o', zorder=3, label='Code at $T_\\odot$, $R_\\odot$')
+        ax.set_yscale('log')
+        ax.set_ylim(3e25, 3e27)
+        ax.set_xlabel('Effective temperature [K]')
+        ax.set_ylabel('Luminosity [W]')
+        ax.legend()
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'star_dummy_luminosity')
 
 
 @pytest.mark.unit
@@ -212,14 +236,39 @@ def test_calc_instellation_inverse_square_law():
 @pytest.mark.unit
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_calc_instellation_earth_like():
+def test_calc_instellation_earth_like(validation_plot):
     """Earth-like planet receives ~1361 W/m^2 at 1 AU, the IAU 2015
     nominal total solar irradiance (Resolution B3, S_0 = 1361 W/m^2).
     """
-    s = star.calc_instellation(Teff_sun, 1.0 * R_sun, 1.0 * AU)
-    assert s == pytest.approx(1361.0, rel=0.01)
+    d_case, s0, rtol, lo, hi = 1.0, 1361.0, 0.01, 1e3, 2e3
+    s = star.calc_instellation(Teff_sun, 1.0 * R_sun, d_case * AU)
+    assert s == pytest.approx(s0, rel=rtol)
     # Scale guard: instellation is in W/m^2 at SI units. An R-in-km
     # vs R-in-m slip would land at ~1e-9 W/m^2; an AU-in-km vs AU-in-m
     # slip would land at ~1e3x the correct value. The bracket
     # discriminates either slip.
-    assert 1e3 < s < 2e3
+    assert lo < s < hi
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        d_au = np.geomspace(0.5, 2.0, 41)
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.axhspan(lo, hi, alpha=0.15, label='Range check')
+        ax.plot(
+            d_au,
+            [star.calc_instellation(Teff_sun, R_sun, d * AU) for d in d_au],
+            label='calc_instellation',
+        )
+        ax.plot([d_case], [s0], 's', mfc='none', ms=10, label='IAU 2015 $S_0$')
+        ax.plot([d_case], [s], 'o', zorder=3, label='Code at 1 AU')
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_ylim(3e2, 6e3)
+        ax.set_xlabel('Distance [AU]')
+        ax.set_ylabel('Stellar flux [W m$^{-2}$]')
+        ax.legend()
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'star_dummy_instellation')

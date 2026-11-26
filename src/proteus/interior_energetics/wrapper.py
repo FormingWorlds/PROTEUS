@@ -5,6 +5,8 @@ import gc
 import logging
 import os
 import shutil
+import sys
+import time
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
@@ -88,6 +90,12 @@ _MONOTONIC_RINT_REL_TOL = 1e-9
 _REINFLATE_TMAGMA_REL_TOL = 1e-4
 _REINFLATE_PHI_ABS_TOL = 1e-3
 
+# A step the mass escape keeps warns above dR/R = slope * dM/M + offset, dM/M from the reached mass.
+# Measured up-steps: dM/M 0.07 to 0.19, dR/R / dM/M 0.72 to 0.94; not measured near the anchor.
+# The offset (bound floor) is above the largest measured artefact, 7.2e-4, so it does not warn.
+_MASS_ESCAPE_RADIUS_SLOPE = 2.0
+_MASS_ESCAPE_RADIUS_OFFSET = 1e-3
+
 # Dissolved-volatile species whose mantle mass fraction drives the
 # composition-change structure trigger. Single source of truth: the trigger that
 # reads these fractions and the sentinel refresh that records them iterate this
@@ -99,8 +107,8 @@ _COMPOSITION_SENTINEL_SPECIES = ('H2O', 'H2')
 # evolution; the counter resets on each successful SPIDER call.
 _SPIDER_MAX_CONSECUTIVE_FAILS = 3
 
-# Abort threshold for consecutive Aragog retry-ladder exhaustions; the
-# counter resets on each successful Aragog call.
+# Abort threshold for consecutive failed Aragog calls; the counter resets on
+# each successful Aragog call.
 _ARAGOG_MAX_CONSECUTIVE_FAILS = 3
 
 # Per-call energy columns that a skipped Aragog step sets to 0.
@@ -122,27 +130,9 @@ _ARAGOG_CALL_ENERGY_KEYS = (
 # Values outside this range indicate initial conditions dominate collision energy.
 _REMELT_RETAINED_BAND = (0.01, 1.0)
 
-# Resume-settling guard for the dynamic structure re-solve. After a resume the
-# interior relaxes thermally over the first loops, swinging T_magma enough to
-# fire the dT/T structure-re-solve trigger every loop. The structure radius,
-# however, converges after the first couple of re-solves and then no longer
-# moves (R_int tracks melt fraction, not temperature), so subsequent
-# dT/T-triggered re-solves recompute the same radius at a large wall cost. Once
-# the structure has converged (relative R_int change below the tolerance), the
-# guard suppresses further dT/T-only-triggered re-solves for the remainder of
-# the settling window; the mesh-convergence, ceiling, stale-ceiling and Phi
-# triggers are left intact, and a Phi move beyond the backstop forces a re-solve
-# so genuine solidification during the window is never frozen. The window is
-# armed only on resume, so a fresh run never enters the guard.
-#
-# The backstop is the SMALLER of the config's own melt-fraction trigger
-# (update_dphi_abs) and the cap below. A dT/T-triggered re-solve only happens
-# when the melt-fraction trigger did NOT fire, i.e. when the Phi change is
-# already below update_dphi_abs, so tying the backstop to update_dphi_abs means
-# the guard never blocks a re-solve the melt-fraction trigger would have let
-# through. The cap supplies a finite floor for configs that disable the
-# melt-fraction trigger (update_dphi_abs set very high), so a large Phi move in
-# the window still forces a re-solve there.
+# Resume-settling guard: for this many loops after a resume, a re-solve triggered by dT/T alone
+# is skipped while the last relative R_int change is below the tolerance and Phi moved less
+# than min(update_dphi_abs, the cap) since the last re-solve (update_structure_from_interior).
 _RESUME_STRUCT_SETTLE_LOOPS = 50
 _RESUME_STRUCT_DR_REL_TOL = 1e-4
 _RESUME_STRUCT_DPHI_BACKSTOP_CAP = 0.10
@@ -240,15 +230,14 @@ def calculate_core_mass(hf_row: dict, config: Config):
 
 def update_planet_mass(hf_row: dict):
     """
-    Calculate total planet mass, as sum of dry+wet parts.
+    Calculate total planet mass, M_planet = M_int - M_dissolved_target + M_ele.
 
     Whole-planet volatile element accounting (issue #677): M_ele sums over
     ``vol_element_list + noble_gases``, so oxygen is included.
 
     The atmospheric and dissolved O mass produced by CALLIOPE (from fO2) is
-    therefore counted in M_planet = M_int + M_ele, keeping the
-    bookkeeping symmetric so M_atm cannot exceed M_planet at
-    high H budgets.
+    therefore counted in M_planet through M_ele, keeping the bookkeeping
+    symmetric so M_atm cannot exceed M_planet at high H budgets.
 
     The rock-forming elements of ``vap_element_list`` are deliberately NOT
     summed here. Rock vapour is added to the atmosphere without being
@@ -257,13 +246,19 @@ def update_planet_mass(hf_row: dict):
     Mantle FeO-bound oxygen remains implicit in the PALEOS density
     tables that drive ``M_int``; we don't double-count it here.
 
-    This site pairs with the dry-mass target in
-    ``load_zalmoxis_configuration``: both currently treat the mantle EOS
-    as bare silicate (``dry_mantle = true``, the only configuration the
-    config gate admits). If wet-mantle support is enabled there, this
-    sum must stop counting the dissolved inventory in ``M_ele``, because
-    a wet-mantle ``M_int`` already contains that mass.
+    With ``interior_struct.zalmoxis.dry_mantle = false`` the structure target
+    keeps the dissolved inventory, so ``M_int`` holds it as well as ``M_ele``.
+    ``M_dissolved_target``, the dissolved element mass inside the target of the
+    last accepted structure solve, is taken off ``M_int`` so that this mass
+    counts once. Between solves ``M_int`` is the interior module's integral of
+    the last solved structure, so the value of that solve is taken off even
+    while outgassing moves volatiles between the melt and the atmosphere.
+    Totals that change without leaving the planet between solves,
+    such as an oxygen inventory derived from the fO2 buffer, move M_planet
+    until the next solve, as with a dry mantle. ``M_dissolved_target`` is 0
+    with a dry mantle and with another structure module.
     """
+    from proteus.interior_struct.common import stored_dissolved_target
 
     # Update total element mass.
     hf_row['M_ele'] = 0.0
@@ -271,7 +266,8 @@ def update_planet_mass(hf_row: dict):
         hf_row['M_ele'] += float(hf_row.get(e + '_kg_total', 0.0))
 
     # Add to total planet mass
-    hf_row['M_planet'] = hf_row['M_int'] + hf_row['M_ele']
+    M_dissolved = stored_dissolved_target(hf_row)
+    hf_row['M_planet'] = hf_row['M_int'] - M_dissolved + hf_row['M_ele']
 
 
 def get_nlevb(config: Config):
@@ -284,6 +280,9 @@ def get_nlevb(config: Config):
         case 'aragog':
             return int(config.interior_energetics.num_levels)
         case 'boundary':
+            # The adiabat melt model hands the tides modules num_levels - 1 shells.
+            if config.interior_energetics.boundary.melt_model == 'adiabat':
+                return int(config.interior_energetics.num_levels)
             return 2
         case 'dummy':
             return 2
@@ -1325,18 +1324,18 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
 _ADIABAT_IC_PCMB_MARGIN = 1.05
 
 
-# Structure-defining hf_row keys saved before an adiabat re-solve so a failed or
-# off-anchor solve can be rolled back to the linear-guess result. These are the
-# keys the adiabat re-solve may mutate plus the mass/pressure anchors. M_mantle
-# is intentionally absent: zalmoxis_solver writes only M_int and M_core, and the
-# caller recomputes M_mantle = M_int - M_core after the helper returns, so
-# restoring M_int/M_core fully reverts the masses the solve touches.
+# hf_row keys an adiabat re-solve writes, restored when it fails or misses the mass anchor.
+# M_mantle is absent: the solve does not write it, and the caller sets M_int - M_core after.
 _ADIABAT_IC_RESTORE_KEYS = (
     'R_int',
     'R_core',
     'M_int',
     'M_core',
+    'M_core_solve',
+    'struct_core_T_used',
+    'struct_core_T_excess',
     'M_int_target',
+    'M_dissolved_target',
     'P_surf',
     'P_center',
     'P_cmb',
@@ -1344,6 +1343,32 @@ _ADIABAT_IC_RESTORE_KEYS = (
     'core_density',
     'rho_avg',
 )
+
+
+def _structure_core_table(
+    config: Config, interior_o, hf_row: dict, t_anchor=None, t_fallback=None
+):
+    """Core temperature table ``(P, T)`` of a structure solve.
+
+    A given ``t_anchor`` [K] gives the Gaussian core fitted to the row structure through it,
+    also with a live core. Without it: the adiabat of the live Aragog core through its
+    temperature (``core_bc = "core_module"``), else the Gaussian fit through the row ``T_cmb``,
+    or through ``t_fallback`` [K] when the row has no positive ``T_cmb`` (a dummy interior
+    writes none).
+    """
+    from proteus.interior_energetics.aragog_core import core_temperature_state
+    from proteus.interior_struct.core_temperature import structure_core_table
+
+    solver = getattr(interior_o, 'aragog_solver', None)
+    budget = getattr(solver, '_core_module_budget', None)
+    if budget is not None and t_anchor is None:
+        t_core = core_temperature_state(solver, config.interior_energetics.aragog.core_bc)
+        if t_core is not None:
+            return structure_core_table(config, hf_row, t_core, budget.profiles)
+    if t_anchor is not None:
+        return structure_core_table(config, hf_row, float(t_anchor))
+    t_row = float(hf_row.get('T_cmb', 0.0))
+    return structure_core_table(config, hf_row, t_row if t_row > 0 else t_fallback)
 
 
 def _sample_adiabat_temperature_arrays(outdir: str, temperature_function):
@@ -1409,12 +1434,41 @@ def _sample_adiabat_temperature_arrays(outdir: str, temperature_function):
     return r_arr, t_arr
 
 
+def _require_finite_structure(hf_row: dict, where: str) -> None:
+    """Refuse a structure solve that left R_int or M_int not finite and positive.
+
+    Only these 2 keys are checked; the other structure keys of the row are not.
+    The adiabat and dynamic re-solves run the mass anchor first, so with a positive
+    ``M_int_target`` a non-finite ``M_int`` is reported by the anchor; without one, by this check.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row after the solve, read for ``R_int`` [m] and ``M_int`` [kg].
+    where : str
+        Name of the solve, put at the start of the message.
+
+    Raises
+    ------
+    RuntimeError
+        If ``R_int`` or ``M_int`` is NaN, infinite, zero, negative or absent.
+    """
+    R_int = float(hf_row.get('R_int', 0.0) or 0.0)
+    M_int = float(hf_row.get('M_int', 0.0) or 0.0)
+    if not (0.0 < R_int < np.inf and 0.0 < M_int < np.inf):
+        raise RuntimeError(
+            f'{where}: Zalmoxis returned a non-finite or non-positive R_int or M_int: '
+            f'R_int={R_int:.6e} m, M_int={M_int:.6e} kg.'
+        )
+
+
 def _solve_structure_with_adiabat_or_rollback(
     config: Config,
     outdir: str,
     hf_row: dict,
     num_spider_nodes: int,
     temperature_function,
+    core_t_anchor: float | None = None,
 ) -> tuple[str | None, bool]:
     """Run one structure solve against ``temperature_function`` with rollback.
 
@@ -1423,8 +1477,8 @@ def _solve_structure_with_adiabat_or_rollback(
     ``T(P)`` closure plus its r-indexed sampling (see
     :func:`_sample_adiabat_temperature_arrays`), then enforces the
     mass-anchor contract
-    (``|M_int / M_int_target - 1| < _ZALMOXIS_MASS_ANCHOR_TOL``) and a finite,
-    positive ``R_int``. On any failure it restores BOTH the saved ``hf_row``
+    (``|M_int / M_int_target - 1| < _ZALMOXIS_MASS_ANCHOR_TOL``) and finite,
+    positive ``R_int`` and ``M_int``. On a failed solve or check it restores BOTH the saved ``hf_row``
     keys AND ``zalmoxis_output.dat`` from its ``.prev`` snapshot, so the
     immediately-following ``run_interior`` (Aragog ``ic = 1``) never sees the
     failed adiabat geometry against a linear-guess EOS mesh.
@@ -1449,14 +1503,27 @@ def _solve_structure_with_adiabat_or_rollback(
         Adiabat ``f(r, P) -> T`` closure. Passed to the solver together
         with the sampled r-indexed arrays; the solver's temperature-source
         dispatch then decides which one the solve consumes.
+    core_t_anchor : float or None, optional
+        CMB temperature [K] of the core temperature table: the core temperature of the run for a
+        solve after a giant impact; None takes the deepest mantle T of the sampled adiabat,
+        and gives no core table when the previous structure cannot be sampled.
 
     Returns
     -------
     tuple
         ``(mesh_file, ok)``. ``mesh_file`` is the solver's mesh path on success
         and ``None`` on failure; ``ok`` is True only when the solve passed both
-        the mass anchor and the ``R_int`` validity check. The caller decides
+        the mass anchor and the finite, positive ``R_int`` and ``M_int``. The caller decides
         what to do with the linear-guess mesh on failure.
+
+    Raises
+    ------
+    ValueError
+        When the core temperature table cannot be built. The table is built before the solve,
+        so this and every other error of the table builder stop the run with no rollback.
+    zalmoxis.invariants.StructureInvariantError
+        When the accepted structure breaks an invariant, such as core arrays off the core
+        temperature table. It stops the run with no rollback.
     """
     from proteus.interior_struct.zalmoxis import zalmoxis_solver
 
@@ -1484,6 +1551,10 @@ def _solve_structure_with_adiabat_or_rollback(
     # or malformed previous structure) degrades to the callable-only call.
     adiabat_arrays = _sample_adiabat_temperature_arrays(outdir, temperature_function)
 
+    # The core takes the adiabat through core_t_anchor, else the deepest mantle T of the previous
+    # pass, fitted to the row; a table that cannot be built stops the run, as in a re-solve
+    anchor = adiabat_arrays[1][0] if core_t_anchor is None and adiabat_arrays else core_t_anchor
+    core_table = None if anchor is None else _structure_core_table(config, None, hf_row, anchor)
     try:
         _cmb_radius, adiabat_mesh_file = zalmoxis_solver(
             config,
@@ -1492,6 +1563,7 @@ def _solve_structure_with_adiabat_or_rollback(
             num_spider_nodes=num_spider_nodes,
             temperature_function=temperature_function,
             temperature_arrays=adiabat_arrays,
+            core_temperature_arrays=core_table,
         )
         # Mass-anchor contract: a too-loosely-converged adiabat solve is
         # treated as a failure, same as the time-evolution re-solve path.
@@ -1499,17 +1571,14 @@ def _solve_structure_with_adiabat_or_rollback(
         M_int = float(hf_row.get('M_int', 0.0) or 0.0)
         if M_target > 0.0:
             mass_rel_err = abs(M_int / M_target - 1.0)
-            if mass_rel_err > _ZALMOXIS_MASS_ANCHOR_TOL:
+            if not mass_rel_err <= _ZALMOXIS_MASS_ANCHOR_TOL:
                 raise RuntimeError(
                     'adiabat IC re-solve mass-anchor violation: '
                     f'|M_int / M_int_target - 1| = {mass_rel_err:.3e} > '
                     f'tol={_ZALMOXIS_MASS_ANCHOR_TOL:.3e}.'
                 )
-        R_int_adiabat = float(hf_row.get('R_int', 0.0) or 0.0)
-        if not np.isfinite(R_int_adiabat) or R_int_adiabat <= 0.0:
-            raise RuntimeError(
-                f'adiabat IC re-solve produced an invalid R_int={R_int_adiabat}.'
-            )
+        _require_finite_structure(hf_row, 'adiabat IC re-solve')
+        R_int_adiabat = float(hf_row['R_int'])
     except (RuntimeError, ValueError, FloatingPointError) as exc:
         # Restore the structure-defining hf_row keys AND the on-disk
         # zalmoxis_output.dat, so the next run_interior reads a mesh that is
@@ -1552,14 +1621,15 @@ def _resolve_adiabatic_ic_structure(
     hf_row: dict,
     num_spider_nodes: int,
     linear_mesh_file: str | None,
+    core_t_anchor: float | None = None,
 ) -> str | None:
     """Re-solve the IC structure against the super-liquidus adiabat.
 
     Two-pass: the linear-guess solve has already populated ``hf_row`` (R_int,
     P_cmb, masses, mesh file). This builds the adiabat ``T(P)`` over the
     converged pressure range and re-solves the structure with it via
-    :func:`_solve_structure_with_adiabat_or_rollback`. On any failure (adiabat
-    unavailable, solver raises, mass-anchor violation) the linear-guess
+    :func:`_solve_structure_with_adiabat_or_rollback`. On a failure (adiabat
+    unavailable, solver error, mass-anchor violation) the linear-guess
     structure (both ``hf_row`` and the on-disk ``zalmoxis_output.dat``) is
     restored and its mesh file returned, so the IC is never made worse than the
     existing behaviour.
@@ -1577,11 +1647,22 @@ def _resolve_adiabatic_ic_structure(
         SPIDER basic-node count forwarded to the solver (0 for Aragog).
     linear_mesh_file : str or None
         Mesh file path from the linear-guess solve, returned on fallback.
+    core_t_anchor : float or None, optional
+        CMB temperature [K] of the core temperature table, see
+        :func:`_solve_structure_with_adiabat_or_rollback`.
 
     Returns
     -------
     str or None
         Mesh file path from the accepted solve.
+
+    Raises
+    ------
+    ValueError
+        When the core temperature table cannot be built: no rollback, the run stops, as on
+        every other error of the table builder.
+    zalmoxis.invariants.StructureInvariantError
+        When the accepted structure breaks an invariant: no rollback, the run stops.
     """
     P_cmb_linear = float(hf_row.get('P_cmb', 0.0) or 0.0)
     if P_cmb_linear <= 0.0:
@@ -1604,6 +1685,7 @@ def _resolve_adiabatic_ic_structure(
         hf_row,
         num_spider_nodes,
         temperature_function,
+        core_t_anchor=core_t_anchor,
     )
     if not ok:
         return linear_mesh_file
@@ -1638,7 +1720,17 @@ def determine_interior_radius_with_zalmoxis(
         Output directory path.
     thermal_solve : bool, optional
         Whether to run an interior thermal solve or update mechanical mass and
-        structure only (default is True).
+        structure only (default is True). False is the structure solve after a giant
+        impact: with the super-liquidus start-up re-solve (``temperature_mode =
+        "liquidus_super"``, not SPIDER) its core temperature table goes through the row
+        ``T_cmb``, else the deepest mantle T of a sampled previous structure, else no core
+        table; other modes give that solve no core table.
+
+    Raises
+    ------
+    RuntimeError
+        When the solve leaves ``R_int`` or ``M_int`` not finite and positive; this solve has
+        no fall-back, so the run stops.
     """
 
     log.info('Using Zalmoxis to solve for interior structure')
@@ -1677,6 +1769,7 @@ def determine_interior_radius_with_zalmoxis(
         num_spider_nodes=num_spider_nodes,
         temperature_mode_override=_temp_mode_override,
     )
+    _require_finite_structure(hf_row, 'start-up or post-impact structure solve')
 
     # liquidus_super: the first solve above integrated the mantle density against
     # Zalmoxis' internal linear-in-r temperature guess, which is colder and
@@ -1688,8 +1781,15 @@ def determine_interior_radius_with_zalmoxis(
     # converged pressure range with a small margin. SPIDER provides its own T(r)
     # through entropy evolution and is intentionally excluded.
     if _use_superliquidus_adiabat_ic(config):
+        # after a giant impact (no thermal solve) the core keeps the core temperature of the run
+        t_row = float(hf_row.get('T_cmb', 0.0) or 0.0)
         spider_mesh_file = _resolve_adiabatic_ic_structure(
-            config, outdir, hf_row, num_spider_nodes, spider_mesh_file
+            config,
+            outdir,
+            hf_row,
+            num_spider_nodes,
+            spider_mesh_file,
+            core_t_anchor=None if thermal_solve or not t_row > 0 else t_row,
         )
 
     # Store mesh file path for subsequent SPIDER calls
@@ -1750,6 +1850,12 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
         Current helpfile row with volatile masses, R_int, P_surf, T_magma, etc.
     outdir : str
         Output directory for Zalmoxis files.
+
+    Raises
+    ------
+    RuntimeError
+        When a structure solve of the loop leaves ``R_int`` or ``M_int`` not finite and
+        positive; the loop has no fall-back for it, so the run stops.
     """
     from proteus.interior_struct.zalmoxis import generate_spider_tables, zalmoxis_solver
     from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
@@ -1837,6 +1943,8 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
                 temperature_function=None,
             )
 
+        _require_finite_structure(hf_row, f'equilibration iter {i + 1}/{max_iter} solve')
+
         # Update M_mantle from Zalmoxis results (M_int and M_core are set
         # by zalmoxis_solver, but M_mantle is not). run_outgassing needs
         # an up-to-date M_mantle for dissolved fraction calculations.
@@ -1908,33 +2016,43 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
 
 
-def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o) -> None:
+def _remelt_scalar_backend(
+    config: Config, dirs: dict, hf_row: dict, interior_o, f: float = 1.0
+) -> None:
     """Re-melt a temperature-state backend (dummy or boundary) in place.
 
     These backends carry the mantle thermal state as a surface magma
     temperature they cool from the configured initial value. The re-melt raises
-    that temperature to the initial value, or keeps it when it is higher, and
-    rewrites every melt quantity derived from it together with the melt
-    fraction and temperature on the interior arrays the same-iteration tidal
-    call reads, so the impact iteration stays self-consistent.
+    that temperature by the melted share f of the lift to the initial value
+    (``remelt.remelt_temperature``; at f = 1 the initial value, or the current
+    temperature when it is higher), and rewrites every melt quantity derived
+    from it together with the melt fraction and temperature on the interior
+    arrays the same-iteration tidal call reads, so the impact iteration stays
+    self-consistent. A row without a finite ``T_magma`` raises; ``remelt_mantle``
+    writes interior status 21 for every error of these backends.
     """
     import numpy as np
 
     from proteus.interior_energetics.dummy import melt_state_from_temperature
+    from proteus.interior_energetics.remelt import remelt_temperature
 
-    t_reset = max(config.planet.tsurf_init, float(hf_row.get('T_magma', 0.0)))
+    t_end = float(hf_row['T_magma'])
+    t_reset = remelt_temperature(t_end, config.planet.tsurf_init, f)
     state = melt_state_from_temperature(config, hf_row, t_reset)
     hf_row.update(state)
     # The boundary backend starts with the surface at the magma temperature.
     if config.interior_energetics.module == 'boundary':
         hf_row['T_surf'] = t_reset
 
-    # Refresh the single-cell interior arrays the orbit/tides block reads later
-    # in this same iteration, so tidal heating uses the re-melted melt fraction.
-    interior_o.phi = np.array([state['Phi_global']])
-    interior_o.temp = np.array([t_reset])
+    # Refresh the layer arrays the orbit/tides block reads later in this same iteration,
+    # uniform over the layers (one, or the boundary backend's adiabat shells).
+    n_layers = int(getattr(interior_o, 'nlev_s', 1))
+    interior_o.phi = np.full(n_layers, state['Phi_global'])
+    interior_o.temp = np.full(n_layers, t_reset)
+    # The adiabat published before the impact no longer describes the mantle.
+    interior_o.temp_profile = None
 
-    if state['Phi_global'] < 1.0:
+    if f == 1.0 and state['Phi_global'] < 1.0:
         log.warning(
             '    mantle re-melt left it only %.0f%% molten at %.0f K: planet.tsurf_init=%.0f K '
             'is below the liquidus. Raise planet.tsurf_init for a full re-melt.',
@@ -1942,9 +2060,13 @@ def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o) -> None:
             t_reset,
             config.planet.tsurf_init,
         )
+    if f < 1.0:
+        verb = 'raised to' if t_reset > t_end else 'kept at'
+    else:
+        verb = 'reset to' if t_reset == config.planet.tsurf_init else 'kept at'
     log.info(
         '    mantle re-melted: T_magma %s %.0f K (melt fraction %.2f)',
-        'reset to' if t_reset == config.planet.tsurf_init else 'kept at',
+        verb,
         t_reset,
         state['Phi_global'],
     )
@@ -1978,7 +2100,88 @@ def evaluate_molten_state(solver, hf_row: dict):
         solver._solution = prev_solution
 
 
-def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None:
+def _partial_remelt_profile(solver, S_end: np.ndarray, S_molten: np.ndarray, f: float):
+    """Re-melted entropy profile of a partial re-melt on the solver's pre-impact mesh.
+
+    The cell masses are the structural masses of the pre-impact mesh, its staggered
+    effective density times the cell volume: they sum to the mantle mass before the
+    impact (the row's M_mantle has already grown with the impact's structure solve),
+    and the next solve carries the profile to the grown mesh in that frame.
+    The melt fills from the largest staggered radius down (``remelt.remelt_weights``).
+    """
+    from proteus.interior_energetics.remelt import remelt_entropy, remelt_weights
+
+    vol = np.asarray(solver._volume_flat, dtype=float).ravel()
+    radii = np.asarray(solver._r_stag_flat, dtype=float).ravel()
+    rho = np.asarray(solver.evaluator.mesh.staggered_effective_density, dtype=float).ravel()
+    mass = rho * vol
+    w = remelt_weights(f, mass, radii)
+    log.info(
+        '    partial re-melt f = %.4g: %.4e of %.4e kg melted, %d cells in full, %d in part',
+        f,
+        float(np.sum(w * mass)),
+        float(np.sum(mass)),
+        np.count_nonzero(w == 1.0),
+        np.count_nonzero((w > 0.0) & (w < 1.0)),
+    )
+    return remelt_entropy(S_end, S_molten, w)
+
+
+def guard_t_magma_clip(
+    dirs: dict, hf_row: dict, prev_weight: float, clipped_from: float
+) -> None:
+    """Stop a run whose step clipped a rise of ``T_magma`` while a lid acted, else flag the row.
+
+    Parameters
+    ----------
+    dirs : dict
+        Run directories; the stop writes status 21.
+    hf_row : dict
+        Current helpfile row, with ``Time`` and, from the interior, ``lid_weight`` and
+        ``lid_weight_max``; ``T_magma_clipped`` is set to 1 on it.
+    prev_weight : float
+        Lid weight of the row before, the start of the step.
+    clipped_from : float
+        ``T_magma`` [K] of the step before the clip.
+
+    Raises
+    ------
+    RuntimeError
+        Where the lid weight is above 0 at the start or the end of the step, or at an accepted
+        state (``lid_weight_max``): a clipped lid step does not conserve energy.
+
+    Notes
+    -----
+    Aragog sets ``lid_weight_max`` in its energy replay of the step. Where it runs no replay (a
+    failed solve, fewer than 2 stored points, or no entropy table), Aragog gives NaN and the row
+    stores 0, so the guard sees only the weights at the start and the end of the step.
+    """
+    weights = (prev_weight, hf_row.get('lid_weight', 0.0), hf_row.get('lid_weight_max', 0.0))
+    w = max(float(np.nan_to_num(float(x))) for x in weights)
+    if w > 0.0:
+        UpdateStatusfile(dirs, 21)
+        raise RuntimeError(
+            f'T_magma clip from {float(clipped_from):.2f} K at t = {float(hf_row["Time"]):.6e} yr '
+            f'in a step with a live lid (largest lid weight {w:.4g})'
+        )
+    hf_row['T_magma_clipped'] = 1
+
+
+# Lid columns of the helpfile that a re-melt takes from the re-melted state.
+LID_COLUMNS = (
+    'lid_weight',
+    'lid_conductance',
+    'lid_delta',
+    'lid_T_surface',
+    'lid_T_base',
+    'lid_T_node',
+    'lid_weight_max',
+)
+
+
+def _remelt_aragog(
+    config: Config, dirs: dict, hf_row: dict, interior_o, f: float = 1.0
+) -> None:
     """Re-melt the Aragog mantle so the reset survives to the next solve.
 
     ``_set_entropy_ic`` alone only rewrites the solver's initial-state vector,
@@ -1987,11 +2190,14 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     profile carrier ``interior_o._last_entropy`` is set to the re-melted profile,
     the stale trajectory is cleared so the restore path cannot resurrect it,
     and the cached CMB-gradient state is cleared so it is re-derived from the
-    re-melted profile rather than inherited from the cooled one. The re-melted
-    profile is the molten initial condition in each cell, or the end-of-step
-    entropy where that is higher, so the re-melt never cools the mantle. The
-    solver first switches to the P-S tables the structure solve of this step
-    built for the grown planet.
+    re-melted profile rather than inherited from the cooled one. At f = 1 the
+    re-melted profile is the molten initial condition in each cell, or the
+    end-of-step entropy where that is higher; at f < 1 the outermost cells that
+    hold f of the mantle mass take it and the deeper cells keep the end-of-step
+    entropy (``_partial_remelt_profile``), so the re-melt never cools the mantle.
+    A partial re-melt without a usable end-of-step profile raises instead of
+    falling back to the full one. The solver first switches to the P-S tables
+    the structure solve of this step built for the grown planet.
 
     The heat the re-melt injects is booked into ``hf_row['step_dE_impact_J']``
     using the solver's own entropy-transported heat quadrature over the jump
@@ -2015,7 +2221,8 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     stays the mantle's.
 
     The melt-state keys in ``hf_row`` (``T_magma``, ``T_cmb``, ``Phi_global``,
-    ``Phi_global_vol``, ``T_pot``, ``RF_depth``, ``M_mantle_liquid``, ``M_mantle_solid``)
+    ``Phi_global_vol``, ``T_pot``, ``RF_depth``, ``M_mantle_liquid``, ``M_mantle_solid``, and the
+    lid columns)
     and the profile arrays on ``interior_o`` are updated to the re-melted
     profile evaluated without time integration, so downstream modules on the
     impact iteration read the post-impact melt state.
@@ -2074,19 +2281,31 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         unbooked = 'the end-of-step entropy profile is non-finite or not on the re-melt mesh'
     else:
         unbooked = None
-    # An impact cannot cool the mantle: cells above the molten profile keep their entropy.
+    if unbooked is not None and f < 1.0:
+        raise RuntimeError(
+            f'Cannot apply a partial re-melt with f = {f:g}: {unbooked}. A full re-melt '
+            "in its place would apply f = 1; set accretion.remelt = 'full' to accept that."
+        )
     if unbooked is None:
-        S_new = np.maximum(S_end, S_molten)
+        # An impact cannot cool the mantle: cells above the molten profile keep their entropy.
+        if f == 1.0:
+            S_new = np.maximum(S_end, S_molten)
+        else:
+            S_new = _partial_remelt_profile(solver, S_end, S_molten, f)
+        # _set_entropy_ic left S_molten in the solver; at f = 1 this differs only when
+        # a cell is above it.
+        if np.any(S_new != S_molten):
+            solver.set_initial_entropy(S_new)
+        dE_impact = float(solver._step_heat_content(S_end, S_new))
+    if unbooked is None:
         n_hot = np.count_nonzero(S_new > S_molten)
         if n_hot:
-            solver.set_initial_entropy(S_new)
             log.info(
                 "    re-melt keeps %d of %d cells above the temperature_mode='%s' profile",
                 n_hot,
                 S_new.size,
                 config.planet.temperature_mode,
             )
-        dE_impact = float(solver._step_heat_content(S_end, S_new))
         interior_o._last_entropy = S_new.copy()
 
         # Accumulate heat across multiple impacts within the same timestep
@@ -2102,15 +2321,9 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         from proteus.interior_energetics.aragog_core_impact import remelt_core_module
 
         S_ic = np.asarray(interior_o._last_entropy, dtype=float)
-        try:
-            if T_core_pre is None:
-                raise ValueError('core_module: the solver holds no core temperature to re-melt')
-            T_core_new = remelt_core_module(
-                hf_row, interior_o, solver, T_core_pre, float(S_ic[0])
-            )
-        except ValueError:
-            UpdateStatusfile(dirs, 21)
-            raise
+        if T_core_pre is None:
+            raise ValueError('core_module: the solver holds no core temperature to re-melt')
+        T_core_new = remelt_core_module(hf_row, interior_o, solver, T_core_pre, float(S_ic[0]))
         solver.set_initial_core_temperature(T_core_new)
         solver.set_initial_entropy(S_ic)
 
@@ -2123,7 +2336,7 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
             molten_out,
             hf_row,
             interior_o=interior_o,
-            surface_d=config.atmos_clim.surface_d,
+            surface_d=hf_row['boundary_layer_thickness'],
             surface_bc_mode=config.interior_energetics.surface_bc_mode,
         )
         # T_cmb and T_cmb_node keep the impact row consistent; the T_core jump guard
@@ -2138,6 +2351,11 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
             'RF_depth',
         ):
             hf_row[key] = output[key]
+        # The lid columns of the re-melted state, so that the atmosphere of the impact
+        # iteration sees the molten surface, not the lid of the cooled mantle.
+        for key in LID_COLUMNS:
+            if key in output:
+                hf_row[key] = output[key]
         # Accretion excludes a stratified core, so the top of a re-melted core is its T_cmb.
         if core_module:
             hf_row['core_T_top'] = output['T_cmb']
@@ -2149,36 +2367,73 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         hf_row['M_mantle_solid'] = (1.0 - phi_g) * m_mantle
 
 
+def _aragog_failure_cause(error: RuntimeError) -> str:
+    """Name the cause of a failed Aragog call for the skip-step warning.
+
+    Parameters
+    ----------
+    error : RuntimeError
+        Error of the call that the wrapper absorbs.
+
+    Returns
+    -------
+    str
+        'Aragog retry-ladder exhaustion' when every attempt of the ladder failed,
+        'Aragog CMB closure check failed (CMBClosureError)' for the CMB ledger check of
+        aragog, else 'Aragog call failed (<error class>)'.
+    """
+    from aragog.solver.entropy_solver import CMBClosureError
+
+    from proteus.interior_energetics.aragog import RetryLadderExhaustedError
+
+    if isinstance(error, RetryLadderExhaustedError):
+        return 'Aragog retry-ladder exhaustion'
+    if isinstance(error, CMBClosureError):
+        return 'Aragog CMB closure check failed (CMBClosureError)'
+    return f'Aragog call failed ({type(error).__name__})'
+
+
 def _skip_aragog_call_energy(hf_row: dict) -> None:
     """Set the per-call energy columns of a skipped Aragog step to 0, in place.
 
-    A retry-ladder fallback integrates nothing, so the energy ledgers must not count the
+    A skipped call integrates nothing, so the energy ledgers must not count the
     previous call's values again.
     """
     for key in _ARAGOG_CALL_ENERGY_KEYS:
         hf_row[key] = 0.0
 
 
-def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=None) -> None:
-    """Raise the mantle to its initial condition after a giant impact.
+def remelt_mantle(
+    dirs: dict, config: Config, hf_row: dict, interior_o, event=None, f: float = 1.0
+) -> None:
+    """Raise the melted share of the mantle to its initial condition after a giant impact.
 
-    A giant impact re-melts the mantle (no energy threshold), so the interior
-    is raised to the initial condition recomputed for the current, grown
-    planet; parts that are already hotter keep their state. The reset is applied to the running interior state,
-    and an ``impact_reset`` flag is raised on ``interior_o`` so the next
+    The impact melts the mass fraction f of the mantle (1 for a full re-melt),
+    which is raised to the initial condition recomputed for the current, grown
+    planet; parts that are already hotter keep their state, and at f < 1 the
+    deeper mantle keeps its end-of-step state (``interior_energetics.remelt``).
+    The largest f of the row goes to ``hf_row['f_remelt']``. The reset is applied
+    to the running interior state, and an ``impact_reset`` flag is raised on
+    ``interior_o`` so the next
     interior solve does not clip the resulting temperature jump as if it were
     a solver glitch.
 
     The backends carry their state differently, so each is reset in its own
     terms: the dummy and boundary backends cool a surface temperature, which is
     raised to the configured initial value (or kept when higher) together with
-    every quantity derived from it; Aragog raises each cell to its entropy
-    initial condition (or keeps a higher entropy) and carries that profile
-    through the reset the coupling performs on the next step. The re-melt
-    never cools the mantle.
+    every quantity derived from it. An accretion run on the boundary interior is
+    refused at configuration load, so its branch serves only direct calls. Aragog
+    raises the melted cells to their entropy initial condition (or keeps a higher entropy) and
+    carries that profile through the reset the coupling performs on the next step.
+    The re-melt never cools the mantle.
     SPIDER keeps its state in a restart file written by the external binary and
     has no validated re-melt path; an accretion run on SPIDER is refused at
     configuration load, and this backstop refuses it at the first impact.
+
+    Every error of the backend re-melt, at any f, and an f that is not a valid fraction
+    (for any module) write interior status 21 before the error reaches the caller, so a run
+    that stops here does not read as running; SPIDER and an unknown module write status 20.
+    For missing reference data, ``Proteus.start`` writes status 20 over the 21.
 
     Parameters
     ----------
@@ -2193,18 +2448,29 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
     event : ImpactEvent, optional
         The impact being applied, used only to log the impact energy against
         the enthalpy the re-melt injects.
+    f : float
+        Melted mass fraction of the mantle [1], in [0, 1].
 
     Raises
     ------
     NotImplementedError
         If the interior module has no supported re-melt path (SPIDER).
     ValueError
-        If the interior module is unrecognised, or a core_module solver holds no core
-        temperature, or its core or basal temperature is not finite
+        If f is not a finite number in [0, 1], the interior module is unrecognised,
+        or a core_module solver holds no core temperature, or its core or basal
+        temperature is not finite
         (``aragog_core_impact.remelt_core_module``).
     RuntimeError
-        If the Aragog solver has not been initialised.
+        If the Aragog solver has not been initialised, or a partial re-melt has no
+        usable end-of-step entropy profile.
     """
+    from proteus.interior_energetics.remelt import check_melt_fraction
+
+    try:
+        f = check_melt_fraction(f)
+    except ValueError:
+        UpdateStatusfile(dirs, 21)
+        raise
     module = config.interior_energetics.module
 
     # The column accumulates over a step, so a second impact inside one
@@ -2213,10 +2479,13 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
     booked_before = float(hf_row.get('step_dE_impact_J') or 0.0)
 
     match module:
-        case 'dummy' | 'boundary':
-            _remelt_scalar_backend(config, hf_row, interior_o)
-        case 'aragog':
-            _remelt_aragog(config, dirs, hf_row, interior_o)
+        case 'dummy' | 'boundary' | 'aragog':
+            backend = _remelt_aragog if module == 'aragog' else _remelt_scalar_backend
+            try:
+                backend(config, dirs, hf_row, interior_o, f)
+            except Exception:
+                UpdateStatusfile(dirs, 21)
+                raise
         case 'spider':
             UpdateStatusfile(dirs, 20)
             raise NotImplementedError(
@@ -2232,6 +2501,7 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
     # Tell the time-stepper's limiter the coming temperature jump is a
     # deliberate impact re-melt, not a solver anomaly to be clipped away.
     interior_o.impact_reset = True
+    hf_row['f_remelt'] = max(float(hf_row.get('f_remelt') or 0.0), f)
 
     # Compare booked heat injection against impact kinetic energy. The ratio
     # checks physical plausibility since energy residuals cannot detect scaling errors.
@@ -2251,7 +2521,8 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
             if not _REMELT_RETAINED_BAND[0] <= retained <= _REMELT_RETAINED_BAND[1]:
                 log.warning(
                     '    re-melt injection is %.3g of the impact kinetic energy, outside '
-                    'the physically expected band [%.2g, %.2g]. The re-melt raises the mantle '
+                    'the physically expected band [%.2g, %.2g]. The re-melt raises the '
+                    'melted share of the mantle '
                     'to the temperature-mode initial condition (hotter parts keep their '
                     'state), so its cost is set by the mantle rather than by this collision: a cool mantle '
                     'struck by a small impactor absorbs far more than the impact carried, '
@@ -2347,6 +2618,33 @@ def _core_module_status(config: Config, dirs: dict):
         if config.interior_energetics.aragog.core_bc == 'core_module':
             UpdateStatusfile(dirs, 21)
         raise
+
+
+def lid_flux_provider(config, hf_row: dict):
+    """Flux of the atmosphere [W m-2] at a surface temperature, for the lid-cap corrector.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration options for PROTEUS.
+    hf_row : dict
+        Current helpfile row.
+
+    Returns
+    -------
+    callable or None
+        ``T_surf -> F_atm`` for the dummy atmosphere (the lid refuses ``planet.prevent_warming``
+        at config load, so no lower limit applies); None for a fixed dummy flux and for the other
+        modules, which take the slope of the rows without the corrector.
+    """
+    if config.atmos_clim.module != 'dummy':
+        return None
+    fixed_flux = getattr(config.atmos_clim.dummy, 'fixed_flux', -1.0)
+    if isinstance(fixed_flux, (int, float)) and fixed_flux > 0:
+        return None
+    from proteus.atmos_clim.dummy import net_flux
+
+    return lambda T: net_flux(config, hf_row, T)
 
 
 def run_interior(
@@ -2455,13 +2753,22 @@ def run_interior(
             interior_o._spider_cumulative_time += dtswitch
             interior_o.dt = dtswitch
             return
-        sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
+        sim_time, output = ReadSPIDER(
+            dirs,
+            config,
+            hf_row['R_int'],
+            interior_o,
+            surface_d=hf_row['boundary_layer_thickness'],
+        )
 
     elif config.interior_energetics.module == 'aragog':
+        from aragog.solver.entropy_solver import AcceptedStateRangeError
+
         from proteus.interior_energetics.aragog import AragogRunner, InteriorStalledError
 
         with _core_module_status(config, dirs):
             runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
+        runner._lid_flux_at = lid_flux_provider(config, hf_row)
         try:
             with _core_module_status(config, dirs):
                 sim_time, output = runner.run_solver(
@@ -2471,24 +2778,26 @@ def run_interior(
                     write_data=write_data,
                 )
             interior_o.aragog_fail_count = 0
-        except InteriorStalledError:
-            # InteriorStalledError indicates zero progress across successful steps.
-            # Do not absorb it under the consecutive retry failure counter.
+        except (InteriorStalledError, AcceptedStateRangeError):
+            # Zero progress across successful steps, or an accepted state outside the EOS tables
+            # on the last attempt of the ladder: stop the run, not under the retry counter.
             UpdateStatusfile(dirs, 21)
             raise
         except RuntimeError as e:
             interior_o.aragog_fail_count += 1
+            cause = _aragog_failure_cause(e)
             log.warning(
-                'Aragog retry-ladder exhaustion #%d/%d. '
-                'Keeping previous interior state for this step. Error: %s',
+                '%s #%d/%d. Keeping previous interior state for this step. Error: %s',
+                cause,
                 interior_o.aragog_fail_count,
                 _ARAGOG_MAX_CONSECUTIVE_FAILS,
                 str(e)[:200],
             )
             if interior_o.aragog_fail_count >= _ARAGOG_MAX_CONSECUTIVE_FAILS:
                 log.error(
-                    'Aragog failed %d consecutive times. Aborting.',
+                    'Aragog failed %d consecutive times. Aborting. Last cause: %s',
                     interior_o.aragog_fail_count,
+                    cause,
                 )
                 raise
             # Keep the previous step's hf_row with the call energies at 0; the solver holds
@@ -2591,6 +2900,7 @@ def run_interior(
 
         # Limit large increases to T_magma and T_surf. Skipped on impact steps and
         # when Aragog's pre-step top_cell_dt_limit produced a finite tau_drain.
+        hf_row['T_magma_clipped'] = 0
         aragog_top_dt_limit = (
             config.interior_energetics.module == 'aragog'
             and getattr(
@@ -2610,6 +2920,12 @@ def run_interior(
             if (not impact_reset) and hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
                 log.warning('Prevented large increase to T_magma!')
                 log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
+                guard_t_magma_clip(
+                    dirs,
+                    hf_row,
+                    float(hf_all.iloc[-1].get('lid_weight', 0.0)),
+                    hf_row['T_magma'],
+                )
                 hf_row['T_magma'] = T_magma_prev + dT_delta_magma
                 hf_row['Phi_global'] = Phi_global_prev
 
@@ -2687,6 +3003,28 @@ def run_interior(
     # CALLIOPE + Zalmoxis before the Aragog solver exists, so no refresh
     # is needed there: the first Aragog setup_solver call after
     # equilibration sees the final zalmoxis_output.dat.
+
+
+def _clear_jax_caches_after_resolve(config: Config) -> None:
+    """Free the compiled JAX programs after an accepted structure re-solve.
+
+    Aragog, updated in place on the new structure, compiles its programs again, and
+    those of the previous structure stay mapped until the caches are cleared; a run that
+    re-solves often then reaches the per-process memory-map limit of Linux. Only with the
+    Aragog interior and when JAX is imported; a failure is logged, not raised.
+    """
+    jax = sys.modules.get('jax')
+    if jax is None or config.interior_energetics.module != 'aragog':
+        return
+    t0 = time.perf_counter()
+    try:
+        jax.clear_caches()
+    except Exception as e:
+        log.warning('JAX caches not cleared after the structure re-solve: %s', e)
+        return
+    log.info(
+        'JAX caches cleared after the structure re-solve (%.2f s)', time.perf_counter() - t0
+    )
 
 
 def _refresh_composition_sentinels(dirs: dict, hf_row: dict) -> None:
@@ -2782,6 +3120,68 @@ def _eos_grid_extent_up_step(eos_path: str, hf_row: dict) -> bool:
     span_mesh = outer - inner
     atol = max(1.0, 1.0e-9 * max(span_mesh, 1.0))
     return float(er[-1]) > outer + atol
+
+
+def interior_temperature_handoff(config: Config, interior_o: Interior_t) -> tuple:
+    """Mantle temperature profile handed from the interior to a structure re-solve.
+
+    With a resolved adiabat published by the boundary backend
+    (`interior_o.temp_profile`, read only when that backend runs), the callable follows that adiabat on pressure:
+    the top of the mantle sits at T_p and every level at its own adiabatic
+    temperature wherever the re-solve moves its radius, and the core region,
+    beyond the deepest mantle pressure, at T_cmb. Otherwise it interpolates the
+    layer temperatures `interior_o.temp` on the mid-radii of `interior_o.radius`,
+    sorted by radius (SPIDER stores surface first, Aragog CMB first), and holds
+    T_cmb inside the core.
+
+    Parameters
+    ----------
+    config : Config
+        Model configuration.
+    interior_o : Interior_t
+        Interior state after the energetics step.
+
+    Returns
+    -------
+    r_asc, T_asc : np.ndarray
+        Radius [m], strictly ascending, and temperature [K] of the profile, the
+        r-indexed form the Zalmoxis JAX path takes.
+    temperature_function : callable
+        Maps radius [m] and pressure [Pa] to temperature [K].
+    """
+    profile = None
+    if config.interior_energetics.module == 'boundary':
+        profile = getattr(interior_o, 'temp_profile', None)
+    if profile is not None:
+        radius, pressure, temp = (np.asarray(a, dtype=float).ravel() for a in profile)
+        order = np.argsort(pressure)
+        p_by_p = np.ascontiguousarray(pressure[order])
+        t_by_p = np.ascontiguousarray(temp[order])
+
+        def temperature_function(r, P):
+            return float(np.interp(P, p_by_p, t_by_p))
+
+        order_r = np.argsort(radius)
+        return (
+            np.ascontiguousarray(radius[order_r]),
+            np.ascontiguousarray(temp[order_r]),
+            temperature_function,
+        )
+
+    r_stag = 0.5 * (interior_o.radius[:-1] + interior_o.radius[1:])
+    _r_unsorted = np.asarray(r_stag, dtype=float).ravel()
+    _T_unsorted = np.asarray(interior_o.temp, dtype=float).ravel()
+    _order = np.argsort(_r_unsorted)
+    r_asc = np.ascontiguousarray(_r_unsorted[_order])
+    T_asc = np.ascontiguousarray(_T_unsorted[_order])
+    r_cmb, t_cmb = float(r_asc[0]), float(T_asc[0])
+
+    def temperature_function(r, P):
+        if r <= r_cmb:
+            return t_cmb
+        return float(np.interp(r, r_asc, T_asc))
+
+    return r_asc, T_asc, temperature_function
 
 
 def update_structure_from_interior(
@@ -2880,30 +3280,17 @@ def update_structure_from_interior(
         triggered = True
         reason = f'ceiling ({elapsed:.1f} yr >= {config.interior_struct.zalmoxis.update_interval:.1f} yr)'
 
-    # Stale-aware ceiling: trigger if elapsed time since the LAST
-    # SUCCESSFUL structure refresh (not the last call) exceeds
-    # update_stale_ceiling. Without this, a sequence of failed
-    # re-solves resets `last_struct_time` to the failure time and
-    # the next ceiling waits a full update_interval, meaning Aragog
-    # can integrate through an entire window with a frozen mesh
-    # (tens of kyr). Bypasses the
-    # update_min_interval floor for the same reason as the
-    # mesh-converging trigger: this is a recovery path, not a
-    # routine refresh.
-    if not triggered:
-        stale_ceiling = config.interior_struct.zalmoxis.update_stale_ceiling
-        if stale_ceiling > 0:
-            last_success = float(
-                getattr(interior_o, 'last_successful_struct_time', float('-inf'))
-            )
-            if last_success > float('-inf'):
-                stale_elapsed = current_time - last_success
-                if stale_elapsed >= stale_ceiling:
-                    triggered = True
-                    reason = (
-                        f'stale-aware ceiling ({stale_elapsed:.1f} yr since '
-                        f'last successful re-solve >= {stale_ceiling:.1f} yr)'
-                    )
+    # Recovery after a failed re-solve (structure_stale): re-solve once update_stale_ceiling
+    # has passed since the last attempt, unless another trigger fired first.
+    stale_ceiling = config.interior_struct.zalmoxis.update_stale_ceiling
+    if (
+        not triggered
+        and stale_ceiling > 0
+        and interior_o.structure_stale is True
+        and elapsed >= stale_ceiling
+    ):
+        triggered = True
+        reason = f'recovery ({elapsed:.1f} yr since the last attempt >= {stale_ceiling:.1f} yr)'
 
     # Phi_global absolute change (primary trigger: directly reflects rheological state)
     if not triggered:
@@ -2999,24 +3386,7 @@ def update_structure_from_interior(
 
     outdir = dirs['output']
 
-    # Build the mantle T(r) hand-off from the live interior profile.
-    # interior_o.radius holds basic nodes and interior_o.temp staggered-node
-    # temperatures, but the node ordering is module-dependent: SPIDER stores
-    # surface-first descending radius (spider.py:1308, T_cmb = temp[-1]),
-    # Aragog stores CMB-first ascending radius (aragog.py:1776, r_basic[0]
-    # at the CMB). Sort explicitly by radius rather than assuming either
-    # convention: np.interp requires monotonically increasing xp, and the
-    # CMB anchor below must be the innermost node.
-    r_stag = 0.5 * (interior_o.radius[:-1] + interior_o.radius[1:])
-    _r_unsorted = np.asarray(r_stag, dtype=float).ravel()
-    _T_unsorted = np.asarray(interior_o.temp, dtype=float).ravel()
-    _order = np.argsort(_r_unsorted)
-    _r_asc = np.ascontiguousarray(_r_unsorted[_order])
-    _T_asc = np.ascontiguousarray(_T_unsorted[_order])
-
-    # The interior profile covers only the mantle (CMB to surface), so hold
-    # T constant at the CMB value for the core region.
-    _R_cmb = float(_r_asc[0])
+    _r_asc, _T_asc, temperature_function = interior_temperature_handoff(config, interior_o)
     _T_cmb = float(_T_asc[0])
 
     # Diagnostic: trace the temperature profile actually fed to the structure
@@ -3035,11 +3405,6 @@ def update_structure_from_interior(
         float(hf_row.get('Phi_global', 0.0)),
         float(hf_row.get('R_int', 0.0)),
     )
-
-    def temperature_function(r, P):
-        if r <= _R_cmb:
-            return _T_cmb
-        return float(np.interp(r, _r_asc, _T_asc))
 
     from proteus.interior_struct.zalmoxis import zalmoxis_solver
 
@@ -3087,6 +3452,11 @@ def update_structure_from_interior(
             'R_int',
             'M_int',
             'M_core',
+            'M_core_solve',
+            'M_dissolved_target',
+            'struct_core_T_used',
+            'struct_core_T_excess',
+            'core_density',
             'M_mantle',
             'P_surf',
             'R_core',
@@ -3098,14 +3468,13 @@ def update_structure_from_interior(
         if k in hf_row
     }
 
-    # Running-minimum radius for the monotonic-radius guard. Because each
-    # accepted re-solve under the super-liquidus adiabat IC only lowers R_int,
-    # the last accepted value IS the running minimum, so a single read of the
-    # current hf_row['R_int'] is the bound to compare the new solve against.
-    # Wet exception: an accepted composition-driven up-step (dry_mantle =
-    # false) raises R_int, and the guard then re-anchors to that larger
-    # committed value; the bound stays "last accepted R_int" either way.
+    # Running-minimum radius for the monotonic-radius guard: the last accepted R_int. A cooling
+    # re-solve only lowers it; the heating, wet composition and mass escapes below can raise it,
+    # and the running minimum then re-anchors to that larger committed value.
     R_int_prev = float(hf_row.get('R_int', 0.0) or 0.0)
+
+    # A core table that cannot be built stops the run; the fallback below is for the solve
+    core_table = _structure_core_table(config, interior_o, hf_row, t_fallback=_T_cmb)
 
     # Also hand the (r, T) arrays to Zalmoxis explicitly. The JAX path
     # needs them in r-indexed form because the default P-indexed
@@ -3131,6 +3500,8 @@ def update_structure_from_interior(
             num_spider_nodes=num_spider_nodes,
             temperature_function=temperature_function,
             temperature_arrays=(_r_asc, _T_asc),
+            seed_boundary_temperatures=False,
+            core_temperature_arrays=core_table,
         )
         _zalmoxis_wall = _zalmoxis_time.monotonic() - _zalmoxis_wall_t0
         # Mass-anchor check: enforce |M_int / M_int_target - 1| <
@@ -3144,7 +3515,7 @@ def update_structure_from_interior(
         _M_int = float(hf_row.get('M_int', 0.0) or 0.0)
         if _M_target > 0.0:
             _mass_rel_err = abs(_M_int / _M_target - 1.0)
-            if _mass_rel_err > _ZALMOXIS_MASS_ANCHOR_TOL:
+            if not _mass_rel_err <= _ZALMOXIS_MASS_ANCHOR_TOL:
                 raise RuntimeError(
                     'Zalmoxis mass-anchor violation: '
                     '|M_int / M_int_target - 1| = %.3e > tol=%.3e '
@@ -3158,29 +3529,14 @@ def update_structure_from_interior(
                     )
                 )
 
-        # Monotonic-radius guard for the super-liquidus adiabat IC. A fully
-        # molten super-liquidus start solved on the true P-T adiabat cools and
-        # crystallises against Aragog's evolved P-S interior_o.temp; the
-        # cross-table mismatch can let a re-solve raise R_int slightly above the
-        # running minimum while the interior is in fact cooling, which is a
-        # representation artifact, not real re-inflation. The guard rejects an
-        # up-step ONLY when the interior is cooling over the step, i.e. neither
-        # T_magma nor the melt fraction Phi is rising relative to the last
-        # structure decision. When the mantle is genuinely heating (T_magma
-        # rising, or Phi rising as melt returns) the up-step is physical and is
-        # accepted; the accept criterion is the observed thermal change, not an
-        # assumed mechanism. A wet mantle adds one more physical up-step: a
-        # composition-triggered re-solve with dry_mantle=false can raise R_int
-        # while cooling because the dissolved volatiles lower the mean mantle
-        # density; that case is accepted through _composition_driven below. A reject restores the previous structure (hf_row keys AND the
-        # on-disk zalmoxis_output.dat snapshot) and returns the no-update
-        # sentinel: a clean no-op, NOT a solver failure, so the consecutive-
-        # failure counter is left untouched (a rejected up-step must not count
-        # toward the abort budget) and the stale flag is not raised. The guard is
-        # confined to _use_superliquidus_adiabat_ic runs, where the monotone-
-        # cooling baseline makes an artifact up-step identifiable; other ICs carry
-        # no such expectation and are never clamped.
-        _R_int_new = float(hf_row.get('R_int', 0.0) or 0.0)
+        # An R_int or M_int that is not finite and positive is a failed solve; the guard below
+        # sees only finite, positive values.
+        _require_finite_structure(hf_row, 'Zalmoxis re-solve')
+        _R_int_new = float(hf_row['R_int'])
+
+        # Monotonic-radius guard (super-liquidus adiabat IC only): a cooling R_int up-step is a
+        # cross-table artifact and is rejected, unless the mantle heats, a wet composition trigger
+        # fired, or the retained structure fails the mass anchor against a larger target.
         _scalar_radius_up_step = R_int_prev > 0.0 and _R_int_new > R_int_prev * (
             1.0 + _MONOTONIC_RINT_REL_TOL
         )
@@ -3226,7 +3582,16 @@ def update_structure_from_interior(
         # still rejects under cooling; that narrows the escape, it does not
         # reopen the freeze.
         _composition_driven = comp_changed and not config.interior_struct.zalmoxis.dry_mantle
-        _accept_up_step = _interior_reinflating or _composition_driven
+        # Mass escape: the retained structure fails the mass anchor (its operator) against a larger
+        # new target. Scalar up-step only; this escape never keeps a mesh beyond R_int.
+        _M_retained = float(_saved_structure.get('M_int', 0.0) or 0.0)
+        _target_outgrown = (
+            _scalar_radius_up_step
+            and not _grid_extent_up_step
+            and 0.0 < _M_retained < _M_target
+            and abs(_M_retained / _M_target - 1.0) > _ZALMOXIS_MASS_ANCHOR_TOL
+        )
+        _accept_up_step = _interior_reinflating or _composition_driven or _target_outgrown
         if _superliq and _is_up_step and _accept_up_step:
             if _interior_reinflating:
                 log.info(
@@ -3243,7 +3608,7 @@ def update_structure_from_interior(
                     last_Phi,
                     _Phi_now,
                 )
-            else:
+            elif _composition_driven:
                 log.info(
                     'Accepted R_int increase from a composition-driven wet '
                     're-solve on the super-liquidus adiabat IC: re-solve '
@@ -3255,6 +3620,23 @@ def update_structure_from_interior(
                     _R_int_new,
                     R_int_prev,
                 )
+            if _target_outgrown:
+                log.info(
+                    'Accepted R_int increase on the super-liquidus adiabat IC because the retained '
+                    'structure fails the mass anchor against the new solve target: re-solve '
+                    'R_int=%.6e m rose above the running minimum %.6e m; retained M_int=%.6e kg, '
+                    'solve target M_target=%.6e kg (ratio %.6f, relative miss %.3e > anchor %.1e), '
+                    'so the new structure is kept.',
+                    _R_int_new,
+                    R_int_prev,
+                    _M_retained,
+                    _M_target,
+                    _M_target / _M_retained,
+                    1.0 - _M_retained / _M_target,
+                    _ZALMOXIS_MASS_ANCHOR_TOL,
+                )
+                if not (_interior_reinflating or _composition_driven):
+                    _warn_mass_escape_radius_step(hf_row, R_int_prev, _M_retained, _M_target)
         if _superliq and _is_up_step and not _accept_up_step:
             if _scalar_radius_up_step:
                 log.info(
@@ -3319,22 +3701,11 @@ def update_structure_from_interior(
                 dirs['spider_mesh'] = prev_path
             dirs['mesh_shift_active'] = False
             dirs['mesh_convergence_steps'] = 0
-            del r_stag, _r_unsorted, _T_unsorted
+            del _r_asc, _T_asc, temperature_function
             gc.collect()
-            # Advance the trigger clock and the stale-aware anchor so a
-            # persistent cross-table artifact does not re-fire an expensive
-            # re-solve every timestep: the retained previous structure is the
-            # current best structure, so this state is "checked at current_time".
-            # The sentinels advance like the success path (current Phi/T_magma),
-            # but the structure itself is unchanged.
-            try:
-                interior_o.last_successful_struct_time = float(current_time)
-            except AttributeError:
-                pass
-            # The previous structure was retained, so the accepted radius did
-            # not change: record zero so the resume-settling guard treats this
-            # as converged and suppresses further spurious dT/T re-solves (a
-            # rejected cross-table up-step recurs every step otherwise).
+            # The structure is unchanged: advance the trigger clock and sentinels and record a
+            # zero radius change, so a recurring cross-table up-step neither re-fires a re-solve
+            # every step nor keeps the resume-settling guard from treating it as converged.
             dirs['_last_resolve_dR_rel'] = 0.0
             # Advance the dissolved-volatile composition sentinels exactly as the
             # success path does. This reject path returns before the success-path
@@ -3348,6 +3719,7 @@ def update_structure_from_interior(
             # contracts, the down-step re-solve is accepted, and EOS regeneration
             # resumes on the success path.
             _refresh_composition_sentinels(dirs, hf_row)
+            _warn_committed_mass_miss(hf_row)
             return (
                 current_time,
                 float(hf_row['T_magma']),
@@ -3381,14 +3753,6 @@ def update_structure_from_interior(
         _R_int_post = float(hf_row.get('R_int', 0.0) or 0.0)
         if R_int_prev > 0.0:
             dirs['_last_resolve_dR_rel'] = abs(_R_int_post - R_int_prev) / R_int_prev
-        # Anchor the stale-aware ceiling on the last SUCCESSFUL
-        # re-solve (vs `last_struct_time` which is reset on every
-        # call regardless of success).
-        try:
-            interior_o.last_successful_struct_time = float(current_time)
-        except AttributeError:
-            # Mock callers without Interior_t: best-effort no-op.
-            pass
         # Per-re-solve wall-time trace logged at INFO so the
         # convergence cadence cost can be read from proteus_00.log.
         log.info(
@@ -3396,6 +3760,7 @@ def update_structure_from_interior(
             _zalmoxis_wall,
             reason,
         )
+        _clear_jax_caches_after_resolve(config)
     except RuntimeError as e:
         interior_o.zalmoxis_fail_count += 1
         log.warning(
@@ -3567,7 +3932,7 @@ def update_structure_from_interior(
         dirs['mesh_convergence_steps'] = 0
 
     # Clean up temporary arrays
-    del r_stag, _r_unsorted, _T_unsorted
+    del _r_asc, _T_asc, temperature_function
     gc.collect()
 
     # Regenerate P-S EOS tables when volatile shifts exceed 5%.
@@ -3596,7 +3961,81 @@ def update_structure_from_interior(
         hf_row['R_int'],
         hf_row['gravity'],
     )
+    _warn_committed_mass_miss(hf_row)
     return (current_time, float(hf_row['T_magma']), float(hf_row['Phi_global']))
+
+
+def _warn_mass_escape_radius_step(
+    hf_row: dict, r_prev: float, m_retained: float, m_target: float
+) -> None:
+    """Warn when a step kept by the mass escape alone has a large radius step for its mass rise.
+
+    The bound is ``_MASS_ESCAPE_RADIUS_SLOPE * dM/M + _MASS_ESCAPE_RADIUS_OFFSET``, with dM/M the
+    rise of the mass the solve reached over the retained mass. The step is kept either way. The
+    bound lies above every measured mass-driven step plus the largest measured artefact, so the
+    warning marks a radius step larger than any measured one; an artefact of measured size passes
+    without a warning. The caller passes only a finite, positive radius and reached mass.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row after the solve, read for ``R_int`` [m] and ``M_int`` [kg].
+    r_prev : float
+        Running minimum of R_int before the solve [m].
+    m_retained : float
+        M_int of the retained structure [kg].
+    m_target : float
+        Mass target of the solve [kg].
+    """
+    d_r = float(hf_row['R_int']) / r_prev - 1.0
+    m_reached = float(hf_row['M_int'])
+    d_m = m_reached / m_retained - 1.0
+    bound = _MASS_ESCAPE_RADIUS_SLOPE * d_m + _MASS_ESCAPE_RADIUS_OFFSET
+    if not d_r <= bound:
+        log.warning(
+            'Mass escape keeps a radius step above its radius bound on the super-liquidus '
+            'adiabat IC: dR/R=%.6e > bound %.6e = %.1f dM/M + %.1e at the reached dM/M=%.6e '
+            '(target rise %.6e; retained M_int=%.6e kg, reached M_int=%.6e kg, M_target=%.6e kg). '
+            'The kept structure can carry a representation artefact.',
+            d_r,
+            bound,
+            _MASS_ESCAPE_RADIUS_SLOPE,
+            _MASS_ESCAPE_RADIUS_OFFSET,
+            d_m,
+            m_target / m_retained - 1.0,
+            m_retained,
+            m_reached,
+            m_target,
+        )
+
+
+def _warn_committed_mass_miss(hf_row: dict) -> None:
+    """Warn when the committed structure misses its live mass target by more than the anchor.
+
+    A solve writes its target only when it succeeds. Three fall-backs restore M_int but keep the new
+    target, so the committed structure can miss it: a rejected radius up-step, a solve refused by
+    the mass anchor, and a solve refused because R_int or M_int is not finite and positive. With
+    both keys set, a NaN or infinite value also warns.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row, read for ``M_int`` and ``M_int_target`` [kg].
+    """
+    m_target = float(hf_row.get('M_int_target', 0.0) or 0.0)
+    m_int = float(hf_row.get('M_int', 0.0) or 0.0)
+    if m_target == 0.0 or m_int == 0.0:
+        return
+    miss = abs(m_int / m_target - 1.0)
+    if not miss <= _ZALMOXIS_MASS_ANCHOR_TOL:
+        log.warning(
+            'Committed structure misses its mass target: M_int=%.6e kg, '
+            'M_int_target=%.6e kg, relative miss %.3e, anchor %.1e.',
+            m_int,
+            m_target,
+            miss,
+            _ZALMOXIS_MASS_ANCHOR_TOL,
+        )
 
 
 def get_all_output_times(output_dir: str, model: str):

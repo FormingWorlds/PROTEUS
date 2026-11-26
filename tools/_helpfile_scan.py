@@ -37,11 +37,12 @@ DOMAIN_LISTS = {
     'element_list',
     'vol_list',
     'noble_gases',
+    'soluble_gases',
     'vap_list',
     'vol_gas_list',
     'vol_element_list',
     'vap_element_list',
-    'condensate_list',
+    'condensate_density',
     'VOLATILE_EOS_MAP',
 }
 
@@ -78,7 +79,7 @@ _GASES_VOL = TemplateOverride(('gas_list', 'vol_element_list'))
 _TRAPPED = TemplateOverride(('vol_list', 'vol_element_list', 'noble_gases'))
 _TRAPPED_ELEMENTS = TemplateOverride(('vol_element_list', 'noble_gases'))
 _VOL_ELEMENTS = TemplateOverride(('vol_element_list',))
-_CONDENSATES = TemplateOverride(('condensate_list',))
+_CONDENSATES = TemplateOverride(('condensate_density',))
 _TRAPPED_SPECIES = TemplateOverride(('vol_list', 'noble_gases'))
 _NOBLE = TemplateOverride(('noble_gases',))
 
@@ -89,6 +90,7 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
     ('accretion/wrapper.py', '_partition_impactor_content', '<?>_kg_total'): _ELEMENTS,
     ('accretion/wrapper.py', '_apply_volatile_consequences', '<?>_kg_total'): _ELEMENTS,
     ('accretion/wrapper.py', '_restore_volatile_budgets', '<?>_kg_total'): _ELEMENTS,
+    ('atmos_chem/common.py', 'escape_atom_fluxes', 'esc_rate_<?>'): _VOL_ELEMENTS,
     ('escape/wrapper.py', 'calc_new_elements', '<?>_kg_total'): _ELEMENTS,
     ('escape/wrapper.py', 'run_escape', '<?>_kg_total'): _ELEMENTS,
     ('escape/common.py', 'calc_unfract_fluxes', 'esc_rate_<?>'): _ELEMENTS,
@@ -152,6 +154,32 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
     ('outgas/trapping.py', '_move', '<?>_mol_liquid'): _TRAPPED_SPECIES,
     ('outgas/trapping.py', '_move', '<?>_mol_solid'): _TRAPPED_SPECIES,
     ('outgas/trapping.py', 'run_trapping', '<?>_kg_liquid'): _TRAPPED_SPECIES,
+    ('outgas/lid_seal.py', 'close_seal', '<?>_kg_liquid'): _TRAPPED,
+    ('outgas/lid_seal.py', 'close_seal', '<?>_kg_sealed'): _TRAPPED,
+    ('outgas/lid_seal.py', 'close_seal', '<?>_mol_liquid'): _TRAPPED_SPECIES,
+    ('outgas/lid_seal.py', 'close_seal', '<?>_mol_sealed'): _TRAPPED_SPECIES,
+    ('outgas/lid_seal.py', 'open_seal', '<?>_kg_liquid'): _TRAPPED,
+    ('outgas/lid_seal.py', 'open_seal', '<?>_kg_sealed'): _TRAPPED,
+    ('outgas/lid_seal.py', 'open_seal', '<?>_mol_liquid'): _TRAPPED_SPECIES,
+    ('outgas/lid_seal.py', 'open_seal', '<?>_mol_sealed'): _TRAPPED_SPECIES,
+    ('outgas/lid_seal.py', 'leak_step', '<?>_kg_sealed'): _TRAPPED,
+    ('outgas/lid_seal.py', 'leak_step', '<?>_mol_sealed'): _TRAPPED_SPECIES,
+    ('outgas/lid_seal.py', '_leaks', '<?>_mol_sealed'): _TRAPPED_SPECIES,
+    ('outgas/lid_seal.py', '_check_floors', '<?>_kg_atm'): _TRAPPED_SPECIES,
+    ('outgas/lid_seal.py', '_check_floors', '<?>_mol_atm'): _TRAPPED_SPECIES,
+    ('outgas/lid_seal.py', '_check_floors', '<?>_mol_sealed'): _TRAPPED_SPECIES,
+    ('outgas/lid_seal.py', 'leak_step', '<?>_kg_atm'): _TRAPPED,
+    ('outgas/lid_seal.py', 'leak_step', '<?>_mol_atm'): _TRAPPED_SPECIES,
+    ('outgas/lid_seal.py', 'leak_step', '<?>_kg_leak_tau'): _TRAPPED_ELEMENTS,
+    ('outgas/lid_seal.py', 'leak_step', '<?>_kg_leak_volc'): _TRAPPED_ELEMENTS,
+    ('outgas/lid_seal.py', 'reset_step_columns', '<?>_kg_leak_tau'): _TRAPPED_ELEMENTS,
+    ('outgas/lid_seal.py', 'reset_step_columns', '<?>_kg_leak_volc'): _TRAPPED_ELEMENTS,
+    ('outgas/lid_seal.py', 'restore_seal_state', '<?>_kg_sealed'): _TRAPPED,
+    ('outgas/lid_seal.py', 'clear_seal', '<?>_kg_sealed'): _TRAPPED,
+    ('outgas/lid_seal.py', 'clear_seal', '<?>_mol_sealed'): _TRAPPED_SPECIES,
+    ('outgas/lid_seal.py', 'assert_sealed_row', '<?>_kg_sealed'): _TRAPPED,
+    ('outgas/lid_seal.py', 'assert_sealed_row', '<?>_kg_liquid'): _TRAPPED,
+    ('outgas/lid_seal.py', 'sealed_mass', '<?>_kg_sealed'): _TRAPPED_ELEMENTS,
 }
 
 # Dynamic-key writes that are not producers: save/restore of overridden
@@ -165,6 +193,7 @@ SUPPRESSED_DYNAMIC_WRITES = {
     # The mass-ratio loop assembles its key in a local; EXTRA_PRODUCERS
     # declares the full expansion for it.
     ('outgas/wrapper.py', 'run_outgassing'),
+    ('outgas/common.py', 'set_element_ratios'),
     # The trapped mass withheld from, and restored to, reservoirs the
     # chemistry and the trapping step already write, around each solve.
     ('outgas/trapping.py', '_shift'),
@@ -181,9 +210,9 @@ SUPPRESSED_DYNAMIC_WRITES = {
 }
 
 # Producers that assemble their key through a local variable the visitor
-# cannot follow: run_outgassing derives every element mass-ratio column.
+# cannot follow: set_element_ratios derives every element mass-ratio column.
 EXTRA_PRODUCERS = [
-    ('outgas/wrapper.py', 'run_outgassing', '<e2>/<e1>_atm'),
+    ('outgas/common.py', 'set_element_ratios', '<e2>/<e1>_atm'),
 ]
 
 

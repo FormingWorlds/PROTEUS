@@ -217,6 +217,7 @@ Cross-field constraints enforced when the config file loads:
 
 - Reject accretion runs with a stratified Aragog core_module core.
 - Reject accretion runs on an interior that cannot apply an impact.
+- Reject accretion.remelt = 'computed' without a module that reports a melt fraction.
 - Reject accretion runs that also vapourise rock into the atmosphere.
 - Reject an Aragog core_module core that its structure or solver cannot serve.
 - Check that required external packages are importable for the selected modules.

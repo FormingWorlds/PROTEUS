@@ -27,6 +27,7 @@ import toml
 
 from proteus.config import UnknownConfigKeyError, read_config_object
 from proteus.grid import manage as gm
+from proteus.grid.dimensions import dimension_values
 from proteus.grid.manage import (
     Grid,
     _thread_target,
@@ -931,6 +932,87 @@ class TestWriteConfigFiles:
 class TestSlurmConfig:
     """slurm_config: writes a sbatch script with the right knobs."""
 
+    @pytest.fixture(autouse=True)
+    def _no_scontrol(self, monkeypatch):
+        """Give the array limit of a cluster without calling scontrol."""
+        monkeypatch.setattr(gm, 'max_array_size', lambda: 1001)
+
+    def test_packed_jobs_get_their_cores_and_the_memory_per_case(
+        self, grid_with_mocks, monkeypatch
+    ):
+        """Five cases at two cores per job make three jobs of two cores, each core with
+        the memory of one case, and max_jobs = 5 cases at a time allows two jobs."""
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0, 2.0, 3.0, 4.0])
+        g.generate()
+        monkeypatch.setattr(g, 'write_config_files', lambda: None)
+
+        g.slurm_config(max_jobs=5, test_run=True, max_days=1, max_mem=3, cores_per_job=2)
+        contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
+        # ceil(5 / 2) = 3 jobs; 5 // 2 = 2 at a time (5 would exceed max_jobs cases)
+        assert '--array=0-2%2' in contents
+        assert '--cpus-per-task=2' in contents
+        assert '--mem-per-cpu=3072M' in contents
+        assert '--mem-per-cpu=6144M' not in contents  # memory per job, not per case
+        assert 'seq $SLURM_ARRAY_TASK_ID 3 4' in contents
+
+    def test_array_limit_stretches_the_wall_time_by_the_waves(
+        self, grid_with_mocks, monkeypatch
+    ):
+        """With room for only two jobs, five single-core cases need three cases per core
+        in turn, so the wall time is three times max_days."""
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0, 2.0, 3.0, 4.0])
+        g.generate()
+        monkeypatch.setattr(g, 'write_config_files', lambda: None)
+        monkeypatch.setattr(gm, 'max_array_size', lambda: 2)
+
+        g.slurm_config(max_jobs=5, test_run=True, max_days=0.5, max_mem=3)
+        contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
+        assert '--array=0-1%2' in contents
+        assert '--time=2160\n' in contents  # 3 waves of half a day, in minutes
+        assert '--time=720\n' not in contents  # one wave
+
+    def test_fewer_cases_at_once_than_one_job_still_allows_one_job(
+        self, grid_with_mocks, monkeypatch
+    ):
+        """max_jobs = 4 cases at a time with 16 cores per job rounds down to no job at
+        all; the throttle is raised to one job, not left at zero."""
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_linspace('m', 0.5, 4.0, 20)  # 20 cases make 2 jobs of 16 cores
+        g.generate()
+        monkeypatch.setattr(g, 'write_config_files', lambda: None)
+
+        g.slurm_config(max_jobs=4, test_run=True, max_days=1, max_mem=1.5, cores_per_job=16)
+        contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
+        assert '--array=0-1%1\n' in contents
+        assert '--array=0-1%0' not in contents  # max_jobs // cores_per_job
+
+    def test_idle_cores_are_reported_and_the_layout_kept(
+        self, grid_with_mocks, monkeypatch, caplog
+    ):
+        """20 cases on 16 cores per job leave 37.5 % of the cores idle: slurm_config logs
+        a warning and still writes the same 2 jobs of 16 cores."""
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_linspace('m', 0.5, 4.0, 20)
+        g.generate()
+        monkeypatch.setattr(g, 'write_config_files', lambda: None)
+
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.grid.slurm'):
+            g.slurm_config(
+                max_jobs=32, test_run=True, max_days=1, max_mem=1.5, cores_per_job=16
+            )
+        contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
+        assert '--array=0-1%2\n' in contents
+        assert '--cpus-per-task=16\n' in contents
+        idle = [r.getMessage() for r in caplog.records if r.name == 'fwl.proteus.grid.slurm']
+        assert len(idle) == 1
+        assert '37.5% of their cores and memory idle' in idle[0]
+
     def test_slurm_script_contents_test_run(self, grid_with_mocks, monkeypatch, tmp_path):
         """``slurm_config(..., test_run=True)`` writes a slurm_dispatch.sh
         with the echo-stub command. The SBATCH array bound matches size.
@@ -957,16 +1039,47 @@ class TestSlurmConfig:
         g.slurm_config(max_jobs=4, test_run=True, max_days=2, max_mem=8)
         slurm_path = os.path.join(g.outdir, 'slurm_dispatch.sh')
         assert os.path.isfile(slurm_path)
-        contents = open(slurm_path).read()
+        contents = Path(slurm_path).read_text()
         # Discriminating: test_run picks the echo stub, not the real CLI.
         assert '/bin/echo' in contents
         assert 'proteus start' not in contents
         # SBATCH array goes 0 to size-1; with size=2 that is 0-1.
         assert '--array=0-1' in contents
         # max_days propagated:
-        assert '--time=2-00' in contents
-        # max_mem propagated:
-        assert '--mem-per-cpu=8G' in contents
+        assert '--time=2880\n' in contents  # 2 days in minutes
+        # max_mem propagated, converted from GB to MB: 8 GB is 8192 MB
+        assert '--mem-per-cpu=8192M' in contents
+
+    def test_slurm_script_converts_non_integer_days_and_memory(
+        self, grid_with_mocks, monkeypatch
+    ):
+        """A non-integer allocation of 1.5 days and 2.5 GB is written as the Slurm time
+        2160 minutes and the memory 2560M, not truncated to whole days or whole GB."""
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+
+            def write(self, path):
+                with open(path, 'w') as h:
+                    h.write('')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        g.slurm_config(max_jobs=4, test_run=True, max_days=1.5, max_mem=2.5)
+        contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
+        # 1.5 days is 2160 minutes; 2.5 GB is 2.5 * 1024 = 2560 MB
+        assert '--time=2160\n' in contents
+        assert '--mem-per-cpu=2560M' in contents
+        # Truncating to whole days or whole GB would give these instead
+        assert '--time=1440\n' not in contents
+        assert '--mem-per-cpu=2048M' not in contents
 
     def test_slurm_script_real_run_uses_proteus(self, grid_with_mocks, monkeypatch):
         """When ``test_run=False`` the dispatch command is the real CLI."""
@@ -989,7 +1102,7 @@ class TestSlurmConfig:
 
         g.slurm_config(max_jobs=1, test_run=False, max_days=1, max_mem=4)
         slurm_path = os.path.join(g.outdir, 'slurm_dispatch.sh')
-        contents = open(slurm_path).read()
+        contents = Path(slurm_path).read_text()
         # Discriminating against the test_run branch:
         assert 'proteus start --offline --config' in contents
         assert '/bin/echo' not in contents
@@ -1018,7 +1131,7 @@ class TestSlurmConfig:
         # Caller asks for 99 jobs but only 2 points exist.
         g.slurm_config(max_jobs=99, test_run=True, max_days=1, max_mem=4)
         slurm_path = os.path.join(g.outdir, 'slurm_dispatch.sh')
-        contents = open(slurm_path).read()
+        contents = Path(slurm_path).read_text()
         # Discriminating: throttle is 2 (the size), not 99.
         assert '%2' in contents
         assert '%99' not in contents
@@ -1045,12 +1158,12 @@ class TestSlurmConfig:
         monkeypatch.setattr(gm.os, 'sync', lambda: None)
 
         g.slurm_config(max_jobs=2, test_run=True, max_days=1, max_mem=4)
-        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
         # No cache env vars at all on the default path.
         assert 'JAX_COMPILATION_CACHE_DIR' not in contents
         assert 'JAX_COMPILATION_CACHE_MAX_SIZE' not in contents
         # The dispatch body is still emitted, so this is a real script.
-        assert 'i=$SLURM_ARRAY_TASK_ID' in contents
+        assert 'seq $SLURM_ARRAY_TASK_ID' in contents
 
     def test_slurm_script_includes_bounded_jax_cache_when_enabled(
         self, grid_with_mocks, monkeypatch
@@ -1078,7 +1191,7 @@ class TestSlurmConfig:
         monkeypatch.setattr(gm.os, 'sync', lambda: None)
 
         g.slurm_config(max_jobs=2, test_run=True, max_days=1, max_mem=4, jax_cache=True)
-        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
         expected_dir = os.path.join(g.outdir, 'jax_cache')
         # Cache directory lives under the grid outdir (self-contained).
         assert f'export JAX_COMPILATION_CACHE_DIR={expected_dir}' in contents
@@ -1089,7 +1202,7 @@ class TestSlurmConfig:
         assert 'export JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS=1' in contents
         assert 'export JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES=4096' in contents
         # The work loop still follows the env block.
-        assert 'i=$SLURM_ARRAY_TASK_ID' in contents
+        assert 'seq $SLURM_ARRAY_TASK_ID' in contents
 
 
 # ---------------------------------------------------------------------------
@@ -1237,6 +1350,47 @@ class TestGridRun:
         # the run failed for the documented reason, not some other path).
         assert not os.path.exists(g._get_tmpcfg(0))
 
+    def test_run_marks_cases_without_a_final_status_as_died(self, grid_with_mocks, monkeypatch):
+        """After all children exit, a case whose status still reads running, whose status
+        file is empty, or that never wrote one (it stopped before `Proteus.start`, #778)
+        gets status 25; a completed case keeps its code, and a missing file in the first
+        case does not stop the check of the cases after it."""
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0, 2.0, 3.0])
+        g.generate()
+        monkeypatch.setattr(g, 'write_config_files', lambda: None)
+        for i in range(g.size):
+            with open(g._get_tmpcfg(i), 'w') as h:
+                h.write('# fake\n')
+
+        # Case 0 leaves nothing, case 1 a running status, case 2 an empty file, case 3 done.
+        written = {1: '1\nRunning\n', 2: '', 3: '13\nCompleted (target time)\n'}
+
+        def _child(command, **_kwargs):
+            i = int(os.path.basename(command[-1]).removesuffix('.toml').split('_')[1])
+            if i in written:
+                case_dir = os.path.join(g.outdir, g.CONFIG_BASENAME % i)
+                os.makedirs(case_dir, exist_ok=True)
+                with open(os.path.join(case_dir, 'status'), 'w') as h:
+                    h.write(written[i])
+            return mock.MagicMock(returncode=1)
+
+        monkeypatch.setattr(gm.subprocess, 'run', _child)
+        monkeypatch.setattr(gm.time, 'sleep', lambda *a, **k: None)
+        monkeypatch.setattr(gm.multiprocessing, 'Process', _ImmediateDoneProcess)
+
+        g.run(num_threads=2, test_run=False, check_interval=0.01)
+
+        def _status(i):
+            path = os.path.join(g.outdir, g.CONFIG_BASENAME % i, 'status')
+            with open(path) as h:
+                return h.read().splitlines()
+
+        assert [_status(i)[0] for i in range(4)] == ['25', '25', '25', '13']
+        assert _status(0)[1] == 'Error (died, or exit requested by user)'
+        assert _status(3)[1] == 'Completed (target time)'
+
 
 # ---------------------------------------------------------------------------
 # grid_from_config
@@ -1304,6 +1458,40 @@ class TestGridFromConfig:
             grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
         assert '"planet.mass_tot"' in str(exc.value)
         assert old.read_text() == 'kept\n'
+
+    @pytest.mark.parametrize(
+        ('table', 'match'),
+        [
+            ({'plot_ecfd': True}, 'Unknown key'),
+            ({'style': 'midnight'}, 'style'),
+            ({'colormap': 'batlowK_rr'}, 'colour map'),
+        ],
+        ids=['misspelt_key', 'unknown_style', 'misspelt_colour_map'],
+    )
+    def test_bad_post_processing_table_stops_the_grid_at_launch(
+        self, fake_proteus_dir, monkeypatch, table, match
+    ):
+        """A misspelt [post_processing] key or value stops `proteus grid` before the
+        grid is built (no Grid, no output folder), not only `grid-analyse` after the
+        grid has run; a valid table lets the grid start.
+        """
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            dimensions={'post_processing': table, 'planet.mass_tot': _DIM},
+        )
+        built = mock.MagicMock(return_value=mock.MagicMock(size=1))
+        monkeypatch.setattr(gm, 'Grid', built)
+        with pytest.raises(ValueError, match=match):
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert built.call_count == 0
+        assert not (fake_proteus_dir / 'output' / 'unit_grid').exists()
+        _write_grid_toml(
+            grid_path,
+            dimensions={'post_processing': {'style': 'dark'}, 'planet.mass_tot': _DIM},
+        )
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert built.call_count == 1
 
     @pytest.mark.parametrize(
         ('values', 'reason'),
@@ -1499,6 +1687,58 @@ class TestGridFromConfig:
         grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
         assert len(calls) == 1
         assert calls[0]['jax_cache'] is expected
+
+    @pytest.mark.parametrize(
+        ('extra', 'expected'),
+        [({}, 1), ({'cores_per_job': 16}, 16)],
+        ids=['absent', 'one-eighth-rome-node'],
+    )
+    def test_cores_per_job_reaches_the_slurm_script(
+        self, fake_proteus_dir, monkeypatch, extra, expected
+    ):
+        """cores_per_job reaches slurm_config as written; an absent key is one core."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            use_slurm=True,
+            dimensions={**extra, 'planet.mass_tot': {'method': 'direct', 'values': [0.5]}},
+        )
+        calls = []
+        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: calls.append(k))
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert len(calls) == 1
+        assert calls[0]['cores_per_job'] == expected
+
+    @pytest.mark.parametrize(
+        'value', [0, -16, 1.5, True, '16'], ids=['zero', 'negative', 'float', 'bool', 'string']
+    )
+    def test_a_cores_per_job_that_is_not_a_positive_integer_is_refused(
+        self, fake_proteus_dir, monkeypatch, value
+    ):
+        """A cores_per_job below 1 or not an integer stops the grid with the key and the
+        grid file named, before the old output is removed and before any dispatch."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        old = fake_proteus_dir / 'output' / 'unit_grid' / 'case_000000' / 'runtime_helpfile.csv'
+        old.parent.mkdir(parents=True)
+        old.write_text('kept\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            use_slurm=True,
+            dimensions={
+                'cores_per_job': value,
+                'planet.mass_tot': {'method': 'direct', 'values': [0.5]},
+            },
+        )
+        calls = []
+        monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: calls.append('run'))
+        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: calls.append('slurm'))
+        with pytest.raises(ValueError, match='cores_per_job must be an integer of at least 1'):
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert calls == []
+        assert old.read_text() == 'kept\n'
 
     @pytest.mark.parametrize(
         ('key', 'value', 'reason'),
@@ -2777,7 +3017,8 @@ def test_shipped_grid_files_pass_the_key_check(rel_path):
 
 
 def test_grid_settings_match_the_keys_grid_from_config_reads(fake_proteus_dir, monkeypatch):
-    """GRID_SETTINGS holds the settings grid_from_config reads plus config_version."""
+    """GRID_SETTINGS holds the settings grid_from_config reads plus config_version,
+    which it only accepts; the post_processing table is read to check it at launch."""
 
     class Recorder(dict):
         def __getitem__(self, key):
@@ -2796,3 +3037,25 @@ def test_grid_settings_match_the_keys_grid_from_config_reads(fake_proteus_dir, m
     grid_from_config(str(fake_proteus_dir / 'g.toml'), test_run=True, check_interval=0.0)
     assert 'planet.mass_tot' in read
     assert read - {'planet.mass_tot'} == gm.GRID_SETTINGS - {'config_version'}
+
+
+# ---------------------------------------------------------------------------
+# Grid setters and the shared axis builders (proteus.grid.dimensions)
+# ---------------------------------------------------------------------------
+
+
+class TestDimensionValues:
+    """Grid setters use the axis builders shared with the grid analysis."""
+
+    def test_grid_setter_and_dimension_values_agree(self, grid_with_mocks):
+        """A Grid axis and dimension_values build identical values for one table,
+        so the grid run and its analysis see the same swept values.
+        """
+        g = grid_with_mocks
+        g.add_dimension('e', 'orbit.eccentricity')
+        g.set_dimension_logspace('e', 1e-3, 1e-1, 3)
+        expected = dimension_values(
+            {'method': 'logspace', 'start': 1e-3, 'stop': 1e-1, 'count': 3}
+        )
+        assert g.dim_avars['e'] == expected
+        assert expected == pytest.approx([1e-3, 1e-2, 1e-1])  # correct endpoints/spacing

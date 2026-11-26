@@ -210,8 +210,7 @@ class AragogJAXRunner:
             t_now = float(hf_row.get('Time', 0.0))
             raise RuntimeError(
                 f'JAX Aragog solver failed: t_final={float(result.t_final):.3e} yr, '
-                f'steps={result.n_steps} at t={t_now:.3e} yr. Wrapper retry-ladder '
-                f'will engage.'
+                f'steps={result.n_steps} at t={t_now:.3e} yr. The wrapper skips this step.'
             )
 
         # Save entropy for next step

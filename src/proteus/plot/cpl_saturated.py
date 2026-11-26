@@ -8,21 +8,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import condensate_density, condensate_list, condensate_names
+from proteus.utils.constants import (
+    CONDENSATE_HELD_MASS_KG,
+    CONDENSATE_SATURATED_ACTIVITY,
+    condensate_density,
+    condensate_names,
+)
 from proteus.utils.plot import get_colour
 
 if TYPE_CHECKING:
     from proteus import Proteus
 
 log = logging.getLogger('fwl.' + __name__)
-
-# Activity at and above which a condensate counts as saturated (stable)
-SATURATED = 0.999
-
-# Condensed mass above which a point carries a real layer [kg]. Below saturation the
-# solver reports only a floor of order 1e-6 kg; a larger mass at lower activity is a
-# layer held by outgas.prevent_desaturation.
-HELD_MASS_KG = 1.0
 
 
 def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
@@ -45,7 +42,7 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
 
     # Condensates with at least two points solved for or holding a layer
     solved = {}
-    for c in condensate_list:
+    for c in condensate_density.keys():
         if f'{c}_cd_activity' not in hf_crop.columns or f'{c}_cd_kg' not in hf_crop.columns:
             continue
         activity = np.array(hf_crop[f'{c}_cd_activity'], dtype=float)
@@ -54,7 +51,7 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
         # A layer held by outgas.prevent_desaturation counts at any activity: once it
         # takes nearly all of its element the condensate leaves the network, and its
         # activity is written as 0.
-        held = np.isfinite(mass) & (mass > HELD_MASS_KG)
+        held = np.isfinite(mass) & (mass > CONDENSATE_HELD_MASS_KG)
         if np.count_nonzero(valid | held) >= 2:
             solved[c] = (activity, valid, mass, held)
     if not solved:
@@ -88,7 +85,7 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
 
         # Below saturation the condensed mass is only the solver's floor, so only
         # saturated points, or a layer held from re-vapourising, carry a mass.
-        keep = held | (valid & (activity >= SATURATED))
+        keep = held | (valid & (activity >= CONDENSATE_SATURATED_ACTIVITY))
         mass = np.where(keep, mass, 0.0)
         column = mass / area
         ax1.plot(time, column / C_uval, lw=lw, color=col)

@@ -177,7 +177,7 @@ def test_instant_migration_is_a_step_with_an_inclusive_switch():
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_sigmoid_matches_the_cubic_smoothstep_across_the_window():
+def test_sigmoid_matches_the_cubic_smoothstep_across_the_window(validation_plot):
     """Analytical limit: the cubic Hermite interpolant that carries a
     value between two endpoints with zero slope at both is
     ``S(u) = 3u^2 - 2u^3``, evaluated on the window fraction
@@ -190,21 +190,29 @@ def test_sigmoid_matches_the_cubic_smoothstep_across_the_window():
 
     The quarter point is what separates the cubic from its neighbours: a
     linear ramp would put it at 1.7 AU and the quintic smootherstep
-    ``6u^5 - 15u^4 + 10u^3`` at 1.8757 AU, both outside the tolerance.
+    ``6u^5 - 15u^4 + 10u^3`` at 1.8758 AU, both outside the tolerance.
     See ``docs/Validation/orbit/parameterized.md``.
     """
-    quarter = sigmoid_migration(T_MIG + 0.25 * TAU, SMA_I, SMA_F, T_MIG, TAU)
-    middle = sigmoid_migration(T_MIG + 0.50 * TAU, SMA_I, SMA_F, T_MIG, TAU)
-    three_q = sigmoid_migration(T_MIG + 0.75 * TAU, SMA_I, SMA_F, T_MIG, TAU)
+    u_case = [0.25, 0.50, 0.75]
+    quarter, middle, three_q = (
+        sigmoid_migration(T_MIG + u * TAU, SMA_I, SMA_F, T_MIG, TAU) for u in u_case
+    )
+    cubic = [SMA_I + (SMA_F - SMA_I) * f for f in (5.0 / 32.0, 0.5, 27.0 / 32.0)]
 
-    assert quarter == pytest.approx(SMA_I + (SMA_F - SMA_I) * 5.0 / 32.0, rel=RTOL)
-    assert middle == pytest.approx(0.5 * (SMA_I + SMA_F), rel=RTOL)
-    assert three_q == pytest.approx(SMA_I + (SMA_F - SMA_I) * 27.0 / 32.0, rel=RTOL)
+    def linear(u):
+        return SMA_I + (SMA_F - SMA_I) * u
+
+    def quintic(u):
+        return SMA_I + (SMA_F - SMA_I) * (6 * u**5 - 15 * u**4 + 10 * u**3)
+
+    assert quarter == pytest.approx(cubic[0], rel=RTOL)
+    assert middle == pytest.approx(cubic[1], rel=RTOL)
+    assert three_q == pytest.approx(cubic[2], rel=RTOL)
 
     # Shape guard: a linear ramp lands at 1.7 AU here, the quintic
-    # smootherstep at 1.8757 AU. Both are further off than the tolerance.
-    wrong_linear = SMA_I + (SMA_F - SMA_I) * 0.25
-    wrong_quintic = SMA_I + (SMA_F - SMA_I) * (6 * 0.25**5 - 15 * 0.25**4 + 10 * 0.25**3)
+    # smootherstep at 1.8758 AU. Both are further off than the tolerance.
+    wrong_linear = linear(u_case[0])
+    wrong_quintic = quintic(u_case[0])
     assert abs(quarter - wrong_linear) > 0.05
     assert abs(quarter - wrong_quintic) > 0.02
     # Symmetry of the cubic about the window centre, S(u) + S(1-u) = 1,
@@ -214,6 +222,43 @@ def test_sigmoid_matches_the_cubic_smoothstep_across_the_window():
     # interval the endpoints span, not the dimensionless S curve itself.
     assert quarter > 0.0
     assert SMA_F < quarter < SMA_I
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        u = np.linspace(0.0, 1.0, 41)
+        code = [sigmoid_migration(T_MIG + ui * TAU, SMA_I, SMA_F, T_MIG, TAU) for ui in u]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(u, code, label='sigmoid_migration')
+        ax.plot(u, linear(u), '--', label='Linear ramp')
+        ax.plot(
+            u,
+            quintic(u),
+            ':',
+            label='Quintic smootherstep',
+        )
+        ax.plot(
+            u_case,
+            cubic,
+            's',
+            mfc='none',
+            ms=10,
+            label='Cubic $3u^2 - 2u^3$',
+        )
+        ax.plot(
+            u_case,
+            [quarter, middle, three_q],
+            'o',
+            zorder=3,
+            label='Asserted values',
+        )
+        ax.set_xlabel('Window fraction $u = (t - t_\\mathrm{mig}) / \\tau$')
+        ax.set_ylabel('Semi-major axis [AU]')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'orbit_sigmoid_migration')
 
 
 @pytest.mark.physics_invariant
@@ -400,14 +445,20 @@ def test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity(validation_
         time_migration=T_MIG,
         tau_mig=TAU,
     )
-    e_expected = np.sqrt(0.6) * np.exp(-(t_early - T_MIG) / TAU)
+    e_mig = np.sqrt(0.6)
+
+    def decay(x, rate=1.0):
+        return e_mig * np.exp(-rate * x)
+
+    e_expected = decay((t_early - T_MIG) / TAU)
     np.testing.assert_allclose(e_early, e_expected, rtol=1e-9)
 
     # One tau takes e down by exactly 1/e; without the 2 in the exponent it
     # would land at 0.6065 of its initial value rather than 0.3679.
     one_tau = high_eccentricity_migration(T_MIG + TAU, 0.0, SMA_I, SMA_F, T_MIG, TAU)[1]
-    assert one_tau / np.sqrt(0.6) == pytest.approx(np.exp(-1.0), rel=1e-10)
-    assert abs(one_tau / np.sqrt(0.6) - np.exp(-0.5)) > 0.2
+    assert one_tau / e_mig == pytest.approx(np.exp(-1.0), rel=1e-10)
+    half = 0.5
+    assert abs(one_tau - decay(1.0, rate=half)) / e_mig > 0.2
 
     # Boundedness once the cancellation has eaten the last digits: the
     # eccentricity settles on exactly zero and never turns negative or
@@ -429,7 +480,7 @@ def test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity(validation_
         x = (t_early - T_MIG) / TAU
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.plot(x, e_expected, label=r'Closed form $e_\mathrm{mig}\,e^{-x}$')
-        half_rate = np.sqrt(0.6) * np.exp(-x / 2)
+        half_rate = decay(x, rate=half)
         ax.plot(x, half_rate, '--', label=r'Half rate $e_\mathrm{mig}\,e^{-x/2}$')
         ax.plot(x[::25], e_early[::25], 'o', label='high_eccentricity_migration')
         ax.set_xlabel(r'$x = (t - t_\mathrm{mig})/\tau$')
@@ -965,7 +1016,7 @@ def _rate(t, migration, sma_init=A0_TOI, sma_final=AF_TOI, tau=TAU_TOI):
 
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_high_ecc_energy_rate_at_the_epoch_is_twice_the_energy_change_over_tau():
+def test_high_ecc_energy_rate_at_the_epoch_is_twice_the_energy_change_over_tau(validation_plot):
     """At the epoch the high-eccentricity track removes orbital energy at
     2 dE / tau, where dE = E(sma_final) - E(sma_init) is the whole energy
     change of circularisation. Analytic limit of d/dt of
@@ -974,14 +1025,35 @@ def test_high_ecc_energy_rate_at_the_epoch_is_twice_the_energy_change_over_tau()
     -2.9e35 J and the onset rate -1.8e21 W."""
     rate = _rate(TMIG_TOI, 'high_ecc')
     delta_e = _orbital_energy(AF_TOI) - _orbital_energy(A0_TOI)
+    single = delta_e / (TAU_TOI * secs_per_year)
     expected = 2.0 * delta_e / (TAU_TOI * secs_per_year)
 
     assert rate == pytest.approx(expected, rel=1e-10)
     assert delta_e == pytest.approx(-2.86e35, rel=0.01)
     # Factor guard: dropping the 2 of the decay exponent gives dE / tau.
-    assert abs(rate - delta_e / (TAU_TOI * secs_per_year)) > 0.4 * abs(expected)
+    assert abs(rate - single) > 0.4 * abs(expected)
     assert rate < 0.0  # the orbit loses energy while it shrinks
     assert 1.0e21 < abs(rate) < 3.0e21  # W, not J/yr or erg/s
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        x = np.linspace(0.0, 3.0, 31)
+        curve = [_rate(TMIG_TOI + xi * TAU_TOI, 'high_ecc') / 1e21 for xi in x]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(x, curve, label='orbital_energy_rate')
+        ax.axhline(single / 1e21, ls='--', label='$\\Delta E / \\tau$')
+        ax.plot(
+            [0.0], [expected / 1e21], 's', mfc='none', ms=10, label='$2\\,\\Delta E / \\tau$'
+        )
+        ax.plot([0.0], [rate / 1e21], 'o', zorder=3, label='Asserted rate at the epoch')
+        ax.set_xlabel('$(t - t_\\mathrm{mig}) / \\tau$')
+        ax.set_ylabel('$dE/dt$ [10$^{21}$ W]')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'orbit_high_ecc_energy_rate')
 
 
 @pytest.mark.physics_invariant

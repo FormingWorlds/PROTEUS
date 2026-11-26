@@ -664,3 +664,79 @@ def test_validator_accepts_the_analytic_two_body_collision():
 
     assert event.v_impact > event.v_esc
     assert event.mass_delta == pytest.approx(M_i, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_an_event_carries_no_melt_fraction_unless_given_one():
+    """f_melt is optional: absent it is None, given it is kept as the event's value."""
+    assert _event().f_melt is None
+    np.testing.assert_equal(_event(f_melt=0.3).f_melt, 0.3)
+    validate_timeline(
+        [
+            _event(f_melt=0.0),
+            _event(time=2.0e5, M_target_before=6.64e24, M_merged_after=7.28e24, f_melt=1.0),
+        ]
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('bad', [np.nan, np.inf, -1e-12, 1.0 + 1e-12, -0.5], ids=repr)
+def test_a_melt_fraction_outside_the_unit_interval_is_refused(bad):
+    """A melt mass fraction must be finite and in [0, 1]; the error names the impact and f_melt."""
+    with pytest.raises(ValueError, match=r'impact 0 at t = .*f_melt') as exc:
+        validate_timeline([_event(f_melt=bad)])
+    assert repr(bad) in str(exc.value)
+
+
+@pytest.mark.unit
+def test_read_timeline_reads_an_optional_melt_fraction_column(tmp_path):
+    """An f_melt column is read per impact; a file without it gives None for every impact."""
+    rows = [
+        {c: getattr(_event(), c) for c in TIMELINE_COLUMNS},
+        {
+            c: getattr(_event(time=2.0e5, M_target_before=6.64e24, M_merged_after=7.28e24), c)
+            for c in TIMELINE_COLUMNS
+        },
+    ]
+    plain = _write_timeline(tmp_path / 'plain.csv', rows)
+    assert [e.f_melt for e in read_timeline(str(plain))] == [None, None]
+
+    text = plain.read_text().splitlines()
+    text[0] += ',f_melt'
+    text[1] += ',0.3'
+    text[2] += ',1.0'
+    with_f = tmp_path / 'with_f.csv'
+    with_f.write_text('\n'.join(text) + '\n')
+    assert [e.f_melt for e in read_timeline(str(with_f))] == [0.3, 1.0]
+
+
+@pytest.mark.unit
+def test_read_timeline_refuses_a_blank_or_out_of_range_melt_fraction(tmp_path):
+    """A blank f_melt cell is not a missing column: it is refused like an out-of-range value."""
+    rows = [{c: getattr(_event(), c) for c in TIMELINE_COLUMNS}]
+    plain = _write_timeline(tmp_path / 'plain.csv', rows).read_text().splitlines()
+    for cell, name in (('', 'blank'), ('1.5', 'above')):
+        path = tmp_path / f'{name}.csv'
+        path.write_text('\n'.join([plain[0] + ',f_melt', plain[1] + ',' + cell]) + '\n')
+        with pytest.raises(ValueError, match='f_melt') as exc:
+            read_timeline(str(path))
+        assert 'impact 0' in str(exc.value)
+
+
+@pytest.mark.unit
+def test_write_timeline_keeps_the_melt_fraction_only_when_every_impact_has_one(tmp_path):
+    """A timeline with f on every impact round-trips it exactly; a mixed one omits the column."""
+    full = [
+        _event(f_melt=0.123456789012345),
+        _event(time=2.0e5, M_target_before=6.64e24, M_merged_after=7.28e24, f_melt=1.0),
+    ]
+    path = tmp_path / 'full.csv'
+    write_timeline(full, str(path))
+    assert [e.f_melt for e in read_timeline(str(path))] == [0.123456789012345, 1.0]
+
+    mixed = [full[0], _event(time=2.0e5, M_target_before=6.64e24, M_merged_after=7.28e24)]
+    path = tmp_path / 'mixed.csv'
+    write_timeline(mixed, str(path))
+    assert 'f_melt' not in path.read_text().splitlines()[0]
+    assert [e.f_melt for e in read_timeline(str(path))] == [None, None]

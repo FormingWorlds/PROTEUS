@@ -1,0 +1,252 @@
+"""Shared helpers of the weekly ecosystem digest: settings, GitHub API access, times.
+
+The digest scripts use only the standard library, so the workflow needs no install
+step beyond Python itself.
+"""
+
+from __future__ import annotations
+
+import http.client
+import io
+import json
+import os
+import re
+import time
+import tomllib
+import urllib.error
+import urllib.parse
+import urllib.request
+import zipfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+DIGEST_DIR = Path(__file__).resolve().parent
+API = 'https://api.github.com'
+TRACKED_ALWAYS = ('pyproject.toml', 'Project.toml')
+LIST_KIND = 'dataset list'  # a dataset or file added or removed; not a result change
+SECTIONS = {
+    'results': 'Changes that affect your results',
+    'capabilities': 'New capabilities',
+    'install': 'Installing and running',
+    'data': 'Data and licensing',
+    'design': 'Design choices to look at',
+    'open': 'In review, coming soon',
+}
+CATEGORY_QUERY = """
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    id
+    discussionCategories(first: 50) { nodes { id slug } }
+  }
+}
+"""
+
+
+class DigestError(RuntimeError):
+    """A condition that stops the digest run before anything is posted."""
+
+
+def load_settings() -> dict:
+    """Read ``repos.toml``.
+
+    Returns
+    -------
+    dict
+        The parsed settings.
+
+    Raises
+    ------
+    DigestError
+        When a setting is missing or has the wrong type or range.
+    """
+    with open(DIGEST_DIR / 'repos.toml', 'rb') as fh:
+        return validate_settings(tomllib.load(fh))
+
+
+def _is_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def validate_settings(settings: dict) -> dict:
+    """Check the types and ranges of the settings and return them unchanged."""
+    rules = {
+        'publish': lambda v: isinstance(v, bool),
+        'category': lambda v: isinstance(v, str) and v.strip() != '',
+        'model': lambda v: isinstance(v, str) and v.strip() != '',
+        'max_bodies': lambda v: _is_int(v) and 0 <= v <= 500,
+        'body_chars': lambda v: _is_int(v) and 1 <= v <= 20000,
+        'bots': lambda v: isinstance(v, list) and all(isinstance(b, str) for b in v),
+        'repos': lambda v: (
+            isinstance(v, list)
+            and len(v) > 0
+            and all(isinstance(r, str) and r.count('/') == 1 for r in v)
+        ),
+        'tracked': lambda v: (
+            isinstance(v, dict)
+            and all(
+                isinstance(p, list) and all(isinstance(x, str) for x in p) for p in v.values()
+            )
+        ),
+        'commits_only': lambda v: isinstance(v, list) and all(isinstance(r, str) for r in v),
+        'max_commits': lambda v: _is_int(v) and 1 <= v <= 100,
+        'docs': lambda v: (
+            isinstance(v, dict)
+            and all(
+                isinstance(u, str) and re.fullmatch(r'https://[^\s/]+(/[^\s]*)?(?<!/)', u)
+                for u in v.values()
+            )
+        ),
+    }
+    for key, ok in rules.items():
+        if key not in settings or not ok(settings[key]):
+            raise DigestError(f'setting {key} is missing or invalid: {settings.get(key)!r}')
+    for key in ('docs', 'commits_only'):
+        if extra := set(settings[key]) - set(settings['repos']):
+            raise DigestError(f'setting {key} names repositories not in repos: {sorted(extra)}')
+    return settings
+
+
+def parse_time(text: str) -> datetime:
+    """Parse an ISO date or date-time; a bare date means 00:00 UTC of that day.
+
+    Parameters
+    ----------
+    text : str
+        For example ``2026-09-01`` or ``2026-09-01T12:00:00Z``.
+
+    Returns
+    -------
+    datetime
+        A timezone-aware UTC time.
+    """
+    value = datetime.fromisoformat(text)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def count(n: int, noun: str, plural: str = '') -> str:
+    """``n`` with its noun: singular for 1, ``plural`` (default ``noun + 's'``) otherwise."""
+    return f'{n} {noun if n == 1 else plural or noun + "s"}'
+
+
+def iso(value: datetime) -> str:
+    """Format a UTC time as ``YYYY-MM-DDTHH:MM:SSZ``."""
+    return value.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def is_bot(login: str | None, kind: str | None, bots: list[str]) -> bool:
+    """Return True for an account shown as a code span, never as a profile link.
+
+    Parameters
+    ----------
+    login : str or None
+        GitHub login; None for a deleted account.
+    kind : str or None
+        GraphQL ``__typename`` of the author (``User``, ``Bot``, ...).
+    bots : list of str
+        Logins treated as bots in any case.
+    """
+    if not login or kind not in (None, 'User'):
+        return True
+    return login.endswith('[bot]') or login.lower() in {b.lower() for b in bots}
+
+
+class SameHostAuth(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect, and drop the token when it leaves the scheme and host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        host = urllib.parse.urlsplit(req.full_url)[:2]
+        if new is not None and urllib.parse.urlsplit(newurl)[:2] != host:
+            new.remove_header('Authorization')
+        return new
+
+
+OPENER = urllib.request.build_opener(SameHostAuth)
+
+
+class GitHub:
+    """Minimal GitHub REST and GraphQL client with retries on rate limits."""
+
+    def __init__(self, token: str | None = None, retries: int = 3):
+        self.token = token if token is not None else os.environ.get('GITHUB_TOKEN', '')
+        self.retries = retries
+
+    def _request(
+        self, url: str, data: bytes | None = None, accept: str | None = None, retry: bool = True
+    ):
+        headers = {'Accept': accept or 'application/vnd.github+json'}
+        if self.token:
+            headers['Authorization'] = f'Bearer {self.token}'
+        retries = self.retries if retry else 0
+        for attempt in range(retries + 1):
+            req = urllib.request.Request(url, data=data, headers=headers)
+            try:
+                with OPENER.open(req, timeout=60) as resp:
+                    return resp.read()
+            except urllib.error.HTTPError as err:
+                if err.code == 404:
+                    return None
+                if err.code not in (403, 429, 502, 503) or attempt == retries:
+                    raise DigestError(f'GitHub API {err.code} for {url}') from err
+                time.sleep(int(err.headers.get('Retry-After') or 20 * (attempt + 1)))
+            except (OSError, http.client.HTTPException) as err:
+                if attempt == retries:
+                    raise DigestError(f'GitHub API unreachable for {url}: {err}') from err
+                time.sleep(20 * (attempt + 1))
+
+    def graphql(self, query: str, retry: bool = True, **variables) -> dict:
+        """Run a GraphQL query and return its ``data``; raise on any error.
+
+        A mutation passes ``retry=False``: a lost answer must not apply it twice.
+        """
+        body = json.dumps({'query': query, 'variables': variables}).encode()
+        raw = self._request(f'{API}/graphql', data=body, retry=retry)
+        out = json.loads(raw) if raw is not None else {'errors': 'not found'}
+        if out.get('errors'):
+            raise DigestError(f'GraphQL error: {out["errors"]}')
+        return out['data']
+
+    def get_json(self, url: str) -> dict | None:
+        """Return the JSON answer of a REST GET, or None for a 404."""
+        raw = self._request(url)
+        return json.loads(raw) if raw is not None else None
+
+    def artifact_json(self, artifact: dict, member: str) -> dict | None:
+        """Return one JSON file of an Actions artifact, or None when the file is absent.
+
+        Raises
+        ------
+        DigestError
+            When the zip answers 404.
+        """
+        raw = self._request(artifact['archive_download_url'])
+        if raw is None:
+            raise DigestError(f'artifact {artifact["archive_download_url"]} answered 404')
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            if member not in archive.namelist():
+                return None
+            return json.loads(archive.read(member))
+
+    def raw_file(self, repo: str, path: str, ref: str | None) -> str | None:
+        """Return a file's text at ``ref`` (None: the default branch), or None when it is absent."""
+        query = f'?ref={ref}' if ref else ''
+        raw = self._request(
+            f'{API}/repos/{repo}/contents/{urllib.parse.quote(path)}{query}',
+            accept='application/vnd.github.raw',
+        )
+        return None if raw is None else raw.decode()
+
+    def commit_files(self, repo: str, oid: str) -> list[dict] | None:
+        """Changed files of one commit, at most 300 (one REST page); None for a missing commit."""
+        raw = self._request(f'{API}/repos/{repo}/commits/{oid}')
+        return json.loads(raw).get('files', []) if raw is not None else None
+
+
+def find_category(gh: GitHub, home: str, slug: str) -> tuple[str, str | None]:
+    """Return the repository id and the id of its discussion category ``slug`` (None if absent)."""
+    owner, name = home.split('/')
+    repo = gh.graphql(CATEGORY_QUERY, owner=owner, name=name)['repository']
+    ids = [c['id'] for c in repo['discussionCategories']['nodes'] if c['slug'] == slug]
+    return repo['id'], (ids[0] if ids else None)

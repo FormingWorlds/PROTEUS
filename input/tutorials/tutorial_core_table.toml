@@ -1,0 +1,104 @@
+# Tutorial docs/Tutorials/core_table.md: an Earth-mass planet from a molten start, with Zalmoxis,
+# Aragog and CALLIOPE, a 100 yr ceiling for the structure updates, to 450 yr; star, orbit, atmosphere,
+# escape and chemistry are dummy modules.
+config_version = "3.0"
+
+[params.out]
+path = "tutorial_core_table"
+plot_mod = 0
+
+[params.dt]
+initial = 50.0
+minimum = 5.0
+maximum = 50.0
+
+[params.stop.time]
+maximum = 450.0
+minimum = 100.0
+
+[params.stop.solid]
+enabled = false
+
+[params.stop.escape]
+enabled = false
+
+[params.stop.radeqm]
+enabled = false
+
+[star]
+module = "dummy"
+
+[star.dummy]
+radius = 1.0
+
+[orbit]
+module = "dummy"
+semimajoraxis = 0.5
+eccentricity = 0.1
+
+[orbit.dummy]
+H_tide = 1e-09
+Imk2 = -0.01
+
+[planet]
+mass_tot = 1.0
+temperature_mode = "liquidus_super"  # the coolest fully molten adiabat at the start
+volatile_mode = "elements"
+
+[planet.elements]
+O_mode = "ic_chemistry"
+O_budget = 0.0
+H_mode = "ppmw"
+H_budget = 10000.0
+C_mode = "ppmw"
+C_budget = 1000.0
+N_mode = "ppmw"
+N_budget = 500
+S_mode = "ppmw"
+S_budget = 500
+
+[interior_struct]
+module = "zalmoxis"
+core_frac = 0.55
+core_frac_mode = "radius"
+
+[interior_struct.zalmoxis]
+update_interval = 100.0  # ceiling of the structure update triggers [yr]
+update_dphi_abs = 0.999
+update_dtmagma_frac = 0.999
+update_dw_comp_abs = 0.999
+update_stale_ceiling = 0
+num_levels = 150
+solver_max_iter_inner = 100
+update_min_interval = 0.0
+
+[interior_energetics]
+module = "aragog"
+grain_size = 0.001
+
+[interior_energetics.aragog]
+core_bc = "energy_balance"  # the tutorial also runs "core_module"
+
+[outgas]
+fO2_shift_IW = 2
+module = "calliope"
+
+[atmos_clim]
+module = "dummy"
+surf_state = "fixed"
+rayleigh = false
+albedo_pl = 0.1
+
+[atmos_clim.dummy]
+gamma = 0.5
+
+[escape]
+module = "dummy"
+
+[escape.dummy]
+rate = 0.0
+
+[atmos_chem]
+module = "dummy"
+mode = "offline"
+times = "end"

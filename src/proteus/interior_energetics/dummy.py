@@ -144,7 +144,7 @@ def run_dummy_int(
         output['M_mantle'] = calculate_simple_mantle_mass(
             hf_row['R_int'],
             core_radius_frac,
-            config.interior_energetics.dummy.mantle_rho,
+            config.interior_energetics.const_rho,
         )
 
     # Physical parameters
@@ -200,13 +200,14 @@ def run_dummy_int(
     output['M_mantle_liquid'] = output['M_mantle'] * output['Phi_global']
     output['M_mantle_solid'] = output['M_mantle'] - output['M_mantle_liquid']
     output['RF_depth'] = output['Phi_global'] * (1 - core_radius_frac)
-    output['boundary_layer_thickness'] = config.atmos_clim.surface_d
 
     # Store arrays
     interior_o.phi = np.array([output['Phi_global']])
     interior_o.mass = np.array([output['M_mantle']])
     interior_o.visc = np.array([1.0])  # placeholder to be updated elsewhere
-    interior_o.density = np.array([config.interior_energetics.dummy.mantle_rho])
+    # Density consistent with the reported mantle mass, as in the boundary interior.
+    shell_volume = 4.0 / 3.0 * np.pi * (hf_row['R_int'] ** 3 - R_core**3)
+    interior_o.density = np.array([output['M_mantle'] / shell_volume])
     interior_o.temp = np.array([output['T_magma']])
     interior_o.pres = np.array([hf_row['P_surf']])
     interior_o.radius = np.array([R_core, hf_row['R_int']])

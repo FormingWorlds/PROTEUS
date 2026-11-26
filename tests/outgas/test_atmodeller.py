@@ -78,7 +78,7 @@ def test_stoich_table_covers_exactly_the_volatile_species():
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_water_split_matches_closed_form_mass_fractions():
+def test_water_split_matches_closed_form_mass_fractions(validation_plot):
     """A pure-water inventory splits into H and O by the closed-form fractions.
 
     For H2O the atomic-O mass fraction is m_O / (2 m_H + m_O) = 0.88809 and the
@@ -100,19 +100,35 @@ def test_water_split_matches_closed_form_mass_fractions():
     h_total = _element_total(hf_row, 'H')
 
     # Pinned closed-form fractions (hand-computed from IUPAC atomic masses).
-    assert o_total == pytest.approx(m_h2o * 0.88809, rel=1e-4)
-    assert h_total == pytest.approx(m_h2o * 0.11191, rel=1e-4)
+    frac_o, frac_h, equal = 0.88809, 0.11191, 0.5
+    assert o_total == pytest.approx(m_h2o * frac_o, rel=1e-4)
+    assert h_total == pytest.approx(m_h2o * frac_h, rel=1e-4)
 
     # Discrimination guard: an equal-split (0.5 each) would place H at 2.0e21 kg,
     # differing from the correct 4.47e20 kg by >> tol.
-    assert abs(h_total - m_h2o * 0.5) > 0.3 * m_h2o
+    assert abs(h_total - m_h2o * equal) > 0.3 * m_h2o
 
     # Mass conservation: the split conserves the water mass exactly.
     assert h_total + o_total == pytest.approx(m_h2o, rel=1e-12)
     # The atmospheric reservoir (the field escape reads) carries its share.
-    assert hf_row['H_kg_atm'] == pytest.approx(2.5e21 * 0.11191, rel=1e-4)
+    assert hf_row['H_kg_atm'] == pytest.approx(2.5e21 * frac_h, rel=1e-4)
     # Crucially the total slot is NOT written by the helper (escape owns it).
     assert 'H_kg_total' not in hf_row
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.bar(['O', 'H'], [o_total / m_h2o, h_total / m_h2o], width=0.5, label='Helper split')
+        ax.plot(['O', 'H'], [frac_o, frac_h], 's', mfc='none', ms=12, label='Closed form')
+        ax.axhline(equal, ls='--', label='Equal split')
+        ax.set_ylabel('Mass fraction of the water')
+        ax.set_ylim(0.0, 1.0)
+        ax.legend()
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'outgas_atmodeller_water_split')
 
 
 @pytest.mark.physics_invariant
@@ -812,7 +828,7 @@ def test_unavailable_condensate_values_log_as_na(caplog):
     assert hf_row['C_cd_kg'] == 0.0
 
 
-def test_condensate_list_is_every_atmodeller_condensate_of_the_outgassing_elements():
+def test_condensate_tables_hold_every_atmodeller_condensate_of_the_outgassing_elements():
     """include_condensates adds all of atmodeller's condensates the chemistry can form.
 
     A condensate can only join a solve when every element it holds has a budget,
@@ -824,7 +840,12 @@ def test_condensate_list_is_every_atmodeller_condensate_of_the_outgassing_elemen
     pytest.importorskip('atmodeller')
     from atmodeller import ChemicalSpecies, SpeciesNetwork
 
-    from proteus.utils.constants import condensate_list, vol_element_list
+    from proteus.utils.constants import (
+        condensate_conductivity,
+        condensate_density,
+        condensate_names,
+        vol_element_list,
+    )
 
     allowed = set(vol_element_list) | set(noble_gases)
     available = [
@@ -838,8 +859,9 @@ def test_condensate_list_is_every_atmodeller_condensate_of_the_outgassing_elemen
     # Discrimination: atmodeller also has condensates of rock-forming elements
     # (e.g. FeO, SiO2), which the element filter must leave out.
     assert len(available) > len(reachable)
-    assert reachable == set(condensate_list)
-    assert len(condensate_list) == len(set(condensate_list))
+    assert reachable == set(condensate_density)
+    # The condensates are the keys of condensate_density; the other tables match them
+    assert set(condensate_names) == set(condensate_conductivity) == set(condensate_density)
 
 
 def test_condensates_need_their_elements_and_their_data_range():
@@ -884,13 +906,13 @@ def test_no_budget_left_resets_every_condensate_column_to_zero(source):
     element closure.
     """
     pytest.importorskip('atmodeller')
-    from proteus.utils.constants import condensate_list, vol_element_list
+    from proteus.utils.constants import condensate_density, vol_element_list
 
     config, hf_row = _carbon_only_condensate_case()
     config.planet.fO2_source = source
     hf_row['C_kg_total'] = 0.0  # every element, O included, now below threshold
     hf_row['O_kg_total'] = 0.0
-    stale = [f'{c}_cd_{q}' for c in condensate_list for q in ('activity', 'kg')]
+    stale = [f'{c}_cd_{q}' for c in condensate_density for q in ('activity', 'kg')]
     stale += [f'{e}_kg_condensed' for e in vol_element_list]
     hf_row.update(dict.fromkeys(stale, 1.0e20))
 

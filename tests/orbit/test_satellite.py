@@ -538,7 +538,7 @@ def _ps0d_instantaneous_rates(**hf_row_kwargs):
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_ps0d_bootstrap_am_uses_satellite_mass_not_planet_mass():
+def test_ps0d_bootstrap_am_uses_satellite_mass_not_planet_mass(validation_plot):
     """``ps0d``'s angular-momentum bootstrap (``current_time <= 10``
     and ``plan_sat_am == 0``) computes ``L`` via ``Ltot``, Korenaga
     (2023) Eq. 60: the orbital term's prefactor is the SATELLITE mass
@@ -579,7 +579,27 @@ def test_ps0d_bootstrap_am_uses_satellite_mass_not_planet_mass():
     # Scale guard: Eq. 60 for Earth-Moon lands at ~3.6e34 kg m^2/s
     # (spin ~7e33 + orbital ~2.9e34); the M_planet substitution would
     # land at ~2.4e36, two orders of magnitude above this bracket.
-    assert 1e34 < hf_row['plan_sat_am'] < 1e35
+    lo, hi = 1e34, 1e35
+    assert lo < hf_row['plan_sat_am'] < hi
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.axhspan(lo, hi, alpha=0.15, label='Asserted range')
+        ax.plot([0], [expected], 's', mfc='none', ms=12, label='Korenaga (2023) Eq. 60')
+        ax.plot([0], [hf_row['plan_sat_am']], 'o', zorder=3, label='ps0d bootstrap')
+        ax.plot([1], [wrong_L], 'x', ms=10, label='Planet mass in the orbital term')
+        ax.plot([0, 1], [_PS0D_I * omega] * 2, '--', label='Spin term $I\\Omega$')
+        ax.set_xticks([0, 1], ['Satellite mass', 'Planet mass'])
+        ax.set_xlim(-0.5, 1.5)
+        ax.set_yscale('log')
+        ax.set_ylabel('$L$ [kg m$^2$ s$^{-1}$]')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'orbit_satellite_earth_moon_am')
 
 
 def test_ps0d_bootstrap_only_fires_once_am_is_populated():

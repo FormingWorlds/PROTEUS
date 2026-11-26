@@ -13,8 +13,8 @@ set -euo pipefail
 # requires-python ceiling once the repo root is known (see below).
 REQUIRED_PYTHON_MAJOR=3
 REQUIRED_PYTHON_MINOR=12
-# Julia: PROTEUS runs on 1.13.x (what CI tests); a default Julia of another
-# version stays, and juliaup adds 1.13 beside it.
+# Julia: PROTEUS runs on 1.13.x (what CI tests). The installer checks for it and
+# does not install it; a default Julia of another version stays.
 REQUIRED_JULIA_MAJOR=1
 REQUIRED_JULIA_MINOR=13
 MIN_DISK_GB=10
@@ -48,9 +48,9 @@ collect_env_info() {
     echo "shell:   ${SHELL:-?}"
     echo "conda:   env=${CONDA_DEFAULT_ENV:-(none)} prefix=${CONDA_PREFIX:-?}"
     echo "python:  $(python3 --version 2>&1) ($(command -v python3 2>/dev/null))"
-    echo "julia:   $(julia --version 2>/dev/null || echo '(not on PATH)') ($(command -v julia 2>/dev/null))"
+    echo "julia:   $( { julia_answers_without_download "$(command -v julia)" && julia --version; } 2>/dev/null || echo '(not on PATH, or a juliaup launcher with no default channel)') ($(command -v julia 2>/dev/null))"
     local v
-    for v in FWL_DATA RAD_DIR FC_DIR PYTHON_JULIAPKG_EXE PYTHON_JULIACALL_BINDIR JULIA_CHANNEL; do
+    for v in FWL_DATA RAD_DIR FC_DIR PYTHON_JULIAPKG_EXE PYTHON_JULIACALL_BINDIR JULIA_CHANNEL JULIA_DEPOT_PATH JULIAUP_DEPOT_PATH; do
         echo "  ${v}=${!v:-(unset)}"
     done
     echo "package versions:"
@@ -79,13 +79,6 @@ die() {
     fi
     echo "Fix the issue above, then re-run: bash install.sh"
     exit 1
-}
-
-prompt_yn() {
-    if [ "$INTERACTIVE" != "true" ] || [ ! -t 0 ] || [ ! -t 3 ]; then
-        return 0
-    fi
-    ask_yn "$1" "${2:-y}"
 }
 
 # Ask the question $1 on the terminal of fd 3 and read stdin; after a trim of white space, an empty
@@ -232,6 +225,8 @@ resolve_real_julia_exe() {
 
 # The juliaup channel selector of the Julia PROTEUS uses: empty for the default channel.
 JULIA_CHANNEL=""
+# Whether setup_conda_env selected the Julia, before it made the conda env.
+JULIA_SELECTED=false
 
 # Point PROTEUS at the real binary of channel $1 (JULIA_CHANNEL, PYTHON_JULIAPKG_EXE);
 # returns 1 and changes nothing when the channel has no binary.
@@ -241,6 +236,122 @@ use_julia_channel() {
     [ -n "$exe" ] || return 1
     JULIA_CHANNEL="$1"
     export PYTHON_JULIAPKG_EXE="$exe"
+}
+
+# Whether `juliaup api getconfig1`, which installs nothing, prints a match of the regular
+# expression $1; $2 is the juliaup to ask.
+juliaup_config_matches() {
+    local config
+    config=$("${2:-juliaup}" api getconfig1 </dev/null 2>/dev/null) || return 1
+    [[ "$config" =~ $1 ]]
+}
+
+# Whether juliaup holds the channel $1. Ask this before `julia +<channel>`, which can install.
+juliaup_has_channel() {
+    juliaup_config_matches "\"Name\"[[:space:]]*:[[:space:]]*\"${1//./[.]}\""
+}
+
+# Whether the Julia $1 can run with no download: a juliaup launcher, also through a link, with
+# no default channel can set itself up and download.
+julia_answers_without_download() {
+    local path="$1" link dir
+    [ -n "$path" ] || return 1
+    while link=$(readlink "$path"); do
+        case "$link" in /*) path="$link" ;; *) path="$(dirname "$path")/$link" ;; esac
+    done
+    dir="$(dirname "$path")"
+    [ -x "$dir/juliaup" ] || return 0
+    juliaup_config_matches '"DefaultChannel"[[:space:]]*:[[:space:]]*[{]' "$dir/juliaup"
+}
+
+# Print the version that the Julia binary $1 reports, or nothing when it reports none.
+julia_version_of() {
+    "$1" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || true
+}
+
+# The one line that names the Julia PROTEUS uses; $1 is the version of a default Julia that
+# differs from it, "none" for a juliaup without julia on PATH, or empty.
+report_proteus_julia() {
+    local version used
+    version=$(julia_version_of "$PYTHON_JULIAPKG_EXE")
+    used="Julia ${version:-(version unknown)} at $PYTHON_JULIAPKG_EXE"
+    case "$1" in
+        "") info "PROTEUS uses $used." ;;
+        none) info "PROTEUS uses $used; the default Julia of juliaup stays as it is." ;;
+        *) info "PROTEUS uses $used; your default Julia $1 stays as it is." ;;
+    esac
+}
+
+# Stop with the commands that give PROTEUS its Julia; $1 is the version of a julia on PATH, or
+# none; $2 is the juliaup command that works in the shell of the user; $3 is the file of a
+# juliaup configuration.
+stop_without_julia() {
+    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" jup="$2" api_error
+    [ "$1" = none ] || warn "PROTEUS runs on Julia $req, found $1."
+    if ! command_exists juliaup && [ -f "$3" ]; then
+        die "A juliaup configuration exists at $3, but no juliaup is on PATH or in ~/.juliaup/bin; put your juliaup on PATH and run bash install.sh again."
+    fi
+    echo "PROTEUS needs Julia $req. install.sh checks for Julia and does not install it."
+    if command_exists juliaup && ! api_error=$(juliaup api getconfig1 </dev/null 2>&1 >/dev/null); then
+        warn "'juliaup api getconfig1' failed, so install.sh cannot read your juliaup channels: $api_error"
+        echo "That command needs a recent juliaup and write access to its lock file in ${JULIAUP_DEPOT_PATH:-$HOME/.julia}/juliaup."
+        printf 'A juliaup from the official installer updates with: %q self update\n' "$jup"
+        echo "If you cannot write to that folder, set PYTHON_JULIAPKG_EXE to the binary of a Julia $req."
+    else
+        echo "To install it, run:"
+        if ! command_exists juliaup; then
+            echo "  curl -fsSL https://install.julialang.org | sh"
+            echo "  (open a new terminal)"
+        fi
+        printf '  %q add %s\n' "$jup" "$req"
+        echo "Your default Julia stays as it is. A Julia $req of your own also works: set PYTHON_JULIAPKG_EXE to its binary."
+    fi
+    echo "On a compute cluster, read the Julia step of the install page: https://proteus-framework.org/PROTEUS/How-to/installation.html#2-install-julia"
+    die "Julia $req not found."
+}
+
+# Select the Julia PROTEUS uses, always the required one, and export it as PYTHON_JULIAPKG_EXE;
+# a PYTHON_JULIAPKG_EXE of that version stays, as the real binary of a launcher that it names.
+# Julia is checked and never installed, and a default Julia stays.
+setup_julia() {
+    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" julia_version default="none" jup=juliaup
+    local exe="${PYTHON_JULIAPKG_EXE:-}" config="${JULIAUP_DEPOT_PATH:-$HOME/.julia}/juliaup/juliaup.json" own_path=""
+    if [ -f "$exe" ] && [ -x "$exe" ] && julia_answers_without_download "$exe"; then
+        case "$(julia_version_of "$exe")" in
+            "$req" | "$req".*)
+                JULIA_CHANNEL=""
+                PYTHON_JULIAPKG_EXE="$(resolve_real_julia_exe "" "$exe")"
+                export PYTHON_JULIAPKG_EXE
+                report_proteus_julia ""
+                return 0
+                ;;
+        esac
+    fi
+    # Behind any julia on PATH, so that a julia of the user still comes first.
+    if ! command_exists juliaup && [ -x "$HOME/.juliaup/bin/juliaup" ]; then
+        command_exists julia && own_path="$PATH"
+        export PATH="$PATH:$HOME/.juliaup/bin"
+        jup="$HOME/.juliaup/bin/juliaup"
+    fi
+    if command_exists julia && julia_answers_without_download "$(command -v julia)"; then
+        # A version that 'julia --version' does not report counts as another version.
+        julia_version=$(julia_version_of julia)
+        case "$julia_version" in
+            "$req" | "$req".*)
+                # The julia of the user is in use, so later steps must not find that juliaup.
+                [ -z "$own_path" ] || export PATH="$own_path"
+                use_julia_channel ""
+                report_proteus_julia ""
+                return 0
+                ;;
+        esac
+        default="${julia_version:-(version unknown)}"
+    fi
+    command_exists juliaup && juliaup_has_channel "$req" || stop_without_julia "$default" "$jup" "$config"
+    use_julia_channel "+$req" || die "Could not locate the Julia $req binary of its juliaup channel."
+    PATH="$(dirname "$PYTHON_JULIAPKG_EXE"):$PATH"
+    export PATH
+    report_proteus_julia "$default"
 }
 
 # Remove the installer-owned juliacall project so the next import re-resolves
@@ -297,14 +408,13 @@ fix_conda_openssl() {
 }
 
 # With a Python linking OpenSSL < 3.5, juliacall resolves its environment only on
-# Julia <= 1.11 (OpenSSL_jll 3.0 series), so point only PYTHON_JULIAPKG_EXE at a
+# Julia <= 1.11 (OpenSSL_jll 3.0 series), so point only PYTHON_JULIAPKG_EXE at an installed
 # juliaup 1.11 binary; the default Julia and the Julia on PATH stay as they are.
 fix_julia_111_for_openssl() {
-    command_exists juliaup || return 1
+    command_exists juliaup && juliaup_has_channel 1.11 || return 1
     info "Pointing the juliacall Julia at 1.11 (matches OpenSSL < 3.5)..."
-    juliaup add 1.11 </dev/null 2>&1 || return 1
     if ! use_julia_channel '+1.11'; then
-        warn "Could not locate the Julia 1.11 binary after 'juliaup add 1.11'."
+        warn "Could not locate the Julia 1.11 binary of its juliaup channel."
         return 1
     fi
     set_install_var PYTHON_JULIAPKG_EXE "$PYTHON_JULIAPKG_EXE"
@@ -325,6 +435,10 @@ verify_proteus_import() {
     fi
     fail "PROTEUS failed to import. Error output:"
     printf '%s\n' "$import_log"
+    if printf '%s' "$import_log" | grep -q 'does not seem to be installed'; then
+        warn "JULIA_DEPOT_PATH=${JULIA_DEPOT_PATH:-} does not hold the Julia packages of this install. With network, run bash install.sh again."
+        die "See https://proteus-framework.org/PROTEUS/How-to/troubleshooting.html#julia-depot-with-no-packages"
+    fi
     # An architecture mismatch between Python and Julia cannot be self-healed.
     if printf '%s' "$import_log" | grep -qi 'incompatible architecture'; then
         warn "Python and Julia are built for different CPU architectures (see above)."
@@ -402,6 +516,163 @@ set_install_var() {
     info "Set $name=$value (recorded in $PROTEUS_ENV_FILE)"
 }
 
+# Whether the folder $1 is a PROTEUS install: a conda or pixi env, or a PROTEUS tree.
+is_proteus_install_folder() {
+    [ -d "$1/conda-meta" ] || { [ -f "$1/install.sh" ] && [ -d "$1/src/proteus" ]; }
+}
+
+# Whether the folder $1 is an env that is gone from an envs folder that exists (conda or pixi).
+is_gone_env_folder() {
+    [ ! -e "$1" ] && [ -d "$(dirname -- "$1")" ] && [ "$(basename -- "$(dirname -- "$1")")" = envs ]
+}
+
+# Whether a folder of the depot value $1 holds packages; Julia reads every entry, and a leading
+# colon stands for ~/.julia.
+julia_depot_holds_packages() {
+    local entry entries
+    case "$1" in :*) [ -d "$HOME/.julia/packages" ] && return 0 ;; esac
+    IFS=: read -ra entries <<< "$1"
+    for entry in "${entries[@]}"; do
+        [ -n "$entry" ] && [ -d "${entry/#\~/$HOME}/packages" ] && return 0
+    done
+    return 1
+}
+
+# Print the Manifest of the Julia project $1 that Julia reads, the first of its 4 names; status 1
+# with none.
+julia_manifest_of() {
+    local name ver="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
+    for name in "JuliaManifest-v$ver.toml" "Manifest-v$ver.toml" JuliaManifest.toml Manifest.toml; do
+        [ -f "$1/$name" ] && { printf '%s\n' "$1/$name"; return 0; }
+    done
+    return 1
+}
+
+# Install the packages that the Manifest of the Julia project $1 records into the depot, with no
+# change to that Manifest; juliapkg does not resolve again for a new depot. A failure warns and
+# joins the list at the end of the run; a later step reports what it stops.
+instantiate_julia_project() {
+    julia_manifest_of "$1" >/dev/null || return 0
+    local code='using Pkg; Pkg.instantiate()'
+    if ! run_logged --takes "several minutes in a new depot" "Installing the Julia packages of $1" \
+        env LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --startup-file=no --project="$1" -e "$code"; then
+        warn "Could not install the Julia packages of $1 into $JULIA_DEPOT_PATH. To repeat the step:"
+        warn "  LD_LIBRARY_PATH=\"\" \"$PYTHON_JULIAPKG_EXE\" --project=\"$1\" -e '$code'"
+        FAILED_MODULES="${FAILED_MODULES:-}${FAILED_MODULES:+; }Julia packages of $1 (LD_LIBRARY_PATH=\"\" \"$PYTHON_JULIAPKG_EXE\" --project=\"$1\" -e '$code')"
+    fi
+}
+
+# Stop on a depot value whose first entry names no fixed folder, before any change on disk: relative,
+# the home folder of another user (Julia itself stops on it) or a literal $.
+stop_on_unusable_depot() {
+    local value="${JULIA_DEPOT_PATH:-}" remedy
+    case "${value%%:*}" in
+        *'$'* | [!/~]* | '~'[!/]*) ;;
+        *) return 0 ;;
+    esac
+    if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
+        remedy="restore the JULIA_DEPOT_PATH line of pixi.toml"
+    else
+        remedy="run unset JULIA_DEPOT_PATH; for a value bound to a conda environment, activate it, run conda env config vars unset JULIA_DEPOT_PATH and conda deactivate, and activate it again"
+    fi
+    die "JULIA_DEPOT_PATH=$value is relative, names the home folder of another user or holds a literal \$; name an absolute folder, or $remedy."
+}
+
+# Give this install its own Julia packages: <prefix>/julia_depot, where the colon keeps the stdlib
+# compile files. A value of the user stays with a warning unless -i gets a yes; a depot of another
+# install does not stay. An old install hears the cost before the download.
+setup_julia_depot() {
+    [ -n "${CONDA_PREFIX:-}" ] || die "CONDA_PREFIX is not set, so the Julia depot of this install has no place."
+    local value="${JULIA_DEPOT_PATH:-}" own="$CONDA_PREFIX/julia_depot:" old="$HOME/.julia" first parent name lines yes=false
+    first="${value%%:*}"
+    first="${first/#\~/$HOME}"
+    parent="$(dirname -- "${first:-.}")"
+    name="$(basename -- "${first:-.}")"
+    if [ -z "$value" ]; then
+        value="$own"
+    elif [ "$name" = julia_depot ] && [ ! "$parent" -ef "$CONDA_PREFIX" ] \
+        && [ ! "$parent" -ef "$SCRIPT_DIR" ] \
+        && { is_gone_env_folder "$parent" || is_proteus_install_folder "$parent"; }; then
+        warn "JULIA_DEPOT_PATH=$value is the Julia depot of another PROTEUS install or of one that is gone; this install uses $own."
+        value="$own"
+        old="$first"
+    elif [ "$name" != julia_depot ] || [ ! "$parent" -ef "$CONDA_PREFIX" ]; then
+        if [ "$IGNORE_JULIA_DEPOT_PATH" = true ]; then
+            info "JULIA_DEPOT_PATH stays at $value (--ignore-julia-depot-path)."
+        elif [ -z "${PIXI_ENVIRONMENT_NAME:-}" ] && [ "$INTERACTIVE" = true ] && [ -t 0 ] && [ -t 3 ] \
+            && ask_yn "JULIA_DEPOT_PATH is $value. Use a Julia depot of its own for this install?" n; then
+            lines="$(grep -snE '^[[:space:]]*(export[[:space:]]+)?JULIA_DEPOT_PATH=' "$HOME"/.zshenv "$HOME"/.zprofile \
+                "$HOME"/.zshrc "$HOME"/.profile "$HOME"/.bash_profile "$HOME"/.bashrc | cut -d: -f1,2 | paste -sd" " - || true)"
+            warn "This install uses $own. conda activate sets it, but a new interactive shell inside the environment reads your shell start file again and gets $value back."
+            warn "Remove the line that sets JULIA_DEPOT_PATH from your shell start file${lines:+ ($lines)}."
+            value="$own" yes=true
+            old="${first:-$HOME/.julia}"
+        else
+            warn "JULIA_DEPOT_PATH stays at $value, so this install shares its Julia packages with anything else that uses that value."
+            if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
+                warn "For a depot of its own, restore the JULIA_DEPOT_PATH line of pixi.toml and run bash install.sh again."
+            else
+                warn "For a depot of its own, run bash install.sh -i and answer yes, or remove the value from your shell start file and open a new shell. Then run conda env config vars unset -p $CONDA_PREFIX JULIA_DEPOT_PATH, conda deactivate, conda activate $CONDA_PREFIX and bash install.sh."
+            fi
+            warn "To keep the value with no warning, run bash install.sh --ignore-julia-depot-path."
+        fi
+    fi
+    case "$value" in
+        :* | *: | *::*) ;;
+        *) info "JULIA_DEPOT_PATH=$value has no trailing colon, so Julia compiles its standard library again for this depot: about 1 min and 81 MB (measured on macOS arm64)." ;;
+    esac
+    set_install_var JULIA_DEPOT_PATH "$value"
+    first="${value%%:*}"
+    first="${first:-$HOME/.julia}"
+    first="${first/#\~/$HOME}"
+    if ! julia_depot_holds_packages "$value" \
+        && { julia_manifest_of "$CONDA_PREFIX/julia_env" || julia_manifest_of "$SCRIPT_DIR/AGNI"; } >/dev/null; then
+        if [ -d "$old/packages" ]; then
+            if ! { mkdir -p "$first" && printf '%s\n' "$old" > "$first/.proteus-moved-from"; } 2>/dev/null; then
+                warn "Could not write in $first; if $old holds LovePy, run bash $SCRIPT_DIR/tools/get_lovepy.sh after this install."
+            fi
+            warn "The Julia packages of this install move to $first: about 940 MiB, 21500 files and at least 220 MB to download (measured on macOS arm64)."
+            warn "$old stays as it is; do not remove the juliaup folder of $HOME/.julia."
+            if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
+                warn "To stay on the old depot, change JULIA_DEPOT_PATH in pixi.toml and run again."
+            elif [ "$old" = "$HOME/.julia" ] && [ "$yes" = false ]; then
+                warn "To stay on the old depot, run these 4 commands (for an old depot in another folder, name that folder):"
+                warn "  conda env config vars set -p $CONDA_PREFIX JULIA_DEPOT_PATH=$HOME/.julia:"
+                warn "  conda deactivate"
+                warn "  conda activate $CONDA_PREFIX"
+                warn "  bash install.sh"
+            fi
+        else
+            info "The Julia packages of this install go into $first now."
+        fi
+    fi
+    instantiate_julia_project "$CONDA_PREFIX/julia_env"
+}
+
+# LovePy lives in the default environment of the depot, so a move leaves it behind and a tidal run
+# would stop at 'using LovePy'. A note in the depot keeps the move known across a stopped run.
+reinstall_moved_lovepy() {
+    local note="${JULIA_DEPOT_PATH%%:*}" old lost project
+    note="${note:-$HOME/.julia}"
+    note="${note/#\~/$HOME}/.proteus-moved-from"
+    [ -f "$note" ] || return 0
+    old="$(cat "$note")"
+    project="$old/environments/v$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR/Project.toml"
+    lost="$({ cat "$project" 2>/dev/null || true; } \
+        | awk '/^\[/ {deps = ($0 == "[deps]")} deps && / = / && $1 != "LovePy" {print $1}' | sort -u | xargs)"
+    [ -z "$lost" ] || warn "Packages of the default Julia environment of $old not carried over: $lost"
+    case " $lost " in
+        *" Obliqua "*) warn "To set up Obliqua in the new depot: bash $SCRIPT_DIR/tools/get_obliqua.sh --register" ;;
+    esac
+    if grep -qs '^LovePy = ' "$project"; then
+        if ! run_logged "Setting up LovePy in the new Julia depot" bash "$SCRIPT_DIR/tools/get_lovepy.sh"; then
+            warn "LovePy is not in the new Julia depot. To repeat the step: bash $SCRIPT_DIR/tools/get_lovepy.sh"
+            return 0
+        fi
+    fi
+    rm -f "$note"
+}
+
 # Bind every recorded variable to the active conda env in one call. A pixi env is not a conda
 # env, and conda writes a value unquoted into its activation script, so a pixi env and a value
 # with a single quote stay in the exports file only.
@@ -433,14 +704,14 @@ bind_install_vars() {
     fi
 }
 
-# Read only: name each export line of the 4 install variables that an earlier
+# Read only: name each export line of the 5 install variables that an earlier
 # install left in a shell start file; the installer does not change these files.
 note_old_shell_exports() {
     local f hits hit found=""
     for f in "$HOME/.zshrc" "$HOME/.zshenv" "$HOME/.zprofile" "$HOME/.bashrc" "$HOME/.bash_profile" \
              "$HOME/.bash_login" "$HOME/.profile" "$HOME/.kshrc" "$HOME/.config/fish/config.fish"; do
         [ -f "$f" ] && [ -r "$f" ] || continue
-        hits=$(grep -nE '^export (FWL_DATA|RAD_DIR|PYTHON_JULIAPKG_EXE|FC_DIR)=' "$f" || true)
+        hits=$(grep -nE '^export (FWL_DATA|RAD_DIR|PYTHON_JULIAPKG_EXE|FC_DIR|JULIA_DEPOT_PATH)=' "$f" || true)
         [ -n "$hits" ] || continue
         while IFS= read -r hit; do
             found+="  $f, line ${hit%%:*}: ${hit#*:}"$'\n'
@@ -452,17 +723,21 @@ note_old_shell_exports() {
     warn "  PROTEUS takes the values from the conda env (or $PROTEUS_ENV_FILE) instead."
     warn "  You can delete those lines by hand; while they stay, a shell without the"
     warn "  activated env still gets the old values."
+    case "$found" in
+        *JULIA_DEPOT_PATH=*) warn "  A JULIA_DEPOT_PATH line also sets the Julia depot of a conda env with no value of its own." ;;
+    esac
 }
 
-# Warn once when the Manifest.toml of the AGNI folder $1 names another minor Julia version than
+# Warn once when the Manifest of the AGNI folder $1 names another minor Julia version than
 # the Julia PROTEUS uses; proteus update-all brings AGNI to its pin and instantiates it again.
 note_agni_julia_version() {
-    local built used
-    built=$(sed -n 's/^julia_version = "\([^"]*\)"$/\1/p' "$1/Manifest.toml" 2>/dev/null | head -1 || true)
+    local built used manifest
+    manifest=$(julia_manifest_of "$1") || return 0
+    built=$(sed -n 's/^julia_version = "\([^"]*\)"$/\1/p' "$manifest" 2>/dev/null | head -1 || true)
     used=$(julia_version_of "${PYTHON_JULIAPKG_EXE:-julia}")
     if [ -n "$built" ] && [ -n "$used" ] \
        && [ "$(echo "$built" | cut -d. -f1,2)" != "$(echo "$used" | cut -d. -f1,2)" ]; then
-        warn "AGNI at $1 was built with Julia $built (its Manifest.toml), and PROTEUS uses Julia $used; after the installer, run 'proteus update-all', which brings AGNI to its pin and instantiates it again."
+        warn "AGNI at $1 was built with Julia $built (its ${manifest##*/}), and PROTEUS uses Julia $used; after the installer, run 'proteus update-all', which brings AGNI to its pin and instantiates it again."
     fi
 }
 
@@ -535,6 +810,7 @@ available_disk_gb() {
 CURRENT_PHASE=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INTERACTIVE="false"
+IGNORE_JULIA_DEPOT_PATH="false"
 VERBOSE="false"
 
 # The log state of run_logged: whether the log tee runs, whether it named the log, its temp file.
@@ -567,6 +843,7 @@ while [ "$#" -gt 0 ]; do
         --no-data)  DATA_MODE="none" ;;
         --interactive|-i) INTERACTIVE="true" ;;
         --verbose)  VERBOSE="true" ;;
+        --ignore-julia-depot-path) IGNORE_JULIA_DEPOT_PATH="true" ;;
         --conda-env)
             if [ "$#" -eq 0 ] || [ -z "$1" ] || [ "${1#-}" != "$1" ]; then
                 fail "--conda-env needs the name of a conda environment."
@@ -588,6 +865,9 @@ while [ "$#" -gt 0 ]; do
             echo "  --verbose    Show the full build output on the terminal, not only in the log file"
             echo "  --conda-env <name>  The conda environment to use, or to make, when none or base"
             echo "               is active (default: proteus)"
+            echo "  --ignore-julia-depot-path  Keep a JULIA_DEPOT_PATH that is set, with no warning"
+            echo "               about a shared depot and no question in -i mode, except the depot"
+            echo "               of another install or of a gone environment"
             echo "  --help       Show this message"
             echo ""
             echo "Default: download the essential data (~3 GB): the default-config and tutorial"
@@ -692,8 +972,8 @@ stop_without_conda_env() {
     fail "$1"
     echo ""
     if ! command_exists conda; then
-        echo "Install conda first (Miniforge), as step 2 of the installation page describes:"
-        echo "  https://proteus-framework.org/PROTEUS/How-to/installation.html#2-clone-proteus-and-set-up-python-environment"
+        echo "Install conda first (Miniforge), as step 3 of the installation page describes:"
+        echo "  https://proteus-framework.org/PROTEUS/How-to/installation.html#3-clone-proteus-and-set-up-python-environment"
     elif [ -n "${made:-}" ]; then
         echo "Activate the conda environment first:"
         echo "  conda activate $2"
@@ -732,6 +1012,7 @@ setup_conda_env() {
     local name="${CONDA_ENV_REQUESTED:-proteus}" active="${CONDA_DEFAULT_ENV:-}"
     local pyver="$REQUIRED_PYTHON_MAJOR.$REQUIRED_PYTHON_MINOR" envs base made step="" py
     local prefix="" asked=false other="bash install.sh --conda-env <other name>"
+    local shell_depot="${JULIA_DEPOT_PATH:-}"
     if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
         info "Pixi environment: $PIXI_ENVIRONMENT_NAME"
         return 0
@@ -766,6 +1047,9 @@ setup_conda_env() {
         fi
     else
         stop_on_env_folder "$name" "$envs"
+        # A new env holds no PYTHON_JULIAPKG_EXE, so a missing Julia stops the run here, with no env made.
+        setup_julia
+        JULIA_SELECTED=true
         info "Creating the conda environment $name with Python $pyver..."
         if ! conda create -y -n "$name" "python=$pyver" </dev/null; then
             stop_without_conda_env "'conda create -y -n $name python=$pyver' failed." "$name" \
@@ -783,6 +1067,10 @@ setup_conda_env() {
     fi
     set -u
     [ -z "$step" ] || stop_without_conda_env "$step" "$name"
+    # A shell value can be the leftover of another env, so the value bound to this env wins.
+    if [ -n "$shell_depot" ] && [ "$shell_depot" != "${JULIA_DEPOT_PATH:-}" ]; then
+        warn "JULIA_DEPOT_PATH=$shell_depot of the shell gives way to the value bound to $name: ${JULIA_DEPOT_PATH:-}. To change it, run conda env config vars set -n $name JULIA_DEPOT_PATH=<value> and then bash install.sh."
+    fi
     hash -r
     py=$(command -v python || true)
     case "${CONDA_DEFAULT_ENV:-}|$py" in
@@ -803,7 +1091,9 @@ setup_conda_env() {
     fi
 }
 
+stop_on_unusable_depot
 setup_conda_env
+stop_on_unusable_depot
 
 # Check Python version
 python_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "none")
@@ -905,126 +1195,10 @@ info "Pre-flight checks passed"
 CURRENT_PHASE=2
 phase 2 "Julia"
 
-# Print the version that the Julia binary $1 reports, or nothing when it reports none.
-julia_version_of() {
-    "$1" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || true
-}
-
-# The one line that names the Julia PROTEUS uses; $1 is the version of a default Julia that
-# differs from it, "none" for a juliaup without julia on PATH, or empty.
-report_proteus_julia() {
-    local version used
-    version=$(julia_version_of "$PYTHON_JULIAPKG_EXE")
-    used="Julia ${version:-(version unknown)} at $PYTHON_JULIAPKG_EXE"
-    case "$1" in
-        "") info "PROTEUS uses $used." ;;
-        none) info "PROTEUS uses $used; the default Julia of juliaup stays as it is." ;;
-        *) info "PROTEUS uses $used; your default Julia $1 stays as it is." ;;
-    esac
-}
-
-# Add the required Julia beside the default ($1, as for report_proteus_julia) without
-# changing the default, and put its binary first on the installer's own PATH.
-add_julia_beside_default() {
-    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
-    info "Adding Julia $req via juliaup, beside the default Julia..."
-    if ! juliaup add "$req" </dev/null; then
-        warn "'juliaup add $req' failed; looking for an installed $req channel."
-    fi
-    if ! use_julia_channel "+$req"; then
-        die "Could not locate the Julia $req binary after 'juliaup add $req'."
-    fi
-    PATH="$(dirname "$PYTHON_JULIAPKG_EXE"):$PATH"
-    export PATH
-    report_proteus_julia "$1"
-}
-
-# Install juliaup with the official installer, which adds nothing to a shell start file with
-# --add-to-path=no. It has no earlier default to protect, so the required Julia becomes its default.
-install_fresh_juliaup() {
-    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" julia_installer
-    info "Installing Julia..."
-    julia_installer=$(mktemp "${TMPDIR:-/tmp}/juliaup-install.XXXXXX")
-    if ! curl -fsSL https://install.julialang.org -o "$julia_installer"; then
-        rm -f "$julia_installer"
-        die "Could not download the Julia installer from https://install.julialang.org; check the network connection and run bash install.sh again, or install Julia $req by hand: https://julialang.org/downloads/"
-    fi
-    if ! bash "$julia_installer" --yes --add-to-path=no 2>&1; then
-        rm -f "$julia_installer"
-        die "The Julia installer from https://install.julialang.org failed; see its output above, or install Julia $req by hand: https://julialang.org/downloads/"
-    fi
-    rm -f "$julia_installer"
-    # Source the juliaup env for the current shell
-    if [ -f "$HOME/.juliaup/bin/juliaup" ]; then
-        export PATH="$HOME/.juliaup/bin:$PATH"
-    fi
-    if ! command_exists juliaup; then
-        die "juliaup installation failed. Install Julia manually: https://julialang.org/downloads/"
-    fi
-    juliaup add "$req" || die "'juliaup add $req' failed; see its output above, then run bash install.sh again."
-    juliaup default "$req" || die "'juliaup default $req' failed; see its output above, then run bash install.sh again."
-    info "Julia $req installed"
-}
-
-# Select the Julia PROTEUS uses, always the required one, and export it as PYTHON_JULIAPKG_EXE;
-# a PYTHON_JULIAPKG_EXE of that version stays, as the real binary of a launcher that it names.
-# Only a juliaup that install_fresh_juliaup installed in this run gets a new default.
-setup_julia() {
-    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" julia_version
-    local exe="${PYTHON_JULIAPKG_EXE:-}" config="${JULIAUP_DEPOT_PATH:-$HOME/.julia}/juliaup/juliaup.json"
-    if [ -f "$exe" ] && [ -x "$exe" ]; then
-        case "$(julia_version_of "$exe")" in
-            "$req" | "$req".*)
-                JULIA_CHANNEL=""
-                PYTHON_JULIAPKG_EXE="$(resolve_real_julia_exe "" "$exe")"
-                export PYTHON_JULIAPKG_EXE
-                report_proteus_julia ""
-                return 0
-                ;;
-        esac
-    fi
-    if ! command_exists julia && [ -x "$HOME/.juliaup/bin/juliaup" ]; then
-        export PATH="$HOME/.juliaup/bin:$PATH"
-    fi
-    if ! command_exists julia; then
-        info "Julia not found."
-        if command_exists juliaup; then
-            add_julia_beside_default none
-        elif [ -f "$config" ]; then
-            die "A juliaup configuration exists at $config, but no juliaup is on PATH or in ~/.juliaup/bin; put your juliaup on PATH and run bash install.sh again."
-        elif prompt_yn "Install Julia via juliaup (official installer)?"; then
-            install_fresh_juliaup
-            use_julia_channel ""
-            report_proteus_julia ""
-        else
-            die "Julia is required for AGNI. Install it manually: https://julialang.org/downloads/"
-        fi
-        return 0
-    fi
-    # A version that 'julia --version' does not report counts as another version.
-    julia_version=$(julia_version_of julia)
-    case "$julia_version" in
-        "$req" | "$req".*)
-            use_julia_channel ""
-            report_proteus_julia ""
-            return 0
-            ;;
-    esac
-    julia_version="${julia_version:-(version unknown)}"
-    if ! command_exists juliaup; then
-        warn "PROTEUS runs on Julia $req, found $julia_version."
-        warn "juliaup not found. Cannot add Julia $req automatically."
-        echo "  Install juliaup: curl -fsSL https://install.julialang.org | sh"
-        echo "  Then: juliaup add $req"
-        die "Julia version mismatch."
-    fi
-    add_julia_beside_default "$julia_version"
-}
-
-setup_julia
+[ "$JULIA_SELECTED" = true ] || setup_julia
 
 # Verify that the Julia PROTEUS uses works
-if ! "$PYTHON_JULIAPKG_EXE" -e 'println("ok")' &>/dev/null; then
+if ! "$PYTHON_JULIAPKG_EXE" --startup-file=no -e 'println("ok")' &>/dev/null; then
     die "Julia at $PYTHON_JULIAPKG_EXE is installed but not functional."
 fi
 info "Julia: OK"
@@ -1070,6 +1244,8 @@ set_install_var FWL_DATA "$fwl_path"
 
 # PYTHON_JULIAPKG_EXE, the real Julia binary that setup_julia selected in Phase 2
 set_install_var PYTHON_JULIAPKG_EXE "$PYTHON_JULIAPKG_EXE"
+
+setup_julia_depot
 
 info "Environment variables configured"
 
@@ -1122,14 +1298,15 @@ fi
 CURRENT_PHASE=5
 phase 5 "AGNI + FastChem"
 
-if [ -d "$SCRIPT_DIR/AGNI" ] && [ -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; then
+if [ -d "$SCRIPT_DIR/AGNI" ] && julia_manifest_of "$SCRIPT_DIR/AGNI" >/dev/null; then
     info "AGNI already installed at $SCRIPT_DIR/AGNI"
     note_agni_julia_version "$SCRIPT_DIR/AGNI"
+    instantiate_julia_project "$SCRIPT_DIR/AGNI"
 else
     run_logged --takes "several minutes" "Installing AGNI and its Julia packages" \
         bash tools/get_agni.sh 0 \
         || die "Could not install AGNI and its Julia packages (bash tools/get_agni.sh 0); see the error above"
-    if [ ! -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; then
+    if ! julia_manifest_of "$SCRIPT_DIR/AGNI" >/dev/null; then
         die "AGNI installation failed (Julia packages not resolved)."
     fi
     info "AGNI installed"
@@ -1165,6 +1342,8 @@ fi
 if [ -x "$AGNI_REAL/fastchem/fastchem" ]; then
     set_install_var FC_DIR "$AGNI_REAL/fastchem"
 fi
+
+reinstall_moved_lovepy
 
 # ===================================================================
 # Phase 6: Python submodules (editable installs)
@@ -1275,7 +1454,8 @@ phase 7 "Further modules"
 
 # Usage: install_further_module <name> <command...>. A module of this phase that fails does not
 # stop the installer: the warning names the command to repeat, and the end of the run lists it.
-FAILED_MODULES=""
+# A failed instantiate of a Julia project in an earlier phase is on the list already.
+FAILED_MODULES="${FAILED_MODULES:-}"
 FURTHER_STAYS=$(mktemp "${TMPDIR:-/tmp}/proteus-clone-stays.XXXXXX") || FURTHER_STAYS=""
 install_further_module() {
     local name="$1"
@@ -1316,7 +1496,7 @@ case "$DATA_MODE" in
     essential)
         info "Downloading essential reference data (~3 GB)..."
         # Default-config and tutorial k-tables only; the bare
-        # `proteus get spectral` downloads every group (~10 GB).
+        # `proteus get spectral` downloads every group (~7.5 GB).
         # Honeyside/48 serves the config default (src/proteus/config/_atmos_clim.py),
         # Dayspring/48 serves input/tutorials/*.toml; update here when those change.
         proteus get spectral -n Honeyside -b 48 2>&1 || warn "Spectral data download had issues"

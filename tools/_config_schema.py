@@ -34,10 +34,20 @@ CONFIG_DIR = REPO_ROOT / 'src' / 'proteus' / 'config'
 # Fields with no source annotation (attrs reports type=None for them); their
 # display types are declared here, taken from the class Attributes docstrings.
 ANNOTATION_OVERRIDES = {
+    'atmos_clim.surface_d': 'float | str',
+    'atmos_clim.surface_k': 'float | str',
     'planet.R_int_override': 'float',
     'orbit.axial_period': 'float',
     'orbit.parameterized.sma_final': 'float',
     'orbit.satellite.axial_period_sat': 'float',
+    'outgas.lid_seal.chi_d': 'float',
+    'outgas.lid_seal.crust_rate': 'float',
+    'outgas.lid_seal.delta_close': 'float',
+    'outgas.lid_seal.delta_open': 'float',
+    'outgas.lid_seal.phi_close': 'float',
+    'outgas.lid_seal.phi_open': 'float',
+    'outgas.lid_seal.phi_solid': 'float',
+    'outgas.lid_seal.tau_leak': 'float',
     'interior_struct.zalmoxis.ice_layer_eos': 'str',
     'interior_struct.core_density': 'float | str',
     'interior_struct.core_heatcap': 'float | str',
@@ -59,12 +69,32 @@ POST_INIT_CHECKS = {
             'interior_energetics.aragog.top_cell_dt_rel_dT_solid',
         ),
     },
+    ('_interior', '_check_aragog_rheology_module'): {
+        'classes': ('Interior',),
+        'paths': (
+            'interior_energetics.module',
+            'interior_energetics.aragog.rheology.enabled',
+        ),
+    },
     ('_interior', '_check_aragog_top_cell_dt_limit_surface_bc'): {
         'classes': ('Interior',),
         'paths': (
             'interior_energetics.module',
             'interior_energetics.surface_bc_mode',
             'interior_energetics.aragog.top_cell_dt_limit',
+        ),
+    },
+    ('_interior', '_check_aragog_lid'): {
+        'classes': ('Interior',),
+        'paths': (
+            'interior_energetics.module',
+            'interior_energetics.surface_bc_mode',
+            'interior_energetics.param_utbl',
+            'interior_energetics.aragog.lid_mush_base',
+            'interior_energetics.aragog.rheology.enabled',
+            'interior_energetics.aragog.core_bc',
+            'interior_energetics.kappah_floor',
+            'interior_energetics.const_properties',
         ),
     },
 }

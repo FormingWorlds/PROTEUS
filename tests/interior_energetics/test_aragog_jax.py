@@ -188,8 +188,8 @@ def test_run_solver_raises_when_diffrax_result_fails(tmp_path):
     Contract from ``aragog_jax.py:224-230``: when diffrax reports failure
     (typically a max_steps exhaustion in the kvaerno3 path or an
     optx.Newton blow-up in the implicit_euler path), the dispatcher must
-    raise RuntimeError so the upstream wrapper's retry ladder can engage
-    instead of silently producing nonsense output.
+    raise RuntimeError so the wrapper skips the step instead of silently
+    producing nonsense output.
 
     Verifies:
     - ``solve_entropy`` mocked to return ``success=False`` triggers
@@ -216,7 +216,9 @@ def test_run_solver_raises_when_diffrax_result_fails(tmp_path):
     # Sentinel: confirm interior_o._last_entropy is not set before the call.
     interior_o._last_entropy = None
     with patch('aragog.jax.solver.solve_entropy', return_value=failed_result):
-        with pytest.raises(RuntimeError, match=r'JAX Aragog solver failed.*t_final.*steps'):
+        with pytest.raises(
+            RuntimeError, match=r'JAX Aragog solver failed.*t_final.*steps.*skips this step\.$'
+        ):
             runner.run_solver(
                 {'F_atm': 1e5, 'Time': 1.0e3},
                 interior_o,

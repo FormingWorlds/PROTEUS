@@ -59,7 +59,7 @@ Each module is maintained in its own repository and can be used as a standalone 
 
 [Zalmoxis](https://proteus-framework.org/Zalmoxis/) computes the hydrostatic equilibrium structure of a differentiated planet (metallic core + silicate mantle + volatile envelope). Given a total planet mass, bulk composition, and surface temperature, Zalmoxis integrates the equations of hydrostatic equilibrium inward from the surface using a tabulated equation of state (EOS), returning radial profiles of pressure, density, temperature, and gravitational acceleration. It also computes the core radius, mantle mass, and surface gravity.
 
-Zalmoxis supports several EOS backends, including the PALEOS MgSiO$_3$ tables and the Wolf & Bower (2018) [^cite-wolf2018] parameterisation. The PALEOS mantle EOS comes in two forms: `PALEOS:MgSiO3` solves the structure on the unified table and derives the solidus from the liquidus with a fixed mushy-zone factor (by default the Stixrude 2014 solidus-to-liquidus ratio, applied to the PALEOS liquidus), while `PALEOS-2phase:MgSiO3` uses separate solid and liquid tables for the latent-heat entropy gap across the melting curve and derives the solidus from the liquidus with the same mushy-zone factor. Both are detailed in the [interior configuration reference](../Reference/config/interior.md). The structure solution is used by PROTEUS to initialise the planet's radius and to dynamically update the structure during the simulation when the interior thermal state changes (see [Structure-interior coupling](#structure-interior-coupling) below).
+Zalmoxis supports several EOS backends, including the PALEOS MgSiO$_3$ tables and the Wolf & Bower (2018) [^cite-wolf2018] parameterisation. The PALEOS mantle EOS comes in two forms: `PALEOS:MgSiO3` solves the structure on the unified table and derives the solidus from the liquidus with a fixed mushy-zone factor (by default the solidus-to-liquidus ratio of Stixrude (2014)[^cite-stixrude2014], applied to the PALEOS liquidus), while `PALEOS-2phase:MgSiO3` uses separate solid and liquid tables for the latent-heat entropy gap across the melting curve and derives the solidus from the liquidus with the same mushy-zone factor. Both are detailed in the [interior configuration reference](../Reference/config/interior.md). The structure solution is used by PROTEUS to initialise the planet's radius and to dynamically update the structure during the simulation when the interior thermal state changes (see [Structure-interior coupling](#structure-interior-coupling) below).
 
 Config section: `[interior_struct]`. Reference: [Interior configuration](../Reference/config/interior.md).
 
@@ -85,11 +85,15 @@ The atmosphere climate module solves the radiative-convective equilibrium struct
 
 **[JANUS](https://proteus-framework.org/JANUS/)** (Python) is a 1D convective atmosphere module that computes a radiative-convective profile using a band-averaged two-stream approach. JANUS is faster than AGNI but makes stronger simplifying assumptions (e.g. no iterative Newton solve; a prescribed adiabatic lower atmosphere). It is useful for parameter sweeps and initial exploration.
 
+With `surf_state = 'skin'`, a conductive skin of thickness `surface_d` and conductivity `surface_k` separates the magma from the atmosphere, and carries the flux $k\,(T_\mathrm{magma} - T_\mathrm{surf}) / d$. 
+
+Instead, setting both to `'saturation'` derives the skin from the condensates formed at the surface, such as graphite. Each condensate is spread over the surface as a layer at its density, and the layers are stacked in series: $d = \sum_i d_i$ and $k = d / \sum_i (d_i / k_i)$, with a constant conductivity per condensate (`condensate_conductivity` in `proteus.utils.constants`). 
+
 Config section: `[atmos_clim]`. Reference: [Atmosphere configuration](../Reference/config/atmosphere.md).
 
 ## Atmospheric chemistry: VULCAN
 
-**[VULCAN](https://github.com/FormingWorlds/VULCAN)** (Python) is a photochemical kinetics code that computes steady-state atmospheric mixing ratios given a temperature-pressure profile, eddy diffusion profile, and UV stellar spectrum. In PROTEUS, VULCAN post-processes atmosphere snapshots after the simulation: automatically at its end with `atmos_chem.mode = "offline"`, or later with `proteus offchem`. `atmos_chem.times` selects the snapshots (the final state, all of them, or a list of times). The chemistry does not feed back on the evolution; coupled (online) chemistry is not yet implemented. See [Postprocessing and chemistry](../How-to/usage_postprocessing.md#atmospheric-chemistry-with-vulcan).
+**[VULCAN](https://github.com/FormingWorlds/VULCAN)** (Python) is a photochemical kinetics code that computes steady-state atmospheric mixing ratios given a temperature-pressure profile, eddy diffusion profile, and UV stellar spectrum. In PROTEUS, VULCAN post-processes atmosphere snapshots after the simulation: automatically at its end with `atmos_chem.mode = "offline"`, or later with `proteus offchem`. `atmos_chem.times` selects the snapshots (the final state, all of them, a list of times, or a table of states such as a melt fraction or surface temperature). The chemistry does not feed back on the evolution; coupled (online) chemistry is not yet implemented. See [Postprocessing and chemistry](../How-to/usage_postprocessing.md#atmospheric-chemistry-with-vulcan).
 
 Config section: `[atmos_chem]`. Reference: [Atmosphere configuration](../Reference/config/atmosphere.md).
 
@@ -119,6 +123,8 @@ When no H, C, N or S inventory is above `outgas.mass_thresh` and no noble gas re
 **[LavAtmos](https://github.com/FormingWorlds/LavAtmos)** (Python) is an optional addition, enabled with `outgas.vapourise = true`, that computes the thermodynamic vapourisation equilibrium of the surface melt [^cite-vanbuchem2023] and adds the resulting rock-vapour species to the volatile outgassing [^cite-vanbuchem2025]. Vapourisation is a distinct process from outgassing. It uses the FastChem equilibrium chemistry solver and requires [ThermoEngineLite](https://github.com/FormingWorlds/ThermoEngineLite) for melt thermodynamics. 
 
 Config section: `[outgas]`. Reference: [Escape and outgassing configuration](../Reference/config/escape_outgas.md).
+
+For the order of the volatile steps in each iteration, the species-to-element split, the H$_2$ binodal, rock vapour and the trapping of volatiles in the freezing mantle, see [Outgassing, rock vapour and volatile trapping](outgas.md).
 
 ### Volatile outgassing and rock vapourisation are combined
 
@@ -213,11 +219,56 @@ The accretion module supplies the giant impacts a planet experiences after the d
 
 **[Morrigan](https://proteus-framework.org/Morrigan/)** (Python) follows a system of planetary embryos through the secular eccentricity oscillations, orbit crossings, scatterings, ejections and giant impacts by which they accrete, until the system settles into a Hill-stable configuration. It implements the semi-analytical Monte Carlo model of Kimura et al. (2025) [^cite-kimura2025], which predicts when a system goes unstable and resolves each instability with prescriptions calibrated against N-body simulations, rather than integrating the orbits. That makes one system cheap enough to run inside a coupled framework, at the cost of any single history being a statistical realisation rather than a trajectory: ensemble statistics are the meaningful comparison. PROTEUS follows one survivor of that system, chosen by the configured selector, and takes its impact history.
 
-Each impact is applied at the timestep it falls in. The impactor's rock grows the planet and the interior structure is re-solved at the new mass, so radius, gravity and the core-mantle split follow the growth. The impactor's volatiles are delivered while the same collision fraction strips the target's atmosphere and the impactor's own, so a small impactor striking a heavily-clothed planet can leave it lighter than before. The mantle is re-melted by raising it to the run's temperature-mode initial condition, where parts that are already hotter keep their state, and the orbit takes the collision's change in semi-major axis and eccentricity, clamped to a bound orbit.
+Each impact is applied at the timestep it falls in. The impactor's rock grows the planet and the interior structure is re-solved at the new mass, so radius, gravity and the core-mantle split follow the growth. The impactor's volatiles are delivered while the same collision fraction strips the target's atmosphere and the impactor's own, so a small impactor striking a heavily-clothed planet can leave it lighter than before. The impact also re-melts part of the mantle, set by `accretion.remelt` (see [how much of the mantle an impact melts](#how-much-of-the-mantle-an-impact-melts)). The orbit takes the collision's change in semi-major axis and eccentricity, clamped to a bound orbit.
 
 Two further implementations take an impact history rather than derive one. `timeline` replays a table of impacts from a file, which reproduces a published history or drives PROTEUS from one computed elsewhere. `dummy` builds a history from scaling laws: the planet approaches an asymptotic mass exponentially, impacts are evenly spaced in time, and each delivers the mass the law accretes over its interval, so the increments decay and the largest impact is the first. With no accretion module selected the impact list is empty and the planet's mass is set by its initial condition alone.
 
 Config section: `[accretion]`. Reference: [Accretion configuration](../Reference/config/accretion.md).
+
+### How much of the mantle an impact melts
+
+How much of the mantle does a giant impact melt, and where in the mantle does the melt go?
+
+Each impact melts a fraction $f$ of the mantle mass, the melt mass fraction.
+The melt fills the mantle from the surface down.
+The Aragog interior solver divides the mantle into cells, thin spherical shells.
+The outermost cells that hold this mass rise to the run's temperature-mode initial condition, and the deeper mantle keeps its state before the impact.
+
+The setting `accretion.remelt` sets $f$:
+
+- `full` gives $f = 1$: the whole mantle rises.
+- `computed`, the default with Morrigan, takes the $f$ that Morrigan reports for each merger, or an `f_melt` column of a timeline file.
+- Without a setting, a run with Morrigan uses `computed` and every other run `full`.
+- An $f$ that is not a finite number from 0 to 1 is an error, also in an `f_melt` column.
+
+The mantle mass here is the structural mass of the mantle before the impact.
+Parts of the mantle that are already hotter than the initial condition keep their state.
+
+For example, take a mantle of uniform density between the core-mantle boundary at $r_c$ = 3500 km and the surface at $R$ = 6400 km, and $f = 0.3$.
+The melt front $r_f$ then follows from the mass of the outer shell, $r_f = (R^3 - f (R^3 - r_c^3))^{1/3}$:
+
+$r_f^3 = 2.62144 \times 10^{11} - 0.3 \times (2.62144 \times 10^{11} - 4.2875 \times 10^{10}) = 1.963633 \times 10^{11}$ km$^3$, so $r_f$ = 5812 km.
+
+The melt front lies 588 km below the surface.
+A fill linear in radius would put it at $R - f (R - r_c)$ = 5530 km, 870 km deep and 282 km too deep, because the outer cells hold more mass per unit radius.
+
+The cell at the melt front holds only the share $w$ of the melt, its weight, and takes the mass-weighted mean entropy of its melted and unmelted parts.
+Its entropy therefore moves the share $w$ of the way from its entropy before the impact to the entropy of the initial condition; that distance is its jump (see the [terms of the re-melt validation page](../Validation/interior_energetics/remelt.md#what-this-page-checks)).
+
+The rule has no memory of earlier melt.
+Each impact fills its share from the surface down, also where the cells are already at the initial condition.
+So two impacts of $f = 0.3$ in one step melt 0.3 of the mantle plus up to a quarter of the cell at the melt front, since the second impact moves that cell the share $w$ again.
+For example, in a mantle of 4 equal cells the first impact melts the top cell in full and the next cell by $w = 0.2$.
+The second impact melts the same share again, so that cell then holds $1 - 0.8^2 = 0.36$ of its jump instead of 0.2.
+The extra share is $w (1 - w)$, at most 1/4 at $w = 0.5$.
+
+The dummy interior carries one mantle temperature.
+At each impact it moves that temperature the share $f$ of the way to the initial temperature, so its impacts compound.
+The boundary interior and SPIDER cannot apply an impact, so an accretion run with either is refused when the configuration is loaded.
+
+The tutorial [Giant impacts with a partial re-melt](../Tutorials/giant_impact_remelt.md) runs a full and a partial re-melt and reads their impact rows.
+
+**Where this is checked.** [Partial giant-impact re-melt](../Validation/interior_energetics/remelt.md) on the Validation tab.
 
 ## Synthetic observations: petitRADTRANS
 
@@ -275,7 +326,7 @@ so the planet keeps the mass its initial condition gives it; add an
 
 ---
 
-### Structure-interior coupling
+## Structure-interior coupling
 
 The structure and interior modules serve complementary roles.
 The *interior* module (SPIDER or Aragog) evolves the mantle temperature and melt fraction in time, while the *structure* module (Zalmoxis) solves for the hydrostatic equilibrium of the planet given a temperature profile and equation of state.
@@ -283,12 +334,56 @@ The *interior* module (SPIDER or Aragog) evolves the mantle temperature and melt
 When `interior_struct.module = 'zalmoxis'` and `interior_struct.zalmoxis.update_interval > 0`, PROTEUS can dynamically recompute the planetary structure during a simulation.
 Structure updates are governed by a hybrid trigger that combines physics-based criteria with timing constraints:
 
-- **Floor** (`update_min_interval`): minimum time between updates, preventing excessive recomputation during rapid cooling.
-- **Ceiling** (`update_interval`): maximum time between updates, guaranteeing periodic recomputation.
+- **Floor** (`update_min_interval`): minimum time between updates, preventing excessive recomputation during rapid cooling. Every trigger below waits for it, the recovery included. Only mesh convergence skips it: the extra re-solves, spaced by `mesh_convergence_interval`, that follow an update whose mesh shift was limited to `mesh_max_shift`.
+- **Ceiling** (`update_interval`): the time since the last structure update after which PROTEUS starts a new update. Each re-solve in the time loop restarts this count, also a failed one or one whose radius increase PROTEUS rejects; a failed one-time baseline solve at the start of the time loop does not. On resume the count starts at the resumed time. PROTEUS checks it once per time step, so in a run with no failed or rejected re-solve the gap between 2 updates can exceed the ceiling by up to 1 time step.
 - **Temperature trigger** (`update_dtmagma_frac`): fires when the relative change in mantle surface temperature since the last update exceeds the threshold.
 - **Melt fraction trigger** (`update_dphi_abs`): fires when the absolute change in global melt fraction since the last update exceeds the threshold.
+- **Recovery** (`update_stale_ceiling`): a failed re-solve keeps the previous structure, which is then called stale. If no other trigger fires, a new re-solve starts once this time has passed since the last re-solve attempt; the other triggers can start one sooner, after the floor. On resume the resumed time counts as the last attempt. It has an effect only when `update_stale_ceiling` is smaller than `update_interval`, because the ceiling re-solves first otherwise. It does nothing while no re-solve has failed.
 
 Setting `update_interval = 0` disables dynamic updates entirely; the structure is computed only at initialisation.
+
+## The core temperature in the structure solve
+
+Which temperature does Zalmoxis give the core when it solves the structure? The core follows an adiabat through the core-mantle boundary (CMB) temperature. A hotter core is less dense, so this temperature sets part of the core radius and the central pressure.
+
+PROTEUS gives every Zalmoxis solve that has a mantle temperature profile a core temperature table: pressure and temperature pairs on a core adiabat. The mantle keeps the temperature profile of the interior module. The table follows one of 2 cores:
+
+- The live core: the Aragog core with `interior_energetics.aragog.core_bc = "core_module"`, at its own core temperature.
+- A Gaussian core: a core density profile fitted to the core mass, core radius, central pressure and CMB pressure of the last structure. Its constant expansion coefficient and heat capacity come from `interior_energetics.aragog.core_module.alpha` and `.c_p`; PROTEUS reads these 2 values for every `core_bc` and also with SPIDER.
+
+| Solve | Core | Temperature of the adiabat at the CMB |
+|---|---|---|
+| Structure update, Aragog with `core_bc = "core_module"` | live core | the live core temperature |
+| Structure update, any other `core_bc`, or SPIDER | Gaussian core | `T_cmb` of the last output row |
+| Start of the run | Gaussian core | the deepest mantle temperature |
+| After a giant impact | Gaussian core | `T_cmb` of the last output row (the core temperature before the impact) |
+
+When the last output row has no positive `T_cmb`, the 2 solves that read it, a structure update with the Gaussian core and the solve after a giant impact, take the deepest mantle temperature. When the previous structure cannot be sampled, the start-up solve and the solve after an impact without a positive `T_cmb` get no core table.
+
+The solves at the start of the run and after a giant impact have a mantle temperature profile, and so a core table, only with `planet.temperature_mode = "liquidus_super"` and an interior module other than SPIDER.
+
+Zalmoxis reads the table at the pressure of each core node. Past the ends of the table it extrapolates linearly from the end interval.
+
+For example, at the first structure update (102 yr) of a 1 Earth-mass planet with `core_bc = "energy_balance"`, the table makes the core radius 0.74 % larger and the central pressure 4.4 % lower than with the whole core at the temperature of the deepest mantle node.
+
+### When the core table stops a solve or a run, and when it is ignored
+
+- A solve stops when a core node lies past the table by more than 0.1 of the table pressure range. It also stops when the Zalmoxis result lacks one of its 2 core table outputs, `core_T_used` and `core_T_max_excess`. What PROTEUS does next depends on the solve:
+    - At a structure update, PROTEUS keeps the previous structure. After 8 failed structure updates in a row, the run stops.
+    - At the start of the run and after a giant impact, Zalmoxis solves the structure twice: first with its own temperature guess and no core table, then on the mantle temperature profile with the core table. When the second solve stops, PROTEUS keeps a structure solved without the core table: the first solve or, in the start-up loop that iterates the structure with the outgassing, a new solve on the temperature guess.
+- The run stops when PROTEUS cannot build the core table, for example when the Gaussian core cannot be fitted to the last structure. PROTEUS builds the table before the solve, so this error keeps no earlier structure.
+- The run stops when a core temperature of an accepted solve differs from the table temperature at the node pressure by more than a relative 1e-9, or is not finite, not positive or rises outward.
+- A core equation of state (EOS) that does not depend on temperature ignores the table; `struct_core_T_used` is then 0.
+
+### Limits of the core temperature table
+
+- **Heat content at an update.** With a `core_bc` other than `"core_module"`, the table takes the `T_cmb` of the row before the update. The update then changes the core heat content, and no output column books that change (`step_dE_struct_core_J` is 0).
+- **Constant expansion coefficient.** The table is the adiabat of a core with a constant expansion coefficient and heat capacity (`interior_energetics.aragog.core_module.alpha` and `.c_p`). Against the isentrope of the PALEOS liquid iron table of Attia et al. (2026)[^cite-attia2026] through the same CMB temperature, its centre is 20 % colder at 1 Earth mass, 30 % hotter at 3 Earth masses and 73 % hotter at 4 Earth masses. At the first structure update of a run with `core_bc = "energy_balance"`, a solve on the isentrope moves the planet radius by up to 0.18 %, the core radius by up to 0.6 % and the central pressure by up to 2.8 % at 1 to 4 Earth masses ([measured values](../Validation/interior_struct/core_temperature.md#what-the-table-does-not-include)). The structure solve and the core energy budget do not use the PALEOS isentrope.
+- **After a giant impact.** The structure solve after an impact takes the core temperature before the impact. A full re-melt of the mantle then raises the core temperature of the energy budget, and the structure keeps the colder core until the next structure solve. In the measured run, a solve at the raised temperature gives a core radius up to 0.10 % larger ([measured values](../Validation/interior_struct/core_temperature.md#what-the-table-does-not-include)).
+
+**Where this is checked.** [The core table gives the structure of 2 independent paths](../Validation/interior_struct/core_temperature.md).
+
+**Try it.** [The core temperature of the structure solve](../Tutorials/core_table.md) runs a planet with both `core_bc` settings and reads the core of each structure update.
 
 ## Time evolution vs equilibrium
 
@@ -305,7 +400,8 @@ Only the interior and star modules have an explicit notion of time-evolution. Al
 
  [^cite-lichtenberg2021]: Lichtenberg, T., Bower, D.J., Hammond, M., et al., *[Vertically resolved magma ocean-protoatmosphere evolution: H2, H2O, CO2, CH4, CO, O2, and N2 as primary absorbers](https://doi.org/10.1029/2020JE006711)*, Journal of Geophysical Research: Planets, 126, e2020JE006711, 2021. [SciX](https://scixplorer.org/abs/2021JGRE..12606711L/abstract).
 
- [^cite-wolf2018]: Wolf, A.S. & Bower, D.J., *[An equation of state for high pressure-temperature liquids (RTpress) with application to MgSiO3 melt](https://doi.org/10.1016/j.pepi.2018.02.004)*, Physics of the Earth and Planetary Interiors, 278, 59-74, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..278...59W/abstract).
+[^cite-stixrude2014]: L. Stixrude, *[Melting in super-earths](https://doi.org/10.1098/rsta.2013.0076)*, Philosophical Transactions of the Royal Society A, 372, 20130076, 2014. [SciX](https://scixplorer.org/abs/2014RSPTA.37230076S/abstract).
+[^cite-wolf2018]: Wolf, A.S. & Bower, D.J., *[An equation of state for high pressure-temperature liquids (RTpress) with application to MgSiO3 melt](https://doi.org/10.1016/j.pepi.2018.02.004)*, Physics of the Earth and Planetary Interiors, 278, 59-74, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..278...59W/abstract).
 
  [^cite-bower2018]: Bower, D.J., Sanan, P. & Wolf, A.S., *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49-62, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..274...49B/abstract).
 
@@ -326,3 +422,5 @@ Only the interior and star modules have an explicit notion of time-evolution. Al
  [^cite-noack2020]: Noack, L. & Lasbleis, M., *[Parameterisations of interior properties of rocky planets](https://doi.org/10.1051/0004-6361/202037723)*, Astronomy & Astrophysics, 638, A129, 2020. [SciX](https://scixplorer.org/abs/2020A%26A...638A.129N/abstract).
 
  [^cite-kimura2025]: Kimura, T., Hoshino, H., Kokubo, E., Matsumoto, Y. & Ikoma, M., *[Semi-analytical model for the dynamical evolution of planetary systems via giant impacts](https://doi.org/10.3847/1538-4357/ade992)*, The Astrophysical Journal, 989, 109, 2025.
+
+[^cite-attia2026]: M. Attia, T. Lichtenberg, E. Jungová, M. Sastre, *[PALEOS: Multiphase equations of state and mass-radius relations for exoplanet interiors](https://doi.org/10.1051/0004-6361/202660790)*, Astronomy & Astrophysics, 713, A225, 2026.

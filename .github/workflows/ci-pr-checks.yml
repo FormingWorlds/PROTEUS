@@ -51,7 +51,7 @@ jobs:
   # --------------------------------------------------------------------
   unit-tests:
     name: Unit Tests (Linux)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       unit-outcome: ${{ steps.unit-tests.outcome }}
       coverage-status: ${{ steps.coverage-validation.outputs.coverage_status }}

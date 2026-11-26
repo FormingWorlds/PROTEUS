@@ -21,25 +21,38 @@ from __future__ import annotations
 import logging
 import math
 import os
+import re
+import sys
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from aragog.solver.entropy_solver import CMBClosureError
 
+from proteus.interior_energetics.aragog import RetryLadderExhaustedError
 from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.wrapper import (
+    _ARAGOG_CALL_ENERGY_KEYS,
     _RESUME_STRUCT_DPHI_BACKSTOP_CAP,
     _RESUME_STRUCT_DR_REL_TOL,
+    _clear_jax_caches_after_resolve,
     _eos_grid_extent_up_step,
     _prevent_warming_clamp_active,
     _refresh_composition_sentinels,
     remelt_mantle,
+    run_interior,
     update_structure_from_interior,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.timeout(30),
+    pytest.mark.usefixtures('_no_core_table'),
+]
+
 
 PROTEUS_ROOT = Path(__file__).resolve().parents[2]
 
@@ -817,6 +830,135 @@ def test_handoff_callable_anchors_cmb_for_aragog_ascending_profile():
     assert T_arr[-1] == pytest.approx(2500.0, rel=1e-12)
 
 
+def _boundary_adiabat_interior(t_p=2600.0, dtdp=2.0e-8, n_levels=60, n_shells=8):
+    """Interior state as the boundary adiabat model publishes it.
+
+    The adiabat is linear in pressure, T = T_p + dtdp (P - P_top), on a mantle
+    whose pressure falls linearly from 140 GPa at the CMB to 1 bar at the top,
+    so the exact value at any pressure is known. The shell temperatures are the
+    shell means, hotter than T_p in the top shell.
+    """
+    radius = np.linspace(3.4e6, 6.371e6, n_levels)
+    pressure = np.linspace(1.4e11, 1.0e5, n_levels)
+    temp = t_p + dtdp * (pressure - pressure[-1])
+    edges = np.linspace(radius[0], radius[-1], n_shells + 1)
+    mid = 0.5 * (edges[:-1] + edges[1:])
+    interior_o = _mock_interior_o(n_stag=n_shells)
+    interior_o.radius = edges
+    interior_o.temp = np.interp(mid, radius, temp)
+    interior_o.temp_profile = (radius, pressure, temp)
+    return interior_o, radius, pressure, temp
+
+
+def _capture_solver_kwargs(config, interior_o):
+    """Run a forced structure update and return the keyword arguments Zalmoxis received."""
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 2600.0,
+        'Phi_global': 0.3,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.4e6, None)
+        ) as mock_solver,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        update_structure_from_interior(
+            _mock_dirs(), config, hf_row, interior_o, 0.0, 2600.0, 0.3, force=True
+        )
+    mock_solver.assert_called_once()
+    return mock_solver.call_args.kwargs
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_handoff_follows_the_boundary_adiabat_on_pressure():
+    """The boundary adiabat reaches the re-solve on pressure, with the top at T_p.
+
+    With T = 2600 K + 2e-8 K/Pa (P - 1 bar) every pressure has a known value:
+    the top of the mantle 2600 K wherever the re-solve puts it, 1.4e11 Pa
+    5000 K, and the core, deeper than the mantle, the CMB value. The re-solve
+    must also leave the boundary's T_magma and T_surf to the backend. The
+    shell-mean hand-off the other backends use would start the top at the mean
+    of the top shell, 175 K above T_p.
+    """
+    config = _mock_config(update_interval=0)
+    config.interior_energetics.module = 'boundary'
+    interior_o, radius, pressure, temp = _boundary_adiabat_interior()
+    kwargs = _capture_solver_kwargs(config, interior_o)
+    tf = kwargs['temperature_function']
+    r_arr, t_arr = kwargs['temperature_arrays']
+
+    assert kwargs['seed_boundary_temperatures'] is False
+    # The top of the mantle sits at T_p, at its own radius or one the re-solve moved.
+    for r_top in (radius[-1], radius[-1] - 2.0e4, radius[-1] + 2.0e4):
+        assert tf(r_top, 1.0e5) == pytest.approx(2600.0, rel=1e-12)
+    # Edge case: above the mantle (P below 1 bar) the top value holds.
+    assert tf(radius[-1], 0.0) == pytest.approx(2600.0, rel=1e-12)
+    # Off the levels, on pressure and not on radius.
+    p_probe = 0.5 * (pressure[20] + pressure[21])
+    assert tf(radius[0], p_probe) == pytest.approx(
+        2600.0 + 2.0e-8 * (p_probe - 1.0e5), rel=1e-12
+    )
+    assert tf(radius[-1], p_probe) == pytest.approx(tf(radius[0], p_probe), rel=1e-15)
+    # The core, deeper than the mantle, holds T_cmb.
+    assert tf(0.0, 3.0e11) == pytest.approx(temp[0], rel=1e-12)
+    assert temp[0] == pytest.approx(2600.0 + 2.0e-8 * (1.4e11 - 1.0e5), rel=1e-12)
+    # The r-indexed arrays for the JAX path are the adiabat itself, ascending in radius.
+    np.testing.assert_allclose(r_arr, radius, rtol=1e-15)
+    np.testing.assert_allclose(t_arr, temp, rtol=1e-15)
+
+    # Discrimination guard: the shell-mean hand-off starts the top of the mantle hotter.
+    config.interior_energetics.module = 'aragog'
+    shell_tf = _capture_solver_kwargs(config, interior_o)['temperature_function']
+    assert shell_tf(radius[-1], 1.0e5) - 2600.0 > 100.0
+    assert shell_tf(radius[-1], 1.0e5) == pytest.approx(interior_o.temp[-1], rel=1e-12)
+
+
+@pytest.mark.unit
+def test_resolve_hands_the_core_table_of_the_live_state(monkeypatch):
+    """A structure re-solve passes zalmoxis_solver the core temperature table built from the run
+    config, the interior object and the row of this step, with no anchor, so the live Aragog
+    core or the row T_cmb sets it, and the deepest mantle T as the fallback anchor."""
+    import proteus.interior_energetics.wrapper as wrapper_mod
+
+    calls = []
+
+    def stub(config, interior_o, hf_row, t_anchor=None, t_fallback=None):
+        calls.append((config, interior_o, hf_row, t_anchor, t_fallback))
+        return ('core table',)
+
+    monkeypatch.setattr(wrapper_mod, '_structure_core_table', stub)
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o(n_stag=49)
+    interior_o.radius = np.linspace(3.0e6, 6.0e6, 50)
+    interior_o.temp = np.linspace(7740.0, 2500.0, 49)
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)
+        ) as mock_solver,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        update_structure_from_interior(
+            _mock_dirs(), config, hf_row, interior_o, 0.0, 3000.0, 0.8
+        )
+    assert mock_solver.call_args.kwargs['core_temperature_arrays'] == ('core table',)
+    assert len(calls) == 1
+    assert calls[0][0] is config and calls[0][1] is interior_o and calls[0][3] is None
+    assert calls[0][4] == pytest.approx(7740.0, rel=1e-12)  # the deepest mantle T
+
+
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_handoff_profile_invariant_to_node_ordering():
@@ -1230,7 +1372,7 @@ def test_determine_zalmoxis_spider_mesh(tmp_path):
     config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
     dirs = {'spider': '/nonexistent/spider'}
-    hf_row = {'R_int': 6.371e6, 'gravity': 9.81, 'T_magma': 3000.0}
+    hf_row = {'R_int': 6.371e6, 'M_int': 5.972e24, 'gravity': 9.81, 'T_magma': 3000.0}
 
     with (
         patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
@@ -1265,7 +1407,7 @@ def test_determine_zalmoxis_adiabatic_switch(caplog):
     config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
     dirs = {'spider': '/nonexistent/spider'}
-    hf_row = {'R_int': 6.371e6}
+    hf_row = {'R_int': 6.371e6, 'M_int': 5.972e24}
 
     with (
         patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
@@ -1310,7 +1452,7 @@ def test_determine_zalmoxis_no_adiabatic_switch_non_tdep(caplog):
     config.interior_struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
 
     dirs = {'spider': '/nonexistent/spider'}
-    hf_row = {'R_int': 6.371e6}
+    hf_row = {'R_int': 6.371e6, 'M_int': 5.972e24}
 
     with (
         patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
@@ -1375,7 +1517,7 @@ def test_determine_zalmoxis_adiabatic_override_gate_per_eos(
     config.interior_struct.zalmoxis.mantle_eos = mantle_eos
 
     dirs = {'spider': '/nonexistent/spider'}
-    hf_row = {'R_int': 6.371e6}
+    hf_row = {'R_int': 6.371e6, 'M_int': 5.972e24}
 
     with (
         patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
@@ -1422,7 +1564,7 @@ def test_determine_zalmoxis_no_override_when_module_is_aragog(caplog):
     config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
     dirs = {}
-    hf_row = {'R_int': 6.371e6}
+    hf_row = {'R_int': 6.371e6, 'M_int': 5.972e24}
 
     with (
         patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
@@ -1474,7 +1616,7 @@ def test_determine_zalmoxis_no_override_when_temperature_mode_already_adiabatic(
     config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
     dirs = {'spider': '/nonexistent/spider'}
-    hf_row = {'R_int': 6.371e6}
+    hf_row = {'R_int': 6.371e6, 'M_int': 5.972e24}
 
     with (
         patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
@@ -1651,6 +1793,49 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
 
     # Reset for any downstream tests.
     interior_o.zalmoxis_fail_count = 0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('path', ['raise', 'mass_anchor', 'up_step'])
+def test_a_rejected_structure_update_restores_the_solve_keys_of_the_row(path):
+    """A solve that writes M_core, M_core_solve, M_dissolved_target, core_density, and the core
+    temperature table flags and then fails (a schema violation raises after the writes),
+    misses the mass anchor, or makes a rejected radius up-step leaves the 6 keys at their
+    values before the call."""
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()  # cooling, so an up-step is rejected
+    before = {'M_core': 1.95e24, 'M_core_solve': 1.94e24, 'core_density': 1.1e4}
+    before.update(struct_core_T_used=0.0, struct_core_T_excess=0.0, M_dissolved_target=2.55e21)
+    hf_row.update(before)
+    interior_o = _mock_interior_o()
+
+    def solver(cfg, outdir, row, *a, **k):
+        row.update(
+            M_core=2.1e24, M_core_solve=2.0e24, core_density=1.2e4, M_dissolved_target=2.4e21
+        )
+        row.update(struct_core_T_used=1.0, struct_core_T_excess=0.05)
+        if path == 'raise':
+            raise RuntimeError('zalmoxis_output.dat schema violation')
+        if path == 'mass_anchor':
+            row.update(M_int_target=5.972e24, M_int=5.972e24 * (1 + 5e-3))
+        else:
+            row['R_int'] *= 1.0 + 1.0e-3
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=solver)
+    with (
+        s,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(_mock_dirs(), config, hf_row, interior_o, lt, lT, lP)
+    assert {k: hf_row[k] for k in before} == before
+    assert interior_o.zalmoxis_fail_count == (0 if path == 'up_step' else 1)
+    assert interior_o.structure_stale is (path != 'up_step')
 
 
 # ============================================================================
@@ -1876,140 +2061,322 @@ def test_zalmoxis_output_restored_from_prev_on_wrapper_raise(tmp_path):
 
 
 # ============================================================================
-# Stale-aware re-trigger via last_successful_struct_time
+# Recovery after a failed structure re-solve (update_stale_ceiling)
 # ============================================================================
 
 
-@pytest.mark.unit
-def test_stale_aware_ceiling_fires_after_failure_window(tmp_path):
-    """Stale-aware ceiling fires after update_stale_ceiling regardless of
-    intervening failed re-solves.
-
-    Contract: the standard ceiling trigger uses elapsed time since the
-    last *call*, which a fall-back re-anchors; a failed call therefore
-    keeps the trigger silent for a full ``update_interval`` afterwards
-    and lets Aragog evolve on a frozen mesh. The stale-aware ceiling
-    fires after ``update_stale_ceiling`` has elapsed since the last
-    *successful* re-solve, tracked on ``Interior_t`` via
-    ``last_successful_struct_time``. It is independent of
-    ``last_struct_time`` and so survives failures.
-    """
-
-    # Configure a 50 kyr normal ceiling and a 25 kyr stale ceiling.
-    # Test point: elapsed=30 kyr since LAST CALL (under normal ceiling)
-    # but 30 kyr since LAST SUCCESS (over stale ceiling).
+def _stale_ceiling_case(tmp_path, *, stale):
+    """Real Interior_t at 1e5 yr under a 25 kyr recovery time and a 50 kyr routine ceiling,
+    with no Phi or T_magma change; ``stale`` is the flag of a failed last re-solve."""
     config = _mock_config(update_interval=5e4, update_min_interval=0.0)
     config.interior_struct.zalmoxis.update_stale_ceiling = 2.5e4
     dirs = _mock_dirs()
-    # Real Interior_t persists the stale flag under output/data; point at
-    # tmp_path so the sidecar write lands in the auto-cleaned test dir.
     dirs['output'] = str(tmp_path)
     (tmp_path / 'data').mkdir(exist_ok=True)
-
-    # Real Interior_t so last_successful_struct_time attribute lookup works
     interior_o = Interior_t(50)
-    interior_o.last_successful_struct_time = float('-inf')
-    # Decorate with the arrays the wrapper requires.
     interior_o.radius = np.linspace(6.371e6, 3.504e6, 50)
     interior_o.temp = np.full(49, 3000.0)
-
-    # Simulate state: time has advanced 3e4 yr since the last call,
-    # but no successful re-solve yet.
-    last_struct_time = 7e4  # last call was at 7e4 yr (a failed one)
-    current_time = 1e5  # now at 1e5 yr; elapsed = 3e4 (< 5e4 ceiling)
+    interior_o.structure_stale = stale
     hf_row = {
-        'Time': current_time,
+        'Time': 1e5,
         'T_magma': 3000.0,
-        'Phi_global': 0.8,  # no Phi/T trigger (no change)
+        'Phi_global': 0.8,
         'R_int': 6.371e6,
         'gravity': 9.81,
         'M_int': 5.972e24,
     }
-    # Last *success* is at -inf, so stale-aware ceiling should NOT fire
-    # for last_success=-inf (no anchor yet). Verify: trigger should NOT
-    # fire because elapsed=3e4 < normal ceiling=5e4 and no success anchor
-    # exists.
-    with patch(
-        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
-        side_effect=AssertionError('zalmoxis_solver should not be called'),
-    ):
-        out = update_structure_from_interior(
-            dirs,
-            config,
-            hf_row,
-            interior_o,
-            last_struct_time,
-            hf_row['T_magma'],
-            hf_row['Phi_global'],
-        )
-    # Returned tuple unchanged (no_update path).
-    assert out == (last_struct_time, hf_row['T_magma'], hf_row['Phi_global'])
+    return config, dirs, interior_o, hf_row
 
-    # Now seed a successful past re-solve at t=7e4 (= 30 kyr ago).
-    interior_o.last_successful_struct_time = 7e4
 
-    # Same hf_row, same elapsed; this time stale-aware ceiling SHOULD
-    # fire (3e4 yr >= 2.5e4 yr).
+def _call_with_success_solver(config, dirs, interior_o, hf_row, last_struct_time):
+    """Run update_structure_from_interior with a converging solver stub; return the
+    output tuple and the solver mock."""
+
     def _success_side(config, outdir, hf_row, **kwargs):
         hf_row['M_int'] = 5.972e24
         hf_row['M_int_target'] = 5.972e24
         hf_row['R_int'] = 6.371e6
-        return (3.504e6, str(tmp_path / 'mesh.dat'))
+        return (3.504e6, 'mesh.dat')
 
     with (
         patch(
-            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
-            side_effect=_success_side,
-        ),
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=_success_side
+        ) as solver,
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
-        patch(
-            'proteus.interior_energetics.spider.blend_mesh_files',
-            return_value=0.0,
-        ),
+        patch('proteus.interior_energetics.spider.blend_mesh_files', return_value=0.0),
     ):
         out = update_structure_from_interior(
-            dirs,
-            config,
-            hf_row,
-            interior_o,
-            last_struct_time,
-            hf_row['T_magma'],
-            hf_row['Phi_global'],
+            dirs, config, hf_row, interior_o, last_struct_time, 3000.0, 0.8
         )
-    # Trigger fired and updated last_struct_time to current_time.
-    assert out[0] == current_time, (
-        'stale-aware ceiling must trigger; got last_struct_time=%r' % out[0]
-    )
-    # Successful tracker advanced.
-    assert interior_o.last_successful_struct_time == current_time, (
-        'last_successful_struct_time must advance on success'
-    )
+    return out, solver
 
-    interior_o.zalmoxis_fail_count = 0
+
+def _call_with_failing_solver(config, dirs, interior_o, hf_row, last_struct_time):
+    """Run update_structure_from_interior with a solver stub that always raises; return
+    the output tuple and the solver mock."""
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        side_effect=RuntimeError('mock failure'),
+    ) as solver:
+        out = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, last_struct_time, 3000.0, 0.8
+        )
+    return out, solver
+
+
+def _sidecar(tmp_path):
+    from proteus.interior_energetics.common import get_file_structure_stale
+
+    with open(get_file_structure_stale(str(tmp_path))) as hdl:
+        return hdl.read()
 
 
 @pytest.mark.unit
-def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
-    """A Zalmoxis fall-back must NOT advance last_successful_struct_time.
+def test_the_recovery_fires_after_a_failed_attempt_and_only_then(tmp_path):
+    """30 kyr after the last attempt (past the 25 kyr recovery time, before the 50 kyr
+    routine ceiling) a stale structure is re-solved, the flag clears and the sidecar says
+    so; the same state without the flag stays silent."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_not_called()
+    assert out == (7e4, 3000.0, 0.8)
 
-    Otherwise the stale-aware ceiling becomes equivalent to the normal
-    ceiling and the stale-aware path would have no effect.
-    """
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_called_once()
+    assert out[0] == hf_row['Time'] and interior_o.structure_stale is False
+    assert _sidecar(tmp_path) == '0\n'
 
+
+@pytest.mark.unit
+def test_a_zero_recovery_time_disables_the_recovery(tmp_path):
+    """update_stale_ceiling = 0 switches the recovery off: a stale structure 30 kyr after
+    its failed attempt waits for the routine ceiling."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    config.interior_struct.zalmoxis.update_stale_ceiling = 0.0
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_not_called()
+    assert out == (7e4, 3000.0, 0.8) and interior_o.structure_stale is True
+
+
+@pytest.mark.unit
+def test_a_mock_interior_flag_does_not_fire_the_recovery(tmp_path):
+    """Only a stale flag that is True fires the recovery: an interior whose
+    ``structure_stale`` is a truthy MagicMock stays silent 30 kyr after its last attempt."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    interior_o.structure_stale = MagicMock()
+    assert bool(interior_o.structure_stale) and interior_o.structure_stale is not True
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_not_called()
+    assert out == (7e4, 3000.0, 0.8)
+
+
+@pytest.mark.unit
+def test_another_trigger_re_solves_a_stale_structure_before_the_recovery_time(tmp_path):
+    """A melt-fraction change past update_dphi_abs re-solves a stale structure 10 kyr
+    after its last attempt, before the 25 kyr recovery time; without the change it waits."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 9e4)
+    solver.assert_not_called()
+    hf_row['Phi_global'] = 0.8 - 0.06
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 9e4)
+    solver.assert_called_once()
+    assert out[0] == hf_row['Time'] and interior_o.structure_stale is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'recovery_time, time, reason',
+    [(2.5e4, 1e5, 'recovery ('), (6e4, 1.25e5, 'ceiling ('), (6e4, 1.3e5, 'ceiling (')],
+)
+def test_the_routine_ceiling_decides_when_the_recovery_time_is_not_below_it(
+    tmp_path, caplog, recovery_time, time, reason
+):
+    """Under a 50 kyr routine ceiling a 25 kyr recovery re-solves a stale structure 30 kyr
+    after its last attempt; a 60 kyr recovery never decides: at 55 and 60 kyr the ceiling
+    re-solves it."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    config.interior_struct.zalmoxis.update_stale_ceiling = recovery_time
+    hf_row['Time'] = time
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.wrapper'):
+        _, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_called_once()
+    msgs = [
+        r.getMessage()
+        for r in caplog.records
+        if r.getMessage().startswith('Updating structure')
+    ]
+    assert len(msgs) == 1 and f'(trigger: {reason}' in msgs[0]
+
+
+@pytest.mark.unit
+def test_a_failed_resolve_leaves_the_stale_flag_for_a_resume(tmp_path):
+    """A failed re-solve returns its own time as the last attempt and writes the stale
+    flag, so a resume restores it."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
+    hf_row['Time'] = 1.3e5
+    out, solver = _call_with_failing_solver(config, dirs, interior_o, hf_row, 7e4)
+    solver.assert_called_once()
+    assert out[0] == hf_row['Time'] and interior_o.structure_stale is True
+    assert _sidecar(tmp_path) == '1\n'
+    resumed = Interior_t(50)
+    resumed.resume_structure_stale(str(tmp_path))
+    assert resumed.structure_stale is True
+
+
+@pytest.mark.unit
+def test_a_lost_sidecar_write_delays_the_recovery_to_the_next_failure(tmp_path, caplog):
+    """A failed re-solve whose sidecar write fails (no data folder) is logged and the run goes
+    on; a resume then reads no failure, so the recovery stays off 30 kyr later. The next
+    failed re-solve writes the flag, and the recovery fires 30 kyr after it."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
+    lost = tmp_path / 'no_data_folder'
+    lost.mkdir()
+    dirs['output'] = str(lost)
+    hf_row['Time'] = 1.3e5  # the routine ceiling fires; the solver fails
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        out, _ = _call_with_failing_solver(config, dirs, interior_o, hf_row, 8e4)
+    assert interior_o.structure_stale is True
+    assert any('Could not persist' in r.getMessage() for r in caplog.records)
+
+    resumed = Interior_t(50)
+    resumed.radius, resumed.temp = interior_o.radius, interior_o.temp
+    resumed.resume_structure_stale(str(lost))
+    assert resumed.structure_stale is False
+    hf_row['Time'] = 1.6e5  # 3e4 after the failed attempt: the recovery is lost
+    out2, solver = _call_with_success_solver(config, dirs, resumed, hf_row, out[0])
+    solver.assert_not_called()
+    assert out2[0] == out[0]
+
+    dirs['output'] = str(tmp_path)  # writable again; the next failure (ceiling) is saved
+    hf_row['Time'] = 1.8e5
+    out3, _ = _call_with_failing_solver(config, dirs, resumed, hf_row, out2[0])
+    assert resumed.structure_stale is True and _sidecar(tmp_path) == '1\n'
+    hf_row['Time'] = 2.1e5
+    _, solver = _call_with_success_solver(config, dirs, resumed, hf_row, out3[0])
+    solver.assert_called_once()
+    assert resumed.structure_stale is False
+
+
+@pytest.mark.unit
+def test_resume_after_a_failure_keeps_the_pending_recovery(tmp_path):
+    """A run that stopped after a failed re-solve resumes with the stale flag, so the
+    recovery fires once the recovery time has passed since the resumed attempt time."""
+    config, dirs, before, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    before.write_structure_stale(str(tmp_path))
+    resumed = Interior_t(50)
+    resumed.radius, resumed.temp = before.radius, before.temp
+    resumed.resume_structure_stale(str(tmp_path))
+    assert resumed.structure_stale is True
+    out, solver = _call_with_success_solver(config, dirs, resumed, hf_row, 7e4)
+    solver.assert_called_once()
+    assert out[0] == hf_row['Time'] and resumed.structure_stale is False
+
+
+@pytest.mark.unit
+def test_stale_ceiling_spaces_its_retries_by_the_ceiling(tmp_path):
+    """After a failed recovery re-solve the next attempt waits update_stale_ceiling from
+    that attempt: 8 steps of 10 yr make 1 solver call, not 8 (which would reach the abort
+    count), and a step 25 kyr after the failed attempt retries."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    last_struct_time, calls, aborted = 7e4, 0, False
+    for k in range(8):
+        hf_row['Time'] = 1e5 + 10.0 * k
+        try:
+            out, solver = _call_with_failing_solver(
+                config, dirs, interior_o, hf_row, last_struct_time
+            )
+        except RuntimeError:
+            aborted, calls = True, calls + 1
+            break
+        last_struct_time, calls = out[0], calls + solver.call_count
+    assert (calls, aborted) == (1, False)
+    assert interior_o.structure_stale is True
+
+    hf_row['Time'] = 1e5 + 2.5e4
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, last_struct_time)
+    solver.assert_called_once()
+    assert interior_o.structure_stale is False and out[0] == hf_row['Time']
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(('last_attempt', 'fires'), [(7.5e4, True), (7.5e4 + 1.0, False)])
+def test_stale_ceiling_fires_from_exactly_the_ceiling(tmp_path, last_attempt, fires):
+    """At 1e5 yr the recovery (2.5e4 yr) fires for a failed attempt at 7.5e4 yr and stays
+    silent 1 yr later."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, last_attempt)
+    assert solver.call_count == int(fires)
+    assert out[0] == (hf_row['Time'] if fires else last_attempt)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(('floor', 'calls'), [(4e4, 0), (0.0, 1)], ids=['floor', 'no-floor'])
+def test_the_update_floor_also_spaces_the_recovery(tmp_path, floor, calls):
+    """update_min_interval holds off every trigger but mesh convergence, the recovery
+    included: 30 kyr after the failed attempt, a 40 kyr floor keeps the solver idle, and
+    without the floor the recovery fires."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=True)
+    config.interior_struct.zalmoxis.update_min_interval = floor
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, 7e4)
+    assert solver.call_count == calls
+    assert out[0] == (7e4 if calls == 0 else hf_row['Time'])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('sidecar', ['0\n', None], ids=['flag-off', 'missing'])
+def test_a_resumed_run_recovers_after_a_later_failure(tmp_path, sidecar):
+    """A run resumed from a flag-off sidecar (the format main writes) or from none, whose
+    next re-solve fails, re-solves again once the recovery time has passed since that
+    attempt: the recovery does not depend on what the sidecar held."""
+    from proteus.interior_energetics.common import get_file_structure_stale
+
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
+    if sidecar is not None:
+        with open(get_file_structure_stale(str(tmp_path)), 'w') as hdl:
+            hdl.write(sidecar)
+    interior_o.resume_structure_stale(str(tmp_path))
+    hf_row['Time'] = 1.3e5  # the routine ceiling (5e4 since 8e4) fires; the solver fails
+    out, _ = _call_with_failing_solver(config, dirs, interior_o, hf_row, 8e4)
+    assert interior_o.structure_stale is True and out[0] == hf_row['Time']
+    hf_row['Time'] = 1.6e5  # 3e4 after the failed attempt: only the recovery can fire
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, out[0])
+    solver.assert_called_once()
+    assert interior_o.structure_stale is False
+
+
+@pytest.mark.unit
+def test_a_fresh_run_recovers_after_a_failed_first_resolve(tmp_path):
+    """A fresh run whose first re-solve (routine ceiling, 5e4 yr after the start) fails
+    re-solves again 30 kyr later through the recovery, before the next routine ceiling."""
+    config, dirs, interior_o, hf_row = _stale_ceiling_case(tmp_path, stale=False)
+    hf_row['Time'] = 5e4
+    out, _ = _call_with_failing_solver(config, dirs, interior_o, hf_row, 0.0)
+    assert interior_o.structure_stale is True and out[0] == hf_row['Time']
+    hf_row['Time'] = 8e4
+    out, solver = _call_with_success_solver(config, dirs, interior_o, hf_row, out[0])
+    solver.assert_called_once()
+    assert out[0] == hf_row['Time'] and interior_o.structure_stale is False
+
+
+# ============================================================================
+# JAX caches cleared after an accepted re-solve
+# ============================================================================
+
+
+def _resolve_call(tmp_path, solver_side_effect, module='aragog'):
+    """Run one ceiling-triggered re-solve with a mocked Zalmoxis solver; return the
+    Interior_t it updated."""
     config = _mock_config(update_interval=1e3, update_min_interval=0.0)
-    config.interior_struct.zalmoxis.update_stale_ceiling = 0.0  # disable stale-aware ceiling
+    config.interior_struct.zalmoxis.update_stale_ceiling = 0.0
+    config.interior_energetics.module = module
     dirs = _mock_dirs()
-    # Real Interior_t persists the stale flag under output/data; point at
-    # tmp_path so the sidecar write lands in the auto-cleaned test dir.
     dirs['output'] = str(tmp_path)
     (tmp_path / 'data').mkdir(exist_ok=True)
-
     interior_o = Interior_t(50)
-    interior_o.last_successful_struct_time = 5e4
     interior_o.radius = np.linspace(6.371e6, 3.504e6, 50)
     interior_o.temp = np.full(49, 3000.0)
-
     hf_row = {
         'Time': 7e4,
         'T_magma': 3000.0,
@@ -2018,31 +2385,118 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
         'gravity': 9.81,
         'M_int': 5.972e24,
     }
-    # Call triggers ceiling, zalmoxis_solver raises -> fall-back.
-    with patch(
-        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
-        side_effect=RuntimeError('mock failure'),
-    ) as mock_solver:
-        update_structure_from_interior(
-            dirs,
-            config,
-            hf_row,
-            interior_o,
-            0.0,
-            3000.0,
-            0.8,
-        )
-    assert interior_o.last_successful_struct_time == pytest.approx(5e4, rel=1e-12), (
-        'fall-back must NOT advance last_successful_struct_time '
-        '(got %r, expected 5e4)' % interior_o.last_successful_struct_time
-    )
-    # Fall-back discrimination: the solver was actually invoked (the test
-    # exercises the failure branch, not the no-trigger branch). A
-    # regression that bypassed the solver entirely would also leave
-    # last_successful_struct_time at 5e4 and fool the primary assert.
-    mock_solver.assert_called_once()
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solver_side_effect
+        ),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+        patch('proteus.interior_energetics.spider.blend_mesh_files', return_value=0.0),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
+    return interior_o
 
-    interior_o.zalmoxis_fail_count = 0
+
+def _success_side(tmp_path, mass_factor=1.0):
+    """A Zalmoxis stand-in that converges to ``mass_factor`` times the target mass."""
+
+    def side(config, outdir, hf_row, **kwargs):
+        hf_row['M_int'] = mass_factor * 5.972e24
+        hf_row['M_int_target'] = 5.972e24
+        hf_row['R_int'] = 6.371e6
+        return (3.504e6, str(tmp_path / 'mesh.dat'))
+
+    return side
+
+
+class _StubJax:
+    """Stand-in for the jax module that counts clear_caches calls, or raises in them."""
+
+    def __init__(self, error=None):
+        self.calls, self.error = 0, error
+
+    def clear_caches(self):
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+
+
+@pytest.mark.unit
+def test_an_accepted_resolve_frees_the_compiled_jax_programs(tmp_path, caplog):
+    """An accepted re-solve of an Aragog run empties the JAX compile caches, so the
+    programs built for the previous structure no longer hold memory; one INFO line."""
+    jax = pytest.importorskip('jax')
+    program = jax.jit(lambda x: 2.0 * x + 1.0)
+    program(1.0)
+    assert program._cache_size() == 1
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
+        interior_o = _resolve_call(tmp_path, _success_side(tmp_path))
+    assert interior_o.structure_stale is False  # written on the success path only
+    assert program._cache_size() == 0
+    assert sum('JAX caches cleared' in r.getMessage() for r in caplog.records) == 1
+    assert float(program(1.0)) == pytest.approx(3.0)  # it compiles again on its next call
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('side', 'module'),
+    [('failure', 'aragog'), ('mass anchor', 'aragog'), ('accepted', 'spider')],
+)
+def test_the_jax_caches_stay_without_an_accepted_aragog_resolve(
+    tmp_path, monkeypatch, caplog, side, module
+):
+    """A re-solve that fails, one whose result misses the mass anchor after the solver
+    returned, and an accepted re-solve of a run without Aragog keep the JAX caches."""
+    stub = _StubJax()
+    monkeypatch.setitem(sys.modules, 'jax', stub)
+    effect = {
+        'failure': RuntimeError('mock failure'),
+        'mass anchor': _success_side(tmp_path, 1.01),
+        'accepted': _success_side(tmp_path),
+    }[side]
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
+        interior_o = _resolve_call(tmp_path, effect, module=module)
+    fell_back = any(
+        'Falling back to previous structure' in r.getMessage() for r in caplog.records
+    )
+    assert fell_back is (side != 'accepted')
+    assert interior_o.structure_stale is (side != 'accepted')
+    assert stub.calls == 0
+
+
+@pytest.mark.unit
+def test_a_failed_cache_clear_keeps_the_accepted_structure(tmp_path, monkeypatch, caplog):
+    """A clear that raises is logged as a warning; the accepted structure stays accepted."""
+    stub = _StubJax(RuntimeError('mock clear failure'))
+    monkeypatch.setitem(sys.modules, 'jax', stub)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
+        interior_o = _resolve_call(tmp_path, _success_side(tmp_path))
+    assert stub.calls == 1
+    assert interior_o.structure_stale is False
+    assert interior_o.zalmoxis_fail_count == 0
+    messages = [(r.levelno, r.getMessage()) for r in caplog.records]
+    assert (
+        logging.WARNING,
+        'JAX caches not cleared after the structure re-solve: mock clear failure',
+    ) in messages
+    assert not any('Falling back' in m for _, m in messages)
+
+
+@pytest.mark.unit
+def test_the_cache_clear_does_not_import_jax(monkeypatch, caplog):
+    """Without jax in sys.modules nothing is imported or logged; with it, one call."""
+    config = _mock_config()
+    config.interior_energetics.module = 'aragog'
+    monkeypatch.delitem(sys.modules, 'jax', raising=False)
+    before = set(sys.modules)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
+        _clear_jax_caches_after_resolve(config)
+    assert set(sys.modules) == before
+    assert not caplog.records
+    stub = _StubJax()
+    monkeypatch.setitem(sys.modules, 'jax', stub)
+    _clear_jax_caches_after_resolve(config)
+    assert stub.calls == 1
 
 
 # ============================================================================
@@ -2884,18 +3338,55 @@ def test_update_planet_mass_handles_missing_element_columns():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_wet_planet_mass_holds_while_outgassing_moves_mass_between_solves():
+    """M_int is the interior module's integral of the last solved wet structure, so M_planet
+    takes off the dissolved mass of that solve (M_dissolved_target). Outgassing between solves leaves M_planet unchanged,
+    and escape lowers it by the escaped mass."""
+    from proteus.interior_energetics.wrapper import update_planet_mass
+
+    rock = 5.97e24  # kg
+    H_total, O_total = 4.7e20, 3.1e21
+    d0 = (H_total - 1.2e20) + (O_total - 0.9e21)  # dissolved at the solve
+    row = {'M_int': rock + d0, 'M_dissolved_target': d0}
+    row.update(H_kg_total=H_total, H_kg_atm=1.2e20, O_kg_total=O_total, O_kg_atm=0.9e21)
+    update_planet_mass(row)
+    m0 = row['M_planet']
+    assert m0 == pytest.approx(rock + H_total + O_total, rel=1e-14)
+
+    # Outgas 1.5e20 kg from the melt. The totals and the structure stay as they were.
+    row['H_kg_atm'] += 5.0e19
+    row['O_kg_atm'] += 1.0e20
+    update_planet_mass(row)
+    assert row['M_planet'] == pytest.approx(m0, rel=1e-14)
+    # Taking off the current dissolved inventory instead misses by the outgassed mass.
+    dissolved_now = sum(row[e + '_kg_total'] - row[e + '_kg_atm'] for e in ('H', 'O'))
+    wrong = row['M_int'] - dissolved_now + row['M_ele']
+    assert wrong - m0 == pytest.approx(1.5e20, rel=1e-6)
+
+    # Escape takes 2e19 kg of H out of the atmosphere.
+    row['H_kg_total'] -= 2.0e19
+    row['H_kg_atm'] -= 2.0e19
+    update_planet_mass(row)
+    assert m0 - row['M_planet'] == pytest.approx(2.0e19, rel=1e-6)
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
-    'module,expected',
+    'module,melt_model,expected',
     [
-        ('spider', 50),
-        ('aragog', 75),
-        ('boundary', 2),
-        ('dummy', 2),
+        ('spider', 'linear', 50),
+        ('aragog', 'linear', 75),
+        ('boundary', 'linear', 2),
+        ('boundary', 'adiabat', 63),
+        ('dummy', 'linear', 2),
     ],
+    ids=['spider', 'aragog', 'boundary-linear', 'boundary-adiabat', 'dummy'],
 )
-def test_get_nlevb_returns_per_module_levels(module, expected):
-    """get_nlevb returns config.num_levels for spider/aragog and the
-    fixed integer 2 for boundary/dummy.
+def test_get_nlevb_returns_per_module_levels(module, melt_model, expected):
+    """get_nlevb returns config.num_levels for spider, aragog and the boundary
+    adiabat model, whose shells the tides modules read, and the fixed integer 2
+    for dummy and the boundary linear model.
     """
     from types import SimpleNamespace
 
@@ -2903,14 +3394,42 @@ def test_get_nlevb_returns_per_module_levels(module, expected):
 
     # Use distinct num_levels to discriminate spider vs aragog dispatch.
     config = SimpleNamespace(
-        interior_energetics=SimpleNamespace(module=module, num_levels=expected),
+        interior_energetics=SimpleNamespace(
+            module=module,
+            num_levels=expected,
+            boundary=SimpleNamespace(melt_model=melt_model),
+        ),
     )
-    if module in ('boundary', 'dummy'):
+    if expected == 2:
         # num_levels is ignored; set to a different value to discriminate.
         config.interior_energetics.num_levels = 999
     assert get_nlevb(config) == expected
     # Type discrimination: must be a Python int.
     assert isinstance(get_nlevb(config), int)
+
+
+@pytest.mark.unit
+def test_boundary_adiabat_interior_has_num_levels_minus_one_shells():
+    """An Interior_t sized by get_nlevb gives the boundary adiabat num_levels - 1 shells.
+
+    The tides arrays and the shells the backend publishes have this length, so
+    the tides modules see the resolved mantle rather than a single layer.
+    """
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.wrapper import get_nlevb
+
+    config = SimpleNamespace(
+        interior_energetics=SimpleNamespace(
+            module='boundary', num_levels=80, boundary=SimpleNamespace(melt_model='adiabat')
+        ),
+    )
+    interior_o = Interior_t(get_nlevb(config))
+    assert interior_o.nlev_s == 79
+    assert interior_o.tides.shape == (79,)
+    assert interior_o.radius.shape == (80,)
+    # Edge case: the profile slot exists and is empty until the backend publishes one.
+    assert interior_o.temp_profile is None
 
 
 @pytest.mark.unit
@@ -3515,7 +4034,7 @@ def test_provide_spider_eos_tables_hard_failure_when_no_source(tmp_path, monkeyp
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import _provide_spider_eos_tables
-    from proteus.utils.helper import MissingReferenceData
+    from proteus.utils.helper import MissingDataError
 
     _configured_melting_curve(tmp_path, monkeypatch)
     config = SimpleNamespace(
@@ -3533,7 +4052,7 @@ def test_provide_spider_eos_tables_hard_failure_when_no_source(tmp_path, monkeyp
     # would not raise at all.
     assert 'proteus get interiordata --config-path' in str(exc.value)
     assert '`fwl-io relocate`' in str(exc.value)
-    assert isinstance(exc.value, MissingReferenceData)  # start() writes status 20
+    assert isinstance(exc.value, MissingDataError)
 
 
 # ============================================================================
@@ -3860,7 +4379,7 @@ def test_dummy_structure_without_tables_raises_named_error(tmp_path):
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
-    from proteus.utils.helper import MissingReferenceData
+    from proteus.utils.helper import MissingDataError
 
     config = MagicMock()
     config.interior_energetics.module = 'aragog'
@@ -3877,7 +4396,7 @@ def test_dummy_structure_without_tables_raises_named_error(tmp_path):
             side_effect=FileNotFoundError('no P-S tables'),
         ),
         _patch('proteus.interior_energetics.wrapper.Interior_t') as interior_t,
-        pytest.raises(MissingReferenceData) as excinfo,
+        pytest.raises(MissingDataError) as excinfo,
     ):
         determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
 
@@ -4361,7 +4880,7 @@ def test_a_value_error_of_an_interior_step_writes_the_status_for_the_core_module
 
 @pytest.mark.unit
 def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
-    """Aragog's retry-ladder exhaustion (RuntimeError) increments the
+    """Aragog's retry-ladder exhaustion (RetryLadderExhaustedError) increments the
     consecutive counter and falls back to the previous step's hf_row.
     """
     from unittest.mock import patch as _patch
@@ -4378,7 +4897,7 @@ def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
     interior_o.aragog_fail_count = 0
 
     runner_mock = MagicMock()
-    runner_mock.run_solver.side_effect = RuntimeError('retry ladder exhausted')
+    runner_mock.run_solver.side_effect = RetryLadderExhaustedError('retry ladder exhausted')
 
     with (
         _patch(
@@ -4425,7 +4944,7 @@ def test_a_skipped_aragog_step_adds_nothing_to_the_energy_ledgers():
     interior_o.dt = 0.0
     interior_o.aragog_fail_count = 0
     runner_mock = MagicMock()
-    runner_mock.run_solver.side_effect = RuntimeError('retry ladder exhausted')
+    runner_mock.run_solver.side_effect = RetryLadderExhaustedError('retry ladder exhausted')
     with (
         patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
         patch('proteus.interior_energetics.timestep.next_step', return_value=42.0),
@@ -4464,6 +4983,39 @@ def test_every_per_step_column_is_zeroed_on_a_skipped_step_or_reset_per_row():
 
 
 @pytest.mark.unit
+def test_run_interior_hands_the_aragog_runner_the_flux_provider_of_its_row():
+    """The Aragog runner of a step solves with the lid flux provider that lid_flux_provider builds
+    from the config and the row of that step."""
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic, interior_o.dt, interior_o.aragog_fail_count = 2, 0.0, 0
+    provider, built, solved = object(), [], []
+
+    def _provider(cfg, row):
+        built.append((cfg, row))
+        return provider
+
+    runner_mock = MagicMock()
+
+    def _solve(*args, **kwargs):
+        solved.append(runner_mock._lid_flux_at)
+        raise RuntimeError('stop after the wiring')
+
+    runner_mock.run_solver.side_effect = _solve
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
+        patch('proteus.interior_energetics.wrapper.lid_flux_provider', side_effect=_provider),
+        patch('proteus.interior_energetics.timestep.next_step', return_value=42.0),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
+    assert len(built) == 1 and built[0][0] is config and built[0][1] is hf_row
+    assert len(solved) == 1 and solved[0] is provider
+
+
+@pytest.mark.unit
 def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
     """After _ARAGOG_MAX_CONSECUTIVE_FAILS (default 3), the next failure re-raises."""
     from unittest.mock import patch as _patch
@@ -4493,6 +5045,77 @@ def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
     assert interior_o.aragog_fail_count == _w._ARAGOG_MAX_CONSECUTIVE_FAILS
 
     interior_o.aragog_fail_count = 0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('error', 'cause'),
+    [
+        (
+            CMBClosureError('ledger miss 5 above 10x the bound'),
+            'Aragog CMB closure check failed (CMBClosureError) #1/3.',
+        ),
+        (RuntimeError('setup fault'), 'Aragog call failed (RuntimeError) #1/3.'),
+        (
+            type('CMBClosureError', (RuntimeError,), {})('same name, other class'),
+            'Aragog call failed (CMBClosureError) #1/3.',
+        ),
+        (RetryLadderExhaustedError('ladder out'), 'Aragog retry-ladder exhaustion #1/3.'),
+        (
+            type('Sub', (RetryLadderExhaustedError,), {})('sub'),
+            'Aragog retry-ladder exhaustion #1/3.',
+        ),
+    ],
+)
+def test_a_skipped_aragog_step_names_the_error_that_stopped_the_call(error, cause, caplog):
+    """The skip-step warning names the error class and its message; only an exhausted ladder
+    reads as a retry-ladder exhaustion. The skip itself is the same for every cause."""
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+    hf_row.update(dict.fromkeys(_ARAGOG_CALL_ENERGY_KEYS, 1.0e27))
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic, interior_o.dt, interior_o.aragog_fail_count = 2, 0.0, 0
+    runner_mock = MagicMock()
+    runner_mock.run_solver.side_effect = error
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
+        patch('proteus.interior_energetics.timestep.next_step', return_value=42.0),
+        caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
+    assert len(caplog.messages) == 1
+    assert caplog.messages[0].startswith(cause)
+    assert str(error) in caplog.messages[0]
+    assert interior_o.aragog_fail_count == 1
+    assert interior_o.dt == 42.0
+    assert all(hf_row[k] == 0.0 for k in _ARAGOG_CALL_ENERGY_KEYS)
+
+
+@pytest.mark.unit
+def test_the_abort_after_the_last_skipped_aragog_step_names_its_cause(caplog):
+    """The third failed call in a row stops the run, and the abort line names its cause."""
+    from proteus.interior_energetics import wrapper as _w
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic, interior_o.dt = 2, 0.0
+    interior_o.aragog_fail_count = _w._ARAGOG_MAX_CONSECUTIVE_FAILS - 1
+    runner_mock = MagicMock()
+    runner_mock.run_solver.side_effect = CMBClosureError('ledger miss 5 above 10x the bound')
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
+        caplog.at_level('ERROR', logger='fwl.proteus.interior_energetics.wrapper'),
+        pytest.raises(CMBClosureError),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
+    # the campaign census counts run deaths with this pattern
+    assert re.search(r'Aragog failed .* consecutive times\. Aborting\.', caplog.messages[0])
+    assert caplog.messages == [
+        'Aragog failed 3 consecutive times. Aborting. Last cause: Aragog CMB closure check '
+        'failed (CMBClosureError)'
+    ]
 
 
 # ============================================================================
@@ -5354,6 +5977,8 @@ def _dtmagma_scenario(update_dphi_abs=0.05):
         'T_magma': 2800.0,
         'Phi_global': 0.80,
         'R_int': 6.371e6,
+        # a solve writes R_int and M_int; a stub solve that leaves M_int keeps this one
+        'M_int': 5.972e24,
         'gravity': 9.81,
     }
     # Baselines passed as last_struct_*: dT/T = |2800-3000|/3000 = 0.067.
@@ -5669,6 +6294,39 @@ def test_resume_settling_monotonic_noop_records_zero_dr():
     # (or leaving the prior 2e-4) would keep the guard above tolerance forever.
     # Zero is what lets the next dT/T trigger skip.
     assert dirs['_last_resolve_dR_rel'] < _RESUME_STRUCT_DR_REL_TOL
+
+
+@pytest.mark.unit
+def test_a_rejected_up_step_keeps_the_jax_caches(monkeypatch):
+    """An up-step the monotonic-radius guard rejects keeps the previous structure, so an
+    Aragog run keeps its compiled JAX programs."""
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    config.interior_energetics.module = 'aragog'
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 50
+    dirs['_last_resolve_dR_rel'] = 2.0e-4
+    r_prev = hf_row['R_int']
+    stub = _StubJax()
+    monkeypatch.setitem(sys.modules, 'jax', stub)
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, _mock_interior_o(), lt, lT, lP)
+    mock_solver.assert_called_once()
+    assert dirs['_last_resolve_dR_rel'] == 0.0  # the reject path ran
+    assert stub.calls == 0
 
 
 @pytest.mark.unit
@@ -6820,8 +7478,9 @@ class _FakeCoreModuleSolver:
         return 1.0e20
 
 
-def _remelt_core_module(core_side_effect, status_calls, n=2):
-    """Run ``n`` Aragog core_module re-melts in one step with a mocked core helper."""
+def _remelt_core_module(core_side_effect, status_calls, n=2, f=1.0):
+    """Run ``n`` Aragog core_module re-melts of fraction ``f`` in one step with a mocked core
+    helper; a partial re-melt takes the hotter of the 2 profiles in each cell."""
     molten = np.linspace(3900.0, 3500.0, 6)
     solver = _FakeCoreModuleSolver()
     interior_o = SimpleNamespace(
@@ -6850,9 +7509,15 @@ def _remelt_core_module(core_side_effect, status_calls, n=2):
             'proteus.interior_energetics.aragog_core_impact.remelt_core_module',
             side_effect=core_side_effect,
         ) as core_mock,
+        patch(
+            'proteus.interior_energetics.wrapper._partial_remelt_profile',
+            side_effect=lambda solver, S_end, S_molten, f: np.maximum(S_end, S_molten),
+        ),
     ):
         for _ in range(n):
-            remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
+            remelt_mantle(
+                {'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o, f=f
+            )
     return solver, core_mock, status_mock
 
 
@@ -6895,21 +7560,26 @@ def test_a_core_module_remelt_without_a_core_temperature_stops_the_run():
 
 
 @pytest.mark.unit
-def test_a_non_finite_core_temperature_at_the_remelt_writes_the_interior_status():
-    """A core or basal temperature that is not finite at the re-melt stops the run with
-    the interior error status 21, and the error reaches the caller."""
+@pytest.mark.parametrize('f', [1.0, 0.3])
+def test_a_non_finite_core_temperature_at_the_remelt_writes_the_interior_status_once(f):
+    """A core or basal temperature that is not finite at the re-melt, full or partial, stops
+    the run with interior status 21 written once, and the error reaches the caller."""
     status_calls = []
     with pytest.raises(ValueError, match='not finite'):
         _remelt_core_module(
-            ValueError('core or basal temperature is not finite: nan, 6089.0'), status_calls
+            ValueError('core or basal temperature is not finite: nan, 6089.0'),
+            status_calls,
+            n=1,
+            f=f,
         )
     assert status_calls == [21]
 
 
 @pytest.mark.unit
-def test_an_energy_balance_remelt_error_writes_no_status():
-    """A ValueError of a re-melt without the core module reaches the caller and leaves
-    the status file as it is: only the core module re-melt writes status 21."""
+def test_an_energy_balance_remelt_error_writes_the_interior_status():
+    """A ValueError of a full re-melt without the core module writes interior status 21
+    and reaches the caller: no caller of the impact writes a status, so a run that stops
+    here would read as still running."""
     interior_o = SimpleNamespace(
         aragog_solver=_FakeAragogSolver(cooled_profile=np.full(6, 2400.0)),
         _last_entropy=np.full(6, 2400.0),
@@ -6926,7 +7596,7 @@ def test_an_energy_balance_remelt_error_writes_no_status():
         remelt_mantle(
             {'output': '/tmp/out'}, _remelt_config('aragog'), hf_row={}, interior_o=interior_o
         )
-    status_mock.assert_not_called()
+    assert [c.args[1] for c in status_mock.call_args_list] == [21]
 
 
 @pytest.mark.unit
@@ -7418,7 +8088,7 @@ def test_a_stalled_interior_ends_the_run_instead_of_being_absorbed():
         'stalled run looks the same from outside as one still going'
     )
 
-    absorbed, absorbed_interior, _ = _drive(RuntimeError('retry ladder exhausted'))
+    absorbed, absorbed_interior, _ = _drive(RetryLadderExhaustedError('retry ladder exhausted'))
     assert absorbed is None, (
         f'an ordinary solver failure was passed up ({absorbed!r}) instead of '
         'being absorbed by the keep-previous-state fallback'
@@ -7607,6 +8277,17 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
 
     solver = FakeSolver(n_nodes=80)
     hf_row = {'Time': 250.0, 'M_mantle': 4.2e24, 'F_atm': 100.0}
+    hf_row['boundary_layer_thickness'] = 0.01  # m, written by the skin step
+    hf_row['boundary_layer_conductivity'] = 2.0
+    # a live lid of the cooled mantle before the impact
+    hf_row.update(
+        lid_weight=1.0,
+        lid_conductance=400.0,
+        lid_delta=0.18,
+        lid_T_surface=727.0,
+        lid_T_base=1440.0,
+        lid_T_node=1500.0,
+    )
 
     # 1. evaluate_molten_state direct evaluation
     out = evaluate_molten_state(solver, hf_row)
@@ -7629,19 +8310,45 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
         'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
         lambda *a, **k: np.full(len(solver._S0), 4000.0),
     )
+    helpfile_kwargs = {}
+    # the phantom lid of a molten state: no weight, the other columns differ from the row
+    molten_lid = dict(
+        lid_weight=0.0,
+        lid_conductance=8.0,
+        lid_delta=0.5,
+        lid_T_surface=1300.0,
+        lid_T_base=1440.4,
+        lid_T_node=3860.0,
+        lid_weight_max=0.0,
+    )
     monkeypatch.setattr(
         'proteus.interior_energetics.aragog.AragogRunner._build_helpfile_output',
-        lambda *a, **k: {
-            'T_magma': 3850.0,
-            'T_cmb': 5200.0,
-            'T_cmb_node': 5150.0,
-            'Phi_global': 0.73,
-            'Phi_global_vol': 0.73,
-            'T_pot': 3750.0,
-            'RF_depth': 0.05,
-        },
+        lambda *a, **k: (
+            helpfile_kwargs.update(k)
+            or {
+                'T_magma': 3850.0,
+                'T_cmb': 5200.0,
+                'T_cmb_node': 5150.0,
+                'Phi_global': 0.73,
+                'Phi_global_vol': 0.73,
+                'T_pot': 3750.0,
+                'RF_depth': 0.05,
+                **molten_lid,
+            }
+        ),
     )
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
+    # The lid columns are those of the re-melted state, so the atmosphere of the impact
+    # iteration sees the molten surface, not the lid of the cooled mantle.
+    from proteus.atmos_clim.common import lid_acts, lid_boundary
+    from proteus.interior_energetics.wrapper import LID_COLUMNS
+
+    assert set(LID_COLUMNS) == set(molten_lid)
+    assert {k: hf_row[k] for k in LID_COLUMNS} == molten_lid
+    assert not lid_acts(hf_row)
+    assert lid_boundary(hf_row)[2] == hf_row['T_magma']
+    # The skin thickness of the row [m] is what the re-melt output is built with
+    assert helpfile_kwargs['surface_d'] == pytest.approx(0.01, rel=1e-12)
 
     assert hf_row['T_magma'] == pytest.approx(3850.0, rel=1e-12)
     # The impact row carries the re-melted CMB temperatures.
@@ -7677,9 +8384,27 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
         'proteus.interior_energetics.aragog_core_impact.remelt_core_module', lambda *a: 5300.0
     )
     row = {'Time': 250.0, 'M_mantle': 4.2e24, 'F_atm': 100.0, 'T_cmb': 5000.0}
+    row['boundary_layer_thickness'] = 0.01  # m
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, row, interior_o)
     assert row['core_T_top'] == pytest.approx(5200.0, rel=1e-12)
     config.interior_energetics.aragog.core_bc = 'energy_balance'
+
+    # A skin from saturation passes the thickness of the row (5.9 m), not the string
+    import attrs
+
+    config.atmos_clim = attrs.evolve(
+        config.atmos_clim, surf_state='skin', surface_d='saturation', surface_k='saturation'
+    )
+    sat_solver = FakeSolver(n_nodes=80)
+    sat_row = {'Time': 250.0, 'M_mantle': 4.2e24, 'F_atm': 100.0, 'T_cmb': 5000.0}
+    sat_row.update(boundary_layer_thickness=5.9, boundary_layer_conductivity=2.89)
+    _remelt_aragog(
+        config,
+        {'output': str(tmp_path), 'spider_eos_dir': ''},
+        sat_row,
+        SimpleNamespace(aragog_solver=sat_solver, impact_reset=False),
+    )
+    assert helpfile_kwargs['surface_d'] == pytest.approx(5.9, rel=1e-12)
 
     # 3. Solver without get_state returns None; liquid/solid split runs from Phi_global with clamping
     class NoGetStateSolver:
@@ -8053,6 +8778,7 @@ def test_run_interior_top_cell_dt_limit_on_applies_tmagma_clip_when_tau_drain_in
     config_spider.interior_energetics.aragog = Aragog(top_cell_dt_limit=True)
     hf_all_sp, hf_row_sp = _make_run_interior_state(prev_f_int=0.2)
     hf_row_sp['R_int'] = 6.371e6
+    hf_row_sp['boundary_layer_thickness'] = 0.01  # m, written by the skin step
     interior_sp = MagicMock(spec=Interior_t)
     interior_sp.ic = 2
     interior_sp.dt = 10.0
@@ -8074,3 +8800,470 @@ def test_run_interior_top_cell_dt_limit_on_applies_tmagma_clip_when_tau_drain_in
     assert hf_row_sp['T_magma'] == pytest.approx(3020.0, rel=1e-12)
     assert hf_row_sp['T_surf'] == pytest.approx(2820.0, rel=1e-12)
     assert hf_row_sp['Phi_global'] == pytest.approx(0.4, rel=1e-12)
+
+
+class _FakeMeshAragogSolver(_FakeAragogSolver):
+    """The fake solver with a 6-cell mesh, base first, of equal cell mass."""
+
+    def __init__(self, cooled_profile):
+        super().__init__(cooled_profile)
+        self._r_stag_flat = np.linspace(3.6e6, 6.2e6, 6)
+        self._volume_flat = np.full(6, 1.0e18)
+        self._P_stag_flat = np.linspace(1.3e11, 1.0e5, 6)
+        self.entropy_eos = SimpleNamespace(density=lambda P, S: np.full(np.shape(P), 4000.0))
+        self.evaluator = SimpleNamespace(
+            mesh=SimpleNamespace(staggered_effective_density=np.full(6, 4000.0))
+        )
+        self.set_calls = []
+
+    def set_initial_entropy(self, S):
+        self.set_calls.append(np.asarray(S, dtype=float).copy())
+        super().set_initial_entropy(S)
+
+
+def _partial_aragog_remelt(
+    f, cooled=2400.0, molten=3900.0, solution=True, status=None, solver_cls=None
+):
+    """Re-melt the 6-cell fake at fraction f; return solver, interior and row."""
+    solver = (solver_cls or _FakeMeshAragogSolver)(cooled_profile=np.full(6, cooled))
+    if not solution:
+        solver._solution = None
+    interior_o = SimpleNamespace(
+        aragog_solver=solver,
+        _last_entropy=np.full(6, cooled) if solution else None,
+        impact_reset=False,
+    )
+    hf_row = {}
+    with (
+        patch(
+            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+            return_value=np.full(6, molten),
+        ),
+        patch('proteus.interior_energetics.aragog.AragogRunner._refresh_entropy_eos'),
+        patch('proteus.interior_energetics.wrapper.evaluate_molten_state', return_value=None),
+        patch(
+            'proteus.interior_energetics.wrapper.UpdateStatusfile', new=status or MagicMock()
+        ),
+    ):
+        for each in np.atleast_1d(f):
+            remelt_mantle(
+                {'output': '/tmp/out'},
+                _remelt_config('aragog'),
+                hf_row=hf_row,
+                interior_o=interior_o,
+                f=float(each),
+            )
+    return solver, interior_o, hf_row
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_partial_aragog_remelt_raises_the_outer_shells_only():
+    """f = 0.25 of 6 equal cells melts the surface cell and half the next; the base keeps S_end.
+
+    The solver restarts from that profile (not from the molten one _set_entropy_ic
+    left in it), and the booked heat is the jump to it: 1500 + 750 J/kg/K at the fake's weight.
+    """
+    solver, interior_o, hf_row = _partial_aragog_remelt(0.25)
+    expected = np.array([2400.0, 2400.0, 2400.0, 2400.0, 3150.0, 3900.0])
+    np.testing.assert_allclose(interior_o._last_entropy, expected, rtol=1e-15)
+    np.testing.assert_allclose(solver._S0, expected, rtol=1e-15)
+    assert hf_row['step_dE_impact_J'] == pytest.approx(
+        2250.0 * _FakeAragogSolver._HEAT_PER_ENTROPY, rel=1e-12
+    )
+    np.testing.assert_equal(hf_row['f_remelt'], 0.25)
+    assert interior_o.impact_reset is True
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_booked_remelt_heat_rises_with_the_melt_fraction():
+    """The booked heat grows with f and is 0 at f = 0, where no cell changes."""
+    booked = [
+        _partial_aragog_remelt(f)[2]['step_dE_impact_J'] for f in (0.0, 0.1, 0.3, 0.6, 1.0)
+    ]
+    assert booked[0] == 0.0
+    assert all(b > a for a, b in zip(booked, booked[1:]))
+    assert booked[-1] == pytest.approx(6 * 1500.0 * _FakeAragogSolver._HEAT_PER_ENTROPY)
+
+
+@pytest.mark.unit
+def test_the_solver_restarts_from_the_partial_profile_and_keeps_the_full_call_pattern():
+    """At f = 1 with every cell below the molten profile no extra restart is set;
+    at f < 1 the solver gets the partial profile once, since _set_entropy_ic left S_molten
+    in it."""
+    solver_full, _, _ = _partial_aragog_remelt(1.0)
+    solver_part, interior_o, _ = _partial_aragog_remelt(0.5)
+    assert solver_full.set_calls == []
+    assert len(solver_part.set_calls) == 1
+    np.testing.assert_array_equal(solver_part.set_calls[0], interior_o._last_entropy)
+    np.testing.assert_equal(solver_part.set_calls[0][[0, -1]], [2400.0, 3900.0])
+
+
+@pytest.mark.unit
+def test_a_partial_remelt_without_an_end_state_is_refused():
+    """With no end-of-step profile, f < 1 has nothing to keep: it raises, naming f and the
+    reason.
+    At f = 1 the run keeps the full re-melt with a warning."""
+    with pytest.raises(
+        RuntimeError, match=r'partial re-melt .*f = 0\.3.*no pre-impact entropy'
+    ):
+        _partial_aragog_remelt(0.3, solution=False)
+    _, interior_o, hf_row = _partial_aragog_remelt(1.0, solution=False)
+    np.testing.assert_array_equal(interior_o._last_entropy, np.full(6, 3900.0))
+    assert hf_row['step_dE_impact_J'] == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('module', ['dummy', 'aragog', 'spider'])
+@pytest.mark.parametrize('bad', [np.nan, -0.1, 1.1, np.inf], ids=repr)
+def test_remelt_refuses_a_fraction_outside_the_unit_interval(bad, module):
+    """remelt_mantle refuses f outside [0, 1] before the interior changes, and writes
+    interior status 21 for every module."""
+    hf_row = _remelt_hf_row()
+    interior_o = SimpleNamespace(impact_reset=False)
+    status = MagicMock()
+    with (
+        patch('proteus.interior_energetics.wrapper.UpdateStatusfile', new=status),
+        pytest.raises(ValueError, match='melt fraction'),
+    ):
+        remelt_mantle({'output': '/tmp/out'}, _remelt_config(module), hf_row, interior_o, f=bad)
+    assert [c.args[1] for c in status.call_args_list] == [21]
+    np.testing.assert_equal(hf_row['T_magma'], 2100.0)
+    assert interior_o.impact_reset is False
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_partial_scalar_remelt_moves_the_mantle_by_its_share():
+    """The dummy mantle at 2100 K with T_init 4000 K goes to 2100 + 0.3 * 1900 = 2670 K."""
+    hf_row = _remelt_hf_row()
+    interior_o = SimpleNamespace(impact_reset=False)
+    remelt_mantle({'output': '/tmp/out'}, _remelt_config('dummy'), hf_row, interior_o, f=0.3)
+    assert hf_row['T_magma'] == pytest.approx(2670.0, rel=1e-14)
+    assert 0.0 < hf_row['Phi_global'] < 1.0  # 2670 K lies between 1700 and 2700 K
+    assert interior_o.temp[0] == pytest.approx(2670.0, rel=1e-14)
+    np.testing.assert_equal(hf_row['f_remelt'], 0.3)
+
+
+@pytest.mark.unit
+def test_the_largest_fraction_of_a_step_is_the_row_value():
+    """Two impacts in one step: f_remelt is the larger f, whatever the order."""
+    hf_row = _remelt_hf_row()
+    interior_o = SimpleNamespace(impact_reset=False)
+    for f in (0.6, 0.2):
+        remelt_mantle({'output': '/tmp/out'}, _remelt_config('dummy'), hf_row, interior_o, f=f)
+    np.testing.assert_equal(hf_row['f_remelt'], 0.6)
+    assert hf_row['T_magma'] > 2100.0
+
+
+@pytest.mark.unit
+def test_a_partial_core_module_remelt_hands_the_unchanged_base_to_the_core():
+    """At f = 0.3 the base cell keeps S_end (2400), so the core helper gets that base entropy,
+    not the molten base (3900) a full re-melt hands it."""
+    molten = np.full(6, 3900.0)
+    solver = _FakeMeshAragogSolver(cooled_profile=np.full(6, 2400.0))
+    solver.get_current_core_temperature = lambda: 3500.0
+    solver.set_initial_core_temperature = lambda val: None
+    interior_o = SimpleNamespace(
+        aragog_solver=solver, _last_entropy=np.full(6, 2400.0), impact_reset=False
+    )
+    config = _remelt_config('aragog')
+    config.interior_energetics.aragog = SimpleNamespace(core_bc='core_module')
+    with (
+        patch(
+            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+            return_value=molten,
+        ),
+        patch('proteus.interior_energetics.aragog.AragogRunner._refresh_entropy_eos'),
+        patch('proteus.interior_energetics.wrapper.evaluate_molten_state', return_value=None),
+        patch(
+            'proteus.interior_energetics.aragog_core_impact.remelt_core_module',
+            return_value=3500.0,
+        ) as core_mock,
+    ):
+        remelt_mantle({'output': '/tmp/out'}, config, {}, interior_o, f=0.3)
+    np.testing.assert_equal(core_mock.call_args.args[4], 2400.0)
+    np.testing.assert_equal(core_mock.call_args.args[3], 3500.0)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_partial_remelt_weighs_the_cells_by_structural_mass(monkeypatch):
+    """The weights close on the structural mass of the mesh, the mass M_mantle reports:
+    its density rises with depth (4000 kg/m3 at the surface, 5300 at the base) while the EOS
+    density is uniform, so a volume or EOS-mass split melts 1.5 of the 6 equal cells and the
+    structural split melts more of the lighter outer cells."""
+    real_init = _FakeMeshAragogSolver.__init__
+
+    def init(self, cooled_profile):
+        real_init(self, cooled_profile)
+        rho = 4000.0 + 1.0e-8 * self._P_stag_flat
+        self.evaluator = SimpleNamespace(mesh=SimpleNamespace(staggered_effective_density=rho))
+
+    monkeypatch.setattr(_FakeMeshAragogSolver, '__init__', init)
+    solver, interior_o, _ = _partial_aragog_remelt(0.25)
+    m = (4000.0 + 1.0e-8 * solver._P_stag_flat) * solver._volume_flat
+    w = (interior_o._last_entropy - 2400.0) / 1500.0
+    assert float(np.sum(w * m)) == pytest.approx(0.25 * float(m.sum()), rel=1e-12)
+    # A split by volume or by the uniform EOS density would melt exactly 1.5 cells.
+    assert abs(float(np.sum(w)) - 1.5) > 0.05
+    np.testing.assert_array_equal(w[:3], 0.0)
+
+
+@pytest.mark.unit
+def test_a_refused_partial_remelt_writes_the_interior_status():
+    """A partial re-melt without an end-of-step profile writes status 21 before it raises."""
+    status = MagicMock()
+    with pytest.raises(RuntimeError, match='partial re-melt'):
+        _partial_aragog_remelt(0.3, solution=False, status=status)
+    status.assert_called_once()
+    assert status.call_args.args[1] == 21
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'order', [(0.5, 0.25), (0.25, 0.5)], ids=['large_first', 'small_first']
+)
+def test_two_partial_remelts_in_one_step_melt_the_outer_shell_of_the_larger(order):
+    """Two impacts in one step: the second starts from the first one's profile, so the result
+    is the outer shell of the larger f (3 of 6 equal cells) and the booked heat is the sum of
+    both jumps, 3 x 1500 J/kg/K at the fake's weight."""
+    _, interior_o, hf_row = _partial_aragog_remelt(order)
+    np.testing.assert_array_equal(interior_o._last_entropy, [2400.0] * 3 + [3900.0] * 3)
+    assert hf_row['step_dE_impact_J'] == pytest.approx(
+        3 * 1500.0 * _FakeAragogSolver._HEAT_PER_ENTROPY, rel=1e-12
+    )
+    assert hf_row['f_remelt'] == max(order)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_second_impact_blends_the_boundary_cell_again():
+    """Two impacts of f = 0.3 on 6 equal cells: the front falls inside cell 4 (w = 0.8), so
+    the second impact blends that cell again, 2400 -> 3600 -> 3840 J/kg/K, and the melted
+    share is 0.3 + w (1 - w) / 6 = 0.3267, not 0.3 (no memory of the first melt)."""
+    _, interior_o, _ = _partial_aragog_remelt((0.3, 0.3))
+    S = interior_o._last_entropy
+    np.testing.assert_allclose(S, [2400.0] * 4 + [3840.0, 3900.0], rtol=1e-14)
+    assert float(np.sum((S - 2400.0) / 1500.0)) / 6.0 == pytest.approx(
+        0.3 + 0.16 / 6.0, rel=1e-12
+    )
+
+
+@pytest.mark.unit
+def test_a_weight_error_in_a_partial_remelt_writes_the_interior_status(monkeypatch):
+    """A non-finite structural density makes remelt_weights refuse the cell masses; the
+    re-melt writes interior status 21 before the error reaches the caller."""
+    real_init = _FakeMeshAragogSolver.__init__
+
+    def init(self, cooled_profile):
+        real_init(self, cooled_profile)
+        rho = np.full(6, 4000.0)
+        rho[2] = np.nan
+        self.evaluator = SimpleNamespace(mesh=SimpleNamespace(staggered_effective_density=rho))
+
+    monkeypatch.setattr(_FakeMeshAragogSolver, '__init__', init)
+    status = MagicMock()
+    with pytest.raises(ValueError, match='cell masses'):
+        _partial_aragog_remelt(0.3, status=status)
+    assert [c.args[1] for c in status.call_args_list] == [21]
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_two_scalar_remelts_compound_the_lift(caplog):
+    """The scalar mantle at 2100 K, T_init 4000 K: two impacts of f = 0.3 move it by
+    1 - 0.7^2 = 0.51 of the lift, to 3069 K; a mantle above T_init is kept, and logged so."""
+    hf_row = _remelt_hf_row()
+    interior_o = SimpleNamespace(impact_reset=False)
+    for _ in range(2):
+        remelt_mantle(
+            {'output': '/tmp/out'}, _remelt_config('dummy'), hf_row, interior_o, f=0.3
+        )
+    assert hf_row['T_magma'] == pytest.approx(2100.0 + 0.51 * 1900.0, rel=1e-12)
+    hot = _remelt_hf_row(T_magma=4500.0)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
+        remelt_mantle({'output': '/tmp/out'}, _remelt_config('dummy'), hot, interior_o, f=0.3)
+    assert hot['T_magma'] == pytest.approx(4500.0, rel=1e-15)
+    assert 'T_magma kept at 4500 K' in caplog.text
+
+
+@pytest.mark.unit
+def test_any_error_of_the_partial_profile_writes_the_interior_status(monkeypatch):
+    """A solver without the mesh the partial profile reads raises AttributeError; the re-melt
+    still writes interior status 21 before the error reaches the caller."""
+    real_init = _FakeMeshAragogSolver.__init__
+
+    def init(self, cooled_profile):
+        real_init(self, cooled_profile)
+        del self.evaluator
+
+    monkeypatch.setattr(_FakeMeshAragogSolver, '__init__', init)
+    status = MagicMock()
+    with pytest.raises(AttributeError, match='evaluator'):
+        _partial_aragog_remelt(0.3, status=status)
+    assert [c.args[1] for c in status.call_args_list] == [21]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'method, f',
+    [('set_initial_entropy', 0.3), ('_step_heat_content', 0.3), ('_step_heat_content', 1.0)],
+)
+def test_an_error_setting_or_booking_the_remelted_profile_writes_the_interior_status(
+    monkeypatch, method, f
+):
+    """Setting the re-melted profile and booking its heat are part of the re-melt: an error
+    in either writes interior status 21 before it reaches the caller, also at f = 1."""
+
+    def fail(self, *args):
+        raise RuntimeError(f'{method} failed')
+
+    monkeypatch.setattr(_FakeMeshAragogSolver, method, fail)
+    status = MagicMock()
+    with pytest.raises(RuntimeError) as err:
+        _partial_aragog_remelt(f, status=status)
+    assert str(err.value) == f'{method} failed'
+    assert [c.args[1] for c in status.call_args_list] == [21]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('f', [0.3, 1.0])
+@pytest.mark.parametrize(
+    'T_magma', [None, float('nan'), float('inf')], ids=['missing', 'nan', 'inf']
+)
+def test_a_scalar_remelt_without_a_finite_magma_temperature_writes_the_interior_status(
+    f, T_magma
+):
+    """A row without T_magma raises KeyError naming it (a default of 0 K would re-melt to
+    f T_init); a non-finite T_magma raises ValueError. Both write interior status 21."""
+    hf_row = _remelt_hf_row()
+    if T_magma is None:
+        del hf_row['T_magma']
+    else:
+        hf_row['T_magma'] = T_magma
+    status = MagicMock()
+    with patch('proteus.interior_energetics.wrapper.UpdateStatusfile', new=status):
+        with pytest.raises((KeyError, ValueError)) as err:
+            remelt_mantle(
+                {'output': '/tmp/out'},
+                _remelt_config('dummy'),
+                hf_row,
+                SimpleNamespace(impact_reset=False),
+                f=f,
+            )
+    if T_magma is None:
+        assert err.type is KeyError and err.value.args == ('T_magma',)
+    else:
+        assert err.type is ValueError and 'non-finite' in str(err.value)
+    assert [c.args[1] for c in status.call_args_list] == [21]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('f_remelt', [0.3, 1.0])
+@pytest.mark.parametrize(
+    'path',
+    [
+        'set_entropy_ic',
+        'refresh_entropy_eos',
+        'molten_state',
+        'no_solver',
+        'melt_state',
+        'nan_f',
+    ],
+)
+def test_every_error_of_a_remelt_writes_the_interior_status_once(path, f_remelt):
+    """At f = 0.3 and at f = 1 an error on any step of the re-melt writes interior status
+    21 once and reaches the caller unchanged: the Aragog set-up, table refresh and
+    molten-state evaluation, a missing solver, the scalar melt state and a fraction that is
+    not a number."""
+    a, w = (
+        'proteus.interior_energetics.aragog.AragogRunner.',
+        'proteus.interior_energetics.wrapper.',
+    )
+    raising = {
+        'set_entropy_ic': a + '_set_entropy_ic',
+        'refresh_entropy_eos': a + '_refresh_entropy_eos',
+        'molten_state': w + 'evaluate_molten_state',
+    }
+    boom, status, f = RuntimeError('boom'), MagicMock(), f_remelt
+    config, row, expected = _remelt_config('aragog'), {}, RuntimeError
+    interior_o = SimpleNamespace(
+        aragog_solver=_FakeMeshAragogSolver(cooled_profile=np.full(6, 2400.0)),
+        _last_entropy=np.full(6, 2400.0),
+        impact_reset=False,
+    )
+    if path == 'no_solver':
+        interior_o.aragog_solver = None
+    elif path in ('melt_state', 'nan_f'):
+        config, row = _remelt_config('dummy'), _remelt_hf_row()
+        if path == 'melt_state':
+            expected = KeyError
+            del row['M_int']
+        else:
+            f, expected = float('nan'), ValueError
+    with (
+        patch(a + '_set_entropy_ic', return_value=np.full(6, 3900.0)),
+        patch(a + '_refresh_entropy_eos'),
+        patch(w + 'evaluate_molten_state', return_value=None),
+        patch(w + 'UpdateStatusfile', new=status),
+        patch(raising[path], side_effect=boom) if path in raising else nullcontext(),
+        pytest.raises(expected) as err,
+    ):
+        remelt_mantle({'output': '/tmp/out'}, config, row, interior_o, f=f)
+    assert [c.args[1] for c in status.call_args_list] == [21]
+    if path in raising:
+        assert err.value is boom
+    else:
+        detail = {
+            'no_solver': 'not yet initialised',
+            'melt_state': 'M_int',
+            'nan_f': 'fraction',
+        }
+        assert type(err.value) is expected and detail[path] in str(err.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('module', ['dummy', 'boundary'])
+def test_a_full_scalar_remelt_error_writes_the_interior_status(module):
+    """At f = 1 an error of a scalar backend after its temperature lift writes interior
+    status 21 and reaches the caller unchanged."""
+    boom, status = RuntimeError('melt state failed'), MagicMock()
+    with (
+        patch(
+            'proteus.interior_energetics.dummy.melt_state_from_temperature', side_effect=boom
+        ),
+        patch('proteus.interior_energetics.wrapper.UpdateStatusfile', new=status),
+        pytest.raises(RuntimeError) as err,
+    ):
+        remelt_mantle(
+            {'output': '/tmp/out'}, _remelt_config(module), _remelt_hf_row(), SimpleNamespace()
+        )
+    assert err.value is boom
+    assert [c.args[1] for c in status.call_args_list] == [21]
+
+
+class _FakeRisingTSolver(_FakeMeshAragogSolver):
+    """The 6-cell fake with T = k S, so a jump from S_0 to S_f holds k (S_f^2 - S_0^2) / 2."""
+
+    _K = 1.0e20
+
+    def _step_heat_content(self, S0_stag, Sf_stag, n_quad: int = 16) -> float:
+        S0, Sf = (np.asarray(s, dtype=float).ravel() for s in (S0_stag, Sf_stag))
+        return float(np.sum(self._K * (Sf**2 - S0**2) / 2.0))
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_partial_remelt_books_the_heat_of_the_blended_profile():
+    """With T rising in S the blended front cell holds less heat than its share of the
+    full jump. At f = 0.3 on 6 equal cells the top cell melts in full (2400 to 3900) and
+    the next to w = 0.8 (2400 to 3600), so the booked heat is k (9.45e6 + 7.2e6) / 2,
+    below f times the full re-melt heat, k 0.3 6 9.45e6 / 2."""
+    _, interior_o, hf_row = _partial_aragog_remelt(0.3, solver_cls=_FakeRisingTSolver)
+    k = _FakeRisingTSolver._K
+    np.testing.assert_allclose(interior_o._last_entropy[4:], [3600.0, 3900.0], rtol=1e-12)
+    assert hf_row['step_dE_impact_J'] == pytest.approx(k * (9.45e6 + 7.2e6) / 2, rel=1e-12)
+    assert hf_row['step_dE_impact_J'] < 0.99 * k * 0.3 * 6 * 9.45e6 / 2

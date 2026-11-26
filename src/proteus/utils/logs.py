@@ -107,7 +107,7 @@ def setup_logger(
     Parameters
     ----------
     logpath : str
-        Path of the logfile to (re)create.
+        Path of the logfile; the lines are added to an existing one.
     level : str
         Log level name: 'INFO', 'DEBUG', 'ERROR', or 'WARNING'.
     logterm : bool
@@ -129,9 +129,6 @@ def setup_logger(
     # Clear existing handlers to prevent accumulation when setup_logger is called multiple times
     # (e.g., when CLI command groups are invoked multiple times in tests)
     custom_logger.handlers.clear()
-
-    if os.path.exists(logpath):
-        os.remove(logpath)
 
     level_code = _resolve_level(level)
 

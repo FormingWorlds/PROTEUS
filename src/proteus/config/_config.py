@@ -221,8 +221,8 @@ def check_module_dependencies(instance, attribute, value):
             'vulcan',
             'atmos_chem.module = "vulcan" needs the VULCAN package (GPL-3.0 licensed), '
             'which is not installed. bash install.sh sets it up; to add it alone, run '
-            'bash tools/get_vulcan.sh in the PROTEUS folder, or pip install '
-            '"fwl-proteus[vulcan]".',
+            'bash tools/get_vulcan.sh in the PROTEUS folder (the fwl-vulcan wheel from PyPI '
+            'has no network files).',
         ),
         'boreas': (
             instance.escape.module == 'boreas',
@@ -297,6 +297,21 @@ def check_accretion_interior_compatibility(instance, attribute, value):
             f"accretion.module = '{instance.accretion.module}' cannot run with "
             "interior_struct.module = 'spider': SPIDER structure solve does not "
             'support non-thermal solves during giant impacts.'
+        )
+
+
+def check_accretion_remelt_source(instance, attribute, value):
+    """Reject accretion.remelt = 'computed' without a module that reports a melt fraction.
+
+    Morrigan reports the melt mass fraction of each merger and a timeline file can
+    carry it as a column; the analytical module and no module have none to apply.
+    """
+    acc = instance.accretion
+    if acc.remelt == 'computed' and acc.module not in ('morrigan', 'timeline'):
+        raise ValueError(
+            "accretion.remelt = 'computed' needs an accretion module that reports a melt "
+            "fraction: 'morrigan', or 'timeline' with an f_melt column; got "
+            f'accretion.module = {acc.module!r}'
         )
 
 
@@ -393,6 +408,23 @@ def check_core_module_requirements(instance, attribute, value):
         )
 
 
+def chemistry_climate_needs_agni(instance, attribute, value):
+    """Refuse coupling the chemistry to AGNI unless AGNI solves the climate.
+
+    A prescribed AGNI profile does not respond to the composition, so it cannot be coupled.
+    """
+    if not value.vulcan.couple_agni:
+        return
+    if instance.atmos_clim.module != 'agni':
+        raise ValueError(
+            "atmos_chem.vulcan.couple_agni = true needs atmos_clim.module = 'agni'"
+        )
+    if not instance.atmos_clim.agni.solve_energy:
+        raise ValueError(
+            'atmos_chem.vulcan.couple_agni = true needs atmos_clim.agni.solve_energy = true'
+        )
+
+
 def boreas_requires_atmosphere(instance, attribute, value):
     """BOREAS escape requires a radiative atmosphere (not dummy)."""
     if (instance.escape.module == 'boreas') and (instance.atmos_clim.module == 'dummy'):
@@ -414,6 +446,48 @@ def front_trapping_requires_aragog(instance, attribute, value):
         )
 
 
+def lid_seal_requirements(instance, attribute, value):
+    """The lid seal reads the Aragog mesh, freezes the CALLIOPE chemistry while it holds,
+    and applies unfractionated escape."""
+    if not getattr(getattr(instance.outgas, 'lid_seal', None), 'enabled', False):
+        return
+    interior = instance.interior_energetics.module
+    if interior != 'aragog':
+        raise ValueError(
+            'outgas.lid_seal.enabled = true requires interior_energetics.module = "aragog", '
+            f'not "{interior}". The seal reads the melt fraction and radius of the mesh '
+            'cells that only the Aragog interior exports.'
+        )
+    if instance.params.stop.solid.freeze_volatiles:
+        raise ValueError(
+            'outgas.lid_seal.enabled = true cannot be combined with '
+            'params.stop.solid.freeze_volatiles = true: both freeze the melt inventory. '
+            'Set one of them to false.'
+        )
+    if instance.outgas.vapourise:
+        raise ValueError(
+            'outgas.lid_seal.enabled = true cannot be combined with outgas.vapourise = true: '
+            'the leak sets the surface pressure from the volatile species alone.'
+        )
+    if instance.outgas.module != 'calliope':
+        raise ValueError(
+            'outgas.lid_seal.enabled = true requires outgas.module = "calliope", not '
+            f'"{instance.outgas.module}": the leak rebuilds the pressures as CALLIOPE does.'
+        )
+    if instance.escape.reservoir not in ('outgas', 'bulk'):
+        raise ValueError(
+            'outgas.lid_seal.enabled = true requires escape.reservoir = "outgas" or "bulk", '
+            f'not "{instance.escape.reservoir}": a held step applies unfractionated escape.'
+        )
+    zalmoxis = instance.interior_struct.module == 'zalmoxis'
+    if zalmoxis and not getattr(instance.interior_struct.zalmoxis, 'dry_mantle', True):
+        raise ValueError(
+            'outgas.lid_seal.enabled = true cannot be combined with '
+            'interior_struct.zalmoxis.dry_mantle = false: the structure reads the melt '
+            'volatiles, which the seal holds apart.'
+        )
+
+
 def prevent_desaturation_warns_without_condensates(instance, attribute, value):
     """prevent_desaturation holds nothing unless atmodeller forms condensates."""
     outgas = instance.outgas
@@ -428,6 +502,24 @@ def prevent_desaturation_warns_without_condensates(instance, attribute, value):
     elif not outgas.atmodeller.include_condensates:
         log.warning(
             'outgas.prevent_desaturation = true has no effect with '
+            'outgas.atmodeller.include_condensates = false'
+        )
+
+
+def saturation_skin_warns_without_condensates(instance, attribute, value):
+    """A skin from saturation stays fixed unless atmodeller forms condensates."""
+    if instance.atmos_clim.surface_d != 'saturation':
+        return
+    outgas = instance.outgas
+    if outgas.module != 'atmodeller':
+        log.warning(
+            "atmos_clim.surface_d = 'saturation' keeps the surface fixed with "
+            'outgas.module = "%s": only atmodeller forms condensates',
+            outgas.module,
+        )
+    elif not outgas.atmodeller.include_condensates:
+        log.warning(
+            "atmos_clim.surface_d = 'saturation' keeps the surface fixed with "
             'outgas.atmodeller.include_condensates = false'
         )
 
@@ -476,6 +568,50 @@ def observe_resolved_atmosphere(instance, attribute, value):
     """Synthetic observations require a spatially resolved atmosphere (not dummy)."""
     if (instance.observe.module is not None) and (instance.atmos_clim.module == 'dummy'):
         raise ValueError('Observational synthesis requires that atmos_clim != dummy')
+
+
+def lid_requires_the_skin_atmosphere(instance, attribute, value):
+    """A live Aragog lid acts on the atmosphere only through the skin of AGNI or the dummy.
+
+    The fixed-flux dummy (``fixed_flux > 0``), the saturation skin and ``prevent_warming`` are
+    refused with the lid.
+
+    The interior-side rules of the lid are in ``_interior._check_aragog_lid``.
+    """
+    ie = instance.interior_energetics
+    if ie.module != 'aragog' or not ie.aragog.lid_mush_base:
+        return
+    atm = instance.atmos_clim
+    if atm.module == 'janus':
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true needs atmos_clim.module = "agni" '
+            'or "dummy", not atmos_clim.module = "janus": JANUS does not read the lid.'
+        )
+    if atm.surf_state != 'skin':
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true needs atmos_clim.surf_state = '
+            f"'skin', got {atm.surf_state!r}: only the skin carries the lid to the atmosphere."
+        )
+    fixed_flux = getattr(getattr(atm, 'dummy', None), 'fixed_flux', -1.0)
+    if atm.module == 'dummy' and fixed_flux > 0:
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true cannot be used with '
+            f'atmos_clim.dummy.fixed_flux = {fixed_flux!r}: the fixed-flux dummy returns its '
+            'flux without the skin, so the lid does not reach the atmosphere.'
+        )
+    if getattr(getattr(instance, 'planet', None), 'prevent_warming', False):
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true cannot be used with '
+            'planet.prevent_warming = true: prevent_warming raises F_atm to at least 1e-8 W m-2 '
+            'and keeps T_magma from rising, so the two parts of the lid surface would lose a flux '
+            'that the atmosphere did not solve.'
+        )
+    if getattr(atm, 'surface_d', None) == 'saturation':
+        raise ValueError(
+            'interior_energetics.aragog.lid_mush_base = true cannot be used with '
+            "atmos_clim.surface_d = 'saturation': that skin has no thickness while no condensate "
+            'layer has formed, and a condensate layer over the lid is not modelled.'
+        )
 
 
 def janus_escape_atmosphere(instance, attribute, value):
@@ -712,6 +848,43 @@ def planet_fO2_source_compat(instance, attribute, value):
             )
 
 
+def boundary_melting_dir_advisory(instance, attribute, value):
+    """Advise when a configured melting curve folder is bypassed by the boundary backend.
+
+    With the Zalmoxis structure module, the adiabat melt model of the boundary
+    backend always uses the PALEOS solidus and liquidus, so a
+    `interior_struct.melting_dir` set alongside is not read by the energetics.
+    Nothing is changed; the advisory makes the substitution visible, and names
+    the case where the structure solve still reads the folder.
+    """
+    if instance.interior_energetics.module != 'boundary':
+        return
+    if instance.interior_energetics.boundary.melt_model != 'adiabat':
+        return
+
+    struct = instance.interior_struct
+    if struct.module != 'zalmoxis' or struct.melting_dir is None:
+        return
+
+    message = (
+        "interior_struct.melting_dir = '%s' is not read by the 'boundary' interior "
+        'backend: with the Zalmoxis structure module its adiabat melt model uses '
+        'the PALEOS MgSiO3 liquidus and a solidus of %.2f x liquidus '
+        '(interior_struct.zalmoxis.mushy_zone_factor).'
+    )
+    args = [struct.melting_dir, float(struct.zalmoxis.mushy_zone_factor)]
+
+    mantle_eos = struct.zalmoxis.mantle_eos
+    if not mantle_eos.startswith('PALEOS'):
+        message += (
+            " The structure solve with mantle_eos = '%s' still reads the folder, "
+            'so the structure and the energetics use different melting curves.'
+        )
+        args.append(mantle_eos)
+
+    log.warning(message, *args)
+
+
 def boundary_requires_fixed_surface_state(instance, attribute, value):
     """Boundary backend assumes a fixed surface state coupling."""
     if (instance.interior_energetics.module == 'boundary') and (
@@ -719,6 +892,23 @@ def boundary_requires_fixed_surface_state(instance, attribute, value):
     ):
         raise ValueError(
             "Must set atmos_clim.surf_state='fixed' when interior_energetics.module='boundary'"
+        )
+
+
+def spider_struct_needs_mass_from_interior(instance, attribute, value):
+    """Refuse the SPIDER structure with an interior that takes its mass from the structure.
+
+    The SPIDER structure finds the interior radius from the mantle mass that the
+    energetics module returns for each trial radius. The dummy and boundary
+    interiors take their mantle mass from the structure (M_int - M_core), so the
+    radius solve would have no mantle mass to work with.
+    """
+    struct_module = instance.interior_struct.module
+    energetics = instance.interior_energetics.module
+    if struct_module == 'spider' and energetics in ('dummy', 'boundary'):
+        raise ValueError(
+            "interior_struct.module = 'spider' is incompatible with "
+            f"interior_energetics.module = '{energetics}'."
         )
 
 
@@ -787,22 +977,28 @@ class Config:
         validator=(
             tides_enabled_orbit,
             boundary_requires_fixed_surface_state,
+            boundary_melting_dir_advisory,
             energetics_needs_a_thermal_mantle_eos,
             aragog_needs_melting_curves,
             dummy_struct_mantle_eos,
             lowt_extension_requires_aragog,
             lowt_extension_requires_ps_tables,
+            spider_struct_needs_mass_from_interior,
         ),
     )
     outgas: Outgas = field(
         factory=Outgas,
         validator=(
             front_trapping_requires_aragog,
+            lid_seal_requirements,
             prevent_desaturation_warns_without_condensates,
         ),
     )
-    atmos_clim: AtmosClim = field(factory=AtmosClim)
-    atmos_chem: AtmosChem = field(factory=AtmosChem)
+    atmos_clim: AtmosClim = field(
+        factory=AtmosClim,
+        validator=(saturation_skin_warns_without_condensates, lid_requires_the_skin_atmosphere),
+    )
+    atmos_chem: AtmosChem = field(factory=AtmosChem, validator=chemistry_climate_needs_agni)
     escape: Escape = field(
         factory=Escape,
         validator=(spada_zephyrus, janus_escape_atmosphere, boreas_requires_atmosphere),
@@ -816,6 +1012,7 @@ class Config:
             valid_config_version,
             check_module_dependencies,
             check_accretion_interior_compatibility,
+            check_accretion_remelt_source,
             check_accretion_vapourise_compatibility,
             check_accretion_core_stratification_compatibility,
             check_core_module_requirements,

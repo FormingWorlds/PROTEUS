@@ -206,8 +206,11 @@ Correlated-k opacity tables used by the atmosphere climate modules
 (AGNI, JANUS). Selected via `atmos_clim.spectral_group` and
 `atmos_clim.spectral_bands` in the config. Stored under
 `$FWL_DATA/atmos_clim/spectral_files/<group>/<bands>/r<record-id>/`, with the group name in lower case.
-For a full description of each group's spectral coverage and gas
-species, see `docs/assets/spectral_files.pdf` in the PROTEUS repository.
+For the spectral coverage and gas species of Honeyside, Dayspring,
+Frostflow and Oak, see `docs/assets/spectral_files.pdf` in the PROTEUS
+repository. For the other groups, the Zenodo record of each file lists
+its line and continuum absorbers and the sources of their data; the
+record id is the `r<record-id>` folder name.
 
 | Group | Available band counts | Notes |
 |---|---|---|
@@ -215,9 +218,19 @@ species, see `docs/assets/spectral_files.pdf` in the PROTEUS repository.
 | `Dayspring` | 16, 48, 256, 4096 | |
 | `Frostflow` | 16, 48, 256, 4096 | |
 | `Oak` | 318 | |
+| `Snowline` | 32, 64, 128, 256, 2048 | Lines: H2O |
+| `Breezehome` | 32, 64, 128, 256, 2048 | Lines: H2O, CO2, CO, O2, SO2, OCS, S2 |
+| `Cliffshade` | 32, 64, 128, 256, 2048 | Lines: H2, CO, CH4, S2, H2S, N2, NH3 |
+| `Volenfell` | 32, 64, 128, 256, 2048 | Lines: CO, O2, SiO, TiO, MgO, Na, K, Fe |
+| `Skyborn` | 32, 64, 128, 256, 2048 | Lines: H2O, H2, CO2, CO, SiO, TiO, VO, MgO, Na, K, Fe |
+| `Atmora` | 32, 64, 128, 256, 2048 | Lines: H2O, H2, CO2, CO, O2, CH4, SO2, S2, H2S, NH3, SiO, TiO, Na, K |
+| `Proudspire` | 32, 64, 128, 256, 2048 | Lines: H2O, H2, CO2, CO, O2, O3, CH4, SO2, OCS, S2, H2S, N2, NH3, HCN |
+| `Sovngarde` | 32, 64, 128, 256, 2048 | Lines: the Proudspire set plus SiO, TiO, MgO, Na, K, Fe |
 
 The default configuration uses `Honeyside` / `48`. Higher band counts
-increase spectral resolution and runtime cost.
+increase spectral resolution and runtime cost. The line absorbers listed
+for the groups from `Snowline` on come from the descriptions of their
+Zenodo records, which also list the continuum absorbers of each file.
 
 ---
 
@@ -274,7 +287,7 @@ as a cluster node, run `proteus get reference` once before the first offline run
 
 ## Equations of state 
 
-The interior structure solver of PROTEUS, Zalmoxis, uses equation-of-state tables by [Seager et al. (2007)](https://iopscience.iop.org/article/10.1086/521346), and from [PALEOS](https://github.com/maraattia/PALEOS) by [Attia et al. (2026)](https://ui.adsabs.harvard.edu/abs/2026arXiv260503741A/abstract). An overview of equation of state tables can be found [here](https://proteus-framework.org/Zalmoxis/Reference/data.html#data-inventory).
+The interior structure solver of PROTEUS, Zalmoxis, uses equation-of-state tables by [Seager et al. (2007)](https://iopscience.iop.org/article/10.1086/521346), and from [PALEOS](https://github.com/maraattia/PALEOS) by Attia et al. (2026)[^cite-attia2026]. An overview of equation of state tables can be found [here](https://proteus-framework.org/Zalmoxis/Reference/data.html#data-inventory).
 
 All equation-of-state tables are fetched through fwl-io into `$FWL_DATA/<dataset directory>/r<record-id>/`, on the same terms as the datasets above. Only the files that the selected equations of state read are fetched.
 
@@ -327,3 +340,5 @@ before an offline run. A local table takes precedence: SPIDER reads
 `$FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/P-T/`. SPIDER uses the
 table bundled with it (`lookup_data/1TPa-dK09-elec-free/`) when neither the
 local nor a complete fetched table is available.
+
+[^cite-attia2026]: M. Attia, T. Lichtenberg, E. Jungová, M. Sastre, *[PALEOS: Multiphase equations of state and mass-radius relations for exoplanet interiors](https://doi.org/10.1051/0004-6361/202660790)*, Astronomy & Astrophysics, 713, A225, 2026.

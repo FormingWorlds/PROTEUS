@@ -9,8 +9,9 @@ import numpy as np
 
 from proteus.escape.wrapper import readable_total
 from proteus.interior_struct.common import record_volatile_change
-from proteus.outgas.common import EMPTY_ATMOSPHERE_KEPT_KEYS, expected_keys
+from proteus.outgas.common import EMPTY_ATMOSPHERE_KEPT_KEYS, expected_keys, set_element_ratios
 from proteus.outgas.lavatmos import run_vapourisation
+from proteus.outgas.lid_seal import clear_seal, seal_enabled, sealed_mass
 from proteus.outgas.trapping import (
     escapable_inventory,
     locked_condensed_mass,
@@ -18,7 +19,7 @@ from proteus.outgas.trapping import (
     trapping_active,
 )
 from proteus.utils.constants import (
-    condensate_list,
+    condensate_density,
     element_list,
     element_mmw,
     gas_list,
@@ -242,15 +243,15 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
 
     Parameters
     ----------
-        config : Config
-            Configuration object
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
 
     Returns
     -------
-        bool
-            True if desiccation occurred, False otherwise
+    bool
+        True if desiccation occurred, False otherwise
 
     Notes
     -----
@@ -300,7 +301,7 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
         # Mass trapped in the solid, or held in condensates kept from re-vapourising,
         # can neither escape nor outgas, so only the escapable inventory counts;
         # otherwise it would block desiccation forever.
-        reachable = escapable_inventory(hf_row, e, config)
+        reachable = escapable_inventory(hf_row, e, config) + sealed_mass(hf_row, e)
         if reachable > config.outgas.mass_thresh:
             log.info('Not desiccated, %s = %.2e kg reachable' % (e, reachable))
             return False  # return, and allow run_outgassing to proceed
@@ -356,19 +357,19 @@ def desiccated_after_trapping(config: Config, hf_row: dict, desiccated: bool, st
 
     Parameters
     ----------
-        config : Config
-            Configuration object
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
-        desiccated : bool
-            Whether the planet was desiccated before this step
-        step : TrappingStep or None
-            What this step's trapping did, as returned by ``run_trapping``
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
+    desiccated : bool
+        Whether the planet was desiccated before this step
+    step : TrappingStep or None
+        What this step's trapping did, as returned by ``run_trapping``
 
     Returns
     -------
-        bool
-            Whether the planet is desiccated now.
+    bool
+        Whether the planet is desiccated now.
     """
     if not desiccated or step is None or not step.remelted or step.total_trapped >= 0.0:
         return desiccated
@@ -435,10 +436,10 @@ def condensed_mass_withheld(config: Config, hf_row: dict, *, initial: bool):
         held = {e: locked_condensed_mass(hf_row, e, config) for e in vol_element_list}
     held_cd = {}
     if any(held.values()):
-        for c in condensate_list:
+        for c in condensate_density.keys():
             mass = float(hf_row.get(f'{c}_cd_kg', 0.0))
             held_cd[c] = max(0.0, mass) if np.isfinite(mass) else 0.0
-    for c in condensate_list:
+    for c in condensate_density.keys():
         hf_row[f'{c}_cd_kg'] = 0.0
     for e in vol_element_list:
         hf_row[f'{e}_kg_condensed'] = 0.0
@@ -478,15 +479,15 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
 
     Parameters
     ----------
-        dirs : dict
-            Dictionary of directory paths
-        config : Config
-            Configuration object
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
-        initial : bool
-            Whether this is an init-stage iteration, where the dummy outgassing
-            derives an empty O budget from the outgassed species.
+    dirs : dict
+        Dictionary of directory paths
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
+    initial : bool
+        Whether this is an init-stage iteration, where the dummy outgassing
+        derives an empty O budget from the outgassed species.
     """
 
     log.info('Calculating volatile outgassing at surface')
@@ -556,16 +557,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
     # iteration rather than only after the mantle crystallises.
     hf_row['M_vol_atm'] = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_gas_list)
 
-    # Derive element mass ratios in atmosphere
-    for e1 in element_list:
-        for e2 in element_list:
-            key = f'{e2}/{e1}_atm'  # key to be set in helpfile
-            if key not in hf_row:
-                continue
-            if min(hf_row[f'{e1}_kg_atm'], hf_row[f'{e2}_kg_atm']) < 1e-30:
-                hf_row[key] = 0.0
-            else:
-                hf_row[key] = hf_row[f'{e2}_kg_atm'] / hf_row[f'{e1}_kg_atm']
+    set_element_ratios(hf_row)
 
     # print outgassed partial pressures (in order of descending abundance)
     species = [s for s in gas_list if s not in vap_list]
@@ -683,9 +675,19 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     # atmospheric mass shrinks with the reactive volatiles; otherwise a later
     # escape step that debits the noble total would leave the noble
     # atmospheric mass stale and larger than the total.
+    held = seal_enabled(config)  # the seal refuses freeze_volatiles: only a held step
     for s in gas_list:
-        hf_row[f'{s}_kg_atm'] = hf_row.get(f'{s}_kg_atm', 0.0) * retained
+        kg, mol = hf_row.get(f'{s}_kg_atm', 0.0), hf_row.get(f'{s}_mol_atm', 0.0)
+        hf_row[f'{s}_kg_atm'] = kg * retained
         hf_row[f'{s}_bar'] = hf_row.get(f'{s}_bar', 0.0) * retained
+        if not held:
+            continue
+        # A held step leaks moles into this atmosphere, so they and the species totals follow.
+        hf_row[f'{s}_mol_atm'] = mol * retained
+        if f'{s}_mol_total' in hf_row:
+            hf_row[f'{s}_mol_total'] -= mol * (1.0 - retained)
+        if s not in element_list and f'{s}_kg_total' in hf_row:
+            hf_row[f'{s}_kg_total'] -= kg * (1.0 - retained)
     # Element reservoirs whose symbol is not also a species name. The loop above
     # already scales the rock formers and noble gases through the species they
     # share a symbol with; H, O, C, N and S have no such twin, and escape sizes
@@ -750,14 +752,14 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
 
     Parameters
     ----------
-        dirs : dict
-            Dictionary of directory paths
-        config : Config
-            Configuration object
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
-        first_iter : bool
-            Whether the run is in its init stage.
+    dirs : dict
+        Dictionary of directory paths
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
+    first_iter : bool
+        Whether the run is in its init stage.
     """
 
     # if desiccated, set all gas masses to zero
@@ -774,6 +776,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     for k in expected_keys():
         if k not in EMPTY_ATMOSPHERE_KEPT_KEYS and not k.endswith(held):
             hf_row[k] = 0.0
+    clear_seal(hf_row)  # a sealed rest below mass_thresh leaves with the atmosphere
     for n, total in totals.items():
         if not np.isfinite(total):
             hf_row[f'{n}_kg_total'] = total
@@ -838,15 +841,15 @@ def run_outgassing_and_vapourisation(
 
     Parameters
     ----------
-        dirs : dict
-            Dictionary of directory paths
-        config : Config
-            Configuration object
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
-        first_iter : bool
-            Whether the run is in its init stage; the dummy outgassing derives an
-            empty O budget only then.
+    dirs : dict
+        Dictionary of directory paths
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
+    first_iter : bool
+        Whether the run is in its init stage; the dummy outgassing derives an
+        empty O budget only then.
     """
 
     # reset all rock-vapour masses to zero:

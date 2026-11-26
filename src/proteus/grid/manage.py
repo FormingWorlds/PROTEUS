@@ -16,7 +16,6 @@ import time
 from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
-from numbers import Real
 
 import numpy as np
 import toml
@@ -29,8 +28,24 @@ from proteus.config import (
     read_config_object,
 )
 from proteus.config._interior import _TOL_UNSET, default_rtol, rtol_is_set
+from proteus.grid.analyse_options import check_post_processing_table
+from proteus.grid.dimensions import (
+    DIMENSION_METHODS,
+    dimension_arange,
+    dimension_direct,
+    dimension_linspace,
+    dimension_logspace,
+    direct_values_error,
+)
+from proteus.grid.slurm import array_layout, dispatch_script, max_array_size, warn_idle_cores
 from proteus.utils.coupler import get_output_root
-from proteus.utils.helper import get_proteus_dir, recursive_setattr
+from proteus.utils.helper import (
+    STATUS_MISSING,
+    ReadStatus,
+    UpdateStatusfile,
+    get_proteus_dir,
+    recursive_setattr,
+)
 from proteus.utils.logs import setup_logger
 
 PROTEUS_DIR = get_proteus_dir()
@@ -341,18 +356,14 @@ class Grid:
 
     # Set a dimension by linspace
     def set_dimension_linspace(self, name: str, start: float, stop: float, count: int):
-        self.dim_avars[name] = list(np.linspace(start, stop, count))
-        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        self.dim_avars[name] = dimension_linspace(start, stop, count)
         log.debug(
             "Dimension '%s' linspace: %d points in [%.6g, %.6g]", name, count, start, stop
         )
 
     # Set a dimension by arange (inclusive of endpoint)
     def set_dimension_arange(self, name: str, start: float, stop: float, step: float):
-        self.dim_avars[name] = list(np.arange(start, stop, step))
-        if not np.isclose(self.dim_avars[name][-1], stop):
-            self.dim_avars[name].append(stop)
-        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        self.dim_avars[name] = dimension_arange(start, stop, step)
         log.debug(
             "Dimension '%s' arange: %d points in [%.6g, %.6g] (step=%.6g)",
             name,
@@ -364,8 +375,7 @@ class Grid:
 
     # Set a dimension by logspace
     def set_dimension_logspace(self, name: str, start: float, stop: float, count: int):
-        self.dim_avars[name] = list(np.logspace(np.log10(start), np.log10(stop), count))
-        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        self.dim_avars[name] = dimension_logspace(start, stop, count)
         log.debug(
             "Dimension '%s' logspace: %d points in [%.6g, %.6g]", name, count, start, stop
         )
@@ -375,15 +385,11 @@ class Grid:
         why = direct_values_error(values)
         if why:
             raise ValueError(f"direct dimension '{name}' {why}")
-        values = [v.item() if isinstance(v, np.generic) else v for v in values]  # array, tuple
-        the_list = list(dict.fromkeys(values))  # written order, duplicates removed
-        if (not isinstance(values[0], str)) and sort:  # sort if numeric
-            the_list = sorted(the_list)
-        self.dim_avars[name] = the_list
+        self.dim_avars[name] = dimension_direct(values, sort)
         log.debug(
             "Dimension '%s' direct: %d values (deduplicated from %d)",
             name,
-            len(the_list),
+            len(self.dim_avars[name]),
             len(values),
         )
 
@@ -672,28 +678,15 @@ class Grid:
             step += 1
             # / end while loop
 
-        # Check all cases' status files
+        # A case that exited while its status reads running, or before writing one, died
         if not test_run:
             for i in range(self.size):
-                # find file
-                status_path = os.path.join(self.outdir, self.CONFIG_BASENAME % i, 'status')
-                if not os.path.exists(status_path):
-                    raise Exception("Cannot find status file at '%s'" % status_path)
-
-                # read file
-                with open(status_path, 'r') as hdl:
-                    lines = hdl.readlines()
-                this_stat = int(lines[0])
-
-                # if still marked as running, it must have died at some point
-                if 0 <= this_stat <= 9:
-                    log.warning(
-                        'Case %06d has status=running but it is not alive. Setting status=died.'
-                        % i
-                    )
-                    with open(status_path, 'w') as hdl:
-                        hdl.write('25\n')
-                        hdl.write('Error (died)\n')
+                case_dir = os.path.join(self.outdir, self.CONFIG_BASENAME % i)
+                code = ReadStatus(case_dir)
+                if code == STATUS_MISSING or 0 <= code <= 9:
+                    found = 'no status file' if code == STATUS_MISSING else f'status={code}'
+                    log.warning('Case %06d exited with %s. Setting status=died.', i, found)
+                    UpdateStatusfile({'output': case_dir}, 25)
 
         time_end = datetime.now()
         log.info('All processes finished at: ' + str(time_end.strftime('%Y-%m-%d_%H:%M:%S')))
@@ -705,25 +698,23 @@ class Grid:
         self,
         max_jobs: int,
         test_run: bool = False,
-        max_days: int = 1,
-        max_mem: int = 12,
+        max_days: float = 1.0,
+        max_mem: float = 12.0,
         jax_cache: bool = False,
+        cores_per_job: int = 1,
     ):
-        """Write slurm config file.
-
-        Uses a slurm job array, see link for more info:
-        https://slurm.schedmd.com/job_array.html
+        """Write the Slurm job array script ``slurm_dispatch.sh``.
 
         Parameters
         ----------
         max_jobs : int
-            Maximum number of jobs to run
+            Maximum number of cases running at the same time
         test_run : bool
             If true, generate dummy commands to test the code.
-        max_days : int
-            Maximum number of days to run
-        max_mem : int
-            Maximum memory per CPU in GB
+        max_days : float
+            Maximum number of days one case runs
+        max_mem : float
+            Maximum memory per case in GB
         jax_cache : bool
             If true, the generated script enables a bounded JAX persistent
             compilation cache shared across the array tasks (stored under the
@@ -731,14 +722,33 @@ class Grid:
             recompiles are cut. An LRU size bound caps the cache so it cannot
             fill the filesystem. Default false: no cache environment variables
             are written and the script behaves exactly as before.
+        cores_per_job : int
+            CPU cores per Slurm job; each core runs one case at a time.
         """
 
-        max_days = int(max_days)  # ensure integer
-        max_jobs = min(max_jobs, self.size)  # do not request more jobs than we need
+        max_array = max_array_size()
+        jobs, waves = array_layout(self.size, cores_per_job, max_array)
+        throttle = min(max(1, max_jobs // cores_per_job), jobs)
 
         log.info("Generating PROTEUS slurm config for parameter grid '%s'" % self.name)
-        log.info('Will run for up to %d days per job' % max_days)
-        log.info('Will use up to %d GB of memory per job' % max_mem)
+        log.info(
+            '%d cases in %d jobs of %d cores and %.1f GB, up to %d jobs at a time',
+            self.size,
+            jobs,
+            cores_per_job,
+            cores_per_job * max_mem,
+            throttle,
+        )
+        log.info('Will run for up to %.1f days per case' % max_days)
+        if waves > 1:
+            log.warning(
+                'MaxArraySize limits the array to %d jobs: each core runs %d cases in turn, '
+                'so a job may run for %.1f days',
+                jobs,
+                waves,
+                max_days * waves,
+            )
+        warn_idle_cores(self.size, cores_per_job, max_array, max_jobs)
         log.info(' ')
 
         log.info("Output path: '%s'" % self.outdir)
@@ -752,8 +762,6 @@ class Grid:
             command = '/bin/echo Dummy output. Config file is at: '
         else:
             command = 'proteus start --offline --config'
-
-        log_file = os.path.join(self.logdir, 'proteus-%A_%a.log')
 
         # Optional bounded JAX persistent compilation cache. The size bound uses
         # JAX's own LRU eviction so the cache plateaus instead of growing without
@@ -771,25 +779,19 @@ class Grid:
         else:
             jax_env = ''
 
-        string = f"""#!/bin/sh
-#SBATCH -J proteus.grid.array
-#SBATCH --export=ALL
-#SBATCH --time={max_days}-00
-#SBATCH --mem-per-cpu={max_mem}G
-#SBATCH -i /dev/null
-#SBATCH -o {log_file}
-#SBATCH --array=0-{self.size - 1}%{max_jobs}
-
-{jax_env}i=$SLURM_ARRAY_TASK_ID
-
-while [ $i -lt {self.size} ]; do
-    printf -v cfg "{self.cfgdir}/{self.CONFIG_BASENAME}.toml" $((i))
-    echo executing proteus with config $cfg
-    {command} $cfg
-    i=$((i+{self.size}))
-done
-
-"""
+        string = dispatch_script(
+            cfgdir=self.cfgdir.rstrip('/'),
+            logdir=self.logdir.rstrip('/'),
+            n_cases=self.size,
+            cores_per_job=cores_per_job,
+            jobs=jobs,
+            throttle=throttle,
+            days=max_days * waves,
+            mem_per_case_mb=int(max_mem * 1024),
+            command=command,
+            casedir=None if test_run else self.outdir.rstrip('/'),
+            env=jax_env,
+        )
 
         slurm_path = os.path.join(self.outdir, 'slurm_dispatch.sh')
         with open(slurm_path, 'w') as f:
@@ -798,7 +800,7 @@ done
         user = getuser()
         log.info('')
         log.info('Submit to Slurm using:')
-        log.info('    `sbatch %s`', slurm_path)
+        log.info('    `sbatch --export=ALL %s`', slurm_path)
         log.info('')
         log.info('To look at the Slurm queue:')
         log.info('    `squeue` or `squeue -u %s`', user)
@@ -810,6 +812,8 @@ done
 
 
 # Top-level keys of a grid file that set up the grid; every other key names a dimension.
+# `post_processing` is the optional table read by `proteus grid-analyse`; `proteus grid`
+# checks it at launch, so a typo stops the grid before any case runs.
 GRID_SETTINGS = frozenset(
     {
         'output',
@@ -819,46 +823,12 @@ GRID_SETTINGS = frozenset(
         'max_jobs',
         'max_days',
         'max_mem',
+        'cores_per_job',
         'jax_cache',
         'config_version',
+        'post_processing',
     }
 )
-
-
-def direct_values_error(values) -> str | None:
-    """Return why a direct grid axis cannot be built from ``values``, or None if it can.
-
-    The axis needs a non-empty list, tuple or 1-D array of numbers and booleans, or of
-    strings: duplicates are removed and numbers sorted, which has no defined result for a
-    NaN (it equals nothing, itself included) or for strings beside other values.
-    """
-    if not (
-        isinstance(values, (list, tuple))
-        or (isinstance(values, np.ndarray) and values.ndim == 1)
-    ):
-        return f'is not a list of values: {values!r}'
-    values = list(values)
-    if not values:
-        return 'has no values'
-    for v in values:
-        if not isinstance(v, (Real, np.bool_, str)):
-            return f'holds {v!r}, which is not a real number, boolean or string'
-    if any(v != v for v in values):
-        return 'holds NaN, which cannot be deduplicated or ordered'
-    first = isinstance(values[0], str)
-    other = next((v for v in values if isinstance(v, str) != first), None)
-    if other is not None:
-        return f'mixes strings with other values ({values[0]!r} and {other!r})'
-    return None
-
-
-# Keys each dimension method reads from its table, in the order of its Grid setter.
-DIMENSION_METHODS = {
-    'direct': ('values',),
-    'linspace': ('start', 'stop', 'count'),
-    'logspace': ('start', 'stop', 'count'),
-    'arange': ('start', 'stop', 'step'),
-}
 
 
 def _dimension_kind(key: str, value) -> str:
@@ -937,6 +907,17 @@ def _grid_bool(value, key: str, fpath: str) -> bool:
     return value
 
 
+def _grid_positive_int(config: dict, key: str, fpath: str) -> int:
+    """Return a grid setting that must be a TOML integer of at least 1, default 1."""
+    value = config.get(key, 1)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(
+            f'grid file {fpath}: grid setting {key} must be an integer of at least 1, '
+            f'got {value!r}'
+        )
+    return value
+
+
 def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: float = 15.0):
     """Run GridPROTEUS using the parameters in a config file (xxx.grid.toml)"""
 
@@ -948,6 +929,7 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
         why = config[key]['method'] == 'direct' and direct_values_error(config[key]['values'])
         if why:
             raise ValueError(f'grid file {config_fpath}: the direct axis "{key}" {why}')
+    check_post_processing_table(config.get('post_processing', {}))
 
     # Output folder name, created inside `PROTEUS/output/`
     folder = str(config['output'])
@@ -977,8 +959,9 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
 
     # Execution limits
     max_jobs = int(config['max_jobs'])  # maximum number of concurrent tasks (e.g. 300)
-    max_days = int(config['max_days'])  # maximum number of days to run (e.g. 1)
-    max_mem = int(config['max_mem'])  # maximum memory per CPU in GB (e.g. 3)
+    max_days = float(config['max_days'])  # maximum number of days to run (e.g. 1.0)
+    max_mem = float(config['max_mem'])  # maximum memory per case in GB (e.g. 3)
+    cores_per_job = _grid_positive_int(config, 'cores_per_job', config_fpath)
 
     # Optional bounded JAX persistent compilation cache (Slurm runs only).
     # Absent or false leaves the generated script cache-free.
@@ -1035,6 +1018,7 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
             max_days=max_days,
             max_mem=max_mem,
             jax_cache=jax_cache,
+            cores_per_job=cores_per_job,
         )
     else:
         # Alternatively, let grid_proteus.py manage the jobs

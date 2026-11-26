@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import types
@@ -1307,8 +1308,9 @@ class _FakeProteusPost:
         self.ran_observe = False
         type(self).instances.append(self)
 
-    def offline_chemistry(self):
+    def offline_chemistry(self, network_compiled=False):
         self.ran_offchem = True
+        self.network_compiled = network_compiled
 
     def observe(self):
         self.ran_observe = True
@@ -1330,6 +1332,133 @@ def test_offchem_invokes_offline_chemistry(monkeypatch, tmp_path):
     assert _FakeProteusPost.instances[0].ran_offchem is True
     # Discrimination: observe path must NOT have fired
     assert _FakeProteusPost.instances[0].ran_observe is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('compiled', [False, True], ids=['default', 'network_compiled'])
+def test_offchem_network_compiled_flag_reaches_offline_chemistry(
+    monkeypatch, tmp_path, compiled
+):
+    """The hidden --network-compiled flag, which the grid dispatcher passes, reaches
+    offline_chemistry; without it the run compiles the network itself."""
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+    _FakeProteusPost.instances = []
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusPost)
+    monkeypatch.setattr(cli, 'setup_logger', lambda *a, **k: None)
+
+    res = runner.invoke(cli.offchem, ['-c', str(cfg)] + (['--network-compiled'] * compiled))
+
+    assert res.exit_code == 0
+    assert _FakeProteusPost.instances[0].network_compiled is compiled
+    assert '--network-compiled' not in runner.invoke(cli.offchem, ['--help']).output
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'args',
+    [[], ['-c', 'CFG', '-g', 'GRID'], ['-c', 'CFG', '--slurm']],
+    ids=['neither', 'config_and_grid', 'slurm_without_grid'],
+)
+def test_offchem_refuses_a_wrong_combination_of_options(monkeypatch, tmp_path, args):
+    """offchem takes one config (-c) or one grid folder (-g), and --slurm only with -g;
+    any other combination is a usage error, and neither a run nor a grid starts."""
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+    args = [{'CFG': str(cfg), 'GRID': str(tmp_path)}.get(a, a) for a in args]
+    grids = []
+    _FakeProteusPost.instances = []
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusPost)
+    monkeypatch.setattr('proteus.grid.offchem.offchem_grid', lambda *a: grids.append(a) or [])
+
+    res = runner.invoke(cli.offchem, args)
+
+    assert res.exit_code == 2
+    assert 'Usage' in res.output
+    assert _FakeProteusPost.instances == []
+    assert grids == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('slurm', [False, True], ids=['local', 'slurm'])
+def test_offchem_grid_runs_the_grid_folder_with_its_log_there(monkeypatch, tmp_path, slurm):
+    """-g hands the resolved grid folder and --slurm to offchem_grid, logs to offchem.log
+    in that folder, and builds no single-run Proteus."""
+    calls, logs = [], []
+    _FakeProteusPost.instances = []
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusPost)
+    monkeypatch.setattr(cli, 'setup_logger', lambda **k: logs.append(k['logpath']))
+    monkeypatch.setattr(
+        'proteus.grid.offchem.offchem_grid', lambda g, s: calls.append((g, s)) or []
+    )
+
+    res = runner.invoke(cli.offchem, ['-g', str(tmp_path)] + (['--slurm'] * slurm))
+
+    assert res.exit_code == 0
+    assert calls == [(tmp_path.resolve(), slurm)]
+    assert logs == [os.path.join(tmp_path.resolve(), 'offchem.log')]
+    assert _FakeProteusPost.instances == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'outcome,expected,traceback',
+    [
+        (
+            ['case_000001', 'case_000004'],
+            'Chemistry failed for case_000001, case_000004',
+            False,
+        ),
+        (
+            ValueError('case_000002: atmos_chem.module is none'),
+            'case_000002: atmos_chem',
+            False,
+        ),
+        (
+            EnvironmentError('VULCAN module is missing. Fix: x'),
+            'VULCAN module is missing',
+            False,
+        ),
+        (FileNotFoundError('VULCAN network file not found'), 'network file not found', False),
+        (
+            RuntimeError('element C not conserved'),
+            'Chemistry of the grid stopped: element C not conserved',
+            True,
+        ),
+    ],
+    ids=[
+        'failed_cases',
+        'refused_grid',
+        'vulcan_missing',
+        'network_file_missing',
+        'unexpected',
+    ],
+)
+def test_offchem_grid_exits_non_zero_naming_the_cases(
+    monkeypatch, tmp_path, caplog, outcome, expected, traceback
+):
+    """Failed cases, a refused grid and a VULCAN install problem end the command with
+    exit code 1 and an error on the log that names the problem, without a traceback; an
+    unexpected error, such as one from compiling the VULCAN network, also reaches the
+    log, with its traceback."""
+
+    def fake_grid(grid, slurm):
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(cli, 'setup_logger', lambda **k: None)
+    monkeypatch.setattr('proteus.grid.offchem.offchem_grid', fake_grid)
+
+    with caplog.at_level(logging.ERROR, logger='fwl'):
+        res = runner.invoke(cli.offchem, ['-g', str(tmp_path)])
+
+    assert res.exit_code == 1
+    assert isinstance(res.exception, SystemExit)
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 1
+    assert expected in errors[0].getMessage()
+    assert (errors[0].exc_info is not None) is traceback
 
 
 @pytest.mark.unit
@@ -2117,6 +2246,7 @@ def _export_env_site(monkeypatch, tmp_path, conda_prefix):
         monkeypatch.setenv('CONDA_PREFIX', conda_prefix)
         monkeypatch.setenv('CONDA_DEFAULT_ENV', 'proteus')
     (tmp_path / 'fwl data').mkdir()
+    monkeypatch.delenv('JULIA_DEPOT_PATH', raising=False)
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl data'))
     home = tmp_path / 'home'
     home.mkdir()
@@ -2223,6 +2353,119 @@ def test_export_env_keeps_a_value_with_a_single_quote_out_of_conda(monkeypatch, 
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('value', ['/data/depot:', '', None], ids=['set', 'empty', 'unset'])
+def test_install_vars_record_a_set_julia_depot_and_invent_none(monkeypatch, tmp_path, value):
+    """A set depot goes to the record; with none the user stays on the default of Julia."""
+    if value is None:
+        monkeypatch.delenv('JULIA_DEPOT_PATH', raising=False)
+    else:
+        monkeypatch.setenv('JULIA_DEPOT_PATH', value)
+    variables = cli._install_vars(tmp_path, tmp_path / 'fwl', None)
+    assert variables.get('JULIA_DEPOT_PATH') == (value or None)
+    assert variables['FWL_DATA'] == str(tmp_path / 'fwl')
+
+
+def _foreign_depot(tmp_path, kind):
+    """The depot value of another install, or of an env that is gone from an envs folder."""
+    if kind == 'other':
+        other = tmp_path / 'other'
+        (other / 'conda-meta').mkdir(parents=True)
+    else:
+        other = tmp_path / 'envs' / 'gone'
+        other.parent.mkdir()
+    return f'{other}/julia_depot:'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('kind', ['other', 'gone'])
+def test_setup_scripts_use_the_own_depot_and_say_the_shell_stays(
+    monkeypatch, tmp_path, kind, capsys
+):
+    """A Julia step fills the depot of this env, and one line names both values."""
+    root = tmp_path / 'proteus'
+    root.mkdir()
+    foreign = _foreign_depot(tmp_path, kind)
+    own = f'{tmp_path / "this"}/julia_depot:'
+    monkeypatch.setenv('CONDA_PREFIX', str(tmp_path / 'this'))
+    monkeypatch.delenv('CONDA_DEFAULT_ENV', raising=False)
+    monkeypatch.setenv('JULIA_DEPOT_PATH', foreign)
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    assert cli._env_with_proteus_julia(root).get('JULIA_DEPOT_PATH') == own
+    assert os.environ['JULIA_DEPOT_PATH'] == foreign
+    lines = [ln for ln in capsys.readouterr().out.splitlines() if foreign in ln]
+    assert len(lines) == 1
+    assert own in lines[0]
+    assert 'your shell stays' in lines[0]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'active',
+    [{}, {'CONDA_DEFAULT_ENV': 'base', 'CONDA_PREFIX': '<base>'}],
+    ids=['none', 'base'],
+)
+def test_setup_scripts_with_no_env_of_their_own_drop_the_value_and_say_so(
+    monkeypatch, tmp_path, active, capsys
+):
+    """With no env to hold a depot, Julia uses ~/.julia, and one line says so."""
+    root = tmp_path / 'proteus'
+    root.mkdir()
+    foreign = _foreign_depot(tmp_path, 'other')
+    monkeypatch.delenv('CONDA_PREFIX', raising=False)
+    monkeypatch.delenv('CONDA_DEFAULT_ENV', raising=False)
+    for name, value in active.items():
+        monkeypatch.setenv(name, value.replace('<base>', str(tmp_path / 'base')))
+    monkeypatch.setenv('JULIA_DEPOT_PATH', foreign)
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    assert 'JULIA_DEPOT_PATH' not in cli._env_with_proteus_julia(root)
+    lines = [ln for ln in capsys.readouterr().out.splitlines() if foreign in ln]
+    assert len(lines) == 1
+    assert '~/.julia' in lines[0]
+
+
+@pytest.mark.unit
+def test_install_vars_record_the_depot_that_the_julia_steps_used(monkeypatch, tmp_path, capsys):
+    """A later shell needs the packages that the steps installed, so the file holds that value."""
+    foreign = _foreign_depot(tmp_path, 'other')
+    own = f'{tmp_path / "this"}/julia_depot:'
+    monkeypatch.setenv('CONDA_PREFIX', str(tmp_path / 'this'))
+    monkeypatch.delenv('CONDA_DEFAULT_ENV', raising=False)
+    monkeypatch.setenv('JULIA_DEPOT_PATH', foreign)
+    monkeypatch.setenv('PATH', str(tmp_path))
+    variables = cli._install_vars(tmp_path, tmp_path / 'fwl', None)
+    assert variables.get('JULIA_DEPOT_PATH') == own
+    assert foreign.rstrip(':') in capsys.readouterr().out
+    cli._export_env(tmp_path, variables)
+    assert f"export JULIA_DEPOT_PATH='{own}'" in (tmp_path / '.proteus-env.sh').read_text()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('kind', ['other', 'gone'])
+def test_install_vars_with_no_env_record_no_foreign_depot(monkeypatch, tmp_path, kind, capsys):
+    """No env, so no own depot to record, and the words name what the folder is."""
+    foreign = _foreign_depot(tmp_path, kind)
+    monkeypatch.delenv('CONDA_PREFIX', raising=False)
+    monkeypatch.delenv('CONDA_DEFAULT_ENV', raising=False)
+    monkeypatch.setenv('JULIA_DEPOT_PATH', foreign)
+    variables = cli._install_vars(tmp_path, tmp_path / 'fwl', None)
+    assert 'JULIA_DEPOT_PATH' not in variables
+    out = capsys.readouterr().out
+    assert ('another PROTEUS install' in out) == (kind == 'other')
+    assert ('is gone' in out) == (kind == 'gone')
+
+
+@pytest.mark.unit
+def test_setup_scripts_keep_a_depot_of_the_user(monkeypatch, tmp_path):
+    """Any other value reaches the script unchanged."""
+    root = tmp_path / 'proteus'
+    root.mkdir()
+    monkeypatch.setenv('JULIA_DEPOT_PATH', f'{tmp_path}/depot:')
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    assert cli._env_with_proteus_julia(root).get('JULIA_DEPOT_PATH') == f'{tmp_path}/depot:'
+    assert os.environ['JULIA_DEPOT_PATH'] == f'{tmp_path}/depot:'
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     'bound', ['unset', 'not-executable', 'missing'], ids=['unset', 'not-executable', 'missing']
 )
@@ -2237,6 +2480,7 @@ def test_install_vars_never_take_the_julia_on_path(monkeypatch, tmp_path, capsys
         'which',
         lambda exe: '/opt/julia-1.10.4/bin/julia' if exe == 'julia' else None,
     )
+    monkeypatch.delenv('JULIA_DEPOT_PATH', raising=False)
     exe = tmp_path / 'julia-1.13.1' / 'bin' / 'julia'
     if bound == 'unset':
         monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
@@ -4233,3 +4477,69 @@ def test_get_continues_when_the_logfile_cannot_be_opened(monkeypatch, tmp_path):
         assert len(logging.getLogger('fwl').handlers) == 1
     finally:
         logging.getLogger('fwl').handlers.clear()
+
+
+def test_grid_analyse_passes_the_config_path(monkeypatch, tmp_path):
+    """grid-analyse hands the resolved -c path to analyse_grid; a missing file is
+    refused by the option check before any analysis runs.
+    """
+    cfg = tmp_path / 'g.grid.toml'
+    cfg.write_text('')
+    calls = []
+    monkeypatch.setattr('proteus.grid.analyse.analyse_grid', lambda *a: calls.append(a))
+    res = runner.invoke(cli.cli, ['grid-analyse', '-c', str(cfg)])
+    assert res.exit_code == 0, res.output
+    assert calls == [(cfg.resolve(), None)]
+    res = runner.invoke(cli.cli, ['grid-analyse', '-c', str(tmp_path / 'missing.toml')])
+    assert res.exit_code != 0
+    assert len(calls) == 1
+
+
+def test_grid_analyse_takes_a_grid_folder_and_needs_c_or_o(monkeypatch, tmp_path):
+    """-o hands the resolved grid folder to analyse_grid, alone or with -c; with
+    neither option the command stops with a usage error before any analysis runs.
+    """
+    grid_dir = tmp_path / 'grid_20261016_120000_abcd'
+    grid_dir.mkdir()
+    cfg = tmp_path / 'g.grid.toml'
+    cfg.write_text('')
+    calls = []
+    monkeypatch.setattr('proteus.grid.analyse.analyse_grid', lambda *a: calls.append(a))
+    res = runner.invoke(cli.cli, ['grid-analyse', '-o', str(grid_dir)])
+    assert res.exit_code == 0, res.output
+    res = runner.invoke(cli.cli, ['grid-analyse', '-o', str(grid_dir), '-c', str(cfg)])
+    assert res.exit_code == 0, res.output
+    assert calls == [(None, grid_dir.resolve()), (cfg.resolve(), grid_dir.resolve())]
+    res = runner.invoke(cli.cli, ['grid-analyse'])
+    assert res.exit_code == 2
+    assert '-o' in res.output
+    assert len(calls) == 2
+
+
+def test_start_records_status_25_on_sigterm(monkeypatch, tmp_path):
+    """SLURM sends SIGTERM at the time limit and on scancel. Under `proteus start` it ends
+    the run through the status guard of `Proteus.start`, which records status 25, with exit
+    code 143; without the handler the signal would end Python before the guard runs.
+    The stub calls the installed handler instead of sending a real SIGTERM, because with
+    PYTHON_JULIACALL_HANDLE_SIGNALS=yes (as in CI) Julia takes the signal and ends pytest."""
+    from proteus.proteus import _status_on_exit
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
+    cfg = tmp_path / 'stub.toml'
+    cfg.write_text('# stub\n')
+
+    class FakeProteus:
+        def __init__(self, config_path):
+            self.directories = {'output': str(tmp_path)}
+
+        @_status_on_exit
+        def start(self, resume, offline):
+            UpdateStatusfile(self.directories, 1)
+            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+
+    monkeypatch.setattr(cli, 'Proteus', FakeProteus)
+    # Without the handler under test, the stub calls this one and the run keeps status 1.
+    signal.signal(signal.SIGTERM, lambda *_: None)
+    res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
+    assert ReadStatus(tmp_path) == 25
+    assert res.exit_code == 128 + signal.SIGTERM == 143

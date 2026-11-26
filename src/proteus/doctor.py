@@ -39,6 +39,13 @@ from proteus.utils.coupler import (
     get_proteus_directories,
 )
 from proteus.utils.helper import git_env, proteus_julia_exe
+from proteus.utils.install_env import (
+    depot_of_other_install,
+    depot_value_is_unusable,
+    julia_depot_entries,
+    missing_julia_packages,
+    other_depot_words,
+)
 
 # ─── Check result types ──────────────────────────────────────────────
 
@@ -825,8 +832,8 @@ def check_julia() -> CheckResult:
     because juliacall does not fall back to the ``julia`` on ``PATH``. Julia
     1.13.x passes; any other version warns, because PROTEUS is tested on 1.13
     and Obliqua resolves only on 1.11 or 1.13. The advice adds 1.13 beside the
-    default Julia and points ``PYTHON_JULIAPKG_EXE`` at it, as ``install.sh``
-    does.
+    default Julia and points ``PYTHON_JULIAPKG_EXE`` at it; ``install.sh``
+    selects that Julia and does not install it.
     """
     path = '<the path that julia +1.13 -e \'print(joinpath(Sys.BINDIR, "julia"))\' prints>'
     fix = 'juliaup add 1.13, then ' + _set_var_advice('PYTHON_JULIAPKG_EXE', path)
@@ -880,6 +887,73 @@ def check_julia() -> CheckResult:
         fix_cmd=fix,
         auto_fixable=False,
     )
+
+
+def check_julia_depot() -> CheckResult:
+    """Check the Julia depot of this install and name the one in use.
+
+    A depot of its own per install is the rule of ``install.sh``. No variable
+    warns, because such an install works on the default depot that it shares.
+    An empty value, a first entry with no fixed folder or that cannot be
+    written, the depot of another install, and direct dependencies of the AGNI
+    or juliacall project that the depot does not hold fail, because Pkg or a
+    run then stops. The last check does not read the indirect dependencies.
+
+    Returns
+    -------
+    CheckResult
+        Result named ``julia depot``.
+    """
+    raw = os.environ.get('JULIA_DEPOT_PATH')
+    active = os.environ.get('CONDA_DEFAULT_ENV') not in (None, '', 'base')
+    target = (
+        '"$CONDA_PREFIX/julia_depot:"'
+        if active
+        else '<path of your PROTEUS environment>/julia_depot:'
+    )
+    fix = _set_var_advice('JULIA_DEPOT_PATH', target)
+    entries = julia_depot_entries(raw)
+
+    def result(status: str, message: str, fix_cmd: str | None = None) -> CheckResult:
+        return CheckResult(
+            name='julia depot',
+            category='environment',
+            status=status,
+            message=message,
+            fix_cmd=fix_cmd,
+            auto_fixable=False,
+        )
+
+    if not entries:
+        return result(FAIL, 'JULIA_DEPOT_PATH is empty: no depot, and Pkg stops', fix)
+    if depot_value_is_unusable(raw):
+        return result(FAIL, f'{raw}: name an absolute folder, with no literal $', fix)
+    first = Path(entries[0])
+    shown = ', '.join(entries)
+    nearest = next(p for p in (first, *first.parents) if p.exists())
+    if not nearest.is_dir() or not os.access(nearest, os.W_OK):
+        return result(FAIL, f'{first} cannot be written; Pkg writes to the first entry', fix)
+    root = _repo_root()
+    if depot_of_other_install(raw, root):
+        return result(FAIL, other_depot_words(raw), fix)
+    projects = [root / 'AGNI']
+    if os.environ.get('CONDA_PREFIX'):
+        projects.append(Path(os.environ['CONDA_PREFIX']) / 'julia_env')
+    for project in projects:
+        try:
+            missing = missing_julia_packages(project, entries)
+        except ValueError as exc:
+            return result(FAIL, f'{exc}; restore the file', 'bash install.sh')
+        if missing:
+            return result(
+                FAIL,
+                f'{shown} does not hold {", ".join(missing)}, so Julia stops at that package',
+                f'LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --project={shlex.quote(str(project))} '
+                '-e "using Pkg; Pkg.instantiate()"',
+            )
+    if raw is None:
+        return result(WARN, f'{shown} (default, shared with every install with no depot)', fix)
+    return result(PASS, shown)
 
 
 def check_cvode() -> CheckResult:
@@ -1356,6 +1430,17 @@ def run_all_checks() -> list[CheckResult]:
             )
         )
     try:
+        results.append(check_julia_depot())
+    except Exception as exc:
+        results.append(
+            CheckResult(
+                name='julia depot',
+                category='environment',
+                status=FAIL,
+                message=f'check error: {exc}',
+            )
+        )
+    try:
         results.append(check_cvode())
     except Exception as exc:
         results.append(
@@ -1472,6 +1557,8 @@ _ENV_VARS = (
     'PETSC_DIR',
     'PYTHON_JULIAPKG_EXE',
     'PYTHON_JULIACALL_BINDIR',
+    'JULIA_DEPOT_PATH',
+    'JULIAUP_DEPOT_PATH',
     'CONDA_DEFAULT_ENV',
     'CONDA_PREFIX',
 )

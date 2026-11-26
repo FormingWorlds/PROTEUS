@@ -401,7 +401,7 @@ def test_update_instellation_disabled_when_bol_scale_start_is_none():
 
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_update_equilibrium_temperature_pins_stefan_boltzmann_closed_form():
+def test_update_equilibrium_temperature_pins_stefan_boltzmann_closed_form(validation_plot):
     """T_eqm = ((1 - albedo) * S * s0_factor / sigma) ** 0.25.
 
     Discriminating: at S = 1361 W/m^2 and albedo = 0.3 the closed-form
@@ -417,22 +417,59 @@ def test_update_equilibrium_temperature_pins_stefan_boltzmann_closed_form():
 
     config = MagicMock()
     config.orbit.s0_factor = 0.25  # disk-averaged absorption factor
+    s_case, albedo, pin, tol = 1361.0, 0.3, 254.0, 2.0
+
+    def closed_form(flux, power=0.25):
+        return (flux * config.orbit.s0_factor * (1 - albedo) / const_sigma) ** power
+
     hf_row = {
-        'F_ins': 1361.0,
-        'albedo_pl': 0.3,
+        'F_ins': s_case,
+        'albedo_pl': albedo,
     }
     update_equilibrium_temperature(hf_row, config)
-    F_asf = 1361.0 * 0.25 * (1 - 0.3)
-    expected = (F_asf / const_sigma) ** 0.25
+    expected = closed_form(s_case)
     assert hf_row['T_eqm'] == pytest.approx(expected, rel=1e-12)
     # Closed-form value pin: ~254 K for Earth-like albedo + insolation.
-    assert hf_row['T_eqm'] == pytest.approx(254.0, abs=2.0)
+    assert hf_row['T_eqm'] == pytest.approx(pin, abs=tol)
     # Exponent guard: T^4 -> ~254 K. T^3 would give ~1613 K; T^5
     # would give ~84 K. Both are well outside any plausible tolerance.
-    wrong_cube_root = (F_asf / const_sigma) ** (1.0 / 3.0)
-    wrong_fifth_root = (F_asf / const_sigma) ** (1.0 / 5.0)
+    wrong_cube_root = closed_form(s_case, 1.0 / 3.0)
+    wrong_fifth_root = closed_form(s_case, 1.0 / 5.0)
     assert abs(hf_row['T_eqm'] - wrong_cube_root) > 50
     assert abs(hf_row['T_eqm'] - wrong_fifth_root) > 50
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        flux = np.linspace(500.0, 3000.0, 51)
+        code = []
+        for f in flux:
+            row = {'F_ins': f, 'albedo_pl': albedo}
+            update_equilibrium_temperature(row, config)
+            code.append(row['T_eqm'])
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(flux, code, label='update_equilibrium_temperature')
+        ax.plot(
+            flux[::10],
+            closed_form(flux[::10]),
+            's',
+            mfc='none',
+            ms=9,
+            label='Closed form, 1/4 power',
+        )
+        ax.plot(flux, closed_form(flux, 1.0 / 3.0), '--', label='Cube root')
+        ax.plot(flux, closed_form(flux, 1.0 / 5.0), ':', label='Fifth root')
+        ax.plot([s_case], [pin], 'D', mfc='none', ms=10, label='254 K pin')
+        ax.plot([s_case], [hf_row['T_eqm']], 'o', zorder=3, label='Code at 1361 W m$^{-2}$')
+        ax.set_yscale('log')
+        ax.set_xlabel('Stellar flux at the planet [W m$^{-2}$]')
+        ax.set_ylabel('$T_\\mathrm{eqm}$ [K]')
+        ax.set_ylim(50.0, 2e4)
+        ax.legend(fontsize=8, ncol=2, loc='upper left')
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'star_wrapper_equilibrium_temperature')
 
 
 @pytest.mark.physics_invariant
@@ -599,7 +636,7 @@ def test_flux_weighted_distance_requires_both_orbital_elements(row, missing):
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_flux_weighted_distance_pins_the_orbit_averaged_inverse_square_law():
+def test_flux_weighted_distance_pins_the_orbit_averaged_inverse_square_law(validation_plot):
     """Analytical limit: averaging 1/r^2 over one orbit gives
     1 / (a^2 sqrt(1 - e^2)), so the distance carrying the same flux is
     a (1 - e^2)^(1/4). At e = 0.8 that is a * 0.36^(1/4) = 0.774597 a.
@@ -610,16 +647,52 @@ def test_flux_weighted_distance_pins_the_orbit_averaged_inverse_square_law():
     discriminating.
     """
     sma = 1.0e11
-    dist = star_wrapper.flux_weighted_distance({'semimajorax': sma, 'eccentricity': 0.8})
+    e_case = 0.8
 
-    assert dist == pytest.approx(sma * 0.36**0.25, rel=1e-12)
+    def closed_form(e):
+        return (1 - e**2) ** 0.25
+
+    def time_averaged(e):
+        return 1 + e**2 / 2
+
+    dist = star_wrapper.flux_weighted_distance({'semimajorax': sma, 'eccentricity': e_case})
+
+    assert dist == pytest.approx(sma * closed_form(e_case), rel=1e-12)
     # Exponent guard: the time-averaged separation lands at 1.32 a.
-    assert abs(dist - sma * 1.32) > 0.3 * sma
+    assert abs(dist - sma * time_averaged(e_case)) > 0.3 * sma
     # The flux ratio between the two averages is what matters downstream.
-    assert (sma * 1.32 / dist) ** 2 == pytest.approx(2.9040, rel=1e-3)
+    assert (sma * time_averaged(e_case) / dist) ** 2 == pytest.approx(2.9040, rel=1e-3)
     # Sign and scale guards: an eccentric orbit is effectively closer in,
     # so the distance is positive and shorter than the semi-major axis.
     assert 0.0 < dist < sma
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        ecc = np.linspace(0.0, 0.95, 39)
+        code = [
+            star_wrapper.flux_weighted_distance({'semimajorax': sma, 'eccentricity': e}) / sma
+            for e in ecc
+        ]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(ecc, code, label='flux_weighted_distance')
+        ax.plot(
+            ecc[::4],
+            closed_form(ecc[::4]),
+            's',
+            mfc='none',
+            ms=9,
+            label='$(1 - e^2)^{1/4}$',
+        )
+        ax.plot(ecc, time_averaged(ecc), '--', label='Time-averaged $1 + e^2/2$')
+        ax.plot([e_case], [dist / sma], 'o', zorder=3, label='Code at $e$ = 0.8')
+        ax.set_xlabel('Eccentricity $e$')
+        ax.set_ylabel('Distance / semi-major axis')
+        ax.legend()
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'star_wrapper_flux_weighted_distance')
 
 
 @pytest.mark.physics_invariant

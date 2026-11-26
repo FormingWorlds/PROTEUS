@@ -253,7 +253,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
 
     from proteus.utils.constants import (
         M_earth,
-        condensate_list,
+        condensate_density,
         element_mmw,
         gas_list,
         noble_gases,
@@ -448,7 +448,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # constrained, like O2) and whose thermodynamic data cover T_magma, so the
     # solver never extrapolates a condensed phase outside its fitted range.
     if atm_config.include_condensates:
-        for formula in condensate_list:
+        for formula in condensate_density.keys():
             try:
                 condensate = ChemicalSpecies.create_condensed(formula)
             except Exception as e:
@@ -532,7 +532,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         hf_row['P_surf'] = 0.0
         _populate_volatile_element_reservoirs(hf_row, element_mmw)
         # No condensate either
-        for formula in condensate_list:
+        for formula in condensate_density.keys():
             hf_row[f'{formula}_cd_activity'] = 0.0
             hf_row[f'{formula}_cd_kg'] = 0.0
         for el in vol_element_list:
@@ -631,7 +631,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # show when each one forms. An activity of 1 means the condensate is stable;
     # below 1 it is undersaturated and its condensed mass is only the solver's
     # floor. Zero marks a solve without that condensate in the network.
-    for formula in condensate_list:
+    for formula in condensate_density.keys():
         activity = mass = None
         if f'{formula}_cd' in output_dict:
             activity = _species_output_scalar(output_dict, f'{formula}_cd', 'activity')

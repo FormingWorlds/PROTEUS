@@ -22,13 +22,16 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 
-def run_chemistry(dirs: dict, config: Config, hf_all: pd.DataFrame) -> pd.DataFrame | None:
+def run_chemistry(
+    dirs: dict, config: Config, hf_all: pd.DataFrame, network_compiled: bool = False
+) -> pd.DataFrame | None:
     """
     Post-process atmosphere snapshots with the atmospheric chemistry model.
 
     Runs at the snapshot times set by `atmos_chem.times`, in ascending order,
     after the simulation. A snapshot without an atmosphere (surface pressure
-    zero, as after desiccation) is left out. Each run writes
+    zero, as after desiccation) is left out, and so is one that AGNI treats as
+    transparent (surface pressure below `atmos_clim.agni.psurf_thresh`). Each run writes
     ``offchem/<module>_<time>.csv``, and the latest is also copied to
     ``offchem/<module>.csv``. The ``offchem`` folder is cleared once at the
     start. A failed run stops the sequence; the results before it are kept.
@@ -40,7 +43,9 @@ def run_chemistry(dirs: dict, config: Config, hf_all: pd.DataFrame) -> pd.DataFr
     config : Config
         Configuration object.
     hf_all : pd.DataFrame
-        Helpfile of the run. Each run uses the row nearest its snapshot time.
+        Helpfile of the run. Each run uses the latest row at or before its snapshot time.
+    network_compiled : bool
+        Whether the VULCAN network is compiled already.
 
     Returns
     ----------
@@ -79,6 +84,16 @@ def run_chemistry(dirs: dict, config: Config, hf_all: pd.DataFrame) -> pd.DataFr
             % (len(no_atm), no_atm[0])
         )
         times = [t for t in times if t not in no_atm]
+    if config.atmos_clim.module == 'agni':
+        # AGNI treats these columns as transparent, so there is no atmosphere to process
+        p_thin = float(config.atmos_clim.agni.psurf_thresh)  # bar
+        thin = [t for t in times if float(helpfile_row_at(hf_all, t)['P_surf']) < p_thin]
+        if thin:
+            log.warning(
+                'Skipping %d snapshot(s) in the transparent regime (P_surf below %g bar), '
+                'from t=%.3e yr' % (len(thin), p_thin, thin[0])
+            )
+            times = [t for t in times if t not in thin]
     if not times:
         log.warning('No snapshots to run atmospheric chemistry on')
         return None
@@ -92,12 +107,14 @@ def run_chemistry(dirs: dict, config: Config, hf_all: pd.DataFrame) -> pd.DataFr
 
     for i, time in enumerate(times):
         log.info('    Chemistry snapshot %d of %d, t=%.3e yr' % (i + 1, len(times), time))
+
         # Snapshot file names hold the time to 1e-3 yr, so the row takes that time
         snapshot = helpfile_row_at(hf_all, time)
         snapshot['Time'] = time
         hf_row = HelpfileRow(snapshot, helpfile_path(dirs['output']))
+
         # A failed run stops the sequence, so a later run follows a success
-        extra = {'network_compiled': i > 0} if module == 'vulcan' else {}
+        extra = {'network_compiled': network_compiled or i > 0} if module == 'vulcan' else {}
         if not _run(dirs, config, hf_row, **extra):
             raise RuntimeError('%s chemistry failed at t=%.3e yr' % (module, time))
 

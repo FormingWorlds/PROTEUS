@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import math
+import sys
+
 from attrs import define, field, validators
 
 from ._converters import none_if_none
@@ -195,13 +198,16 @@ class Lavatmos:
     Attributes
     ----------
     T_min: float
-        Minimum surface temperature [K] used by LavAtmos.
+        Lower bound [K] on the surface temperature that LavAtmos uses: the
+        vapourisation runs at max(T_min, T_magma).
     melt_comp_name: str
-        Name of the melt composition file (without extension).
+        Name of the melt composition file, a CSV file without its extension
+        in the `input/lava_compositions` folder of `LAVA_DIR`.
     P_melt: float
         Pressure used for melt activities [bar].
     xatol: float
-        Absolute tolerance for LavAtmos fO2 solve.
+        Absolute tolerance of the LavAtmos fO2 solve, passed to LavAtmos as
+        its `xatol` argument.
     fO2_buffer_model: str
         IW buffer model used for LavAtmos fO2 solve. One of 'oneill', 'fischer'.
     """
@@ -213,6 +219,137 @@ class Lavatmos:
     fO2_buffer_model: str = field(
         default='oneill', validator=validators.in_(('oneill', 'fischer'))
     )
+
+
+def _real(value) -> bool:
+    """Whether ``value`` is an int or float in the float range, not a bool (TOML ``true``)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return isinstance(value, float) or abs(value) <= sys.float_info.max
+
+
+def _finite_positive(instance, attribute, value):
+    """A finite real number above 0."""
+    if not (_real(value) and math.isfinite(value) and value > 0):
+        raise ValueError(f'{attribute.name} must be a finite number > 0, got {value!r}')
+
+
+def _fraction_open(instance, attribute, value):
+    """A real number in (0, 1)."""
+    if not (_real(value) and 0 < value < 1):
+        raise ValueError(f'{attribute.name} must be a number in (0, 1), got {value!r}')
+
+
+def _delta_open(instance, attribute, value):
+    """outgas.lid_seal.delta_open [m]: None, or a thickness in (0, delta_close]."""
+    if value is None:
+        return
+    if not (_real(value) and 0 < value <= instance.delta_close):
+        raise ValueError(
+            f'delta_open must be None or a number in (0, delta_close = '
+            f'{instance.delta_close}], got {value!r}'
+        )
+
+
+def _phi_open(instance, attribute, value):
+    """outgas.lid_seal.phi_open [1]: None (then phi_close + 0.05 must be below 1), or a number in [phi_close, 1)."""
+    if value is None:
+        if instance.phi_close + PHI_OPEN_BAND >= 1:
+            raise ValueError(
+                f'phi_open = None gives phi_close + {PHI_OPEN_BAND} = '
+                f'{instance.phi_close + PHI_OPEN_BAND}, which must be below 1'
+            )
+        return
+    if not (_real(value) and instance.phi_close <= value < 1):
+        raise ValueError(
+            f'phi_open must be None or a number in [phi_close = {instance.phi_close}, 1), '
+            f'got {value!r}'
+        )
+
+
+def _tau_leak(instance, attribute, value):
+    """A real number > 0 with a finite rate 1/tau_leak; inf allowed, NaN refused."""
+    if not (_real(value) and value > 0 and math.isfinite(1.0 / value)):
+        raise ValueError(
+            f'tau_leak must be a number > 0 with a finite 1/tau_leak (inf allowed), got {value!r}'
+        )
+
+
+def _unit_interval(instance, attribute, value):
+    """A real number in [0, 1]."""
+    if not (_real(value) and 0 <= value <= 1):
+        raise ValueError(f'{attribute.name} must be a number in [0, 1], got {value!r}')
+
+
+def _finite_nonnegative(instance, attribute, value):
+    """A finite real number >= 0."""
+    if not (_real(value) and math.isfinite(value) and value >= 0):
+        raise ValueError(f'{attribute.name} must be a finite number >= 0, got {value!r}')
+
+
+def _phi_solid(instance, attribute, value):
+    """outgas.lid_seal.phi_solid [1]: a real number in (0, phi_close)."""
+    if not (_real(value) and 0 < value < instance.phi_close):
+        raise ValueError(
+            f'phi_solid must be a number in (0, phi_close = {instance.phi_close}), got {value!r}'
+        )
+
+
+PHI_OPEN_BAND = 0.05
+
+
+@define
+class LidSeal:
+    """Volatiles held in the melt under a closed crust (``proteus.outgas.lid_seal``).
+
+    Attributes
+    ----------
+    enabled: bool
+        Whether a crust can seal the melt inventory from the atmosphere.
+    delta_close: float
+        Crust thickness [m] at or above which the seal can close.
+    phi_close: float
+        Melt fraction [1] of the top mesh cell below which the seal can close.
+    delta_open: float or None
+        Crust thickness [m] below which a closed seal opens; `none` means
+        `0.5 delta_close`.
+    phi_open: float or None
+        Top-cell melt fraction [1] at or above which a closed seal opens; `none`
+        means `phi_close + 0.05`.
+    tau_leak: float
+        Relaxation time [yr] of the sealed inventory toward its dissolved
+        equilibrium with the atmosphere, > 0 with a finite rate 1/tau_leak; inf
+        holds it.
+    chi_d: float
+        Degassing efficiency [1] of the melt that reaches the crust (Schaefer &
+        Sasselov (2015)[^cite-schaefer2015], Table 3).
+    crust_rate: float
+        Mass of melt that reaches the crust per year [kg yr-1].
+    phi_solid: float
+        Melt fraction [1] below which a mesh cell counts as crust, and below which
+        the mantle makes no crust.
+    """
+
+    enabled: bool = field(default=False)
+    # Untyped, as orbit.parameterized.sma_final: cattrs would turn a TOML true into 1.0.
+    delta_close = field(default=1e4, validator=_finite_positive)
+    phi_close = field(default=0.3, validator=_fraction_open)
+    delta_open = field(default=None, validator=_delta_open, converter=none_if_none)
+    phi_open = field(default=None, validator=_phi_open, converter=none_if_none)
+    tau_leak = field(default=math.inf, validator=_tau_leak)
+    chi_d = field(default=0.02, validator=_unit_interval)
+    crust_rate = field(default=0.0, validator=_finite_nonnegative)
+    phi_solid = field(default=1e-3, validator=_phi_solid)
+
+    @property
+    def delta_open_value(self) -> float:
+        """Crust thickness [m] below which a closed seal opens."""
+        return 0.5 * self.delta_close if self.delta_open is None else float(self.delta_open)
+
+    @property
+    def phi_open_value(self) -> float:
+        """Top-cell melt fraction [1] at or above which a closed seal opens."""
+        return self.phi_close + PHI_OPEN_BAND if self.phi_open is None else float(self.phi_open)
 
 
 @define
@@ -230,10 +367,12 @@ class Outgas:
         as absent; escape empties a non-noble element whose reachable mass (its total
         less the mass trapped in the solid) is below it, down to the trapped mass,
         except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases
-        are exempt.
+        are exempt. CALLIOPE also uses it as the absolute mass tolerance [kg] of its
+        equilibrium solve.
     h2_binodal: bool
         Enable binodal-controlled H2 partitioning between atmosphere and
         magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model.
+        Not available yet: `true` is rejected when the config loads.
     T_floor: float
         Temperature floor [K]. The outgassing temperature is clamped to
         this value from below for the chemistry solve and the target masses.
@@ -250,9 +389,13 @@ class Outgas:
         condensates off, the flag holds nothing, and a warning at config load says
         so.
     solver_rtol: float
-        Relative tolerance for the volatile equilibrium solver.
+        Relative tolerance [1] of the CALLIOPE and atmodeller equilibrium
+        solvers. It is also the relative tolerance of the per-element mass
+        closure check that runs after each outgassing step while trapping is on.
     solver_atol: float
-        Absolute tolerance for the volatile equilibrium solver.
+        Absolute tolerance of the equilibrium solvers: CALLIOPE takes it as
+        `xtol` of its root solve, atmodeller as `atol`. Unused by the dummy
+        module.
     trap_mode: str
         Solid-phase volatile trapping during mantle crystallisation.
         Choices: 'none' (off) and 'front' (F_tl from the drainage of melt
@@ -266,8 +409,9 @@ class Outgas:
         the density-derived porosity never reaches exactly zero.
     trap_mush_log10visc: float
         Log10 viscosity of the mush near the solidus [log10(Pa s)],
-        entering the matrix deformation time. Negative selects the
-        default of 20, mid-range of the 18 to 22 the literature allows.
+        entering the matrix deformation time. A value of zero or below
+        selects the default of 20, mid-range of the 18 to 22 the
+        literature allows.
     trap_n_front_min: int
         Fewest nodes a freezing front must span before its drainage is
         integrated rather than bounded above.
@@ -310,6 +454,8 @@ class Outgas:
         installation guide. LavAtmos parameters are set in `outgas.lavatmos`.
     lavatmos: Lavatmos
         Parameters for the LavAtmos rock-vapour module.
+    lid_seal: LidSeal
+        Volatiles held in the melt under a closed crust, and their leak.
     """
 
     module: str = field(
@@ -371,6 +517,7 @@ class Outgas:
     calliope: Calliope = field(factory=Calliope)
     atmodeller: Atmodeller = field(factory=Atmodeller)
     lavatmos: Lavatmos = field(factory=Lavatmos)
+    lid_seal: LidSeal = field(factory=LidSeal)
 
     # LavAtmos / silicate coupling is opt-in: default to disabled.
     vapourise: bool = field(default=False)

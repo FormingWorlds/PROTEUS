@@ -100,6 +100,16 @@ _REVIEWED_NEUTRAL = frozenset(
         # prevent_desaturation defaults to false: condensates re-equilibrate each
         # solve, as before the flag existed, so behaviour is unchanged.
         'outgas.prevent_desaturation',
+        # The lid seal defaults to off; its parameters are read only when it is on.
+        'outgas.lid_seal.chi_d',
+        'outgas.lid_seal.crust_rate',
+        'outgas.lid_seal.delta_close',
+        'outgas.lid_seal.delta_open',
+        'outgas.lid_seal.enabled',
+        'outgas.lid_seal.phi_close',
+        'outgas.lid_seal.phi_open',
+        'outgas.lid_seal.phi_solid',
+        'outgas.lid_seal.tau_leak',
         # Accretion defaults to inactive with zero impactor budgets, zero
         # loss fractions, and unread dummy/morrigan sub-blocks.
         'accretion.atmloss_frac',
@@ -132,6 +142,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'accretion.morrigan.selector',
         'accretion.morrigan.selector_value',
         'accretion.morrigan.spacing',
+        'accretion.remelt',
         'accretion.time_offset',
         'atmos_clim.aerosols_enabled',
         'atmos_clim.agni.aerosol_r_eff',
@@ -145,17 +156,26 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_clim.agni.hydrograv_ming',
         'atmos_clim.agni.hydrograv_selfg',
         'atmos_clim.agni.hydrograv_steps',
+        # The default loads every gas of the spectral file, as 2.0 did.
+        'atmos_clim.agni.load_all_opacities',
         'atmos_clim.agni.spectral_file',
         'atmos_clim.agni.tau_obs',
         'atmos_clim.agni.wl_obs',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
+        # Chemistry coupled to the climate is off by default, so a migrated config runs the
+        # chemistry as before; the other three act only with couple_agni.
+        'atmos_chem.vulcan.agni_T_rtol',
+        'atmos_chem.vulcan.agni_call_frq',
+        'atmos_chem.vulcan.agni_max_calls',
+        'atmos_chem.vulcan.couple_agni',
         # VULCAN options keep the values it ran with, except dttry and dt_min (100x smaller,
         # the adaptive step's start and floor); r_p acts only with use_condense.
         'atmos_chem.vulcan.atol',
         'atmos_chem.vulcan.conv_step',
         'atmos_chem.vulcan.dt_min',
         'atmos_chem.vulcan.dttry',
+        'atmos_chem.vulcan.escape_bc',  # default false keeps the zero-flux top boundary
         'atmos_chem.vulcan.flux_atol',
         'atmos_chem.vulcan.mtol',
         'atmos_chem.vulcan.mtol_conv',
@@ -205,12 +225,19 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.aragog.core_module.t_m1',
         'interior_energetics.aragog.core_module.t_m2',
         'interior_energetics.aragog.entropy_step_cap',
+        # Off by default, so a migrated config runs without the lid.
+        'interior_energetics.aragog.lid_mush_base',
+        # None derives the lid onset thickness from the skin; read only with the lid on.
+        'interior_energetics.aragog.lid_delta_on',
         'interior_energetics.aragog.phase_boundary_entropy_margin',
         'interior_energetics.aragog.phase_boundary_cap',
         'interior_energetics.aragog.phase_smoothing',
         'interior_energetics.aragog.phi_step_cap',
         'interior_energetics.aragog.scalar_gravity_override',
         'interior_energetics.aragog.separation_buoyancy',
+        'interior_energetics.aragog.rheology.enabled',
+        # Read only with the rheology on, which a migrated config keeps off.
+        'interior_energetics.aragog.rheology.mlt_bottom_slope',
         'interior_energetics.aragog.separation_viscosity',
         'interior_energetics.aragog.solver_method',
         'interior_energetics.aragog.temperature_step_cap',
@@ -223,21 +250,26 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.boundary.activation_energy',
         'interior_energetics.boundary.atm_heat_capacity',
         'interior_energetics.boundary.atm_heat_capacity_const',
-        'interior_energetics.boundary.creep_parameter',
-        'interior_energetics.boundary.critical_rayleigh_number',
-        'interior_energetics.boundary.dynamic_viscosity',
-        'interior_energetics.boundary.logging',
-        'interior_energetics.boundary.nusselt_exponent',
-        'interior_energetics.boundary.silicate_density',
         'interior_energetics.boundary.core_bulk',
         'interior_energetics.boundary.core_density',
         'interior_energetics.boundary.core_shear',
+        'interior_energetics.boundary.creep_parameter',
+        'interior_energetics.boundary.critical_rayleigh_number',
+        'interior_energetics.boundary.dynamic_viscosity',
+        'interior_energetics.boundary.include_core_heat_capacity',
+        'interior_energetics.boundary.logging',
+        'interior_energetics.boundary.melt_model',
+        'interior_energetics.boundary.nusselt_exponent',
+        'interior_energetics.boundary.sensible_heat',
+        'interior_energetics.boundary.silicate_density',
         'interior_energetics.boundary.silicate_heat_capacity',
         'interior_energetics.boundary.thermal_conductivity',
         'interior_energetics.boundary.thermal_diffusivity',
         'interior_energetics.boundary.thermal_expansivity',
+        'interior_energetics.boundary.tidal_viscosity',
         'interior_energetics.boundary.viscosity_activation_temp',
         'interior_energetics.boundary.viscosity_model',
+        'interior_energetics.boundary.viscosity_phi',
         'interior_energetics.boundary.viscosity_prefactor',
         'interior_energetics.const_Cp',
         'interior_energetics.const_S_ref',
@@ -248,6 +280,8 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.const_properties',
         'interior_energetics.const_rho',
         'interior_energetics.core_tfac_avg',
+        # Deprecated and ignored; the dummy interior derives its density.
+        'interior_energetics.dummy.mantle_rho',
         'interior_energetics.eddy_diffusivity_chemical',
         'interior_energetics.eddy_diffusivity_thermal',
         'interior_energetics.latent_heat_of_fusion',
@@ -258,7 +292,13 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.param_utbl_const',
         'interior_energetics.phase_transition_width',
         'interior_energetics.radio_Al',
+        'interior_energetics.radio_Al26_abund',
         'interior_energetics.radio_Fe',
+        'interior_energetics.radio_Fe60_abund',
+        'interior_energetics.radio_K40_abund',
+        'interior_energetics.radio_Th232_abund',
+        'interior_energetics.radio_U235_abund',
+        'interior_energetics.radio_U238_abund',
         'interior_energetics.solid_cond',
         'interior_energetics.solid_log10visc',
         'interior_energetics.spider.log_output',
@@ -726,6 +766,24 @@ def test_spider_interior_split_and_renames():
     assert flat['interior_energetics.num_levels'] == 190
     assert flat['interior_energetics.mixing_length'] == 'constant'  # 2 -> "constant"
     assert flat['interior_energetics.flux_guess'] == pytest.approx(1000.0)
+
+
+def test_dummy_mantle_rho_is_dropped():
+    """A 2.0 dummy interior's mantle_rho is dropped, because 3.0 derives the density.
+
+    An explicit value is reported as dropped and reaches no 3.0 field: const_rho keeps
+    its 3.0 default (4000), not the 2.0 value (3300) or the 2.0 default (4550).
+    """
+    v2 = _minimal_spider_v2()
+    # The SPIDER structure needs a mantle mass from the interior, which the dummy lacks.
+    v2['struct']['module'] = 'dummy'
+    v2['interior']['module'] = 'dummy'
+    v2['interior']['dummy'] = {'mantle_rho': 3300.0}
+    flat, report = _translate(v2)
+    assert flat['interior_energetics.module'] == 'dummy'
+    assert not any(key.endswith('mantle_rho') for key in flat)
+    assert 'interior.dummy.mantle_rho' in report.dropped_removed
+    assert flat.get('interior_energetics.const_rho', 4000.0) == pytest.approx(4000.0)
 
 
 def test_tolerance_atol_rtol_not_swapped():
