@@ -1177,8 +1177,8 @@ class Proteus:
 
             # A helpfile older than the structure references takes its last row as the reference
             if not self.hf_row.get('struct_ref_T_magma', 0.0) > 0:
-                for ref, key in zip(_STRUCT_REF_KEYS, ('Time', 'T_magma', 'Phi_global')):
-                    self.hf_row[ref] = self.hf_row[key]
+                pairs = zip(_STRUCT_REF_KEYS, ('Time', 'T_magma', 'Phi_global'), strict=True)
+                self.hf_row.update({ref: self.hf_row[key] for ref, key in pairs})
 
             if (
                 self.config.interior_struct.module == 'zalmoxis'

@@ -1593,18 +1593,7 @@ def _first_resumed_step_resolves(hf_row):
         _solver_patches,
     )
 
-    structure = {
-        'R_int': 6.371e6,
-        'M_int': 5e24,
-        'M_core': 2e24,
-        'M_mantle': 3e24,
-        'P_surf': 1e5,
-        'R_core': 3.5e6,
-        'P_center': 3.6e11,
-        'P_cmb': 1.4e11,
-        'rho_avg': 5500.0,
-    }
-    row = {**hf_row, **structure, 'Time': hf_row['Time'] + 150.0}
+    row = {**hf_row, 'Time': hf_row['Time'] + 150.0}
     s, ns, cp = _solver_patches(side_effect=_Resolved)
     no_core_table = patch(
         'proteus.interior_energetics.wrapper._structure_core_table', return_value=None
