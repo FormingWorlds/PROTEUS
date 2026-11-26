@@ -927,7 +927,7 @@ def init_agni_atmos(
         if not os.path.exists(nc_path):
             nc_times = [parse_subyear_time(s.split('/')[-1].split('_')[0]) for s in nc_files]
             nc_path = snapshot_path_for_time(data_dir, sorted(nc_times)[-1], '_atm.nc')
-        jl.AGNI.setpt.fromncdf_b(atmos, nc_path)
+        _load_stored_profile(atmos, nc_path)
 
     # Otherwise, set profile initial guess
     else:
@@ -937,6 +937,38 @@ def init_agni_atmos(
     sync_log_files(dirs['output'])
 
     return atmos
+
+
+def _load_stored_profile(atmos, nc_path: str):
+    """Put the profile of an atmosphere file on a new struct, before `update_agni_atmos`.
+
+    `update_agni_atmos` interpolates the cell-centre pressures [Pa] and temperatures [K]
+    held on the struct onto the new pressure grid. They are copied from the file
+    unchanged, so a struct built on a resume starts from the same profile as the struct
+    that a run in one go carries over from the solve that wrote the file. The pressure
+    grid is generated again in `update_agni_atmos`. A file with another number of levels
+    is interpolated onto the grid of the struct by AGNI instead.
+
+    Parameters
+    ----------
+        atmos : AGNI.atmosphere.Atmos_t
+            AGNI atmosphere struct, allocated
+        nc_path : str
+            Path to an atmosphere file written by `write_atmos_ncdf`
+    """
+    import netCDF4 as nc
+
+    with nc.Dataset(nc_path) as ds:
+        p = np.asarray(ds['p'][:], dtype=float)
+        tmp = np.asarray(ds['tmp'][:], dtype=float)
+
+    if len(p) != len(atmos.p):
+        jl.AGNI.setpt.fromncdf_b(atmos, nc_path)
+        return
+
+    for i in range(len(p)):
+        atmos.p[i] = float(p[i])
+        atmos.tmp[i] = float(tmp[i])
 
 
 def _set_guess_profile(atmos, hf_row: dict, dirs: dict, config: Config):

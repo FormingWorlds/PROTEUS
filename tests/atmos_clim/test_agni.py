@@ -1195,7 +1195,6 @@ def test_init_agni_atmos_loads_the_row_matched_profile(monkeypatch, tmp_path):
     """
     fake_agni = _FakeAGNI()
     loaded_paths = []
-    fake_agni.setpt.fromncdf_b = lambda _atmos, path, *_a, **_k: loaded_paths.append(path)
     fake_jl = SimpleNamespace(
         AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
     )
@@ -1230,11 +1229,15 @@ def test_init_agni_atmos_loads_the_row_matched_profile(monkeypatch, tmp_path):
     monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
     monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        agni_mod, '_load_stored_profile', lambda atmos, path: loaded_paths.append((atmos, path))
+    )
 
-    init_agni_atmos(dirs, config, hf_row)
+    atmos = init_agni_atmos(dirs, config, hf_row)
 
     assert len(loaded_paths) == 1
-    assert loaded_paths[0].endswith('30p200_atm.nc')
+    assert loaded_paths[0][0] is atmos
+    assert loaded_paths[0][1].endswith('30p200_atm.nc')
 
 
 @pytest.mark.unit
@@ -1251,7 +1254,6 @@ def test_init_agni_atmos_falls_back_to_latest_profile_mid_run(monkeypatch, tmp_p
     """
     fake_agni = _FakeAGNI()
     loaded_paths = []
-    fake_agni.setpt.fromncdf_b = lambda _atmos, path, *_a, **_k: loaded_paths.append(path)
     fake_jl = SimpleNamespace(
         AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
     )
@@ -1286,11 +1288,15 @@ def test_init_agni_atmos_falls_back_to_latest_profile_mid_run(monkeypatch, tmp_p
     monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
     monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        agni_mod, '_load_stored_profile', lambda atmos, path: loaded_paths.append((atmos, path))
+    )
 
-    init_agni_atmos(dirs, config, hf_row)
+    atmos = init_agni_atmos(dirs, config, hf_row)
 
     assert len(loaded_paths) == 1
-    assert loaded_paths[0].endswith('40p000_atm.nc')
+    assert loaded_paths[0][0] is atmos
+    assert loaded_paths[0][1].endswith('40p000_atm.nc')
 
 
 @pytest.mark.unit
@@ -3513,6 +3519,124 @@ def test_update_agni_atmos_interpolates_a_usable_profile(monkeypatch):
     # Discrimination against a guess-profile regression: an isothermal
     # rebuild would have left a single repeated value.
     assert max(atmos.tmp) - min(atmos.tmp) > 100.0
+
+
+def _write_atm_file(path, atmos):
+    """Write the profile of a struct as `write_atmos_ncdf` does [Pa, K]."""
+    import netCDF4 as nc
+
+    with nc.Dataset(path, 'w') as ds:
+        ds.createDimension('nlev_c', len(atmos.p))
+        ds.createDimension('nlev_l', len(atmos.pl))
+        for name, dim in (
+            ('p', 'nlev_c'),
+            ('pl', 'nlev_l'),
+            ('tmp', 'nlev_c'),
+            ('tmpl', 'nlev_l'),
+        ):
+            ds.createVariable(name, 'f8', (dim,))[:] = np.asarray(getattr(atmos, name))
+
+
+def _agni_fromncdf(atmos, path):
+    """AGNI's `fromncdf!`: linear in log-pressure over centres and edges, flat beyond."""
+    import netCDF4 as nc
+
+    with nc.Dataset(path) as ds:
+        p = np.ravel(np.column_stack([ds['pl'][:-1], ds['p'][:]]))
+        t = np.ravel(np.column_stack([ds['tmpl'][:-1], ds['tmp'][:]]))
+        p = np.append(p, ds['pl'][-1])
+        t = np.append(t, ds['tmpl'][-1])
+    atmos.tmp = list(np.interp(np.log10(atmos.p), np.log10(p), t))
+    atmos.tmpl = list(np.interp(np.log10(atmos.pl), np.log10(p), t))
+
+
+def _resume_case(monkeypatch, tmp_path):
+    """A solved struct at 100 bar, its file, and a new struct at the next row's 101 bar."""
+    fake_agni = _ProfileAGNI()
+    _install_profile_fakes(monkeypatch, fake_agni)
+
+    carried = _ProfileAtmosphere([1.0] * 12, [1.0] * 12)
+    carried.p_boa = 1.0e7  # Pa
+    fake_agni.atmosphere.generate_pgrid_b(carried)
+    # A curved solved profile, with edge temperatures the solver set on their own
+    x = np.log10(carried.p) / 7.0
+    carried.tmp = [float(t) for t in 300.0 + 2000.0 * x**3]
+    carried.tmpl = [float(t) for t in 300.0 + 2000.0 * (np.log10(carried.pl) / 7.0) ** 2]
+    path = str(tmp_path / '55p000_atm.nc')
+    _write_atm_file(path, carried)
+
+    # The struct a resume builds sits on the grid of the next row
+    rebuilt = _ProfileAtmosphere([1.0] * 12, [1500.0] * 12)
+    rebuilt.p_boa = 1.01e7  # Pa
+    fake_agni.atmosphere.generate_pgrid_b(rebuilt)
+
+    hf_row = {
+        'boundary_layer_thickness': 0.01,  # m, written by the skin step
+        'boundary_layer_conductivity': 2.0,  # W m-1 K-1
+        'F_ins': 1361.0,
+        'albedo_pl': 0.1,
+        'T_surf': 2300.0,
+        'T_magma': 2400.0,
+        'P_surf': 101.0,  # bar
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'M_int': 6.0e24,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
+        'hill_radius': 6.4e8,
+    }
+    return fake_agni, carried, rebuilt, path, hf_row
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_resumed_struct_starts_from_the_profile_of_the_carried_struct(monkeypatch, tmp_path):
+    """A struct rebuilt from the last atmosphere file is updated to the carried profile.
+
+    Physical scenario: a run stopped after a row and resumed. A run in one go updates the
+    struct its last solve left behind; the resume builds a new struct on the grid of the
+    next row and loads the file that solve wrote. Both must give the solver the same
+    starting temperatures, bit for bit, or the resumed run leaves the path of the run in
+    one go. Discrimination: AGNI's own loader interpolates the file linearly onto the new
+    grid first; on this 12-level grid that profile differs from the carried one by 3.4 K.
+    """
+    _, carried, rebuilt, path, hf_row = _resume_case(monkeypatch, tmp_path)
+    dirs = {'output': str(tmp_path)}
+    config = _build_profile_config()
+
+    agni_mod._load_stored_profile(rebuilt, path)
+    agni_mod.update_agni_atmos(rebuilt, hf_row, dirs, config)
+    agni_mod.update_agni_atmos(carried, hf_row, dirs, config)
+
+    assert rebuilt.p == carried.p
+    assert rebuilt.tmp == carried.tmp
+    assert rebuilt.tmpl == carried.tmpl
+
+    _, carried, linear, path, hf_row = _resume_case(monkeypatch, tmp_path)
+    _agni_fromncdf(linear, path)
+    agni_mod.update_agni_atmos(linear, hf_row, dirs, config)
+    agni_mod.update_agni_atmos(carried, hf_row, dirs, config)
+    assert np.max(np.abs(np.subtract(linear.tmp, carried.tmp))) > 1.0  # K
+
+
+@pytest.mark.unit
+def test_load_stored_profile_lets_agni_interpolate_another_level_count(monkeypatch, tmp_path):
+    """A file with another number of levels than the struct is interpolated by AGNI.
+
+    The cell values cannot be copied one to one, so AGNI's loader puts the file profile
+    onto the grid of the struct, and the struct keeps its own grid.
+    """
+    fake_agni, carried, _, path, _ = _resume_case(monkeypatch, tmp_path)
+    loaded = []
+    fake_agni.setpt.fromncdf_b = lambda atmos, p: loaded.append((atmos, p))
+    smaller = _ProfileAtmosphere([1.0e2, 1.0e4, 1.0e6], [1500.0, 1500.0, 1500.0])
+
+    agni_mod._load_stored_profile(smaller, path)
+
+    assert loaded == [(smaller, path)]
+    assert smaller.p == [1.0e2, 1.0e4, 1.0e6]
+    assert smaller.tmp == [1500.0, 1500.0, 1500.0]
 
 
 @pytest.mark.unit
