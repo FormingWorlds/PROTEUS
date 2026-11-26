@@ -146,9 +146,9 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `struct_mass_desync_frac` | `1` | \|trapezoid - ODE accumulator\| / accumulator structure mass self-consistency | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct |
 | `struct_core_T_used` | `1` | 1 when the last Zalmoxis solve set its core temperature from the core temperature table, else 0 | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_energetics, interior_struct |
 | `struct_core_T_excess` | `1` | largest distance of a core node of that solve beyond the core temperature table, as a fraction of its pressure range | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_energetics |
-| `struct_ref_time` | `yr` | time of the last structure update, the reference of the structure triggers; before the first, the time of the initial condition | `interior_energetics/wrapper.py` | always | interior_energetics |
-| `struct_ref_T_magma` | `K` | T_magma at the last structure update, the reference of the dT/T trigger; before the first, T_magma after the initial condition | `interior_energetics/wrapper.py` | always | interior_energetics |
-| `struct_ref_Phi` | `1` | Phi_global at the last structure update, the reference of the dPhi trigger; before the first, Phi_global after the initial condition | `interior_energetics/wrapper.py` | always | interior_energetics |
+| `struct_ref_time` | `yr` | time of the last structure update, the reference of the structure triggers; before the first, the time of the initial condition | `interior_energetics/wrapper.py`<br>`proteus.py` | always | interior_energetics, main loop |
+| `struct_ref_T_magma` | `K` | T_magma at the last structure update, the reference of the dT/T trigger; before the first, T_magma after the initial condition | `interior_energetics/wrapper.py`<br>`proteus.py` | always | interior_energetics, main loop |
+| `struct_ref_Phi` | `1` | Phi_global at the last structure update, the reference of the dPhi trigger; before the first, Phi_global after the initial condition | `interior_energetics/wrapper.py`<br>`proteus.py` | always | interior_energetics, main loop |
 | `struct_ref_w_H2O_liquid` | `1` | dissolved H2O mass fraction of the mantle at the last structure update, the reference of the composition trigger | `interior_energetics/wrapper.py` | always | interior_energetics |
 | `struct_ref_w_H2_liquid` | `1` | dissolved H2 mass fraction of the mantle at the last structure update, the reference of the composition trigger | `interior_energetics/wrapper.py` | always | interior_energetics |
 
@@ -1242,6 +1242,12 @@ A computed key is a helpfile column name constructed dynamically at runtime thro
 - `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: `dynamic key sma_col` (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)
 - `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: `dynamic key ecc_col` (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)
 - `src/proteus/utils/coupler.py::assert_mass_conservation`: `dynamic key f'{e}_kg_{r}'`
+
+### Writes with computed keys
+
+A computed key is a helpfile column name constructed dynamically at runtime through variable lookups or formatted strings. Because static analysis cannot determine the modified column names in advance, these write sites are not attributed to specific columns in the table above.
+
+- `src/proteus/proteus.py::_solve_structure_baseline_if_needed`: `hf_row.update(...) bulk write`
 <!-- END GENERATED: helpfile-matrix -->
 
 ## Synthetic observation CSV columns
