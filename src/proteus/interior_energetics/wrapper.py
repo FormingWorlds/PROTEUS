@@ -3462,9 +3462,9 @@ def update_structure_from_interior(
         # Runtime cooling discriminator. An up-step is a representation artifact
         # only while the interior is cooling. If active heating is re-inflating
         # the mantle (T_magma rising, or Phi rising as melt returns) the up-step
-        # is physical and must be accepted, not clamped. A finite prior thermal
-        # reference is required: before the first committed structure the
-        # reference is 0, so the up-step is rejected by the conservative default.
+        # is physical and must be accepted, not clamped. A positive prior T_magma
+        # reference is required: without one (0) the up-step is rejected by the
+        # conservative default.
         _Tmagma_now = float(hf_row.get('T_magma', 0.0) or 0.0)
         _Phi_now = float(hf_row.get('Phi_global', 0.0) or 0.0)
         _interior_reinflating = last_Tmagma > 0 and (

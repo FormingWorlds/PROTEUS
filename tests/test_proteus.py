@@ -34,6 +34,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from proteus.proteus import _STRUCT_REF_KEYS
+
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 # Stall cap the fixture config carries. Deliberately not ATMOS_STALL_MAX, and
@@ -675,9 +677,6 @@ def test_match_ps_tables_to_mass_uses_the_tables_of_the_current_mass(
     new = expected == 'new'
     assert p.directories.get('spider_solidus_ps') == ('new/sol' if new else None)
     assert p.directories.get('spider_liquidus_ps') == ('new/liq' if new else None)
-
-
-_STRUCT_REF_KEYS = ('struct_ref_time', 'struct_ref_T_magma', 'struct_ref_Phi')
 
 
 def _make_hf_df():
@@ -1579,7 +1578,6 @@ def test_resume_takes_the_structure_trigger_references_from_the_row(tmp_path):
     assert p.hf_row['struct_ref_w_H2_liquid'] == 0.0
 
 
-@pytest.mark.unit
 class _Resolved(Exception):
     """Raised by the patched Zalmoxis solver, so a test sees whether a re-solve started."""
 

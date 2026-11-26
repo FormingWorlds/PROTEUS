@@ -6156,8 +6156,8 @@ def test_monotonic_guard_clamps_up_step_under_cooling(caplog):
 def test_monotonic_guard_rejects_up_step_without_a_reference(caplog):
     """An R_int up-step is rejected when the row holds no reference of a last update.
 
-    A row without references (a helpfile written before they were stored) holds 0
-    for T_magma and Phi. The zero Phi reference makes the absolute-Phi trigger fire
+    A row with zero T_magma and Phi references holds no reference. The zero Phi
+    reference makes the absolute-Phi trigger fire
     (|Phi - 0| >= 0.05), so the solve runs and reaches the guard, but the
     reinflation discriminator needs a positive T_magma reference, so neither the
     T_magma nor the Phi comparison can hold and the up-step falls to the
