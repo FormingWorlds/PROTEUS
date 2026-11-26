@@ -1,7 +1,7 @@
 """Unit tests for ``proteus.utils.archive``.
 
 Covers ``archive_exists``, ``create``, ``append``, ``extract``,
-``update``, and ``archive_old``. Uses real tarfile + tmp_path filesystem
+``extract_latest``, ``update``, and ``archive_old``. Uses real tarfile + tmp_path filesystem
 operations because the functions are thin wrappers around tarfile and
 os.* primitives; mocking those would amount to mocking the function
 under test.
@@ -236,6 +236,197 @@ def test_extract_returns_none_when_directory_missing(tmp_path, caplog):
     assert result is None
     assert any('does not exist' in record.message for record in caplog.records)
     assert not (tmp_path / f'{missing.name}.tar').exists()
+
+
+# ---------------------------------------------------------------------------
+# extract_latest
+# ---------------------------------------------------------------------------
+
+# Whole-year names sort as text in another order ('100' < '9'), and the sub-year
+# name 1000p500 sits between two whole years, so a text sort picks other times.
+_RUN_TIMES = ['0p000', '9', '10', '100', '1000', '1000p500', '2000']
+_LATEST_3 = ['1000', '1000p500', '2000']
+
+
+def _snapshot_names(stem):
+    return [f'{stem}_int.nc', f'{stem}_atm.nc', f'{stem}_zalmoxis.dat']
+
+
+def _archived_run(data_dir):
+    """Archive a run directory as the end-of-run pass leaves it; return the
+    content of every file by its name in the tar."""
+    data_dir.mkdir()
+    files = {'spider_eos/table.dat': b'eos' * 64, 'zalmoxis_output.dat': b'mesh' * 8}
+    for stem in _RUN_TIMES:
+        files.update({name: f'{name} content'.encode() for name in _snapshot_names(stem)})
+    (data_dir / 'spider_eos').mkdir()
+    for name, content in files.items():
+        (data_dir / name).write_bytes(content)
+        os.utime(data_dir / name, (1.0e9, 1.0e9))  # archived long before the resume
+    archive_mod.create(str(data_dir))
+    return files
+
+
+def _loose_files(data_dir):
+    return {
+        p.relative_to(data_dir).as_posix(): p.read_bytes()
+        for p in data_dir.rglob('*')
+        if p.is_file() and p.name != f'{data_dir.name}.tar'
+    }
+
+
+def test_extract_latest_unpacks_runtime_files_and_latest_snapshots(tmp_path):
+    """A resume unpacks the runtime files and the snapshots of the latest
+    snapshot times by value, and leaves the tar as it was.
+
+    Discrimination: the times are chosen so that a sort of the names as text
+    selects other snapshots.
+    """
+    data_dir = tmp_path / 'data'
+    files = _archived_run(data_dir)
+    tar_bytes = (data_dir / 'data.tar').read_bytes()
+
+    archive_mod.extract_latest(str(data_dir), count=3)
+
+    expected = ['spider_eos/table.dat', 'zalmoxis_output.dat']
+    expected += [n for stem in _LATEST_3 for n in _snapshot_names(stem)]
+    assert _loose_files(data_dir) == {n: files[n] for n in expected}
+    assert (data_dir / 'data.tar').read_bytes() == tar_bytes
+
+
+def test_final_archive_after_resume_stores_changed_files_only(tmp_path):
+    """After a resume, the end-of-run archive adds the files that changed and
+    skips the unpacked ones that did not, and a full unpack gives back the
+    latest content of every file.
+
+    Discrimination: a skip by name alone loses the new zalmoxis_output.dat,
+    which keeps its size, and no skip stores the EOS table twice.
+    """
+    data_dir = tmp_path / 'data'
+    files = _archived_run(data_dir)
+
+    archive_mod.extract_latest(str(data_dir), count=3)
+    (data_dir / 'zalmoxis_output.dat').write_bytes(b'MESH' * 8)
+    (data_dir / '3000_int.nc').write_bytes(b'new step')
+    archive_mod.update(str(data_dir))
+
+    counts = _tar_member_counts(data_dir / 'data.tar')
+    assert counts['spider_eos/table.dat'] == 1
+    assert counts['2000_int.nc'] == 1
+    assert counts['zalmoxis_output.dat'] == 2
+    assert counts['3000_int.nc'] == 1
+    assert _loose_files(data_dir) == {}
+    archive_mod.extract(str(data_dir), remove_tar=True)
+    latest = {'zalmoxis_output.dat': b'MESH' * 8, '3000_int.nc': b'new step'}
+    assert _loose_files(data_dir) == {**files, **latest}
+
+
+def test_second_resume_compares_with_the_last_archived_copy(tmp_path):
+    """On a second resume, an unpacked file that did not change is skipped
+    against its last archived copy, and a file that changed size is added
+    even when its modification time is the archived one.
+
+    Discrimination: a comparison with the first archived copy stores
+    zalmoxis_output.dat a third time, and a comparison by time alone loses
+    the new EOS table.
+    """
+    data_dir = tmp_path / 'data'
+    _archived_run(data_dir)
+    archive_mod.extract_latest(str(data_dir), count=3)
+    (data_dir / 'zalmoxis_output.dat').write_bytes(b'MESH' * 8)
+    archive_mod.update(str(data_dir))
+
+    archive_mod.extract_latest(str(data_dir), count=3)
+    table = data_dir / 'spider_eos' / 'table.dat'
+    table.write_bytes(b'eos-v2')
+    os.utime(table, (1.0e9, 1.0e9))  # the archived time, with another size
+    archive_mod.update(str(data_dir))
+
+    counts = _tar_member_counts(data_dir / 'data.tar')
+    assert counts['zalmoxis_output.dat'] == 2
+    assert counts['spider_eos/table.dat'] == 2
+    archive_mod.extract(str(data_dir), remove_tar=True)
+    assert (data_dir / 'zalmoxis_output.dat').read_bytes() == b'MESH' * 8
+    assert table.read_bytes() == b'eos-v2'
+
+
+def test_full_extract_keeps_a_newer_loose_file(tmp_path):
+    """A full unpack at the end of a resumed run, as offline chemistry does,
+    keeps a runtime file that changed after the resume instead of the older
+    copy of the earlier run."""
+    data_dir = tmp_path / 'data'
+    files = _archived_run(data_dir)
+    archive_mod.extract_latest(str(data_dir), count=3)
+    (data_dir / 'zalmoxis_output.dat').write_bytes(b'MESH' * 8)
+
+    archive_mod.extract(str(data_dir), remove_tar=True)
+
+    assert (data_dir / 'zalmoxis_output.dat').read_bytes() == b'MESH' * 8
+    assert _loose_files(data_dir) == {**files, 'zalmoxis_output.dat': b'MESH' * 8}
+
+
+def test_extract_latest_keeps_loose_copies_and_takes_last_archived_copy(tmp_path):
+    """A loose file is newer than its archived copy, so it stays as it is,
+    and of two archived copies of one name the last one is unpacked."""
+    data_dir = tmp_path / 'data'
+    _archived_run(data_dir)
+    (data_dir / '2000_atm.nc').write_bytes(b'second copy')
+    archive_mod.append(str(data_dir))
+    (data_dir / '2000_int.nc').write_bytes(b'loose')
+
+    archive_mod.extract_latest(str(data_dir), count=3)
+
+    assert (data_dir / '2000_int.nc').read_bytes() == b'loose'
+    assert (data_dir / '2000_atm.nc').read_bytes() == b'second copy'
+    assert _tar_member_counts(data_dir / 'data.tar')['2000_atm.nc'] == 2
+
+
+@pytest.mark.parametrize('count', [7, 50], ids=['all_times', 'more_than_all_times'])
+def test_extract_latest_unpacks_everything_when_count_covers_all_times(tmp_path, count):
+    """When the latest times cover every snapshot, all files are unpacked."""
+    data_dir = tmp_path / 'data'
+    files = _archived_run(data_dir)
+
+    archive_mod.extract_latest(str(data_dir), count=count)
+
+    assert _loose_files(data_dir) == files
+    assert (data_dir / 'data.tar').exists()
+
+
+def test_extract_latest_without_tar_changes_nothing(tmp_path, caplog):
+    """A run directory without a tar keeps its files and logs a warning."""
+    (tmp_path / '100_int.nc').write_bytes(b'snap')
+    with caplog.at_level('WARNING'):
+        archive_mod.extract_latest(str(tmp_path), count=1)
+    assert _loose_files(tmp_path) == {'100_int.nc': b'snap'}
+    assert any('does not exist' in record.message for record in caplog.records)
+
+
+def test_rolling_archive_after_resume_stores_each_snapshot_once(tmp_path):
+    """After a resume, the rolling archive moves the unpacked snapshots that fall
+    below its cutoff back into the tar without a second copy, and adds the new
+    snapshots once.
+
+    Discrimination: without the skip in _move_into_tar, each unpacked snapshot
+    below the cutoff enters the tar a second time.
+    """
+    data_dir = tmp_path / 'data'
+    _archived_run(data_dir)
+    archive_mod.extract_latest(str(data_dir), count=3)
+    for name in _snapshot_names('3000'):
+        (data_dir / name).write_bytes(b'new step')
+
+    archive_mod.archive_old(str(data_dir), before=2500.0)
+
+    counts = _tar_member_counts(data_dir / 'data.tar')
+    snapshots = [n for n in counts if archive_mod._snapshot_time(n) is not None]
+    assert len(snapshots) == 3 * len(_RUN_TIMES)
+    assert max(counts[n] for n in snapshots) == 1
+    loose = _loose_files(data_dir)
+    assert sorted(n for n in loose if archive_mod._snapshot_time(n) is not None) == sorted(
+        _snapshot_names('3000')
+    )
+    assert loose['zalmoxis_output.dat'] == b'mesh' * 8
 
 
 # ---------------------------------------------------------------------------

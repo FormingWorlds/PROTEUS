@@ -720,13 +720,44 @@ def test_proteus_resume_checks_the_eos_tables_after_unpacking(tmp_path):
     p = _make_proteus_instance(tmp_path)
     (tmp_path / 'data').mkdir(exist_ok=True)
     order = []
-    p.extract_archives = MagicMock(side_effect=lambda: order.append('extract'))
+    p.extract_archives = MagicMock()
     p._require_paleos_tables = MagicMock(side_effect=lambda: order.append('require'))
 
-    _resume_with_patches(p, _make_hf_df())
+    with patch(
+        'proteus.proteus.archive.extract_latest',
+        side_effect=lambda d: order.append(('extract', d)),
+    ):
+        _resume_with_patches(p, _make_hf_df())
 
-    assert order == ['extract', 'require']
+    # The resume unpacks only the latest snapshots, never the whole archive.
+    assert order == [('extract', p.directories['output/data']), 'require']
+    p.extract_archives.assert_not_called()
     p._require_paleos_tables.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_extract_archives_unpacks_the_whole_archive_and_removes_it(tmp_path, caplog):
+    """extract_archives, which postprocessing calls, unpacks every archived file and
+    removes data.tar; on a run without data.tar it changes nothing and warns."""
+    import proteus.utils.archive as archive
+
+    p = _make_proteus_instance(tmp_path)
+    data = tmp_path / 'data'
+    data.mkdir(exist_ok=True)
+    (data / '100_int.nc').write_bytes(b'old snapshot')
+    (data / 'zalmoxis_output.dat').write_bytes(b'mesh')
+    archive.create(str(data))
+
+    p.extract_archives()
+
+    assert (data / '100_int.nc').read_bytes() == b'old snapshot'
+    assert (data / 'zalmoxis_output.dat').read_bytes() == b'mesh'
+    assert not (data / 'data.tar').exists()
+
+    with caplog.at_level('WARNING'):
+        p.extract_archives()
+    assert sorted(f.name for f in data.iterdir()) == ['100_int.nc', 'zalmoxis_output.dat']
+    assert any('does not exist' in r.message for r in caplog.records)
 
 
 @pytest.mark.unit
@@ -1521,7 +1552,49 @@ def test_resume_runs_the_resync_for_zalmoxis_and_aragog_only(
 
     # _resume_with_patches stops at init_star, so a recorded call came before it.
     assert resync.called is called
-    assert p.directories['_resume_struct_settle_loops'] > 0
+    # Without stored references the structure triggers start from the last row.
+    assert p.last_struct_time == pytest.approx(400.0, rel=0, abs=0)
+
+
+@pytest.mark.unit
+def test_resume_takes_the_structure_trigger_references_from_the_row(tmp_path):
+    """start(resume=True) sets the structure-update sentinels to the references the last row
+    stored (the update at 200 yr), not to the time, T_magma and Phi of that row (400 yr)."""
+    p = _make_proteus_instance(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    hf = _make_hf_df()
+    hf['Phi_global'] = [1.0, 0.9, 0.8, 0.7, 0.6]
+    hf['struct_ref_time'] = [0.0, 0.0, 200.0, 200.0, 200.0]
+    hf['struct_ref_T_magma'] = [3000.0, 3000.0, 2600.0, 2600.0, 2600.0]
+    hf['struct_ref_Phi'] = [1.0, 1.0, 0.8, 0.8, 0.8]
+    hf['struct_ref_w_H2O_liquid'] = [0.0, 0.0, 2.0e-3, 2.0e-3, 2.0e-3]
+    hf['struct_ref_w_H2_liquid'] = [0.0] * 5
+
+    _resume_with_patches(p, hf)
+
+    refs = (p.last_struct_time, p.last_struct_Tmagma, p.last_struct_Phi)
+    assert refs == pytest.approx((200.0, 2600.0, 0.8), rel=0, abs=0)
+    assert p.directories['_last_w_H2O_liquid'] == pytest.approx(2.0e-3, rel=0, abs=0)
+    # 0 means no dissolved H2 at the update: the trigger then has no baseline, as before.
+    assert '_last_w_H2_liquid' not in p.directories
+
+
+@pytest.mark.unit
+def test_resume_of_a_helpfile_without_trigger_references_starts_from_the_row(tmp_path):
+    """A helpfile written before the references were stored (columns read as 0) resumes with
+    the sentinels at its last row, as before."""
+    p = _make_proteus_instance(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    hf = _make_hf_df()
+    hf['Phi_global'] = [1.0, 0.9, 0.8, 0.7, 0.6]
+    hf['struct_ref_time'] = [0.0] * 5
+    hf['struct_ref_T_magma'] = [0.0] * 5
+
+    _resume_with_patches(p, hf)
+
+    refs = (p.last_struct_time, p.last_struct_Tmagma, p.last_struct_Phi)
+    assert refs == pytest.approx((400.0, 2200.0, 0.6), rel=0, abs=0)
+    assert '_last_w_H2O_liquid' not in p.directories
 
 
 class _StopAtRunningStatus(Exception):

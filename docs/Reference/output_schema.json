@@ -958,6 +958,91 @@
       "consumers_possible": []
     },
     {
+      "name": "struct_ref_time",
+      "unit": "yr",
+      "description": "time of the last structure update, the reference of the structure triggers; before the first, the time of the initial condition",
+      "group": "Planet structure",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "interior_energetics"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "struct_ref_T_magma",
+      "unit": "K",
+      "description": "T_magma at the last structure update, the reference of the dT/T trigger; before the first, T_magma after the initial condition",
+      "group": "Planet structure",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "interior_energetics"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "struct_ref_Phi",
+      "unit": "1",
+      "description": "Phi_global at the last structure update, the reference of the dPhi trigger; before the first, Phi_global after the initial condition",
+      "group": "Planet structure",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "interior_energetics"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "struct_ref_w_H2O_liquid",
+      "unit": "1",
+      "description": "dissolved H2O mass fraction of the mantle at the last structure update, the reference of the composition trigger",
+      "group": "Planet structure",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "interior_energetics"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "struct_ref_w_H2_liquid",
+      "unit": "1",
+      "description": "dissolved H2 mass fraction of the mantle at the last structure update, the reference of the composition trigger",
+      "group": "Planet structure",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "interior_energetics"
+      ],
+      "consumers_possible": []
+    },
+    {
       "name": "T_surf",
       "unit": "K",
       "description": "global surface temperature",
