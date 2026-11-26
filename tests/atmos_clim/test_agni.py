@@ -12,6 +12,9 @@ This module tests the AGNI atmosphere interface including:
   update_agni_atmos), covering pressure and temperature positivity, profile
   monotonicity under interpolation, and the atmosphere-failure contract when
   the surface boundary condition cannot seed a new profile
+- Resume start state (_load_stored_profile, update_agni_atmos): a struct rebuilt
+  from the last atmosphere file gets the profile of the struct a run in one go
+  carries over, bit for bit
 
 See also:
 - docs/How-to/testing.md
@@ -31,6 +34,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from netCDF4 import Dataset
 from scipy.interpolate import PchipInterpolator
 
 import proteus.atmos_clim.agni as agni_mod
@@ -3523,9 +3527,7 @@ def test_update_agni_atmos_interpolates_a_usable_profile(monkeypatch):
 
 def _write_atm_file(path, atmos):
     """Write the profile of a struct as `write_atmos_ncdf` does [Pa, K]."""
-    import netCDF4 as nc
-
-    with nc.Dataset(path, 'w') as ds:
+    with Dataset(path, 'w') as ds:
         ds.createDimension('nlev_c', len(atmos.p))
         ds.createDimension('nlev_l', len(atmos.pl))
         for name, dim in (
@@ -3539,9 +3541,7 @@ def _write_atm_file(path, atmos):
 
 def _agni_fromncdf(atmos, path):
     """AGNI's `fromncdf!`: linear in log-pressure over centres and edges, flat beyond."""
-    import netCDF4 as nc
-
-    with nc.Dataset(path) as ds:
+    with Dataset(path) as ds:
         p = np.ravel(np.column_stack([ds['pl'][:-1], ds['p'][:]]))
         t = np.ravel(np.column_stack([ds['tmpl'][:-1], ds['tmp'][:]]))
         p = np.append(p, ds['pl'][-1])
@@ -3570,21 +3570,10 @@ def _resume_case(monkeypatch, tmp_path):
     rebuilt.p_boa = 1.01e7  # Pa
     fake_agni.atmosphere.generate_pgrid_b(rebuilt)
 
-    hf_row = {
-        'boundary_layer_thickness': 0.01,  # m, written by the skin step
-        'boundary_layer_conductivity': 2.0,  # W m-1 K-1
-        'F_ins': 1361.0,
-        'albedo_pl': 0.1,
+    hf_row = _saturation_update_row(0.01, 2.0) | {
+        'P_surf': 101.0,  # bar
         'T_surf': 2300.0,
         'T_magma': 2400.0,
-        'P_surf': 101.0,  # bar
-        'gravity': 9.8,
-        'R_int': 6.4e6,
-        'M_int': 6.0e24,
-        'axial_period': 86400.0,
-        'longitude': 0.0,
-        'latitude': 0.0,
-        'hill_radius': 6.4e8,
     }
     return fake_agni, carried, rebuilt, path, hf_row
 

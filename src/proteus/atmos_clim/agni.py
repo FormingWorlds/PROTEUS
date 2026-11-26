@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from juliacall import Main as jl
 from juliacall import convert
+from netCDF4 import Dataset
 from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import (
@@ -940,14 +941,10 @@ def init_agni_atmos(
 
 
 def _load_stored_profile(atmos, nc_path: str):
-    """Put the profile of an atmosphere file on a new struct, before `update_agni_atmos`.
+    """Copy the cell-centre pressures [Pa] and temperatures [K] of a file onto a new struct.
 
-    `update_agni_atmos` interpolates the cell-centre pressures [Pa] and temperatures [K]
-    held on the struct onto the new pressure grid. They are copied from the file
-    unchanged, so a struct built on a resume starts from the same profile as the struct
-    that a run in one go carries over from the solve that wrote the file. The pressure
-    grid is generated again in `update_agni_atmos`. A file with another number of levels
-    is interpolated onto the grid of the struct by AGNI instead.
+    `update_agni_atmos` then interpolates them onto the new grid once, as a run in one go
+    does. A file with another number of levels goes through AGNI `fromncdf!` instead.
 
     Parameters
     ----------
@@ -956,9 +953,7 @@ def _load_stored_profile(atmos, nc_path: str):
         nc_path : str
             Path to an atmosphere file written by `write_atmos_ncdf`
     """
-    import netCDF4 as nc
-
-    with nc.Dataset(nc_path) as ds:
+    with Dataset(nc_path) as ds:
         p = np.asarray(ds['p'][:], dtype=float)
         tmp = np.asarray(ds['tmp'][:], dtype=float)
 
