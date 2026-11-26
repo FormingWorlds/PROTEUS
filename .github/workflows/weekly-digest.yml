@@ -4,7 +4,7 @@ name: Weekly ecosystem digest
 # against the collected data and posts it when publish is on in tools/digest/repos.toml. Every
 # run uploads the digest as an artifact; no job holds both the model token and a write token.
 # The ecosystem job builds the dependency graph from the same collected data and uploads
-# cross-repository notification drafts; it posts nothing.
+# cross-repository notification drafts; it posts nothing, and publish does not wait for it.
 
 on:
   schedule:
@@ -69,7 +69,6 @@ jobs:
     needs: collect
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
     permissions:
       contents: read
     steps:

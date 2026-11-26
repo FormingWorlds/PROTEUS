@@ -1233,12 +1233,14 @@ def _jobs():
 def test_workflow_jobs_keep_the_model_token_away_from_write_tokens():
     """The draft job alone sees the model token and has no permissions; posting needs the live flag."""
     text, jobs = _jobs()
-    assert set(jobs) == {'collect', 'draft', 'publish'}
+    assert set(jobs) == {'collect', 'draft', 'ecosystem', 'publish'}
     assert '\npermissions: {}\n' in text and 'shell: bash' in text
     assert '    permissions: {}\n' in jobs['draft']
     perms = re.search(r'    permissions:\n((?:      .*\n)+)', jobs['publish']).group(1)
     assert perms == '      contents: read\n      discussions: write\n'
-    assert all(not re.search(r""":\s*['"]?write\b""", jobs[j]) for j in ('collect', 'draft'))
+    assert all(
+        not re.search(r""":\s*['"]?write\b""", jobs[j]) for j in ('collect', 'draft', 'ecosystem')
+    )
     assert 'github.token' not in jobs['draft'] and 'GITHUB_TOKEN' not in jobs['draft']
     for name, job in jobs.items():
         assert ('CLAUDE_CODE_OAUTH_TOKEN' in job) is (name == 'draft'), name
@@ -1943,6 +1945,7 @@ def test_workflow_wiring_of_the_guards():
     assert 'continue-on-error' not in text
     assert '||' not in re.sub(r'\$\{\{.*?\}\}', '', jobs['publish'])
     assert 'needs: draft' in jobs['publish'] and 'needs: collect' in jobs['draft']
+    assert 'needs: collect' in jobs['ecosystem'] and 'ecosystem' not in jobs['publish']
     assert (
         'run: python tools/digest/check.py collected.json draft.json --out check.txt '
         '--summary "$GITHUB_STEP_SUMMARY"\n' in jobs['publish']
@@ -2538,7 +2541,7 @@ def test_real_windows_pass_the_check_and_the_link_scan(name):
 def test_workflow_overwrites_artifacts_and_reports_unreadable_files():
     """Each upload overwrites an artifact of a re-run, and facts.py writes the summary."""
     text, jobs = _jobs()
-    assert text.count('actions/upload-artifact@v6') == text.count('overwrite: true') == 3
+    assert text.count('actions/upload-artifact@v6') == text.count('overwrite: true') == 4
     assert (
         'python tools/digest/facts.py collected.json --summary "$GITHUB_STEP_SUMMARY"'
         in jobs['collect']
