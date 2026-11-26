@@ -15,11 +15,10 @@ name: CI - Nightly Science Validation
 #      when tier=extended. The aggregator picks up the new shard's
 #      .coverage and XML automatically via glob.
 #
-# macOS concurrent-slot ceiling on the GitHub free tier for public
-# repos is 5. All tiers start together after the cache job, so the macOS
-# unit, integration and critical slow jobs already share those slots.
-# Future shards that do not need macOS parity should be added as
-# tier=extended (Linux only).
+# The GitHub free tier runs at most 20 jobs at a time, 5 of them on
+# macOS. All tiers start together after the cache job and share these
+# slots. Future shards that do not need macOS parity should be added
+# as tier=extended (Linux only).
 
 on:
   schedule:
