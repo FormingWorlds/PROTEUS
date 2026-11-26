@@ -495,6 +495,8 @@ _REVIEWED_NEUTRAL = frozenset(
         # Read only under from_mantle_redox, which no 2.0 config can select.
         'planet.interior_chem.metal_saturation_cell',
         # Read only under from_mantle_redox, which no 2.0 config can select.
+        'planet.interior_chem.metal_saturation_relaxation',
+        # Read only under from_mantle_redox, which no 2.0 config can select.
         'planet.interior_chem.feo_volume',
         # Acts only when a_fe_max_mantle > 0, i.e. under from_mantle_redox,
         # which no 2.0 config can select; a migrated config is unaffected.
