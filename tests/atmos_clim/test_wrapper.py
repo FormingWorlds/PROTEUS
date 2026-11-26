@@ -736,8 +736,10 @@ def test_run_atmosphere_uses_the_spectral_cache_only_for_the_first_agni_build(
     (tmp_path / 'runtime.sf').write_text('from the previous spectrum', encoding='utf-8')
 
     seen = {}
+    dirs = {'output': str(tmp_path), 'fwl': str(tmp_path)}
 
     def _init(_dirs, _config, _hf_row, use_cache=True, star_file=None):
+        seen['run'] = (_dirs, _config, _hf_row) == (dirs, config, hf_row)
         seen['use_cache'] = use_cache
         seen['star_file'] = star_file and os.path.relpath(star_file, tmp_path / 'data')
         raise _StopAfterInit
@@ -751,7 +753,7 @@ def test_run_atmosphere_uses_the_spectral_cache_only_for_the_first_agni_build(
         atmos_wrapper.run_atmosphere(
             atmos_o,
             config,
-            {'output': str(tmp_path), 'fwl': str(tmp_path)},
+            dirs,
             {'total': 0 if first_build else 7},
             [1.0],
             [1.0],
@@ -760,7 +762,7 @@ def test_run_atmosphere_uses_the_spectral_cache_only_for_the_first_agni_build(
             hf_row,
         )
 
-    assert seen == {'use_cache': use_cache, 'star_file': star_file}
+    assert seen == {'run': True, 'use_cache': use_cache, 'star_file': star_file}
     # Edge case: the first build keeps a prepared file already on disk, which a
     # resume relies on; a rebuild removes it so the new spectrum is inserted.
     assert (tmp_path / 'runtime.sf').exists() == first_build
