@@ -331,7 +331,7 @@ jobs:
               tests/integration/test_smoke_hypothesis.py
               tests/integration/test_integration_dummy.py
           # std-config runs one test via matrix.select (-k); Linux-only because it boots AGNI,
-          # whose macOS arm64 path is not yet validated. job_minutes clears its timeout plus setup.
+          # whose macOS arm64 path is not yet validated.
           # ---- std-config-multi (3 coupled timesteps; ~180 min measured) ----
           - shard: std-config-multi
             tier: extended
@@ -340,20 +340,18 @@ jobs:
             select: test_integration_std_config_multi_timestep
             files: >-
               tests/integration/test_integration_std_config.py
-          # ---- superliquidus (six pure numpy/scipy EOS solves, about 1.4 min of tests on the
-          # runner); job_minutes clears the largest per-test timeout (240 min) plus setup ----
+          # ---- superliquidus (six pure numpy/scipy EOS solves) ----
           - shard: superliquidus
             tier: extended
             os: ubuntu-latest
-            job_minutes: 270
             coverage: false
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # Job cap defaults to 210 min, kept above each shard's per-test pytest-timeout
     # so a hung single test trips its own timer before the job is cancelled. The
-    # one-test heavy shards raise the cap via matrix.job_minutes because a single
-    # real-solver test there runs one to several hours on the runner.
+    # std-config shard raises the cap via matrix.job_minutes because its single
+    # real-solver test can run for hours on the runner.
     timeout-minutes: ${{ matrix.job_minutes || 210 }}
     env:
       COVERAGE_FILE: .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
