@@ -229,8 +229,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ---- shards: aragog-* (real Aragog + real outgas), three Linux shards of about 9 to
-          # 14 min of tests each; the default cap clears the longest test timeout (120 min) ----
+          # ---- shards: aragog-* (real Aragog + real outgas), split in three on Linux ----
           - shard: aragog-coupled
             tier: critical
             os: ubuntu-latest
