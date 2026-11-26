@@ -1063,6 +1063,12 @@ class Proteus:
 
                 restore_dissolved_target(self.config, self.hf_all)
 
+            # A helpfile older than the structure references takes its last row as the reference
+            last = self.hf_all.index[-1]
+            if not self.hf_all.iloc[-1].get('struct_ref_T_magma', 0.0) > 0:
+                state = self.hf_all.loc[last, ['Time', 'T_magma', 'Phi_global']].to_numpy()
+                self.hf_all.loc[last, list(_STRUCT_REF_KEYS)] = state
+
             # Get last row from helpfile dataframe
             self.hf_row = self.hf_all.iloc[-1].to_dict()
 
@@ -1174,11 +1180,6 @@ class Proteus:
                 if os.path.isfile(liquidus_ps):
                     self.directories['spider_liquidus_ps'] = liquidus_ps
                 log.info('Restored spider_eos_dir: %s', eos_dir_restored)
-
-            # A helpfile older than the structure references takes its last row as the reference
-            if not self.hf_row.get('struct_ref_T_magma', 0.0) > 0:
-                pairs = zip(_STRUCT_REF_KEYS, ('Time', 'T_magma', 'Phi_global'), strict=True)
-                self.hf_row.update({ref: self.hf_row[key] for ref, key in pairs})
 
             if (
                 self.config.interior_struct.module == 'zalmoxis'

@@ -1553,7 +1553,7 @@ def test_resume_runs_the_resync_for_zalmoxis_and_aragog_only(
     # _resume_with_patches stops at init_star, so a recorded call came before it.
     assert resync.called is called
     # A row without structure references takes its own state as the reference.
-    assert tuple(p.hf_row[k] for k in _STRUCT_REF_KEYS) == (400.0, 2200.0, 0.6)
+    assert tuple(p.hf_all.iloc[-1][k] for k in _STRUCT_REF_KEYS) == (400.0, 2200.0, 0.6)
 
 
 @pytest.mark.unit
@@ -1624,10 +1624,12 @@ def test_resume_of_a_helpfile_without_trigger_references_starts_from_the_row(tmp
 
     _resume_with_patches(p, hf)
 
-    refs = tuple(p.hf_row[k] for k in _STRUCT_REF_KEYS)
+    # The main loop builds each new row from the last row of the helpfile.
+    next_row = p.hf_all.iloc[-1].to_dict()
+    refs = tuple(next_row[k] for k in _STRUCT_REF_KEYS)
     assert refs == (400.0, 2200.0, 0.6)
-    assert not _first_resumed_step_resolves(p.hf_row)
-    assert _first_resumed_step_resolves({**p.hf_row, **dict.fromkeys(_STRUCT_REF_KEYS, 0.0)})
+    assert not _first_resumed_step_resolves(next_row)
+    assert _first_resumed_step_resolves({**next_row, **dict.fromkeys(_STRUCT_REF_KEYS, 0.0)})
 
 
 class _StopAtRunningStatus(Exception):
