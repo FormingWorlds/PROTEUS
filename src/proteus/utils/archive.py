@@ -18,6 +18,18 @@ def _tarfile_from_dir(dir: str) -> str:
     return os.path.join(dir, f'{name}.tar')
 
 
+def _move_into_tar(dir: str, files: list[str]) -> str:
+    """Add `files` to the tar file in `dir`, creating it if missing, then remove them."""
+    tar = _tarfile_from_dir(dir)
+    with tarfile.open(tar, 'a') as tar_file:
+        for f in files:
+            tar_file.add(f, arcname=os.path.basename(f))
+    for f in files:
+        if f != tar:
+            safe_rm(f)
+    return tar
+
+
 def _snapshot_time(name: str) -> float | None:
     """Parse the simulated time from a timestamped snapshot filename.
 
@@ -112,23 +124,7 @@ def create(dir: str) -> str:
         log.error(f'Archive tar file for {dir} already exists. Will not create a new one.')
         return
 
-    # List files in directory
-    files = glob.glob(os.path.join(dir, '*'))
-    files = [os.path.abspath(f) for f in files]
-
-    # Add files to new tar file
-    tar = _tarfile_from_dir(dir)
-    with tarfile.open(tar, 'w') as tar_file:
-        for f in files:
-            tar_file.add(f, arcname=os.path.basename(f))
-
-    # Remove the files that were archived (never the tar file itself)
-    for f in files:
-        if f != tar:
-            safe_rm(f)
-
-    # Return path to the tar file
-    return tar
+    return _move_into_tar(dir, glob.glob(os.path.join(dir, '*')))
 
 
 def append(dir: str) -> str:
@@ -157,22 +153,7 @@ def append(dir: str) -> str:
         log.error('Cannot append to archive.')
         return
 
-    # List files in directory
-    files = glob.glob(os.path.join(dir, '*'))
-    files = [os.path.abspath(f) for f in files]
-
-    # Append files to existing tar file
-    tar = _tarfile_from_dir(dir)
-    with tarfile.open(tar, 'a') as tar_file:
-        for f in files:
-            tar_file.add(f, arcname=os.path.basename(f))
-
-    # Remove the files that were appended (never the tar file itself)
-    for f in files:
-        if f != tar:
-            safe_rm(f)
-
-    return tar
+    return _move_into_tar(dir, glob.glob(os.path.join(dir, '*')))
 
 
 def extract(dir: str, remove_tar: bool = False, ignore_warnings: bool = False) -> str:
@@ -269,12 +250,6 @@ def archive_old(dir: str, before: float) -> None:
         age = _snapshot_time(os.path.basename(f))
         if age is not None and age < before:
             old.append(f)
-    if not old:
-        return
-
-    log.debug(f'Moving {len(old)} snapshot files into the archive in {dir}')
-    with tarfile.open(_tarfile_from_dir(dir), 'a') as tar_file:
-        for f in old:
-            tar_file.add(f, arcname=os.path.basename(f))
-    for f in old:
-        safe_rm(f)
+    if old:
+        log.debug(f'Moving {len(old)} snapshot files into the archive in {dir}')
+        _move_into_tar(dir, old)
