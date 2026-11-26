@@ -89,7 +89,8 @@ upstream modules.
    the instellation flux and XUV flux. The stellar spectrum is updated on a
    separate, longer cadence controlled by `params.dt.starspec`. The helpfile
    stores the times of the last updates and the star age and distance of the
-   last spectrum, so a resumed run computes that spectrum again and updates at
+   last spectrum, so a resumed run computes that spectrum again, AGNI builds its
+   spectral file from the `.sflux` file of that update, and the run updates at
    the same rows as a run that goes through in one go.
 
 7. **Atmospheric escape** (`run_escape`): Computes mass loss rates for each

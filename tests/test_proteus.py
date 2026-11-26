@@ -5611,7 +5611,13 @@ def test_main_loop_checks_chemistry_targets_only_on_steps_without_a_snapshot(tmp
 
 _STEP_YR = 100.0
 _AGE_INI_YR = 1.0e8
-_AU_M = 1.495978707e11
+
+
+def _at_toa(fl, distance):
+    """Fluxes at 1 AU scaled to the top of an atmosphere at `distance` [m]."""
+    from proteus.utils.constants import AU
+
+    return fl * (AU / distance) ** 2
 
 
 def _toy_spectrum(age, config, **kwargs):
@@ -5711,7 +5717,7 @@ def test_a_resumed_run_updates_the_star_as_the_run_in_one_go(tmp_path, starspec,
 
     resume_row = rows[5]
     _, fl = _toy_spectrum(resume_row['age_star'], None)
-    at_resume_row = fl * (_AU_M / resume_row['semimajorax']) ** 2
+    at_resume_row = _at_toa(fl, resume_row['semimajorax'])
     assert np.allclose(at_resume_row, log_b[0][1], rtol=1e-12) == log_b[0][0]
 
 
@@ -5728,12 +5734,12 @@ def test_a_resume_restores_the_first_spectrum_when_none_followed(tmp_path):
     assert (changed, quantities) == (False, 0)
     assert p.hf_row['star_spec_time'] == pytest.approx(1.0, rel=1e-15)
     _, fl_first = _toy_spectrum(_AGE_INI_YR + 1.0, None)
-    np.testing.assert_allclose(fl, fl_first * (_AU_M / 1.0e11) ** 2, rtol=1e-12)
+    np.testing.assert_allclose(fl, _at_toa(fl_first, 1.0e11), rtol=1e-12)
     # the age and the orbit of the row the spectrum time 1 yr matches (Time 100 yr)
     # both give another spectrum
     _, fl_row = _toy_spectrum(rows[1]['age_star'], None)
-    assert not np.allclose(fl, fl_row * (_AU_M / 1.0e11) ** 2, rtol=1e-6)
-    assert not np.allclose(fl, fl_first * (_AU_M / rows[1]['semimajorax']) ** 2, rtol=1e-6)
+    assert not np.allclose(fl, _at_toa(fl_row, 1.0e11), rtol=1e-6)
+    assert not np.allclose(fl, _at_toa(fl_first, rows[1]['semimajorax']), rtol=1e-6)
 
 
 @pytest.mark.unit
@@ -5756,7 +5762,7 @@ def test_a_resume_from_a_helpfile_without_the_spectrum_columns_computes_a_new_sp
     assert p.hf_row['star_spec_time'] == pytest.approx(400.0, rel=1e-15)
     assert p.hf_row['star_spec_dist'] == pytest.approx(1.001e11, rel=1e-12)
     _, fl_now = _toy_spectrum(_AGE_INI_YR + 400.0, None)
-    np.testing.assert_allclose(fl, fl_now * (_AU_M / 1.001e11) ** 2, rtol=1e-12)
+    np.testing.assert_allclose(fl, _at_toa(fl_now, 1.001e11), rtol=1e-12)
 
 
 @pytest.mark.unit
