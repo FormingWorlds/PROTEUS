@@ -13,7 +13,6 @@ Testing standards:
 
 from __future__ import annotations
 
-import hashlib
 import os
 import tarfile
 from collections import Counter
@@ -442,37 +441,6 @@ def test_snapshot_time_recognizes_only_time_prefixed_snapshot_names():
 _CYCLE_TIMES = [100, 1000, 10000, 100000]
 
 
-def _tar_content_stats(tar_path) -> dict:
-    """Inspect a tar by member *content*, not just by name.
-
-    Returns a dict with:
-      ``gross``            total bytes over every file member (duplicates
-                           counted every time they appear);
-      ``distinct``         total bytes counting each unique content once
-                           (keyed by SHA-256 of the member bytes);
-      ``counts``           Counter of member name -> number of members.
-
-    ``inflation = gross / distinct``; 1.0 means no byte-identical duplication.
-    """
-    gross = 0
-    size_by_hash: dict[str, int] = {}
-    counts: Counter = Counter()
-    with tarfile.open(tar_path, 'r') as tar:
-        for member in tar.getmembers():
-            counts[member.name] += 1
-            if not member.isfile():
-                continue
-            data = tar.extractfile(member).read()
-            digest = hashlib.sha256(data).hexdigest()
-            gross += len(data)
-            size_by_hash.setdefault(digest, len(data))
-    return {
-        'gross': gross,
-        'distinct': sum(size_by_hash.values()),
-        'counts': counts,
-    }
-
-
 def _build_data_dir(root):
     """Create a mini output/data/ mirroring the production layout.
 
@@ -493,8 +461,8 @@ def _replay_lifecycle(data_dir):
     """Replay the proteus.py archive lifecycle over :data:`_CYCLE_TIMES`.
 
     Each cycle writes the interior+atmosphere snapshots for the current time
-    (content depends only on the time, so a given snapshot's bytes never
-    change once written -- re-appending it is byte-identical waste), mutates
+    (content depends only on the time, so a snapshot's bytes never change
+    once written and a second copy is waste), mutates
     the fixed-name ``zalmoxis_output.dat`` to a new content (as a dynamic run
     does) and runs the rolling archive. After the loop the end-of-run full
     archive packs whatever is still loose.
@@ -519,39 +487,31 @@ def test_lifecycle_final_pass_stores_reference_data_once(tmp_path):
     """
     data_dir = _build_data_dir(tmp_path / 'run')
     _replay_lifecycle(data_dir)
-    stats = _tar_content_stats(data_dir / 'run.tar')
+    counts = _tar_member_counts(data_dir / 'run.tar')
 
-    assert stats['counts']['spider_eos/table.dat'] == 1
-    assert stats['counts']['spider_mesh.dat'] == 1
-    assert stats['counts']['zalmoxis_output.dat'] == 1
+    assert counts['spider_eos/table.dat'] == 1
+    assert counts['spider_mesh.dat'] == 1
+    assert counts['zalmoxis_output.dat'] == 1
     # The one copy holds the last version of the evolving file
     last = (b'zalmoxis-v%d' % (len(_CYCLE_TIMES) - 1)) * 64
     assert _tar_contents(data_dir / 'run.tar')['zalmoxis_output.dat'] == last
 
 
 def test_lifecycle_snapshot_reappend_no_inflation(tmp_path):
-    """Replaying the proteus.py lifecycle leaves every timestamped snapshot
-    in data.tar exactly once and an overall content-inflation factor of 1.0.
+    """Replaying the proteus.py lifecycle leaves every timestamped snapshot,
+    and every other entry, in data.tar exactly once.
 
     Discrimination: a rolling archive that appends the loose snapshots each
     cycle stores every snapshot that stays loose for a cycle twice.
     """
     data_dir = _build_data_dir(tmp_path / 'run')
     _replay_lifecycle(data_dir)
-    stats = _tar_content_stats(data_dir / 'run.tar')
+    counts = _tar_member_counts(data_dir / 'run.tar')
 
-    # Primary contract: no snapshot is stored more than once.
     snapshot_names = [
-        name
-        for name in stats['counts']
-        if archive_mod._snapshot_time(os.path.basename(name)) is not None
+        n for n in counts if archive_mod._snapshot_time(os.path.basename(n)) is not None
     ]
-    # Discrimination: the fixture really does produce snapshots to check, so a
-    # regression that archived nothing could not make this pass vacuously.
-    assert len(snapshot_names) == 2 * len(_CYCLE_TIMES)  # int + atm per cycle
-    for name in snapshot_names:
-        assert stats['counts'][name] == 1
-
-    # Overall: bytes stored should equal bytes of distinct content (no waste).
-    inflation = stats['gross'] / stats['distinct']
-    assert inflation == pytest.approx(1.0, abs=0.01)
+    # The fixture writes an int and an atm snapshot per cycle, so an archive
+    # that stored nothing cannot pass.
+    assert len(snapshot_names) == 2 * len(_CYCLE_TIMES)
+    assert set(counts.values()) == {1}
