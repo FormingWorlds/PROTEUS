@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import tarfile
 from collections import Counter
+from unittest.mock import patch
 
 import pytest
 
@@ -391,6 +392,46 @@ def test_extract_latest_unpacks_everything_when_count_covers_all_times(tmp_path,
 
     assert _loose_files(data_dir) == files
     assert (data_dir / 'data.tar').exists()
+
+
+class _Killed(BaseException):
+    """The job is stopped from outside, as by Slurm at its time limit."""
+
+
+def test_a_stopped_unpack_leaves_no_cut_file_for_later_unpacks(tmp_path):
+    """A resume whose unpack is stopped while it writes a file leaves no cut copy
+    under that file's name. The next resume unpacks the full file, and a full unpack
+    that removes the tar afterwards (as postprocessing does) keeps every file whole.
+
+    Discrimination: an unpack in place leaves the cut copy, every later unpack keeps
+    it as a newer loose file, and removing the tar then loses the only full copy.
+    """
+    data_dir = tmp_path / 'data'
+    files = _archived_run(data_dir)
+    copy = tarfile.copyfileobj
+    started = []
+
+    def _stop_in_the_third_file(src, dst, length=None, exception=OSError, bufsize=None):
+        started.append(dst.name)
+        if len(started) == 3:
+            dst.write(src.read(length // 3))
+            raise _Killed
+        return copy(src, dst, length, exception, bufsize)
+
+    with patch.object(tarfile, 'copyfileobj', _stop_in_the_third_file), pytest.raises(_Killed):
+        archive_mod.extract_latest(str(data_dir), count=3)
+
+    cut = next(n for n in files if started[2].endswith('/' + n))
+    loose = {n: c for n, c in _loose_files(data_dir).items() if not n.startswith('.unpacking/')}
+    assert cut not in loose
+    assert loose == {n: files[n] for n in loose}
+
+    archive_mod.extract_latest(str(data_dir), count=3)
+    assert _loose_files(data_dir)[cut] == files[cut]
+    archive_mod.extract(str(data_dir), remove_tar=True)
+
+    assert _loose_files(data_dir) == files
+    assert sorted(os.listdir(data_dir)) == sorted({n.split('/')[0] for n in files})
 
 
 def test_extract_latest_without_tar_changes_nothing(tmp_path, caplog):
