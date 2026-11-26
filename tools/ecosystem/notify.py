@@ -120,10 +120,11 @@ class Window:
 
 
 def symbols(edge: dict, julia: str | None):
-    """``(module, name or None, sites, candidate files)`` of every name PROTEUS takes from a module."""
+    """``(module, name or None, sites, candidate files)`` of every name PROTEUS takes from a
+    module; version constants are left to the release rule."""
     for key, sites in edge['symbols'].items():
         module, _, name = key.partition(':')
-        if not name.startswith('__'):
+        if not name.startswith('__') and 'VERSION' not in name.upper():
             yield module, name or None, sites, module_files(module, name, julia)
 
 
@@ -211,7 +212,7 @@ def upstream_code(w: Window) -> None:
             }[kind]
             per_file = Counter(s.rsplit(':', 1)[0] for s in sites)
             text = f'{verb} {names}, which PROTEUS uses in ' + ', '.join(
-                f'`{f}` ({n} lines)' for f, n in sorted(per_file.items())
+                f'`{f}` ({n} line{"s" if n != 1 else ""})' for f, n in sorted(per_file.items())
             )
             if handled := handled_by(w, pr, edge, sites, {n for n, _, _ in found}):
                 level = 'fyi' if level == 'check' else 'check' if level == 'action' else level

@@ -395,3 +395,19 @@ def test_module_interfaces_maps_names_to_module_files_and_lists_misses():
     assert aragog['unresolved'] == ['aragog.mesh:g']
     assert aragog['built_from'] == 'a1'
     assert out[('nichollsh/AGNI', 'call')]['module_files'] == ['src/state/atmosphere.jl']
+
+
+def test_symbols_leave_version_constants_to_the_release_rule():
+    """A version constant changes with every release, so it is no call-site signal."""
+    e = edge(
+        'nichollsh/AGNI',
+        symbols={
+            'AGNI.consts:AGNI_VERSION': ['a.py:1'],
+            'aragog:__version__': ['a.py:2'],
+            'AGNI.solver:solve_energy!': ['a.py:3'],
+            'AGNI': ['a.py:4'],
+        },
+    )
+    found = {(module, name) for module, name, _, _ in notify.symbols(e, 'AGNI')}
+    assert found == {('AGNI.solver', 'solve_energy!'), ('AGNI', None)}
+    assert all('VERSION' not in (name or '').upper() for _, name in found)
