@@ -398,7 +398,7 @@ class _Killed(BaseException):
     """The job is stopped from outside, as by Slurm at its time limit."""
 
 
-def test_a_stopped_unpack_leaves_no_cut_file_for_later_unpacks(tmp_path):
+def test_a_stopped_unpack_leaves_no_cut_file_for_later_unpacks(tmp_path, monkeypatch):
     """A resume whose unpack is stopped while it writes a file leaves no cut copy
     under that file's name. The next resume unpacks the full file, and a full unpack
     that removes the tar afterwards (as postprocessing does) keeps every file whole.
@@ -409,6 +409,9 @@ def test_a_stopped_unpack_leaves_no_cut_file_for_later_unpacks(tmp_path):
     data_dir = tmp_path / 'data'
     files = _archived_run(data_dir)
     copy = tarfile.copyfileobj
+    elsewhere = tmp_path / 'elsewhere'  # the job's working folder, which stays untouched
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
     started = []
 
     def _stop_in_the_third_file(src, dst, length=None, exception=OSError, bufsize=None):
@@ -432,6 +435,25 @@ def test_a_stopped_unpack_leaves_no_cut_file_for_later_unpacks(tmp_path):
 
     assert _loose_files(data_dir) == files
     assert sorted(os.listdir(data_dir)) == sorted({n.split('/')[0] for n in files})
+    assert os.listdir(elsewhere) == []
+
+
+def test_extract_refuses_a_member_outside_the_data_folder(tmp_path):
+    """An archive member whose name points above the data folder is refused, and
+    nothing is written outside the data folder."""
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    source = tmp_path / 'payload.dat'
+    source.write_bytes(b'payload')
+    with tarfile.open(data_dir / 'data.tar', 'w') as tar_file:
+        tar_file.add(source, arcname='../outside.dat')
+    source.unlink()
+
+    with pytest.raises(tarfile.OutsideDestinationError):
+        archive_mod.extract(str(data_dir))
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ['data']
+    assert not (data_dir / 'outside.dat').exists()
 
 
 def test_extract_latest_without_tar_changes_nothing(tmp_path, caplog):

@@ -180,7 +180,8 @@ def _extract_missing(tar_file, dir: str, keep=None) -> None:
     not loose in `dir`; a loose file is newer than its archived copy.
 
     The files are unpacked into a hidden folder and then renamed into place, so an
-    unpack that is stopped part way leaves no cut file that a later unpack would keep.
+    unpack that is stopped part way leaves no cut file that a later unpack would keep;
+    the next unpack overwrites what it left there and removes it.
     """
     members = {m.name: m for m in tar_file.getmembers()}
     wanted = [
@@ -190,14 +191,12 @@ def _extract_missing(tar_file, dir: str, keep=None) -> None:
     ]
     log.info(f'Extracting {len(wanted)} of {len(members)} archived files in {dir}')
     unpacking = os.path.join(dir, '.unpacking')
-    shutil.rmtree(unpacking, ignore_errors=True)
     tar_file.extractall(unpacking, members=wanted, filter='data')
-    for m in wanted:
+    for m in wanted:  # a folder comes before its files
         target = os.path.join(dir, m.name)
         if m.isdir():
-            os.makedirs(target, exist_ok=True)
+            os.makedirs(target)
         else:
-            os.makedirs(os.path.dirname(target), exist_ok=True)
             os.replace(os.path.join(unpacking, m.name), target)
     shutil.rmtree(unpacking)
 
