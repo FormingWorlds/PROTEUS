@@ -1372,7 +1372,7 @@ def test_determine_zalmoxis_spider_mesh(tmp_path):
     config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
     dirs = {'spider': '/nonexistent/spider'}
-    hf_row = {'R_int': 6.371e6, 'gravity': 9.81, 'T_magma': 3000.0}
+    hf_row = {'R_int': 6.371e6, 'M_int': 5.972e24, 'gravity': 9.81, 'T_magma': 3000.0}
 
     with (
         patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
@@ -1407,7 +1407,7 @@ def test_determine_zalmoxis_adiabatic_switch(caplog):
     config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
     dirs = {'spider': '/nonexistent/spider'}
-    hf_row = {'R_int': 6.371e6}
+    hf_row = {'R_int': 6.371e6, 'M_int': 5.972e24}
 
     with (
         patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
@@ -1452,7 +1452,7 @@ def test_determine_zalmoxis_no_adiabatic_switch_non_tdep(caplog):
     config.interior_struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
 
     dirs = {'spider': '/nonexistent/spider'}
-    hf_row = {'R_int': 6.371e6}
+    hf_row = {'R_int': 6.371e6, 'M_int': 5.972e24}
 
     with (
         patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
@@ -1517,7 +1517,7 @@ def test_determine_zalmoxis_adiabatic_override_gate_per_eos(
     config.interior_struct.zalmoxis.mantle_eos = mantle_eos
 
     dirs = {'spider': '/nonexistent/spider'}
-    hf_row = {'R_int': 6.371e6}
+    hf_row = {'R_int': 6.371e6, 'M_int': 5.972e24}
 
     with (
         patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
@@ -1564,7 +1564,7 @@ def test_determine_zalmoxis_no_override_when_module_is_aragog(caplog):
     config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
     dirs = {}
-    hf_row = {'R_int': 6.371e6}
+    hf_row = {'R_int': 6.371e6, 'M_int': 5.972e24}
 
     with (
         patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
@@ -1616,7 +1616,7 @@ def test_determine_zalmoxis_no_override_when_temperature_mode_already_adiabatic(
     config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
     dirs = {'spider': '/nonexistent/spider'}
-    hf_row = {'R_int': 6.371e6}
+    hf_row = {'R_int': 6.371e6, 'M_int': 5.972e24}
 
     with (
         patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
