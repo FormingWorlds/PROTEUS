@@ -1038,10 +1038,9 @@ class Proteus:
             if len(self.hf_all) <= self.loops['init_loops'] + 1:
                 raise RuntimeError('Simulation is too short to be resumed')
 
-            # Extract archived data files before choosing a resume point, so
-            # the loose per-iteration snapshots are present on disk.
-            log.debug('Extracting archived data files')
-            self.extract_archives()
+            # Unpack the latest snapshots and the runtime files before choosing a
+            # resume point; the older snapshots stay in the archive.
+            archive.extract_latest(self.directories['output/data'])
             self._require_paleos_tables()
 
             # Resume from the latest snapshot pair that is complete and belongs

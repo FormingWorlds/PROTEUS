@@ -12,6 +12,10 @@ from proteus.utils.helper import parse_subyear_time, safe_rm
 
 log = logging.getLogger('fwl.' + __name__)
 
+# Snapshot times a resume unpacks: the resume row, the rows it may fall back to
+# when the latest pair is incomplete, and the mesh copy of an earlier structure.
+RESUME_SNAPSHOT_TIMES = 10
+
 
 def _tarfile_from_dir(dir: str) -> str:
     name = os.path.split(dir)[-1]
@@ -19,11 +23,25 @@ def _tarfile_from_dir(dir: str) -> str:
 
 
 def _move_into_tar(dir: str, files: list[str]) -> str:
-    """Add `files` to the tar file in `dir`, creating it if missing, then remove them."""
+    """Add `files` to the tar file in `dir`, creating it if missing, then remove them.
+
+    A file whose last archived copy has the same size and modification time is not
+    added again: a resume unpacks files with their archived modification time, so
+    the unchanged ones go back into the tar only once.
+    """
     tar = _tarfile_from_dir(dir)
     with tarfile.open(tar, 'a') as tar_file:
+        archived = {m.name: m for m in tar_file.getmembers()}
+
+        def changed(info):
+            """Leave out a file whose last archived copy has its size and mtime."""
+            last = archived.get(info.name)
+            if info.isfile() and last and (last.size, last.mtime) == (info.size, info.mtime):
+                return None
+            return info
+
         for f in files:
-            tar_file.add(f, arcname=os.path.basename(f))
+            tar_file.add(f, arcname=os.path.basename(f), filter=changed)
     for f in files:
         if f != tar:
             safe_rm(f)
@@ -156,10 +174,24 @@ def append(dir: str) -> str:
     return _move_into_tar(dir, glob.glob(os.path.join(dir, '*')))
 
 
+def _extract_missing(tar_file, dir: str, keep=None) -> None:
+    """Extract the last archived copy of each name that `keep` accepts and that is
+    not loose in `dir`; a loose file is newer than its archived copy."""
+    members = {m.name: m for m in tar_file.getmembers()}
+    wanted = [
+        m
+        for n, m in members.items()
+        if (keep is None or keep(n)) and not os.path.lexists(os.path.join(dir, n))
+    ]
+    log.info(f'Extracting {len(wanted)} of {len(members)} archived files in {dir}')
+    tar_file.extractall(dir, members=wanted, filter='data')
+
+
 def extract(dir: str, remove_tar: bool = False, ignore_warnings: bool = False) -> str:
     """
     Extract the tar file contained within a directory, placing the content within that directory.
 
+    A file that is already loose in the directory keeps its loose copy.
     Removes the tar file afterwards if `remove_tar` is set to True.
     Does not complain if the tar file does not exist, if `ignore_warnings` is set to True.
 
@@ -195,11 +227,39 @@ def extract(dir: str, remove_tar: bool = False, ignore_warnings: bool = False) -
 
     # Extract tar file
     with tarfile.open(tar, 'r') as tar_file:
-        tar_file.extractall(dir, filter='data')
+        _extract_missing(tar_file, dir)
 
     # Remove tar file
     if remove_tar:
         safe_rm(tar)
+
+
+def extract_latest(dir: str, count: int = RESUME_SNAPSHOT_TIMES) -> None:
+    """
+    Extract the entries a resume reads from the tar file in `dir`, leaving the tar file whole.
+
+    These are every entry that is not a snapshot (see :func:`_snapshot_time`) and
+    the snapshots of the latest `count` snapshot times. A name that is already
+    loose in `dir` keeps its loose copy. The tar file is only read, so a resume
+    that is stopped part way loses no data, and :func:`_move_into_tar` skips the
+    extracted files that are archived again unchanged.
+
+    Arguments
+    ---------
+    dir : str
+        The directory holding the tar file.
+    count : int
+        Number of latest snapshot times to extract.
+    """
+
+    dir = os.path.abspath(dir)
+    if not archive_exists(dir):
+        return
+
+    with tarfile.open(_tarfile_from_dir(dir), 'r') as tar_file:
+        times = {n: _snapshot_time(n) for n in tar_file.getnames()}
+        latest = sorted({t for t in times.values() if t is not None})[-count:]
+        _extract_missing(tar_file, dir, lambda n: times[n] is None or times[n] >= latest[0])
 
 
 def update(dir: str) -> None:

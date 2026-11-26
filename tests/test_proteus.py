@@ -718,13 +718,44 @@ def test_proteus_resume_checks_the_eos_tables_after_unpacking(tmp_path):
     p = _make_proteus_instance(tmp_path)
     (tmp_path / 'data').mkdir(exist_ok=True)
     order = []
-    p.extract_archives = MagicMock(side_effect=lambda: order.append('extract'))
+    p.extract_archives = MagicMock()
     p._require_paleos_tables = MagicMock(side_effect=lambda: order.append('require'))
 
-    _resume_with_patches(p, _make_hf_df())
+    with patch(
+        'proteus.proteus.archive.extract_latest',
+        side_effect=lambda d: order.append(('extract', d)),
+    ):
+        _resume_with_patches(p, _make_hf_df())
 
-    assert order == ['extract', 'require']
+    # The resume unpacks only the latest snapshots, never the whole archive.
+    assert order == [('extract', p.directories['output/data']), 'require']
+    p.extract_archives.assert_not_called()
     p._require_paleos_tables.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_extract_archives_unpacks_the_whole_archive_and_removes_it(tmp_path, caplog):
+    """extract_archives, which postprocessing calls, unpacks every archived file and
+    removes data.tar; on a run without data.tar it changes nothing and warns."""
+    import proteus.utils.archive as archive
+
+    p = _make_proteus_instance(tmp_path)
+    data = tmp_path / 'data'
+    data.mkdir(exist_ok=True)
+    (data / '100_int.nc').write_bytes(b'old snapshot')
+    (data / 'zalmoxis_output.dat').write_bytes(b'mesh')
+    archive.create(str(data))
+
+    p.extract_archives()
+
+    assert (data / '100_int.nc').read_bytes() == b'old snapshot'
+    assert (data / 'zalmoxis_output.dat').read_bytes() == b'mesh'
+    assert not (data / 'data.tar').exists()
+
+    with caplog.at_level('WARNING'):
+        p.extract_archives()
+    assert sorted(f.name for f in data.iterdir()) == ['100_int.nc', 'zalmoxis_output.dat']
+    assert any('does not exist' in r.message for r in caplog.records)
 
 
 @pytest.mark.unit
