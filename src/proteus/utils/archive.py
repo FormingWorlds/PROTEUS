@@ -214,10 +214,24 @@ def append(dir: str, remove_files: bool = True, snapshots_only: bool = False) ->
     return tar
 
 
+def _extract_missing(tar_file, dir: str, keep=None) -> None:
+    """Extract the last archived copy of each name that `keep` accepts and that is
+    not loose in `dir`; a loose file is newer than its archived copy."""
+    members = {m.name: m for m in tar_file.getmembers()}
+    wanted = [
+        m
+        for n, m in members.items()
+        if (keep is None or keep(n)) and not os.path.lexists(os.path.join(dir, n))
+    ]
+    log.info(f'Extracting {len(wanted)} of {len(members)} archived files in {dir}')
+    tar_file.extractall(dir, members=wanted, filter='data')
+
+
 def extract(dir: str, remove_tar: bool = False, ignore_warnings: bool = False) -> str:
     """
     Extract the tar file contained within a directory, placing the content within that directory.
 
+    A file that is already loose in the directory keeps its loose copy.
     Removes the tar file afterwards if `remove_tar` is set to True.
     Does not complain if the tar file does not exist, if `ignore_warnings` is set to True.
 
@@ -253,7 +267,7 @@ def extract(dir: str, remove_tar: bool = False, ignore_warnings: bool = False) -
 
     # Extract tar file
     with tarfile.open(tar, 'r') as tar_file:
-        tar_file.extractall(dir, filter='data')
+        _extract_missing(tar_file, dir)
 
     # Remove tar file
     if remove_tar:
@@ -283,18 +297,9 @@ def extract_latest(dir: str, count: int = RESUME_SNAPSHOT_TIMES) -> None:
         return
 
     with tarfile.open(_tarfile_from_dir(dir), 'r') as tar_file:
-        # extractall lets the last copy of a name win, so only that copy counts
-        members = {m.name: m for m in tar_file.getmembers()}
-        times = {n: _snapshot_time(n) for n in members}
+        times = {n: _snapshot_time(n) for n in tar_file.getnames()}
         latest = sorted({t for t in times.values() if t is not None})[-count:]
-        wanted = [
-            m
-            for n, m in members.items()
-            if (times[n] is None or times[n] >= latest[0])
-            and not os.path.lexists(os.path.join(dir, n))
-        ]
-        log.info(f'Extracting {len(wanted)} of {len(members)} archived files in {dir}')
-        tar_file.extractall(dir, members=wanted, filter='data')
+        _extract_missing(tar_file, dir, lambda n: times[n] is None or times[n] >= latest[0])
 
 
 def update(dir: str, remove_files: bool = True, snapshots_only: bool = False) -> None:

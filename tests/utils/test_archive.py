@@ -333,6 +333,50 @@ def test_final_archive_after_resume_stores_changed_files_only(tmp_path):
     assert _loose_files(data_dir) == {**files, **latest}
 
 
+def test_second_resume_compares_with_the_last_archived_copy(tmp_path):
+    """On a second resume, an unpacked file that did not change is skipped
+    against its last archived copy, and a file that changed size is added
+    even when its modification time is the archived one.
+
+    Discrimination: a comparison with the first archived copy stores
+    zalmoxis_output.dat a third time, and a comparison by time alone loses
+    the new EOS table.
+    """
+    data_dir = tmp_path / 'data'
+    _archived_run(data_dir)
+    archive_mod.extract_latest(str(data_dir), count=3)
+    (data_dir / 'zalmoxis_output.dat').write_bytes(b'MESH' * 8)
+    archive_mod.update(str(data_dir), remove_files=True)
+
+    archive_mod.extract_latest(str(data_dir), count=3)
+    table = data_dir / 'spider_eos' / 'table.dat'
+    table.write_bytes(b'eos-v2')
+    os.utime(table, (1.0e9, 1.0e9))  # the archived time, with another size
+    archive_mod.update(str(data_dir), remove_files=True)
+
+    counts = _tar_member_counts(data_dir / 'data.tar')
+    assert counts['zalmoxis_output.dat'] == 2
+    assert counts['spider_eos/table.dat'] == 2
+    archive_mod.extract(str(data_dir), remove_tar=True)
+    assert (data_dir / 'zalmoxis_output.dat').read_bytes() == b'MESH' * 8
+    assert table.read_bytes() == b'eos-v2'
+
+
+def test_full_extract_keeps_a_newer_loose_file(tmp_path):
+    """A full unpack at the end of a resumed run, as offline chemistry does,
+    keeps a runtime file that changed after the resume instead of the older
+    copy of the earlier run."""
+    data_dir = tmp_path / 'data'
+    files = _archived_run(data_dir)
+    archive_mod.extract_latest(str(data_dir), count=3)
+    (data_dir / 'zalmoxis_output.dat').write_bytes(b'MESH' * 8)
+
+    archive_mod.extract(str(data_dir), remove_tar=True)
+
+    assert (data_dir / 'zalmoxis_output.dat').read_bytes() == b'MESH' * 8
+    assert _loose_files(data_dir) == {**files, 'zalmoxis_output.dat': b'MESH' * 8}
+
+
 def test_extract_latest_keeps_loose_copies_and_takes_last_archived_copy(tmp_path):
     """A loose file is newer than its archived copy, so it stays as it is,
     and of two archived copies of one name the last one is unpacked."""
