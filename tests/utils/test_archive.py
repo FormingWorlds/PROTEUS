@@ -428,6 +428,7 @@ def test_a_stopped_unpack_leaves_no_cut_file_for_later_unpacks(tmp_path, monkeyp
     loose = {n: c for n, c in _loose_files(data_dir).items() if not n.startswith('.unpacking/')}
     assert cut not in loose
     assert loose == {n: files[n] for n in loose}
+    assert (data_dir / '.unpacking').is_dir() and os.listdir(elsewhere) == []
 
     archive_mod.extract_latest(str(data_dir), count=3)
     assert _loose_files(data_dir)[cut] == files[cut]
