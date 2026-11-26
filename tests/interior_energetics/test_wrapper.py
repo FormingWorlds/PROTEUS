@@ -5835,16 +5835,15 @@ def test_composition_sentinel_update_after_structure_change():
 # ============================================================================
 
 
-def _dtmagma_scenario(update_dphi_abs=0.05):
+def _dtmagma_scenario():
     """Inputs that make the dT/T trigger the SOLE re-solve trigger.
 
     Elapsed (500 yr) clears the 100 yr floor and sits under the 1000 yr
     ceiling; T_magma drops 3000->2800 K (dT/T=0.067 >= 0.03) while Phi is
     unchanged, so neither the ceiling, stale, Phi, nor composition trigger
-    fires. ``update_dphi_abs`` is exposed so a test can disable the Phi
-    trigger (0.999, production-like).
+    fires.
     """
-    config = _mock_config(update_dphi_abs=update_dphi_abs)
+    config = _mock_config(update_dphi_abs=0.05)
     hf_row = {
         'Time': 500.0,
         'T_magma': 2800.0,
@@ -5858,11 +5857,10 @@ def _dtmagma_scenario(update_dphi_abs=0.05):
     return config, hf_row, 0.0, 3000.0, 0.80
 
 
-def _solver_patches(side_effect=None, return_value=(3.504e6, None)):
+def _solver_patches(side_effect):
     """Patch the Zalmoxis solver plus the file writes its success path performs."""
-    kw = {'side_effect': side_effect} if side_effect else {'return_value': return_value}
     return (
-        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', **kw),
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=side_effect),
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     )

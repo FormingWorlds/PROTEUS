@@ -5,8 +5,8 @@ row (``store_structure_trigger_state``) and restores on resume
 (``restore_structure_trigger_state``, ``src/proteus/interior_energetics/wrapper.py``).
 
 A run of ``tests/integration/zalmoxis_aragog_calliope.toml`` with a fixed 50 yr step and a
-structure update at most every 150 yr runs to 500 yr in one go. The same run stops at 252 yr
-and resumes to 500 yr. A copy of the stopped run with the references of its last row set to
+structure update at most every 100 yr runs to 302 yr in one go. The same run stops at 152 yr
+and resumes to 302 yr. A copy of the stopped run with the references of its last row set to
 0, which is what a resume read before they were stored, resumes as well.
 
 Invariants asserted:
@@ -27,18 +27,19 @@ import pytest
 
 pytest.importorskip('zalmoxis')
 
-pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
+# Four Zalmoxis-Aragog-CALLIOPE runs, 25 rows in all; the nightly runner is slower than Habrok.
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(7200)]
 
 CONFIG = pathlib.Path(__file__).parent / 'zalmoxis_aragog_calliope.toml'
 REF_KEYS = ('struct_ref_time', 'struct_ref_T_magma', 'struct_ref_Phi')
 
-# After the init rows (0, 1, 2 yr) the steps are 50 yr, and the 150 yr ceiling re-solves at 152, 302
-# and 452 yr. A stop at 252 yr keeps the step grid; a resume that takes its row as the reference
-# moves the next re-solve to 402 yr.
+# After the init rows (0, 1, 2 yr) the steps are 50 yr, and the 100 yr ceiling re-solves at 102, 202
+# and 302 yr. A stop at 152 yr keeps the step grid; a resume that takes its row as the reference
+# moves the next re-solve to 252 yr.
 DT_YR = 50.0
-CEILING_YR = 150.0
-T_STOP_YR = 252.0
-T_END_YR = 500.0
+CEILING_YR = 100.0
+T_STOP_YR = 152.0
+T_END_YR = 302.0
 
 
 def _runner(outdir, tmax):
@@ -100,7 +101,7 @@ def runs(tmp_path_factory):
 
 @pytest.mark.physics_invariant
 def test_resumed_run_resolves_the_structure_at_the_rows_of_the_run_in_one_go(runs):
-    """Zalmoxis and Aragog with CALLIOPE outgassing: the run stopped at 252 yr and resumed
+    """Zalmoxis and Aragog with CALLIOPE outgassing: the run stopped at 152 yr and resumed
     re-solves at the rows of the run in one go; the resume without references does not."""
     whole, resumed, no_refs = runs['whole'], runs['resumed'], runs['no_refs']
     t_whole = _resolve_times(whole)

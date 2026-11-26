@@ -960,7 +960,7 @@
     {
       "name": "struct_ref_time",
       "unit": "yr",
-      "description": "time of the last structure update, the reference of the structure triggers; 0 before the first",
+      "description": "time of the last structure update, the reference of the structure triggers; before the first, the time of the initial condition",
       "group": "Planet structure",
       "origin": "literal",
       "producers": [
@@ -977,7 +977,7 @@
     {
       "name": "struct_ref_T_magma",
       "unit": "K",
-      "description": "T_magma at the last structure update, the reference of the dT/T trigger; 0 before the first",
+      "description": "T_magma at the last structure update, the reference of the dT/T trigger; before the first, T_magma after the initial condition",
       "group": "Planet structure",
       "origin": "literal",
       "producers": [
@@ -994,7 +994,7 @@
     {
       "name": "struct_ref_Phi",
       "unit": "1",
-      "description": "Phi_global at the last structure update, the reference of the dPhi trigger",
+      "description": "Phi_global at the last structure update, the reference of the dPhi trigger; before the first, Phi_global after the initial condition",
       "group": "Planet structure",
       "origin": "literal",
       "producers": [
