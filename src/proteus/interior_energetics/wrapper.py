@@ -130,13 +130,6 @@ _ARAGOG_CALL_ENERGY_KEYS = (
 # Values outside this range indicate initial conditions dominate collision energy.
 _REMELT_RETAINED_BAND = (0.01, 1.0)
 
-# Resume-settling guard: for this many loops after a resume, a re-solve triggered by dT/T alone
-# is skipped while the last relative R_int change is below the tolerance and Phi moved less
-# than min(update_dphi_abs, the cap) since the last re-solve (update_structure_from_interior).
-_RESUME_STRUCT_SETTLE_LOOPS = 50
-_RESUME_STRUCT_DR_REL_TOL = 1e-4
-_RESUME_STRUCT_DPHI_BACKSTOP_CAP = 0.10
-
 log = logging.getLogger('fwl.' + __name__)
 
 
@@ -3077,6 +3070,63 @@ def _refresh_composition_sentinels(dirs: dict, hf_row: dict) -> None:
             )
 
 
+def store_structure_trigger_state(hf_row: dict, dirs: dict, refs: tuple) -> None:
+    """Write the references of the structure-update triggers into the helpfile row.
+
+    The resume restores them from the row it continues (:func:`restore_structure_trigger_state`),
+    so a resumed run re-solves the structure at the same rows as the run it continues.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row; gains ``struct_ref_*`` keys.
+    dirs : dict
+        Per-run scratch dictionary holding the ``_last_w_{species}_liquid`` sentinels.
+    refs : tuple[float, float, float]
+        Time [yr], T_magma [K] and Phi_global [1] of the last structure update. A
+        non-finite value (no update yet) is written as 0.
+    """
+    time, T_magma, Phi = (float(v) if np.isfinite(v) else 0.0 for v in refs)
+    hf_row['struct_ref_time'] = time
+    hf_row['struct_ref_T_magma'] = T_magma
+    hf_row['struct_ref_Phi'] = Phi
+    for species in _COMPOSITION_SENTINEL_SPECIES:
+        hf_row[f'struct_ref_w_{species}_liquid'] = float(
+            dirs.get(f'_last_w_{species}_liquid', 0.0)
+        )
+
+
+def restore_structure_trigger_state(hf_row: dict, dirs: dict) -> tuple | None:
+    """Read the references of the structure-update triggers from a helpfile row.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row the resumed run continues.
+    dirs : dict
+        Per-run scratch dictionary; gains the ``_last_w_{species}_liquid`` sentinels that
+        the row holds.
+
+    Returns
+    -------
+    tuple[float, float, float] or None
+        Time [yr], T_magma [K] and Phi_global [1] of the last structure update, or None when
+        the row holds no reference: a T_magma reference of 0, as in a helpfile written before
+        these columns existed.
+    """
+    if not hf_row.get('struct_ref_T_magma', 0.0) > 0.0:
+        return None
+    for species in _COMPOSITION_SENTINEL_SPECIES:
+        w = float(hf_row.get(f'struct_ref_w_{species}_liquid', 0.0))
+        if w > 0.0:
+            dirs[f'_last_w_{species}_liquid'] = w
+    return (
+        float(hf_row['struct_ref_time']),
+        float(hf_row['struct_ref_T_magma']),
+        float(hf_row['struct_ref_Phi']),
+    )
+
+
 def _eos_grid_extent_up_step(eos_path: str, hf_row: dict) -> bool:
     """Report whether a regenerated EOS mesh's outer radius up-steps past tolerance.
 
@@ -3262,11 +3312,6 @@ def update_structure_from_interior(
     # trigger, so every change-based test below self-skips on `not triggered`.
     triggered = force
     reason = 'init baseline (interior-fed callable representation)' if force else ''
-    # Tracks whether the dT/T (temperature) trigger is the SOLE reason for this
-    # re-solve. The resume-settling guard below acts only on a dT/T-only
-    # re-solve; every other trigger (mesh convergence, ceiling, stale, Phi,
-    # composition) sets `triggered` first and short-circuits the dT/T block.
-    trigger_is_dtmagma = False
 
     # Mesh convergence trigger: bypasses normal floor when mesh is still
     # converging toward the true Zalmoxis solution after blending
@@ -3315,7 +3360,6 @@ def update_structure_from_interior(
         dT_frac = abs(hf_row['T_magma'] - last_Tmagma) / last_Tmagma
         if dT_frac >= config.interior_struct.zalmoxis.update_dtmagma_frac:
             triggered = True
-            trigger_is_dtmagma = True
             reason = (
                 f'dT/T={dT_frac:.3f} >= {config.interior_struct.zalmoxis.update_dtmagma_frac}'
             )
@@ -3341,57 +3385,6 @@ def update_structure_from_interior(
 
     if not triggered:
         return no_update
-
-    # Resume-settling guard. During the first loops after a resume the interior
-    # relaxes thermally and the dT/T trigger fires every loop, but the structure
-    # radius converges after the first couple of re-solves and then no longer
-    # moves, so each further dT/T re-solve recomputes the same radius at a large
-    # wall cost. Once the last accepted re-solve changed R_int by less than the
-    # tolerance (structure converged), suppress a dT/T-ONLY re-solve for the rest
-    # of the window. A Phi move beyond the backstop forces the re-solve so genuine
-    # solidification during the window is never frozen, and only the dT/T trigger
-    # is gated (mesh-convergence, ceiling, stale and Phi triggers always proceed).
-    # The window is armed only on the resume code path, so forward runs never
-    # reach this branch and their re-solve cadence is unchanged.
-    if trigger_is_dtmagma and dirs.get('_resume_struct_settle_loops', 0) > 0:
-        _dR_rel = dirs.get('_last_resolve_dR_rel')
-        _dPhi_since = abs(hf_row['Phi_global'] - last_Phi)
-        # Tie the backstop to the config's own melt-fraction trigger so the guard
-        # never blocks a re-solve that trigger would have allowed (a dT/T-only
-        # re-solve already implies dPhi < update_dphi_abs), capped so a
-        # melt-fraction-trigger-disabled config still has a finite Phi floor.
-        _backstop = min(
-            config.interior_struct.zalmoxis.update_dphi_abs,
-            _RESUME_STRUCT_DPHI_BACKSTOP_CAP,
-        )
-        _converged = _dR_rel is not None and _dR_rel < _RESUME_STRUCT_DR_REL_TOL
-        if _converged and _dPhi_since < _backstop:
-            log.info(
-                'Resume settling: skipping dT/T-triggered structure re-solve '
-                '(%s; last |dR_int/R_int|=%.2e < %.0e, dPhi=%.4f < %.3f, '
-                'window %d loops left). Structure already converged; the re-solve '
-                'would recompute the same radius.',
-                reason,
-                _dR_rel,
-                _RESUME_STRUCT_DR_REL_TOL,
-                _dPhi_since,
-                _backstop,
-                dirs['_resume_struct_settle_loops'],
-            )
-            return no_update
-        # Observable trace of why the guard did NOT suppress this dT/T re-solve
-        # (first solve has no recorded dR yet; structure still moving; or Phi
-        # moved past the backstop). Lets a resume log show the guard's decision.
-        log.info(
-            'Resume settling: dT/T re-solve proceeds (%s; last |dR_int/R_int|=%s, '
-            'converged=%s, dPhi=%.4f vs backstop %.3f, window %d loops left).',
-            reason,
-            'n/a' if _dR_rel is None else '%.2e' % _dR_rel,
-            _converged,
-            _dPhi_since,
-            _backstop,
-            dirs['_resume_struct_settle_loops'],
-        )
 
     log.info('Updating structure from interior T(r) via Zalmoxis (trigger: %s)', reason)
 
@@ -3714,10 +3707,8 @@ def update_structure_from_interior(
             dirs['mesh_convergence_steps'] = 0
             del _r_asc, _T_asc, temperature_function
             gc.collect()
-            # The structure is unchanged: advance the trigger clock and sentinels and record a
-            # zero radius change, so a recurring cross-table up-step neither re-fires a re-solve
-            # every step nor keeps the resume-settling guard from treating it as converged.
-            dirs['_last_resolve_dR_rel'] = 0.0
+            # The structure is unchanged: advance the trigger clock and sentinels, so a
+            # recurring cross-table up-step does not re-fire a re-solve every step.
             # Advance the dissolved-volatile composition sentinels exactly as the
             # success path does. This reject path returns before the success-path
             # refresh, so without it the baseline _last_w_{species}_liquid stays
@@ -3757,13 +3748,6 @@ def update_structure_from_interior(
         # helpfile schema, and is persisted so a resume recovers it.
         interior_o.structure_stale = False
         interior_o.write_structure_stale(dirs['output'])
-        # Record the relative radius change this accepted re-solve produced.
-        # The resume-settling guard reads it next loop: a value below the
-        # tolerance means the structure has converged and a further
-        # dT/T-triggered re-solve would recompute the same radius.
-        _R_int_post = float(hf_row.get('R_int', 0.0) or 0.0)
-        if R_int_prev > 0.0:
-            dirs['_last_resolve_dR_rel'] = abs(_R_int_post - R_int_prev) / R_int_prev
         # Per-re-solve wall-time trace logged at INFO so the
         # convergence cadence cost can be read from proteus_00.log.
         log.info(

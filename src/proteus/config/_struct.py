@@ -229,8 +229,8 @@ class Zalmoxis:
         Recovery after a failed re-solve [yr]: if no other trigger fires,
         a new re-solve starts once this time has passed since the last
         attempt. The other triggers can start one sooner, after
-        `update_min_interval`. On resume the resumed time counts as the
-        last attempt. Has an effect only if smaller than `update_interval`,
+        `update_min_interval`. On resume the last attempt before the stop
+        counts, as the helpfile row stores it. Has an effect only if smaller than `update_interval`,
         and only while the last re-solve has failed; 0 disables.
     mesh_max_shift: float
         Maximum fractional radius shift per structure update.

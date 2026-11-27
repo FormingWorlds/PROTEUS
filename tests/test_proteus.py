@@ -18,6 +18,8 @@ Functions tested:
 - Proteus._check_atmosphere_deadlock()
 - Proteus.start(): resumed main loop hands the atmosphere the interior T_magma
   (or the solvus boundary with global miscibility)
+- Proteus._run_stellar_step(): a resumed run keeps the update times and the
+  spectrum of the run it continues
 """
 
 from __future__ import annotations
@@ -718,13 +720,44 @@ def test_proteus_resume_checks_the_eos_tables_after_unpacking(tmp_path):
     p = _make_proteus_instance(tmp_path)
     (tmp_path / 'data').mkdir(exist_ok=True)
     order = []
-    p.extract_archives = MagicMock(side_effect=lambda: order.append('extract'))
+    p.extract_archives = MagicMock()
     p._require_paleos_tables = MagicMock(side_effect=lambda: order.append('require'))
 
-    _resume_with_patches(p, _make_hf_df())
+    with patch(
+        'proteus.proteus.archive.extract_latest',
+        side_effect=lambda d: order.append(('extract', d)),
+    ):
+        _resume_with_patches(p, _make_hf_df())
 
-    assert order == ['extract', 'require']
+    # The resume unpacks only the latest snapshots, never the whole archive.
+    assert order == [('extract', p.directories['output/data']), 'require']
+    p.extract_archives.assert_not_called()
     p._require_paleos_tables.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_extract_archives_unpacks_the_whole_archive_and_removes_it(tmp_path, caplog):
+    """extract_archives, which postprocessing calls, unpacks every archived file and
+    removes data.tar; on a run without data.tar it changes nothing and warns."""
+    import proteus.utils.archive as archive
+
+    p = _make_proteus_instance(tmp_path)
+    data = tmp_path / 'data'
+    data.mkdir(exist_ok=True)
+    (data / '100_int.nc').write_bytes(b'old snapshot')
+    (data / 'zalmoxis_output.dat').write_bytes(b'mesh')
+    archive.create(str(data))
+
+    p.extract_archives()
+
+    assert (data / '100_int.nc').read_bytes() == b'old snapshot'
+    assert (data / 'zalmoxis_output.dat').read_bytes() == b'mesh'
+    assert not (data / 'data.tar').exists()
+
+    with caplog.at_level('WARNING'):
+        p.extract_archives()
+    assert sorted(f.name for f in data.iterdir()) == ['100_int.nc', 'zalmoxis_output.dat']
+    assert any('does not exist' in r.message for r in caplog.records)
 
 
 @pytest.mark.unit
@@ -1519,7 +1552,49 @@ def test_resume_runs_the_resync_for_zalmoxis_and_aragog_only(
 
     # _resume_with_patches stops at init_star, so a recorded call came before it.
     assert resync.called is called
-    assert p.directories['_resume_struct_settle_loops'] > 0
+    # Without stored references the structure triggers start from the last row.
+    assert p.last_struct_time == pytest.approx(400.0, rel=0, abs=0)
+
+
+@pytest.mark.unit
+def test_resume_takes_the_structure_trigger_references_from_the_row(tmp_path):
+    """start(resume=True) sets the structure-update sentinels to the references the last row
+    stored (the update at 200 yr), not to the time, T_magma and Phi of that row (400 yr)."""
+    p = _make_proteus_instance(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    hf = _make_hf_df()
+    hf['Phi_global'] = [1.0, 0.9, 0.8, 0.7, 0.6]
+    hf['struct_ref_time'] = [0.0, 0.0, 200.0, 200.0, 200.0]
+    hf['struct_ref_T_magma'] = [3000.0, 3000.0, 2600.0, 2600.0, 2600.0]
+    hf['struct_ref_Phi'] = [1.0, 1.0, 0.8, 0.8, 0.8]
+    hf['struct_ref_w_H2O_liquid'] = [0.0, 0.0, 2.0e-3, 2.0e-3, 2.0e-3]
+    hf['struct_ref_w_H2_liquid'] = [0.0] * 5
+
+    _resume_with_patches(p, hf)
+
+    refs = (p.last_struct_time, p.last_struct_Tmagma, p.last_struct_Phi)
+    assert refs == pytest.approx((200.0, 2600.0, 0.8), rel=0, abs=0)
+    assert p.directories['_last_w_H2O_liquid'] == pytest.approx(2.0e-3, rel=0, abs=0)
+    # 0 means no dissolved H2 at the update: the trigger then has no baseline, as before.
+    assert '_last_w_H2_liquid' not in p.directories
+
+
+@pytest.mark.unit
+def test_resume_of_a_helpfile_without_trigger_references_starts_from_the_row(tmp_path):
+    """A helpfile written before the references were stored (columns read as 0) resumes with
+    the sentinels at its last row, as before."""
+    p = _make_proteus_instance(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    hf = _make_hf_df()
+    hf['Phi_global'] = [1.0, 0.9, 0.8, 0.7, 0.6]
+    hf['struct_ref_time'] = [0.0] * 5
+    hf['struct_ref_T_magma'] = [0.0] * 5
+
+    _resume_with_patches(p, hf)
+
+    refs = (p.last_struct_time, p.last_struct_Tmagma, p.last_struct_Phi)
+    assert refs == pytest.approx((400.0, 2200.0, 0.6), rel=0, abs=0)
+    assert '_last_w_H2O_liquid' not in p.directories
 
 
 class _StopAtRunningStatus(Exception):
@@ -5601,3 +5676,204 @@ def test_main_loop_checks_chemistry_targets_only_on_steps_without_a_snapshot(tmp
     # is_snapshot reads the count before its increment, so steps 0, 2 and 4 write; the
     # check runs on steps 1, 3 and 5, by which time the count reads 2, 4 and 6
     assert calls == [2, 4, 6]
+
+
+# ---------------------------------------------------------------------------
+# Stellar step: update intervals and the spectrum across a resume
+# ---------------------------------------------------------------------------
+
+_STEP_YR = 100.0
+_AGE_INI_YR = 1.0e8
+
+
+def _at_toa(fl, distance):
+    """Fluxes at 1 AU scaled to the top of an atmosphere at `distance` [m]."""
+    from proteus.utils.constants import AU
+
+    return fl * (AU / distance) ** 2
+
+
+def _toy_spectrum(age, config, **kwargs):
+    """Spectrum at 1 AU whose shape and level depend on the star age [yr]."""
+    scale = 1.0 + (age - _AGE_INI_YR) / 100.0  # doubles over one 100 yr step
+    return np.array([100.0, 500.0, 2000.0]), np.array([3.0, 2.0, 1.0]) * scale + [
+        0,
+        0,
+        scale**2,
+    ]
+
+
+def _stellar_proteus(tmp_path, starspec, starinst):
+    """Proteus object with real update intervals for the stellar step [yr]."""
+    tmp_path.mkdir(exist_ok=True)
+    p = _make_proteus_instance(tmp_path)
+    p.config.params.dt.starspec = starspec
+    p.config.params.dt.starinst = starinst
+    p.interior_o = MagicMock(timestep_clamped=False)
+    p.loops = {'total': 0}
+    return p
+
+
+def _stellar_steps(p, rows, steps):
+    """Run the stellar step for `steps` rows after `rows`, as the main loop does.
+
+    Each row starts as a copy of the last, 100 yr later and on a slightly wider orbit,
+    so a spectrum taken at another row differs in age and in distance. Returns per step
+    whether the spectrum changed, the spectrum, how often the stellar quantities were
+    updated, and the keyword arguments of the stellar calls.
+    """
+    log = []
+    with (
+        patch('proteus.star.wrapper.get_new_spectrum', side_effect=_toy_spectrum) as spectrum,
+        patch('proteus.star.wrapper.update_stellar_quantities') as quantities,
+        patch('proteus.star.wrapper.write_spectrum') as write,
+    ):
+        for _ in range(steps):
+            p.hf_row = dict(rows[-1])
+            p.hf_row['Time'] += _STEP_YR
+            p.hf_row['age_star'] += _STEP_YR
+            p.hf_row['semimajorax'] *= 1.001
+            changed = p._run_stellar_step()
+            calls = quantities.call_args_list + spectrum.call_args_list
+            log.append(
+                (changed, p.star_fl.copy(), quantities.call_count, [c.kwargs for c in calls])
+            )
+            quantities.reset_mock()
+            spectrum.reset_mock()
+            rows.append(dict(p.hf_row))
+            p.loops['total'] += 1
+        assert write.call_count == sum(entry[0] for entry in log)
+    return log
+
+
+def _run_in_one_go(p, steps):
+    """The first loop of a run: the interior steps 1 yr, then the init stage resets Time
+    to 0, as in the golden run. Returns the rows and the per-step log of the later steps."""
+    from proteus.utils.coupler import ZeroHelpfileRow
+
+    p.hf_row = ZeroHelpfileRow()
+    p.hf_row.update(Time=1.0, age_star=_AGE_INI_YR + 1.0, semimajorax=1.0e11, eccentricity=0.0)
+    with (
+        patch('proteus.star.wrapper.get_new_spectrum', side_effect=_toy_spectrum),
+        patch('proteus.star.wrapper.update_stellar_quantities'),
+        patch('proteus.star.wrapper.write_spectrum'),
+    ):
+        assert p._run_stellar_step() is True
+    rows = [dict(p.hf_row, Time=0.0)]
+    p.loops['total'] = 1
+    return rows, _stellar_steps(p, rows, steps)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'starspec, starinst',
+    [
+        pytest.param(1.0e9, 1.0e9, id='no_update_after_the_start'),
+        pytest.param(250.0, 150.0, id='update_every_few_steps'),
+        pytest.param(50.0, 50.0, id='interval_shorter_than_a_step'),
+    ],
+)
+def test_a_resumed_run_updates_the_star_as_the_run_in_one_go(tmp_path, starspec, starinst):
+    """A run stopped after 5 rows and resumed has, at every later row, the spectrum and
+    the update rows of the same run made in one go; the spectrum of the resume row,
+    which a resume used to compute, differs from it unless that row updated it."""
+    rows, log_a = _run_in_one_go(_stellar_proteus(tmp_path / 'a', starspec, starinst), 9)
+
+    resumed = _stellar_proteus(tmp_path / 'b', starspec, starinst)
+    resumed.loops['total'] = 5
+    log_b = _stellar_steps(resumed, [dict(r) for r in rows[:5]], 5)
+
+    assert [entry[0] for entry in log_b] == [entry[0] for entry in log_a[4:]]
+    assert [entry[2] for entry in log_b] == [entry[2] for entry in log_a[4:]]
+    for (_, fl_a, _, _), (_, fl_b, _, _) in zip(log_a[4:], log_b):
+        np.testing.assert_array_equal(fl_b, fl_a)
+
+    resume_row = rows[5]
+    _, fl = _toy_spectrum(resume_row['age_star'], None)
+    at_resume_row = _at_toa(fl, resume_row['semimajorax'])
+    assert np.allclose(at_resume_row, log_b[0][1], rtol=1e-12) == log_b[0][0]
+
+
+@pytest.mark.unit
+def test_a_resume_restores_the_first_spectrum_when_none_followed(tmp_path):
+    """With no spectrum update after the first loop, a resume at t = 400 yr takes the
+    spectrum of that loop, at its age (1 yr) and distance, and writes no new file."""
+    rows, _ = _run_in_one_go(_stellar_proteus(tmp_path / 'a', 1.0e9, 1.0e9), 3)
+    p = _stellar_proteus(tmp_path / 'b', 1.0e9, 1.0e9)
+    p.loops['total'] = 4
+
+    ((changed, fl, quantities, _),) = _stellar_steps(p, rows, 1)
+
+    assert (changed, quantities) == (False, 0)
+    assert p.hf_row['star_spec_time'] == pytest.approx(1.0, rel=1e-15)
+    _, fl_first = _toy_spectrum(_AGE_INI_YR + 1.0, None)
+    np.testing.assert_allclose(fl, _at_toa(fl_first, 1.0e11), rtol=1e-12)
+    # the age and the orbit of the row the spectrum time 1 yr matches (Time 100 yr)
+    # both give another spectrum
+    _, fl_row = _toy_spectrum(rows[1]['age_star'], None)
+    assert not np.allclose(fl, _at_toa(fl_row, 1.0e11), rtol=1e-6)
+    assert not np.allclose(fl, _at_toa(fl_first, rows[1]['semimajorax']), rtol=1e-6)
+
+
+@pytest.mark.unit
+def test_a_resume_from_a_helpfile_without_the_spectrum_columns_computes_a_new_spectrum(
+    tmp_path,
+):
+    """A helpfile written before the spectrum columns reads them as 0, so the resume
+    computes and writes the spectrum of its own row and updates the stellar quantities,
+    as resumes did before."""
+    from proteus.utils.coupler import ZeroHelpfileRow
+
+    row = ZeroHelpfileRow()
+    row.update(Time=300.0, age_star=_AGE_INI_YR + 300.0, semimajorax=1.0e11, eccentricity=0.0)
+    p = _stellar_proteus(tmp_path, starspec=1.0e9, starinst=150.0)
+    p.loops['total'] = 4
+
+    ((changed, fl, quantities, _),) = _stellar_steps(p, [row], 1)
+
+    assert (changed, quantities) == (True, 1)
+    assert p.hf_row['star_spec_time'] == pytest.approx(400.0, rel=1e-15)
+    assert p.hf_row['star_spec_dist'] == pytest.approx(1.001e11, rel=1e-12)
+    _, fl_now = _toy_spectrum(_AGE_INI_YR + 400.0, None)
+    np.testing.assert_allclose(fl, _at_toa(fl_now, 1.001e11), rtol=1e-12)
+
+
+@pytest.mark.unit
+def test_the_star_is_updated_once_more_than_an_interval_has_passed(tmp_path):
+    """With 200 yr intervals and 100 yr steps after the first update at 1 yr, the star
+    is updated at 300, 600 and 900 yr: a difference of exactly 200 yr (at 500 yr) is not
+    enough. Each update gets the star models of the run."""
+    p = _stellar_proteus(tmp_path, starspec=200.0, starinst=200.0)
+    p.star_struct, p.star_props, p.stellar_track = 'struct', 'props', 'track'
+    p.star_modern_wl, p.star_modern_fl = 'modern_wl', 'modern_fl'
+
+    rows, log = _run_in_one_go(p, 9)
+
+    updated = [row['Time'] for row, entry in zip(rows[1:], log) if entry[0]]
+    assert updated == [300.0, 600.0, 900.0]
+    assert [entry[2] for entry in log] == [int(entry[0]) for entry in log]
+    models = {
+        'star_struct_modern': 'struct',
+        'star_props_modern': 'props',
+        'stellar_track': 'track',
+        'modern_wl': 'modern_wl',
+        'modern_fl': 'modern_fl',
+    }
+    assert log[2][3] == [{'stellar_track': 'track'}, models]
+    assert (rows[-1]['star_spec_time'], rows[-1]['star_inst_time']) == (900.0, 900.0)
+
+
+@pytest.mark.unit
+def test_a_clamped_step_updates_the_stellar_quantities_but_not_the_spectrum(tmp_path):
+    """A step whose size the interior clamped updates the stellar quantities before
+    their interval has passed, and keeps the spectrum."""
+    rows, _ = _run_in_one_go(_stellar_proteus(tmp_path / 'a', 1.0e9, 1.0e9), 2)
+    p = _stellar_proteus(tmp_path / 'b', 1.0e9, 1.0e9)
+    p.loops['total'] = 3
+    p.interior_o.timestep_clamped = True
+
+    ((changed, fl, quantities, _),) = _stellar_steps(p, rows, 1)
+
+    assert (changed, quantities) == (False, 1)
+    assert p.hf_row['star_inst_time'] == pytest.approx(300.0, rel=1e-15)
+    assert p.hf_row['star_spec_time'] == pytest.approx(1.0, rel=1e-15)

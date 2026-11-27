@@ -151,7 +151,6 @@ def test_up_step_kept_when_target_mass_rose(caplog):
     assert not any(HEATING_MSG in m or 'composition-driven' in m for m in msgs)
     assert hf_row['R_int'] == pytest.approx(R_RETAINED * 1.0709, rel=1e-12)
     assert hf_row['M_int'] == pytest.approx(M_RETAINED * ratio, rel=1e-12)
-    assert dirs['_last_resolve_dR_rel'] == pytest.approx(0.0709, rel=1e-9)
     assert interior_o.zalmoxis_fail_count == 0
     assert interior_o.structure_stale is False
 
@@ -183,7 +182,6 @@ def test_up_step_still_rejected_without_an_anchor_miss(caplog, target_ratio):
     assert any(REJECT_MSG in m for m in msgs)
     assert not any(ACCEPT_MSG in m for m in msgs)
     assert hf_row['R_int'] == pytest.approx(R_RETAINED, rel=1e-12)
-    assert dirs['_last_resolve_dR_rel'] == 0.0
     assert interior_o.structure_stale is True
 
 
@@ -268,7 +266,6 @@ def test_a_mesh_beyond_r_int_stays_rejected_with_a_larger_target(
     assert len([m for m in msgs if 'Rejected' in m]) == 1
     assert hf_row['R_int'] == pytest.approx(R_RETAINED, rel=1e-12)
     assert hf_row['M_int'] == pytest.approx(M_RETAINED, rel=1e-12)
-    assert dirs['_last_resolve_dR_rel'] == 0.0
     assert interior_o.zalmoxis_fail_count == 0
 
 
