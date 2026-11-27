@@ -1493,6 +1493,7 @@ class Proteus:
             # Handle volatile exchange
             log.info('Solving for atmosphere composition...')
             first_iter = self.init_stage
+            sealed_before = self.lid_sealed
             if self.desiccated:
                 # no volatiles
                 run_desiccated(self.directories, self.config, self.hf_row, first_iter)
@@ -1531,6 +1532,11 @@ class Proteus:
                 from proteus.outgas.wrapper import check_ic_oxygen_budget
 
                 check_ic_oxygen_budget(self.config, self.hf_row)
+
+            # A held seal skips the outgassing call; one that closes this step ran it.
+            outgassed = not (
+                self.desiccated or self.crystallized or (sealed_before and self.lid_sealed)
+            )
 
             # Add mass of total tracked element mass (M_ele) to total mass of mantle+core
             update_planet_mass(self.hf_row)
@@ -1679,7 +1685,7 @@ class Proteus:
 
             from proteus.outgas.fo2_warnings import check_fo2_warnings
 
-            check_fo2_warnings(self.config, self.hf_all)
+            check_fo2_warnings(self.config, self.hf_all, outgassed)
 
             # Write helpfile to disk (gated by is_snapshot, which
             # combines write_mod iteration check and dt_write time check)
