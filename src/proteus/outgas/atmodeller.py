@@ -912,7 +912,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     condensed_O_kg = float(hf_row.get('O_kg_condensed', 0.0))
 
     # Under user_constant the column keeps the input fO2_shift_IW; under from_O_budget it takes
-    # atmodeller's derived offset. Both modules use the Hirschmann (2021) IW at >= 1000 K; below
+    # atmodeller's derived offset. Both modules use the Hirschmann (2021) IW at 1000-8100 K; below
     # it atmodeller uses its low-temperature buffer and CALLIOPE extrapolates the 2021 fit.
     if fO2_source == 'from_O_budget':
         o2_dict = output_dict.get('O2_g', {})

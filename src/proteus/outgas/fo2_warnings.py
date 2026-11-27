@@ -9,8 +9,10 @@ Both checks read the helpfile after a row is appended and change nothing.
   ``O_RISE_WARN_FRAC`` of the mantle mass of that row warns once per crossing, when the
   structure is solved again during the run (``zalmoxis.update_interval > 0``, or an impact).
   With a wet mantle only ``O_kg_atm`` is outside the structure, and the message reports its
-  rise. The baseline structure solve of a start other than ``liquidus_super`` is outside the
-  guard; in a 1 M_E adiabatic start the derived oxygen rose by 1.2e-6 of the mantle up to it.
+  change. Outside the guard: the oxygen solved before the first row (the baseline structure
+  solve of a start other than ``liquidus_super``, or ``zalmoxis.equilibrate_init = false``),
+  and oxygen that escape removes and the fixed fO2 derives again, which
+  leaves ``O_kg_total`` unchanged while ``M_volatile_change`` takes it from the structure.
 - The IW buffer is evaluated at ``max(T_magma, outgas.T_floor)``. Hirschmann (2021, GCA 313,
   74, Sect. 5) fits it over 1000-3000 K; CALLIOPE uses the fit at every temperature as its
   default buffer from 26.11.8 (pyproject.toml: fwl-calliope>=26.11.8), atmodeller switches to
@@ -18,16 +20,16 @@ Both checks read the helpfile after a row is appended and change nothing.
   whose step ran an outgassing call (``outgas_called``), the first row below and the first
   row above the range of the module each warn once per run.
 
-Each decision reads the rows of the helpfile only, so a resumed run warns as an uninterrupted
-one; the rows of a helpfile without ``outgas_called`` read as no call, so each buffer warning
-can repeat once after such a resume.
+Each decision reads the rows of the helpfile only, so a run resumed from a written row warns
+on the rows after it as an uninterrupted run. A warning first given on a row that was not
+written, or in a helpfile without ``outgas_called`` (read as no call), can repeat once.
 """
 
 from __future__ import annotations
 
 import logging
 import math
-from functools import lru_cache
+from functools import cache
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -73,20 +75,17 @@ def _check_oxygen(config: Config, hf_all: pd.DataFrame) -> None:
     if not rise[-1] > O_RISE_WARN_FRAC or (before.size and before[-1] > O_RISE_WARN_FRAC):
         return
     if struct.zalmoxis.dry_mantle:
-        where = (
-            'with interior_struct.zalmoxis.dry_mantle = true all of it is outside the '
-            'structure mass'
-        )
+        where = 'with interior_struct.zalmoxis.dry_mantle = true all of it is outside the structure mass'
     else:
         atm = _column(hf_all.get('O_kg_atm'), len(hf_all))
         where = (
             'with interior_struct.zalmoxis.dry_mantle = false only O_kg_atm is outside the '
-            f'structure mass, and it rose by {atm[-1] - atm[base]:.3e} kg'
+            f'structure mass (its change since that row: {atm[-1] - atm[base]:.3e} kg)'
         )
     log.warning(
         'Oxygen derived by the fixed fO2 (outgas.fO2_shift_IW = %+.2f) rose by %.3e kg since '
         'the first finite row, %.2f %% of the mantle mass of that row (%.3e kg); %s, and the '
-        'mantle loses it at the next structure solve.',
+        'mantle loses that mass at the next structure solve.',
         config.outgas.fO2_shift_IW,
         moved,
         100.0 * rise[-1],
@@ -95,7 +94,7 @@ def _check_oxygen(config: Config, hf_all: pd.DataFrame) -> None:
     )
 
 
-@lru_cache(maxsize=None)
+@cache
 def _calliope_default_buffer() -> str | None:
     """CALLIOPE's default IW buffer, or None (logged once) for a version that does not name it."""
     import calliope.oxygen_fugacity as fo2
@@ -113,9 +112,8 @@ def _check_buffer(config: Config, hf_all: pd.DataFrame) -> None:
     module = config.outgas.module
     if module not in BUFFER_T_RANGE_K:
         return
-    if module == 'calliope':
-        if _calliope_default_buffer() != 'hirschmann':  # Fischer (2011) has no stated range
-            return
+    if module == 'calliope' and _calliope_default_buffer() != 'hirschmann':  # Fischer: no range
+        return
     lo, hi = BUFFER_T_RANGE_K[module]
     T = np.maximum(_column(hf_all.get('T_magma'), len(hf_all)), config.outgas.T_floor)
     T = np.where(_column(hf_all.get('outgas_called'), len(hf_all)) > 0, T, np.nan)

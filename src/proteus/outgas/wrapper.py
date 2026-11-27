@@ -541,7 +541,8 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
         trapped_mass_withheld(hf_row),
     ):
         _solve_chemistry(dirs, config, hf_row, initial=initial)
-    hf_row['outgas_called'] = 1.0
+    # A solve skipped for want of a budget evaluates no buffer and leaves the offset NaN.
+    hf_row['outgas_called'] = float(np.isfinite(hf_row['fO2_shift_IW_derived']))
 
     # P_surf here is the volatile+noble gas total
     hf_row['P_vol'] = hf_row['P_surf']

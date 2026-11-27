@@ -876,11 +876,16 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `N_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
 | `S_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
 
-### Volatile exchange of the step
+### Outgassing call of the step
 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
-| `outgas_called` | `1` | whether the step ran an outgassing call | `outgas/wrapper.py`<br>`proteus.py` | always | outgas |
+| `outgas_called` | `1` | 1 if the step's chemistry solve used the IW buffer | `outgas/wrapper.py`<br>`proteus.py` | always | outgas |
+
+### Lid seal
+
+| Column | Unit | Description | Producer | Written when | Read by |
+|---|---|---|---|---|---|
 | `seal_active` | `1` | whether the lid seal holds the melt inventory | `outgas/lid_seal.py` | always | outgas |
 | `seal_path` | `1` | crust a closed seal reads: 0 open, 1 mesh crust, 2 sub-grid lid | `outgas/lid_seal.py` | always | outgas |
 | `seal_t_close` | `yr` | time the seal last closed | `outgas/lid_seal.py` | always | main loop, outgas |

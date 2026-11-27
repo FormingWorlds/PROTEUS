@@ -1228,7 +1228,7 @@ def GetHelpfileKeys():
 
         # IW offset the chemistry equilibrated to and its O mass residual: the input offset and 0
         # under user_constant, solver outputs under from_O_budget. Both modules use the Hirschmann
-        # (2021) IW at >= 1000 K. Rock-vapour columns: LavAtmos; zero without vapourisation.
+        # (2021) IW at 1000-8100 K. Rock-vapour columns: LavAtmos; zero without vapourisation.
         'fO2_shift_IW_derived',  # equilibrated IW-buffer offset [log10 bar]
         'fO2_vapourise_derived',         # rock-vapour fO2 [log10 bar]
         'fO2_vapourise_shift_IW_derived',  # rock-vapour IW offset [log10 bar]
@@ -1316,10 +1316,10 @@ def GetHelpfileKeys():
     for e in vol_element_list:
         keys.append(e + '_kg_condensed')  # mass in condensed phases at the surface [kg]
 
-    # Volatile exchange of the step
-    keys.append('outgas_called')  # whether the step ran an outgassing call [1]
+    # Outgassing call of the step
+    keys.append('outgas_called')  # 1 if the step's chemistry solve used the IW buffer [1]
 
-    # Melt inventory held under a closed crust (outgas.lid_seal), and its leak
+    # Lid seal: melt inventory held under a closed crust, and its leak
     keys.append('seal_active')       # whether the lid seal holds the melt inventory [1]
     keys.append('seal_path')         # crust a closed seal reads: 0 open, 1 mesh crust, 2 sub-grid lid [1]
     keys.append('seal_t_close')      # time the seal last closed [yr]
