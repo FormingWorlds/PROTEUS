@@ -1226,26 +1226,9 @@ def GetHelpfileKeys():
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
         'M_vol_atm',        # atmospheric mass of volatiles and noble gases; rock vapour excluded [kg]
 
-        # Iron-wustite buffer offset that the chemistry solver actually
-        # equilibrated to, and the O mass-balance residual of that
-        # equilibrium. Under planet.fO2_source = "user_constant" the
-        # offset echoes the configured outgas.fO2_shift_IW (so the column
-        # is single-source-of-truth for downstream analysis) and the
-        # residual is zero (O is an output, not a constraint). Under
-        # planet.fO2_source = "from_O_budget" the offset is the solver
-        # output and the residual is the 5th element-mass residual paired
-        # with the H/C/N/S residuals reported by CALLIOPE. The IW buffer
-        # convention is backend-specific: CALLIOPE uses O'Neill & Eggins
-        # (2002), atmodeller uses the Hirschmann combined buffer. The
-        # two disagree by roughly 0.95 dex at 3000 K, so direct
-        # cross-backend comparison of this column requires converting
-        # one of the conventions; an independent comparison harness will
-        # eventually pick a single canonical convention.
-        # The rock-vapour columns below are the LavAtmos counterparts,
-        # derived from the O2 partial pressure of the vapourisation
-        # solve rather than from the volatile chemistry. They are
-        # independent of `fO2_shift_IW_derived` and are left at zero
-        # when vapourisation is disabled.
+        # IW offset the chemistry equilibrated to and its O mass residual: the input offset and 0
+        # under user_constant, solver outputs under from_O_budget. Both modules use the Hirschmann
+        # (2021) IW at >= 1000 K. Rock-vapour columns: LavAtmos; zero without vapourisation.
         'fO2_shift_IW_derived',  # equilibrated IW-buffer offset [log10 bar]
         'fO2_vapourise_derived',         # rock-vapour fO2 [log10 bar]
         'fO2_vapourise_shift_IW_derived',  # rock-vapour IW offset [log10 bar]
@@ -1333,8 +1316,10 @@ def GetHelpfileKeys():
     for e in vol_element_list:
         keys.append(e + '_kg_condensed')  # mass in condensed phases at the surface [kg]
 
+    # Volatile exchange of the step
+    keys.append('outgas_called')  # whether the step ran an outgassing call [1]
+
     # Melt inventory held under a closed crust (outgas.lid_seal), and its leak
-    keys.append('outgas_called')  # whether the step's volatile exchange ran an outgassing call [1]
     keys.append('seal_active')       # whether the lid seal holds the melt inventory [1]
     keys.append('seal_path')         # crust a closed seal reads: 0 open, 1 mesh crust, 2 sub-grid lid [1]
     keys.append('seal_t_close')      # time the seal last closed [yr]

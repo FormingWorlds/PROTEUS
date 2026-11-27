@@ -5,9 +5,12 @@ Both checks read the helpfile after a row is appended and change nothing.
 - With ``planet.fO2_source = 'user_constant'``, CALLIOPE and atmodeller derive the oxygen
   inventory from the fO2, and the Zalmoxis structure target does not keep it
   (``_structure_target_masses``): oxygen outside the structure leaves the mantle mass of the
-  next structure solve. A rise of it since the first finite row above ``O_RISE_WARN_FRAC`` of
-  the mantle warns once per crossing, when the structure is solved again during the run
-  (``zalmoxis.update_interval > 0``, or an impact).
+  next structure solve. A rise of ``O_kg_total`` since the first finite row above
+  ``O_RISE_WARN_FRAC`` of the mantle mass of that row warns once per crossing, when the
+  structure is solved again during the run (``zalmoxis.update_interval > 0``, or an impact).
+  With a wet mantle only ``O_kg_atm`` is outside the structure, and the message reports its
+  rise. The baseline structure solve of a start other than ``liquidus_super`` is outside the
+  guard; in a 1 M_E adiabatic start the derived oxygen rose by 1.2e-6 of the mantle up to it.
 - The IW buffer is evaluated at ``max(T_magma, outgas.T_floor)``. Hirschmann (2021, GCA 313,
   74, Sect. 5) fits it over 1000-3000 K; CALLIOPE uses the fit at every temperature as its
   default buffer from 26.11.8 (pyproject.toml: fwl-calliope>=26.11.8), atmodeller switches to
@@ -24,6 +27,7 @@ from __future__ import annotations
 
 import logging
 import math
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -40,14 +44,16 @@ O_RISE_WARN_FRAC = 1e-3
 BUFFER_T_RANGE_K = {'calliope': (1000.0, 3000.0), 'atmodeller': (-math.inf, 3000.0)}
 
 
-def _column(hf_all: pd.DataFrame, name: str) -> np.ndarray:
-    """Column ``name`` as floats, NaN where absent, not numeric or not finite."""
-    v = pd.to_numeric(hf_all.reindex(columns=[name])[name], errors='coerce').to_numpy(float)
+def _column(col: pd.Series | None, n: int) -> np.ndarray:
+    """``hf_all.get(name)`` as ``n`` floats, NaN where absent, not numeric or not finite."""
+    if col is None:
+        return np.full(n, np.nan)
+    v = pd.to_numeric(col, errors='coerce').to_numpy(float)
     return np.where(np.isfinite(v), v, np.nan)
 
 
 def _check_oxygen(config: Config, hf_all: pd.DataFrame) -> None:
-    """Warn when the derived O outside the structure crosses ``O_RISE_WARN_FRAC`` of the mantle."""
+    """Warn when the derived O crosses ``O_RISE_WARN_FRAC`` of the baseline-row mantle mass."""
     from proteus.outgas.wrapper import outgassing_derives_o_kg_total
 
     struct = config.interior_struct
@@ -55,26 +61,51 @@ def _check_oxygen(config: Config, hf_all: pd.DataFrame) -> None:
         return
     if not (struct.zalmoxis.update_interval > 0 or config.accretion.module):
         return
-    col = 'O_kg_total' if struct.zalmoxis.dry_mantle else 'O_kg_atm'
-    o, mantle = _column(hf_all, col), _column(hf_all, 'M_mantle')
+    o, mantle = (
+        _column(hf_all.get('O_kg_total'), len(hf_all)),
+        _column(hf_all.get('M_mantle'), len(hf_all)),
+    )
+    base = np.isfinite(o).argmax()
     with np.errstate(all='ignore'):
-        rise = (o - o[np.isfinite(o).argmax()]) / np.where(mantle > 0, mantle, np.nan)
-        moved, percent = rise[-1] * mantle[-1], 100.0 * rise[-1]
+        rise = (o - o[base]) / (mantle[base] if mantle[base] > 0 else np.nan)
+        moved = rise[-1] * mantle[base]
     before = rise[:-1][np.isfinite(rise[:-1])]
     if not rise[-1] > O_RISE_WARN_FRAC or (before.size and before[-1] > O_RISE_WARN_FRAC):
         return
+    if struct.zalmoxis.dry_mantle:
+        where = (
+            'with interior_struct.zalmoxis.dry_mantle = true all of it is outside the '
+            'structure mass'
+        )
+    else:
+        atm = _column(hf_all.get('O_kg_atm'), len(hf_all))
+        where = (
+            'with interior_struct.zalmoxis.dry_mantle = false only O_kg_atm is outside the '
+            f'structure mass, and it rose by {atm[-1] - atm[base]:.3e} kg'
+        )
     log.warning(
         'Oxygen derived by the fixed fO2 (outgas.fO2_shift_IW = %+.2f) rose by %.3e kg since '
-        'the first finite row, %.2f %% of the mantle (%.3e kg); %s leaves the structure mass '
-        'with interior_struct.zalmoxis.dry_mantle = %s, so the mantle loses it at the next '
-        'structure solve.',
+        'the first finite row, %.2f %% of the mantle mass of that row (%.3e kg); %s, and the '
+        'mantle loses it at the next structure solve.',
         config.outgas.fO2_shift_IW,
         moved,
-        percent,
-        mantle[-1],
-        col,
-        struct.zalmoxis.dry_mantle,
+        100.0 * rise[-1],
+        mantle[base],
+        where,
     )
+
+
+@lru_cache(maxsize=None)
+def _calliope_default_buffer() -> str | None:
+    """CALLIOPE's default IW buffer, or None (logged once) for a version that does not name it."""
+    import calliope.oxygen_fugacity as fo2
+
+    model = getattr(fo2, 'DEFAULT_FO2_MODEL', None)
+    if model is None:
+        log.warning(
+            'calliope.oxygen_fugacity names no DEFAULT_FO2_MODEL; no IW buffer range check.'
+        )
+    return model
 
 
 def _check_buffer(config: Config, hf_all: pd.DataFrame) -> None:
@@ -83,23 +114,26 @@ def _check_buffer(config: Config, hf_all: pd.DataFrame) -> None:
     if module not in BUFFER_T_RANGE_K:
         return
     if module == 'calliope':
-        from calliope.oxygen_fugacity import DEFAULT_FO2_MODEL
-
-        if DEFAULT_FO2_MODEL != 'hirschmann':  # Fischer (2011) has no stated range
+        if _calliope_default_buffer() != 'hirschmann':  # Fischer (2011) has no stated range
             return
     lo, hi = BUFFER_T_RANGE_K[module]
-    T = np.maximum(_column(hf_all, 'T_magma'), config.outgas.T_floor)
-    T = np.where(_column(hf_all, 'outgas_called') > 0, T, np.nan)
+    T = np.maximum(_column(hf_all.get('T_magma'), len(hf_all)), config.outgas.T_floor)
+    T = np.where(_column(hf_all.get('outgas_called'), len(hf_all)) > 0, T, np.nan)
     text = f'{lo:.0f}-{hi:.0f} K' if math.isfinite(lo) else f'(at most {hi:.0f} K)'
+    if config.planet.fO2_source == 'from_O_budget':
+        effect = 'the reported fO2_shift_IW_derived is relative to an extrapolated buffer'
+    else:
+        effect = 'its fO2 there is an extrapolation'
     for outside in (T < lo, T > hi):
         if outside[-1] and not outside[:-1].any():
             log.warning(
                 'The IW buffer of %s is evaluated at %.1f K, outside the calibrated temperature '
-                'range %s of Hirschmann (2021, GCA 313, 74); its fO2 there is an extrapolation. '
-                'This warning is given once per run.',
+                'range %s of Hirschmann (2021, GCA 313, 74); %s. This warning is given once per '
+                'run.',
                 module,
                 T[-1],
                 text,
+                effect,
             )
 
 

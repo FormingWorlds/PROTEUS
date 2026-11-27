@@ -22088,23 +22088,29 @@
     {
       "name": "outgas_called",
       "unit": "1",
-      "description": "whether the step's volatile exchange ran an outgassing call",
-      "group": "Quantities for each element",
+      "description": "whether the step ran an outgassing call",
+      "group": "Volatile exchange of the step",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/proteus.py",
           "condition": "always"
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "outgas"
+      ],
       "consumers_possible": []
     },
     {
       "name": "seal_active",
       "unit": "1",
       "description": "whether the lid seal holds the melt inventory",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "literal",
       "producers": [
         {
@@ -22121,7 +22127,7 @@
       "name": "seal_path",
       "unit": "1",
       "description": "crust a closed seal reads: 0 open, 1 mesh crust, 2 sub-grid lid",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "literal",
       "producers": [
         {
@@ -22138,7 +22144,7 @@
       "name": "seal_t_close",
       "unit": "yr",
       "description": "time the seal last closed",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "literal",
       "producers": [
         {
@@ -22156,7 +22162,7 @@
       "name": "seal_Tmagma_close",
       "unit": "K",
       "description": "T_magma of the closing chemistry solve",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "literal",
       "producers": [
         {
@@ -22173,7 +22179,7 @@
       "name": "seal_phi_close",
       "unit": "1",
       "description": "global melt fraction of the closing step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "literal",
       "producers": [
         {
@@ -22190,7 +22196,7 @@
       "name": "seal_xtal_kg",
       "unit": "kg",
       "description": "crystals formed since closure, under front trapping",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "literal",
       "producers": [
         {
@@ -22207,7 +22213,7 @@
       "name": "seal_tl_kg",
       "unit": "kg",
       "description": "melt trapped in those crystals",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "literal",
       "producers": [
         {
@@ -22224,7 +22230,7 @@
       "name": "seal_delta",
       "unit": "m",
       "description": "crust thickness the seal reads",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "literal",
       "producers": [
         {
@@ -22239,7 +22245,7 @@
       "name": "seal_phi_top",
       "unit": "1",
       "description": "melt fraction of the top mesh cell",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "literal",
       "producers": [
         {
@@ -22254,7 +22260,7 @@
       "name": "seal_crust_rate",
       "unit": "kg yr-1",
       "description": "melt mass reaching the crust over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "literal",
       "producers": [
         {
@@ -22269,7 +22275,7 @@
       "name": "seal_volc_capped",
       "unit": "1",
       "description": "whether crust_rate dt was cut to the melt mass",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "literal",
       "producers": [
         {
@@ -22284,7 +22290,7 @@
       "name": "seal_open_kg",
       "unit": "kg",
       "description": "sealed mass returned to the melt on an opening step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "literal",
       "producers": [
         {
@@ -22301,7 +22307,7 @@
       "name": "seal_leak_kg_cum",
       "unit": "kg",
       "description": "mass leaked to the atmosphere since the run began",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "literal",
       "producers": [
         {
@@ -22318,7 +22324,7 @@
       "name": "H2O_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_sealed",
       "producers": [
         {
@@ -22335,7 +22341,7 @@
       "name": "H2O_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_mol_sealed",
       "producers": [
         {
@@ -22352,7 +22358,7 @@
       "name": "CO2_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_sealed",
       "producers": [
         {
@@ -22369,7 +22375,7 @@
       "name": "CO2_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_mol_sealed",
       "producers": [
         {
@@ -22386,7 +22392,7 @@
       "name": "O2_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_sealed",
       "producers": [
         {
@@ -22403,7 +22409,7 @@
       "name": "O2_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_mol_sealed",
       "producers": [
         {
@@ -22420,7 +22426,7 @@
       "name": "H2_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_sealed",
       "producers": [
         {
@@ -22437,7 +22443,7 @@
       "name": "H2_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_mol_sealed",
       "producers": [
         {
@@ -22454,7 +22460,7 @@
       "name": "CH4_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_sealed",
       "producers": [
         {
@@ -22471,7 +22477,7 @@
       "name": "CH4_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_mol_sealed",
       "producers": [
         {
@@ -22488,7 +22494,7 @@
       "name": "CO_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_sealed",
       "producers": [
         {
@@ -22505,7 +22511,7 @@
       "name": "CO_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_mol_sealed",
       "producers": [
         {
@@ -22522,7 +22528,7 @@
       "name": "N2_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_sealed",
       "producers": [
         {
@@ -22539,7 +22545,7 @@
       "name": "N2_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_mol_sealed",
       "producers": [
         {
@@ -22556,7 +22562,7 @@
       "name": "NH3_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_sealed",
       "producers": [
         {
@@ -22573,7 +22579,7 @@
       "name": "NH3_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_mol_sealed",
       "producers": [
         {
@@ -22590,7 +22596,7 @@
       "name": "S2_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_sealed",
       "producers": [
         {
@@ -22607,7 +22613,7 @@
       "name": "S2_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_mol_sealed",
       "producers": [
         {
@@ -22624,7 +22630,7 @@
       "name": "SO2_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_sealed",
       "producers": [
         {
@@ -22641,7 +22647,7 @@
       "name": "SO2_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_mol_sealed",
       "producers": [
         {
@@ -22658,7 +22664,7 @@
       "name": "H2S_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_sealed",
       "producers": [
         {
@@ -22675,7 +22681,7 @@
       "name": "H2S_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_mol_sealed",
       "producers": [
         {
@@ -22692,7 +22698,7 @@
       "name": "He_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_sealed",
       "producers": [
         {
@@ -22710,7 +22716,7 @@
       "name": "He_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_mol_sealed",
       "producers": [
         {
@@ -22727,7 +22733,7 @@
       "name": "Ne_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_sealed",
       "producers": [
         {
@@ -22745,7 +22751,7 @@
       "name": "Ne_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_mol_sealed",
       "producers": [
         {
@@ -22762,7 +22768,7 @@
       "name": "Ar_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_sealed",
       "producers": [
         {
@@ -22780,7 +22786,7 @@
       "name": "Ar_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_mol_sealed",
       "producers": [
         {
@@ -22797,7 +22803,7 @@
       "name": "Kr_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_sealed",
       "producers": [
         {
@@ -22815,7 +22821,7 @@
       "name": "Kr_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_mol_sealed",
       "producers": [
         {
@@ -22832,7 +22838,7 @@
       "name": "Xe_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_sealed",
       "producers": [
         {
@@ -22850,7 +22856,7 @@
       "name": "Xe_mol_sealed",
       "unit": "mol",
       "description": "number held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_mol_sealed",
       "producers": [
         {
@@ -22867,7 +22873,7 @@
       "name": "H2O_kg_eq",
       "unit": "kg",
       "description": "dissolved equilibrium of the sealed reservoir",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_eq",
       "producers": [
         {
@@ -22882,7 +22888,7 @@
       "name": "CO2_kg_eq",
       "unit": "kg",
       "description": "dissolved equilibrium of the sealed reservoir",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_eq",
       "producers": [
         {
@@ -22897,7 +22903,7 @@
       "name": "CO_kg_eq",
       "unit": "kg",
       "description": "dissolved equilibrium of the sealed reservoir",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_eq",
       "producers": [
         {
@@ -22912,7 +22918,7 @@
       "name": "CH4_kg_eq",
       "unit": "kg",
       "description": "dissolved equilibrium of the sealed reservoir",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_eq",
       "producers": [
         {
@@ -22927,7 +22933,7 @@
       "name": "N2_kg_eq",
       "unit": "kg",
       "description": "dissolved equilibrium of the sealed reservoir",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_eq",
       "producers": [
         {
@@ -22942,7 +22948,7 @@
       "name": "S2_kg_eq",
       "unit": "kg",
       "description": "dissolved equilibrium of the sealed reservoir",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_eq",
       "producers": [
         {
@@ -22957,7 +22963,7 @@
       "name": "He_kg_eq",
       "unit": "kg",
       "description": "dissolved equilibrium of the sealed reservoir",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_eq",
       "producers": [
         {
@@ -22972,7 +22978,7 @@
       "name": "Ne_kg_eq",
       "unit": "kg",
       "description": "dissolved equilibrium of the sealed reservoir",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_eq",
       "producers": [
         {
@@ -22987,7 +22993,7 @@
       "name": "Ar_kg_eq",
       "unit": "kg",
       "description": "dissolved equilibrium of the sealed reservoir",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_eq",
       "producers": [
         {
@@ -23002,7 +23008,7 @@
       "name": "Kr_kg_eq",
       "unit": "kg",
       "description": "dissolved equilibrium of the sealed reservoir",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_eq",
       "producers": [
         {
@@ -23017,7 +23023,7 @@
       "name": "Xe_kg_eq",
       "unit": "kg",
       "description": "dissolved equilibrium of the sealed reservoir",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<gas>_kg_eq",
       "producers": [
         {
@@ -23032,7 +23038,7 @@
       "name": "H_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_sealed",
       "producers": [
         {
@@ -23050,7 +23056,7 @@
       "name": "H_kg_leak_tau",
       "unit": "kg",
       "description": "sealed mass leaked by relaxation over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_tau",
       "producers": [
         {
@@ -23065,7 +23071,7 @@
       "name": "H_kg_leak_volc",
       "unit": "kg",
       "description": "sealed mass leaked by volcanism over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_volc",
       "producers": [
         {
@@ -23080,7 +23086,7 @@
       "name": "O_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_sealed",
       "producers": [
         {
@@ -23098,7 +23104,7 @@
       "name": "O_kg_leak_tau",
       "unit": "kg",
       "description": "sealed mass leaked by relaxation over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_tau",
       "producers": [
         {
@@ -23113,7 +23119,7 @@
       "name": "O_kg_leak_volc",
       "unit": "kg",
       "description": "sealed mass leaked by volcanism over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_volc",
       "producers": [
         {
@@ -23128,7 +23134,7 @@
       "name": "C_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_sealed",
       "producers": [
         {
@@ -23146,7 +23152,7 @@
       "name": "C_kg_leak_tau",
       "unit": "kg",
       "description": "sealed mass leaked by relaxation over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_tau",
       "producers": [
         {
@@ -23161,7 +23167,7 @@
       "name": "C_kg_leak_volc",
       "unit": "kg",
       "description": "sealed mass leaked by volcanism over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_volc",
       "producers": [
         {
@@ -23176,7 +23182,7 @@
       "name": "N_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_sealed",
       "producers": [
         {
@@ -23194,7 +23200,7 @@
       "name": "N_kg_leak_tau",
       "unit": "kg",
       "description": "sealed mass leaked by relaxation over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_tau",
       "producers": [
         {
@@ -23209,7 +23215,7 @@
       "name": "N_kg_leak_volc",
       "unit": "kg",
       "description": "sealed mass leaked by volcanism over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_volc",
       "producers": [
         {
@@ -23224,7 +23230,7 @@
       "name": "S_kg_sealed",
       "unit": "kg",
       "description": "mass held under the closed crust",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_sealed",
       "producers": [
         {
@@ -23242,7 +23248,7 @@
       "name": "S_kg_leak_tau",
       "unit": "kg",
       "description": "sealed mass leaked by relaxation over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_tau",
       "producers": [
         {
@@ -23257,7 +23263,7 @@
       "name": "S_kg_leak_volc",
       "unit": "kg",
       "description": "sealed mass leaked by volcanism over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_volc",
       "producers": [
         {
@@ -23272,7 +23278,7 @@
       "name": "He_kg_leak_tau",
       "unit": "kg",
       "description": "sealed mass leaked by relaxation over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_tau",
       "producers": [
         {
@@ -23287,7 +23293,7 @@
       "name": "He_kg_leak_volc",
       "unit": "kg",
       "description": "sealed mass leaked by volcanism over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_volc",
       "producers": [
         {
@@ -23302,7 +23308,7 @@
       "name": "Ne_kg_leak_tau",
       "unit": "kg",
       "description": "sealed mass leaked by relaxation over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_tau",
       "producers": [
         {
@@ -23317,7 +23323,7 @@
       "name": "Ne_kg_leak_volc",
       "unit": "kg",
       "description": "sealed mass leaked by volcanism over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_volc",
       "producers": [
         {
@@ -23332,7 +23338,7 @@
       "name": "Ar_kg_leak_tau",
       "unit": "kg",
       "description": "sealed mass leaked by relaxation over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_tau",
       "producers": [
         {
@@ -23347,7 +23353,7 @@
       "name": "Ar_kg_leak_volc",
       "unit": "kg",
       "description": "sealed mass leaked by volcanism over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_volc",
       "producers": [
         {
@@ -23362,7 +23368,7 @@
       "name": "Kr_kg_leak_tau",
       "unit": "kg",
       "description": "sealed mass leaked by relaxation over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_tau",
       "producers": [
         {
@@ -23377,7 +23383,7 @@
       "name": "Kr_kg_leak_volc",
       "unit": "kg",
       "description": "sealed mass leaked by volcanism over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_volc",
       "producers": [
         {
@@ -23392,7 +23398,7 @@
       "name": "Xe_kg_leak_tau",
       "unit": "kg",
       "description": "sealed mass leaked by relaxation over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_tau",
       "producers": [
         {
@@ -23407,7 +23413,7 @@
       "name": "Xe_kg_leak_volc",
       "unit": "kg",
       "description": "sealed mass leaked by volcanism over the step",
-      "group": "Quantities for each element",
+      "group": "Volatile exchange of the step",
       "origin": "<element>_kg_leak_volc",
       "producers": [
         {

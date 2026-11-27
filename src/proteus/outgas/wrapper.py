@@ -541,6 +541,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
         trapped_mass_withheld(hf_row),
     ):
         _solve_chemistry(dirs, config, hf_row, initial=initial)
+    hf_row['outgas_called'] = 1.0
 
     # P_surf here is the volatile+noble gas total
     hf_row['P_vol'] = hf_row['P_surf']

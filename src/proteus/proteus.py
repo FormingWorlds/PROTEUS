@@ -1505,7 +1505,7 @@ class Proteus:
             # Handle volatile exchange
             log.info('Solving for atmosphere composition...')
             first_iter = self.init_stage
-            sealed_before = self.lid_sealed
+            self.hf_row['outgas_called'] = 0.0  # run_outgassing sets it to 1
             if self.desiccated:
                 # no volatiles
                 run_desiccated(self.directories, self.config, self.hf_row, first_iter)
@@ -1544,13 +1544,6 @@ class Proteus:
                 from proteus.outgas.wrapper import check_ic_oxygen_budget
 
                 check_ic_oxygen_budget(self.config, self.hf_row)
-
-            # A held seal skips the outgassing call; one that closes this step ran it.
-            self.hf_row['outgas_called'] = float(
-                not (
-                    self.desiccated or self.crystallized or (sealed_before and self.lid_sealed)
-                )
-            )
 
             # Add mass of total tracked element mass (M_ele) to total mass of mantle+core
             update_planet_mass(self.hf_row)
