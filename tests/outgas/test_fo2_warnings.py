@@ -212,6 +212,8 @@ def test_rise_is_relative_to_the_mantle_mass_of_the_baseline_row(caplog):
     grown = _rows([0.0, 1.5 * f])
     grown.loc[1, 'M_mantle'] = 2 * M_MANTLE
     assert _run(_config(update=0.0, accretion='dummy'), grown, caplog)[0] == 1
+    assert f'rose by {1.5 * f * M_MANTLE:.3e} kg' in caplog.text
+    assert f'0.15 % of the mantle mass of that row ({M_MANTLE:.3e} kg)' in caplog.text
     shrunk = _rows([0.0, 0.75 * f])
     shrunk.loc[1, 'M_mantle'] = 0.5 * M_MANTLE
     assert _run(_config(update=0.0, accretion='dummy'), shrunk, caplog)[0] == 0
@@ -276,16 +278,17 @@ def test_resumed_run_warns_as_an_uninterrupted_run(caplog, resume_at):
 @pytest.mark.physics_invariant
 def test_baseline_is_the_first_finite_row_and_a_gap_row_keeps_the_crossing(caplog):
     """A NaN first row does not silence the run; a NaN row between two rows above does not warn
-    twice; a NaN mantle mass in the baseline row warns on no row."""
+    twice; a NaN, zero or negative mantle mass in the baseline row warns on no row."""
     hf = _rows([0.0, 0.0, 0.02])
     hf.loc[0, 'O_kg_total'] = math.nan
     assert _run(_config(), hf, caplog)[0] == 1
     hf = _rows([0.0, 0.02, 0.02, 0.03])
     hf.loc[2, 'O_kg_total'] = math.nan
     assert _run(_config(), hf, caplog)[0] == 1
-    hf = _rows([0.0, 0.02])
-    hf.loc[0, 'M_mantle'] = math.nan
-    assert _run(_config(), hf, caplog)[0] == 0
+    for bad in (math.nan, 0.0, -M_MANTLE):
+        hf = _rows([0.0, 0.02])
+        hf.loc[0, 'M_mantle'] = bad
+        assert _run(_config(), hf, caplog)[0] == 0, bad
 
 
 @pytest.mark.physics_invariant
