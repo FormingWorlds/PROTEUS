@@ -15,6 +15,7 @@ import pandas as pd
 import torch
 
 from proteus.inference.BO import BO_step, init_locs
+from proteus.inference.composite import ObservableObjective, ObservableSurrogate
 from proteus.inference.failures import ProteusRunFailure
 from proteus.inference.objective import close_worker_runner
 from proteus.inference.utils import get_kernel, load_dataset_csv, save_dataset_csv
@@ -28,6 +29,9 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Smallest rise of the best objective that resets the `patience` count
 PATIENCE_MIN_GAIN = 0.01
+
+# Torch threads per worker: the GP fits take under a second, and the PROTEUS runs need the cores
+WORKER_TORCH_THREADS = 1
 
 
 def evaluations_since_improvement(
@@ -61,13 +65,13 @@ def checkpoint(D: dict, logs: list, Ts: list, output_dir: str) -> None:
     """Save the current state of the optimization to disk.
 
     Creates the output directory if needed, and writes:
-    * data.csv: observed inputs and objective values
+    * data.csv: observed inputs and objective values, and the observables if D has 'S'
     * logs.csv: list of per-evaluation log dictionaries
     * Ts.csv: elapsed timestamps for each evaluation
 
     Parameters
     ----------
-    - D (dict): Shared dict containing keys 'X' and 'Y'.
+    - D (dict): Shared dict containing keys 'X' and 'Y', and 'S' with one GP per observable.
     - logs (list): Shared list of log dictionaries.
     - Ts (list): Shared list of elapsed times (floats).
     - output_dir (str): Directory path where checkpoint files will be saved.
@@ -77,7 +81,7 @@ def checkpoint(D: dict, logs: list, Ts: list, output_dir: str) -> None:
     - None
     """
     # Persist BO data
-    save_dataset_csv(D['X'], D['Y'], os.path.join(output_dir, 'data.csv'))
+    save_dataset_csv(D['X'], D['Y'], os.path.join(output_dir, 'data.csv'), D.get('S'))
 
     # Persist the log list
     pd.DataFrame(list(logs)).to_csv(os.path.join(output_dir, 'logs.csv'), index=False)
@@ -121,6 +125,7 @@ def worker(
     aborts=None,
     patience: int = 0,
     converged=None,
+    seed: int | None = None,
 ) -> None:
     """Worker subprocess that performs asynchronous BO steps.
 
@@ -137,7 +142,7 @@ def worker(
     ----------
     - process_fun (callable): Partial of BO_step with fixed hyperparameters.
     - build_obj (callable): Partial returning a worker-specific objective f.
-    - D_shared (Manager.dict): Shared dict with keys 'X', 'Y'.
+    - D_shared (Manager.dict): Shared dict with keys 'X', 'Y', and 'S' per observable.
     - B (Manager.dict): Shared dict of current busy points per worker.
     - T (Manager.list): Shared list for evaluation end times.
     - T0 (float): Reference start time (time.perf_counter()).
@@ -159,6 +164,7 @@ def worker(
       best objective rising by more than PATIENCE_MIN_GAIN; 0 never stops.
     - converged (Manager.Event | None): Set by the worker that finds the
       `patience` limit reached, and checked like `stop`.
+    - seed (int | None): Seed of this worker's torch generator; None leaves it as inherited.
 
     Returns
     ----------
@@ -169,6 +175,9 @@ def worker(
     # the very first iteration is still recorded in the logfile.
     if logpath:
         attach_worker_logfile(logpath, log_level)
+    torch.set_num_threads(WORKER_TORCH_THREADS)
+    if seed is not None:
+        torch.manual_seed(seed)
 
     try:
         _worker_loop(
@@ -285,6 +294,10 @@ def _worker_loop(
             # Append new data to shared X and Y
             X = torch.cat((D_shared['X'], x_new), dim=0)
             D_shared['X'] = X
+            # With one GP per observable, the objective returns the observables after y
+            if 'S' in D_shared:
+                y_new, s_new = y_new[:, :1], y_new[:, 1:]
+                D_shared['S'] = torch.cat((D_shared['S'], s_new), dim=0)
             Y = torch.cat((D_shared['Y'], y_new), dim=0)
             D_shared['Y'] = Y
             # Evaluated now, so no longer pending for the other workers.
@@ -353,6 +366,8 @@ def parallel_process(
     sigma: dict | None = None,
     correlation: dict | None = None,
     patience: int = 0,
+    loss: tuple[str, float] | None = None,
+    per_observable: bool = False,
 ) -> tuple[dict, list, list]:
     """Orchestrate parallel asynchronous Bayesian optimization.
 
@@ -367,7 +382,7 @@ def parallel_process(
     - n_workers (int): Number of parallel worker processes.
     - max_len (int): Target total number of evaluations, including initial data.
     - output (str): Output directory for checkpoints and plots.
-    - seed (int): Random seed for some degree of reproducibility
+    - seed (int): Seeds torch for the initial proposals, and seed + 1 + worker id each worker.
     - ref_config (str): Path to reference config to pass to objective_builder.
     - observables (dict): Target observables (keys) and values.
     - parameters (dict):  Parameters (keys) with bounds (values) for inference.
@@ -378,6 +393,10 @@ def parallel_process(
     - correlation (dict | None): Correlations between the observable uncertainties.
     - patience (int): Evaluations without improvement after which the study
       stops; 0 runs the full budget.
+    - loss (tuple[str, float] | None): Objective name and parameter, or None for
+      chi-squared.
+    - per_observable (bool): Fit one GP per observable, from the `s_*` columns of
+      init.csv, instead of one GP of the objective.
 
     Returns
     ----------
@@ -396,16 +415,25 @@ def parallel_process(
         failure_codes=failure_codes,
         sigma=sigma,
         correlation=correlation,
+        loss=loss,
+        with_observables=per_observable,
+    )
+    surrogate = (
+        ObservableSurrogate(ObservableObjective(observables, sigma, correlation, loss), kernel)
+        if per_observable
+        else None
     )
 
     # Build kernel
     d = len(parameters)
+    kernel_name = kernel
     kernel = get_kernel(kernel, d)
 
     process_fun = partial(
         BO_step,
         k=kernel,
         acqf=acqf,
+        surrogate=surrogate,
     )
 
     # Absolute path to shared output dir
@@ -420,7 +448,9 @@ def parallel_process(
     D_init = load_dataset_csv(D_init_path)
 
     # Initialize shared data structures
-    D_shared = mgr.dict({'X': D_init['X'], 'Y': D_init['Y']})
+    if per_observable and 'S' not in D_init:
+        raise ValueError(f'{D_init_path} has no observables for bo_per_observable')
+    D_shared = mgr.dict(D_init if per_observable else {'X': D_init['X'], 'Y': D_init['Y']})
     n_init = len(D_shared['X'])
 
     lock = mgr.Lock()
@@ -433,7 +463,10 @@ def parallel_process(
     log_list = mgr.list([None] * n_init)  # no logs from init data
 
     # Generate initial candidate locations and busy-map
-    X_init = init_locs(n_workers, D_shared, acqf=acqf)  # shape (n_workers, d)
+    torch.manual_seed(seed)
+    X_init = init_locs(
+        n_workers, D_shared, acqf=acqf, kernel=kernel_name, surrogate=surrogate
+    )  # (n_workers, d)
     B = mgr.dict()
 
     # Shared list for end times
@@ -475,6 +508,7 @@ def parallel_process(
                 aborts,
                 patience,
                 converged,
+                seed + 1 + wid,
             ),
         )
         p.start()

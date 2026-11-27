@@ -8,6 +8,7 @@ References:
 
 from __future__ import annotations
 
+import math
 import threading
 
 import numpy as np
@@ -24,6 +25,7 @@ pytest.importorskip('gpytorch')
 
 import proteus.inference.gen_D_init as init_mod  # noqa: E402
 from proteus.inference.failures import ProteusRunFailure  # noqa: E402
+from proteus.inference.objective import LOG_FLOOR_DEX  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -46,6 +48,8 @@ def test_create_init_falls_back_to_n_workers_when_init_samps_less_than_one(monke
         failure_codes,
         sigma=None,
         correlation=None,
+        loss=None,
+        with_observables=False,
     ):
         received.append(n)
         return n
@@ -113,9 +117,17 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
     )
 
     def fake_sample_from_grid(
-        output, params, observables, grid_dir, sigma=None, correlation=None
+        output,
+        params,
+        observables,
+        grid_dir,
+        sigma=None,
+        correlation=None,
+        loss=None,
+        with_observables=False,
     ):
         observed['grid_dir'] = grid_dir
+        observed['loss'] = loss
         return 6
 
     monkeypatch.setattr(init_mod, 'sample_from_grid', fake_sample_from_grid)
@@ -126,9 +138,11 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
         'parameters': {'planet.mass_tot': [0.7, 3.0]},
         'observables': {'R_obs': 1.0},
         'failure_codes': [],
+        'loss': ('student-t', 4.0),
     }
 
     assert init_mod.create_init(config) == 6
+    assert observed['loss'] == ('student-t', 4.0)
     # The grid dir is the (possibly relocated) output root joined with the grid
     # name. The full path rules out ignoring the grid name or a hard-coded
     # <proteus>/output root.
@@ -343,8 +357,8 @@ def test_sample_from_bounds_rejects_invalid_worker_count():
 def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
     """``sample_from_bounds`` caps the worker pool at ``cpu_count - 1``
     (3 in this test, with cpu_count=4 mocked) regardless of the user's
-    request, uses Halton sequences for the initial design, and saves
-    the resulting (X, Y) dataset to ``init.csv``.
+    request, uses Halton sequences for the initial design, hands the pool one
+    sample per task, and saves the resulting (X, Y) dataset to ``init.csv``.
     """
     captured = {}
 
@@ -367,8 +381,9 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
         def __exit__(self, exc_type, exc, tb):
             return False
 
-        def starmap_async(self, func, args):
+        def starmap_async(self, func, args, chunksize=None):
             captured['task_count'] = len(args)
+            captured['chunksize'] = chunksize
             results = [torch.tensor([[0.2]], dtype=torch.double) for _ in args]
 
             class _AsyncResult:
@@ -385,7 +400,7 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
         init_mod, 'get_proteus_directories', lambda _output: {'output': str(tmp_path)}
     )
 
-    def fake_save_dataset_csv(X, Y, fpath):
+    def fake_save_dataset_csv(X, Y, fpath, S=None):
         captured['saved_shape'] = (tuple(X.shape), tuple(Y.shape))
         captured['saved_path'] = fpath
 
@@ -405,6 +420,8 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
     assert n == 2
     assert captured['processes'] == 3
     assert captured['task_count'] == 2
+    # One sample per task; Python's default would hand 50 samples to 10 workers in pairs
+    assert captured['chunksize'] == 1
     # Each pool worker is handed the batch's stop signal.
     assert captured['initializer'] is init_mod._init_pool_worker
     assert captured['saved_shape'] == ((2, 1), (2, 1))
@@ -490,3 +507,38 @@ def test_real_halton_accepts_rng_keyword_and_is_deterministic():
     )
     np.testing.assert_allclose(x, x_same, rtol=0.0, atol=0.0)
     assert not np.allclose(x, x_diff)
+
+
+def test_sample_from_grid_writes_the_compared_observables(monkeypatch, tmp_path):
+    """With with_observables, init.csv gains one s_* column per observable, in the space the
+    objective compares it in: R_obs linear, P_surf in log10, and a zero P_surf at the floor
+    LOG_FLOOR_DEX below its target."""
+    grid_dir = tmp_path / 'grid'
+    output_dir = tmp_path / 'output'
+    output_dir.mkdir(parents=True)
+    for i, (r, p) in enumerate([(9.0e6, 100.0), (9.5e6, 0.0)]):
+        case = grid_dir / f'case_{i}'
+        case.mkdir(parents=True)
+        pd.DataFrame([{'R_obs': r, 'P_surf': p}]).to_csv(
+            case / 'runtime_helpfile.csv', sep=' ', index=False
+        )
+        (case / 'init_coupler.toml').write_text(
+            toml.dumps({'planet': {'mass_tot': 1.0 + i}}), encoding='utf-8'
+        )
+    monkeypatch.setattr(
+        init_mod, 'get_proteus_directories', lambda _output: {'output': str(output_dir)}
+    )
+
+    init_mod.sample_from_grid(
+        output='ignored',
+        params={'planet.mass_tot': [0.0, 10.0]},
+        observables={'R_obs': 9.25e6, 'P_surf': 50.0},
+        grid_dir=str(grid_dir),
+        with_observables=True,
+    )
+
+    data = pd.read_csv(output_dir / 'init.csv')
+    assert list(data.columns) == ['x_0', 'y', 's_0', 's_1']
+    assert data['s_0'].tolist() == pytest.approx([9.0e6, 9.5e6], rel=1e-12)
+    assert data['s_1'][0] == pytest.approx(2.0, rel=1e-12)  # log10(100), not 100
+    assert data['s_1'][1] == pytest.approx(math.log10(50.0) - LOG_FLOOR_DEX, rel=1e-12)

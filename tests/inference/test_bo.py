@@ -2,12 +2,14 @@
 Unit tests for Bayesian optimization core utilities.
 
 Covers: ``unit_bounds``, ``get_acqf`` dispatch and error contract,
-``BO_step`` with explicit x_in / UCB path, ``init_locs`` with acqf
+``BO_step`` with explicit x_in / UCB path,
+random values for parameters the GP treats as irrelevant, ``init_locs`` with acqf
 propagation, and the ``plot_iter`` file-I/O leg.
 
 Physics invariants exercised:
   - Acquisition-parameter contract: correct beta (UCB) and best_f
     (LogEI, LogPI) are forwarded; wrong values shift the optimisation target.
+  - Thompson sampling: draws at a point spread as the GP posterior does.
   - Error-before-evaluation: unsupported acqf raises before any objective
     call so no evaluation budget is wasted.
   - Distance metric: UCB path returns the correct minimum distance to
@@ -32,6 +34,7 @@ pytest.importorskip('botorch')
 pytest.importorskip('gpytorch')
 
 import proteus.inference.BO as bo_mod  # noqa: E402
+from proteus.inference.composite import ObservableObjective, ObservableSurrogate  # noqa: E402
 
 from ._bo_helpers import make_quadratic_objective  # noqa: E402
 
@@ -51,6 +54,8 @@ class _DummyGP:
 
     def __init__(self):
         self.likelihood = object()
+        # Short lengthscales: every parameter relevant, none drawn at random
+        self.covar_module = type('K', (), {'lengthscale': torch.full((1, 8), 0.5)})()
 
     def posterior(self, xs):
         class _Posterior:
@@ -155,7 +160,7 @@ def test_bo_step_ucb_path_computes_distance(monkeypatch):
     monkeypatch.setattr(
         bo_mod,
         'optimize_acqf',
-        lambda **kwargs: (torch.tensor([[0.8]], dtype=torch.double), None),
+        lambda **kwargs: (torch.tensor([[0.8]], dtype=torch.double), torch.zeros(1)),
     )
     monkeypatch.setattr(bo_mod, 'plot_iter', lambda **kwargs: None)
 
@@ -184,6 +189,112 @@ def test_bo_step_ucb_path_computes_distance(monkeypatch):
     assert pending[0].tolist() == [[0.3]]
 
 
+def test_random_irrelevant_draws_only_parameters_above_the_threshold():
+    """Parameters with a fitted lengthscale above IRRELEVANT_LENGTHSCALE get a value
+    in [0, 1]; one exactly at the threshold, or below it, is left to the optimiser.
+    """
+    gp = type('G', (), {})()
+    gp.covar_module = type('K', (), {})()
+    gp.covar_module.lengthscale = torch.tensor([[0.2, 2.0, 1.5, 3.0]], dtype=torch.double)
+    torch.manual_seed(3)
+    fixed = bo_mod.random_irrelevant(gp, 4, 'test')
+    torch.manual_seed(3)
+    again = bo_mod.random_irrelevant(gp, 4, 'test')
+
+    assert bo_mod.IRRELEVANT_LENGTHSCALE == pytest.approx(1.5, rel=1e-12)
+    assert sorted(fixed) == [1, 3]
+    assert all(0.0 <= v <= 1.0 for v in fixed.values())
+    assert fixed == again  # drawn from the torch generator, so a seed repeats it
+    gp.covar_module.lengthscale = torch.full((1, 4), 0.3, dtype=torch.double)
+    assert bo_mod.random_irrelevant(gp, 4, 'test') is None
+
+
+@pytest.mark.physics_invariant
+def test_irrelevant_parameter_is_drawn_instead_of_pinned_to_a_bound():
+    """A GP that barely depends on x_1 (lengthscale 5) puts the LogEI maximum on the
+    x_1 = 1 bound; with x_1 drawn at random the proposal leaves the bound, and x_0
+    still goes to the optimum near 0.3.
+    """
+    from botorch.models import SingleTaskGP
+
+    g = torch.Generator().manual_seed(0)
+    X = torch.rand(20, 2, generator=g, dtype=torch.double)
+    Y = (-10 * (X[:, :1] - 0.3) ** 2 + 0.05 * X[:, 1:]).double()
+    gp = SingleTaskGP(X, Y, train_Yvar=torch.full_like(Y, 1e-4))
+    gp.covar_module.lengthscale = torch.tensor([[0.2, 5.0]], dtype=torch.double)
+    gp.eval()
+    acq = bo_mod.get_acqf('LogEI', gp, best=Y.max().item())
+
+    torch.manual_seed(1)
+    plain = bo_mod.optimize_acqf_logged(acq, 2, 'test')[0]
+    torch.manual_seed(1)
+    fixed = bo_mod.random_irrelevant(gp, 2, 'test')
+    drawn = bo_mod.optimize_acqf_logged(acq, 2, 'test', fixed)[0]
+
+    assert plain[1].item() > 1 - 1e-6  # the near-linear direction pins it to a bound
+    assert list(fixed) == [1]
+    assert drawn[1].item() == pytest.approx(fixed[1], abs=1e-12)
+    assert 1e-3 < drawn[1].item() < 1 - 1e-3
+    assert drawn[0].item() == pytest.approx(0.3, abs=0.1)
+
+
+def _restarts(monkeypatch, points, values):
+    """Make optimize_acqf return the given restart candidates (n, d) with their values."""
+    X = torch.tensor(points, dtype=torch.double)[:, None, :]
+    v = torch.tensor(values, dtype=torch.double)
+    monkeypatch.setattr(bo_mod, 'optimize_acqf', lambda **kwargs: (X, v))
+
+
+def test_optimize_acqf_logged_takes_the_best_restart_clear_of_existing_points(monkeypatch):
+    """Restarts are ranked by acquisition value; one within MIN_SEPARATION of an avoided
+    point is skipped, so the proposal is the best restart that is not a near-repeat.
+    """
+    avoid = torch.tensor([[0.5, 0.5]], dtype=torch.double)
+    _restarts(monkeypatch, [[0.2, 0.8], [0.5, 0.502], [0.9, 0.1]], [0.4, 0.9, 0.1])
+
+    assert bo_mod.MIN_SEPARATION == pytest.approx(0.005, rel=1e-12)
+    x = bo_mod.optimize_acqf_logged(None, 2, 'test', avoid=avoid)
+    assert x.tolist() == [[0.2, 0.8]]  # 0.9 is the best value but 0.002 from the point
+    assert bo_mod.optimize_acqf_logged(None, 2, 'test').tolist() == [[0.5, 0.502]]
+
+
+def test_optimize_acqf_logged_proposes_at_random_when_every_restart_repeats(monkeypatch):
+    """With every restart near an avoided point, the proposal is a random point in the cube."""
+    avoid = torch.tensor([[0.5, 0.5]], dtype=torch.double)
+    _restarts(monkeypatch, [[0.5, 0.5], [0.501, 0.5]], [1.0, 0.5])
+    torch.manual_seed(0)
+    x = bo_mod.optimize_acqf_logged(None, 2, 'test', avoid=avoid)
+
+    assert x.shape == (1, 2)
+    assert torch.all((x >= 0) & (x <= 1))
+    assert torch.cdist(x, avoid).item() >= bo_mod.MIN_SEPARATION
+
+
+def test_pending_point_at_the_acquisition_maximum_is_not_proposed_again():
+    """A real LogEI maximum, once evaluated or pending, is not proposed a second time:
+    the next proposal lies at least MIN_SEPARATION from it.
+    """
+    from botorch.models import SingleTaskGP
+
+    g = torch.Generator().manual_seed(0)
+    X = torch.rand(15, 2, generator=g, dtype=torch.double)
+    Y = (-10 * ((X - 0.4) ** 2).sum(dim=1, keepdim=True)).double()
+    gp = SingleTaskGP(X, Y, train_Yvar=torch.full_like(Y, 1e-4))
+    gp.covar_module.lengthscale = torch.tensor([[0.3, 0.3]], dtype=torch.double)
+    gp.eval()
+    acq = bo_mod.get_acqf('LogEI', gp, best=Y.max().item())
+
+    torch.manual_seed(1)
+    first = bo_mod.optimize_acqf_logged(acq, 2, 'test', avoid=X)
+    torch.manual_seed(1)
+    again = bo_mod.optimize_acqf_logged(acq, 2, 'test', avoid=torch.cat([X, first]))
+    torch.manual_seed(1)
+    unguarded = bo_mod.optimize_acqf_logged(acq, 2, 'test')
+
+    assert torch.cdist(unguarded, first).item() < bo_mod.MIN_SEPARATION  # would repeat it
+    assert torch.cdist(again, torch.cat([X, first])).min().item() >= bo_mod.MIN_SEPARATION
+
+
 def test_init_locs_returns_batch_candidates(monkeypatch):
     """init_locs(n, D) returns an (n, d) tensor for n workers by calling
     optimize_acqf once per worker with q=1 and stacking the results.
@@ -210,7 +321,7 @@ def test_init_locs_returns_batch_candidates(monkeypatch):
         q_values.append(kwargs.get('q'))
         result = results[call_idx[0]]
         call_idx[0] += 1
-        return (result, None)
+        return (result, torch.zeros(1))
 
     monkeypatch.setattr(bo_mod, 'optimize_acqf', _mock_optimize)
 
@@ -326,6 +437,44 @@ def test_get_acqf_log_pi_forwards_best_f():
     assert abs(result.best_f.item()) > 0.1
 
 
+def _small_gp():
+    """A 1-D GP on four points with fixed hyperparameters, in evaluation mode."""
+    from botorch.models import SingleTaskGP
+
+    X = torch.tensor([[0.05], [0.3], [0.6], [0.95]], dtype=torch.double)
+    Y = torch.tensor([[0.2], [1.0], [-0.4], [0.3]], dtype=torch.double)
+    gp = SingleTaskGP(X, Y, train_Yvar=torch.full_like(Y, 1e-4))
+    gp.covar_module.lengthscale = 0.2
+    return gp.eval()
+
+
+@pytest.mark.physics_invariant
+def test_get_acqf_thompson_draws_spread_as_the_posterior():
+    """get_acqf('TS') draws a new posterior function per call: at x = 0.45, between
+    two data points, 20 draws scatter about the GP posterior mean with its spread.
+
+    A posterior-mean acquisition, or one draw reused for every call, has no spread.
+    """
+    from botorch.acquisition.thompson_sampling import PathwiseThompsonSampling
+
+    gp = _small_gp()
+    x = torch.tensor([[[0.45]]], dtype=torch.double)
+    torch.manual_seed(0)
+    acqs = [bo_mod.get_acqf('TS', gp, best=0.0) for _ in range(20)]
+    with torch.no_grad():
+        v = torch.cat([a(x).reshape(-1) for a in acqs])
+        post = gp.posterior(x[0])
+    m, s = post.mean.item(), post.variance.sqrt().item()
+
+    assert isinstance(acqs[0], PathwiseThompsonSampling)
+    assert s > 0.1  # the point is far enough from the data to be uncertain
+    # 20 draws: the sample mean is within 4 standard errors, 4 s / sqrt(20)
+    assert v.mean().item() == pytest.approx(m, abs=4 * s / 20**0.5)
+    # the sample sd of 20 draws scatters by about 16 %; random features add a little
+    assert v.std().item() == pytest.approx(s, rel=0.5)
+    assert v.std().item() > 0.5 * s
+
+
 def test_get_acqf_raises_for_unsupported_name():
     """get_acqf raises ValueError for names outside {'UCB', 'LogEI', 'LogPI'}.
 
@@ -341,8 +490,8 @@ def test_get_acqf_raises_for_unsupported_name():
 
     # Discrimination: a regression that always raises would still satisfy the
     # two assertions above. Verify each supported name succeeds without raising.
-    for name in ('UCB', 'LogEI', 'LogPI'):
-        result = bo_mod.get_acqf(name, _DummyGP(), best=0.5)
+    for name in ('UCB', 'LogEI', 'LogPI', 'TS'):
+        result = bo_mod.get_acqf(name, _small_gp(), best=0.5)
         assert result is not None, f'Supported name {name!r} unexpectedly returned None'
 
 
@@ -381,7 +530,7 @@ def test_init_locs_propagates_acqf_to_log_pi(monkeypatch):
     def _mock_optimize(**kw):
         result = results[call_idx[0]]
         call_idx[0] += 1
-        return (result, None)
+        return (result, torch.zeros(1))
 
     monkeypatch.setattr(bo_mod, 'optimize_acqf', _mock_optimize)
 
@@ -442,7 +591,7 @@ def _patched_bo_step_deps(monkeypatch, candidate=0.8):
     monkeypatch.setattr(
         bo_mod,
         'optimize_acqf',
-        lambda **kwargs: (torch.tensor([[candidate]], dtype=torch.double), None),
+        lambda **kwargs: (torch.tensor([[candidate]], dtype=torch.double), torch.zeros(1)),
     )
     monkeypatch.setattr(bo_mod, 'plot_iter', lambda **kwargs: None)
 
@@ -624,7 +773,7 @@ def _patch_optimizer(monkeypatch, *messages):
     def _optimize(**kwargs):
         for text, category in messages:
             warnings.warn(text, category)
-        return torch.tensor([[0.25, 0.75]], dtype=torch.double), None
+        return torch.tensor([[0.25, 0.75]], dtype=torch.double), torch.zeros(1)
 
     monkeypatch.setattr(bo_mod, 'optimize_acqf', _optimize)
 
@@ -751,3 +900,235 @@ def test_optimize_acqf_logged_passes_other_warnings_through_and_logs_nothing(
         bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 0')
 
     assert caplog.records == []
+
+
+def test_scored_evaluations_drops_only_failed_runs():
+    """Failed and excluded runs, scored BAD_OBJ_VALUE, leave the GP training set;
+    every scored run stays, including one just above the failure score.
+    """
+    bad = bo_mod.BAD_OBJ_VALUE
+    X = torch.tensor([[0.1], [0.3], [0.5], [0.7]], dtype=torch.double)
+    # -19.5 is far below any real score but still a fit quality, so it is kept
+    Y = torch.tensor([[-1.2], [bad], [bad + 0.5], [0.8]], dtype=torch.double)
+
+    X_fit, Y_fit = bo_mod.scored_evaluations(X, Y)
+
+    assert X_fit.flatten().tolist() == pytest.approx([0.1, 0.5, 0.7])
+    assert Y_fit.flatten().tolist() == pytest.approx([-1.2, bad + 0.5, 0.8])
+    # Rows stay paired: the input of each kept score is its own
+    assert torch.equal(torch.cat([X_fit, Y_fit], dim=1), torch.cat([X, Y], dim=1)[[0, 2, 3]])
+
+
+def test_scored_evaluations_raises_when_every_run_failed():
+    """With no scored evaluation the GP has nothing to fit, which is an error,
+    not an empty training set.
+    """
+    X = torch.tensor([[0.2], [0.6]], dtype=torch.double)
+    Y = torch.full((2, 1), bo_mod.BAD_OBJ_VALUE, dtype=torch.double)
+
+    with pytest.raises(ValueError, match='None of the 2 evaluations is scored'):
+        bo_mod.scored_evaluations(X, Y)
+    # An empty history is the same case
+    with pytest.raises(ValueError, match='None of the 0'):
+        bo_mod.scored_evaluations(X[:0], Y[:0])
+
+
+def _spy_gp_and_acquisition(monkeypatch, candidate):
+    """Record the GP training data, the incumbent and the `avoid` set of the acquisition."""
+    seen = {}
+
+    def _gp(**kwargs):
+        seen['train_X'], seen['train_Y'] = kwargs['train_X'], kwargs['train_Y']
+        return _DummyGP()
+
+    def _acqf(_name, _gp, best, X_pending=None):
+        seen['best'] = best
+        return object()
+
+    def _optimize(_acqf, d, who, fixed=None, avoid=None):
+        seen['avoid'] = avoid
+        return torch.tensor([[candidate]], dtype=torch.double)
+
+    monkeypatch.setattr(bo_mod, 'SingleTaskGP', _gp)
+    monkeypatch.setattr(bo_mod, 'get_kernel', lambda *args, **kwargs: object())
+    monkeypatch.setattr(bo_mod, 'ExactMarginalLogLikelihood', lambda _lik, _gp: object())
+    monkeypatch.setattr(bo_mod, 'fit_gpytorch_mll', lambda *args, **kwargs: None)
+    monkeypatch.setattr(bo_mod, 'get_acqf', _acqf)
+    monkeypatch.setattr(bo_mod, 'optimize_acqf_logged', _optimize)
+    monkeypatch.setattr(bo_mod, 'plot_iter', lambda **kwargs: None)
+    return seen
+
+
+def _history_with_failures():
+    """Five evaluations, two of them failed, one failure next to the best point."""
+    bad = bo_mod.BAD_OBJ_VALUE
+    X = torch.tensor([[0.1], [0.35], [0.4], [0.6], [0.9]], dtype=torch.double)
+    Y = torch.tensor([[-2.0], [bad], [1.1], [bad], [-0.5]], dtype=torch.double)
+    return {'X': X, 'Y': Y}
+
+
+@pytest.mark.physics_invariant
+def test_bo_step_fits_gp_without_failed_runs_but_still_avoids_them(monkeypatch):
+    """The GP of a BO step sees only scored runs, so no failure enters the standardised
+    targets, while the failed inputs stay in the acquisition's `avoid` set, so the
+    optimiser does not propose a failed point again.
+    """
+    seen = _spy_gp_and_acquisition(monkeypatch, candidate=0.75)
+    D = _history_with_failures()
+
+    x, y, *_ = bo_mod.BO_step(
+        D=D,
+        B={},
+        f=lambda _x: torch.tensor([[0.3]], dtype=torch.double),
+        k=object(),
+        acqf='LogEI',
+        lock=_DummyLock(),
+        worker_id=0,
+    )
+
+    assert seen['train_X'].flatten().tolist() == pytest.approx([0.1, 0.4, 0.9])
+    assert seen['train_Y'].flatten().tolist() == pytest.approx([-2.0, 1.1, -0.5])
+    # Bound: every training target is a real fit quality
+    assert seen['train_Y'].min().item() > bo_mod.BAD_OBJ_VALUE
+    assert seen['best'] == pytest.approx(1.1)
+    # Both failed inputs, 0.35 and 0.6, are still avoided
+    assert seen['avoid'].flatten().tolist() == pytest.approx([0.1, 0.35, 0.4, 0.6, 0.9])
+    assert x[0, 0].item() == pytest.approx(0.75)
+    assert y[0, 0].item() == pytest.approx(0.3)
+
+
+@pytest.mark.physics_invariant
+def test_init_locs_fits_gp_without_failed_runs_but_still_avoids_them(monkeypatch):
+    """The initial proposals come from a GP of the scored runs only, and every
+    evaluated input, failed or not, stays in the `avoid` set of each proposal.
+    """
+    seen = _spy_gp_and_acquisition(monkeypatch, candidate=0.75)
+    D = _history_with_failures()
+
+    out = bo_mod.init_locs(1, D)
+
+    assert seen['train_Y'].flatten().tolist() == pytest.approx([-2.0, 1.1, -0.5])
+    assert seen['train_X'].flatten().tolist() == pytest.approx([0.1, 0.4, 0.9])
+    assert seen['train_Y'].min().item() > bo_mod.BAD_OBJ_VALUE
+    assert seen['avoid'].flatten().tolist() == pytest.approx([0.1, 0.35, 0.4, 0.6, 0.9])
+    assert out.flatten().tolist() == pytest.approx([0.75])
+
+
+@pytest.mark.physics_invariant
+def test_failed_run_no_longer_pulls_gp_mean_down_near_best_point():
+    """A failure next to the best point drags the GP mean of a fit that includes it
+    far below every scored value; without it, the mean between the neighbours stays
+    within the range of the scored data.
+    """
+    from botorch.models import SingleTaskGP
+    from botorch.models.transforms import Normalize, Standardize
+
+    D = _history_with_failures()
+
+    def _mean_at(X, Y, x):
+        gp = SingleTaskGP(
+            X,
+            Y,
+            train_Yvar=torch.full_like(Y, 1e-4),
+            input_transform=Normalize(d=1),
+            outcome_transform=Standardize(m=1),
+        )
+        gp.covar_module.lengthscale = 0.2  # fixed, so the comparison needs no fit
+        with torch.no_grad():
+            return gp.eval().posterior(torch.tensor([[x]], dtype=torch.double)).mean.item()
+
+    # 0.37 sits between the failure at 0.35 and the best point at 0.4
+    clean = _mean_at(*bo_mod.scored_evaluations(D['X'], D['Y']), 0.37)
+    raw = _mean_at(D['X'], D['Y'], 0.37)
+
+    assert -2.0 <= clean <= 1.5  # within the scored range, with room for overshoot
+    # Discrimination: the fit with the failure sits many units below that range
+    assert raw < -5.0
+
+
+def test_bo_step_and_init_locs_fit_with_botorch_default_lbfgs(monkeypatch):
+    """Both GP fits use botorch's default L-BFGS: no torch optimizer is passed."""
+    calls = []
+    monkeypatch.setattr(bo_mod, 'fit_gpytorch_mll', lambda *a, **kw: calls.append(kw))
+    monkeypatch.setattr(bo_mod, 'plot_iter', lambda **kw: None)
+    g = torch.Generator().manual_seed(0)
+    X = torch.rand(8, 2, generator=g, dtype=torch.double)
+    D = {'X': X, 'Y': -((X - 0.5) ** 2).sum(dim=1, keepdim=True)}
+    bo_mod.init_locs(1, D, acqf='UCB', kernel='RBF')
+    bo_mod.BO_step(
+        D=D,
+        B={},
+        f=lambda x: torch.zeros((1, 1), dtype=torch.double),
+        k=bo_mod.get_kernel('RBF', 2),
+        acqf='UCB',
+        lock=_DummyLock(),
+        worker_id=0,
+    )
+    assert len(calls) == 2
+    assert all('optimizer' not in kw for kw in calls)
+
+
+def _gp_with_lengthscales(*values):
+    """Stand-in GP whose covariance carries the given ARD lengthscales."""
+    gp = type('G', (), {})()
+    gp.covar_module = type('K', (), {})()
+    gp.covar_module.lengthscale = torch.tensor([values], dtype=torch.double)
+    return gp
+
+
+def test_random_irrelevant_needs_every_observable_gp_to_find_a_parameter_irrelevant():
+    """In a model list, a parameter is drawn at random only when every GP has a long
+    lengthscale for it: one observable that depends on it keeps it in the optimisation."""
+    models = type('M', (), {})()
+    models.models = [_gp_with_lengthscales(3.0, 2.0, 0.2), _gp_with_lengthscales(0.4, 2.5, 0.3)]
+    torch.manual_seed(0)
+    fixed = bo_mod.random_irrelevant(models, 3, 'test')
+    assert sorted(fixed) == [1]
+    assert 0.0 <= fixed[1] <= 1.0
+
+
+@pytest.mark.physics_invariant
+def test_bo_step_with_surrogate_fits_the_observables_and_returns_them(monkeypatch):
+    """With a surrogate, BO_step fits it to D['S'], builds its acquisition with the best
+    scored J and the other workers' points, skips the 1D plot, and returns f's full row."""
+    plotted = []
+    monkeypatch.setattr(bo_mod, 'plot_iter', lambda **kw: plotted.append(kw))
+    target = {'R_obs': 1.0, 'T_obs': 2.0}
+    objective = ObservableObjective(target, {'R_obs': 0.1, 'T_obs': 0.1})
+
+    class Recording(ObservableSurrogate):
+        def fit(self, X, Y, S):
+            self.fit_args = (X, Y, S)
+            return super().fit(X, Y, S)
+
+        def acqf(self, name, model, best, X_pending=None):
+            self.acqf_args = (name, best, X_pending)
+            return super().acqf(name, model, best, X_pending)
+
+    surrogate = Recording(objective, 'RBF', attempts=1)
+    torch.manual_seed(0)
+    X = torch.linspace(0.05, 0.95, 8, dtype=torch.double).reshape(-1, 1)
+    S = torch.cat([0.5 + X, 1.0 + 2 * X], dim=1)
+    Y = objective(S).reshape(-1, 1)
+    Y[3] = bo_mod.BAD_OBJ_VALUE
+    S[3] = float('nan')
+    other = torch.tensor([[0.9]], dtype=torch.double)
+    row = torch.tensor([[0.1, 1.0, 2.0]], dtype=torch.double)
+    x, y, *_ = bo_mod.BO_step(
+        D={'X': X, 'Y': Y, 'S': S},
+        B={1: other},
+        f=lambda _x: row,
+        k=bo_mod.get_kernel('RBF', 1),
+        acqf='LogEI',
+        lock=_DummyLock(),
+        worker_id=0,
+        surrogate=surrogate,
+    )
+    assert surrogate.fit_args[2] is S
+    name, best, pending = surrogate.acqf_args
+    assert name == 'LogEI'
+    assert best == pytest.approx(Y[Y[:, 0] > bo_mod.BAD_OBJ_VALUE].max().item(), rel=1e-12)
+    torch.testing.assert_close(pending, other)
+    assert y is row and plotted == []
+    # Both observables match their targets at x = 0.5, so the proposal is drawn towards it
+    assert abs(x.item() - 0.5) < 0.2

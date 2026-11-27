@@ -4,8 +4,9 @@ Unit tests for the best-fit plots in ``src/proteus/inference/plot_fit.py``.
 A utility module (see ``tests/AGENTS.md``, "Physics modules"), so exempt from
 the physics-invariant requirement. Covers the case scoring that feeds both
 plots, ``plot_result_observables`` with the failure-table exclusion and the
-named-best-case override and fallback, its two panel builders, and
-``plot_result_parameters``.
+named-best-case override and fallback, its two panel builders,
+``plot_result_parameters``, and the posterior corner plot with its reflected
+density estimate and credible-region levels.
 
 Matplotlib is mocked at the module-attribute level (``plot_fit_mod.plt``).
 """
@@ -103,6 +104,21 @@ def test_collect_case_observables_scores_with_observable_correlation(tmp_path):
     assert df.loc[0, 'J'] == pytest.approx(-np.log10(5.0 + 1e-10), rel=1e-9)
     independent = plot_fit_mod.collect_case_observables(tmp_path, obs, sigma)
     assert independent.loc[0, 'J'] == pytest.approx(-np.log10(8.0 + 1e-10), rel=1e-9)
+
+
+@pytest.mark.physics_invariant
+def test_collect_case_observables_scores_with_student_t(tmp_path):
+    """The plotted J uses the optimiser's Student-t: u = (2, 2), nu = 3 gives
+    8 ln(7/3) = 6.78, not the Gaussian 8.
+    """
+    obs = {'R_obs': 6.0e6, 'T_obs': 400.0}
+    sigma = {'R_obs': 5.0e5, 'T_obs': 25.0}
+    _write_case(tmp_path, 0, 0, {'R_obs': 7.0e6, 'T_obs': 450.0})
+
+    df = plot_fit_mod.collect_case_observables(tmp_path, obs, sigma, None, ('student-t', 3.0))
+
+    assert df.loc[0, 'J'] == pytest.approx(-np.log10(8.0 * np.log(7.0 / 3.0) + 1e-10), rel=1e-9)
+    assert abs(df.loc[0, 'J'] + np.log10(8.0)) > 0.05
 
 
 def test_collect_case_observables_marks_recorded_failures_as_excluded(tmp_path):
@@ -383,3 +399,102 @@ def test_plot_result_parameters_skips_when_nothing_is_scored(monkeypatch, tmp_pa
     assert 'No scored case to compare with the true parameters' in caplog.text
     assert mock_plt.subplots.call_count == 0
     assert not list((tmp_path / 'plots').glob('*.png'))
+
+
+# ---------------------------------------------------------------------------
+# plot_result_posterior
+# ---------------------------------------------------------------------------
+
+
+def test_reflected_kde_keeps_uniform_mass_inside_the_cube():
+    """Uniform samples give density about 1 everywhere, bounds included; an unreflected
+    KDE drops to about half at a bound, and the reflected one integrates to 1.
+    """
+    from scipy.stats import gaussian_kde
+
+    rng = np.random.default_rng(0)
+    U = rng.random((4000, 1))
+    g = np.linspace(0, 1, 201)[:, None]
+    dens = plot_fit_mod._reflected_kde(U, g)
+
+    np.testing.assert_allclose(dens[[0, 100, -1]], 1.0, atol=0.15)
+    assert gaussian_kde(U.T)(np.array([[0.0]]))[0] < 0.65  # unreflected
+    assert np.trapezoid(dens, g[:, 0]) == pytest.approx(1.0, abs=0.02)
+
+
+def test_mass_levels_enclose_the_requested_probability():
+    """On a gridded 2-D standard normal, the region above each level holds 95 and 68%
+    of the mass; the 68% region is the 1.515-sigma circle, not the 1-sigma one (39%).
+    """
+    x = np.linspace(-5, 5, 401)
+    XX, YY = np.meshgrid(x, x)
+    Z = np.exp(-0.5 * (XX**2 + YY**2))
+    l95, l68 = plot_fit_mod._mass_levels(Z)
+
+    for level, mass in ((l95, 0.95), (l68, 0.68)):
+        assert Z[Z >= level].sum() / Z.sum() == pytest.approx(mass, abs=0.005)
+    r68 = np.sqrt(-2 * np.log(l68))
+    assert r68 == pytest.approx(np.sqrt(-2 * np.log(0.32)), rel=0.01)
+    assert abs(r68 - 1.0) > 0.4
+
+
+@pytest.mark.parametrize(
+    'truth',
+    [{'interior_struct.core_frac': 0.4, 'planet.elements.H_budget': 5e3}, None],
+    ids=['with-truth', 'without-truth'],
+)
+def test_plot_result_posterior_writes_the_corner_plot(tmp_path, monkeypatch, truth):
+    """The corner plot is written with and without a truth, including a log-scaled
+    parameter and evaluations on a bound.
+    """
+    import torch
+
+    monkeypatch.setattr(plot_fit_mod, 'POST_GRID', 30)
+    (tmp_path / 'plots').mkdir()
+    pars = {'interior_struct.core_frac': [0.3, 0.7], 'planet.elements.H_budget': [1e3, 2e4]}
+    rng = np.random.default_rng(1)
+    samples = pd.DataFrame(
+        {
+            'interior_struct.core_frac': rng.uniform(0.35, 0.45, 300),
+            'planet.elements.H_budget': rng.uniform(4e3, 6e3, 300),
+        }
+    )
+    X = torch.tensor(np.vstack([rng.random((20, 2)), [[0.0, 1.0]]]), dtype=torch.double)
+    Y = torch.tensor(-rng.random((21, 1)), dtype=torch.double)
+
+    figs = []
+    monkeypatch.setattr(plot_fit_mod.plt, 'close', figs.append)
+    plot_fit_mod.plot_result_posterior(samples, {'X': X, 'Y': Y}, 10, pars, truth, tmp_path)
+
+    out = tmp_path / 'plots' / f'result_posterior.{plot_fit_mod.fmt}'
+    assert out.stat().st_size > 10_000
+    # Lower triangle only, and H (log-scaled) on a log axis in its row and column
+    visible = [ax for ax in figs[0].axes if ax.get_visible()]
+    assert len(visible) == 3
+    assert [ax.get_xscale() for ax in visible] == ['linear', 'linear', 'log']
+    assert visible[1].get_yscale() == 'log'
+    figs[0].clf()
+
+
+@pytest.mark.parametrize(
+    'loss, label',
+    [
+        (None, 'χ² = 4.2'),
+        (('huber', 1.345), '−2 ln L = 4.2'),
+        (('student-t', 4.0), '−2 ln L = 4.2'),
+    ],
+    ids=['chi-squared', 'huber', 'student-t'],
+)
+def test_posterior_legend_names_the_best_fit_sum_by_objective(loss, label):
+    """The best-fit entry calls the sum chi-squared only for the chi-2 objective; under
+    Huber or Student-t it is -2 ln L, which a chi-squared label would misreport.
+    """
+    from matplotlib.figure import Figure
+
+    fig = Figure()
+    plot_fit_mod._posterior_legend(fig, 10, 5, 4.2, False, loss)
+    texts = [t.get_text() for t in fig.legends[0].get_texts()]
+
+    best = [t for t in texts if t.startswith('best fit')]
+    assert best == [f'best fit ({label}), dotted on diagonal']
+    assert ('χ²' in best[0]) == (loss is None)

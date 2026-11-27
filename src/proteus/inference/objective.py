@@ -35,6 +35,8 @@ from proteus.utils.helper import ReadStatus
 dtype = torch.double
 EPS_CLIP = 1e-10
 LOG_CLIP = 1e-20
+# Lowest value, in dex below the target, at which the observable GPs fit an observable compared in log10
+LOG_FLOOR_DEX = 3.0
 BAD_OBJ_VALUE = -20.0
 # Above this fraction of the value, a linear sigma converts poorly to dex
 SIGMA_LINEAR_MAX_FRAC = 0.3
@@ -457,44 +459,41 @@ def log_warp(sq_dist):
     return warped_dist
 
 
-def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None):
-    """Evaluate objective value from simulated and target observables.
+class Sigma(dict):
+    """Sigma of each observable in its own units, as `validate_sigma` returns it. `log` names
+    the observables compared in log10 only because their sigma was given in dex, and `upper`
+    those whose value is an upper limit."""
 
-    The metric compares each observable in either linear or log space,
-    accumulates squared normalized differences, and applies `log_warp`.
-    A small offset is applied to the denominator to avoid division by zero.
+    def __init__(self, values=(), log=(), upper=()):
+        super().__init__(values)
+        self.log = frozenset(log)
+        self.upper = frozenset(upper)
 
-    With `whitener`, the sum of squares becomes the correlated chi-squared
-    u^T R^-1 u; R applies unchanged to log-space observables.
 
-    Parameters
-    ----------
-    - sim_dict (dict): Simulated observable values.
-    - tru_dict (dict): Target (reference) observable values.
-    - sigma (dict, optional): 1-sigma uncertainty of each observable, keyed
-      like `sim_dict` and in the same units as the observable. If None, the
-      relative-difference objective is used.
-    - whitener (CorrelationWhitener, optional): Observable correlations; needs `sigma`.
+def upper_mask(names, sigma) -> torch.Tensor | None:
+    """Which of the observables `names` are upper limits, shape (m,), or None if none is."""
+    upper = getattr(sigma, 'upper', frozenset())
+    if not upper:
+        return None
+    return torch.tensor([k in upper for k in names])
 
-    Returns
-    ----------
-    - torch.Tensor: Objective tensor of shape (1, 1).
-    """
 
-    # Looked up by name, so the order of `sigma` does not have to match `sim_dict`
-    if sigma is not None:
-        missing = [k for k in sim_dict.keys() if k not in sigma]
-        if missing:
-            raise KeyError(f'No sigma given for observables: {missing}')
-    if whitener is not None and sigma is None:
-        raise ValueError('correlation needs sigma: the correlation matrix scales sigma')
+def compared_in_log(k: str, sigma=None) -> bool:
+    """Whether eval_obj compares observable k in log10."""
+    if variable_is_logarithmic(k):
+        return True
+    return sigma is not None and (is_element_ratio(k) or k in getattr(sigma, 'log', ()))
 
+
+def observable_space(sim_dict, tru_dict, sigma=None):
+    """Simulated values, targets and sigmas, keyed like sim_dict, in the space eval_obj compares
+    them in: log10 for logarithmic variables and, with sigma, element ratios; linear otherwise."""
     sim_vals = []
     tru_vals = []
     sig_vals = []
     for k in sim_dict.keys():
         # some variables scale logarithmically
-        if variable_is_logarithmic(k) or (sigma is not None and is_element_ratio(k)):
+        if compared_in_log(k, sigma):
             tru_k = max(tru_dict[k], LOG_CLIP)
             sim_vals.append(log10(max(sim_dict[k], LOG_CLIP)))
             tru_vals.append(log10(tru_k))
@@ -508,32 +507,154 @@ def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None):
             if sigma is not None:
                 sig_vals.append(sigma[k])
 
-    # Convert to tensor and reshape
+    return sim_vals, tru_vals, sig_vals
+
+
+def _loss_terms(diff, name, param):
+    """Loss of each normalised difference: squared, Student-t or Huber."""
+    if name == 'student-t':
+        return (param + 1.0) * torch.log1p(diff**2 / param)
+    if name == 'huber':
+        return torch.where(diff.abs() <= param, diff**2, 2.0 * param * diff.abs() - param**2)
+    return diff**2
+
+
+def squared_distance(diff, names, whitener=None, loss=None, upper=None):
+    """Sum over observables `names` of the loss of each row of normalised differences diff
+    (m, len(names)), shape (m, 1): squared, correlated through whitener, or robust `loss`.
+    With both, the robust loss applies to the whitened residuals, so it keeps the correlation.
+
+    An observable in the boolean mask `upper` (shape (len(names),)) is an upper limit: its term
+    is -2 ln Phi(-diff), the censored Gaussian, which is 0 far below the limit, 2 ln 2 at it,
+    and tends to diff**2 above it. With chi-squared, a limit can be correlated
+    (`CorrelationWhitener.chi_squared`); with a robust loss it must be correlated with none.
+    """
+    name, param = loss if loss is not None else (None, None)
+    limits = {k for k, f in zip(names, upper.tolist()) if f} if upper is not None else set()
+    if whitener is not None and name is None:
+        return whitener.chi_squared(names, diff, limits)
+    if whitener is not None:
+        # A limit correlated with none keeps its own residual under the symmetric root
+        if limits & whitener.correlated:
+            raise ValueError(f'objective {name!r} takes no correlated upper limit')
+        diff = whitener.whiten(names, diff)
+        upper = torch.tensor([k in limits for k in whitener.names])
+    terms = _loss_terms(diff, name, param)
+    if limits:
+        terms = torch.where(upper, -2.0 * torch.special.log_ndtr(-diff), terms)
+    return terms.sum(dim=1, keepdim=True)
+
+
+def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None, loss=None):
+    """Evaluate objective value from simulated and target observables.
+
+    The metric compares each observable in either linear or log space,
+    accumulates squared normalized differences, and applies `log_warp`.
+    A small offset is applied to the denominator to avoid division by zero.
+
+    With `whitener`, the sum of squares becomes the correlated chi-squared
+    u^T R^-1 u; R applies unchanged to log-space observables.
+
+    With `loss`, the objective function can be changed to a robust loss function.
+    With `loss` and `whitener` together, the loss applies to the whitened residuals
+    R^(-1/2) u, which is minus twice the log-likelihood of correlated robust errors.
+
+    Parameters
+    ----------
+    - sim_dict (dict): Simulated observable values.
+    - tru_dict (dict): Target (reference) observable values.
+    - sigma (dict, optional): 1-sigma uncertainty of each observable, keyed
+      like `sim_dict` and in the same units as the observable. If None, the
+      relative-difference objective is used.
+    - whitener (CorrelationWhitener, optional): Observable correlations; needs `sigma`.
+    - loss (tuple[str, float], optional): Loss function to use. If None, the
+      squared-error loss is used. Supported options are:
+        - ('student-t', nu): Student-t loss with degrees of freedom nu.
+        - ('huber', delta): Huber loss with threshold delta.
+
+    Returns
+    ----------
+    - torch.Tensor: Objective tensor of shape (1, 1).
+    """
+
+    # Looked up by name, so the order of `sigma` does not have to match `sim_dict`
+    if sigma is not None:
+        missing = [k for k in sim_dict.keys() if k not in sigma]
+        if missing:
+            raise KeyError(f'No sigma given for observables: {missing}')
+    if whitener is not None and sigma is None:
+        raise ValueError('correlation needs sigma: the correlation matrix scales sigma')
+    if loss is not None and sigma is None:
+        raise ValueError(f'objective {loss[0]!r} needs sigma: sigma is the scale of each error')
+
+    sim_vals, tru_vals, sig_vals = observable_space(sim_dict, tru_dict, sigma)
     sim = torch.tensor(sim_vals, dtype=dtype).reshape(1, -1)
-    true_y = torch.tensor(tru_vals, dtype=dtype).reshape(1, -1)
+    true_y = torch.tensor(tru_vals, dtype=dtype)
+    sig = torch.tensor(sig_vals, dtype=dtype) if sigma is not None else None
+    names = list(sim_dict.keys())
+    return objective_from_observables(
+        sim, true_y, sig, names, whitener, loss, upper_mask(names, sigma)
+    )
 
-    # Compute normalized difference and squared distance
 
-    if sigma is None:
+def objective_from_observables(sim, tru, sig, names, whitener=None, loss=None, upper=None):
+    """Objective of each row of simulated observables, in the space `observable_space` gives.
+
+    Parameters
+    ----------
+    - sim (torch.Tensor): Simulated observables, shape (..., m), log10 or linear per observable.
+    - tru (torch.Tensor): Targets in the same space, shape (m,).
+    - sig (torch.Tensor | None): Sigmas in the same space, shape (m,); None for the
+      relative-difference objective.
+    - names (list[str]): Observable names, in column order.
+    - whitener (CorrelationWhitener | None): Observable correlations.
+    - loss (tuple[str, float] | None): Robust loss; None for chi-squared.
+    - upper (torch.Tensor | None): Boolean mask (m,) of the observables that are upper limits.
+
+    Returns
+    ----------
+    - torch.Tensor: Objective, shape (..., 1).
+    """
+    if sig is None and upper is not None:
+        raise ValueError('upper limits need sigma: sigma sets how sharply the limit cuts off')
+    if sig is None:
         # reproduces the original objective function
-        denom = torch.where(true_y >= 0, true_y + EPS_CLIP, true_y - EPS_CLIP)
-        diff = torch.ones_like(true_y) - sim / denom
+        denom = torch.where(tru >= 0, tru + EPS_CLIP, tru - EPS_CLIP)
+        diff = 1.0 - sim / denom
     else:
-        # Use the provided sigma values, no epsilon offset
-        sigma_tensor = torch.tensor(sig_vals, dtype=dtype).reshape(1, -1)
-        diff = (sim - true_y) / sigma_tensor
-
-    if whitener is None:
-        sq_dist = (diff**2).sum(dim=1, keepdim=True)
-    else:
-        sq_dist = whitener.chi_squared(list(sim_dict.keys()), diff)
-
-    obj = log_warp(sq_dist)
-
-    return obj
+        diff = (sim - tru) / sig
+    flat = diff.reshape(-1, diff.shape[-1])
+    sq_dist = squared_distance(flat, names, whitener, loss, upper)
+    return log_warp(sq_dist).reshape(*diff.shape[:-1], 1)
 
 
-def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
+def observable_values(sim_dict, tru_dict, sigma=None) -> list[float]:
+    """Simulated observables in the space eval_obj compares them in, as the observable GPs fit them.
+
+    An observable compared in log10 enters at no less than LOG_FLOOR_DEX below its target, so a
+    run without that species (a ratio of 0) counts as far off rather than as missing; the clip
+    value LOG_CLIP would dominate the GP fit. A non-finite value is NaN, and the GP leaves it out.
+    """
+    sim_vals, tru_vals, _ = observable_space(sim_dict, tru_dict, sigma)
+    out = []
+    for k, s, t in zip(sim_dict.keys(), sim_vals, tru_vals):
+        if not math.isfinite(float(sim_dict[k])):
+            out.append(float('nan'))
+        elif compared_in_log(k, sigma):
+            out.append(max(s, t - LOG_FLOOR_DEX))
+        else:
+            out.append(s)
+    return out
+
+
+def observable_row(sim_dict, tru_dict, sigma=None) -> torch.Tensor:
+    """observable_values of one run, shape (1, m)."""
+    return torch.tensor(observable_values(sim_dict, tru_dict, sigma), dtype=dtype).reshape(
+        1, -1
+    )
+
+
+def validate_sigma(observables: dict, sigma: dict | None, upper_limits=None) -> dict | None:
     """Check the observable uncertainties given in the inference config.
 
     Parameters
@@ -541,20 +662,28 @@ def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
     - observables (dict): Target observable values.
     - sigma (dict | None): 1-sigma uncertainty of each observable, in the same
       units as the observable, or None to use the relative-difference objective.
-      An observable compared in log10 also takes a string such as '0.1 dex'.
+      Any observable also takes a string such as '0.1 dex', which makes the
+      objective compare it in log10.
+    - upper_limits (list[str] | None): Observables whose value in `observables` is an upper
+      limit, with sigma the 1-sigma uncertainty of that limit.
 
     Returns
     ----------
-    - dict | None: The uncertainties in the observables' units, or None. A dex
+    - Sigma | None: The uncertainties in the observables' units, or None. A dex
       entry becomes dex * true * ln 10, which `eval_obj` converts back exactly.
 
     Raises:
         ValueError: If an entry is missing, names no observable, is not a positive
-            finite number or '<number> dex', is in dex for an observable compared
-            linearly, or belongs to a log-compared observable whose value is not
-            positive.
+            finite number or '<number> dex', or belongs to a log-compared
+            observable whose value is not positive, or if `upper_limits` is not a list of
+            distinct observable names or is given without sigma.
     """
+    upper = _validate_upper_limits(observables, upper_limits)
     if sigma is None:
+        if upper:
+            raise ValueError(
+                'upper_limits need [sigma]: sigma sets how sharply a limit cuts off'
+            )
         return None
 
     missing = sorted(set(observables) - set(sigma))
@@ -564,7 +693,7 @@ def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
     if unknown:
         raise ValueError(f'sigma given for names that are not observables: {unknown}')
 
-    out = {}
+    out, dex_log = {}, set()
     for k, given in sigma.items():
         dex = isinstance(given, str) and given.strip().endswith('dex')
         try:
@@ -578,8 +707,8 @@ def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
             raise ValueError(f"sigma for '{k}' must be a positive finite number, got {given!r}")
         log_space = variable_is_logarithmic(k) or is_element_ratio(k)
         if dex and not log_space:
-            raise ValueError(f"sigma for '{k}' is given in dex, but '{k}' is compared linearly")
-        if log_space:
+            dex_log.add(k)
+        if log_space or dex:
             x = float(observables[k])
             if x <= 0:
                 raise ValueError(
@@ -594,7 +723,23 @@ def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
                     "is first order, so give it in dex instead (e.g. '0.1 dex')"
                 )
         out[k] = v
-    return out
+    return Sigma(out, dex_log, upper)
+
+
+def _validate_upper_limits(observables: dict, upper_limits) -> list[str]:
+    """Names in the config's `upper_limits` list, checked against the observables."""
+    if upper_limits is None:
+        return []
+    if not isinstance(upper_limits, list) or not all(isinstance(k, str) for k in upper_limits):
+        raise ValueError(
+            f'upper_limits must be a list of observable names, got {upper_limits!r}'
+        )
+    unknown = sorted(set(upper_limits) - set(observables))
+    if unknown:
+        raise ValueError(f'upper_limits names that are not observables: {unknown}')
+    if len(set(upper_limits)) != len(upper_limits):
+        raise ValueError(f'upper_limits names an observable twice: {upper_limits}')
+    return list(upper_limits)
 
 
 def J(
@@ -608,6 +753,8 @@ def J(
     failure_codes: list[int] = [],
     sigma: dict | None = None,
     whitener: CorrelationWhitener | None = None,
+    loss: tuple[str, float] | None = None,
+    with_observables: bool = False,
 ) -> torch.Tensor:
     """Run PROTEUS, and then compute the objective value for a given normalized input.
 
@@ -617,7 +764,7 @@ def J(
         J = -log_10(sum((1 - sim/true)^2) + eps)
 
     or, when `sigma` is given, the same with sum(((sim - true) / sigma)^2),
-    correlated by `whitener` if given.
+    correlated by `whitener` or replaced by the `loss` sum if given.
 
     Parameters
     ----------
@@ -632,11 +779,18 @@ def J(
       that this study excludes from the fit.
     - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
     - whitener (CorrelationWhitener | None): Observable correlations, passed to `eval_obj`.
+    - loss (tuple[str, float] | None): Objective name and parameter, passed to `eval_obj`; None for chi-squared.
+    - with_observables (bool): Append the run's observables, as `observable_row` gives them
+      (NaN for an unscored run), after the objective.
 
     Returns
     ----------
-    - torch.Tensor: Objective value tensor of shape (1, 1).
+    - torch.Tensor: Objective value tensor of shape (1, 1), or (1, 1 + m) with_observables.
     """
+    nan_row = torch.full((1, len(true_observables)), float('nan'), dtype=dtype)
+
+    def out(obj, row=nan_row):
+        return torch.cat([obj, row], dim=1) if with_observables else obj
 
     # Map normalized x to raw parameter dict and run PROTEUS
     raw = {parameters[i]: x[0, i].item() for i in range(len(parameters))}
@@ -651,7 +805,7 @@ def J(
         )
     except ProteusRunFailure as failure:
         # Parameters the simulator cannot integrate are expected in a wide box.
-        return _handle_unscored(failure, output)
+        return out(_handle_unscored(failure, output))
 
     # A clean exit on an error status (e.g. 25, stopped via the keepalive file),
     # one that never reached the main loop (0, 1), or with no readable status.
@@ -680,10 +834,12 @@ def J(
             parameters=raw,
             category=CATEGORY_FAILURE if failed else CATEGORY_EXCLUDED,
         )
-        return _handle_unscored(failure, output)
+        return out(_handle_unscored(failure, output))
 
     # Compute value of objective function given these results
-    return eval_obj(sim_vals, true_observables, sigma, whitener)
+    obj = eval_obj(sim_vals, true_observables, sigma, whitener, loss)
+    ordered = {k: sim_vals[k] for k in true_observables}
+    return out(obj, observable_row(ordered, true_observables, sigma))
 
 
 def _handle_unscored(failure: ProteusRunFailure, output: str) -> torch.Tensor:
@@ -727,6 +883,8 @@ def prot_builder(
     failure_codes: list[int] = [],
     sigma: dict | None = None,
     correlation: dict | None = None,
+    loss: tuple[str, float] | None = None,
+    with_observables: bool = False,
 ) -> callable:
     """Factory returning a BO-compatible objective function for PROTEUS inference.
 
@@ -744,6 +902,8 @@ def prot_builder(
       that this study excludes from the fit.
     - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
     - correlation (dict | None): Observable correlations, factored once here.
+    - loss (tuple[str, float] | None): Objective name and parameter, passed to `eval_obj`; None for chi-squared.
+    - with_observables (bool): f also returns the observables, as `J` describes.
 
     Returns
     ----------
@@ -782,10 +942,12 @@ def prot_builder(
             failure_codes=failure_codes,
             sigma=sigma,
             whitener=whitener,
+            loss=loss,
+            with_observables=with_observables,
         )
 
-        # Check J is finite
-        if not torch.isfinite(J_eval).all():
+        # Check J is finite; the observables of an unscored run are NaN on purpose
+        if not torch.isfinite(J_eval[:, :1]).all():
             x_param = {param_keys[i]: x_raw[0, i].item() for i in range(d)}
 
             log.warning('Non-finite objective value')

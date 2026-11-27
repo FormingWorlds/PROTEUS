@@ -23,6 +23,7 @@ pytest.importorskip('gpytorch')
 
 import proteus.inference.async_BO as async_mod  # noqa: E402
 from proteus.inference.failures import ProteusRunFailure  # noqa: E402
+from proteus.inference.objective import BAD_OBJ_VALUE  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -195,6 +196,70 @@ def test_parallel_process_raises_when_init_dataset_missing(monkeypatch, tmp_path
     assert not (tmp_path / 'init.csv').exists()
 
 
+def test_worker_seeds_its_torch_generator(monkeypatch, tmp_path):
+    """A worker seeds torch before its loop: the same seed gives the same draws, another
+    seed different ones, and no seed leaves the inherited generator untouched.
+    """
+    draws = []
+    monkeypatch.setattr(async_mod, '_worker_loop', lambda *a: draws.append(torch.rand(4)))
+    args = dict(
+        process_fun=None,
+        build_obj=None,
+        D_shared={},
+        B={},
+        T=[],
+        T0=0.0,
+        x_init=None,
+        n_init=1,
+        lock=_DummyLock(),
+        max_len=2,
+        worker_id=0,
+        log_list=[],
+        output_dir=str(tmp_path),
+    )
+    for seed in (7, 7, 8):
+        async_mod.worker(**args, seed=seed)
+    torch.manual_seed(7)
+    torch.rand(4)
+    async_mod.worker(**args)
+
+    assert torch.equal(draws[0], draws[1])
+    assert not torch.equal(draws[0], draws[2])
+    # Unseeded, the worker continues the inherited stream rather than restarting it
+    assert not torch.equal(draws[3], draws[0])
+
+
+def test_worker_limits_torch_to_its_thread_budget(monkeypatch, tmp_path):
+    """A worker runs its loop on WORKER_TORCH_THREADS torch threads, whatever it inherited,
+    so its GP fits do not take cores from the PROTEUS runs."""
+    seen = []
+    monkeypatch.setattr(
+        async_mod, '_worker_loop', lambda *a: seen.append(torch.get_num_threads())
+    )
+    before = torch.get_num_threads()
+    torch.set_num_threads(3)
+    try:
+        async_mod.worker(
+            process_fun=None,
+            build_obj=None,
+            D_shared={},
+            B={},
+            T=[],
+            T0=0.0,
+            x_init=None,
+            n_init=1,
+            lock=_DummyLock(),
+            max_len=2,
+            worker_id=0,
+            log_list=[],
+            output_dir=str(tmp_path),
+        )
+    finally:
+        torch.set_num_threads(before)
+    assert seen == [async_mod.WORKER_TORCH_THREADS]
+    assert async_mod.WORKER_TORCH_THREADS != 3
+
+
 def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
     """With a mocked multiprocessing Manager and Process, ``parallel_process``
     spawns one Process per worker, returns the final dataset, the per-worker
@@ -253,13 +318,13 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
             'Y': torch.tensor([[0.2]], dtype=torch.double),
         },
     )
-    monkeypatch.setattr(
-        async_mod,
-        'init_locs',
-        lambda n_workers, _D_shared, acqf='LogEI': torch.tensor(
-            [[0.2], [0.8]], dtype=torch.double
-        )[:n_workers],
-    )
+    init_kwargs = {}
+
+    def _fake_init_locs(n_workers, _D_shared, **kwargs):
+        init_kwargs.update(kwargs)
+        return torch.tensor([[0.2], [0.8]], dtype=torch.double)[:n_workers]
+
+    monkeypatch.setattr(async_mod, 'init_locs', _fake_init_locs)
     monkeypatch.setattr(async_mod, 'get_kernel', lambda *args, **kwargs: object())
 
     D_final, logs, elapsed = async_mod.parallel_process(
@@ -282,6 +347,10 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
     assert D_final['Y'].shape == (3, 1)
     assert logs == [None]
     assert elapsed == []
+    # The initial proposals use the configured kernel, not the init_locs default
+    assert init_kwargs == {'acqf': 'LogEI', 'kernel': 'MAT3/2', 'surrogate': None}
+    # Each worker gets its own torch seed, seed + 1 + worker id
+    assert [p.args[-1] for p in created_processes] == [2, 3]
 
 
 # ============================================================================
@@ -326,7 +395,7 @@ def _mocked_parallel_process_env(monkeypatch, tmp_path, fake_process_cls, n_init
     monkeypatch.setattr(
         async_mod,
         'init_locs',
-        lambda n_workers, _D_shared, acqf='LogEI': torch.tensor(
+        lambda n_workers, _D_shared, **_kwargs: torch.tensor(
             [[0.2], [0.8]], dtype=torch.double
         )[:n_workers],
     )
@@ -1090,6 +1159,46 @@ def test_parallel_process_passes_patience_to_every_worker(monkeypatch, tmp_path)
         patience=7,
     )
 
-    assert [args[-2] for args in seen] == [7, 7]
-    assert seen[0][-1] is seen[1][-1]
-    assert isinstance(seen[0][-1], threading.Event)
+    assert [args[-3] for args in seen] == [7, 7]
+    assert seen[0][-2] is seen[1][-2]
+    assert isinstance(seen[0][-2], threading.Event)
+
+
+@pytest.mark.physics_invariant
+def test_worker_loop_keeps_the_observables_apart_from_the_objective(tmp_path):
+    """With 'S' in the shared data, the row f returns is split: J goes to Y, the
+    observables to S, so the patience check and logs see J alone; data.csv holds both."""
+    D_shared = {
+        'X': torch.tensor([[0.1]], dtype=torch.double),
+        'Y': torch.tensor([[-2.0]], dtype=torch.double),
+        'S': torch.tensor([[1.0, 2.0]], dtype=torch.double),
+    }
+    rows = [[-1.0, 1.5, 2.5], [BAD_OBJ_VALUE, float('nan'), float('nan')]]
+
+    def step(**_kwargs):
+        y = torch.tensor([rows[len(D_shared['X']) - 1]], dtype=torch.double)
+        return torch.tensor([[0.5]], dtype=torch.double), y, 0, 0, 0, 0, 0, None
+
+    logs = []
+    async_mod._worker_loop(
+        process_fun=step,
+        build_obj=lambda **kwargs: lambda x: x,
+        D_shared=D_shared,
+        B={},
+        T=[],
+        T0=0.0,
+        x_init=None,
+        n_init=1,
+        lock=_DummyLock(),
+        max_len=3,
+        worker_id=0,
+        log_list=logs,
+        output_dir=str(tmp_path),
+    )
+    assert D_shared['Y'].reshape(-1).tolist() == pytest.approx([-2.0, -1.0, -20.0])
+    assert D_shared['S'].shape == (3, 2)
+    assert D_shared['S'][1].tolist() == pytest.approx([1.5, 2.5])
+    assert torch.isnan(D_shared['S'][2]).all()
+    assert [entry['y_value'] for entry in logs] == pytest.approx([-1.0, -20.0])
+    data = pd.read_csv(tmp_path / 'data.csv')
+    assert list(data.columns) == ['x_0', 'y', 's_0', 's_1']

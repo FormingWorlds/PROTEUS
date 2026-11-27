@@ -30,6 +30,7 @@ import proteus.inference.async_BO as async_BO  # noqa: E402
 import proteus.inference.inference as inference_mod  # noqa: E402
 from proteus.config import UnknownConfigKeyError  # noqa: E402
 from proteus.inference.failures import ABORT_ON_FAILURE_ENV  # noqa: E402
+from proteus.inference.posterior import DEFAULT_POSTERIOR_SAMPLES  # noqa: E402
 from proteus.inference.objective import (  # noqa: E402
     _CHILD_TIMEOUT_ENV as CHILD_TIMEOUT_ENV,
 )
@@ -221,6 +222,8 @@ def test_parameter_bounds_rejects_a_log_scaled_range_that_reaches_zero():
     assert linear['outgas.fO2_shift_IW'] == (pytest.approx(-4.0), pytest.approx(0.0))
     assert inference_mod.variable_is_logarithmic('outgas.fO2_shift_IW') is False
     assert inference_mod.variable_is_logarithmic('planet.elements.H_budget') is True
+    assert inference_mod.variable_is_logarithmic('planet.elements.C_budget') is True
+    assert inference_mod.variable_is_logarithmic('planet.elements.S_budget') is True
 
 
 def test_the_config_check_refuses_a_number_for_a_bool_field():
@@ -501,6 +504,54 @@ def test_run_inference_reports_the_spectral_cache_the_study_uses(
         assert os.environ[SPECTRAL_CACHE_ENV] == '1'
 
 
+def test_run_inference_copies_the_config_as_given(monkeypatch, tmp_path):
+    """copy.infer.toml holds the config before validation: a sigma in dex stays a dex string and
+    the noise-free observables stay, so a rerun from the copy compares and draws the same, while
+    the study itself runs on the converted sigma and the noisy observables."""
+    config = {
+        'output': 'unit_inference',
+        'logging': 'INFO',
+        'n_workers': 1,
+        'ref_config': BASE_CONFIG,
+        'n_steps': 1,
+        'kernel': 'MAT3/2',
+        'acqf': 'LogEI',
+        'seed': 1,
+        'noise': True,
+        'observables': {'P_surf': 50.0, 'T_surf': 1500.0},
+        'sigma': {'P_surf': '0.1 dex', 'T_surf': 30.0},
+        'parameters': {'planet.mass_tot': [0.7, 3.0]},
+    }
+    output_root = tmp_path / 'output'
+    monkeypatch.setattr(
+        inference_mod,
+        'get_proteus_directories',
+        lambda _output: {'output': str(output_root), 'proteus': ''},
+    )
+    monkeypatch.setattr(inference_mod, 'setup_logger', lambda **_kwargs: None)
+    monkeypatch.setattr(inference_mod.os, 'cpu_count', lambda: 8)
+    seen = {}
+
+    def _stop(cfg):
+        seen.update(cfg)
+        raise _StopAfterSetup
+
+    monkeypatch.setattr(inference_mod, 'create_init', _stop)
+    for env in (SPECTRAL_CACHE_ENV, ABORT_ON_FAILURE_ENV, CHILD_TIMEOUT_ENV):
+        monkeypatch.setenv(env, 'unset')
+
+    with pytest.raises(_StopAfterSetup):
+        inference_mod.run_inference(config)
+
+    copied = toml.load(output_root / 'copy.infer.toml')
+    assert copied['sigma'] == {'P_surf': '0.1 dex', 'T_surf': 30.0}
+    assert copied['observables'] == {'P_surf': 50.0, 'T_surf': 1500.0}
+    assert 'observables_true' not in copied and 'loss' not in copied
+    # The study itself: sigma converted from dex, observables drawn with noise
+    assert seen['sigma']['P_surf'] != pytest.approx(0.1)
+    assert seen['observables'] != copied['observables']
+
+
 @pytest.mark.parametrize(
     ('switch', 'env'), [(None, '0'), (True, '1'), (False, '0')], ids=['default', 'on', 'off']
 )
@@ -736,19 +787,8 @@ def test_run_inference_validates_and_derives_correlation_tables(monkeypatch, tmp
     assert 'share no element' in caplog.text
 
 
-def test_run_inference_passes_the_validated_tables_to_the_workers(monkeypatch, tmp_path):
-    """The study runs with the validated sigma, the derived correlation and the
-    patience from the config, not with their defaults or the raw config values.
-    """
-    config, _ = _validation_study(
-        monkeypatch,
-        tmp_path,
-        n_steps=3,
-        observables={'R_obs': 6.0e6, 'C/O_atm': 0.62, 'O/H_atm': 5.4},
-        sigma={'R_obs': 1.0e5, 'C/O_atm': '0.1 dex', 'O/H_atm': '0.1 dex'},
-        correlate_ratios=True,
-        patience=7,
-    )
+def _worker_arguments(monkeypatch, config) -> dict:
+    """Run the study up to the workers and return the arguments they receive."""
     monkeypatch.setattr(inference_mod, 'create_init', lambda cfg: 2)
     received = {}
 
@@ -763,6 +803,23 @@ def test_run_inference_passes_the_validated_tables_to_the_workers(monkeypatch, t
     monkeypatch.setattr(inference_mod, 'parallel_process', _capture)
     with pytest.raises(_StopAtWorkers):
         inference_mod.run_inference(config)
+    return received
+
+
+def test_run_inference_passes_the_validated_tables_to_the_workers(monkeypatch, tmp_path):
+    """The study runs with the validated sigma, the derived correlation and the
+    patience from the config, not with their defaults or the raw config values.
+    """
+    config, _ = _validation_study(
+        monkeypatch,
+        tmp_path,
+        n_steps=3,
+        observables={'R_obs': 6.0e6, 'C/O_atm': 0.62, 'O/H_atm': 5.4},
+        sigma={'R_obs': 1.0e5, 'C/O_atm': '0.1 dex', 'O/H_atm': '0.1 dex'},
+        correlate_ratios=True,
+        patience=7,
+    )
+    received = _worker_arguments(monkeypatch, config)
 
     # A dex sigma reaches the workers in the observable's units: 0.1 * true * ln 10.
     assert received['sigma'] == pytest.approx(
@@ -778,6 +835,96 @@ def test_run_inference_passes_the_validated_tables_to_the_workers(monkeypatch, t
     assert received['patience'] == 7
     # n_steps on top of the initial samples
     assert received['max_len'] == 5
+
+
+@pytest.mark.parametrize(
+    'objective, key, expected',
+    [('student-t', 'student_t_dof', 4.0), ('huber', 'huber_k', 1.345)],
+)
+def test_run_inference_passes_the_loss_to_the_workers(
+    monkeypatch, tmp_path, objective, key, expected
+):
+    """objective = "student-t" or "huber" reaches the workers as (name, parameter),
+    with the parameter's default when the config leaves it out.
+    """
+    config, _ = _validation_study(
+        monkeypatch,
+        tmp_path,
+        observables=_THREE_OBS,
+        sigma=_THREE_SIGMA,
+        objective=objective,
+    )
+    assert key not in config
+    received = _worker_arguments(monkeypatch, config)
+
+    name, param = received['loss']
+    assert name == objective
+    assert param == pytest.approx(expected, rel=1e-12)
+    assert type(param) is float
+
+
+def test_validate_objective_refuses_a_robust_loss_with_a_correlated_upper_limit():
+    """Chi-2 takes a correlated upper limit; Student-t and Huber take only limits correlated with
+    none."""
+    from proteus.inference.objective import Sigma
+
+    sigma = Sigma({'T_obs': 20.0, 'C/O_atm': 0.02, 'R_obs': 1e5}, upper=['C/O_atm'])
+    paired = {'T_obs': {'C/O_atm': 0.4}}
+    validate = inference_mod.validate_objective
+    assert validate('chi-2', {}, sigma, paired) is None
+    assert validate('huber', {}, sigma, {'T_obs': {'R_obs': 0.4}}) == ('huber', 1.345)
+    for name in ('huber', 'student-t'):
+        with pytest.raises(ValueError, match=r"no correlated upper limit: \['C/O_atm'\]"):
+            validate(name, {}, sigma, paired)
+
+
+def test_validate_objective_accepts_each_objective_and_rejects_misuse():
+    """chi-2 (the default) gives None; student-t and huber give (name, float parameter)
+    with their defaults. An unknown objective, a parameter of another objective, a
+    bad parameter and a missing sigma are refused.
+    """
+    sigma = {'R_obs': 1.0e5}
+    validate = inference_mod.validate_objective
+    assert validate(None, {}, None) is None
+    assert validate('chi-2', {}, sigma) is None
+    assert validate('student-t', {}, sigma) == ('student-t', 4.0)
+    assert validate('student-t', {'student_t_dof': 0.5}, sigma) == ('student-t', 0.5)
+    assert validate('huber', {}, sigma) == ('huber', 1.345)
+    assert validate('huber', {'huber_k': 2}, sigma) == ('huber', 2.0)
+    for bad in ('gaussian', 'Student-t', 'chi2', 'Huber'):
+        with pytest.raises(ValueError, match='objective must be one of'):
+            validate(bad, {}, sigma)
+    with pytest.raises(ValueError, match='student_t_dof needs objective'):
+        validate('chi-2', {'student_t_dof': 4}, sigma)
+    with pytest.raises(ValueError, match='huber_k needs objective'):
+        validate('student-t', {'huber_k': 1.0}, sigma)
+    for name, key in (('student-t', 'student_t_dof'), ('huber', 'huber_k')):
+        for bad in (True, '4', 0, -1.0, math.inf, math.nan):
+            with pytest.raises(ValueError, match=f'{key} must be a positive'):
+                validate(name, {key: bad}, sigma)
+        with pytest.raises(ValueError, match='needs \\[sigma\\]'):
+            validate(name, {}, None)
+
+
+@pytest.mark.parametrize('objective', ['student-t', 'huber'])
+def test_run_inference_passes_robust_loss_and_correlation_together(
+    monkeypatch, tmp_path, objective
+):
+    """correlate_ratios with a robust objective reaches the workers with both the
+    derived ratio correlation and the loss, instead of being refused.
+    """
+    config, _ = _validation_study(
+        monkeypatch,
+        tmp_path,
+        observables={'R_obs': 6.0e6, 'C/O_atm': 0.62, 'O/H_atm': 5.4},
+        sigma={'R_obs': 1.0e5, 'C/O_atm': '0.1 dex', 'O/H_atm': '0.1 dex'},
+        correlate_ratios=True,
+        objective=objective,
+    )
+    received = _worker_arguments(monkeypatch, config)
+
+    assert received['correlation'] == {'C/O_atm': {'O/H_atm': pytest.approx(-0.5)}}
+    assert received['loss'][0] == objective
 
 
 def test_validate_truth_returns_ordered_floats_and_rejects_bad_tables():
@@ -904,3 +1051,21 @@ def test_validate_patience_accepts_whole_numbers_and_rejects_others():
     for bad in (-1, 2.5, True, '50'):
         with pytest.raises(ValueError, match='patience must be a whole number'):
             inference_mod.validate_patience(bad)
+
+
+def test_run_inference_sets_posterior_samples_before_emptying_output(monkeypatch, tmp_path):
+    """posterior_samples without [sigma] is refused before the output is emptied;
+    with [sigma] it defaults on.
+    """
+    config, previous = _validation_study(
+        monkeypatch, tmp_path, observables={'R_obs': 6.0e6}, posterior_samples=500
+    )
+    with pytest.raises(ValueError, match=r'needs \[sigma\]'):
+        inference_mod.run_inference(config)
+    assert previous.read_text(encoding='utf-8') == 'x_0,y\n0.5,1.0\n'
+
+    del config['posterior_samples']
+    config['sigma'] = {'R_obs': 1.0e5}
+    with pytest.raises(RuntimeError, match='stop after validation'):
+        inference_mod.run_inference(config)
+    assert config['posterior_samples'] == DEFAULT_POSTERIOR_SAMPLES

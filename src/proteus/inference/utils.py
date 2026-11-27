@@ -25,6 +25,7 @@ from proteus.inference.objective import BAD_OBJ_VALUE, EPS_CLIP, eval_obj
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import gas_list
 from proteus.utils.coupler import read_helpfile_table
+from proteus.utils.helper import recursive_get
 
 # Use double precision for tensor computations
 dtype = torch.double
@@ -87,16 +88,20 @@ def save_dataset_csv(
     X: torch.Tensor,
     Y: torch.Tensor,
     fpath: str,
+    S: torch.Tensor | None = None,
 ) -> None:
     """Persist BO dataset tensors to a plain-text CSV file.
 
-    The file contains one row per sample with columns `x_0...x_(d-1)` and `y`.
+    The file contains one row per sample with columns `x_0...x_(d-1)` and `y`, then with S
+    `s_0...s_(m-1)`.
 
     Parameters
     ----------
     - X (torch.Tensor): Input samples, shape (n, d).
     - Y (torch.Tensor): Objective values, shape (n, 1).
     - fpath (str): Output CSV path.
+    - S (torch.Tensor | None): Observables in the space the objective compares them in,
+      shape (n, m), NaN where a run has no usable value.
 
     Returns
     ----------
@@ -111,6 +116,10 @@ def save_dataset_csv(
 
     data: dict[str, np.ndarray] = {f'x_{i}': X[:, i].cpu().numpy() for i in range(X.shape[1])}
     data['y'] = Y[:, 0].cpu().numpy()
+    if S is not None:
+        if S.ndim != 2 or S.shape[0] != X.shape[0]:
+            raise ValueError(f'Expected S shape ({X.shape[0]}, m), got {tuple(S.shape)}')
+        data.update({f's_{j}': S[:, j].cpu().numpy() for j in range(S.shape[1])})
     pd.DataFrame(data).to_csv(fpath, index=False)
 
 
@@ -123,7 +132,8 @@ def load_dataset_csv(fpath: str) -> dict[str, torch.Tensor]:
 
     Returns
     ----------
-    - dict[str, torch.Tensor]: Dictionary with `X` (n, d) and `Y` (n, 1).
+    - dict[str, torch.Tensor]: Dictionary with `X` (n, d) and `Y` (n, 1), and `S` (n, m)
+      when the file has `s_*` columns.
     """
     df = pd.read_csv(fpath)
     x_cols = sorted(
@@ -136,7 +146,12 @@ def load_dataset_csv(fpath: str) -> dict[str, torch.Tensor]:
 
     X = torch.tensor(df[x_cols].to_numpy(), dtype=dtype)
     Y = torch.tensor(df[['y']].to_numpy(), dtype=dtype)
-    return {'X': X, 'Y': Y}
+    s_cols = sorted(
+        [c for c in df.columns if c.startswith('s_')], key=lambda col: int(col.split('_', 1)[1])
+    )
+    if not s_cols:
+        return {'X': X, 'Y': Y}
+    return {'X': X, 'Y': Y, 'S': torch.tensor(df[s_cols].to_numpy(), dtype=dtype)}
 
 
 def print_results(D, logs, config, output, n_init):
@@ -261,8 +276,11 @@ def print_results(D, logs, config, output, n_init):
 def get_acqf(name: str, gp: SingleTaskGP, best: float, X_pending: torch.Tensor | None = None):
     """Build the acquisition function.
 
-    Supports 'UCB', 'LogEI', and 'LogPI' acquisition functions.
+    Supports 'UCB', 'LogEI', 'LogPI' and 'TS' acquisition functions.
     See docs: https://botorch.readthedocs.io/en/latest/acquisition.html
+
+    'TS' is Thompson sampling: the maximum of one function drawn from the GP. Each call
+    draws anew, so workers spread out without `X_pending`; `best` is unused.
 
     With `X_pending`, each becomes its Monte Carlo version, which scores a
     candidate jointly with the points other workers are still evaluating, so a
@@ -304,6 +322,10 @@ def get_acqf(name: str, gp: SingleTaskGP, best: float, X_pending: torch.Tensor |
         from botorch.acquisition.analytic import LogProbabilityOfImprovement
 
         return LogProbabilityOfImprovement(gp, best_f=best)
+    elif name == 'TS':
+        from botorch.acquisition.thompson_sampling import PathwiseThompsonSampling
+
+        return PathwiseThompsonSampling(gp)
     else:
         raise ValueError(f'Unsupported acquisition function: {name}')
 
@@ -417,3 +439,13 @@ def get_obj(true_obs: dict, n, path):
     Y = torch.vstack(results).reshape(n, n)
 
     return Y
+
+
+def case_parameters(directory, cases: pd.DataFrame, keys: list) -> np.ndarray:
+    """Parameter values, one row per case and one column per key, each case actually ran with."""
+    workers = Path(directory) / 'workers'
+    confs = [
+        toml.load(workers / f'w_{w}' / f'i_{i}' / 'init_coupler.toml')
+        for w, i in zip(cases['worker'], cases['iter'])
+    ]
+    return np.array([[float(recursive_get(c, k.split('.'))) for k in keys] for c in confs])

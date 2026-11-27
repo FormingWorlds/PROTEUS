@@ -17,9 +17,9 @@ from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
 from botorch.models.transforms import Normalize, Standardize
 from botorch.optim import optimize_acqf
-from botorch.optim.fit import fit_gpytorch_mll_torch
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
+from proteus.inference.objective import BAD_OBJ_VALUE
 from proteus.inference.utils import get_acqf, get_kernel
 
 # Set tensor dtype for consistent precision
@@ -29,6 +29,41 @@ log = logging.getLogger('fwl.' + __name__)
 # Warnings already passed on by this process. catch_warnings clears the warnings
 # registry, so the default once-per-location filter would repeat them every step.
 _PASSED_ON: set[tuple] = set()
+
+# Above this fitted lengthscale (inputs scaled to [0, 1]) the GP is near linear in a
+# parameter, so the acquisition peaks on one of its bounds; that parameter is drawn instead.
+IRRELEVANT_LENGTHSCALE = 1.5
+
+# A proposal closer than this (unit cube) to an evaluated or pending point adds almost nothing
+MIN_SEPARATION = 0.005
+
+# Fixed noise variance of the standardised objective GP; the simulator is deterministic
+GP_NOISE = 1e-4
+
+
+def scored_evaluations(X: torch.Tensor, Y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """The evaluations the GP is fitted to: failed and excluded runs, scored BAD_OBJ_VALUE, are dropped.
+
+    BAD_OBJ_VALUE sits far below every scored value, so one such run inflates the
+    standardised spread of Y and forces the GP through a deep spike. The dropped points
+    stay in the acquisition's `avoid` set, so the same point is not proposed again.
+
+    Parameters
+    ----------
+    - X (torch.Tensor): Evaluated inputs, shape (n, d).
+    - Y (torch.Tensor): Objective values, shape (n, 1).
+
+    Returns
+    ----------
+    - tuple: (X, Y) of the scored evaluations.
+
+    Raises:
+        ValueError: No evaluation is scored.
+    """
+    scored = Y[:, 0] > BAD_OBJ_VALUE
+    if not scored.any():
+        raise ValueError(f'None of the {len(Y)} evaluations is scored; the GP has no data')
+    return X[scored], Y[scored]
 
 
 def unit_bounds(d):
@@ -45,16 +80,41 @@ def unit_bounds(d):
     return torch.tensor([[0] * d, [1] * d], dtype=dtype)
 
 
-def optimize_acqf_logged(acq_function, d: int, who: str) -> torch.Tensor:
+def random_irrelevant(gp, d: int, who: str) -> dict[int, float] | None:
+    """Random values, as `fixed_features`, for the parameters whose fitted lengthscale
+    exceeds IRRELEVANT_LENGTHSCALE, in every GP of a model list; None when there are none."""
+    models = getattr(gp, 'models', [gp])
+    ls = torch.stack([m.covar_module.lengthscale.detach().reshape(-1) for m in models])
+    ls = ls.min(dim=0).values
+    fixed = {i: torch.rand(1).item() for i in range(d) if ls[i] > IRRELEVANT_LENGTHSCALE}
+    if fixed:
+        log.debug(
+            f'{who}: GP lengthscale above {IRRELEVANT_LENGTHSCALE} for x_{list(fixed)}; '
+            'drawing them at random'
+        )
+    return fixed or None
+
+
+def optimize_acqf_logged(
+    acq_function,
+    d: int,
+    who: str,
+    fixed_features: dict[int, float] | None = None,
+    avoid: torch.Tensor | None = None,
+) -> torch.Tensor:
     """Maximise the acquisition, logging botorch's L-BFGS-B retry warnings as one line.
 
-    botorch keeps the best candidate even when the retry fails. Other warnings pass through.
+    The proposal is the best restart at least MIN_SEPARATION from every point in `avoid`,
+    or a uniform random point when every restart is closer. botorch keeps the best
+    candidate even when the retry fails. Other warnings pass through.
 
     Parameters
     ----------
     - acq_function (AcquisitionFunction): Acquisition function to maximise.
     - d (int): Number of parameters.
     - who (str): Caller named in the log line, e.g. 'worker 3'.
+    - fixed_features (dict | None): Parameters held at the given values, by index.
+    - avoid (torch.Tensor | None): Evaluated and pending points, shape (n, d).
 
     Returns
     ----------
@@ -62,13 +122,25 @@ def optimize_acqf_logged(acq_function, d: int, who: str) -> torch.Tensor:
     """
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
-        x, _ = optimize_acqf(
+        starts, values = optimize_acqf(
             acq_function=acq_function,
             bounds=unit_bounds(d),
             q=1,
             num_restarts=10,
             raw_samples=1000 * d,
             options={'maxiter': 1000},
+            fixed_features=fixed_features,
+            return_best_only=False,
+        )
+    starts = starts.reshape(-1, d)[torch.argsort(values.reshape(-1), descending=True)]
+    if avoid is not None:
+        starts = starts[torch.cdist(starts, avoid).min(dim=1).values >= MIN_SEPARATION]
+    if len(starts):
+        x = starts[:1]
+    else:
+        x = torch.rand(1, d, dtype=dtype)
+        log.debug(
+            f'{who}: every restart within {MIN_SEPARATION} of a point; proposing at random'
         )
 
     failed, second = None, False
@@ -107,10 +179,39 @@ def _failed_starts(text: str) -> str:
     return f' in {starts} start(s) [{", ".join(sorted(reasons))}]'
 
 
-def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
+def fit_model(X, Y, k, surrogate=None, S=None):
+    """The GP of the objective, fitted to the scored evaluations, or with `surrogate`
+    (ObservableSurrogate) its GPs of the observables S, shape (n, m)."""
+    if surrogate is not None:
+        return surrogate.fit(X, Y, S)
+    X_fit, Y_fit = scored_evaluations(X, Y)
+    d = X.shape[-1]
+    gp = SingleTaskGP(
+        train_X=X_fit,
+        train_Y=Y_fit,
+        covar_module=k,
+        train_Yvar=torch.full_like(Y_fit, GP_NOISE),
+        input_transform=Normalize(d=d),
+        outcome_transform=Standardize(m=1),
+    )
+    fit_gpytorch_mll(
+        ExactMarginalLogLikelihood(gp.likelihood, gp),
+        kwargs={'pick_best_of_all_attempts': True, 'max_attempts': 10},
+    )
+    return gp
+
+
+def build_acqf(name, model, best, X_pending=None, surrogate=None):
+    """`get_acqf` for the GP of the objective, or the surrogate's acquisition for its GPs."""
+    if surrogate is not None:
+        return surrogate.acqf(name, model, best, X_pending=X_pending)
+    return get_acqf(name, model, best, X_pending=X_pending)
+
+
+def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None, surrogate=None):
     """Perform a single Bayesian optimization step.
 
-    Fits a GP to current data, optimizes an acquisition function,
+    Fits a GP to the scored evaluations, optimizes an acquisition function,
     updates busy points, evaluates the objective, and logs timing.
 
     Parameters
@@ -123,6 +224,8 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
     - lock (multiprocessing.Lock): Lock for synchronizing shared state.
     - worker_id (int): ID of the calling worker.
     - x_in (torch.Tensor, optional): Initial input for the first iteration.
+    - surrogate (ObservableSurrogate, optional): Fit one GP per observable, read from D['S'],
+      instead of one GP of the objective; f then returns the observables after y.
 
     Returns
     ----------
@@ -130,13 +233,13 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
     """
 
     t_0_bo = time.perf_counter()
-    noise = 1e-4
 
     if x_in is None:
         t_0_lock = time.perf_counter()
         with lock:
             X = D['X']
             Y = D['Y']
+            S = D['S'] if surrogate is not None else None
             # Select by key, not by position: a worker that has finished or
             # stopped is absent from B, so the position of an entry in the
             # values list does not identify the worker that owns it.
@@ -145,36 +248,24 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
         t_1_lock = time.perf_counter()
 
         d = X.shape[-1]
+        X_fit, Y_fit = scored_evaluations(X, Y)
 
-        best = Y.max().item()
+        best = Y_fit.max().item()
 
         t_0_fit = time.perf_counter()
-        gp = SingleTaskGP(
-            train_X=X,
-            train_Y=Y,
-            covar_module=k,
-            train_Yvar=torch.full_like(Y, noise),
-            input_transform=Normalize(d=d),
-            outcome_transform=Standardize(m=1),
-        )
-
-        lik = gp.likelihood
-        mll = ExactMarginalLogLikelihood(lik, gp)
-        fit_gpytorch_mll(
-            mll,
-            optimizer=fit_gpytorch_mll_torch,
-            kwargs={'pick_best_of_all_attempts': True, 'max_attempts': 10},
-        )
-
+        gp = fit_model(X, Y, k, surrogate, S)
         t_1_fit = time.perf_counter()
 
         t_0_ac = time.perf_counter()
 
         # Other workers' points, so this one is proposed away from them
         b = torch.cat(busys, dim=0) if busys else torch.zeros((0, d), dtype=dtype)
-        acqf_f = get_acqf(acqf, gp, best, X_pending=b if busys else None)
+        acqf_f = build_acqf(acqf, gp, best, b if busys else None, surrogate)
 
-        x = optimize_acqf_logged(acqf_f, d, f'worker {worker_id}')
+        who = f'worker {worker_id}'
+        x = optimize_acqf_logged(
+            acqf_f, d, who, random_irrelevant(gp, d, who), avoid=torch.cat([X, b])
+        )
 
         t_1_ac = time.perf_counter()
 
@@ -182,12 +273,12 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
         # Undefined when no other worker is busy
         dist = torch.min(torch.cdist(b, x)).item() if busys else None
 
-        if d == 1:
+        if d == 1 and surrogate is None:
             plot_iter(
                 gp=gp,
                 acqf=acqf,
-                X=X,
-                Y=Y,
+                X=X_fit,
+                Y=Y_fit,
                 next_x=x,
                 busys=b,
                 dir='plots/iters/',
@@ -230,7 +321,7 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
 
 
 def init_locs(
-    n_workers: int, D: dict, acqf: str = 'LogEI', kernel: str = 'RBF'
+    n_workers: int, D: dict, acqf: str = 'LogEI', kernel: str = 'RBF', surrogate=None
 ) -> torch.Tensor:
     """Generate initial sample locations for each worker using the configured acqf.
 
@@ -243,42 +334,31 @@ def init_locs(
     - D (dict): Shared dict with keys 'X' and 'Y' containing observed data.
     - acqf (str): Name of the acquisition function to use.
     - kernel (str): Kernel type ('RBF', 'MAT1/2', 'MAT3/2', 'MAT5/2').
+    - surrogate (ObservableSurrogate, optional): One GP per observable, from D['S'].
 
     Returns
     ----------
     - torch.Tensor: Tensor of shape (n_workers, d) in [0, 1]^d.
     """
 
-    X, Y = D['X'], D['Y']
+    X = D['X']
 
     d = X.shape[-1]
+    X_fit, Y_fit = scored_evaluations(X, D['Y'])
 
-    best = Y.max().item()
-
-    noise = 1e-4
-    kernel = get_kernel(kernel, d)
-    gp = SingleTaskGP(
-        train_X=X,
-        train_Y=Y,
-        covar_module=kernel,
-        input_transform=Normalize(d=d),
-        outcome_transform=Standardize(m=1),
-        train_Yvar=torch.full_like(Y, noise),
-    )
-
-    lik = gp.likelihood
-    mll = ExactMarginalLogLikelihood(lik, gp)
-    fit_gpytorch_mll(
-        mll,
-        optimizer=fit_gpytorch_mll_torch,
-        kwargs={'pick_best_of_all_attempts': True, 'max_attempts': 10},
-    )
+    best = Y_fit.max().item()
+    S = D['S'] if surrogate is not None else None
+    gp = fit_model(X, D['Y'], get_kernel(kernel, d), surrogate, S)
 
     candidates = []
     for _ in range(n_workers):
         pending = torch.cat(candidates, dim=0) if candidates else None
-        acqf_f = get_acqf(acqf, gp, best, X_pending=pending)
-        candidates.append(optimize_acqf_logged(acqf_f, d, f'initial point {len(candidates)}'))
+        acqf_f = build_acqf(acqf, gp, best, pending, surrogate)
+        who = f'initial point {len(candidates)}'
+        avoid = torch.cat([X, *candidates])
+        candidates.append(
+            optimize_acqf_logged(acqf_f, d, who, random_irrelevant(gp, d, who), avoid=avoid)
+        )
 
     return torch.cat(candidates, dim=0)  # (n_workers, d)
 

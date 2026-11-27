@@ -8,10 +8,12 @@ References:
 
 from __future__ import annotations
 
+import copy
 import csv
 import functools
 import logging
 import math
+import pickle
 import subprocess
 
 import pandas as pd
@@ -552,6 +554,164 @@ def test_eval_obj_correlation_kept_for_log_observables():
     assert abs(chi2 - 2.0) > 0.5  # rho ignored
 
 
+def _deviance(sim, tru, sigma, loss):
+    """Invert `log_warp` to recover the `loss` sum that `eval_obj` minimises."""
+    return 10 ** (-objective_mod.eval_obj(sim, tru, sigma, None, loss).item())
+
+
+@pytest.mark.physics_invariant
+def test_eval_obj_student_t_matches_closed_form_and_tends_to_chi_squared(monkeypatch):
+    """Each residual u adds (nu + 1) ln(1 + u^2 / nu); as nu grows this tends to u^2."""
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    tru = {'R_obs': 6.0e6, 'T_obs': 400.0}
+    sigma = {'R_obs': 5.0e5, 'T_obs': 25.0}
+    sim = {'R_obs': 7.0e6, 'T_obs': 400.0}  # u = (2, 0)
+
+    # 4 ln(7/3) = 3.389; the Gaussian chi-squared is 4.
+    expected = 4.0 * math.log(7.0 / 3.0)
+    assert _deviance(sim, tru, sigma, ('student-t', 3.0)) == pytest.approx(expected, rel=1e-9)
+    assert abs(expected - 4.0) > 0.5
+    # Without the (nu + 1) factor the sum would be ln(7/3) = 0.85.
+    assert abs(expected - math.log(7.0 / 3.0)) > 2.0
+    assert _deviance(sim, tru, sigma, ('student-t', 1.0e8)) == pytest.approx(4.0, rel=1e-6)
+
+
+@pytest.mark.physics_invariant
+def test_eval_obj_student_t_prefers_one_outlier_over_a_spread_misfit(monkeypatch):
+    """u = (10, 0, 0) loses to u = (3, 3, 3) under chi-squared (100 vs 27) and wins
+    under Student-t with nu = 3 (4 ln(103/3) = 14.1 vs 12 ln 4 = 16.6).
+    """
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    tru = {'R_obs': 0.0, 'T_obs': 0.0, 'g_obs': 0.0}
+    sigma = {'R_obs': 1.0, 'T_obs': 1.0, 'g_obs': 1.0}
+    outlier = {'R_obs': 10.0, 'T_obs': 0.0, 'g_obs': 0.0}
+    spread = {'R_obs': 3.0, 'T_obs': 3.0, 'g_obs': 3.0}
+
+    def J(sim, loss):
+        return objective_mod.eval_obj(sim, tru, sigma, None, loss).item()
+
+    assert J(spread, None) > J(outlier, None)
+    assert J(outlier, ('student-t', 3.0)) > J(spread, ('student-t', 3.0))
+    assert _deviance(outlier, tru, sigma, ('student-t', 3.0)) == pytest.approx(
+        4.0 * math.log(103.0 / 3.0), rel=1e-9
+    )
+    assert _deviance(spread, tru, sigma, ('student-t', 3.0)) == pytest.approx(
+        12.0 * math.log(4.0), rel=1e-9
+    )
+
+
+@pytest.mark.parametrize('loss', [('student-t', 4.0), ('huber', 1.345)])
+def test_eval_obj_robust_loss_needs_sigma_and_accepts_a_whitener(loss):
+    """Student-t and Huber errors are scaled by sigma, so a missing sigma raises. A whitener
+    with no correlations is accepted and leaves the robust objective exactly as without one.
+    """
+    tru, sim = {'R_obs': 6.0e6, 'T_obs': 400.0}, {'R_obs': 7.0e6, 'T_obs': 450.0}
+    sigma = {'R_obs': 5.0e5, 'T_obs': 25.0}
+
+    with pytest.raises(ValueError, match=f'objective {loss[0]!r} needs sigma'):
+        objective_mod.eval_obj(sim, tru, None, None, loss)
+    identity = CorrelationWhitener(list(tru), {})
+    assert objective_mod.eval_obj(sim, tru, sigma, identity, loss).item() == pytest.approx(
+        objective_mod.eval_obj(sim, tru, sigma, None, loss).item(), rel=1e-12
+    )
+
+
+def _correlated_deviance(sim, tru, sigma, correlation, loss):
+    """The `loss` sum of `eval_obj` with the observables correlated as in `correlation`."""
+    whitener = CorrelationWhitener(list(tru), correlation)
+    return 10 ** (-objective_mod.eval_obj(sim, tru, sigma, whitener, loss).item())
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('loss', [('huber', 1.0e6), ('student-t', 1.0e9)])
+def test_eval_obj_correlated_robust_loss_tends_to_correlated_chi_squared(monkeypatch, loss):
+    """With a huge Huber k or Student-t nu the loss is u^2 on the whitened residuals, so the
+    sum is the correlated chi-squared u^T R^-1 u: 4 for u = (1, 1) and rho = -0.5, where the
+    loss on the raw residuals (correlation dropped) gives 2.
+    """
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    tru, sigma = {'R_obs': 0.0, 'T_obs': 0.0}, {'R_obs': 1.0, 'T_obs': 1.0}
+    sim = {'R_obs': 1.0, 'T_obs': 1.0}
+
+    dev = _correlated_deviance(sim, tru, sigma, {'R_obs': {'T_obs': -0.5}}, loss)
+    assert dev == pytest.approx(4.0, rel=1e-6)
+    assert abs(dev - 2.0) > 1.0
+
+
+@pytest.mark.physics_invariant
+def test_eval_obj_correlated_huber_keeps_an_uncorrelated_outlier_linear(monkeypatch):
+    """An outlier in an observable correlated with none (T) passes the whitening unchanged,
+    so with k = 1 its u = 5 adds 2 k |u| - k^2 = 9, not 25 as under chi-squared. The
+    correlated pair at zero residual adds nothing.
+    """
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    tru = {'C/O_atm': 0.0, 'T_obs': 0.0, 'O/H_atm': 0.0}
+    sigma = {k: 1.0 for k in tru}
+    sim = {'C/O_atm': 0.0, 'T_obs': 5.0, 'O/H_atm': 0.0}
+    corr = {'C/O_atm': {'O/H_atm': -0.5}}
+
+    assert _correlated_deviance(sim, tru, sigma, corr, ('huber', 1.0)) == pytest.approx(9.0)
+    assert _correlated_deviance(sim, tru, sigma, corr, None) == pytest.approx(25.0)
+
+
+@pytest.mark.physics_invariant
+def test_eval_obj_correlated_huber_does_not_depend_on_observable_order(monkeypatch):
+    """The symmetric whitening makes the Huber sum independent of the order in which the
+    observables are listed, while a Cholesky whitening of the same residuals is not.
+    """
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    sim = {'R_obs': 2.0, 'T_obs': -0.5, 'g_obs': 1.5}
+    corr = {'R_obs': {'T_obs': 0.6, 'g_obs': 0.3}}
+    huber = ('huber', 1.0)
+    devs, chol = [], []
+    for order in (['R_obs', 'T_obs', 'g_obs'], ['g_obs', 'R_obs', 'T_obs']):
+        tru = {k: 0.0 for k in order}
+        sigma = {k: 1.0 for k in order}
+        devs.append(_correlated_deviance(sim, tru, sigma, corr, huber))
+        w = CorrelationWhitener(order, corr)
+        u = torch.tensor([[sim[k] for k in order]], dtype=torch.double)
+        z = torch.linalg.solve_triangular(w._chol, u.T, upper=False).T
+        chol.append(objective_mod.squared_distance(z, order, None, huber).item())
+    assert devs[0] == pytest.approx(devs[1], rel=1e-12)
+    assert abs(chol[0] - chol[1]) > 0.05
+
+
+@pytest.mark.physics_invariant
+def test_eval_obj_huber_is_chi_squared_inside_k_and_linear_beyond(monkeypatch):
+    """|u| <= k adds u^2; |u| > k adds 2 k |u| - k^2, so u = 2, k = 1 adds 3, not 4
+    (chi-squared) nor 1.5 (Huber's rho without the factor 2 that matches chi-squared).
+    """
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    tru = {'R_obs': 0.0, 'T_obs': 0.0}
+    sigma = {'R_obs': 1.0, 'T_obs': 1.0}
+
+    core = _deviance({'R_obs': 0.5, 'T_obs': 0.0}, tru, sigma, ('huber', 1.0))
+    assert core == pytest.approx(0.25, rel=1e-9)
+    tail = _deviance({'R_obs': 2.0, 'T_obs': 0.0}, tru, sigma, ('huber', 1.0))
+    assert tail == pytest.approx(3.0, rel=1e-9)
+    assert abs(tail - 4.0) > 0.5
+    assert abs(tail - 1.5) > 0.5
+
+
+@pytest.mark.physics_invariant
+def test_eval_obj_huber_prefers_one_outlier_over_a_spread_misfit(monkeypatch):
+    """u = (5, 0, 0) loses to u = (2.2, 2.2, 2.2) under chi-squared (25 vs 14.5) and
+    wins under Huber with k = 1 (9 vs 10.2).
+    """
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    tru = {'R_obs': 0.0, 'T_obs': 0.0, 'g_obs': 0.0}
+    sigma = {'R_obs': 1.0, 'T_obs': 1.0, 'g_obs': 1.0}
+    outlier = {'R_obs': 5.0, 'T_obs': 0.0, 'g_obs': 0.0}
+    spread = {'R_obs': 2.2, 'T_obs': 2.2, 'g_obs': 2.2}
+
+    def J(sim, loss):
+        return objective_mod.eval_obj(sim, tru, sigma, None, loss).item()
+
+    assert J(spread, None) > J(outlier, None)
+    assert J(outlier, ('huber', 1.0)) > J(spread, ('huber', 1.0))
+    assert _deviance(spread, tru, sigma, ('huber', 1.0)) == pytest.approx(10.2, rel=1e-9)
+
+
 def test_eval_obj_compares_element_ratios_in_log_only_with_sigma():
     """Without sigma C/O_atm stays linear, as before; with sigma it is compared in dex."""
     tru, sim = {'C/O_atm': 0.5}, {'C/O_atm': 0.25}
@@ -599,8 +759,8 @@ def test_validate_sigma_accepts_complete_table_and_rejects_bad_entries():
 
 def test_validate_sigma_takes_dex_strings_for_log_compared_observables():
     """'0.1 dex' is used as exactly 0.1 dex: a simulated C/O 0.1 dex above the
-    target gives chi2 = 1 (J = 0) and 0.2 dex below gives chi2 = 4. Dex on a linearly
-    compared observable, and strings that are not '<number> dex', are refused."""
+    target gives chi2 = 1 (J = 0) and 0.2 dex below gives chi2 = 4. Strings that are
+    not '<number> dex' are refused."""
     obs = {'R_obs': 6.0e6, 'C/O_atm': 0.33}
     out = objective_mod.validate_sigma(obs, {'R_obs': 1.0e5, 'C/O_atm': ' 0.1 dex '})
     assert out['C/O_atm'] == pytest.approx(0.1 * 0.33 * math.log(10.0))
@@ -612,11 +772,42 @@ def test_validate_sigma_takes_dex_strings_for_log_compared_observables():
     J = objective_mod.eval_obj(sim, obs, sigma=out).item()
     assert J == pytest.approx(-math.log10(4.0), abs=1e-9)
 
-    with pytest.raises(ValueError, match="'R_obs' is compared linearly"):
-        objective_mod.validate_sigma(obs, {'R_obs': '0.1 dex', 'C/O_atm': '0.1 dex'})
     for bad in ('abc dex', '0.1 bar', '-0.1 dex', '0 dex', 'nan dex'):
         with pytest.raises(ValueError, match="sigma for 'C/O_atm'"):
             objective_mod.validate_sigma(obs, {'R_obs': 1.0e5, 'C/O_atm': bad})
+
+
+@pytest.mark.physics_invariant
+def test_dex_sigma_puts_a_linear_observable_in_log10():
+    """T_obs with '0.1 dex' is compared in log10: 0.1 dex above the target gives chi2 = 1
+    and 0.2 dex below gives chi2 = 4, where linear residuals with the same sigma give 1.26
+    and 2.57. A plain sigma keeps T_obs linear, and a dex sigma needs a positive target."""
+    obs = {'T_obs': 400.0, 'C/O_atm': 0.33}
+    out = objective_mod.validate_sigma(obs, {'T_obs': '0.1 dex', 'C/O_atm': '0.1 dex'})
+    # Only T_obs is listed: C/O_atm is compared in log10 with any sigma
+    assert out.log == {'T_obs'}
+    assert objective_mod.compared_in_log('T_obs', out)
+    assert not objective_mod.compared_in_log('T_obs', {'T_obs': 1.0})
+    sim = {'T_obs': 400.0 * 10**0.1, 'C/O_atm': 0.33}
+    assert _chi2(sim, obs, out) == pytest.approx(1.0, rel=1e-9)
+    sim['T_obs'] = 400.0 * 10**-0.2
+    chi2 = _chi2(sim, obs, out)
+    assert chi2 == pytest.approx(4.0, rel=1e-9)
+    assert abs(chi2 - ((1 - 10**-0.2) / (0.1 * math.log(10.0))) ** 2) > 1.0  # linear residual
+
+    lin = objective_mod.validate_sigma(obs, {'T_obs': 20.0, 'C/O_atm': '0.1 dex'})
+    assert lin.log == frozenset() and lin['T_obs'] == pytest.approx(20.0)
+    with pytest.raises(ValueError, match='log space'):
+        objective_mod.validate_sigma({'T_obs': -1.0}, {'T_obs': '0.1 dex'})
+
+
+def test_sigma_keeps_its_log_set_through_copies():
+    """The workers get sigma through deepcopy and pickling; both keep which observables a dex
+    sigma put in log10, so the workers score as the main process does."""
+    out = objective_mod.validate_sigma({'g_obs': 9.8}, {'g_obs': '0.05 dex'})
+    for c in (copy.deepcopy(out), pickle.loads(pickle.dumps(out))):
+        assert c.log == {'g_obs'}
+        assert c['g_obs'] == pytest.approx(0.05 * 9.8 * math.log(10.0), rel=1e-12)
 
 
 def test_validate_sigma_warns_when_a_linear_sigma_converts_poorly_to_dex(caplog):
@@ -1635,3 +1826,146 @@ def test_J_reports_a_clean_exit_failure_with_only_the_swept_values(
     assert [r['status'] for r in recorded] == [25]
     assert recorded[0]['planet.mass_tot'] == pytest.approx(3.25)
     assert 'params.out.path' not in recorded[0]
+
+
+@pytest.mark.physics_invariant
+def test_observable_row_floors_log_values_and_keeps_the_compared_space():
+    """A log10-compared observable that is zero (an escaped species) or far below its target
+    enters at LOG_FLOOR_DEX below the target, a non-finite one is NaN, and usable values sit in
+    the space eval_obj compares them in."""
+    tru = {'R_obs': 9.25e6, 'H2O_vmr': 0.3, 'P_surf': 100.0}
+    floor = math.log10(0.3) - objective_mod.LOG_FLOOR_DEX
+    row = objective_mod.observable_row({'R_obs': 9.0e6, 'H2O_vmr': 0.0, 'P_surf': 50.0}, tru)
+    assert row.shape == (1, 3)
+    # R_obs linear, P_surf in log10 (a logarithmic variable), H2O_vmr zero
+    assert row[0, 0].item() == pytest.approx(9.0e6, rel=1e-12)
+    assert row[0, 2].item() == pytest.approx(math.log10(50.0), rel=1e-12)
+    assert row[0, 1].item() == pytest.approx(floor, rel=1e-12)
+    # Not the clipped log10 that eval_obj uses for the objective itself
+    assert objective_mod.observable_space({'H2O_vmr': 0.0}, tru)[0][0] == pytest.approx(-20.0)
+    tiny = objective_mod.observable_row({'R_obs': 9.0e6, 'H2O_vmr': 1e-9, 'P_surf': 50.0}, tru)
+    assert tiny[0, 1].item() == pytest.approx(floor, rel=1e-12)
+    # Just above the floor the value is kept, so the floor only cuts off the far tail
+    above = 0.3 * 10 ** (-objective_mod.LOG_FLOOR_DEX + 0.5)
+    kept = objective_mod.observable_row({'R_obs': 9.0e6, 'H2O_vmr': above, 'P_surf': 50.0}, tru)
+    assert kept[0, 1].item() == pytest.approx(math.log10(above), rel=1e-12)
+    bad = objective_mod.observable_row(
+        {'R_obs': float('inf'), 'H2O_vmr': 0.1, 'P_surf': 1.0}, tru
+    )
+    assert math.isnan(bad[0, 0].item()) and math.isfinite(bad[0, 1].item())
+
+
+@pytest.mark.physics_invariant
+def test_J_with_observables_appends_the_compared_observables(monkeypatch, tmp_path):
+    """with_observables appends the run's observables in target order after J, and NaN for a
+    run that failed, which still scores BAD_OBJ_VALUE."""
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(tmp_path)}
+    )
+    monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
+    tru = {'R_obs': 9.25e6, 'P_surf': 100.0}
+    # Returned in the other order, so a row in dict order would swap them
+    monkeypatch.setattr(
+        objective_mod, 'run_proteus', lambda **_kwargs: ({'P_surf': 10.0, 'R_obs': 9.0e6}, 13)
+    )
+    kwargs = dict(
+        x=torch.tensor([[0.5]], dtype=torch.double),
+        parameters=['planet.mass_tot'],
+        true_observables=tru,
+        worker=0,
+        iter=0,
+        output='dummy_output',
+        ref_config='reference.toml',
+    )
+    out = objective_mod.J(**kwargs, with_observables=True)
+    plain = objective_mod.J(**kwargs)
+    assert out.shape == (1, 3) and plain.shape == (1, 1)
+    assert out[0, 0].item() == pytest.approx(plain.item(), rel=1e-12)
+    assert out[0, 1:].tolist() == pytest.approx([9.0e6, 1.0], rel=1e-12)
+
+    monkeypatch.setattr(
+        objective_mod, 'run_proteus', lambda **_kwargs: ({'P_surf': 10.0, 'R_obs': 9.0e6}, 25)
+    )
+    failed = objective_mod.J(**kwargs, with_observables=True)
+    assert failed[0, 0].item() == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    assert torch.isnan(failed[0, 1:]).all()
+
+
+@pytest.mark.physics_invariant
+def test_upper_limit_term_is_the_censored_gaussian():
+    """An upper limit adds -2 ln Phi(-u): 0 far below the limit, 2 ln 2 at it and about u^2 far
+    above. A two-sided u^2 (100 at u = -10) or a hinge max(u, 0)^2 (0 at u = 0) both miss."""
+    from scipy.stats import norm
+
+    u = torch.tensor([[-10.0], [-1.0], [0.0], [1.0], [5.0]], dtype=torch.double)
+    upper = torch.tensor([True])
+    got = objective_mod.squared_distance(u, ['C/O_atm'], None, None, upper)[:, 0].numpy()
+    ref = -2.0 * norm.logcdf(-u[:, 0].numpy())
+    assert got == pytest.approx(ref, rel=1e-10)
+    assert got[0] < 1e-20
+    assert got[2] == pytest.approx(2.0 * math.log(2.0), rel=1e-12)
+    assert got[4] > 25.0  # above the limit it costs at least the two-sided u^2
+    # The other observables keep their loss: a two-column row adds the plain u^2 of the first
+    both = objective_mod.squared_distance(
+        torch.tensor([[2.0, -10.0]], dtype=torch.double),
+        ['R_obs', 'C/O_atm'],
+        None,
+        ('huber', 1.5),
+        torch.tensor([False, True]),
+    )
+    assert both.item() == pytest.approx(2 * 1.5 * 2.0 - 1.5**2, rel=1e-10)
+
+
+def test_robust_loss_with_upper_limits_under_a_correlation():
+    """With Huber, an uncorrelated limit keeps its censored term beside the whitened loss of the
+    detections; a correlated limit is refused, as only chi-squared has an exact censored form."""
+    from scipy.stats import norm
+
+    names = ['R_obs', 'T_obs', 'C/O_atm']
+    w = CorrelationWhitener(names, {'R_obs': {'T_obs': 0.5}})
+    diff = torch.tensor([[2.0, -1.0, 0.7]], dtype=torch.double)
+    upper = torch.tensor([False, False, True])
+    got = objective_mod.squared_distance(diff, names, w, ('huber', 1.0), upper).item()
+    z = w.whiten(names[:2] + ['C/O_atm'], diff)[0, :2]
+    huber = torch.where(z.abs() <= 1.0, z**2, 2.0 * z.abs() - 1.0).sum().item()
+    assert got == pytest.approx(huber - 2.0 * norm.logcdf(-0.7), rel=1e-12)
+    assert got != pytest.approx(huber + 0.7**2, rel=1e-3)  # not the two-sided term
+
+    paired = CorrelationWhitener(names, {'T_obs': {'C/O_atm': 0.5}})
+    with pytest.raises(ValueError, match='no correlated upper limit'):
+        objective_mod.squared_distance(diff, names, paired, ('huber', 1.0), upper)
+    chi2 = objective_mod.squared_distance(diff, names, paired, None, upper).item()
+    assert chi2 == pytest.approx(paired.chi_squared(names, diff, {'C/O_atm'}).item())
+
+
+def test_eval_obj_scores_values_below_an_upper_limit_as_a_match():
+    """With C/O an upper limit of 0.1 at 0.1 dex, any C/O well below it scores as a perfect
+    match, while the same distance above the limit is a poor fit."""
+    obs = {'R_obs': 7.0e6, 'C/O_atm': 0.1}
+    sigma = objective_mod.validate_sigma(
+        obs, {'R_obs': 1.0e5, 'C/O_atm': '0.1 dex'}, upper_limits=['C/O_atm']
+    )
+    assert sigma.upper == {'C/O_atm'}
+
+    def chi2(co):
+        return 10 ** -objective_mod.eval_obj({'R_obs': 7.0e6, 'C/O_atm': co}, obs, sigma).item()
+
+    assert chi2(1e-4) < 1e-9 and chi2(1e-8) < 1e-9
+    assert chi2(0.1) == pytest.approx(2.0 * math.log(2.0), rel=1e-6)
+    assert chi2(0.1 * 10**0.5) > 25.0
+
+
+def test_validate_sigma_checks_upper_limits():
+    """upper_limits must be a list of distinct observables and needs [sigma]."""
+    obs = {'R_obs': 7.0e6, 'C/O_atm': 0.1}
+    sig = {'R_obs': 1.0e5, 'C/O_atm': '0.1 dex'}
+    assert objective_mod.validate_sigma(obs, sig).upper == frozenset()
+    for bad, match in (
+        (['S/O_atm'], 'not observables'),
+        ('C/O_atm', 'must be a list'),
+        (['C/O_atm', 'C/O_atm'], 'twice'),
+    ):
+        with pytest.raises(ValueError, match=match):
+            objective_mod.validate_sigma(obs, sig, upper_limits=bad)
+    with pytest.raises(ValueError, match='need \\[sigma\\]'):
+        objective_mod.validate_sigma(obs, None, upper_limits=['C/O_atm'])

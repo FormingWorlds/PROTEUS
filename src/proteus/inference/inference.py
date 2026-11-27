@@ -31,13 +31,16 @@ from proteus.config import (
 
 # bayesopt source files
 from proteus.inference.async_BO import checkpoint, parallel_process
+from proteus.inference.composite import validate_bo_per_observable
 from proteus.inference.correlation import (
     composition_from_names,
+    correlated_names,
     ratio_correlation,
     validate_correlation,
 )
 from proteus.inference.failures import ABORT_ON_FAILURE_ENV, summarise_failures
 from proteus.inference.gen_D_init import create_init
+from proteus.inference.noise import apply_noise
 from proteus.inference.objective import (
     SPECTRAL_CACHE_ENV,
     WORKER_CONFIG_OVERRIDES,
@@ -48,6 +51,11 @@ from proteus.inference.objective import (
     set_dispatch,
     validate_sigma,
     worker_spectral_cache,
+)
+from proteus.inference.posterior import (
+    validate_posterior_per_observable,
+    validate_posterior_samples,
+    write_posterior,
 )
 from proteus.inference.utils import print_results, str_time
 from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
@@ -143,6 +151,50 @@ def validate_patience(patience) -> int:
     if isinstance(patience, bool) or not isinstance(patience, int) or patience < 0:
         raise ValueError(f'patience must be a whole number >= 0 (0 is off), got {patience!r}')
     return patience
+
+
+OBJECTIVES = ('chi-2', 'student-t', 'huber')
+# Config key and default of the parameter of each objective other than chi-2;
+# k = 1.345 keeps 95% of the least-squares efficiency for Gaussian errors
+LOSS_PARAMS = {
+    'huber': ('huber_k', 1.345),
+    'student-t': ('student_t_dof', 4.0),
+}
+
+
+def validate_objective(
+    objective, params: dict, sigma: dict | None, correlation: dict | None = None
+) -> tuple[str, float] | None:
+    """Check `objective` and its parameter in `params`; returns (name, parameter), or None for chi-2.
+
+    Student-t and Huber combine with `[correlation]` and `correlate_ratios`: the loss then
+    applies to the whitened residuals (`CorrelationWhitener.whiten`). An upper limit in
+    `correlation` takes chi-2 only, the one objective with an exact censored form.
+    """
+    objective = 'chi-2' if objective is None else objective
+    if objective not in OBJECTIVES:
+        raise ValueError(f'objective must be one of {OBJECTIVES}, got {objective!r}')
+    for name, (key, _) in LOSS_PARAMS.items():
+        if name != objective and params.get(key) is not None:
+            raise ValueError(f'{key} needs objective = "{name}"')
+    if objective == 'chi-2':
+        return None
+    key, default = LOSS_PARAMS[objective]
+    value = default if params.get(key) is None else params[key]
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not 0 < value < math.inf
+    ):
+        raise ValueError(f'{key} must be a positive finite number, got {value!r}')
+    if sigma is None:
+        raise ValueError(
+            f'objective "{objective}" needs [sigma]: sigma is the scale of each error'
+        )
+    paired = sorted(correlated_names(correlation) & getattr(sigma, 'upper', frozenset()))
+    if paired:
+        raise ValueError(f'objective "{objective}" takes no correlated upper limit: {paired}')
+    return objective, float(value)
 
 
 def validate_truth(parameters: dict, truth: dict | None) -> dict | None:
@@ -324,6 +376,9 @@ def run_inference(config):
     - None
     """
 
+    # As given, so that copy.infer.toml reruns the same study (sigma in dex, noise drawn again)
+    given = copy.deepcopy(config)
+
     # dictionary of directories
     dirs = get_proteus_directories(config['output'])
 
@@ -349,11 +404,21 @@ def run_inference(config):
     validate_reference_config(config['ref_config'], config['parameters'], spectral_cache)
 
     # Optional uncertainty of each observable, in the observable's own units
-    config['sigma'] = validate_sigma(config['observables'], config.get('sigma'))
+    config['sigma'] = validate_sigma(
+        config['observables'], config.get('sigma'), config.get('upper_limits')
+    )
 
     # Optional correlations between the observable uncertainties
     config['correlation'] = validate_correlation(
         config['observables'], config['sigma'], observable_correlation(config)
+    )
+
+    # Optional Gaussian noise on the observables, as in real data
+    apply_noise(config)
+
+    # Chi-squared or, with `objective`, Student-t or Huber errors
+    config['loss'] = validate_objective(
+        config.get('objective'), config, config['sigma'], config['correlation']
     )
 
     # Optional true value of each parameter, for studies of a known simulation
@@ -361,6 +426,25 @@ def run_inference(config):
 
     # Optional early stop once the best objective stops improving
     config['patience'] = validate_patience(config.get('patience', 0))
+
+    # Posterior samples from the GP surrogate; on by default with [sigma]
+    config['posterior_samples'] = validate_posterior_samples(
+        config.get('posterior_samples'), config['sigma']
+    )
+
+    config['posterior_per_observable'] = validate_posterior_per_observable(
+        config.get('posterior_per_observable'), config['posterior_samples']
+    )
+
+    # One GP per observable in the optimisation, instead of one GP of the objective
+    # Random initial samples as create_init counts them; None for a grid
+    n_init = None
+    if str(config.get('init_grid', 'none')).lower().strip() == 'none':
+        n_init = int(config.get('init_samps') or 0)
+        n_init = n_init if n_init >= 1 else int(config.get('n_workers', 1))
+    config['bo_per_observable'] = validate_bo_per_observable(
+        config.get('bo_per_observable'), config['acqf'], n_init, len(config['parameters'])
+    )
 
     # How each worker runs its evaluations, validated before the output folder is emptied.
     set_dispatch(config.get('dispatch'), config.get('runner_max_jobs'))
@@ -383,7 +467,7 @@ def run_inference(config):
     infer_config = os.path.abspath(os.path.join(dirs['output'], 'copy.infer.toml'))
     with open(infer_config, 'w') as file:
         file.write(f'# Created: {str_time()}\n\n')
-        toml.dump(config, file)
+        toml.dump(given, file)
     log.info(f'Inference config: {infer_config}')
 
     # Bound each child PROTEUS run so one wedged simulation cannot hang the
@@ -437,6 +521,10 @@ def run_inference(config):
         log.info(f'    patience      = {config["patience"]} evaluations')
     log.info(f'    kernel        = {config["kernel"]}')
     log.info(f'    acquisition   = {config["acqf"]}')
+    log.info(
+        '    surrogate     = '
+        + ('one GP per observable' if config['bo_per_observable'] else 'one GP of J')
+    )
     log.info(f'    dispatch      = {dispatch_mode()}')
     objective = 'chi-squared' if config['sigma'] else 'relative'
     if config['correlation']:
@@ -445,7 +533,20 @@ def run_inference(config):
             if config.get('correlate_ratios')
             else ', correlated'
         )
+    if config['loss'] is not None:
+        name, param = config['loss']
+        objective = {
+            'huber': f'Huber (k = {param:g})',
+            'student-t': f'Student-t (dof = {param:g})',
+        }[name]
     log.info(f'    objective     = {objective}')
+    log.info(f'    posterior     = {config["posterior_samples"] or "off"} samples')
+    if config['posterior_samples']:
+        log.info(f'    per-observable posterior = {config["posterior_per_observable"]}')
+    if config.get('noise'):
+        log.info(f'    noise         = Gaussian, seed {config["noise_seed"]}')
+        for k, v in config['observables'].items():
+            log.info(f'        {k:16s} {config["observables_true"][k]:.5g} -> {v:.5g}')
     log.info(' ')
     t_0 = time.perf_counter()
 
@@ -465,6 +566,8 @@ def run_inference(config):
         config['sigma'],
         config['correlation'],
         config['patience'],
+        config['loss'],
+        config['bo_per_observable'],
     )
 
     t_1 = time.perf_counter()
@@ -489,7 +592,11 @@ def run_inference(config):
     plotBO.plot_result_objective(D_final, config['parameters'], n_init, dirs['output'])
     plotBO.plot_result_correlation(config['parameters'], config['observables'], dirs['output'])
     cases = plot_fit.collect_case_observables(
-        dirs['output'], config['observables'], config['sigma'], config['correlation']
+        dirs['output'],
+        config['observables'],
+        config['sigma'],
+        config['correlation'],
+        config['loss'],
     )
     plot_fit.plot_result_observables(cases, config['observables'], dirs['output'], best_config)
     if config['truth'] is not None:
@@ -499,6 +606,19 @@ def run_inference(config):
 
     # Make PROTEUS plots for best fitting case
     plotBO.plot_proteus(best_config)
+
+    # Last, so that a failed GP fit here cannot cost the outputs above
+    if config['posterior_samples']:
+        samples = write_posterior(config, D_final, dirs['output'], cases)
+        plot_fit.plot_result_posterior(
+            samples,
+            D_final,
+            n_init,
+            config['parameters'],
+            config['truth'],
+            dirs['output'],
+            config['loss'],
+        )
 
     # Done
     log.info(f'Inference completed at {str_time()}')
