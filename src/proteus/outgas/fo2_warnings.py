@@ -15,8 +15,8 @@ Both checks read the helpfile after a row is appended and change nothing.
   row above the range of the module each warn once per run.
 
 Each decision reads the rows of the helpfile only, so a resumed run warns as an uninterrupted
-one; the rows of a helpfile without ``outgas_called`` read as no call, so a buffer warning can
-repeat once after such a resume.
+one; the rows of a helpfile without ``outgas_called`` read as no call, so each buffer warning
+can repeat once after such a resume.
 """
 
 from __future__ import annotations
