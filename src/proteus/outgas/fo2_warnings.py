@@ -9,8 +9,9 @@ Both checks read the helpfile after a row is appended and change nothing.
   the mantle warns once per crossing, when the structure is solved again during the run
   (``zalmoxis.update_interval > 0``, or an impact).
 - The IW buffer is evaluated at ``max(T_magma, outgas.T_floor)``. Hirschmann (2021, GCA 313,
-  74, Sect. 5) fits it over 1000-3000 K; CALLIOPE from 26.11.08, whose default buffer it is,
-  uses the fit at every temperature, atmodeller switches to Hirschmann (2008) below 1000 K. Among the rows
+  74, Sect. 5) fits it over 1000-3000 K; CALLIOPE uses the fit at every temperature as its
+  default buffer from 26.11.8 (pyproject.toml: fwl-calliope>=26.11.8), atmodeller switches to
+  Hirschmann (2008) below 1000 K. Among the rows
   whose step ran an outgassing call (``outgas_called``), the first row below and the first
   row above the range of the module each warn once per run.
 
