@@ -28,6 +28,7 @@ step-by-step guide or the advice below,
 | Slow Zenodo downloads | [Data downloads](#data-download-errors-or-slow-zenodo-downloads) |
 | `libudev.so.1` not found | [libudev](#libudevso1-not-found) |
 | `OpenSSL_jll` / Julia error | [Julia compatibility](#julia-compatibility-error) |
+| Exit code 138 (macOS) after a run has finished, or `Julia threads     1` in the log | [Julia threads and signals](#julia-threads-and-signals) |
 | `PythonCall ... is required but does not seem to be installed` / `failed to find source of parent package` | [Julia depot with no packages](#julia-depot-with-no-packages) |
 | `could not load library ".../.juliaup/bin/../lib/julia/sys.so"`, or pytest exits with code 1 and prints nothing | [Julia system image not found](#julia-system-image-not-found) |
 | PETSc fails on Apple Silicon | [PETSc Apple Silicon](#petsc-compilation-fails-on-apple-silicon) |
@@ -327,6 +328,12 @@ juliaup add 1.13
 conda env config vars set -n proteus PYTHON_JULIAPKG_EXE="$(julia +1.13 --startup-file=no -e 'print(joinpath(Sys.BINDIR, "julia"))')"
 conda deactivate && conda activate proteus
 ```
+
+### Julia threads and signals {#julia-threads-and-signals}
+
+With more than 1 Julia thread and the Julia signal handlers off (the juliacall default), a process can end with SIGBUS (exit code 138 on macOS) when it exits, after the run has written its output. PROTEUS therefore starts Julia with 1 thread: when `JULIA_NUM_THREADS` asks for more, PROTEUS sets `PYTHON_JULIACALL_THREADS=1` before it starts Julia and logs `Julia threads     1 (JULIA_NUM_THREADS=... not used; ...)`.
+
+To run Julia with more threads, set `PYTHON_JULIACALL_THREADS` (or start Python with `-X juliacall-threads=N`). PROTEUS then sets `PYTHON_JULIACALL_HANDLE_SIGNALS=yes`, unless you set it yourself. With these handlers Julia, not Python, takes SIGTERM and Ctrl-C: the run stops with a Julia backtrace, a Julia exit hook records status 25 (stopped). The temporary folder `proteus_*` of the run then stays in `$TMPDIR`.
 
 ---
 

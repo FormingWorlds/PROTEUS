@@ -103,8 +103,10 @@ module load netCDF-Fortran libarchive
 eval "$(conda shell.bash hook)"
 conda activate proteus
 
-proteus start --offline -c input/all_options.toml
+srun proteus start --offline -c input/all_options.toml
 ```
+
+Start `proteus` with `srun`, as above. At `scancel` and at the time limit, SLURM sends SIGTERM to each job step and to the batch shell, but not to a program that the batch shell started on its own. Such a program gets SIGKILL 30 s later (`KillWait` on Habrok), and its run keeps status 1 (running) instead of 25 (stopped).
 
 Submit it with:
 ```console
