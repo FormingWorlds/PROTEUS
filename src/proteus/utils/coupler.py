@@ -275,13 +275,13 @@ def validate_module_versions(dirs: dict, config: Config):
 
     # Get minimum required version for a module (return None if no version specified)
     def _get_expver(mod):
+        from packaging.requirements import Requirement
+
         for v in deps_raw:
-            if '=' not in v:
-                continue
-            vmod = v.split('=')[0].strip('>')  # get name of module
-            vver = v.split('=')[1]  # get req version of module
-            if mod == vmod:
-                return vver
+            req = Requirement(v)
+            spec = next(iter(req.specifier), None)  # an exact pin or a floor
+            if req.name == mod and spec is not None:
+                return spec.version
         return None
 
     # Split version string into major/minor/patch components
