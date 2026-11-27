@@ -280,8 +280,8 @@ def test_lid_seal_hypothesis_over_the_thickness_and_fraction_domains():
 
 
 def test_lid_seal_cross_field_rules(tmp_path):
-    """With the seal on, a non-Aragog interior, freeze_volatiles and vapourise
-    are refused at load; front trapping is allowed."""
+    """With the seal on, a non-Aragog interior, freeze_volatiles, vapourise and
+    layer trapping are refused at load; front trapping is allowed."""
     import tomllib
 
     from helpers import PROTEUS_ROOT
@@ -305,6 +305,9 @@ def test_lid_seal_cross_field_rules(tmp_path):
         return read_config_object(path)
 
     assert load(lambda c: c['outgas'].update(trap_mode='front')).outgas.lid_seal.enabled
+    # Discrimination: the front case above loads, so the refusal is of the layer scheme alone.
+    with pytest.raises(ValueError, match='lid_seal.*trap_mode = "layers"'):
+        load(lambda c: c['outgas'].update(trap_mode='layers'))
     with pytest.raises(ValueError, match='freeze_volatiles'):
         load(lambda c: c['params']['stop']['solid'].update(freeze_volatiles=True))
     with pytest.raises(ValueError, match='vapourise'):

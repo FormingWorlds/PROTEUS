@@ -279,13 +279,13 @@ def run_escape(
             the atmosphere is the only reservoir that can supply escape. The
             element floor of :func:`calc_new_elements` is then off, since no
             outgassing solve follows to repartition a zeroed total. It is also
-            off on a step on which a remelt returned buried mass to the melt.
+            off on a step on which trapping returned mass to the melt.
         interior_o : Interior_t | None
             Interior state. When given, its ``escape_dt_limit`` is set so a
             capped step shortens the next one; see :func:`escape_dt_limit`.
     """
     # Imported here: proteus.outgas imports this module at load.
-    from proteus.outgas.trapping import remelt_returned_mass
+    from proteus.outgas.trapping import trapping_returned_mass
 
     dirs = dirs or {}
 
@@ -387,7 +387,7 @@ def run_escape(
         reservoir,
         min_thresh=config.outgas.mass_thresh,
         esc_mass=esc_step_kg,
-        floor=not (atmosphere_only or remelt_returned_mass(hf_row)),
+        floor=not (atmosphere_only or trapping_returned_mass(hf_row)),
         config=config,
     )
 
@@ -575,10 +575,12 @@ def calc_new_elements(
             so the two agree on what depleted means. Only for a step whose
             outgassing solve repartitions the totals afterwards; on a frozen
             mantle no solve follows and the atmosphere keeps the mass. On a step
-            on which a remelt returned buried mass, the element is being
-            resupplied rather than depleted: flooring it then would delete the
-            release whenever it is small, so the result would depend on how many
-            steps the remelt takes, and the caller turns the floor off.
+            on which trapping returned buried mass to the melt, by a remelt or,
+            in the layer scheme, by pore melt draining back to the ocean, the
+            element is being resupplied rather than depleted: flooring it then
+            would delete the return whenever it is small, so the result would
+            depend on how many steps the return takes, and the caller turns the
+            floor off.
         config : Config or None
             Run configuration; with ``outgas.prevent_desaturation`` on, condensed
             mass is excluded from what escape can reach. None excludes only

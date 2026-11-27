@@ -53,6 +53,7 @@ nav:
       - Orbit and tidal evolution: Tutorials/orbit_tides.md
       - Giant impacts with a partial re-melt: Tutorials/giant_impact_remelt.md
       - Volatiles held under a closed crust: Tutorials/lid_seal.md
+      - Volatiles trapped node by node: Tutorials/layer_trapping.md
       - The core temperature of the structure solve: Tutorials/core_table.md
 
   - Explanations:
@@ -99,6 +100,9 @@ nav:
           - Melt drainage across the freezing front (compaction.py): Validation/outgas/compaction.md
           - Burial ledger for remelting (burial_ledger.py): Validation/outgas/burial_ledger.md
           - Solid-phase volatile trapping (trapping.py): Validation/outgas/trapping.md
+          - Pore-melt drainage of the layer scheme (layer_drainage.py): Validation/outgas/layer_drainage.md
+          - Per-node record of the layer scheme (node_record.py): Validation/outgas/node_record.md
+          - Layer trapping step (layer_trapping.py): Validation/outgas/layer_trapping.md
           - Volatiles under a closed crust (lid_seal.py): Validation/outgas/lid_seal.md
       - Star:
           - Stellar luminosity and instellation (dummy.py): Validation/star/dummy.md
@@ -115,6 +119,7 @@ nav:
           - Accretion: Reference/config/accretion.md
           - Observations: Reference/config/observe.md
       - Lid coupling details: Reference/lid_coupling.md
+      - Layer trapping details: Reference/layer_trapping.md
       - Melting curves: Reference/melting_curves.md
       - Module map: Reference/module_map.md
       - Module versions: Reference/module_versions.md
@@ -134,8 +139,13 @@ nav:
               - H2-silicate binodal: Reference/api/outgas_binodal.md
               - LavAtmos rock vapour: Reference/api/outgas_lavatmos.md
               - Volatile trapping: Reference/api/outgas_trapping.md
+              - Trapping bookkeeping: Reference/api/outgas_trap_bookkeeping.md
               - Melt drainage: Reference/api/outgas_compaction.md
               - Burial ledger: Reference/api/outgas_burial_ledger.md
+              - Layer drainage: Reference/api/outgas_layer_drainage.md
+              - Node record: Reference/api/outgas_node_record.md
+              - Node record I/O: Reference/api/outgas_node_record_io.md
+              - Layer trapping: Reference/api/outgas_layer_trapping.md
               - Lid seal: Reference/api/outgas_lid_seal.md
 
   - Community:

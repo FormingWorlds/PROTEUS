@@ -1140,6 +1140,11 @@ class Proteus:
             # Get last row from helpfile dataframe
             self.hf_row = self.hf_all.iloc[-1].to_dict()
 
+            # The layer trapping record of that row, from its interior snapshot.
+            from proteus.outgas.layer_trapping import restore_node_record
+
+            restore_node_record(self.config, self.directories, self.hf_row, self.interior_o)
+
             # Resume banner. The '==== RESUME' prefix is added to output,
             # since this makes log triage (grep, tail -f, cron filters) easy
             log.info(
@@ -1447,6 +1452,7 @@ class Proteus:
                 self.hf_all,
                 self.interior_o,
                 init_stage=self.init_stage,
+                dirs=self.directories,
             )
             # Mass a remelt returns to a desiccated planet must reach escape and outgassing.
             self.desiccated = desiccated_after_trapping(
@@ -1763,8 +1769,11 @@ class Proteus:
             and self.interior_o.aragog_solver.solution is not None
         ):
             from proteus.interior_energetics.aragog import write_final_snapshot
+            from proteus.outgas.layer_trapping import persist_node_record
 
             write_final_snapshot(self.config, self.interior_o, self.directories, self.hf_row)
+            # The rewrite holds the solver fields alone; the layer trapping state goes back in.
+            persist_node_record(self.directories, self.hf_row, self.interior_o)
             self._save_zalmoxis_output()
 
         # Ensure the final atmosphere state is on disk, since it won't always happen to

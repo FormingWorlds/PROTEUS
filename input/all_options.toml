@@ -626,7 +626,7 @@ config_version = "3.0"
     prevent_desaturation      = false        # true: condensates never re-vapourise, so a condensed layer only grows (its activity can still fall below 1); holds nothing unless atmodeller forms condensates (include_condensates)
 
     # Solid-phase volatile trapping during mantle crystallisation
-    trap_mode                 = "none"       # none | front (needs interior_energetics.module = "aragog")
+    trap_mode                 = "none"       # none | front | layers (needs interior_energetics.module = "aragog")
 
     # Drainage integral over the freezing front the solver resolves
     trap_phi_min              = 0.01         # porosity below which a node counts as solid [1]

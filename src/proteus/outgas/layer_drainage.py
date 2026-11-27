@@ -1,0 +1,542 @@
+"""Explicit drainage of pore melt through the mush, node by node.
+
+The front scheme of :mod:`proteus.outgas.compaction` follows one parcel across a
+single freezing front and applies the melt it retains to the mass crystallised
+in the step. The layer scheme drops that picture. Every node of the interior
+mesh that lies in the mush keeps its own pore melt in its record from one
+coupling step to the next. It drains that melt into the node above at the rate
+its own porosity, density contrast and gravity allow, and keeps what it still
+holds when it reaches the porosity floor. This is the per-node drainage of
+Miyazaki and Korenaga (2019, JGR Solid Earth 124, 3399, section 2.4) on the
+interior solver's mesh. It needs no single front, no front speed and no
+residence time; melt expelled from one node passes through the nodes above it. This module holds the drainage physics;
+:mod:`proteus.outgas.node_record` carries the per-node record and the volatiles.
+
+Phase states
+------------
+Every staggered node, one cell of the mesh, is classified at every step from
+the solver melt fraction ``x`` and the melt volume fraction ``phi`` it implies:
+
+* liquid, ``x >= rfront_loc``: above the rheological transition, part of the
+  convecting magma ocean;
+* mush, ``x < rfront_loc`` and ``phi > phi_min``: the crystal framework is
+  connected, so the pore melt leaves only by drainage;
+* solid, ``phi <= phi_min``: the pore melt left in the node is locked.
+
+A contiguous set of nodes in one phase state is a liquid, mush or solid layer.
+
+``phi = x rho_s / (x rho_s + (1 - x) rho_l)`` uses the phase-boundary densities.
+It is taken from the melt fraction rather than from the mixture density,
+because the phase-boundary densities belong to the solidus and liquidus
+temperatures and not to the node temperature, and is well defined whichever
+phase is denser. A node entering the mush from above carries the pore melt it
+had at the transition, ``psi = phi(x = rfront_loc)``, whose mass fraction is
+exactly ``rfront_loc``, the bound the front scheme caps its guard at.
+
+Drainage
+--------
+The pore melt ``psi`` of a node changes by drainage, as in the front integral,
+and by crystallisation where the solver's porosity falls below it. The melt
+volume flux out of the top of node ``k`` of a mush layer is
+
+    q_k = min( A_k psi_k w_D(psi_k),  q_(k-1) + psi_k V_k / tau_s,k ),   q_(base) = 0
+
+with ``A_k`` the area of the node's upper face, ``V_k`` its volume, ``w_D`` the
+percolation speed of :func:`~proteus.outgas.compaction.darcy_velocity` (the
+solver's separation velocity under its ``separation_buoyancy``) at the node's
+own density contrast and gravity, and ``tau_s,k = mu_s / (|drho| g d_k)`` the
+matrix deformation time under the compaction pressure at depth ``d_k`` below
+the top of the mush layer. The first term is the most the node's permeability
+passes; the second is the melt that compaction of the node and of the nodes
+beneath it supplies; the smaller controls, as in the front integral. A single
+node with ``L = V / A`` and the same matrix time obeys the front integral's
+equation exactly. The contrast enters as its magnitude, as in the solver's
+separation velocity.
+
+The solver's own melt volume fraction bounds the pore melt, taken linear in
+time between its values at the start and the end of the step. Pore melt beyond
+it crystallises in place and stays crystalline: the pore melt does not take
+it back when drainage lowers the pore melt below the bound. The crystals keep
+``D`` times the concentration of the melt they grow from, with ``D`` the
+crystal/melt partition coefficient of each species; the rest of the volatiles
+passes to the melt that still flows, which for the volatiles, with ``D`` near
+0, is almost all of them. A node receives no more from below than it passes
+on plus its free pore space, the solver porosity less its pore melt, so no
+node fills beyond the melt the solver gives it.
+
+A node whose tables put the melt at or above the solid density cannot drive
+its melt upward; the solver's separation velocity sinks it. Such a node takes
+the front scheme's no-drainage bound: it keeps its pore melt, and so do the
+mush nodes below it in the same mush layer, whose melt it would have to pass.
+
+Melt that leaves the top of a mush layer rejoins the magma ocean, or leaves
+through the surface when the layer reaches the top of the mesh. A mush layer
+capped by a solid node is sealed: nothing leaves it. :func:`split_at_dense`
+seals the part of a mush layer at and below its uppermost dense-melt node.
+The fluxes are integrated with a second-order Runge-Kutta scheme, on sub-steps
+short enough that no node passes on more than :data:`SUBSTEP_FRACTION` of what
+it holds in one of them, and, while the solver porosity changes over the
+step, no longer than that fraction of the step.
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass
+
+import numpy as np
+
+from proteus.outgas.compaction import _contiguous_runs
+
+log = logging.getLogger('fwl.' + __name__)
+
+PHASE_LIQUID = 0  # above the rheological transition, part of the magma ocean
+PHASE_MUSH = 1  # connected crystal framework, pore melt drains
+PHASE_SOLID = 2  # at or below the porosity floor, pore melt locked
+
+# Largest share of a node's turnover time one sub-step may span; a tenth keeps
+# the upwind scheme positive for fluxes up to the 5.5th power of the porosity.
+SUBSTEP_FRACTION = 0.1
+
+# Sub-steps allowed in one coupling step before the rest of the step is left
+# undrained; fast drainage slows itself, so this is a safety net.
+MAX_SUBSTEPS = 20000
+
+
+@dataclass(frozen=True)
+class DrainageParams:
+    """Material and numerical parameters of one drainage call."""
+
+    grain_size: float  # crystal grain size [m]
+    melt_visc: float  # melt viscosity [Pa s]
+    mush_visc: float  # mush matrix viscosity [Pa s]
+    buoyancy: str  # the solver's separation_buoyancy, 'mixture' or 'solid'
+    substep_fraction: float = SUBSTEP_FRACTION
+    max_substeps: int = MAX_SUBSTEPS
+
+
+@dataclass
+class Drainage:
+    """Outcome of draining the open layers of the mush over one coupling step."""
+
+    psi: np.ndarray  # pore-melt volume fraction afterwards [1]
+    t_darcy: np.ndarray  # time each node spent percolation-limited [s]
+    t_matrix: np.ndarray  # time each node spent compaction-limited [s]
+    returned: float  # melt volume that left the layers [m3]
+    n_substeps: int
+    elapsed: float  # time integrated; short of the step only if truncated [s]
+    matrix_speed: float  # largest melt flux per area at the end [m s-1]
+    tracer: np.ndarray | None = None  # carried quantity per node volume, afterwards
+    kept: np.ndarray | None = None  # of it, taken into crystals grown in the pores
+
+
+def melt_volume_fraction(
+    melt_fraction: np.ndarray, rho_solid: np.ndarray, rho_melt: np.ndarray
+) -> np.ndarray:
+    """Volume fraction of melt from the melt mass fraction [1].
+
+    ``phi = x rho_s / (x rho_s + (1 - x) rho_l)``, the melt volume ``x / rho_l``
+    over the total ``x / rho_l + (1 - x) / rho_s``. Well defined whichever phase
+    is denser, unlike the lever rule on the mixture density.
+
+    Parameters
+    ----------
+    melt_fraction : ndarray
+        Melt mass fraction [1]; clipped to [0, 1].
+    rho_solid, rho_melt : ndarray
+        Solid and melt densities [kg m-3].
+    """
+    x = np.clip(np.asarray(melt_fraction, dtype=float), 0.0, 1.0)
+    melt = x * np.asarray(rho_solid, dtype=float)
+    total = melt + (1.0 - x) * np.asarray(rho_melt, dtype=float)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        return np.where(total > 0.0, melt / total, x)
+
+
+def mass_fraction_of_volume(
+    volume_fraction: np.ndarray, rho_melt: np.ndarray, rho_solid: np.ndarray
+) -> np.ndarray:
+    """Melt mass fraction of a mixture from its melt volume fraction [1].
+
+    The inverse of :func:`melt_volume_fraction`, and the array form of
+    :func:`~proteus.outgas.compaction.volume_to_mass_fraction`.
+
+    Parameters
+    ----------
+    volume_fraction : ndarray
+        Melt volume fraction [1]; clipped to [0, 1].
+    rho_melt, rho_solid : ndarray
+        Melt and solid densities [kg m-3].
+    """
+    f = np.clip(np.asarray(volume_fraction, dtype=float), 0.0, 1.0)
+    melt = f * np.asarray(rho_melt, dtype=float)
+    total = melt + (1.0 - f) * np.asarray(rho_solid, dtype=float)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        return np.where(total > 0.0, melt / total, f)
+
+
+def classify_nodes(
+    melt_fraction: np.ndarray,
+    volume_fraction: np.ndarray,
+    rfront_loc: float,
+    phi_min: float,
+) -> np.ndarray:
+    """Liquid, mush or solid code of every node; see the module docstring.
+
+    Parameters
+    ----------
+    melt_fraction : ndarray
+        Solver melt mass fraction [1].
+    volume_fraction : ndarray
+        Melt volume fraction it implies [1].
+    rfront_loc : float
+        Rheological transition, the melt fraction at the top of the mush [1].
+    phi_min : float
+        Porosity floor below which a node is solid [1].
+    """
+    x = np.asarray(melt_fraction, dtype=float)
+    status = np.full(x.size, PHASE_MUSH, dtype=int)
+    status[x >= rfront_loc] = PHASE_LIQUID
+    status[(x < rfront_loc) & (np.asarray(volume_fraction, dtype=float) <= phi_min)] = (
+        PHASE_SOLID
+    )
+    return status
+
+
+def node_geometry(r_basic: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Volume [m3], upper-face area [m2] and centre radius [m] of every node.
+
+    ``r_basic`` holds the node boundaries [m], ascending from the core-mantle
+    boundary, one more than there are nodes; each node is a spherical cell.
+
+    Raises
+    ------
+    ValueError
+        If there are fewer than two boundaries or they are not strictly ascending.
+    """
+    r = np.asarray(r_basic, dtype=float).ravel()
+    if r.size < 2 or np.any(np.diff(r) <= 0.0):
+        raise ValueError('node boundaries must be at least two strictly ascending radii')
+    volume = (4.0 * np.pi / 3.0) * (r[1:] ** 3 - r[:-1] ** 3)
+    area_top = 4.0 * np.pi * r[1:] ** 2
+    centre = 0.5 * (r[:-1] + r[1:])
+    return volume, area_top, centre
+
+
+def compaction_times(
+    layers: list[np.ndarray],
+    r_basic: np.ndarray,
+    centre: np.ndarray,
+    delta_rho: np.ndarray,
+    gravity: np.ndarray,
+    mush_visc: float,
+) -> np.ndarray:
+    """Matrix deformation time of every node in ``layers`` [s]; infinite elsewhere.
+
+    ``tau_s = mu_s / (|drho| g d)`` with ``d`` the depth [m] of the node centre
+    below the upper face of the layer's top node. With the melt connected to the
+    ocean above, the matrix carries its own buoyancy-reduced weight, so the
+    pressure that compacts it grows from zero at the top of the layer to
+    ``|drho| g d``.
+    """
+    tau = np.full(np.size(centre), np.inf)
+    for layer in layers:
+        depth = float(r_basic[layer[-1] + 1]) - centre[layer]
+        load = np.abs(delta_rho[layer]) * gravity[layer] * depth
+        tau[layer] = np.where(load > 0.0, mush_visc / np.where(load > 0.0, load, 1.0), np.inf)
+    return tau
+
+
+def mush_layer_fluxes(
+    psi: np.ndarray,
+    volume: np.ndarray,
+    area_top: np.ndarray,
+    speed: np.ndarray,
+    tau_s: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Melt volume flux out of the top of every node of one layer [m3 s-1].
+
+    ``q_k = min(A_k psi_k w_k, q_(k-1) + psi_k V_k / tau_s,k)`` with nothing
+    entering the base, evaluated in closed form as
+    ``q_k = S_k + min(0, min_(j<=k) (c_j - S_j))`` with ``c`` the capacity and
+    ``S`` the cumulative supply. Also returns which nodes their own
+    permeability limits, rather than the melt supplied to them.
+    """
+    capacity = area_top * psi * speed
+    positive = tau_s > 0.0
+    supply = np.where(positive, psi * volume / np.where(positive, tau_s, 1.0), np.inf)
+    # A node supplied with more than it can pass passes its capacity whatever
+    # arrives from below, so this clip changes no flux and avoids cancellation.
+    supply = np.minimum(supply, capacity)
+    cumulative = np.cumsum(supply)
+    slack = np.minimum.accumulate(np.minimum(capacity - cumulative, 0.0))
+    flux = np.maximum(cumulative + slack, 0.0)
+    inflow = np.concatenate(([0.0], flux[:-1]))
+    return flux, capacity <= inflow + supply
+
+
+def _layer_fluxes(psi, layers, volume, area_top, speed_of, tau_s):
+    """Face fluxes of every open layer and which nodes their permeability limits."""
+    out = []
+    for layer in layers:
+        p = psi[layer]
+        out.append(
+            mush_layer_fluxes(
+                p, volume[layer], area_top[layer], speed_of(p, layer), tau_s[layer]
+            )
+        )
+    return out
+
+
+def _step_limit(psi, layers, fluxes, volume) -> float:
+    """The shortest time any node takes to pass on what it holds [s].
+
+    A node passes on ``psi V / q_out``; a tenth of that keeps every node's melt
+    and carried mass positive and the upwind transport monotone. What a node
+    receives needs no limit of its own: :func:`_limit_inflow` caps it at the
+    free pore space within each sub-step, however long.
+    """
+    span = np.inf
+    for layer, (q, _) in zip(layers, fluxes):
+        p, v = psi[layer], volume[layer]
+        with np.errstate(divide='ignore', invalid='ignore'):
+            passing = np.where(q > 0.0, p * v / q, np.inf)
+        span = min(span, float(np.min(passing)))
+    return span
+
+
+def _bound_at(start, end, fraction):
+    """The solver porosity a ``fraction`` of the way through the step [1]."""
+    return start + (end - start) * fraction
+
+
+def _crystallise(psi, tracer, kept, bound, nodes, keep):
+    """Crystallise the pore melt beyond ``bound`` in ``nodes``, in place.
+
+    The crystals keep ``keep`` times the concentration of the melt they grow
+    from; the rest of the carried mass stays in the pore melt that is left.
+    """
+    excess = np.zeros_like(psi)
+    np.subtract(psi, bound, out=excess, where=nodes & (psi > bound))
+    if tracer is not None and keep is not None:
+        share = np.divide(excess, psi, out=np.zeros_like(psi), where=excess > 0.0)
+        into = tracer * np.minimum(keep[:, None] * share[None, :], 1.0)
+        tracer, kept = tracer - into, kept + into
+    return psi - excess, tracer, kept
+
+
+def _limit_inflow(q, p, room, volume, dt):
+    """Cap what each node receives at what it passes on plus its free pore space.
+
+    Taken from the top of the layer down, so a node whose outflow was cut
+    passes the cut on to the node below it. The top flux leaves the layer.
+    """
+    q = q.copy()
+    free = np.maximum(room - p, 0.0) * volume / dt
+    for k in range(q.size - 2, -1, -1):
+        q[k] = min(q[k], q[k + 1] + free[k + 1])
+    return q
+
+
+def _rates(psi, tracer, layers, fluxes, volume, room, dt):
+    """Rates of change of the pore melt and what it carries over ``dt``.
+
+    The fluxes leave each node at the concentration of the melt it holds.
+    """
+    rate = np.zeros_like(psi)
+    t_rate = None if tracer is None else np.zeros_like(tracer)
+    returned = 0.0
+    for layer, (q, _) in zip(layers, fluxes):
+        p = psi[layer]
+        q = _limit_inflow(q, p, room[layer], volume[layer], dt)
+        inflow = np.concatenate(([0.0], q[:-1]))
+        rate[layer] = (inflow - q) / volume[layer]
+        returned += float(q[-1])
+        if tracer is not None:
+            carried = tracer[:, layer]
+            conc = np.divide(carried, p, out=np.zeros_like(carried), where=p > 0.0)
+            out = q * conc
+            into = np.concatenate((np.zeros((carried.shape[0], 1)), out[:, :-1]), axis=1)
+            t_rate[:, layer] = (into - out) / volume[layer]
+    return rate, t_rate, returned
+
+
+def drain_mush_layers(
+    psi: np.ndarray,
+    layers: list[np.ndarray],
+    volume: np.ndarray,
+    area_top: np.ndarray,
+    speed_of: Callable[[np.ndarray, np.ndarray], np.ndarray],
+    tau_s: np.ndarray,
+    duration: float,
+    substep_fraction: float = SUBSTEP_FRACTION,
+    max_substeps: int = MAX_SUBSTEPS,
+    tracer: np.ndarray | None = None,
+    porosity: np.ndarray | None = None,
+    porosity_start: np.ndarray | None = None,
+    keep: np.ndarray | None = None,
+) -> Drainage:
+    """Drain the pore melt of every open mush layer over ``duration`` seconds.
+
+    ``speed_of(psi, index)`` returns the drainage speed of the nodes ``index``
+    at pore-melt volume fractions ``psi`` [m s-1]. ``porosity_start`` and
+    ``porosity`` are the solver's melt volume fraction of every node [1] at
+    the start and the end of the step; the start defaults to the end, and
+    without either the bound is 1. Taken linear in time between the two, the
+    bound caps the pore melt of every node: melt beyond it crystallises in
+    place and leaves the pore melt for good, and the bound is the pore space a
+    node can fill with melt from below. ``tracer``, of shape
+    ``(quantities, nodes)``, is anything the melt carries per unit node volume,
+    here the buried mass of each species [kg m-3]; it moves with the melt at
+    the concentration of the node it leaves. Melt that crystallises in place
+    passes its tracer to the pore melt that is left, except ``keep`` [1], per
+    quantity, times the concentration of the crystallised melt, which the
+    crystals take: ``Drainage.kept``. Every flux is counted once leaving one
+    node and once entering the next, so melt and tracer are conserved to
+    rounding.
+
+    Raises
+    ------
+    ValueError
+        If ``substep_fraction`` lies outside (0, 1].
+    """
+    if not 0.0 < substep_fraction <= 1.0:
+        raise ValueError(f'substep_fraction must lie in (0, 1], got {substep_fraction!r}')
+    psi = np.array(psi, dtype=float, copy=True)
+    end = np.ones(psi.size) if porosity is None else np.asarray(porosity, dtype=float)
+    end = np.clip(end, 0.0, 1.0)
+    start = end if porosity_start is None else np.clip(porosity_start, 0.0, 1.0)
+    kept, share = None, None
+    if tracer is not None:
+        tracer = np.array(tracer, dtype=float, copy=True)
+        kept = np.zeros_like(tracer)
+        if keep is not None:
+            share = np.maximum(np.asarray(keep, dtype=float).ravel(), 0.0)
+    known = np.isfinite(psi)
+    members = np.zeros(psi.size, dtype=bool)
+    for layer in layers:
+        members[layer] = True
+    psi, tracer, kept = _crystallise(psi, tracer, kept, start, known, share)
+    column = (layers, volume, area_top, speed_of, tau_s)
+    ramp = bool(np.any(start[members] != end[members]))
+    t_darcy, t_matrix = np.zeros_like(psi), np.zeros_like(psi)
+    elapsed, returned, steps = 0.0, 0.0, 0
+    while layers and elapsed < duration:
+        if steps >= max_substeps:
+            log.warning(
+                'Layer drainage stopped after %d sub-steps with %.3g of %.3g s '
+                'integrated; the rest of the step is left undrained, an upper '
+                'bound on what the mush retains.',
+                steps,
+                elapsed,
+                duration,
+            )
+            break
+        fluxes = _layer_fluxes(psi, *column)
+        dt = min(
+            duration - elapsed, substep_fraction * _step_limit(psi, layers, fluxes, volume)
+        )
+        if ramp:
+            dt = min(dt, substep_fraction * duration)
+        if not dt > 0.0:
+            break
+        bounds = (
+            _bound_at(start, end, elapsed / duration),
+            _bound_at(start, end, min((elapsed + dt) / duration, 1.0)),
+        )
+        psi, tracer, out, limited = _substep(psi, tracer, column, fluxes, bounds, dt)
+        psi, tracer, kept = _crystallise(psi, tracer, kept, bounds[1], members, share)
+        returned += out
+        t_darcy[members & limited] += dt
+        t_matrix[members & ~limited] += dt
+        elapsed += dt
+        steps += 1
+    psi, tracer, kept = _crystallise(psi, tracer, kept, end, known, share)
+
+    matrix_speed = 0.0
+    for layer, (q, _) in zip(layers, _layer_fluxes(psi, *column)):
+        matrix_speed = max(matrix_speed, float(np.max(q / area_top[layer])))
+    return Drainage(
+        psi=psi,
+        t_darcy=t_darcy,
+        t_matrix=t_matrix,
+        returned=returned,
+        n_substeps=steps,
+        elapsed=elapsed,
+        matrix_speed=matrix_speed,
+        tracer=tracer,
+        kept=kept,
+    )
+
+
+def _substep(psi, tracer, column, fluxes, bounds, dt):
+    """One second-order Runge-Kutta sub-step of the drainage over ``dt`` [s].
+
+    The first stage takes the fluxes of ``psi`` against the porosity bound at
+    the start of the sub-step, the second those of the trial state, held to
+    the bound at its end, against that bound. Returns the pore melt, the
+    carried mass, the melt volume that left the layers [m3] and the nodes
+    their own permeability limited in the first stage.
+    """
+    layers, volume = column[0], column[1]
+    rate1, t_rate1, out1 = _rates(psi, tracer, layers, fluxes, volume, bounds[0], dt)
+    limited = np.zeros(psi.size, dtype=bool)
+    for layer, (_, perc) in zip(layers, fluxes):
+        limited[layer] = perc
+    trial = np.minimum(np.clip(psi + dt * rate1, 0.0, 1.0), bounds[1])
+    t_trial = None if tracer is None else np.maximum(tracer + dt * t_rate1, 0.0)
+    fluxes2 = _layer_fluxes(trial, *column)
+    rate2, t_rate2, out2 = _rates(trial, t_trial, layers, fluxes2, volume, bounds[1], dt)
+    psi = np.clip(psi + 0.5 * dt * (rate1 + rate2), 0.0, 1.0)
+    if tracer is not None:
+        tracer = np.maximum(tracer + 0.5 * dt * (t_rate1 + t_rate2), 0.0)
+    return psi, tracer, 0.5 * dt * (out1 + out2), limited
+
+
+def node_array(values, n: int, name: str) -> np.ndarray:
+    """``values`` as ``n`` finite floats, a scalar broadcast to every node.
+
+    Raises
+    ------
+    ValueError
+        If the values cannot fill ``n`` nodes or one is not finite.
+    """
+    a = np.asarray(values, dtype=float).ravel()
+    if a.size == 1:
+        a = np.full(n, a[0])
+    if a.size != n or not np.all(np.isfinite(a)):
+        raise ValueError(f'{name} must hold {n} finite values, got {a.size}')
+    return a
+
+
+def split_at_dense(layer: np.ndarray, delta_rho: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The sealed and the draining part of one mush layer, bottom up.
+
+    ``delta_rho`` is the solid minus the melt density of every node [kg m-3].
+    The nodes at and below the uppermost node with ``delta_rho <= 0`` are
+    sealed, since melt cannot rise through that node; the nodes above it may
+    drain. Without a dense-melt node the whole layer may drain.
+    """
+    dense = np.flatnonzero(np.asarray(delta_rho, dtype=float)[layer] <= 0.0)
+    if dense.size == 0:
+        return layer[:0], layer
+    cut = int(dense[-1]) + 1
+    return layer[:cut], layer[cut:]
+
+
+def mush_layers(mask: np.ndarray) -> list[np.ndarray]:
+    """Index arrays of the contiguous runs of ``True`` in ``mask``, bottom up."""
+    return _contiguous_runs(np.asarray(mask, dtype=bool))
+
+
+def thickest_mush_layer(
+    phase: np.ndarray, r_basic: np.ndarray
+) -> tuple[np.ndarray | None, float]:
+    """The mush layer of largest radial extent, and that extent [m]."""
+    layers = mush_layers(phase == PHASE_MUSH)
+    if not layers:
+        return None, float('nan')
+    extents = [float(r_basic[layer[-1] + 1] - r_basic[layer[0]]) for layer in layers]
+    k = int(np.argmax(extents))
+    return layers[k], extents[k]

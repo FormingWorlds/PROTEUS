@@ -49,10 +49,21 @@ Trapped-melt fraction
     no-drainage bound, the entry porosity capped at ``phi_c``. A step on which
     the interior state is unavailable buries at ``D_Z`` alone (``F_tl = 0``)
     and says so.
+``layers``
+    The mush drains node by node on the Aragog mesh instead of as one front
+    (:mod:`proteus.outgas.node_record`, :mod:`proteus.outgas.layer_trapping`).
+    Each node buries the volatiles of its pore melt when it enters the mush,
+    drains that melt through the nodes above it, and locks what is left when
+    it reaches the porosity floor; the chemistry dissolves into the melt of
+    the liquid nodes alone. ``F_tl`` is the mass-weighted trapped fraction of
+    the nodes that reached the floor over the step. Remelting is decided per
+    node as well, so the burial ledger below is not used, also on a step
+    without interior profiles, which traps at ``D_Z`` alone when the mantle
+    freezes and returns the remelted share when it melts.
 
 Remelting
 ---------
-A step on which the global melt fraction rises remelts part of the solid
+In the ``front`` mode, a step on which the global melt fraction rises remelts part of the solid
 mantle and releases what trapping buried in it. The solid that remelts first is
 the solid that froze last, so the step returns the mass buried while the melt
 fraction fell through the interval it now rises back through, read from the
@@ -92,13 +103,11 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from proteus.outgas.burial_ledger import build_ledger, ledger_total, remelt_to
-from proteus.outgas.common import VOLATILE_ELEMENT_STOICH, element_masses_from_species
 from proteus.outgas.compaction import (
     BRANCH_DARCY,
     BRANCH_FALLBACK,
@@ -112,7 +121,24 @@ from proteus.outgas.compaction import (
     porosity_from_densities,
     volume_to_mass_fraction,
 )
+from proteus.outgas.layer_trapping import run_layer_trapping
 from proteus.outgas.lid_seal import sealed_mass
+from proteus.outgas.trap_bookkeeping import (
+    TRAPPED_COLUMNS,
+    TRAPPED_SPECIES,
+    TrappingStep,
+    apply_to_reservoirs,
+    critical_melt_fraction,
+    front_speed,
+    melt_concentration,
+    move_mass,
+    partition_coefficients,
+    record_step,
+    reservoir_sum,
+    shift_reservoir,
+    species_carried,
+    trapped_kg,
+)
 from proteus.utils.constants import noble_gases, secs_per_year, vol_element_list, vol_list
 from proteus.utils.helper import eval_gas_mmw
 
@@ -122,79 +148,7 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 # Whether trapping runs. Kept in the order the config validator reports them.
-TRAPPING_MODES = ('none', 'front')
-
-# Dissolved species the step can bury: the volatiles and the noble gases.
-TRAPPED_SPECIES = tuple(vol_list) + tuple(noble_gases)
-# Every trapped reservoir once: the species, then the volatile elements.
-TRAPPED_COLUMNS = (*TRAPPED_SPECIES, *vol_element_list)
-
-
-@dataclass
-class TrappingStep:
-    """What one trapping step moved, and the guards it tripped.
-
-    Attributes
-    ----------
-    mode : str
-        Value of ``outgas.trap_mode`` for the step.
-    dm_rm : float
-        Mantle mass crystallised over the step [kg]; negative when it remelted.
-    f_tl : float
-        Trapped melt fraction applied, a mass fraction in [0, 1].
-    melt_mass : float
-        Melt mass the dissolved volatiles were last partitioned into [kg].
-    trapped_kg : dict
-        Mass buried per species [kg]; negative on a remelting step.
-    remelted : bool
-        Whether the step released trapped mass to the melt.
-    supply_capped : list
-        Species whose burial was capped at the mass the melt held.
-    branch : int
-        Regime code, one of the ``BRANCH_*`` constants of
-        :mod:`proteus.outgas.compaction`.
-    tau_d, tau_s, t_res : float
-        Percolation time at the top of the front, matrix deformation time and
-        residence time of a parcel in the front [yr]; NaN when not computed.
-    n_front : int
-        Number of nodes the front spans.
-    l_front : float
-        Front thickness [m].
-    v_front : float
-        Front speed [m s-1].
-    front_courant : float
-        Front advance over the step, in front thicknesses [1].
-    w_matrix_over_vf : float
-        Matrix speed at the top of the front over the front speed [1].
-    guard_reason : str
-        Why the front could not be integrated; empty when it could.
-    """
-
-    mode: str
-    dm_rm: float
-    f_tl: float
-    melt_mass: float
-    trapped_kg: dict[str, float] = field(default_factory=dict)
-    remelted: bool = False
-    supply_capped: list[str] = field(default_factory=list)
-    branch: int = BRANCH_NONE
-    tau_d: float = float('nan')
-    tau_s: float = float('nan')
-    t_res: float = float('nan')
-    n_front: int = 0
-    l_front: float = float('nan')
-    v_front: float = float('nan')
-    front_courant: float = float('nan')
-    w_matrix_over_vf: float = float('nan')
-    guard_reason: str = ''
-
-    @property
-    def total_trapped(self) -> float:
-        """Net mass buried this step, summed over species [kg].
-
-        Negative on a remelting step, which releases trapped mass to the melt.
-        """
-        return float(sum(self.trapped_kg.values()))
+TRAPPING_MODES = ('none', 'front', 'layers')
 
 
 def effective_partition(f_tl: float | np.ndarray, d_z: float) -> float | np.ndarray:
@@ -230,30 +184,6 @@ def effective_partition(f_tl: float | np.ndarray, d_z: float) -> float | np.ndar
     if d_z < 0.0:
         raise ValueError(f'D_Z must be non-negative, got {d_z!r}')
     return (1.0 - f_tl) * d_z + f_tl
-
-
-def melt_concentration(
-    kg_liquid: float | np.ndarray, melt_mass: float | np.ndarray
-) -> float | np.ndarray:
-    """Species mass fraction in the melt [1]; zero wherever no melt remains.
-
-    A fully crystallised mantle carries no melt to draw from, so the quotient is
-    replaced by zero instead of dividing by zero.
-
-    Parameters
-    ----------
-    kg_liquid : float or ndarray
-        Mass of the species dissolved in the melt [kg]; negative values count as 0.
-    melt_mass : float or ndarray
-        Mass of the melt [kg].
-    """
-    kg = np.maximum(np.asarray(kg_liquid, dtype=float), 0.0)
-    melt = np.asarray(melt_mass, dtype=float)
-    c_z = np.zeros(np.shape(kg), dtype=float)
-    np.divide(kg, melt, out=c_z, where=melt > 0.0)
-    if np.ndim(kg_liquid) == 0:
-        return float(c_z)
-    return c_z
 
 
 def trapped_mass(
@@ -341,51 +271,6 @@ def remelted_fraction(phi_prev: float, phi_now: float) -> float:
     return float(np.clip((float(phi_now) - float(phi_prev)) / solid_prev, 0.0, 1.0))
 
 
-def critical_melt_fraction(config: Config) -> float:
-    """Disaggregation melt fraction ``phi_c`` [1], the solver's rheological transition.
-
-    The single definition of ``phi_c`` for the trapping step, so the top of the
-    drainage front and the no-drainage bound cannot drift apart from each other
-    or from the interior rheology.
-    """
-    return float(config.interior_energetics.rfront_loc)
-
-
-def partition_coefficients(config: Config) -> dict[str, float]:
-    """Crystal/melt partition coefficient per species, from config.
-
-    Water is the only species with appreciable lattice incorporation; the rest
-    default to zero and are buried through the interstitial-melt term alone.
-
-    Returns
-    -------
-    dict
-        ``outgas.D_const_<species>`` [1] per trapped species; 0 for a species,
-        such as a noble gas, that has no such field.
-    """
-    return {s: float(getattr(config.outgas, f'D_const_{s}', 0.0)) for s in TRAPPED_SPECIES}
-
-
-def _trapped(hf_row: dict, name: str) -> float:
-    """Mass of one species or element that trapping has buried [kg], else zero."""
-    mass = float(hf_row.get(f'{name}_kg_trapped', 0.0))
-    if not np.isfinite(mass) or mass <= 0.0:
-        return 0.0
-    return mass
-
-
-def _shift(hf_row: dict, key: str, delta: float) -> None:
-    """Add ``delta`` to one reservoir, floored at zero; a non-finite value is left alone."""
-    value = float(hf_row.get(key, 0.0))
-    if np.isfinite(value):
-        hf_row[key] = max(0.0, value + delta)
-
-
-def _reservoir_sum(hf_row: dict, name: str, unit: str) -> float:
-    """Atmosphere plus melt plus solid for one species, in ``kg`` or ``mol``."""
-    return sum(float(hf_row.get(f'{name}_{unit}_{r}', 0.0)) for r in ('atm', 'liquid', 'solid'))
-
-
 def locked_solid_mass(hf_row: dict, element: str) -> float:
     """Whole-planet mass of one element locked in the solid mantle [kg].
 
@@ -394,7 +279,7 @@ def locked_solid_mass(hf_row: dict, element: str) -> float:
     are held in ``{element}_kg_condensed``, not in ``_kg_solid``; see
     :func:`locked_condensed_mass` for when they are locked too.
     """
-    return _trapped(hf_row, element)
+    return trapped_kg(hf_row, element)
 
 
 def locked_condensed_mass(hf_row: dict, element: str, config: Config | None = None) -> float:
@@ -435,11 +320,16 @@ def escapable_inventory(hf_row: dict, element: str, config: Config | None = None
     return max(0.0, total - unreachable_mass(hf_row, element, config))
 
 
-def remelt_returned_mass(hf_row: dict) -> bool:
-    """Whether this step's trapping released buried mass back to the melt."""
-    branch = float(hf_row.get('trap_branch', 0.0))
-    step = float(hf_row.get('trap_kg_step', 0.0))
-    return bool(np.isfinite(branch) and round(branch) == BRANCH_REMELT and step < 0.0)
+def trapping_returned_mass(hf_row: dict) -> bool:
+    """Whether this step's trapping returned trapped mass to the melt.
+
+    Reads ``trap_kg_returned``, the mass the step returned to the melt, which a
+    remelt in either scheme and melt draining back to the ocean in ``layers``
+    both produce, also on a step that buries more than it returns.
+    ``trap_branch`` is a diagnostic and is not read here.
+    """
+    returned = float(hf_row.get('trap_kg_returned', 0.0))
+    return bool(np.isfinite(returned) and returned > 0.0)
 
 
 def trapping_active(config: Config) -> bool:
@@ -491,15 +381,15 @@ def withhold_trapped_mass(hf_row: dict) -> None:
     it, and a solve that writes nothing leaves the total where it started.
     """
     for species in vol_list:
-        mass = _trapped(hf_row, species)
+        mass = trapped_kg(hf_row, species)
         if mass > 0.0:
-            _shift(hf_row, f'{species}_kg_solid', -mass)
+            shift_reservoir(hf_row, f'{species}_kg_solid', -mass)
     for element in (*vol_element_list, *noble_gases):
-        mass = _trapped(hf_row, element)
+        mass = trapped_kg(hf_row, element)
         if mass <= 0.0:
             continue
-        _shift(hf_row, f'{element}_kg_solid', -mass)
-        _shift(hf_row, f'{element}_kg_total', -mass)
+        shift_reservoir(hf_row, f'{element}_kg_solid', -mass)
+        shift_reservoir(hf_row, f'{element}_kg_total', -mass)
 
 
 def restore_trapped_mass(hf_row: dict) -> None:
@@ -513,20 +403,20 @@ def restore_trapped_mass(hf_row: dict) -> None:
     overwrite the partition the solve has just produced.
     """
     for species in vol_list:
-        mass = _trapped(hf_row, species)
+        mass = trapped_kg(hf_row, species)
         if mass <= 0.0:
             continue
-        _shift(hf_row, f'{species}_kg_solid', mass)
-        hf_row[f'{species}_kg_total'] = _reservoir_sum(hf_row, species, 'kg')
+        shift_reservoir(hf_row, f'{species}_kg_solid', mass)
+        hf_row[f'{species}_kg_total'] = reservoir_sum(hf_row, species, 'kg')
         mmw = eval_gas_mmw(species)
         hf_row[f'{species}_mol_solid'] = float(hf_row[f'{species}_kg_solid']) / mmw
-        hf_row[f'{species}_mol_total'] = _reservoir_sum(hf_row, species, 'mol')
+        hf_row[f'{species}_mol_total'] = reservoir_sum(hf_row, species, 'mol')
     for element in (*vol_element_list, *noble_gases):
-        mass = _trapped(hf_row, element)
+        mass = trapped_kg(hf_row, element)
         if mass <= 0.0:
             continue
-        _shift(hf_row, f'{element}_kg_solid', mass)
-        _shift(hf_row, f'{element}_kg_total', mass)
+        shift_reservoir(hf_row, f'{element}_kg_solid', mass)
+        shift_reservoir(hf_row, f'{element}_kg_total', mass)
         if element in noble_gases:
             # A noble gas is its own element; its moles follow the masses.
             mmw = eval_gas_mmw(element)
@@ -546,52 +436,6 @@ def trapped_mass_withheld(hf_row: dict):
         yield
     finally:
         restore_trapped_mass(hf_row)
-
-
-def _carried(hf_row: dict, species: str) -> bool:
-    """Whether every element of ``species`` has a positive whole-planet total.
-
-    An element the run does not carry can still show trace melt mass from the
-    chemistry solve; burying it would create mass its total never held.
-    """
-    elements = VOLATILE_ELEMENT_STOICH.get(species, {species: 1})
-    return all(float(hf_row.get(f'{e}_kg_total', 0.0)) > 0.0 for e in elements)
-
-
-def _apply_to_reservoirs(hf_row: dict, moved: dict[str, float]) -> None:
-    """Move mass between the melt and the solid, per species and per element.
-
-    A positive mass is buried: it leaves ``_kg_liquid`` for ``_kg_solid``, and
-    is added to ``_kg_trapped``, the share of ``_kg_solid`` that trapping owns
-    and that the chemistry solve must leave alone. A negative mass is released
-    by remelting and moves back the other way.
-    """
-    for species, mass in moved.items():
-        if mass != 0.0:
-            _move(hf_row, species, mass)
-    # A noble gas is its own element and has been moved with the species.
-    for element, mass in element_masses_from_species(moved).items():
-        if element in vol_element_list and mass != 0.0:
-            _move(hf_row, element, mass)
-
-
-def _move(hf_row: dict, name: str, mass: float) -> None:
-    """Take ``mass`` of one species or element out of the melt into the solid.
-
-    A species or a noble gas also carries mole columns [mol]. Those of the melt
-    and the solid follow the masses, so a step with no chemistry solve after it
-    (a frozen or desiccated mantle) leaves them equal to ``kg / mmw``. The move
-    leaves ``_mol_total`` as it is. The volatile elements carry no mole columns.
-    """
-    liq = float(hf_row.get(f'{name}_kg_liquid', 0.0))
-    sol = float(hf_row.get(f'{name}_kg_solid', 0.0))
-    hf_row[f'{name}_kg_liquid'] = max(0.0, liq - mass)
-    hf_row[f'{name}_kg_solid'] = max(0.0, sol + mass)
-    hf_row[f'{name}_kg_trapped'] = max(0.0, _trapped(hf_row, name) + mass)
-    if f'{name}_mol_liquid' in hf_row:
-        mmw = eval_gas_mmw(name)
-        hf_row[f'{name}_mol_liquid'] = hf_row[f'{name}_kg_liquid'] / mmw
-        hf_row[f'{name}_mol_solid'] = hf_row[f'{name}_kg_solid'] / mmw
 
 
 def _usable_gravity(values, n: int) -> np.ndarray | None:
@@ -682,8 +526,7 @@ def _drainage_fraction(
     # the node-snapped front depth, whose difference is zero on most steps and a
     # spike on the rest.
     dt_s = (float(hf_row['Time']) - float(prev['Time'])) * secs_per_year
-    area = 4.0 * np.pi * geom.r_base**2 * geom.rho_solid_base
-    v_f = abs(float(dm_rm)) / (area * dt_s) if (area > 0.0 and dt_s > 0.0) else 0.0
+    v_f = front_speed(dm_rm, geom.r_base, geom.rho_solid_base, dt_s)
 
     grain = float(config.interior_energetics.grain_size)
     melt_visc = 10.0 ** float(config.interior_energetics.melt_log10visc)
@@ -758,46 +601,6 @@ def _drainage_fraction(
     return step
 
 
-def _record(hf_row: dict, step: TrappingStep) -> None:
-    """Publish the step's diagnostics so a trajectory can be read back."""
-    hf_row['trap_dM_RM'] = step.dm_rm
-    hf_row['trap_F_tl'] = step.f_tl
-    hf_row['trap_kg_step'] = step.total_trapped
-    hf_row['trap_branch'] = float(step.branch)
-    hf_row['trap_tau_D'] = step.tau_d
-    hf_row['trap_tau_s'] = step.tau_s
-    hf_row['trap_t_res'] = step.t_res
-    hf_row['trap_n_front'] = float(step.n_front)
-    hf_row['trap_L_front'] = step.l_front
-    hf_row['trap_v_front'] = step.v_front
-    hf_row['trap_front_courant'] = step.front_courant
-    hf_row['trap_w_matrix_over_vf'] = step.w_matrix_over_vf
-    hf_row['trap_kg_cumulative'] = (
-        float(hf_row.get('trap_kg_cumulative', 0.0)) + step.total_trapped
-    )
-    if step.total_trapped != 0.0:
-        log.info(
-            '    %s = %.3e kg  (F_tl = %.4g, dM_RM = %.3e kg)',
-            'trapped ' if step.total_trapped > 0.0 else 'released',
-            abs(step.total_trapped),
-            step.f_tl,
-            step.dm_rm,
-        )
-    if step.branch == BRANCH_GUARD:
-        # The guard replaces the drainage integral by its no-drainage limit,
-        # which can bury far more than the integral would, so every step that
-        # takes it is reported with its cause rather than only counted.
-        log.warning(
-            'Trapping: the freezing front could not be integrated (%s). F_tl = %.3f '
-            'is the no-drainage upper bound, the entry porosity capped at the '
-            'critical melt fraction; %.3e kg was %s under it this step.',
-            step.guard_reason or 'cause not recorded',
-            step.f_tl,
-            abs(step.total_trapped),
-            'released' if step.total_trapped < 0.0 else 'buried',
-        )
-
-
 def run_trapping(
     config: Config,
     hf_row: dict,
@@ -805,6 +608,7 @@ def run_trapping(
     interior_o=None,
     *,
     init_stage: bool = False,
+    dirs: dict | None = None,
 ) -> TrappingStep | None:
     """Bury volatiles into the solid mantle over this crystallisation step.
 
@@ -830,6 +634,9 @@ def run_trapping(
         pressure profiles to locate the freezing front.
     init_stage : bool
         True during the initialisation stage, which traps nothing.
+    dirs : dict or None
+        Run directories. The ``layers`` mode keeps its per-node state in the
+        interior snapshots under them, for a resumed run to read back.
     """
     mode = getattr(config.outgas, 'trap_mode', 'none')
     # A config that never declared a mode traps nothing: the schema restricts the
@@ -841,6 +648,10 @@ def run_trapping(
         raise ValueError(f'Unknown trapping mode {mode!r}; expected one of {TRAPPING_MODES}')
     if mode == 'none':
         return None
+    if mode == 'layers':
+        # Only a layer step of this iteration may hand the chemistry an ocean melt.
+        hf_row['trap_Phi_ocean'] = 0.0
+        hf_row['trap_n_mush'] = 0.0
     if init_stage:
         # The initialisation iterations advance the clock but not the mantle,
         # and the time is reset to zero after each, so there is nothing to bury.
@@ -860,12 +671,14 @@ def run_trapping(
     # by it recovers the concentration the solver computed.
     m_mantle_prev = float(prev.get('M_mantle', m_mantle))
     melt_mass = m_mantle_prev * max(0.0, min(1.0, phi_prev)) if np.isfinite(phi_prev) else 0.0
+    if mode == 'layers':
+        return run_layer_trapping(config, hf_row, prev, interior_o, dirs, dm_rm, melt_mass)
     if dm_rm < 0.0:
         released = released_mass(hf_row, hf_all, phi_prev, phi_now)
         return _release(hf_row, mode, dm_rm, melt_mass, released)
     if dm_rm == 0.0 or melt_mass <= 0.0:
         step = TrappingStep(mode=mode, dm_rm=dm_rm, f_tl=0.0, melt_mass=melt_mass)
-        _record(hf_row, step)
+        record_step(hf_row, step)
         return step
 
     step = _drainage_fraction(config, hf_row, prev, interior_o, dm_rm)
@@ -881,7 +694,7 @@ def run_trapping(
     d_z = partition_coefficients(config)
     for species in TRAPPED_SPECIES:
         kg_liquid = float(hf_row.get(f'{species}_kg_liquid', 0.0))
-        if kg_liquid <= 0.0 or not _carried(hf_row, species):
+        if kg_liquid <= 0.0 or not species_carried(hf_row, species):
             continue
         c_z = melt_concentration(kg_liquid, melt_mass)
         mass, capped = trapped_mass(d_z[species], step.f_tl, c_z, dm_rm, kg_liquid)
@@ -891,8 +704,8 @@ def run_trapping(
             step.supply_capped.append(species)
         step.trapped_kg[species] = mass
 
-    _apply_to_reservoirs(hf_row, step.trapped_kg)
-    _record(hf_row, step)
+    apply_to_reservoirs(hf_row, step.trapped_kg)
+    record_step(hf_row, step)
     return step
 
 
@@ -904,7 +717,7 @@ def released_mass(hf_row: dict, hf_all, phi_prev: float, phi_now: float) -> dict
     in proportion to the solid that remelted; a complete remelt returns all of
     it. Each release is capped at what is trapped.
     """
-    current = np.array([_trapped(hf_row, name) for name in TRAPPED_COLUMNS])
+    current = np.array([trapped_kg(hf_row, name) for name in TRAPPED_COLUMNS])
     share = remelted_fraction(phi_prev, phi_now)
     if share >= 1.0:
         return dict(zip(TRAPPED_COLUMNS, current))
@@ -935,6 +748,6 @@ def _release(
             continue
         if name in TRAPPED_SPECIES:
             step.trapped_kg[name] = -mass
-        _move(hf_row, name, -mass)
-    _record(hf_row, step)
+        move_mass(hf_row, name, -mass)
+    record_step(hf_row, step)
     return step
