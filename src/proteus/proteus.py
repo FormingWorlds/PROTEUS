@@ -1505,7 +1505,7 @@ class Proteus:
             # Handle volatile exchange
             log.info('Solving for atmosphere composition...')
             first_iter = self.init_stage
-            self.hf_row['outgas_called'] = 0.0  # run_outgassing sets it to 1
+            self.hf_row['outgas_called'] = 0.0  # 1 once run_outgassing runs a solve
             if self.desiccated:
                 # no volatiles
                 run_desiccated(self.directories, self.config, self.hf_row, first_iter)

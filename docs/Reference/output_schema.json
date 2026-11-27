@@ -22088,10 +22088,14 @@
     {
       "name": "outgas_called",
       "unit": "1",
-      "description": "1 if the step's chemistry solve used the IW buffer",
+      "description": "1 if an outgassing solve ran in the step, else 0",
       "group": "Outgassing call of the step",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"

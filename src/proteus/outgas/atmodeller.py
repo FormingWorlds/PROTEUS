@@ -539,6 +539,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             hf_row[f'{el}_kg_condensed'] = 0.0
         hf_row['fO2_shift_IW_derived'] = float('nan')
         hf_row['O_res'] = float('nan')
+        hf_row['outgas_called'] = 0.0  # no solve, so no buffer was evaluated
         return
 
     if fO2_source == 'from_O_budget' and 'O' not in mass_constraints:

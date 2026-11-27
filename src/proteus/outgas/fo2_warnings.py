@@ -11,14 +11,14 @@ Both checks read the helpfile after a row is appended and change nothing.
   With a wet mantle only ``O_kg_atm`` is outside the structure, and the message reports its
   change. Outside the guard: the oxygen solved before the first row (the baseline structure
   solve of a start other than ``liquidus_super``, or ``zalmoxis.equilibrate_init = false``),
-  and oxygen that escape removes and the fixed fO2 derives again, which
-  leaves ``O_kg_total`` unchanged while ``M_volatile_change`` takes it from the structure.
+  and oxygen that escape removes and the fixed fO2 derives again, which leaves ``O_kg_total``
+  unchanged while ``M_volatile_change`` takes it from the structure.
 - The IW buffer is evaluated at ``max(T_magma, outgas.T_floor)``. Hirschmann (2021, GCA 313,
   74, Sect. 5) fits it over 1000-3000 K; CALLIOPE uses the fit at every temperature as its
   default buffer from 26.11.8 (pyproject.toml: fwl-calliope>=26.11.8), atmodeller switches to
-  Hirschmann (2008) below 1000 K. Among the rows
-  whose step ran an outgassing call (``outgas_called``), the first row below and the first
-  row above the range of the module each warn once per run.
+  Hirschmann (2008) below 1000 K. Among the rows whose step ran an outgassing solve
+  (``outgas_called``), the first row below and the first row above the range of the module
+  each warn once per run.
 
 Each decision reads the rows of the helpfile only, so a run resumed from a written row warns
 on the rows after it as an uninterrupted run. A warning first given on a row that was not

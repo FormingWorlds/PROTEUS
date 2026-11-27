@@ -1317,7 +1317,7 @@ def GetHelpfileKeys():
         keys.append(e + '_kg_condensed')  # mass in condensed phases at the surface [kg]
 
     # Outgassing call of the step
-    keys.append('outgas_called')  # 1 if the step's chemistry solve used the IW buffer [1]
+    keys.append('outgas_called')  # 1 if an outgassing solve ran in the step, else 0 [1]
 
     # Lid seal: melt inventory held under a closed crust, and its leak
     keys.append('seal_active')       # whether the lid seal holds the melt inventory [1]

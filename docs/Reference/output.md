@@ -880,7 +880,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
-| `outgas_called` | `1` | 1 if the step's chemistry solve used the IW buffer | `outgas/wrapper.py`<br>`proteus.py` | always | outgas |
+| `outgas_called` | `1` | 1 if an outgassing solve ran in the step, else 0 | `outgas/atmodeller.py`<br>`outgas/wrapper.py`<br>`proteus.py` | always; outgas.module = "atmodeller" | outgas |
 
 ### Lid seal
 

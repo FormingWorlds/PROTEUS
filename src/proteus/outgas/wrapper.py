@@ -516,20 +516,12 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
             'invert against; outgas.module = "dummy" has none.'
         )
 
-    # Default the derived-fO2 helpfile columns to the user-configured
-    # buffer offset before the backend dispatch. Each backend overrides
-    # the default as appropriate for its chemistry. Under fO2_source =
-    # "user_constant" the pre-seeded value is the offset the chemistry
-    # equilibrated to (because the fugacity constraint set it); leaving
-    # it untouched is the right behaviour. Under fO2_source =
-    # "from_O_budget" CALLIOPE and atmodeller overwrite the pre-seed
-    # with their solver-derived value. The pre-seed exists primarily so
-    # the dummy backend and any solve-skipped path land at the
-    # physically meaningful configured value rather than the
-    # ZeroHelpfileRow default 0.0, which downstream consumers would
-    # otherwise mis-interpret as "the chemistry ran at exactly IW".
+    # The derived offset and O residual default to the configured offset and 0, which
+    # user_constant keeps; a from_O_budget solve overwrites them, and an atmodeller solve
+    # skipped for want of a budget sets them to NaN and outgas_called to 0.
     hf_row['fO2_shift_IW_derived'] = float(config.outgas.fO2_shift_IW)
     hf_row['O_res'] = 0.0
+    hf_row['outgas_called'] = 1.0
 
     # The chemistry partitions a whole-planet inventory and rewrites every
     # `_kg_solid` column (0.0 in CALLIOPE and atmodeller; atmodeller writes its
@@ -541,8 +533,6 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
         trapped_mass_withheld(hf_row),
     ):
         _solve_chemistry(dirs, config, hf_row, initial=initial)
-    # A solve skipped for want of a budget evaluates no buffer and leaves the offset NaN.
-    hf_row['outgas_called'] = float(np.isfinite(hf_row['fO2_shift_IW_derived']))
 
     # P_surf here is the volatile+noble gas total
     hf_row['P_vol'] = hf_row['P_surf']
