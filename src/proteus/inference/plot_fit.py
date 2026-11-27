@@ -27,6 +27,7 @@ from proteus.inference.transforms import normalize_parameters, unnormalize_param
 from proteus.inference.utils import get_obs
 from proteus.utils.coupler import variable_is_logarithmic
 from proteus.utils.helper import recursive_get
+from proteus.utils.plot import get_label
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -54,13 +55,6 @@ RATIO_CLIP = (1e-2, 1e2)
 # Posterior corner plot: fills of the 95 and 68% regions, and KDE grid points per axis
 POST_FILLS = ['#cfe3f1', '#7fb3d9']
 POST_GRID = 120
-PARAM_LABELS = {
-    'interior_struct.core_frac': 'core radius fraction',
-    'outgas.fO2_shift_IW': 'fO$_2$ (ΔIW, log$_{10}$)',
-    'planet.elements.H_budget': 'H budget (ppmw)',
-    'planet.elements.C_budget': 'C/H (mass ratio)',
-    'planet.elements.S_budget': 'S/H (mass ratio)',
-}
 
 
 def collect_case_observables(
@@ -441,11 +435,11 @@ def _posterior_axes(ax, i: int, j: int, keys: list, pars: dict):
         else:
             getattr(ax, f'{a}axis').set_major_locator(MaxNLocator(4, prune='both'))
     if i == n - 1:
-        ax.set_xlabel(PARAM_LABELS.get(keys[j], keys[j]))
+        ax.set_xlabel(get_label(keys[j]))
     else:
         ax.tick_params(labelbottom=False)
     if j == 0 and i > 0:
-        ax.set_ylabel(PARAM_LABELS.get(keys[i], keys[i]))
+        ax.set_ylabel(get_label(keys[i]))
     elif i != j:
         ax.tick_params(labelleft=False)
 
