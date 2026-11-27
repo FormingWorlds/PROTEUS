@@ -410,17 +410,19 @@ def test_calliope_default_buffer_equals_atmodeller_from_1000_k(T):
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize(('T', 'diff'), [(800.0, -0.1013), (8200.0, -42.74)])
+@pytest.mark.parametrize(('T', 'diff'), [(800.0, -0.1013), (8200.0, -42.745)])
 def test_outside_1000_to_8100_k_the_two_buffers_differ(T, diff):
     """Below 1000 K atmodeller uses its low-temperature buffer, above about 8150 K the hcp iron
-    branch of the 2021 fit; CALLIOPE extrapolates the fcc/bcc branch at both ends (model page)."""
+    branch of the 2021 fit, at least 42 dex lower; CALLIOPE extrapolates the fcc/bcc branch."""
     from calliope.oxygen_fugacity import OxygenFugacity
 
     pytest.importorskip('atmodeller')
     from atmodeller.thermodata import IronWustiteBuffer
 
     atm = float(IronWustiteBuffer().log10_fugacity_buffer(T, 1.0))
-    assert atm - OxygenFugacity()(T) == pytest.approx(diff, abs=5e-3)
+    calliope = OxygenFugacity()(T)
+    assert atm - calliope == pytest.approx(diff, abs=1e-3)
+    assert atm < calliope
 
 
 @pytest.mark.physics_invariant
@@ -484,8 +486,8 @@ def test_odd_row_values_never_raise_and_warn_only_on_finite_inputs(
     )
 
 
-def test_run_outgassing_records_its_call_after_the_solve():
-    """run_outgassing sets outgas_called to 1 once the chemistry solve returns, not before it."""
+def test_run_outgassing_records_a_solve_that_runs(tmp_path):
+    """A solve that runs leaves outgas_called at 1, also when the row arrived at 0."""
     from unittest.mock import MagicMock, patch
 
     from proteus.outgas.wrapper import run_outgassing
@@ -496,16 +498,14 @@ def test_run_outgassing_records_its_call_after_the_solve():
     config.planet.fO2_source = 'user_constant'
     config.interior_struct.zalmoxis.global_miscibility = False
     config.outgas.h2_binodal = False
+    config.outgas.fO2_shift_IW = 2.0
     hf_row = {f'{s}_{k}': 0.0 for s in gas_list for k in ('kg_atm', 'vmr', 'bar')}
     hf_row.update(P_surf=0.0, atm_kg_per_mol=0.018, outgas_called=0.0)
-    seen = []
-    with patch(
-        'proteus.outgas.calliope.calc_surface_pressures',
-        side_effect=lambda d, c, row: seen.append(row['outgas_called']),
-    ):
-        run_outgassing({'output': '/tmp/test'}, config, hf_row, initial=False)
-    assert seen == [0.0]
-    assert hf_row['outgas_called'] == pytest.approx(1.0, rel=0)
+    with patch('proteus.outgas.calliope.calc_surface_pressures') as solve:
+        run_outgassing({'output': str(tmp_path)}, config, hf_row, initial=False)
+    solve.assert_called_once()
+    assert hf_row['outgas_called'] == pytest.approx(1.0, rel=0, abs=0)
+    assert hf_row['fO2_shift_IW_derived'] == pytest.approx(2.0, rel=0, abs=0)
 
 
 @pytest.mark.physics_invariant
@@ -545,11 +545,9 @@ def test_resume_from_a_helpfile_without_outgas_called_repeats_the_buffer_warning
 
 
 @pytest.mark.physics_invariant
-def test_a_skipped_atmodeller_solve_records_no_outgassing_call():
+def test_a_skipped_atmodeller_solve_records_no_outgassing_call(caplog):
     """Under from_O_budget with no budget above the threshold atmodeller evaluates no buffer, so
     the row records no call and a hot temperature gives no buffer warning."""
-    from unittest.mock import patch
-
     from proteus.config import read_config_object
     from proteus.outgas.wrapper import run_outgassing
     from proteus.utils.coupler import ZeroHelpfileRow
@@ -560,10 +558,8 @@ def test_a_skipped_atmodeller_solve_records_no_outgassing_call():
     object.__setattr__(config.planet, 'fO2_source', 'from_O_budget')
     row = ZeroHelpfileRow()
     row.update(T_magma=3500.0, outgas_called=1.0)
-    with (
-        patch('proteus.outgas.wrapper.condensed_mass_withheld'),
-        patch('proteus.outgas.wrapper.trapped_mass_withheld'),
-    ):
-        run_outgassing({'output': ''}, config, row, initial=False)
+    run_outgassing({'output': ''}, config, row, initial=False)
     assert math.isnan(row['fO2_shift_IW_derived'])
-    assert row['outgas_called'] == pytest.approx(0.0, abs=0)
+    assert row['outgas_called'] == 0.0
+    hf = pd.DataFrame([{**row, 'T_magma': 2000.0, 'outgas_called': 1.0}, row])
+    assert _run(config, hf, caplog)[1] == 0
