@@ -5702,6 +5702,7 @@ def _set_crystallized(self):
         ('desiccated', [1.0, 1.0, 1.0, 1.0, 0.0, 0.0]),
         ('crystallized', [1.0, 1.0, 1.0, 1.0, 0.0, 0.0]),
         ('seal_closes_then_held', [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        ('seal_held_then_opens', [1.0, 0.0, 1.0, 1.0, 1.0, 1.0]),
     ],
 )
 def test_the_main_loop_checks_the_fo2_warnings_after_each_appended_row(
@@ -5713,7 +5714,7 @@ def test_the_main_loop_checks_the_fo2_warnings_after_each_appended_row(
     dry = patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
     extra = {
         'outgassing': [dry],
-        'desiccated': [],  # the patched check_desiccation returns a truthy mock after the init stage
+        'desiccated': [patch('proteus.outgas.wrapper.check_desiccation', return_value=True)],
         'crystallized': [
             dry,
             patch.object(type(p), '_check_crystallization', _set_crystallized),
@@ -5722,6 +5723,14 @@ def test_the_main_loop_checks_the_fo2_warnings_after_each_appended_row(
             dry,
             patch('proteus.outgas.lid_seal.seal_enabled', return_value=True),
             patch('proteus.outgas.lid_seal.run_lid_seal_step', return_value=True),
+        ],
+        'seal_held_then_opens': [
+            dry,
+            patch('proteus.outgas.lid_seal.seal_enabled', return_value=True),
+            patch(
+                'proteus.outgas.lid_seal.run_lid_seal_step',
+                side_effect=[True, True, False, False, False, False],
+            ),
         ],
     }[case]
     assert _fo2_rows(p, *extra) == expected

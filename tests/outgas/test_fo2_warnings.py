@@ -62,7 +62,10 @@ def _config(
         planet=SimpleNamespace(fO2_source=source),
         accretion=SimpleNamespace(module=accretion),
         interior_struct=SimpleNamespace(
-            module=struct, zalmoxis=SimpleNamespace(dry_mantle=dry, update_interval=update)
+            module=struct,
+            zalmoxis=None
+            if update is None
+            else SimpleNamespace(dry_mantle=dry, update_interval=update),
         ),
     )
 
@@ -150,12 +153,14 @@ def test_oxygen_warning_names_values_column_and_setting(caplog, dry, col):
         _config(module='dummy'),
         _config(struct='spider'),
         _config(update=0.0),
+        _config(struct='spider', update=None),
     ],
     ids=[
         'o_budget_sets_fo2',
         'dummy_outgassing',
         'spider_structure',
         'structure_never_resolved',
+        'no_zalmoxis_settings',
     ],
 )
 def test_no_oxygen_warning_when_no_derived_o_leaves_the_structure(caplog, config):
@@ -309,6 +314,10 @@ def test_buffer_warning_needs_the_hirschmann_default_of_calliope(caplog, monkeyp
 
     monkeypatch.setattr(fug, 'DEFAULT_FO2_MODEL', 'fischer')
     assert _run(_config(), _rows([0.0, 0.0], T=[2000.0, 3500.0]), caplog)[1] == 0
+    assert (
+        _run(_config(module='atmodeller'), _rows([0.0, 0.0], T=[2000.0, 3500.0]), caplog)[1]
+        == 1
+    )
     monkeypatch.setattr(fug, 'DEFAULT_FO2_MODEL', 'hirschmann')
     assert _run(_config(), _rows([0.0, 0.0], T=[2000.0, 3500.0]), caplog)[1] == 1
 
