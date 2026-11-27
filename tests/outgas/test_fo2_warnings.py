@@ -2,12 +2,13 @@
 
 The warnings read the helpfile and never change it. Oxygen derived by a fixed fO2 leaves the
 Zalmoxis structure mass; a rise of it above ``O_RISE_WARN_FRAC`` of the mantle since the first
-row warns once per crossing. The IW buffer evaluated outside its calibrated temperature range
-warns once per run.
+finite row warns once per crossing. The IW buffer evaluated outside its calibrated temperature
+range warns once per run on each side of the range.
 
 Invariants tested:
   - the oxygen warning fires iff the rise crosses the threshold from below, on either side of it
-  - the buffer warning fires once, on the first row outside the range, for the module's range
+  - the column the warning reads is the one the structure target removes
+  - the buffer warning fires once per side, on the first outgassed row outside the range
   - a run resumed from its helpfile warns as an uninterrupted one
   - non-finite or non-positive inputs never raise and never warn
 
@@ -18,7 +19,9 @@ Testing standards:
 
 from __future__ import annotations
 
+import logging
 import math
+from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
@@ -39,43 +42,50 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 LOGGER = 'fwl.proteus.outgas.fo2_warnings'
 O_MSG = 'Oxygen derived by the fixed fO2'
-T_MSG = 'outside the calibrated range'
+T_MSG = 'outside the calibrated temperature range'
 M_MANTLE = 3.46e25  # kg, mantle of an 8.6 M_E planet
 O0 = 1.6e23  # kg, derived O at the first row
+QUICK = Path(__file__).parents[2] / 'input' / 'minimal_quick.toml'
 
 
 def _config(
-    module='calliope', source='user_constant', struct='zalmoxis', dry=True, T_floor=700.0
+    module='calliope',
+    source='user_constant',
+    struct='zalmoxis',
+    dry=True,
+    T_floor=700.0,
+    update=1e9,
 ):
     return SimpleNamespace(
         outgas=SimpleNamespace(module=module, T_floor=T_floor, fO2_shift_IW=2.0),
         planet=SimpleNamespace(fO2_source=source),
         interior_struct=SimpleNamespace(
-            module=struct, zalmoxis=SimpleNamespace(dry_mantle=dry)
+            module=struct, zalmoxis=SimpleNamespace(dry_mantle=dry, update_interval=update)
         ),
     )
 
 
-def _rows(rises, T=2500.0, O_atm=None):
-    """Helpfile with O_kg_total = O0 + rise * M_mantle per row and a fixed T_magma."""
+def _rows(rises, T=2500.0, O_atm=None, o0=O0, mantle=M_MANTLE):
+    """Helpfile with O_kg_total = o0 + rise * mantle per row and the given T_magma."""
     T = [T] * len(rises) if not isinstance(T, list) else T
     return pd.DataFrame(
         {
             'Time': [float(i) for i in range(len(rises))],
-            'O_kg_total': [O0 + r * M_MANTLE for r in rises],
+            'O_kg_total': [o0 + r * mantle for r in rises],
             'O_kg_atm': O_atm if O_atm is not None else [1e22] * len(rises),
-            'M_mantle': [M_MANTLE] * len(rises),
+            'M_mantle': [mantle] * len(rises),
             'T_magma': T,
         }
     )
 
 
-def _run(config, hf_all, caplog, start=1):
+def _run(config, hf_all, caplog, start=1, outgassed=None):
     """Call the check after each appended row from row ``start``, as the main loop does."""
     caplog.clear()
     with caplog.at_level('WARNING', logger=LOGGER):
         for k in range(start, len(hf_all) + 1):
-            check_fo2_warnings(config, hf_all.iloc[:k])
+            ran = True if outgassed is None else outgassed[k - 1]
+            check_fo2_warnings(config, hf_all.iloc[:k], ran)
     return caplog.text.count(O_MSG), caplog.text.count(T_MSG)
 
 
@@ -94,21 +104,40 @@ def test_oxygen_warning_fires_only_above_the_threshold(caplog, last, n):
 
 
 @pytest.mark.physics_invariant
+def test_oxygen_threshold_is_strict_at_the_exact_value(caplog):
+    """A rise of exactly 1e-3 is quiet; a row above it after a row at it warns."""
+    exact = _rows(
+        [0.0, 0.001], o0=0.0, mantle=1000.0
+    )  # O = 1.0 kg; 1.0 / 1000.0 is 1e-3 exactly
+    assert exact['O_kg_total'].iloc[1] == 1.0
+    assert exact['O_kg_total'].iloc[1] / 1000.0 == O_RISE_WARN_FRAC
+    assert _run(_config(), exact, caplog)[0] == 0
+    assert _run(_config(), _rows([0.0, 0.001, 0.002], o0=0.0, mantle=1000.0), caplog)[0] == 1
+
+
+@pytest.mark.physics_invariant
 def test_oxygen_warning_once_per_crossing(caplog):
     """Rows above warn once; a fall below and a new rise warn again."""
     f = O_RISE_WARN_FRAC
     n_o, _ = _run(_config(), _rows([0.0, 2 * f, 3 * f, 4 * f, 0.5 * f, 2 * f, 5 * f]), caplog)
     assert n_o == 2
-    assert 'leaves the structure mass' in caplog.text
 
 
 @pytest.mark.physics_invariant
-def test_oxygen_warning_names_values_and_setting(caplog):
-    """The message gives the derived mass, its fraction of the mantle and the fO2 setting."""
-    _run(_config(), _rows([0.0, 0.02]), caplog)
+@pytest.mark.parametrize(
+    ('dry', 'col'),
+    [(True, 'O_kg_total'), (False, 'O_kg_atm')],
+    ids=['dry_mantle', 'wet_mantle'],
+)
+def test_oxygen_warning_names_values_column_and_setting(caplog, dry, col):
+    """The message gives the mass, its fraction of the mantle, the column and the settings."""
+    O_atm = [1e22, 1e22 + 0.02 * M_MANTLE]
+    _run(_config(dry=dry), _rows([0.0, 0.02], O_atm=O_atm), caplog)
     assert f'{0.02 * M_MANTLE:.3e} kg' in caplog.text
     assert '2.00 % of the mantle' in caplog.text
     assert 'outgas.fO2_shift_IW = +2.00' in caplog.text
+    assert f'{col} leaves the structure mass' in caplog.text
+    assert f'dry_mantle = {dry}' in caplog.text
 
 
 @pytest.mark.physics_invariant
@@ -118,11 +147,17 @@ def test_oxygen_warning_names_values_and_setting(caplog):
         _config(source='from_O_budget'),
         _config(module='dummy'),
         _config(struct='spider'),
+        _config(update=0.0),
     ],
-    ids=['o_budget_sets_fo2', 'dummy_outgassing', 'spider_structure'],
+    ids=[
+        'o_budget_sets_fo2',
+        'dummy_outgassing',
+        'spider_structure',
+        'structure_never_resolved',
+    ],
 )
 def test_no_oxygen_warning_when_no_derived_o_leaves_the_structure(caplog, config):
-    """Without a fixed fO2 or the Zalmoxis structure no mass leaves the mantle this way."""
+    """Without a fixed fO2, the Zalmoxis structure or a structure solve in the run, no mass leaves."""
     n_o, n_t = _run(config, _rows([0.0, 0.1, 0.2]), caplog)
     assert n_o == 0
     assert n_t == 0
@@ -138,12 +173,42 @@ def test_wet_mantle_reads_the_atmosphere_oxygen(caplog):
 
 
 @pytest.mark.physics_invariant
+@pytest.mark.parametrize('dry', [True, False], ids=['dry_mantle', 'wet_mantle'])
+def test_the_warned_column_is_the_one_the_structure_target_removes(dry):
+    """Mass added to the warned column leaves the structure target; mass in the other column does not."""
+    from proteus.config import read_config_object
+    from proteus.interior_struct.zalmoxis import _structure_target_masses
+
+    config = read_config_object(QUICK)
+    config.interior_struct.zalmoxis.dry_mantle = dry
+    col, other = ('O_kg_total', 'O_kg_atm') if dry else ('O_kg_atm', 'O_kg_total')
+    row = {'O_kg_total': 2e21, 'O_kg_atm': 1e21, 'H_kg_total': 3e20, 'H_kg_atm': 2e20}
+    dm = 7e20
+    base = _structure_target_masses(config, row)[1]
+    moved = _structure_target_masses(config, {**row, col: row[col] + dm})[1] - base
+    assert moved == pytest.approx(dm, rel=1e-12)
+    assert _structure_target_masses(config, {**row, other: row[other] + 0.5 * dm})[1] == base
+
+
+@pytest.mark.physics_invariant
+def test_real_config_reaches_both_warnings(caplog):
+    """A config loaded from input/ has every setting the checks read, and both warnings fire."""
+    from proteus.config import read_config_object
+
+    config = read_config_object(QUICK)
+    config.interior_struct.zalmoxis.update_interval = 1e9
+    n_o, n_t = _run(config, _rows([0.0, 0.01], T=[2000.0, 3500.0]), caplog)
+    assert (n_o, n_t) == (1, 1)
+    assert 'calliope is evaluated at 3500.0 K' in caplog.text
+
+
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize('resume_at', [2, 3, 5])
 def test_resumed_run_warns_as_an_uninterrupted_run(caplog, resume_at):
     """A process that starts from a stored helpfile emits the warnings of the rows after it."""
     f = O_RISE_WARN_FRAC
     hf = _rows(
-        [0.0, 2 * f, 3 * f, 0.5 * f, 0.4 * f, 2 * f], T=[3500.0, 3600, 2500, 2500, 3200, 2500]
+        [0.0, 2 * f, 3 * f, 0.5 * f, 0.4 * f, 2 * f], T=[3500.0, 3600, 2500, 2500, 3200, 900]
     )
     full = []
     with caplog.at_level('WARNING', logger=LOGGER):
@@ -159,7 +224,18 @@ def test_resumed_run_warns_as_an_uninterrupted_run(caplog, resume_at):
             resumed.append((caplog.text.count(O_MSG), caplog.text.count(T_MSG)))
     assert resumed == full[resume_at:]
     assert sum(o for o, _ in full) == 2
-    assert sum(t for _, t in full) == 1
+    assert sum(t for _, t in full) == 2
+
+
+@pytest.mark.physics_invariant
+def test_baseline_is_the_first_finite_row_and_a_gap_row_keeps_the_crossing(caplog):
+    """A NaN first row does not silence the run; a NaN mantle row between two rows above does not warn twice."""
+    hf = _rows([0.0, 0.0, 0.02])
+    hf.loc[0, 'O_kg_total'] = math.nan
+    assert _run(_config(), hf, caplog)[0] == 1
+    hf = _rows([0.0, 0.02, 0.02, 0.03])
+    hf.loc[2, 'M_mantle'] = math.nan
+    assert _run(_config(), hf, caplog)[0] == 1
 
 
 @pytest.mark.physics_invariant
@@ -167,39 +243,55 @@ def test_resumed_run_warns_as_an_uninterrupted_run(caplog, resume_at):
     ('module', 'T', 'n'),
     [
         ('calliope', 3000.1, 1),
-        ('calliope', 2999.9, 0),
+        ('calliope', 3000.0, 0),
         ('calliope', 999.9, 1),
-        ('calliope', 1000.1, 0),
+        ('calliope', 1000.0, 0),
         ('atmodeller', 3000.1, 1),
         ('atmodeller', 999.9, 0),
     ],
     ids=[
         'calliope_hot',
-        'calliope_inside_top',
+        'calliope_top_edge',
         'calliope_cold',
-        'calliope_inside_bottom',
+        'calliope_bottom_edge',
         'atmodeller_hot',
         'atmodeller_cold_has_low_branch',
     ],
 )
 def test_buffer_warning_at_the_range_edges(caplog, module, T, n):
-    """The buffer warns outside 1000-3000 K for calliope and above 3000 K for atmodeller."""
+    """The buffer warns outside 1000-3000 K for calliope and above 3000 K for atmodeller; edges are inside."""
     assert BUFFER_T_RANGE_K[module][1] == pytest.approx(3000.0, rel=0)
     _, n_t = _run(_config(module=module), _rows([0.0, 0.0], T=[2000.0, T]), caplog)
     assert n_t == n
     if n:
         assert 'Hirschmann (2021, GCA 313, 74)' in caplog.text
         assert f'{max(T, 700.0):.1f} K' in caplog.text
+        assert ('1000-3000 K' if module == 'calliope' else '(at most 3000 K)') in caplog.text
 
 
 @pytest.mark.physics_invariant
-def test_buffer_warning_once_per_run(caplog):
-    """Rows outside, inside and outside again give one message, at the first row outside."""
+def test_buffer_warns_once_per_side_of_the_range(caplog):
+    """A hot start, a return inside, a second hot row and a cold row give 2 messages: hot, then cold."""
     _, n_t = _run(
-        _config(), _rows([0.0] * 5, T=[3980.0, 4100.0, 2500.0, 3500.0, 3600.0]), caplog, start=1
+        _config(), _rows([0.0] * 5, T=[3980.0, 4100.0, 2500.0, 3500.0, 800.0]), caplog
     )
-    assert n_t == 1
-    assert '3980.0 K' in caplog.text
+    assert n_t == 2
+    assert caplog.text.index('3980.0 K') < caplog.text.index('800.0 K')
+
+
+@pytest.mark.physics_invariant
+def test_buffer_warning_skips_steps_without_outgassing(caplog):
+    """A cold row of a crystallized step is quiet; the first outgassed cold row warns."""
+    hf = _rows([0.0] * 4, T=[2500.0, 900.0, 850.0, 800.0])
+    assert _run(_config(), hf, caplog, outgassed=[True, False, False, False])[1] == 0
+    assert _run(_config(), hf.iloc[:2], caplog, outgassed=[True, True])[1] == 1
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('source', ['user_constant', 'from_O_budget'])
+def test_buffer_warning_for_any_fo2_source(caplog, source):
+    """The buffer is evaluated whether the fO2 is fixed or derived from the O budget."""
+    assert _run(_config(source=source), _rows([0.0, 0.0], T=[2000.0, 3500.0]), caplog)[1] == 1
 
 
 @pytest.mark.physics_invariant
@@ -213,50 +305,59 @@ def test_buffer_temperature_is_the_floored_magma_temperature(caplog):
 
 
 @pytest.mark.physics_invariant
-def test_empty_helpfile_and_missing_columns_are_quiet(caplog):
-    """No rows, or rows without the oxygen and temperature columns, give no warning and no error."""
+def test_empty_helpfile_missing_columns_and_unknown_module_are_quiet(caplog):
+    """No rows, rows without the columns, and a module without a buffer range give no warning or error."""
     with caplog.at_level('WARNING', logger=LOGGER):
         check_fo2_warnings(_config(), pd.DataFrame())
+        check_fo2_warnings(
+            _config(), pd.DataFrame(columns=['T_magma', 'O_kg_total', 'M_mantle'])
+        )
         check_fo2_warnings(_config(), pd.DataFrame({'Time': [0.0, 1.0]}))
+        check_fo2_warnings(_config(module='lavatmos'), _rows([0.0, 0.0], T=[3500.0, 3600.0]))
     assert caplog.text.count(O_MSG) == 0
     assert caplog.text.count(T_MSG) == 0
 
 
-_odd = st.one_of(
-    st.floats(allow_nan=True, allow_infinity=True),
-    st.just(0.0),
-    st.just(-1.0),
-    st.booleans(),
-)
+_odd = st.one_of(st.floats(allow_nan=True, allow_infinity=True), st.just(0.0), st.just(-1.0))
 
 
 @pytest.mark.physics_invariant
-@settings(max_examples=200, deadline=None)
-@given(o_last=_odd, m_mantle=_odd, T=_odd)
-def test_odd_row_values_never_raise_and_warn_only_on_a_finite_rise(o_last, m_mantle, T):
-    """NaN, inf, 0, negative and boolean column values never raise; the oxygen warning needs a finite rise."""
+@settings(max_examples=300, deadline=None)
+@given(o_first=_odd, o_last=_odd, m_mantle=_odd, T=_odd)
+def test_odd_row_values_never_raise_and_warn_only_on_finite_inputs(
+    o_first, o_last, m_mantle, T
+):
+    """NaN, inf, 0 and negative values never raise; each warning needs finite inputs past its limit."""
     hf = pd.DataFrame(
         {
-            'O_kg_total': [O0, o_last],
+            'O_kg_total': [o_first, o_last],
             'O_kg_atm': [1e22, 1e22],
             'M_mantle': [M_MANTLE, m_mantle],
             'T_magma': [2000.0, T],
         }
     )
-    import logging
-
     records = []
     handler = logging.Handler()
     handler.emit = records.append
     logger = logging.getLogger(LOGGER)
+    level = logger.level
     logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+    raised = None
     try:
         check_fo2_warnings(_config(), hf)
+    except Exception as err:  # a log-only check must not stop a run
+        raised = err
     finally:
         logger.removeHandler(handler)
-    o_warned = any(O_MSG in r.getMessage() for r in records)
-    ok = all(isinstance(v, float) and math.isfinite(v) for v in (o_last, m_mantle))
-    rise = (o_last - O0) / m_mantle if ok and m_mantle > 0 else math.nan
-    assert o_warned == (rise > O_RISE_WARN_FRAC)
-    if o_warned:
-        assert m_mantle > 0
+        logger.setLevel(level)
+    assert raised is None
+    msgs = [r.getMessage() for r in records]
+    base = o_first if math.isfinite(o_first) else o_last
+    finite = all(math.isfinite(v) for v in (o_last, base, m_mantle))
+    rise = (o_last - base) / m_mantle if finite and m_mantle > 0 else math.nan
+    assert any(O_MSG in m for m in msgs) == (rise > O_RISE_WARN_FRAC)
+    T_used = max(T, 700.0)
+    assert any(T_MSG in m for m in msgs) == (
+        math.isfinite(T) and not 1000.0 <= T_used <= 3000.0
+    )
