@@ -19,7 +19,6 @@ Testing standards:
 
 from __future__ import annotations
 
-import logging
 import math
 from pathlib import Path
 from types import SimpleNamespace
@@ -29,7 +28,7 @@ import pytest
 
 pytest.importorskip('hypothesis')
 
-from hypothesis import example, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from proteus.outgas import fo2_warnings
@@ -142,10 +141,13 @@ def test_oxygen_warning_once_per_crossing(caplog):
 @pytest.mark.parametrize(
     ('dry', 'outside'),
     [
-        (True, 'dry_mantle = true all of it is outside the structure mass'),
+        (
+            True,
+            'dry_mantle = true all of it is outside the structure mass, and the mantle loses that mass',
+        ),
         (
             False,
-            f'only O_kg_atm is outside the structure mass, and it rose by {0.005 * M_MANTLE:.3e} kg',
+            f'only O_kg_atm is outside the structure mass (its change since that row: {0.005 * M_MANTLE:.3e} kg), and',
         ),
     ],
     ids=['dry_mantle', 'wet_mantle'],
@@ -394,9 +396,9 @@ def test_calliope_without_a_named_default_buffer_skips_the_check_with_one_line(
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize('T', [1000.0, 1250.0, 2000.0, 3000.0, 4000.0, 6000.0])
+@pytest.mark.parametrize('T', [1000.0, 1250.0, 2000.0, 3000.0, 4000.0, 6000.0, 8100.0])
 def test_calliope_default_buffer_equals_atmodeller_from_1000_k(T):
-    """Both modules evaluate the Hirschmann (2021) IW at 1 bar from 1000 K upward."""
+    """Both modules evaluate the Hirschmann (2021) IW at 1 bar from 1000 K to 8100 K."""
     from calliope.oxygen_fugacity import OxygenFugacity
 
     pytest.importorskip('atmodeller')
@@ -407,15 +409,18 @@ def test_calliope_default_buffer_equals_atmodeller_from_1000_k(T):
     assert BUFFER_T_RANGE_K['calliope'][0] == pytest.approx(1000.0, rel=0)
 
 
-def test_below_1000_k_the_two_buffers_differ():
-    """Below 1000 K CALLIOPE extrapolates the 2021 fit and atmodeller uses its low-temperature buffer."""
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(('T', 'diff'), [(800.0, -0.1013), (8200.0, -42.74)])
+def test_outside_1000_to_8100_k_the_two_buffers_differ(T, diff):
+    """Below 1000 K atmodeller uses its low-temperature buffer, above about 8150 K the hcp iron
+    branch of the 2021 fit; CALLIOPE extrapolates the fcc/bcc branch at both ends (model page)."""
     from calliope.oxygen_fugacity import OxygenFugacity
 
     pytest.importorskip('atmodeller')
     from atmodeller.thermodata import IronWustiteBuffer
 
-    atm = float(IronWustiteBuffer().log10_fugacity_buffer(800.0, 1.0))
-    assert abs(OxygenFugacity()(800.0) - atm) > 0.05
+    atm = float(IronWustiteBuffer().log10_fugacity_buffer(T, 1.0))
+    assert atm - OxygenFugacity()(T) == pytest.approx(diff, abs=5e-3)
 
 
 @pytest.mark.physics_invariant
@@ -446,12 +451,14 @@ _odd = st.one_of(st.floats(allow_nan=True, allow_infinity=True), st.just(0.0), s
 
 
 @pytest.mark.physics_invariant
-@settings(max_examples=300, deadline=None)
+@settings(
+    max_examples=300, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
 @given(o_first=_odd, o_last=_odd, m_mantle=_odd, T=_odd)
 @example(o_first=0.0, o_last=0.0, m_mantle=M_MANTLE, T=math.inf)
 @example(o_first=math.nan, o_last=1e22, m_mantle=-1.0, T=2000.0)
 def test_odd_row_values_never_raise_and_warn_only_on_finite_inputs(
-    o_first, o_last, m_mantle, T
+    caplog, o_first, o_last, m_mantle, T
 ):
     """NaN, inf, 0 and negative values never raise; each warning needs finite inputs past its limit."""
     hf = pd.DataFrame(
@@ -463,23 +470,10 @@ def test_odd_row_values_never_raise_and_warn_only_on_finite_inputs(
             'outgas_called': [1.0, 1.0],
         }
     )
-    records = []
-    handler = logging.Handler()
-    handler.emit = records.append
-    logger = logging.getLogger(LOGGER)
-    level = logger.level
-    logger.addHandler(handler)
-    logger.setLevel(logging.WARNING)
-    raised = None
-    try:
-        check_fo2_warnings(_config(), hf)
-    except Exception as err:  # a log-only check must not stop a run
-        raised = err
-    finally:
-        logger.removeHandler(handler)
-        logger.setLevel(level)
-    assert raised is None
-    msgs = [r.getMessage() for r in records]
+    caplog.clear()
+    with caplog.at_level('WARNING', logger=LOGGER):
+        check_fo2_warnings(_config(), hf)  # a log-only check must not raise
+    msgs = [r.getMessage() for r in caplog.records]
     base, m_base = (o_first, M_MANTLE) if math.isfinite(o_first) else (o_last, m_mantle)
     finite = all(math.isfinite(v) for v in (o_last, base, m_base))
     rise = (o_last - base) / m_base if finite and m_base > 0 else math.nan
@@ -548,3 +542,28 @@ def test_resume_from_a_helpfile_without_outgas_called_repeats_the_buffer_warning
     resumed = ExtendHelpfile(stored, rows[2])
     assert _run(_config(), resumed, caplog, start=3)[1] == 1
     assert 'evaluated at 3700.0 K' in caplog.text
+
+
+@pytest.mark.physics_invariant
+def test_a_skipped_atmodeller_solve_records_no_outgassing_call():
+    """Under from_O_budget with no budget above the threshold atmodeller evaluates no buffer, so
+    the row records no call and a hot temperature gives no buffer warning."""
+    from unittest.mock import patch
+
+    from proteus.config import read_config_object
+    from proteus.outgas.wrapper import run_outgassing
+    from proteus.utils.coupler import ZeroHelpfileRow
+
+    pytest.importorskip('atmodeller')
+    config = read_config_object(QUICK)
+    object.__setattr__(config.outgas, 'module', 'atmodeller')
+    object.__setattr__(config.planet, 'fO2_source', 'from_O_budget')
+    row = ZeroHelpfileRow()
+    row.update(T_magma=3500.0, outgas_called=1.0)
+    with (
+        patch('proteus.outgas.wrapper.condensed_mass_withheld'),
+        patch('proteus.outgas.wrapper.trapped_mass_withheld'),
+    ):
+        run_outgassing({'output': ''}, config, row, initial=False)
+    assert math.isnan(row['fO2_shift_IW_derived'])
+    assert row['outgas_called'] == pytest.approx(0.0, abs=0)
