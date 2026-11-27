@@ -6510,3 +6510,32 @@ def test_lid_seal_columns_read_as_zero_on_resume_of_an_older_run(tmp_path):
     for key in seal:
         assert (hf[key] == 0.0).all(), key
     assert hf['H2O_kg_solid'].iloc[-1] > 0.0
+
+
+@pytest.mark.usefixtures('fwl_io_current')
+@pytest.mark.parametrize(
+    ('installed', 'raises'),
+    [('26.11.8', False), ('26.10.5', True)],
+    ids=['equal_to_exact_pin', 'older_than_exact_pin'],
+)
+def test_validate_module_versions_reads_an_exact_pin(tmp_path, installed, raises):
+    """An exact '==' requirement gives the expected version, also next to a marker requirement."""
+    from unittest.mock import MagicMock
+
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    config.interior_energetics.module = 'dummy'
+    config.outgas.module = 'calliope'
+    reqs = ['fwl-calliope==26.11.8', 'fwl-vulcan>=26.1.1; extra == "vulcan"']
+    with (
+        patch.dict('sys.modules', {'calliope': MagicMock(__version__=installed)}, clear=False),
+        patch('importlib.metadata.requires', return_value=reqs),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        if raises:
+            with pytest.raises(EnvironmentError, match='Out-of-date modules'):
+                validate_module_versions({'rad': str(tmp_path)}, config)
+        else:
+            validate_module_versions({'rad': str(tmp_path)}, config)
+    assert mock_update.call_count == int(raises)
