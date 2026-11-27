@@ -689,31 +689,31 @@ class _StopAfterInit(Exception):
 
 
 @pytest.mark.parametrize(
-    ('first_build', 'resume', 'use_cache', 'star_file'),
+    ('first_build', 'resume', 'use_cache'),
     [
-        (True, False, True, None),
-        (False, False, False, None),
-        (True, True, True, '1200.sflux'),
-        (False, True, False, None),
+        (True, False, True),
+        (False, False, False),
+        (True, True, True),
+        (False, True, False),
     ],
     ids=[
         'first-build-uses-cache',
         'spectrum-update-bypasses-it',
         'resumed-first-build-takes-the-restored-spectrum',
-        'spectrum-update-after-a-resume-takes-the-newest',
+        'spectrum-update-after-a-resume-takes-its-own-spectrum',
     ],
 )
 def test_run_atmosphere_uses_the_spectral_cache_only_for_the_first_agni_build(
-    tmp_path, first_build, resume, use_cache, star_file
+    tmp_path, first_build, resume, use_cache
 ):
     """The first AGNI build of a run may use the spectral-file cache, because
     its stellar spectrum can match another run's. A rebuild after a spectrum
     update may not: its spectrum depends on when this run's adaptive timestep
     reached the update, so a cache entry for it would never be read.
 
-    The first build of a resumed run takes the spectrum of the last update in its
-    row (t = 1200.7 yr, file 1200.sflux), not the newest file, which a row that
-    the resume dropped may have written.
+    Every build takes the spectrum of the last update in its row (t = 1200.7 yr,
+    file 1200.sflux), not the newest file, which a row that a resume dropped may
+    have written.
     """
     atmos_o = Atmos_t()
     atmos_o._atm = None if first_build else object()
@@ -762,9 +762,9 @@ def test_run_atmosphere_uses_the_spectral_cache_only_for_the_first_agni_build(
             hf_row,
         )
 
-    assert seen == {'run': True, 'use_cache': use_cache, 'star_file': star_file}
-    # Edge case: the first build keeps a prepared file already on disk, which a
-    # resume relies on; a rebuild removes it so the new spectrum is inserted.
+    assert seen == {'run': True, 'use_cache': use_cache, 'star_file': '1200.sflux'}
+    # Edge case: a rebuild removes the prepared file of the previous spectrum; the
+    # first build leaves a file on disk alone and does not read it.
     assert (tmp_path / 'runtime.sf').exists() == first_build
 
 

@@ -38,6 +38,7 @@ from netCDF4 import Dataset
 from scipy.interpolate import PchipInterpolator
 
 import proteus.atmos_clim.agni as agni_mod
+import proteus.atmos_clim.wrapper as atmos_wrapper
 from proteus.atmos_clim.agni import (
     _determine_aerosols,
     _determine_condensates,
@@ -46,6 +47,7 @@ from proteus.atmos_clim.agni import (
     init_agni_atmos,
     write_atmos_ncdf,
 )
+from proteus.atmos_clim.common import Atmos_t
 from proteus.atmos_clim.spectral_cache import cache_key
 from proteus.utils.constants import noble_gases
 
@@ -990,14 +992,72 @@ def test_rebuild_after_stellar_update_reuses_the_run_temp_folder(
     init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row)
     first_io_dir = ctx.fake_agni.last_setup_kwargs['IO_DIR']
 
-    # The wrapper rebuilds from the newest spectrum, without the cache
-    (ctx.sflux.parent / '200.sflux').write_text('400.0 3.0\n500.0 4.0\n', encoding='utf-8')
-    init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, use_cache=False)
+    # The wrapper rebuilds from the spectrum of the update, without the cache
+    update = ctx.sflux.parent / '200.sflux'
+    update.write_text('400.0 3.0\n500.0 4.0\n', encoding='utf-8')
+    init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, use_cache=False, star_file=str(update))
 
     assert first_io_dir == ctx.dirs['temp']
     assert ctx.fake_agni.last_setup_kwargs['IO_DIR'] == ctx.dirs['temp']
     assert (ctx.scratch / 'runtime.sf').read_text() == 'prepared from 200.sflux'
     assert os.listdir(system_tmp) == []
+
+
+class _StopAfterBuild(Exception):
+    """Raised in place of the profile update, once the wrapper has built the struct."""
+
+
+@pytest.mark.unit
+def test_spectrum_update_after_a_resume_ignores_a_newer_file_of_a_dropped_row(
+    monkeypatch, tmp_path
+):
+    """The first rebuild after a resume inserts the spectrum of its own update.
+
+    A resume that falls back from the last row keeps the `.sflux` files of the rows
+    it dropped. Here the run resumes at t = 100 yr with 200.sflux of a dropped row
+    still in `data/`, and its next spectrum update writes 150.sflux. Both builds
+    insert the spectrum of the row's `star_spec_time`; the newest file in `data/`
+    would give the rebuild the star of the dropped row.
+    """
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, tmp_path / 'cache')
+    data = ctx.sflux.parent
+    (data / '200.sflux').write_text('400.0 9.0\n500.0 9.0\n', encoding='utf-8')
+    ctx.config.atmos_clim.module = 'agni'
+    ctx.config.atmos_clim.albedo_pl = 0.0
+    ctx.config.atmos_clim.surf_state = 'fixed'
+    ctx.config.interior_energetics = SimpleNamespace(module='aragog')
+    ctx.config.params = SimpleNamespace(resume=True)
+    hf_row = ctx.hf_row | {'T_magma': 1800.0}
+
+    atmos_o = Atmos_t()
+    inserted = []
+    with (
+        patch.object(agni_mod, 'activate_julia'),
+        patch.object(agni_mod, 'deallocate_atmos'),
+        patch.object(agni_mod, 'update_agni_atmos', side_effect=_StopAfterBuild),
+    ):
+        for spec_time, update in ((100.0, False), (150.3, True)):
+            if update:
+                (data / '150.sflux').write_text('400.0 5.0\n500.0 6.0\n', encoding='utf-8')
+            hf_row['star_spec_time'] = spec_time
+            with pytest.raises(_StopAfterBuild):
+                atmos_wrapper.run_atmosphere(
+                    atmos_o,
+                    ctx.config,
+                    ctx.dirs,
+                    {'total': 56},
+                    [1.0],
+                    [1.0],
+                    update,
+                    None,
+                    hf_row,
+                )
+            inserted.append(Path(ctx.fake_agni.last_allocate_input_star).name)
+
+    assert inserted == ['100.sflux', '150.sflux']
+    assert (ctx.scratch / 'runtime.sf').read_text() == 'prepared from 150.sflux'
+    # The planted file is still the newest, so a pick by age would have taken it.
+    assert max(int(f.stem) for f in data.glob('*.sflux')) == 200
 
 
 @pytest.mark.unit

@@ -376,13 +376,11 @@ def run_atmosphere(
                 # deallocate old atmosphere
                 deallocate_atmos(atmos_o._atm)
 
-            # Only the first build can match another run's spectral file. A resumed run
-            # takes the spectrum of its last update, not a newer file of a dropped row.
-            star_file = None
-            if no_atm and config.params.resume:
-                star_file = os.path.join(
-                    dirs['output'], 'data', '%d.sflux' % hf_row['star_spec_time']
-                )
+            # The spectrum of the last update, not the newest file: a resumed run keeps
+            # the files of the rows it dropped. Only the first build can use the cache.
+            star_file = os.path.join(
+                dirs['output'], 'data', '%d.sflux' % hf_row['star_spec_time']
+            )
             atmos_o._atm = init_agni_atmos(
                 dirs, config, hf_row, use_cache=no_atm, star_file=star_file
             )

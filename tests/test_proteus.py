@@ -3690,6 +3690,28 @@ def test_the_main_loop_runs_the_escape_step_every_iteration(tmp_path):
     escape.assert_called_with()
 
 
+def test_the_main_loop_tells_the_atmosphere_when_the_stellar_spectrum_changed(tmp_path):
+    """Each atmosphere call gets the result of the stellar step of its iteration, so
+    AGNI builds a new spectral file exactly when the spectrum changed."""
+    changed = []
+
+    def _stellar_step():
+        changed.append(len(changed) % 3 == 1)  # changes at the 2nd and 5th iteration
+        return changed[-1]
+
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    atmosphere = MagicMock()
+    with patch.object(type(p), '_run_stellar_step', side_effect=_stellar_step):
+        _run_main_loop_capturing_plots(
+            p, patch('proteus.atmos_clim.run_atmosphere', atmosphere), stop_at_loop=5
+        )
+
+    told = [c.args[6] for c in atmosphere.call_args_list]
+    assert len(changed) == p.loops['total'] >= 5
+    assert told == changed
+    assert told.count(True) == 2 and told[0] is False
+
+
 def test_the_main_loop_applies_due_impacts_before_the_escape_step(tmp_path):
     """Every iteration applies the impacts it reached before escape runs, so the
     escape step measures and debits the post-impact budgets."""
