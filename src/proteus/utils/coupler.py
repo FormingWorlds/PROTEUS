@@ -1323,9 +1323,9 @@ def GetHelpfileKeys():
     # Element mass held in outgassing condensates (e.g. graphite), apart from the mantle
     for e in vol_element_list:
         keys.append(e + '_kg_condensed')  # mass in condensed phases at the surface [kg]
-    keys.append('outgas_called')  # whether the step's volatile exchange ran an outgassing call [1]
 
     # Melt inventory held under a closed crust (outgas.lid_seal), and its leak
+    keys.append('outgas_called')  # whether the step's volatile exchange ran an outgassing call [1]
     keys.append('seal_active')       # whether the lid seal holds the melt inventory [1]
     keys.append('seal_path')         # crust a closed seal reads: 0 open, 1 mesh crust, 2 sub-grid lid [1]
     keys.append('seal_t_close')      # time the seal last closed [yr]

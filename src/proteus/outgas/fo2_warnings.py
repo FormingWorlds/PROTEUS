@@ -9,13 +9,14 @@ Both checks read the helpfile after a row is appended and change nothing.
   the mantle warns once per crossing, when the structure is solved again during the run
   (``zalmoxis.update_interval > 0``, or an impact).
 - The IW buffer is evaluated at ``max(T_magma, outgas.T_floor)``. Hirschmann (2021, GCA 313,
-  74, Sect. 5) fits it over 1000-3000 K; CALLIOPE with that default buffer uses the fit at
-  every temperature, atmodeller switches to Hirschmann (2008) below 1000 K. Among the rows
+  74, Sect. 5) fits it over 1000-3000 K; CALLIOPE from 26.11.08, whose default buffer it is,
+  uses the fit at every temperature, atmodeller switches to Hirschmann (2008) below 1000 K. Among the rows
   whose step ran an outgassing call (``outgas_called``), the first row below and the first
   row above the range of the module each warn once per run.
 
 Each decision reads the rows of the helpfile only, so a resumed run warns as an uninterrupted
-one.
+one; the rows of a helpfile without ``outgas_called`` read as no call, so a buffer warning can
+repeat once after such a resume.
 """
 
 from __future__ import annotations
@@ -49,8 +50,9 @@ def _check_oxygen(config: Config, hf_all: pd.DataFrame) -> None:
     from proteus.outgas.wrapper import outgassing_derives_o_kg_total
 
     struct = config.interior_struct
-    resolved = struct.zalmoxis.update_interval > 0 or bool(config.accretion.module)
-    if struct.module != 'zalmoxis' or not resolved or not outgassing_derives_o_kg_total(config):
+    if struct.module != 'zalmoxis' or not outgassing_derives_o_kg_total(config):
+        return
+    if not (struct.zalmoxis.update_interval > 0 or config.accretion.module):
         return
     col = 'O_kg_total' if struct.zalmoxis.dry_mantle else 'O_kg_atm'
     o, mantle = _column(hf_all, col), _column(hf_all, 'M_mantle')
@@ -76,26 +78,25 @@ def _check_oxygen(config: Config, hf_all: pd.DataFrame) -> None:
 
 def _check_buffer(config: Config, hf_all: pd.DataFrame) -> None:
     """Warn on the first outgassed row below and the first above the buffer's temperature range."""
-    if config.outgas.module not in BUFFER_T_RANGE_K:
+    module = config.outgas.module
+    if module not in BUFFER_T_RANGE_K:
         return
-    if config.outgas.module == 'calliope':
+    if module == 'calliope':
         from calliope.oxygen_fugacity import DEFAULT_FO2_MODEL
 
-        if (
-            DEFAULT_FO2_MODEL != 'hirschmann'
-        ):  # an older CALLIOPE: Fischer (2011), no stated range
+        if DEFAULT_FO2_MODEL != 'hirschmann':  # Fischer (2011) has no stated range
             return
-    lo, hi = BUFFER_T_RANGE_K[config.outgas.module]
+    lo, hi = BUFFER_T_RANGE_K[module]
     T = np.maximum(_column(hf_all, 'T_magma'), config.outgas.T_floor)
-    called = _column(hf_all, 'outgas_called') > 0
+    T = np.where(_column(hf_all, 'outgas_called') > 0, T, np.nan)
     text = f'{lo:.0f}-{hi:.0f} K' if math.isfinite(lo) else f'(at most {hi:.0f} K)'
-    for outside in ((T < lo) & called, (T > hi) & called):
+    for outside in (T < lo, T > hi):
         if outside[-1] and not outside[:-1].any():
             log.warning(
                 'The IW buffer of %s is evaluated at %.1f K, outside the calibrated temperature '
                 'range %s of Hirschmann (2021, GCA 313, 74); its fO2 there is an extrapolation. '
                 'This warning is given once per run.',
-                config.outgas.module,
+                module,
                 T[-1],
                 text,
             )
