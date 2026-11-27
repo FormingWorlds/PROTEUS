@@ -520,6 +520,26 @@ def test_extract_unpacks_an_archive_with_full_paths_and_no_folder_members(tmp_pa
     assert sorted(os.listdir(data_dir)) == ['g.nc', 'home']
 
 
+def test_extract_unpacks_a_folder_member_that_follows_its_files(tmp_path):
+    """A folder member stored after a file inside it, as an append can order them,
+    finds the folder made already for that file and unpacks the file whole."""
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    source = tmp_path / 'source.dat'
+    source.write_bytes(b'escape state')
+    folder = tarfile.TarInfo('ESC')
+    folder.type = tarfile.DIRTYPE
+    with tarfile.open(data_dir / 'data.tar', 'w') as tar_file:
+        tar_file.add(source, arcname='ESC/1000_esc.json')
+        tar_file.addfile(folder)
+    source.unlink()
+
+    archive_mod.extract(str(data_dir), remove_tar=True)
+
+    assert _loose_files(data_dir) == {'ESC/1000_esc.json': b'escape state'}
+    assert sorted(os.listdir(data_dir)) == ['ESC']
+
+
 def test_extract_latest_without_tar_changes_nothing(tmp_path, caplog):
     """A run directory without a tar keeps its files and logs a warning."""
     (tmp_path / '100_int.nc').write_bytes(b'snap')
