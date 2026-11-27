@@ -37,22 +37,26 @@ O_RISE_WARN_FRAC = 1e-3
 BUFFER_T_RANGE_K = {'calliope': (1000.0, 3000.0), 'atmodeller': (-math.inf, 3000.0)}
 
 
-def _finite(row, key: str) -> float:
-    """Finite float value of ``row[key]``, NaN when absent, boolean or not finite."""
-    value = row.get(key)
+def _finite(value) -> float:
+    """``value`` as a finite float; NaN when absent, boolean or not finite."""
     if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Real):
         return math.nan
     return float(value) if math.isfinite(value) else math.nan
 
 
+def _derived_o(config: Config, row) -> float:
+    """Derived O [kg] that the structure target leaves out of the row."""
+    dry = config.interior_struct.zalmoxis.dry_mantle
+    return _finite(row.get('O_kg_total') if dry else row.get('O_kg_atm'))
+
+
 def _oxygen_rise(config: Config, hf_all: pd.DataFrame, i: int) -> float:
     """Derived O outside the structure in row ``i`` minus that of row 0, per mantle mass."""
-    key = 'O_kg_total' if config.interior_struct.zalmoxis.dry_mantle else 'O_kg_atm'
     row = hf_all.iloc[i]
-    mantle = _finite(row, 'M_mantle')
+    mantle = _finite(row.get('M_mantle'))
     if not mantle > 0.0:
         return math.nan
-    return (_finite(row, key) - _finite(hf_all.iloc[0], key)) / mantle
+    return (_derived_o(config, row) - _derived_o(config, hf_all.iloc[0])) / mantle
 
 
 def _outside_buffer_range(config: Config, hf_all: pd.DataFrame) -> np.ndarray:
@@ -75,8 +79,8 @@ def check_fo2_warnings(config: Config, hf_all: pd.DataFrame) -> None:
         rise = _oxygen_rise(config, hf_all, last)
         before = _oxygen_rise(config, hf_all, last - 1)
         if rise > O_RISE_WARN_FRAC and not before > O_RISE_WARN_FRAC:
-            key = 'O_kg_total' if config.interior_struct.zalmoxis.dry_mantle else 'O_kg_atm'
-            mantle = _finite(hf_all.iloc[last], 'M_mantle')
+            dry = config.interior_struct.zalmoxis.dry_mantle
+            mantle = _finite(hf_all.iloc[last].get('M_mantle'))
             log.warning(
                 'Oxygen derived by the fixed fO2 (outgas.fO2_shift_IW = %+.2f) rose by %.3e kg '
                 'since the first row, %.2f %% of the mantle (%.3e kg); %s leaves the structure '
@@ -86,8 +90,8 @@ def check_fo2_warnings(config: Config, hf_all: pd.DataFrame) -> None:
                 rise * mantle,
                 100.0 * rise,
                 mantle,
-                key,
-                config.interior_struct.zalmoxis.dry_mantle,
+                'O_kg_total' if dry else 'O_kg_atm',
+                dry,
             )
 
     if 'T_magma' not in hf_all.columns:
