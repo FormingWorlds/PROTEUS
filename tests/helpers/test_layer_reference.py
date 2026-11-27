@@ -60,7 +60,10 @@ def test_crystals_that_keep_the_melt_concentration_leave_the_volatiles_with_the_
 
 def test_a_node_that_does_not_drain_keeps_everything_it_buried():
     """Without drainage the volatiles stay at the node, in the pore melt or in
-    its crystals, whatever share the crystals take."""
+    its crystals, whatever share the crystals take. The same node draining at
+    r T = 0.5 keeps less, so a reference that ignored the rate would fail."""
     for d in (0.0, 0.0017, 1.0):
         kept = kept_share(lambda f: 0.0, _PHI0, _T, _FLOOR, _ENTRY, partition=d)
         assert kept == pytest.approx(1.0, rel=1e-12), d
+    drained = kept_share(lambda f: 0.5 / _T, _PHI0, _T, _FLOOR, _ENTRY, partition=0.0017)
+    assert drained < 0.9
