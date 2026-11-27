@@ -114,7 +114,7 @@ def test_oxygen_threshold_is_strict_at_the_exact_value(caplog):
     exact = _rows(
         [0.0, 0.001], o0=0.0, mantle=1000.0
     )  # O = 1.0 kg; 1.0 / 1000.0 is 1e-3 exactly
-    assert exact['O_kg_total'].iloc[1] == 1.0
+    assert exact['O_kg_total'].iloc[1] == pytest.approx(1.0, rel=0, abs=0)
     assert exact['O_kg_total'].iloc[1] / 1000.0 == O_RISE_WARN_FRAC
     assert _run(_config(), exact, caplog)[0] == 0
     assert _run(_config(), _rows([0.0, 0.001, 0.002], o0=0.0, mantle=1000.0), caplog)[0] == 1
@@ -124,8 +124,9 @@ def test_oxygen_threshold_is_strict_at_the_exact_value(caplog):
 def test_oxygen_warning_once_per_crossing(caplog):
     """Rows above warn once; a fall below and a new rise warn again."""
     f = O_RISE_WARN_FRAC
-    n_o, _ = _run(_config(), _rows([0.0, 2 * f, 3 * f, 4 * f, 0.5 * f, 2 * f, 5 * f]), caplog)
+    n_o, n_t = _run(_config(), _rows([0.0, 2 * f, 3 * f, 4 * f, 0.5 * f, 2 * f, 5 * f]), caplog)
     assert n_o == 2
+    assert n_t == 0
 
 
 @pytest.mark.physics_invariant
@@ -327,6 +328,7 @@ def test_buffer_warning_needs_the_hirschmann_default_of_calliope(caplog, monkeyp
 def test_buffer_warning_for_any_fo2_source(caplog, source):
     """The buffer is evaluated whether the fO2 is fixed or derived from the O budget."""
     assert _run(_config(source=source), _rows([0.0, 0.0], T=[2000.0, 3500.0]), caplog)[1] == 1
+    assert 'IW buffer of calliope is evaluated at 3500.0 K' in caplog.text
 
 
 @pytest.mark.physics_invariant

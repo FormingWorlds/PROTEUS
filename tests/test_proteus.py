@@ -5733,4 +5733,6 @@ def test_the_main_loop_checks_the_fo2_warnings_after_each_appended_row(
             ),
         ],
     }[case]
-    assert _fo2_rows(p, *extra) == expected
+    called = _fo2_rows(p, *extra)
+    assert len(called) == p.loops['total'] == 6
+    assert called == expected
