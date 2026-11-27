@@ -6,7 +6,9 @@ Both checks read the helpfile after a row is appended and change nothing.
   inventory from the fO2, and the Zalmoxis structure target does not keep it
   (``_structure_target_masses``): oxygen outside the structure leaves the mantle mass of the
   next structure solve. A rise of it since the first finite row above ``O_RISE_WARN_FRAC`` of
-  the mantle warns once per crossing, when the structure is solved again during the run.
+  the mantle warns once per crossing, when the structure is solved again during the run. The
+  check is for a later runaway: the derived O already present at the first row leaves the
+  mantle at the first re-solve without a warning.
 - The IW buffer is evaluated at ``max(T_magma, outgas.T_floor)``. Hirschmann (2021, GCA 313,
   74, Sect. 5) fits it over 1000-3000 K; CALLIOPE uses that fit at every temperature,
   atmodeller switches to Hirschmann (2008) below 1000 K. On a step that ran the outgassing,
