@@ -197,6 +197,8 @@ def test_observable_objective_reproduces_eval_obj_with_a_correlated_upper_limit(
     whitener = CorrelationWhitener(list(TARGET), corr)
     ref = [float(eval_obj(r, TARGET, sigma, whitener)) for r in raw]
     torch.testing.assert_close(objective(rows), torch.tensor(ref, dtype=torch.double))
+    # At the target the detections match and o3 sits on its limit: chi2 = 2 ln 2
+    assert objective(rows)[0].item() == pytest.approx(-math.log10(2 * math.log(2)), rel=1e-6)
     uncorrelated = comp.ObservableObjective(TARGET, sigma)(rows)
     assert (objective(rows) - uncorrelated).abs().max() > 0.01
 

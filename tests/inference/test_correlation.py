@@ -249,6 +249,9 @@ def test_censored_chi_squared_reduces_without_correlation_of_the_limit():
         norm.logcdf(-u[:, [0, 2]].numpy()).sum(1), dtype=torch.double
     )
     torch.testing.assert_close(got, ref, rtol=1e-12, atol=1e-12)
+    # Dropping the limits, or scoring them two-sided as u^2, misses by more than 0.1
+    assert (got - (det @ R_inv * det).sum(1)).min() > 0.1
+    assert (got - (det @ R_inv * det).sum(1) - (u[:, [0, 2]] ** 2).sum(1)).abs().min() > 0.5
     perm = [3, 2, 1, 0]
     swapped = w.chi_squared([names[i] for i in perm], u[:, perm], {'C/O_atm', 'S/O_atm'})
     torch.testing.assert_close(swapped[:, 0], got, rtol=1e-12, atol=1e-12)
