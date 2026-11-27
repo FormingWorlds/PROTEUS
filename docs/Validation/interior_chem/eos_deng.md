@@ -14,6 +14,28 @@ recorded when they were added.
 | `tests/interior_chem/test_eos_deng.py::test_lange_carmichael_feo_reproduces_the_archived_disproportionation_integral` | Schaefer et al. (2024) archived code, `deltaGFeOFeO15_Deng.m` | `VdPFeO_LC` (Lange & Carmichael 1987 volume, Murnaghan K0 = 30.33 GPa, K' = 4) | With `feo_volume = 'lange_carmichael'` the disproportionation integral at 5-130 GPa, 2000-4500 K within 2e-4 of a numpy port of the archived function (observed 6e-5, the liquid-Fe trapezoid). Guard: the Komabayashi FeO volume misses by more than 4 kJ/mol beyond 5 GPa (log10 K differs by +0.28 at 40 GPa, +2.11 at 100 GPa). Last compared 2026-10-26. |
 | `tests/interior_chem/test_eos_deng.py::test_liquid_volumes_reproduce_komabayashi_2014_table3` | Komabayashi (2014), JGR Solid Earth 119, 4164 | Table 2 (Vinet + Anderson-Gruneisen parameters), Table 3 (end-member columns X_Fe = 1 and 0) | Liquid Fe and FeO volumes at 136 GPa, 4000 K and 330 GPa, 5000 K within 0.2 % of Table 3 (observed: 0.1 % at most). Guards: the Lange & Carmichael FeO volume of Schaefer's archived code is 14 % and 37 % too large there, and the volume without thermal expansion more than 1 % off. |
 | `tests/interior_chem/test_eos_deng.py::test_keane_table_matches_deng_inside_the_fpmd_coverage` | Deng et al. (2020), Nat. Commun. 11, 2007, Fig. 1 (FPMD points) | Cross-implementation: `keane_table` against `deng2020` | Inside the FPMD coverage of the 12.5 mol% Fe3+ melt (3000 K to 74 GPa, 4000 K to 94 GPa), at 5-80 GPa, the two oxidation integrals agree to within 0.15 in int dV dP / (R T ln10) (0.113 at most observed). Guard: doubling the table value misses by more than 1 at 50 GPa and above. |
+| `tests/interior_chem/test_eos_deng.py::test_keane_table_follows_deng_along_the_fpmd_isotherms` | Deng et al. (2020), Nat. Commun. 11, 2007, Fig. 1 (FPMD points) | Cross-implementation: `keane_table` against `deng2020` along the 2000, 3000 and 4000 K isotherms | From 1 GPa to the deepest FPMD point of each isotherm (17, 74, 94 GPa) the two oxidation integrals agree within 0.25 (2000 K) and 0.15 (3000, 4000 K) in log10 units; writes the plot below. Guard: the doubled table value misses by more than 1. Last compared 2026-11-27. |
+
+## `keane_table` against `deng2020` on the FPMD isotherms
+
+**Why this check exists.** The default melt EOS, `keane_table`, is a new fit. Inside the pressures and temperatures where Deng et al. (2020) computed the melts with first-principles molecular dynamics (FPMD), it must give the same pressure term as the `deng2020` model, which was fitted to the same points.
+
+**What it tests.** On the 2000, 3000 and 4000 K isotherms, from 1 GPa to the deepest FPMD point of each (17, 74 and 94 GPa), the test evaluates the oxidation integral of FeO to FeO1.5 with both models and compares them in log10 units of fO2, $\int\Delta V\,dP/(RT\ln 10)$.
+
+**How we know the right answer.** Both models are fits to the FPMD points of Deng et al. (2020) Fig. 1, so inside that coverage they must agree to within their fit residuals.
+
+**Why it matters.** The term shifts the radial fO2 profile and the metal-saturation equilibrium by several log units at depth; a wrong factor would move both.
+
+![Oxidation integral of the two melt EOS on the FPMD isotherms](../../assets/validation/eos_deng_keane_table_fpmd_isotherms.svg#only-light){ width="80%" }
+![Oxidation integral of the two melt EOS on the FPMD isotherms](../../assets/validation/eos_deng_keane_table_fpmd_isotherms_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is pressure in GPa and the y-axis the pressure term in log10 units. Solid lines are `deng2020`, dashed lines `keane_table`, one colour per isotherm. The dotted vertical line of each colour marks the deepest FPMD point of that isotherm: the test asserts the agreement to its left, and to its right `keane_table` is an extrapolation (context). A pass means that each dashed line lies on its solid line up to the dotted line, within 0.25 at 2000 K and 0.15 at 3000 and 4000 K.
+
+??? info "Test details"
+    - Reference: Deng et al. (2020), Nat. Commun. 11, 2007, Fig. 1 (FPMD points); cross-implementation check.
+    - Tolerance: 0.25 (2000 K) and 0.15 (3000, 4000 K) in log10 units; the doubled table value must miss by more than 1 at the deepest point of the 3000 and 4000 K isotherms.
+    - Test id: `tests/interior_chem/test_eos_deng.py::test_keane_table_follows_deng_along_the_fpmd_isotherms`
+    - Command: `pytest -m reference_pinned tests/interior_chem/test_eos_deng.py --validation-plots`
 
 ## The `keane_table` model
 

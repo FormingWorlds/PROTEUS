@@ -216,7 +216,7 @@ class InteriorChem:
         Solid/melt partition coefficients of Fe2+ and Fe3+ in the
         melt-redox tracker (``interior_chem/redox.py``, Step 5-6), chosen
         per cell from its pressure at the first tracker call.
-        'mgsio3': the MgSiO3 phases only, bridgmanite at
+        'mgsio3' (default): the MgSiO3 phases only, bridgmanite at
         P >= 22 GPa and a 1:1 Cpx/Opx mix below, with the mineral values of
         Schaefer et al. (2024) Table S1 (Fe2+) and Table 3 (Fe3+).
         'bulk_BSE': the bulk coefficients of the full mineral assemblage of
@@ -224,7 +224,7 @@ class InteriorChem:
         22 GPa) for their bulk-silicate-Earth magma ocean, the medians over
         all draws of their archived 1000 km run; this follows their mean
         Fe3+/FeT.
-        'mgsio3_kd' (default): 'mgsio3', but at P >= 22 GPa the Fe2+ split follows the
+        'mgsio3_kd': 'mgsio3', but at P >= 22 GPa the Fe2+ split follows the
         Fe-Mg exchange coefficient K_D(P, T) of bridgmanite (Dragulet &
         Stixrude 2024) and, at P >= 180 GPa, post-perovskite (Dragulet &
         Stixrude 2026), recomputed every step from the cell temperature and
@@ -250,22 +250,6 @@ class InteriorChem:
         mantles; the table is built in memory once per process
         (``interior_chem/keane_table.py``). It agrees with 'deng2020' inside the FPMD coverage
         (2000-4000 K, up to about 74-94 GPa) and is an extrapolation beyond.
-        'keane_table_flat': test variant of 'keane_table' with int dV dP held
-        at its value at 90 GPa (deepest Deng FPMD point of both melts), i.e.
-        dV = 0 beyond (FWL_DATA/interior_chem/keane_deng_table_flat.npz);
-        the Komabayashi (2014) FeO and Fe integrals are likewise held at
-        their 350 GPa values beyond that pressure.
-        'keane_table_constdV': test variant of 'keane_table' with dV held at
-        its value at 90 GPa (deepest Deng FPMD point of both melts) instead of
-        extrapolated, so int dV dP is linear in P beyond it
-        (FWL_DATA/interior_chem/keane_deng_table_constdV.npz).
-        'keane_table_komafit': test variant of 'keane_table' with the
-        Komabayashi (2014) liquid FeO and Fe volumes unchanged to 350 GPa and,
-        beyond, continued with a Keane cold curve plus Mie-Gruneisen thermal
-        pressure fitted to his model on 50-350 GPa and 1000-7000 K, instead of
-        his own Vinet + Anderson-Gruneisen form extrapolated
-        (FWL_DATA/interior_chem/komabayashi_komafit_ext.npz). The melt term is
-        that of 'keane_table'; the Lange & Carmichael FeO volume is unchanged.
         Read only when ``planet.fO2_source = 'from_mantle_redox'`` and
         ``metal_saturation`` or ``fO2_pressure_term`` is True.
     feo_volume: str
@@ -317,7 +301,7 @@ class InteriorChem:
     # Partition-coefficient prescription of the redox tracker
     # (redox.py Step 5-6). Only read under planet.fO2_source = 'from_mantle_redox'.
     partition_coefficients: str = field(
-        default='mgsio3_kd', validator=in_(('mgsio3', 'bulk_BSE', 'mgsio3_kd'))
+        default='mgsio3', validator=in_(('mgsio3', 'bulk_BSE', 'mgsio3_kd'))
     )
 
     # Melt EOS of the redox pressure term (eos_deng.MODELS). Only read under
@@ -325,15 +309,7 @@ class InteriorChem:
     # fO2_pressure_term True.
     redox_dV_eos: str = field(
         default='keane_table',
-        validator=in_(
-            (
-                'deng2020',
-                'keane_table',
-                'keane_table_flat',
-                'keane_table_constdV',
-                'keane_table_komafit',
-            )
-        ),
+        validator=in_(('deng2020', 'keane_table')),
     )
 
     # Liquid FeO volume of the disproportionation pressure term (eos_deng.FEO_VOLUMES).

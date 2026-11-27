@@ -16,6 +16,27 @@ is registered in `pyproject.toml`. Last comparison: 2026-10-22.
 | `tests/interior_chem/test_redox.py::test_the_pressure_term_moves_metal_formation_away_from_the_coolest_cell` | Schaefer et al. (2024) | Section 3.1.1 | Metal forms at depth, not in the shallow cool melt, once the reaction volume change is included. |
 | `tests/interior_chem/test_redox.py::test_hirschmann_iw_buffer_matches_oneill_eggins_at_one_bar_and_the_solid_volume_slope` | Hirschmann (2021) against O'Neill and Eggins (2002) | Eq 11 of O'Neill and Eggins (2002) | The IW buffer at 1 bar and its pressure slope from the solid molar volumes. |
 
+## Crystallisation on the Schaefer et al. (2024) sequence
+
+**Why this check exists.** The tracker's partition coefficients decide how the melt Fe3+/FeT changes as the magma ocean freezes. A wrong set changes the fO2 of every later outgassing step without any error.
+
+**What it tests.** It feeds the crystallisation sequence of the archived Schaefer et al. (2024) run 570 (1000 km Earth magma ocean, f_0 = 0.1: the pressure and the solid fraction of each of its 96 steps) to the tracker's crystallisation step with the `bulk_BSE` coefficients, and with the `mgsio3` coefficients as the guard.
+
+**How we know the right answer.** Run 570 gives the melt Fe3+/FeT after each step. `bulk_BSE` takes the bulk coefficients of the same run's layers, so it should follow that run.
+
+**Why it matters.** It is the closest published reference for the redox evolution of a crystallising Earth magma ocean.
+
+![Melt ferric fraction on the Schaefer et al. (2024) crystallisation sequence](../../assets/validation/redox_schaefer2024_crystallisation.svg#only-light){ width="80%" }
+![Melt ferric fraction on the Schaefer et al. (2024) crystallisation sequence](../../assets/validation/redox_schaefer2024_crystallisation_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the pressure of the layer that crystallises in GPa, from the base of the magma ocean (left) to the surface (right); the y-axis is the melt Fe3+/FeT in mol/mol. Circles are run 570 (every fourth step and the last), the band is that run within 0.01, the solid line is `bulk_BSE` and the dashed line is `mgsio3`. The dotted line marks 22 GPa. A pass means that the solid line stays inside the band, with its minimum between 12 and 18 GPa, while the dashed line leaves the band (by up to 0.042, near 3 GPa) and turns at 22 GPa.
+
+??? info "Test details"
+    - Reference: Schaefer et al. (2024), JGR Planets 129, e2023JE008262; archived `output.mat`, run 570 (fixture `tests/interior_chem/fixtures/schaefer2024_1000km_replay.csv`).
+    - Tolerance: 0.01 at every step; minimum between 12 and 18 GPa; `mgsio3` must miss by more than 0.02 and turn above 21 GPa.
+    - Test id: `tests/interior_chem/test_redox.py::test_bulk_prescription_follows_the_schaefer_2024_run`
+    - Command: `pytest -m reference_pinned tests/interior_chem/test_redox.py --validation-plots`
+
 ## Partition coefficients
 
 The tracker uses only the MgSiO3 phases: bridgmanite at P >= 22 GPa and a

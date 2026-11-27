@@ -28,8 +28,9 @@ Setting `planet.fO2_source = "from_mantle_redox"` enables this calculation. PROT
     The result is a single number for the outgassing code: the offset $\Delta$IW of the surface $f_{\rm O_2}$ from the iron-wüstite buffer.
 
 <figure markdown="span">
-  ![Model domain seen by the redox tracker](../assets/redox/redox_domain.svg){ width="640" }
-  <figcaption>Model domain as seen by the redox tracker (schematic; cell count and the depth of the 22 GPa line are illustrative). The interior module supplies the mass, pressure, temperature and melt fraction of each cell. The iron in the melt is held in two global reservoirs, shared by all melt cells in proportion to their melt mass. Solid formed in a cell removes iron with the partition coefficient of that cell's depth. The surface oxygen fugacity is computed from the melt redox ratio.</figcaption>
+  ![Model domain seen by the redox tracker](../assets/redox/redox_domain.svg#only-light){ width="760" }
+  ![Model domain seen by the redox tracker](../assets/redox/redox_domain_dark.svg#only-dark){ width="760" }
+  <figcaption>Model domain as seen by the redox tracker (schematic; the cell count, the depths of the 22 and 180 GPa lines and the base of the melt are illustrative). The interior module supplies the mass, pressure, temperature and melt fraction of each cell. The iron of the melt is held in two global reservoirs, shared by the melt cells in proportion to their melt mass. Solid formed in a cell takes iron with the partition coefficients of that cell's depth and returns it if the cell remelts. With the metal step on, metal forms in one melt cell, the base of the melt by default. The surface oxygen fugacity follows from the melt redox ratio at 1 bar, and CALLIOPE converts its offset from the IW buffer back with the same buffer.</figcaption>
 </figure>
 
 !!! note "Approach based on Schaefer et al. (2024)[^cite-schaefer2024]"
@@ -47,7 +48,7 @@ Setting `planet.fO2_source = "from_mantle_redox"` enables this calculation. PROT
 | `planet.fO2_source` | Set to `"from_mantle_redox"` to enable the tracker. Other values disable it. | `"user_constant"` |
 | `planet.interior_chem.ferric_fraction_initial` | Initial melt Fe$^{3+}$/Fe$_{\rm T}$, $f_0$, in the interval $(0,1)$. | `0.1` |
 | `planet.interior_chem.metal_saturation` | Off by default. `true` adds a check for Fe-metal saturation (3FeO = 2FeO$_{1.5}$ + Fe) between crystallization steps, following Schaefer et al. (2024, Section 2.7), and counts cells below $\phi=0.15$ as solid. This page describes the model with `false`; the module docstring of `interior_chem/redox.py` describes the metal step. | `false` |
-| `planet.interior_chem.partition_coefficients` | Fe$^{2+}$ and Fe$^{3+}$ partition coefficients: `"mgsio3"` (bridgmanite and pyroxenes), `"bulk_BSE"` (bulk values of the Schaefer et al. layers) or `"mgsio3_kd"` (`"mgsio3"` with a pressure- and temperature-dependent Fe$^{2+}$ coefficient in bridgmanite and post-perovskite); see [step 4](#4-partition-iron-into-the-new-solid). | `"mgsio3_kd"` |
+| `planet.interior_chem.partition_coefficients` | Fe$^{2+}$ and Fe$^{3+}$ partition coefficients: `"mgsio3"` (bridgmanite and pyroxenes), `"bulk_BSE"` (bulk values of the Schaefer et al. layers) or `"mgsio3_kd"` (`"mgsio3"` with a pressure- and temperature-dependent Fe$^{2+}$ coefficient in bridgmanite and post-perovskite); see [step 4](#4-partition-iron-into-the-new-solid). | `"mgsio3"` |
 | `planet.interior_chem.fO2_pressure_term` | `true` adds $\int \Delta V\,dP$ of FeO + ¼O$_2$ = FeO$_{1.5}$ (melt EOS `redox_dV_eos`) to the radial fO$_2$ profile, and takes its ΔIW against the IW buffer at the cell pressure, without the metal step. The profile is a diagnostic: Fe$^{3+}$/Fe$_{\rm T}$ and the 1 bar surface fO$_2$ are unchanged. Always on with `metal_saturation = true`. | `false` |
 
 The tracker needs a melt fraction for every radial cell, so `interior_energetics.module` must be `spider` or `aragog`.
@@ -73,21 +74,22 @@ It carries three pieces of state between steps:
 
     1. If `planet.fO2_source` is not `"from_mantle_redox"`, return.
     2. Read $\phi_i$, $m_i$, $P_i$ and $T_i$ from the interior module.
-    3. **First call:** initialize $n^{2+}$, $n^{3+}$, $f=f_0$ and the per-cell $D_i^{3+}$ ([step 1](#1-initialize-the-iron-inventory)). Go to 6.
-    4. **Later calls, if the mantle is not yet flagged solid:**
-        1. Compute the newly formed solid $\Delta M_{s,i}$ from the decrease in $\phi_i$ ([step 2](#2-determine-newly-formed-solid)).
-        2. If $M_{\rm melt}^{\rm prev}=0$, flag the mantle as solid and keep $f$ fixed. Otherwise:
-            1. Compute the uniform melt concentrations $C^{2+}$ and $C^{3+}$ ([step 3](#3-assume-a-homogeneous-melt)).
-            2. Remove $\Delta n^{2+}$ and $\Delta n^{3+}$ into the new solid ([step 4](#4-partition-iron-into-the-new-solid)).
-            3. Update $n^{2+}$, $n^{3+}$, $f$ and $R$ ([step 5](#5-update-the-reservoirs-and-redox-ratio)).
-    5. **Every later call:** set $\phi_i^{\rm prev}\leftarrow\phi_i$.
-    6. Evaluate the radial $\log_{10}f_{\rm O_2}$ profile at each melt cell's $T_i$ and 1 bar, and store the index of the uppermost melt cell (diagnostic only).
+    3. **First call:** initialize $n^{2+}$, $n^{3+}$, $f=f_0$ and the per-cell $D_i$ ([step 1](#1-initialize-the-iron-inventory)). Go to 6.
+    4. **Later calls:** if the global melt fraction is below 0.05, hold the state and go to 6. Otherwise:
+        1. Return to the melt the iron of the solid that remelted since the last tracked call.
+        2. Compute the newly formed solid $\Delta M_{s,i}$ from the decrease in $\phi_i$ ([step 2](#2-determine-newly-formed-solid)).
+        3. Compute the uniform melt concentrations $C^{2+}$ and $C^{3+}$ ([step 3](#3-assume-a-homogeneous-melt)) and remove $\Delta n^{2+}$ and $\Delta n^{3+}$ into the new solid ([step 4](#4-partition-iron-into-the-new-solid)).
+        4. If the melt would then hold more FeO + FeO$_{1.5}$ than its own mass, hold the state and go to 6.
+        5. Update $n^{2+}$, $n^{3+}$, $f$ and $R$ ([step 5](#5-update-the-reservoirs-and-redox-ratio)) and set $\phi_i^{\rm prev}\leftarrow\phi_i$.
+    5. **With `metal_saturation = true`:** run the metal step in one melt cell (module docstring of `interior_chem/redox.py`).
+    6. Evaluate the radial $\log_{10}f_{\rm O_2}$ profile at each melt cell's $T_i$, at 1 bar or, with the pressure term, at $P_i$, and store the index of the uppermost melt cell (diagnostic only).
     7. Set $T_{\rm out}=\max(T_{\rm magma},T_{\rm floor})$. Evaluate the surface $f_{\rm O_2}$ from $R$ at $T_{\rm out}$ and 1 bar, then $\Delta{\rm IW}$ relative to the Hirschmann (2021) buffer.
-    8. Write `ferric_frac_mantle` and `fO2_shift_IW_mantle` to the helpfile. CALLIOPE or atmodeller then uses $\Delta{\rm IW}$ as the outgassing $f_{\rm O_2}$ constraint.
+    8. Write `ferric_frac_mantle` and `fO2_shift_IW_mantle` to the helpfile. CALLIOPE or atmodeller then uses $\Delta{\rm IW}$ as the outgassing $f_{\rm O_2}$ constraint; CALLIOPE applies it to the same Hirschmann (2021) buffer.
 
 <figure markdown="span">
-  ![Position of the redox tracker in one coupling step](../assets/redox/redox_flow.svg){ width="560" }
-  <figcaption>Position of update_melt_redox in one PROTEUS coupling step. Orange boxes are tests on the tracker state; blue boxes are the computational steps described below. The radial profile (dashed) is a diagnostic: it is stored in the interior snapshot and does not feed the outgassing.</figcaption>
+  ![Position of the redox tracker in one coupling step](../assets/redox/redox_flow.svg#only-light){ width="760" }
+  ![Position of the redox tracker in one coupling step](../assets/redox/redox_flow_dark.svg#only-dark){ width="760" }
+  <figcaption>One call of update_melt_redox in a PROTEUS coupling step. Warm boxes are tests on the tracker state; cool boxes are the computational steps described below. The first call and a held state go straight to the fO<sub>2</sub> evaluation, without the metal step. The radial profile (dashed) is a diagnostic: it is stored in the interior snapshot and does not feed the outgassing.</figcaption>
 </figure>
 
 ### 1. Initialize the iron inventory
@@ -198,7 +200,7 @@ Each term lies between 0 and $n_i$ for any $s_i$ and $D_i\geq0$, and a cell whos
 
 Both coefficients depend on the mineral assemblage, selected from the cell pressure at the first step. `planet.interior_chem.partition_coefficients` chooses between three prescriptions; the third, `"mgsio3_kd"`, recomputes the lower-mantle $D^{2+}$ at every step.
 
-#### `"mgsio3"`: bridgmanite and pyroxenes
+#### `"mgsio3"` (default): bridgmanite and pyroxenes
 
 | Assemblage | Pressure | $D^{3+}$ | $D^{2+}$ | Source |
 |---|---:|---:|---:|---|
@@ -239,7 +241,7 @@ Each cell takes the bulk coefficient of the full mineral assemblage of the Schae
 
 Their runs never reach $P<1$ GPa, so that layer repeats the 1-2.5 GPa values. On their crystallization sequence this prescription follows their mean Fe$^{3+}$/Fe$_{\rm T}$ within 0.005; the `"mgsio3"` prescription follows its shape but differs by up to 0.04, because it has no transition-zone phases and no olivine. [The validation page](../Validation/interior_chem/redox.md) gives both comparisons.
 
-#### `"mgsio3_kd"` (default): pressure- and temperature-dependent Fe$^{2+}$ in bridgmanite and post-perovskite
+#### `"mgsio3_kd"`: pressure- and temperature-dependent Fe$^{2+}$ in bridgmanite and post-perovskite
 
 Below 22 GPa and for Fe$^{3+}$ everywhere this prescription keeps the `"mgsio3"` values. At $P\geq22$ GPa the Fe$^{2+}$ split follows the Fe-Mg exchange coefficient
 
@@ -449,8 +451,8 @@ Snapshots created before redox state storage was implemented cannot restore the 
 - **Restricted mineralogy or fixed bulk coefficients.**  
   Schaefer et al. track a full mineral sequence, including olivine, pyroxenes, garnet, majorite, wadsleyite, ringwoodite, and bridgmanite. The `"mgsio3"` prescription uses only bridgmanite and the pyroxenes; `"bulk_BSE"` uses their bulk layer coefficients but holds them fixed rather than letting them follow the melt composition.
 
-- **No Fe/Mg exchange.**  
-  $D^{2+}$ is a fixed coefficient per assemblage. In Schaefer et al. it follows from a fixed Fe/Mg exchange coefficient and the evolving melt composition.
+- **Fe/Mg exchange only in the lower mantle, and only with `"mgsio3_kd"`.**  
+  With `"mgsio3"` and `"bulk_BSE"`, $D^{2+}$ is a fixed coefficient per assemblage. With `"mgsio3_kd"`, $D^{2+}$ at $P\geq22$ GPa follows the pressure- and temperature-dependent Fe-Mg exchange coefficient of bridgmanite and post-perovskite and the evolving melt composition ([step 4](#4-partition-iron-into-the-new-solid)); shallower it is the fixed `"mgsio3"` value. In Schaefer et al. it follows from a fixed Fe/Mg exchange coefficient and the evolving melt composition.
 
 - **Uncertain partition coefficients.**  
   Schaefer et al. report $D^{3+}_{\rm bg}=0.75\pm0.65$ and $D^{3+}_{\rm cpx}=0.45\pm0.20$. Their Monte Carlo calculations therefore produce a wide range of Fe$^{3+}$/Fe$_{\rm T}$ and $f_{\rm O_2}$. PROTEUS uses only the central values.
@@ -487,14 +489,15 @@ The unit tests in `tests/interior_chem/test_redox.py` check that:
 
 ### Comparison with Schaefer et al. (2024)
 
-The figure compares a coupled Earth run (Aragog, `ferric_fraction_initial = 0.1`, `metal_saturation = false`) with the whole-mantle fractional crystallization of Schaefer et al. (2024)[^cite-schaefer2024] for the same initial ferric fraction. Schaefer et al. do not model time; they plot the melt state against the pressure at the base of the magma ocean. Each PROTEUS interior snapshot is therefore placed at the Schaefer base pressure with the same remaining melt mass, which does not depend on a melt-fraction threshold for the base of the mushy PROTEUS magma ocean.
+The figure feeds the crystallization sequence of an archived Schaefer et al. (2024)[^cite-schaefer2024] run (the 1000 km Earth magma ocean, $f_0=0.1$, their run 570) to the crystallization step of the tracker, with each set of partition coefficients in turn. With `"bulk_BSE"` the melt Fe$^{3+}$/Fe$_{\rm T}$ stays within 0.01 of their run at every step and turns from falling to rising between 12 and 18 GPa, as theirs does. With `"mgsio3"` it turns at 22 GPa, where the pyroxenes take over from bridgmanite, and lies up to 0.04 above their run near 3 GPa, because that prescription has no transition-zone phases and no olivine. The [validation page](../Validation/interior_chem/redox.md) gives the tolerances and the other reference checks.
 
 <figure markdown="span">
-  ![Comparison with Schaefer et al. (2024)](../assets/redox/redox_validation_schaefer.svg){ width="760" }
-  <figcaption>Whole-mantle fractional crystallization without metal saturation, f₀ = 0.1. (a) Melt ferric fraction and (b) surface ΔIW at 1 bar against the pressure at the base of the magma ocean. Blue: Schaefer et al. (2024), mean of 1000 Monte Carlo runs (their Fig. 3) and range of all runs (their Fig. 2) their mass ratio FeO₁.₅/(FeO₁.₅+FeO) is converted to the molar ferric fraction. Vermillion: PROTEUS, the interior snapshots placed at equal remaining melt mass. The PROTEUS ΔIW is taken at the uppermost melt cell and its temperature; Schaefer et al. evaluate it on an adiabat anchored at the solidus of the base.</figcaption>
+  ![Melt ferric fraction on the Schaefer et al. (2024) crystallization sequence](../assets/validation/redox_schaefer2024_crystallisation.svg#only-light){ width="640" }
+  ![Melt ferric fraction on the Schaefer et al. (2024) crystallization sequence](../assets/validation/redox_schaefer2024_crystallisation_dark.svg#only-dark){ width="640" }
+  <figcaption>Melt Fe<sup>3+</sup>/Fe<sub>T</sub> against the pressure of the layer that crystallizes, from the base of the magma ocean (left) to the surface (right). Circles: Schaefer et al. (2024) run 570, every fourth step and the last; band: that run within 0.01, the tolerance of the test. Lines: the tracker's crystallization step with the <code>"bulk_BSE"</code> and <code>"mgsio3"</code> coefficients. The dotted line marks 22 GPa. Written by <code>tests/interior_chem/test_redox.py::test_bulk_prescription_follows_the_schaefer_2024_run</code>.</figcaption>
 </figure>
 
-This figure uses $D^{2+}=0.85$ at all depths and the earlier first-order crystallization step, not either current prescription. Both models start from the same state. The PROTEUS ferric fraction stays within the range of the Schaefer et al. runs down to a base pressure of about 15 GPa, near the upper edge of that range, and lies slightly above it at shallower bases. With $D^{2+}=0.85$ above $D^{3+}=0.75$ in the bridgmanite regime, Fe$^{3+}$ stays in the melt as the lower mantle crystallizes, whereas the mean Schaefer et al. run removes it there. The surface $\Delta$IW lies above all of their runs by 0.3 to 1.2 log units. It adds to the ferric-fraction difference the different temperature convention and the fixed bulk-silicate-Earth composition used in the activity terms of the Hirschmann (2022) relation; Schaefer et al. evolve the melt composition during crystallization.
+This is a check of the crystallization step on their sequence, not a coupled run: the solid fraction of each step comes from their run, not from an interior module. No coupled run with the current prescriptions has yet been compared with their evolution.
 
 ---
 

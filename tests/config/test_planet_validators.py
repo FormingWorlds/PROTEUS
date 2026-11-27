@@ -61,9 +61,9 @@ def test_non_finite_ini_dsdr_is_rejected_in_every_mode(mode, dsdr):
 
 @pytest.mark.parametrize('choice', ['mgsio3', 'bulk_BSE', 'mgsio3_kd'])
 def test_partition_coefficient_prescriptions_are_accepted(choice):
-    """Every redox-tracker prescription is valid, and mgsio3_kd is the default."""
+    """Every redox-tracker prescription is valid, and mgsio3 is the default."""
     assert InteriorChem(partition_coefficients=choice).partition_coefficients == choice
-    assert InteriorChem().partition_coefficients == 'mgsio3_kd'
+    assert InteriorChem().partition_coefficients == 'mgsio3'
 
 
 @pytest.mark.parametrize('bad', ['bulk_bse', 'MgSiO3', 'schaefer', ''])
@@ -82,7 +82,7 @@ def test_unknown_partition_coefficient_prescription_is_rejected(bad):
     chem = InteriorChem()
     with pytest.raises(ValueError):
         chem.partition_coefficients = bad
-    assert chem.partition_coefficients == 'mgsio3_kd'
+    assert chem.partition_coefficients == 'mgsio3'
 
 
 @pytest.mark.parametrize(
@@ -90,9 +90,6 @@ def test_unknown_partition_coefficient_prescription_is_rejected(bad):
     [
         'deng2020',
         'keane_table',
-        'keane_table_flat',
-        'keane_table_constdV',
-        'keane_table_komafit',
     ],
 )
 def test_redox_melt_eos_choices_are_accepted(choice):

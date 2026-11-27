@@ -17,6 +17,7 @@ from calliope.solve import (
     get_target_from_pressures,
 )
 
+from proteus.interior_chem.redox import IW_BUFFER
 from proteus.outgas.common import expected_keys
 from proteus.utils.constants import (
     C_solar,
@@ -450,6 +451,7 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
                 random_seed=RANDOM_SEED,
                 print_result=False,
                 opt_solver=False,
+                fO2_model=IW_BUFFER,
             )
         else:
             # equilibrium_atmosphere takes no seed and draws from the global stream.
@@ -466,6 +468,7 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
                 p_guess_max=config.outgas.calliope.p_guess_max,
                 print_result=False,
                 opt_solver=False,
+                fO2_model=IW_BUFFER,
             )
     except RuntimeError as e:
         log.error('Outgassing calculation with CALLIOPE failed')

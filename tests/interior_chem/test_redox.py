@@ -2038,12 +2038,13 @@ def test_configured_prescription_sets_the_coefficients_of_the_run():
 
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_bulk_prescription_follows_the_schaefer_2024_run():
+def test_bulk_prescription_follows_the_schaefer_2024_run(validation_plot):
     """With 'bulk_BSE' on the Schaefer et al. (2024) crystallisation
     sequence, Fe3+/FeT falls through the lower mantle and transition zone to
     a minimum between 12 and 18 GPa and then rises, as in their run, and
     stays within 0.01 of run 570 at every step (constant layer medians
     against the per-step values of one draw; their mean is within 0.005).
+    The plot shows both prescriptions against their run.
     """
     P = _SCH_P * 1e9
     f = _replay(*_partition_coefficients(P, 'bulk_BSE'))
@@ -2056,6 +2057,39 @@ def test_bulk_prescription_follows_the_schaefer_2024_run():
     f_mg = _replay(*_partition_coefficients(P, 'mgsio3'))
     assert np.max(np.abs(f_mg - _SCH_F)) > 0.02
     assert _SCH_P[np.argmin(f_mg)] > 21.0
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        k = np.r_[0 : _SCH_P.size : 4, _SCH_P.size - 1]  # every fourth step and the last
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.fill_between(
+            _SCH_P[k],
+            _SCH_F[k] - 0.01,
+            _SCH_F[k] + 0.01,
+            alpha=0.25,
+            lw=0,
+            label='run 570 $\\pm$ 0.01',
+        )
+        ax.plot(
+            _SCH_P[k],
+            _SCH_F[k],
+            'o',
+            mfc='none',
+            ms=5,
+            label='Schaefer et al. (2024), run 570',
+        )
+        ax.plot(_SCH_P[k], f[k], label="PROTEUS, 'bulk_BSE'")
+        ax.plot(_SCH_P[k], f_mg[k], '--', label="PROTEUS, 'mgsio3'")
+        ax.axvline(22.0, color='0.5', lw=0.8, ls=':')
+        ax.invert_xaxis()
+        ax.set_xlabel('Pressure of the crystallising layer [GPa]')
+        ax.set_ylabel('Melt Fe$^{3{+}}$/Fe$_{\\rm T}$ [mol/mol]')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'redox_schaefer2024_crystallisation')
 
 
 @pytest.mark.usefixtures('keane_table')

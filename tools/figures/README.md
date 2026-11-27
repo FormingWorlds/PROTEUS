@@ -124,3 +124,19 @@ python tools/figures/lid_coupling_schematic.py --check
 proteus-mpl as the stored files. The script loads Instrument Sans and Spline Sans
 Mono from the font files of proteus-mpl, and stops when one is missing; the
 symbols use the DejaVu Sans of matplotlib (mathtext).
+
+## Redox schematics
+
+`docs/assets/redox/redox_domain.svg` and `redox_flow.svg`, with their `_dark`
+counterparts, shown on `docs/Explanations/redox.md`, are drawn by
+`redox_schematics.py` in the same way as the lid coupling schematic: matplotlib,
+the proteus-mpl fonts, all text stored as paths. Rebuild the four files, or check
+them against a fresh render, with:
+
+```bash
+python tools/figures/redox_schematics.py
+python tools/figures/redox_schematics.py --check
+```
+
+`--png DIR` also writes PNG previews. The flow figure follows
+`update_melt_redox` in `src/proteus/interior_chem/redox.py`; change both together.

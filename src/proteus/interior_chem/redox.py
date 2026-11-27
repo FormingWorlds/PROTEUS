@@ -370,6 +370,11 @@ _IW_H21_HCP = np.array(
 )
 
 
+# CALLIOPE name of this buffer: the outgassing turns fO2_shift_IW_mantle back
+# into an absolute fO2 with it (outgas/calliope.py).
+IW_BUFFER = 'hirschmann'
+
+
 def _iw_buffer_hirschmann2021(T, P_gpa):
     """log10(fO2) of the IW buffer at (T [K], P [GPa]), Hirschmann (2021),
     exactly as Schaefer et al. (2024) ``IW_H21.m``. Broadcasts over arrays.
