@@ -164,11 +164,11 @@ def _build_pypi_table(deps: list[str]) -> str:
                 f'https://github.com/FormingWorlds/CALLIOPE/tree/{branch}',
             )
         else:
-            match = re.search(r'>=([0-9.]+)', dep_str)
+            match = re.search(r'(>=|==)([0-9.]+)', dep_str)
             if match:
-                ver = match.group(1)
+                op, ver = match.groups()
                 badge = _badge(
-                    name, f'>={ver}', 'blue', f'https://pypi.org/project/{name}/{ver}/'
+                    name, f'{op}{ver}', 'blue', f'https://pypi.org/project/{name}/{ver}/'
                 )
             else:
                 badge = _badge(name, 'any', 'lightgrey', f'https://pypi.org/project/{name}/')
@@ -199,10 +199,10 @@ def _optional_pin_from_extra(extras: dict, extra_key: str, dist_name: str):
     for req in extras.get(extra_key, []):
         if req.split('>')[0].split('=')[0].split('[')[0].strip() != dist_name:
             continue
-        match = re.search(r'>=([0-9.]+)', req)
+        match = re.search(r'(>=|==)([0-9.]+)', req)
         if match:
-            ver = match.group(1)
-            return f'>={ver}', f'https://pypi.org/project/{dist_name}/{ver}/'
+            op, ver = match.groups()
+            return f'{op}{ver}', f'https://pypi.org/project/{dist_name}/{ver}/'
         return 'any', f'https://pypi.org/project/{dist_name}/'
     return None, None
 
