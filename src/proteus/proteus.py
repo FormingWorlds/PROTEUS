@@ -456,7 +456,7 @@ class Proteus:
             self._baseline_structure_done = True
             return
 
-        refs = {k: self.hf_row[k] for k in _STRUCT_REF_KEYS}
+        ref_time, ref_T_magma, ref_Phi = (self.hf_row[k] for k in _STRUCT_REF_KEYS)
         update_structure_from_interior(
             self.directories, self.config, self.hf_row, self.interior_o, force=True
         )
@@ -464,7 +464,9 @@ class Proteus:
         # Commit the baseline only when the solve converged. On a fall-back the
         # structure is the stale initial-condition one; retry on the next step.
         if self.interior_o.structure_stale:
-            self.hf_row.update(refs)
+            self.hf_row['struct_ref_time'] = ref_time
+            self.hf_row['struct_ref_T_magma'] = ref_T_magma
+            self.hf_row['struct_ref_Phi'] = ref_Phi
             return
         self._baseline_structure_done = True
 

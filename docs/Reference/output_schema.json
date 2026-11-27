@@ -29702,12 +29702,6 @@
       "function": "_plot_orbit_snapshot"
     },
     {
-      "file": "src/proteus/proteus.py",
-      "kind": "write",
-      "reason": "hf_row.update(...) bulk write",
-      "function": "_solve_structure_baseline_if_needed"
-    },
-    {
       "file": "src/proteus/utils/coupler.py",
       "kind": "read",
       "reason": "dynamic key f'{e}_kg_{r}'",
