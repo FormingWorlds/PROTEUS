@@ -115,6 +115,7 @@ nav:
           - Accretion: Reference/config/accretion.md
           - Observations: Reference/config/observe.md
       - Lid coupling details: Reference/lid_coupling.md
+      - Layer trapping details: Reference/layer_trapping.md
       - Melting curves: Reference/melting_curves.md
       - Module map: Reference/module_map.md
       - Module versions: Reference/module_versions.md

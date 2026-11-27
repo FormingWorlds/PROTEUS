@@ -332,7 +332,7 @@ The code does not use the values 4 and 5.
 
 **Question.** Can the pore melt drain through the whole mush, instead of across one front in one step?
 
-**Short answer.** Yes, with `outgas.trap_mode = "layers"`. Every node of the Aragog mesh that is in the mush keeps its own pore melt from step to step. The melt drains up into the node above, and a node keeps what it still holds when it freezes. This is the per-node drainage of Miyazaki and Korenaga (2019, section 2.4) on the interior mesh [^cite-miyazaki2019]. It needs no front, front speed or residence time.
+**Short answer.** Yes, with `outgas.trap_mode = "layers"`. Every node of the Aragog mesh that is in the mush keeps its own pore melt from step to step. The melt drains up into the node above, and a node keeps what it still holds when it freezes. This is the per-node drainage of Miyazaki and Korenaga (2019, section 2.4) on the interior mesh [^cite-miyazaki2019]. It needs no front, front speed or residence time. The integration, the bookkeeping, the resume, the output columns and the limits are on [Layer trapping details](../Reference/layer_trapping.md).
 
 ### Phase states
 
@@ -346,7 +346,7 @@ A contiguous set of nodes in one phase state is a liquid, mush or solid layer. A
 
 ### Drainage
 
-The pore melt $\psi$ of a node changes only by drainage. Take the nodes of a mush layer, counted from its base. The melt volume flux \[m$^3$ s$^{-1}$\] out of the top of node $k$ is
+The pore melt $\psi$ of a node changes by drainage, and by crystallisation where the solver's porosity falls below it. Take the nodes of a mush layer, counted from its base. The melt volume flux \[m$^3$ s$^{-1}$\] out of the top of node $k$ is
 
 $$
 q_k = \min\left(A_k\,\psi_k\,w_D(\psi_k),\; q_{k-1} + \frac{\psi_k V_k}{\tau_{s,k}}\right), \qquad q_\mathrm{base} = 0 .
@@ -356,58 +356,21 @@ $A_k$ \[m$^2$\] is the area of the node's upper face and $V_k$ \[m$^3$\] its vol
 
 A single node with $L = V/A$ follows the front scheme's drainage equation exactly on the percolation branch. On the matrix branch it does not: its matrix time uses the depth of its centre, $L/2$, so it is twice the front's $\mu_s / (|\Delta\rho|\,g\,L)$.
 
-The solver's own porosity of the node, the mean of its values at the start and end of the step, bounds the melt that flows. Pore melt the record holds beyond it has crystallised in place. It stays at the node with its share of the volatiles, and only the rest of the pore melt drains.
+The solver's own porosity of the node bounds its pore melt, taken linear in time between its values at the start and the end of the step. Pore melt beyond it crystallises in place and stays crystalline: when drainage later lowers the pore melt below the bound, those crystals do not melt back into it. A node receives from below no more than it passes on plus its free pore space, its solver porosity less its pore melt, so no node fills beyond the melt the solver gives it.
 
-A node receives from below no more than it passes on plus its free pore space: its solver porosity less its flowing pore melt. A node whose pores are full passes on what it receives, so no node fills beyond the melt the solver gives it.
-
-**Example.** A node holds $\psi = 0.3$ while its solver porosity is 0.1. The 0.2 beyond it has crystallised: it stays, with two thirds of the node's volatiles. Drained for long enough, the node keeps $\psi = 0.2$ and those two thirds.
-
-Melt leaving the top of a mush layer rejoins the magma ocean, or leaves through the surface when the layer reaches the top of the mesh. A mush layer with a solid node above it is sealed and keeps its melt. A node whose tables put the melt at or above the solid density cannot drive its melt upward. It takes the front scheme's no-drainage bound and keeps its pore melt, and so do the mush nodes below it in the same mush layer. In Miyazaki and Korenaga (2019) such melt sinks instead; the layer scheme does not move melt downward.
-
-The code integrates the fluxes with a second-order Runge-Kutta scheme. Each sub-step is a tenth (`SUBSTEP_FRACTION = 0.1`) of the shortest time any node takes to pass on what it holds, or to fill its pore space with what it receives.
+**Example.** A node holds $\psi = 0.3$ while its solver porosity is 0.1. The 0.2 beyond it crystallises. Its crystals keep $D_Z$ times the concentration of the melt they grow from, and the 0.1 of melt left carries the rest of the volatiles, at almost three times the concentration. Drained for long enough, the node keeps the crystals' share alone, $0.2\,D_Z$ of its volatiles per unit of the concentration.
 
 ### Volatiles
 
 A node's pore melt leaves contact with the magma ocean when it enters the mush. All the volatiles in it are buried then: $C_Z\,F\,m$ of each species, with $F = \Phi_c$ the melt mass fraction of its pore melt and $m$ \[kg\] the node mass. They move with the melt as it drains. Melt that leaves a mush layer returns its share to the melt reservoir, and what a node holds when it freezes is locked.
 
-Crystals that grow in a liquid node take $D_Z\,C_Z$ of their mass from the ocean. Crystals that grow in the pores of the mush draw on the pore melt, which the record already holds. Over the life of a node that does not drain, the two add up to $[(1 - \Phi_c)D_Z + \Phi_c]\,C_Z\,m$. That is the [trapping rule](#the-trapping-rule) at the no-drainage bound $F_\mathrm{tl} = \Phi_c$.
-
-The node masses are Aragog's cell masses, rescaled so that they sum to $M_\mathrm{mantle}$. Aragog writes each cell mass as its current density times a fixed volume, and that sum grows past the mantle mass as the mantle cools.
+Crystals that grow in a liquid node take $D_Z\,C_Z$ of their mass from the ocean. Crystals that grow in the pores of the mush take $D_Z$ times the concentration of the pore melt and pass the rest of its volatiles to the melt left. Water and CO$_2$ hardly enter the crystals, $D_Z$ near 0, so the melt that still drains carries them away. A node that does not drain keeps both, $[(1 - \Phi_c)D_Z + \Phi_c]\,C_Z\,m$ in all. That is the [trapping rule](#the-trapping-rule) at the no-drainage bound $F_\mathrm{tl} = \Phi_c$.
 
 Each step moves the net mass, new burials minus returns, between `{sp}_kg_liquid` and `{sp}_kg_solid`. It uses the same `{sp}_kg_trapped` bookkeeping as the front scheme. A step can therefore return more than it buries.
 
 ### The chemistry sees the ocean melt
 
-The pore melt of the mush and solid nodes is cut off from the ocean. So with `"layers"` the chemistry solver dissolves volatiles into the melt of the liquid nodes alone. For the length of the solve, `Phi_global` reads `trap_Phi_ocean`: the liquid nodes' share of the melt times the global melt fraction. A layer step writes `trap_Phi_ocean` together with its count of mush nodes, `trap_n_mush`. A row that no layer step wrote holds 0 in both, the value the helpfile stores for an unset column, and leaves `Phi_global` as it is. A value of 0 with mush nodes means that all the melt is in the mush, and the solve then dissolves nothing. It is restored after the solve. The next step takes its melt concentration on that same ocean melt.
-
-### Remelting node by node
-
-A node that becomes liquid again returns everything trapped at it to the melt. A liquid or mush node whose melt fraction rises from $x_0$ to $x$ melts the share $(x - x_0)/(1 - x_0)$ of its crystals. That share of its crystal store goes with the new melt. A liquid node returns it to the ocean, so a liquid node at $x = 1$ holds nothing. A mush node puts it into its pore melt, which drains. Nodes that stay solid keep theirs, even when the global melt fraction rises. The burial ledger of the next section is not used in this mode.
-
-Every return reaches escape and desiccation through `trap_kg_returned`, whether a node remelted or melt drained back to the ocean. It holds the returned mass also on a step that buries more than it returns. On a step with a return, the escape floor is off and a desiccated planet is checked again. `trap_branch = 7` marks a net return by remelting nodes, as a diagnostic only.
-
-### Resume, mesh changes and missing profiles
-
-The per-node record lives on the interior object between steps. It is saved in each interior snapshot as `trap_*_s` variables, and a resumed run reads it back. Without a saved record, or with one sized for another mesh, the record restarts on the melt fraction of the snapshot the run resumes from, taken onto the current mesh by radius. The trapped mass on the helpfile is assigned to the nodes that were not liquid there, in proportion to their mass. Those nodes bury nothing new, since they already hold that mass. A node that leaves the ocean in the first step buries its pore melt, as in a run that kept its record. Without that snapshot, the new record starts on the current profiles, and the mush it finds buries nothing new.
-
-A step without the interior profiles traps at $D_Z\,C_Z\,\Delta M$ alone when the mantle freezes. When it remelts, the step returns the remelted share of the solid and takes the same share out of the record. It does not use the burial ledger, so nothing is returned twice.
-
-### Output
-
-The trapping columns have one meaning in both modes. For `"layers"` they read as follows:
-
-- `trap_F_tl` \[1\]: the mass-weighted trapped melt fraction of the nodes that froze in the step, 0 when none did.
-- `trap_n_front`, `trap_L_front` \[m\], `trap_tau_D` and `trap_tau_s` \[yr\]: the node count, thickness, percolation time and matrix time of the thickest mush layer, which stands for the front.
-- `trap_v_front` \[m s$^{-1}$\] and `trap_front_courant` \[1\]: the front speed from the mass that froze, at the base of the thickest mush layer, and its advance in that layer's thicknesses. `trap_w_matrix_over_vf` is not computed, since no single front top exists, and the helpfile stores it as 0.
-- `trap_t_res` \[yr\]: the mass-weighted time the nodes that froze spent in the mush.
-- `trap_n_mush`: the mush nodes of the whole mesh; 0 with `"front"`. `trap_n_exited`: nodes that froze in the step.
-- `trap_frac_bound` \[1\]: the mass share of the nodes that froze on the no-drainage bound; 0 when none froze. It includes nodes that drained before their mush layer was sealed, so it is not the share that kept their entry pore melt.
-- `trap_kg_returned` \[kg\]: the mass returned to the melt this step. `trap_Phi_ocean` \[1\]: the ocean melt the chemistry dissolves into; 0 with `"front"`. `trap_n_substeps`: the drainage sub-steps of the step.
-
-### Limits
-
-- With `params.dt.mushy_maximum` set, the interior time step is capped while `params.stop.solid.phi_crit` < `Phi_global` < `params.dt.mushy_upper`, and not below that band. Many nodes can then cross the floor in one step, which the record follows only at that step's resolution.
-- Before the record starts, the code knows no earlier melt fraction per node. The crystals grown in the step before it are not counted.
+The pore melt of the mush and solid nodes is cut off from the ocean. So with `"layers"` the chemistry solver dissolves volatiles into the melt of the liquid nodes alone. For the length of the solve, `Phi_global` reads `trap_Phi_ocean`: the liquid nodes' share of the melt times the global melt fraction. It is restored after the solve, and the next step takes its melt concentration on that same ocean melt.
 
 **Where this is checked.** [Pore-melt drainage of the layer scheme](../Validation/outgas/layer_drainage.md), [Per-node record of the layer scheme](../Validation/outgas/node_record.md) and [Layer trapping step](../Validation/outgas/layer_trapping.md).
 
@@ -415,7 +378,7 @@ The trapping columns have one meaning in both modes. For `"layers"` they read as
 
 **Question.** If the mantle melts again, which locked volatiles come back to the melt?
 
-**Short answer.** In the `"front"` mode, the solid that froze last is the first to melt. So a remelt returns the mass that was locked most recently. The `"layers"` mode decides remelting per node instead (see [Remelting node by node](#remelting-node-by-node)).
+**Short answer.** In the `"front"` mode, the solid that froze last is the first to melt. So a remelt returns the mass that was locked most recently. The `"layers"` mode decides remelting per node instead (see [Remelting node by node](../Reference/layer_trapping.md#remelting-node-by-node)).
 
 The **burial ledger** stores the mass locked in each step as an entry. Each entry has 2 melt fractions: $\Phi$ before the step and $\Phi$ after it.
 

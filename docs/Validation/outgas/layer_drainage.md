@@ -16,9 +16,9 @@ Each case below has the same layout: why the check exists, what it tests, how we
 
 | Test id | Reference | Scope | Last compared |
 |---|---|---|---|
-| `tests/outgas/test_layer_drainage.py::test_single_node_reproduces_the_front_drainage_integral` | Second code: the drainage integral of the front scheme | One node drains as one parcel of the front scheme, under both buoyancy settings. | 2026-11-20 |
-| `tests/outgas/test_layer_drainage.py::test_compaction_limited_node_decays_exponentially` | Analytical solution $\psi_0 e^{-t/\tau_s}$ | One node whose crystal framework alone sets the rate. | 2026-11-20 |
-| `tests/outgas/test_layer_drainage.py::test_uniform_column_follows_the_kinematic_wave_rarefaction` | Analytical solution of a kinematic wave | A column of 50 and 100 nodes drains on an impermeable base. | 2026-11-20 |
+| `tests/outgas/test_layer_drainage.py::test_single_node_reproduces_the_front_drainage_integral` | Second code: the drainage integral of the front scheme | One node drains as one parcel of the front scheme, under both buoyancy settings. | 2026-11-24 |
+| `tests/outgas/test_layer_drainage.py::test_compaction_limited_node_decays_exponentially` | Analytical solution $\psi_0 e^{-t/\tau_s}$ | One node whose crystal framework alone sets the rate. | 2026-11-24 |
+| `tests/outgas/test_layer_drainage.py::test_uniform_column_follows_the_kinematic_wave_rarefaction` | Analytical solution of a kinematic wave | A column of 50 and 100 nodes drains on an impermeable base. | 2026-11-24 |
 
 ## One node drains as the front scheme's parcel
 
@@ -91,8 +91,10 @@ The drainage tests also check these rules, which have no published reference:
 
 - the melt of a column plus what left through its top is conserved, and every pore melt stays between 0 and 1;
 - the volatiles leave each node at the concentration of the melt it holds, so a column of uniform concentration keeps it as it drains;
-- pore melt beyond the solver's own melt fraction of the node has crystallised in place: it stays at the node with its share of the volatiles, and only the rest drains;
+- pore melt beyond the solver's own melt fraction of the node crystallises in place: its crystals keep $D$ times the melt's concentration, with $D$ the crystal/melt partition coefficient, and the melt left carries the rest of the volatiles, so a node drained for long keeps the crystals' share alone;
+- melt that crystallised stays crystalline, so a node drained over one step or over two halves ends with the same pore melt and volatiles;
 - a node receives from below no more than it passes on plus its free pore space, the solver's melt fraction less its pore melt, so no node fills beyond it;
+- a nearly closed node holds the melt below it without shortening the sub-steps: a column of 10 nodes under a top node of porosity 5e-4 drains a step of 1e11 s in fewer than 1000 sub-steps;
 - a node whose density tables put the melt at or above the solid density holds itself and the mush below it.
 
 ## The drainage equation

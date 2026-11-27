@@ -100,7 +100,7 @@ config_version = "3.0"
 
 [outgas]
     module       = "calliope"
-    fO2_shift_IW = 4.0
+    fO2_shift_IW = 2.0
     trap_mode       = "layers"
     [outgas.calliope]
         include_H2O = true
