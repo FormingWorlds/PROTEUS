@@ -532,7 +532,8 @@ def run_inference(config):
         }[name]
     log.info(f'    objective     = {objective}')
     log.info(f'    posterior     = {config["posterior_samples"] or "off"} samples')
-    log.info(f'    per-observable posterior = {config["posterior_per_observable"]}')
+    if config['posterior_samples']:
+        log.info(f'    per-observable posterior = {config["posterior_per_observable"]}')
     if config.get('noise'):
         log.info(f'    noise         = Gaussian, seed {config["noise_seed"]}')
         for k, v in config['observables'].items():

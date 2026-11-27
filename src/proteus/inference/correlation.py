@@ -73,13 +73,14 @@ class CorrelationWhitener:
         return u.reshape(-1, len(names))[:, [pos[k] for k in self.names]]
 
     def chi_squared(self, names: list[str], u: torch.Tensor) -> torch.Tensor:
-        """Chi-squared, shape (m, 1), of each row of residuals u = (sim - true) / sigma, columns
-        ordered as `names`."""
+        """Chi-squared, shape (n, 1), of each of the n rows of residuals u = (sim - true) / sigma,
+        columns ordered as `names`."""
         z = torch.linalg.solve_triangular(self._chol, self._ordered(names, u).T, upper=False)
         return (z**2).sum(0).reshape(-1, 1)
 
     def whiten(self, names: list[str], u: torch.Tensor) -> torch.Tensor:
-        """Uncorrelated residuals z = R^(-1/2) u, shape (m, n), columns ordered as `self.names`.
+        """Uncorrelated residuals z = R^(-1/2) u, one row per row of u, columns ordered as
+        `self.names`.
 
         The sum of z^2 is the correlated chi-squared. R^(-1/2) is the symmetric inverse root,
         so each z stays the closest to its own observable, the result does not depend on the
