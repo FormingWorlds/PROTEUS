@@ -5676,15 +5676,52 @@ def test_main_loop_checks_chemistry_targets_only_on_steps_without_a_snapshot(tmp
     assert calls == [2, 4, 6]
 
 
-def test_the_main_loop_checks_the_fo2_warnings_after_each_appended_row(tmp_path):
-    """Every iteration, also one that writes no snapshot, passes the helpfile to the fO2 warnings."""
-    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=3, dt_write_rel=1e9)
+def _fo2_rows(p, *extra):
+    """Per iteration: the loop count, whether the check got p.config and p.hf_all, and outgas_called."""
     rows = []
 
-    def _record(config, hf_all, outgassed):
-        rows.append((config is p.config, p.loops['total'], hf_all is p.hf_all, outgassed))
+    def _record(config, hf_all):
+        ok = config is p.config and hf_all is p.hf_all
+        rows.append((p.loops['total'], ok, hf_all.iloc[-1].to_dict()['outgas_called']))
 
     with patch('proteus.outgas.fo2_warnings.check_fo2_warnings', side_effect=_record):
-        _run_main_loop_capturing_plots(p, stop_at_loop=4)
-    assert p.loops['total'] >= 4
-    assert rows == [(True, n, True, True) for n in range(1, p.loops['total'] + 1)]
+        _run_main_loop_capturing_plots(p, *extra, stop_at_loop=6)
+    assert [n for n, _, _ in rows] == list(range(1, p.loops['total'] + 1))
+    assert all(ok for _, ok, _ in rows)
+    return [c for _, _, c in rows]
+
+
+def _set_crystallized(self):
+    self.crystallized = True
+
+
+@pytest.mark.parametrize(
+    ('case', 'expected'),
+    [
+        ('outgassing', [1.0] * 6),
+        ('desiccated', [1.0, 1.0, 1.0, 1.0, 0.0, 0.0]),
+        ('crystallized', [1.0, 1.0, 1.0, 1.0, 0.0, 0.0]),
+        ('seal_closes_then_held', [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+    ],
+)
+def test_the_main_loop_checks_the_fo2_warnings_after_each_appended_row(
+    tmp_path, case, expected
+):
+    """Every iteration, also one without a snapshot, passes the helpfile to the fO2 warnings, and
+    the row records whether its volatile exchange ran an outgassing call."""
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=3, dt_write_rel=1e9)
+    dry = patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+    extra = {
+        'outgassing': [dry],
+        'desiccated': [],  # the patched check_desiccation returns a truthy mock after the init stage
+        'crystallized': [
+            dry,
+            patch.object(type(p), '_check_crystallization', _set_crystallized),
+        ],
+        'seal_closes_then_held': [
+            dry,
+            patch('proteus.outgas.lid_seal.seal_enabled', return_value=True),
+            patch('proteus.outgas.lid_seal.run_lid_seal_step', return_value=True),
+        ],
+    }[case]
+    assert _fo2_rows(p, *extra) == expected

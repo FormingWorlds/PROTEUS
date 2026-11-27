@@ -8,7 +8,7 @@ range warns once per run on each side of the range.
 Invariants tested:
   - the oxygen warning fires iff the rise crosses the threshold from below, on either side of it
   - the column the warning reads is the one the structure target removes
-  - the buffer warning fires once per side, on the first outgassed row outside the range
+  - the buffer warning fires once per side, on the first row outside the range that ran an outgassing call
   - a run resumed from its helpfile warns as an uninterrupted one
   - non-finite or non-positive inputs never raise and never warn
 
@@ -55,18 +55,20 @@ def _config(
     dry=True,
     T_floor=700.0,
     update=1e9,
+    accretion=None,
 ):
     return SimpleNamespace(
         outgas=SimpleNamespace(module=module, T_floor=T_floor, fO2_shift_IW=2.0),
         planet=SimpleNamespace(fO2_source=source),
+        accretion=SimpleNamespace(module=accretion),
         interior_struct=SimpleNamespace(
             module=struct, zalmoxis=SimpleNamespace(dry_mantle=dry, update_interval=update)
         ),
     )
 
 
-def _rows(rises, T=2500.0, O_atm=None, o0=O0, mantle=M_MANTLE):
-    """Helpfile with O_kg_total = o0 + rise * mantle per row and the given T_magma."""
+def _rows(rises, T=2500.0, O_atm=None, o0=O0, mantle=M_MANTLE, called=None):
+    """Helpfile with O_kg_total = o0 + rise * mantle per row, the given T_magma and outgas_called."""
     T = [T] * len(rises) if not isinstance(T, list) else T
     return pd.DataFrame(
         {
@@ -75,17 +77,17 @@ def _rows(rises, T=2500.0, O_atm=None, o0=O0, mantle=M_MANTLE):
             'O_kg_atm': O_atm if O_atm is not None else [1e22] * len(rises),
             'M_mantle': [mantle] * len(rises),
             'T_magma': T,
+            'outgas_called': called if called is not None else [1.0] * len(rises),
         }
     )
 
 
-def _run(config, hf_all, caplog, start=1, outgassed=None):
+def _run(config, hf_all, caplog, start=1):
     """Call the check after each appended row from row ``start``, as the main loop does."""
     caplog.clear()
     with caplog.at_level('WARNING', logger=LOGGER):
         for k in range(start, len(hf_all) + 1):
-            ran = True if outgassed is None else outgassed[k - 1]
-            check_fo2_warnings(config, hf_all.iloc[:k], ran)
+            check_fo2_warnings(config, hf_all.iloc[:k])
     return caplog.text.count(O_MSG), caplog.text.count(T_MSG)
 
 
@@ -161,6 +163,13 @@ def test_no_oxygen_warning_when_no_derived_o_leaves_the_structure(caplog, config
     n_o, n_t = _run(config, _rows([0.0, 0.1, 0.2]), caplog)
     assert n_o == 0
     assert n_t == 0
+
+
+@pytest.mark.physics_invariant
+def test_an_impact_resolves_the_structure_without_update_interval(caplog):
+    """With update_interval 0 an accretion module still re-solves the structure, so the rise warns."""
+    assert _run(_config(update=0.0, accretion='dummy'), _rows([0.0, 0.01]), caplog)[0] == 1
+    assert _run(_config(update=0.0, accretion=None), _rows([0.0, 0.01]), caplog)[0] == 0
 
 
 @pytest.mark.physics_invariant
@@ -280,11 +289,28 @@ def test_buffer_warns_once_per_side_of_the_range(caplog):
 
 
 @pytest.mark.physics_invariant
-def test_buffer_warning_skips_steps_without_outgassing(caplog):
-    """A cold row of a crystallized step is quiet; the first outgassed cold row warns."""
-    hf = _rows([0.0] * 4, T=[2500.0, 900.0, 850.0, 800.0])
-    assert _run(_config(), hf, caplog, outgassed=[True, False, False, False])[1] == 0
-    assert _run(_config(), hf.iloc[:2], caplog, outgassed=[True, True])[1] == 1
+def test_buffer_warning_counts_only_rows_that_ran_an_outgassing_call(caplog):
+    """Rows without an outgassing call are quiet and do not block the first outgassed row outside."""
+    hf = _rows([0.0] * 4, T=[2500.0, 900.0, 850.0, 800.0], called=[1.0, 0.0, 0.0, 0.0])
+    assert _run(_config(), hf, caplog)[1] == 0
+    T = [2500.0, 900.0, 850.0, 3500.0, 3600.0]
+    hf = _rows([0.0] * 5, T=T, called=[1.0, 0.0, 1.0, 0.0, 1.0])
+    assert _run(_config(), hf, caplog)[1] == 2
+    assert '850.0 K' in caplog.text
+    assert '3600.0 K' in caplog.text
+    hf = _rows([0.0] * 2, T=[2500.0, 900.0]).drop(columns='outgas_called')
+    assert _run(_config(), hf, caplog)[1] == 0  # a row of an older run reads as no call
+
+
+@pytest.mark.physics_invariant
+def test_buffer_warning_needs_the_hirschmann_default_of_calliope(caplog, monkeypatch):
+    """A CALLIOPE whose default buffer is Fischer (2011) has no stated range: no buffer warning."""
+    import calliope.oxygen_fugacity as fug
+
+    monkeypatch.setattr(fug, 'DEFAULT_FO2_MODEL', 'fischer')
+    assert _run(_config(), _rows([0.0, 0.0], T=[2000.0, 3500.0]), caplog)[1] == 0
+    monkeypatch.setattr(fug, 'DEFAULT_FO2_MODEL', 'hirschmann')
+    assert _run(_config(), _rows([0.0, 0.0], T=[2000.0, 3500.0]), caplog)[1] == 1
 
 
 @pytest.mark.physics_invariant
@@ -334,6 +360,7 @@ def test_odd_row_values_never_raise_and_warn_only_on_finite_inputs(
             'O_kg_atm': [1e22, 1e22],
             'M_mantle': [M_MANTLE, m_mantle],
             'T_magma': [2000.0, T],
+            'outgas_called': [1.0, 1.0],
         }
     )
     records = []
