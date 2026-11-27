@@ -184,6 +184,23 @@ def test_validate_bo_per_observable_needs_more_initial_samples_than_parameters()
     assert comp.validate_bo_per_observable(False, 'LogEI', 3, 5) is False
 
 
+def test_observable_objective_reproduces_eval_obj_with_a_correlated_upper_limit():
+    """The GP path scores a correlated upper limit as eval_obj does, and the correlation
+    changes J."""
+    sigma = Sigma(dict(SIGMA), log=SIGMA.log, upper=['o3'])
+    corr = {'o1': {'o3': 0.5}, 'o2': {'o1': -0.3}}
+    objective = comp.ObservableObjective(TARGET, sigma, corr)
+    u = np.array([[0.4, 0.6], [0.45, 0.5], [0.1, 0.9], [0.8, 0.2]])
+    obs = _observables(u)
+    raw = [{k: v[i] for k, v in obs.items()} for i in range(len(u))]
+    rows = torch.cat([observable_row(r, TARGET, sigma) for r in raw])
+    whitener = CorrelationWhitener(list(TARGET), corr)
+    ref = [float(eval_obj(r, TARGET, sigma, whitener)) for r in raw]
+    torch.testing.assert_close(objective(rows), torch.tensor(ref, dtype=torch.double))
+    uncorrelated = comp.ObservableObjective(TARGET, sigma)(rows)
+    assert (objective(rows) - uncorrelated).abs().max() > 0.01
+
+
 def test_observable_objective_reproduces_eval_obj_with_an_upper_limit():
     """With o3 an upper limit, J of the observable rows equals eval_obj of the raw observables,
     and points below the limit differ from the two-sided objective."""

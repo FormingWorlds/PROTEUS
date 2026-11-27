@@ -1916,6 +1916,28 @@ def test_upper_limit_term_is_the_censored_gaussian():
     assert both.item() == pytest.approx(2 * 1.5 * 2.0 - 1.5**2, rel=1e-10)
 
 
+def test_robust_loss_with_upper_limits_under_a_correlation():
+    """With Huber, an uncorrelated limit keeps its censored term beside the whitened loss of the
+    detections; a correlated limit is refused, as only chi-squared has an exact censored form."""
+    from scipy.stats import norm
+
+    names = ['R_obs', 'T_obs', 'C/O_atm']
+    w = CorrelationWhitener(names, {'R_obs': {'T_obs': 0.5}})
+    diff = torch.tensor([[2.0, -1.0, 0.7]], dtype=torch.double)
+    upper = torch.tensor([False, False, True])
+    got = objective_mod.squared_distance(diff, names, w, ('huber', 1.0), upper).item()
+    z = w.whiten(names[:2] + ['C/O_atm'], diff)[0, :2]
+    huber = torch.where(z.abs() <= 1.0, z**2, 2.0 * z.abs() - 1.0).sum().item()
+    assert got == pytest.approx(huber - 2.0 * norm.logcdf(-0.7), rel=1e-12)
+    assert got != pytest.approx(huber + 0.7**2, rel=1e-3)  # not the two-sided term
+
+    paired = CorrelationWhitener(names, {'T_obs': {'C/O_atm': 0.5}})
+    with pytest.raises(ValueError, match='no correlated upper limit'):
+        objective_mod.squared_distance(diff, names, paired, ('huber', 1.0), upper)
+    chi2 = objective_mod.squared_distance(diff, names, paired, None, upper).item()
+    assert chi2 == pytest.approx(paired.chi_squared(names, diff, {'C/O_atm'}).item())
+
+
 def test_eval_obj_scores_values_below_an_upper_limit_as_a_match():
     """With C/O an upper limit of 0.1 at 0.1 dex, any C/O well below it scores as a perfect
     match, while the same distance above the limit is a poor fit."""
@@ -1947,11 +1969,3 @@ def test_validate_sigma_checks_upper_limits():
             objective_mod.validate_sigma(obs, sig, upper_limits=bad)
     with pytest.raises(ValueError, match='need \\[sigma\\]'):
         objective_mod.validate_sigma(obs, None, upper_limits=['C/O_atm'])
-    with pytest.raises(ValueError, match='correlated'):
-        objective_mod.squared_distance(
-            torch.zeros((1, 2), dtype=torch.double),
-            ['R_obs', 'C/O_atm'],
-            CorrelationWhitener(['R_obs', 'C/O_atm'], {'R_obs': {'C/O_atm': 0.3}}),
-            None,
-            torch.tensor([False, True]),
-        )

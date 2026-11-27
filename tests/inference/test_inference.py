@@ -863,6 +863,21 @@ def test_run_inference_passes_the_loss_to_the_workers(
     assert type(param) is float
 
 
+def test_validate_objective_refuses_a_robust_loss_with_a_correlated_upper_limit():
+    """Chi-2 takes a correlated upper limit; Student-t and Huber take only limits correlated with
+    none."""
+    from proteus.inference.objective import Sigma
+
+    sigma = Sigma({'T_obs': 20.0, 'C/O_atm': 0.02, 'R_obs': 1e5}, upper=['C/O_atm'])
+    paired = {'T_obs': {'C/O_atm': 0.4}}
+    validate = inference_mod.validate_objective
+    assert validate('chi-2', {}, sigma, paired) is None
+    assert validate('huber', {}, sigma, {'T_obs': {'R_obs': 0.4}}) == ('huber', 1.345)
+    for name in ('huber', 'student-t'):
+        with pytest.raises(ValueError, match=r"no correlated upper limit: \['C/O_atm'\]"):
+            validate(name, {}, sigma, paired)
+
+
 def test_validate_objective_accepts_each_objective_and_rejects_misuse():
     """chi-2 (the default) gives None; student-t and huber give (name, float parameter)
     with their defaults. An unknown objective, a parameter of another objective, a

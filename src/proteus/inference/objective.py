@@ -526,21 +526,23 @@ def squared_distance(diff, names, whitener=None, loss=None, upper=None):
 
     An observable in the boolean mask `upper` (shape (len(names),)) is an upper limit: its term
     is -2 ln Phi(-diff), the censored Gaussian, which is 0 far below the limit, 2 ln 2 at it,
-    and tends to diff**2 above it. Upper limits take no correlation.
+    and tends to diff**2 above it. With chi-squared, a limit can be correlated
+    (`CorrelationWhitener.chi_squared`); with a robust loss it must be correlated with none.
     """
     name, param = loss if loss is not None else (None, None)
-    if upper is not None and bool(upper.any()):
-        if whitener is not None:
-            raise ValueError('upper limits cannot be correlated with other observables')
-        terms = torch.where(
-            upper, -2.0 * torch.special.log_ndtr(-diff), _loss_terms(diff, name, param)
-        )
-        return terms.sum(dim=1, keepdim=True)
-    if name is not None and whitener is not None:
+    limits = {k for k, f in zip(names, upper.tolist()) if f} if upper is not None else set()
+    if whitener is not None and name is None:
+        return whitener.chi_squared(names, diff, limits)
+    if whitener is not None:
+        # A limit correlated with none keeps its own residual under the symmetric root
+        if limits & whitener.correlated:
+            raise ValueError(f'objective {name!r} takes no correlated upper limit')
         diff = whitener.whiten(names, diff)
-    if name is None and whitener is not None:
-        return whitener.chi_squared(names, diff)
-    return _loss_terms(diff, name, param).sum(dim=1, keepdim=True)
+        upper = torch.tensor([k in limits for k in whitener.names])
+    terms = _loss_terms(diff, name, param)
+    if limits:
+        terms = torch.where(upper, -2.0 * torch.special.log_ndtr(-diff), terms)
+    return terms.sum(dim=1, keepdim=True)
 
 
 def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None, loss=None):

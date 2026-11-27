@@ -8,6 +8,8 @@ References:
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 torch = pytest.importorskip('torch')
@@ -188,19 +190,65 @@ def test_is_element_ratio_needs_two_elements_and_the_atm_suffix(name, expected):
     assert correlation_mod.is_element_ratio(name) is expected
 
 
-def test_validate_correlation_refuses_upper_limits_with_any_correlation():
-    """An upper limit is refused with a correlation, also one between other observables, as the
-    objective then raises on the first scored run; without upper limits the table is kept."""
+def test_validate_correlation_allows_at_most_one_correlated_upper_limit():
+    """One upper limit may have coefficients and a zero coefficient does not count; two
+    correlated limits are refused, as they would need a multivariate normal CDF."""
     from proteus.inference.objective import validate_sigma
 
-    obs = {'R_obs': 7.0e6, 'T_obs': 600.0, 'C/O_atm': 0.1}
-    given = {'R_obs': 1.0e5, 'T_obs': 20.0, 'C/O_atm': '0.1 dex'}
-    sigma = validate_sigma(obs, given, upper_limits=['C/O_atm'])
-    assert sigma.upper == {'C/O_atm'}
-    for corr in ({'R_obs': {'T_obs': 0.2}}, {'T_obs': {'C/O_atm': 0.2}}):
-        with pytest.raises(ValueError, match='C/O_atm'):
-            correlation_mod.validate_correlation(obs, sigma, corr)
-    kept = correlation_mod.validate_correlation(
-        obs, validate_sigma(obs, given), {'R_obs': {'T_obs': 0.2}}
+    obs = {'R_obs': 7.0e6, 'T_obs': 600.0, 'C/O_atm': 0.1, 'S/O_atm': 0.05}
+    given = {'R_obs': 1.0e5, 'T_obs': 20.0, 'C/O_atm': '0.1 dex', 'S/O_atm': '0.1 dex'}
+    sigma = validate_sigma(obs, given, upper_limits=['C/O_atm', 'S/O_atm'])
+    one = {'T_obs': {'C/O_atm': 0.4, 'S/O_atm': 0.0}, 'R_obs': {'T_obs': 0.2}}
+    assert correlation_mod.validate_correlation(obs, sigma, one) == one
+    with pytest.raises(ValueError, match=r"at most one.*\['C/O_atm', 'S/O_atm'\]"):
+        correlation_mod.validate_correlation(
+            obs, sigma, {'T_obs': {'C/O_atm': 0.4, 'S/O_atm': 0.3}}
+        )
+
+
+@pytest.mark.physics_invariant
+def test_censored_chi_squared_matches_the_integral_of_the_bivariate_normal():
+    """For one detection and one correlated upper limit, the chi-squared equals -2 ln of the
+    bivariate normal density integrated over the limit's residual above u_c (scipy quad), up
+    to ln(2 pi). Ignoring the correlation, or flipping the sign of the conditional mean,
+    misses by more than 1."""
+    from scipy.integrate import quad
+    from scipy.stats import multivariate_normal
+
+    rho, u_d, u_c = 0.6, 1.5, 0.3
+    w = correlation_mod.CorrelationWhitener(['T_obs', 'C/O_atm'], {'T_obs': {'C/O_atm': rho}})
+    u = torch.tensor([[u_d, u_c]], dtype=torch.double)
+    got = w.chi_squared(['T_obs', 'C/O_atm'], u, {'C/O_atm'}).item()
+
+    pdf = multivariate_normal([0.0, 0.0], [[1.0, rho], [rho, 1.0]]).pdf
+    L, _ = quad(lambda r: pdf([u_d, r]), u_c, math.inf, epsabs=1e-13)
+    assert got == pytest.approx(-2.0 * math.log(L) - math.log(2 * math.pi), rel=1e-8)
+
+    from scipy.stats import norm
+
+    s = math.sqrt(1 - rho**2)
+    uncorrelated = u_d**2 - 2 * norm.logcdf(-u_c)
+    flipped = u_d**2 - 2 * norm.logcdf((-rho * u_d - u_c) / s)
+    assert abs(got - uncorrelated) > 1.0 and abs(got - flipped) > 1.0
+
+
+@pytest.mark.physics_invariant
+def test_censored_chi_squared_reduces_without_correlation_of_the_limit():
+    """A limit correlated with none adds -2 ln Phi(-u_c) to the correlated chi-squared of the
+    detections, in every row and whatever the column order; a second, uncorrelated limit adds
+    its own term."""
+    from scipy.stats import norm
+
+    names = ['C/O_atm', 'R_obs', 'S/O_atm', 'T_obs']
+    w = correlation_mod.CorrelationWhitener(names, {'R_obs': {'T_obs': -0.5}})
+    u = torch.tensor([[0.3, 1.0, -2.0, 0.5], [-1.0, -0.4, 1.2, 2.0]], dtype=torch.double)
+    got = w.chi_squared(names, u, {'C/O_atm', 'S/O_atm'})[:, 0]
+    R_inv = torch.linalg.inv(torch.tensor([[1.0, -0.5], [-0.5, 1.0]], dtype=torch.double))
+    det = u[:, [1, 3]]
+    ref = (det @ R_inv * det).sum(1) - 2 * torch.tensor(
+        norm.logcdf(-u[:, [0, 2]].numpy()).sum(1), dtype=torch.double
     )
-    assert kept == {'R_obs': {'T_obs': 0.2}}
+    torch.testing.assert_close(got, ref, rtol=1e-12, atol=1e-12)
+    perm = [3, 2, 1, 0]
+    swapped = w.chi_squared([names[i] for i in perm], u[:, perm], {'C/O_atm', 'S/O_atm'})
+    torch.testing.assert_close(swapped[:, 0], got, rtol=1e-12, atol=1e-12)

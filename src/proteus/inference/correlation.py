@@ -29,6 +29,7 @@ class CorrelationWhitener:
 
     def __init__(self, names: list[str], correlation: dict):
         self.names = list(names)
+        self.correlated = correlated_names(correlation)
         index = {k: i for i, k in enumerate(self.names)}
         mat = torch.eye(len(self.names), dtype=torch.double)
         seen = {}
@@ -57,6 +58,7 @@ class CorrelationWhitener:
             raise ValueError(
                 f'correlation matrix is not positive definite (eigenvalue {eig_min:.3g})'
             )
+        self._mat = mat
         # Symmetric R^(-1/2): unlike the Cholesky factor, it does not depend on the order
         evals, evecs = torch.linalg.eigh(mat)
         self._inv_sqrt = evecs @ torch.diag(evals.rsqrt()) @ evecs.T
@@ -72,11 +74,31 @@ class CorrelationWhitener:
         pos = {k: i for i, k in enumerate(names)}
         return u.reshape(-1, len(names))[:, [pos[k] for k in self.names]]
 
-    def chi_squared(self, names: list[str], u: torch.Tensor) -> torch.Tensor:
+    def chi_squared(self, names: list[str], u: torch.Tensor, upper=()) -> torch.Tensor:
         """Chi-squared, shape (n, 1), of each of the n rows of residuals u = (sim - true) / sigma,
-        columns ordered as `names`."""
-        z = torch.linalg.solve_triangular(self._chol, self._ordered(names, u).T, upper=False)
-        return (z**2).sum(0).reshape(-1, 1)
+        columns ordered as `names`.
+
+        Observables named in `upper` are upper limits, u = (sim - limit) / sigma. The result is
+        then -2 ln L of the censored Gaussian: u_d^T R_dd^-1 u_d over the detections d, plus for
+        each limit c -2 ln Phi((mu - u_c) / s), with mu = R_cd R_dd^-1 u_d and
+        s^2 = 1 - R_cd R_dd^-1 R_dc its conditional mean and variance given the detections.
+        Without correlation this is -2 ln Phi(-u_c). It is exact while the limits are
+        conditionally independent, which `validate_correlation` ensures by allowing at most
+        one limit in the correlation matrix.
+        """
+        u = self._ordered(names, u)
+        c = [i for i, k in enumerate(self.names) if k in upper]
+        if not c:
+            z = torch.linalg.solve_triangular(self._chol, u.T, upper=False)
+            return (z**2).sum(0).reshape(-1, 1)
+        d = [i for i, k in enumerate(self.names) if k not in upper]
+        chol_dd = torch.linalg.cholesky(self._mat[d][:, d])
+        R_cd = self._mat[c][:, d]
+        W = torch.cholesky_solve(R_cd.T, chol_dd).T  # R_cd R_dd^-1, shape (n_c, n_d)
+        z = torch.linalg.solve_triangular(chol_dd, u[:, d].T, upper=False)
+        s = torch.sqrt(1.0 - (W * R_cd).sum(1))
+        censored = -2.0 * torch.special.log_ndtr((u[:, d] @ W.T - u[:, c]) / s)
+        return ((z**2).sum(0) + censored.sum(1)).reshape(-1, 1)
 
     def whiten(self, names: list[str], u: torch.Tensor) -> torch.Tensor:
         """Uncorrelated residuals z = R^(-1/2) u, one row per row of u, columns ordered as
@@ -90,6 +112,17 @@ class CorrelationWhitener:
         return self._ordered(names, u) @ self._inv_sqrt.T
 
 
+def correlated_names(correlation: dict | None) -> set[str]:
+    """Observables with a nonzero coefficient in `correlation`."""
+    return {
+        k
+        for a, row in (correlation or {}).items()
+        for b, rho in row.items()
+        if rho
+        for k in (a, b)
+    }
+
+
 def validate_correlation(
     observables: dict, sigma: dict | None, correlation: dict | None
 ) -> dict | None:
@@ -99,10 +132,10 @@ def validate_correlation(
     if sigma is None:
         raise ValueError('correlation is given but sigma is not: correlations scale sigma')
     CorrelationWhitener(list(observables), correlation)
-    # The objective has no correlated form with a censored term, even for a limit outside every pair
-    upper = sorted(getattr(sigma, 'upper', ()))
-    if upper:
-        raise ValueError(f'upper limits cannot be combined with a correlation: {upper}')
+    # Two correlated limits would need a multivariate normal CDF (CorrelationWhitener.chi_squared)
+    paired = sorted(correlated_names(correlation) & getattr(sigma, 'upper', frozenset()))
+    if len(paired) > 1:
+        raise ValueError(f'at most one upper limit can be correlated, got {paired}')
     return {a: {b: float(rho) for b, rho in row.items()} for a, row in correlation.items()}
 
 

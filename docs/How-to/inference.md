@@ -79,7 +79,7 @@ An example configuration file is available at `input/inference/example.infer.tom
 | `dispatch`, `runner_max_jobs` | `"subprocess"`, `0` | See [Reusing one PROTEUS process per worker](#reusing-one-proteus-process-per-worker) |
 | `objective` | `"chi-2"` | `"chi-2"`, `"student-t"` or `"huber"`; the last two need `[sigma]` |
 | `student_t_dof`, `huber_k` | `4`, `1.345` | Parameter of the Student-t or Huber objective |
-| `upper_limits` | none | Observables given as upper limits; needs `[sigma]` |
+| `upper_limits` | none | Observables given as upper limits; needs `[sigma]`, see [Upper limits](#upper-limits) |
 | `correlate_ratios` | `false` | Derive `[correlation]` for element ratios |
 | `noise`, `noise_seed` | `false`, `seed` | Add one Gaussian draw of `[sigma]` to the observables |
 | `bo_per_observable` | `false` | Optimise with one GP per observable |
@@ -151,7 +151,20 @@ Instead of `u^2`, an upper limit adds the censored Gaussian term
 -2 ln Phi(-u),    u = (sim - limit) / sigma
 ```
 
-where `Phi` is the standard normal cumulative distribution. It is 0 well below the limit, `2 ln 2` at it, and approaches `u^2` above it, so any simulated value well below the limit fits equally well. It applies with every `objective`. Upper limits cannot be combined with `[correlation]` or `correlate_ratios`; the study refuses to start. `noise = true` leaves a limit unchanged, because a limit is a reported value, not a measurement.
+where `Phi` is the standard normal cumulative distribution. It is 0 well below the limit, `2 ln 2` at it, and approaches `u^2` above it, so any simulated value well below the limit fits equally well. It applies with every `objective`. `noise = true` leaves a limit unchanged, because a limit is a reported value, not a measurement.
+
+An upper limit can take part in `[correlation]` or `correlate_ratios`, for example when a published retrieval gives the correlation matrix of all its species, detected or not. The censored term then uses the limit's distribution given the detected observables `d`:
+
+```
+u_d^T R_dd^-1 u_d  -  2 ln Phi( (mu - u) / s ),    mu = R_cd R_dd^-1 u_d,    s^2 = 1 - R_cd R_dd^-1 R_dc
+```
+
+which is exact for Gaussian errors and reduces to the term above without correlation. Two restrictions apply, and the study refuses to start otherwise:
+
+- at most one upper limit may have a correlation coefficient; with two, the term becomes a multivariate normal integral;
+- a correlated upper limit needs `objective = "chi-2"`; Student-t and Huber take limits correlated with no other observable.
+
+A retrieval's correlation coefficients for an undetected species come from samples that are mostly its prior below the detection threshold, so they describe a Gaussian error only roughly; check the effect of a strong coefficient before relying on it.
 
 ### Correlated uncertainties
 

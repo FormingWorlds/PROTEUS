@@ -34,6 +34,7 @@ from proteus.inference.async_BO import checkpoint, parallel_process
 from proteus.inference.composite import validate_bo_per_observable
 from proteus.inference.correlation import (
     composition_from_names,
+    correlated_names,
     ratio_correlation,
     validate_correlation,
 )
@@ -161,11 +162,14 @@ LOSS_PARAMS = {
 }
 
 
-def validate_objective(objective, params: dict, sigma: dict | None) -> tuple[str, float] | None:
+def validate_objective(
+    objective, params: dict, sigma: dict | None, correlation: dict | None = None
+) -> tuple[str, float] | None:
     """Check `objective` and its parameter in `params`; returns (name, parameter), or None for chi-2.
 
     Student-t and Huber combine with `[correlation]` and `correlate_ratios`: the loss then
-    applies to the whitened residuals (`CorrelationWhitener.whiten`).
+    applies to the whitened residuals (`CorrelationWhitener.whiten`). An upper limit in
+    `correlation` takes chi-2 only, the one objective with an exact censored form.
     """
     objective = 'chi-2' if objective is None else objective
     if objective not in OBJECTIVES:
@@ -187,6 +191,9 @@ def validate_objective(objective, params: dict, sigma: dict | None) -> tuple[str
         raise ValueError(
             f'objective "{objective}" needs [sigma]: sigma is the scale of each error'
         )
+    paired = sorted(correlated_names(correlation) & getattr(sigma, 'upper', frozenset()))
+    if paired:
+        raise ValueError(f'objective "{objective}" takes no correlated upper limit: {paired}')
     return objective, float(value)
 
 
@@ -410,7 +417,9 @@ def run_inference(config):
     apply_noise(config)
 
     # Chi-squared or, with `objective`, Student-t or Huber errors
-    config['loss'] = validate_objective(config.get('objective'), config, config['sigma'])
+    config['loss'] = validate_objective(
+        config.get('objective'), config, config['sigma'], config['correlation']
+    )
 
     # Optional true value of each parameter, for studies of a known simulation
     config['truth'] = validate_truth(config['parameters'], config.get('truth'))

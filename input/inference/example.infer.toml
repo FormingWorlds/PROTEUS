@@ -49,7 +49,7 @@ patience   = 0                                    # Stop after this many evaluat
 
 # Top-level keys go above the first [table]; below it, TOML reads them into that table.
 # Observables given as upper limits (non-detections): the value is the limit. Needs [sigma];
-# cannot be combined with [correlation] or correlate_ratios.
+# at most one may be correlated, and only with objective "chi-2".
 # upper_limits = ["S/O_atm"]
 # Derive [correlation] for the ratio observables (e.g. "C/O_atm") from the elements they share,
 # assuming the same dex error for every element. Needs [sigma], equal in dex for every ratio.
