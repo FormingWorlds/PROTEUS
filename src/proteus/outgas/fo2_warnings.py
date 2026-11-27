@@ -7,18 +7,21 @@ Both checks read the helpfile after a row is appended and change nothing.
   (``_structure_target_masses``): oxygen outside the structure leaves the mantle mass of the
   next structure solve. A rise of ``O_kg_total`` since the first finite row above
   ``O_RISE_WARN_FRAC`` of the mantle mass of that row warns once per crossing, when the
-  structure is solved again during the run (``zalmoxis.update_interval > 0``, or an impact).
-  With a wet mantle only ``O_kg_atm`` is outside the structure, and the message reports its
-  change. Outside the guard: the oxygen solved before the first row (the baseline structure
-  solve of a start other than ``liquidus_super``, or ``zalmoxis.equilibrate_init = false``),
-  and oxygen that escape removes and the fixed fO2 derives again, which leaves ``O_kg_total``
-  unchanged while ``M_volatile_change`` takes it from the structure.
+  structure is solved again during the run (``zalmoxis.update_interval > 0``, or an impact),
+  with ``zalmoxis.dry_mantle = true`` only. The baseline structure solve of a start other than
+  ``liquidus_super`` runs at the first evolution step and takes the rise since the first row
+  (1.2e-6 of the mantle mass in a 1 M_E adiabatic start). Outside the guard: a wet mantle,
+  oxygen derived before the first row and absent from its structure
+  (``zalmoxis.equilibrate_init = false``), and oxygen that escape removes and the fixed fO2
+  derives again, which leaves ``O_kg_total`` unchanged while ``M_volatile_change`` takes it
+  from the structure.
 - The IW buffer is evaluated at ``max(T_magma, outgas.T_floor)``. Hirschmann (2021, GCA 313,
   74, Sect. 5) fits it over 1000-3000 K; CALLIOPE uses the fit at every temperature as its
   default buffer from 26.11.8 (pyproject.toml: fwl-calliope>=26.11.8), atmodeller switches to
   Hirschmann (2008) below 1000 K. Among the rows whose step ran an outgassing solve
   (``outgas_called``), the first row below and the first row above the range of the module
-  each warn once per run.
+  each warn once per run. The input configurations start above 3000 K, so the warning on the
+  hot side is expected at the first outgassing step of most runs.
 
 Each decision reads the rows of the helpfile only, so a run resumed from a written row warns
 on the rows after it as an uninterrupted run. A warning first given on a row that was not
@@ -59,7 +62,9 @@ def _check_oxygen(config: Config, hf_all: pd.DataFrame) -> None:
     from proteus.outgas.wrapper import outgassing_derives_o_kg_total
 
     struct = config.interior_struct
-    if struct.module != 'zalmoxis' or not outgassing_derives_o_kg_total(config):
+    if struct.module != 'zalmoxis' or not struct.zalmoxis.dry_mantle:
+        return
+    if not outgassing_derives_o_kg_total(config):
         return
     if not (struct.zalmoxis.update_interval > 0 or config.accretion.module):
         return
@@ -74,23 +79,15 @@ def _check_oxygen(config: Config, hf_all: pd.DataFrame) -> None:
     before = rise[:-1][np.isfinite(rise[:-1])]
     if not rise[-1] > O_RISE_WARN_FRAC or (before.size and before[-1] > O_RISE_WARN_FRAC):
         return
-    if struct.zalmoxis.dry_mantle:
-        where = 'with interior_struct.zalmoxis.dry_mantle = true all of it is outside the structure mass'
-    else:
-        atm = _column(hf_all.get('O_kg_atm'), len(hf_all))
-        where = (
-            'with interior_struct.zalmoxis.dry_mantle = false only O_kg_atm is outside the '
-            f'structure mass (its change since that row: {atm[-1] - atm[base]:.3e} kg)'
-        )
     log.warning(
         'Oxygen derived by the fixed fO2 (outgas.fO2_shift_IW = %+.2f) rose by %.3e kg since '
-        'the first finite row, %.2f %% of the mantle mass of that row (%.3e kg); %s, and the '
-        'mantle loses that mass at the next structure solve.',
+        'the first finite row, %.2f %% of the mantle mass of that row (%.3e kg); with '
+        'interior_struct.zalmoxis.dry_mantle = true all of it is outside the structure mass, '
+        'and the mantle loses that mass at the next structure solve.',
         config.outgas.fO2_shift_IW,
         moved,
         100.0 * rise[-1],
         mantle[base],
-        where,
     )
 
 
