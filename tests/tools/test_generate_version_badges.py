@@ -159,3 +159,13 @@ def test_optional_table_atmodeller_row_and_no_backends():
     assert f'-{short_ref}-' in row
     assert f'[GitHub]({repo_url})' in row
     assert 'djbower' not in row
+
+
+def test_exact_pins_render_with_their_operator_and_version():
+    """An exact == requirement shows its version, in the PyPI table and in an optional extra."""
+    table = _gvb._build_pypi_table(['fwl-calliope==26.11.8', 'fwl-mors>=26.10.6'])
+    assert 'fwl--calliope-%3D%3D26.11.8-blue' in table
+    assert 'https://pypi.org/project/fwl-calliope/26.11.8/' in table
+    assert 'fwl--mors-%3E%3D26.10.6-blue' in table
+    pin, link = _gvb._optional_pin_from_extra({'x': ['atmodeller==1.0.2']}, 'x', 'atmodeller')
+    assert (pin, link) == ('==1.0.2', 'https://pypi.org/project/atmodeller/1.0.2/')
