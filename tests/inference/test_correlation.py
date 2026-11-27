@@ -188,17 +188,19 @@ def test_is_element_ratio_needs_two_elements_and_the_atm_suffix(name, expected):
     assert correlation_mod.is_element_ratio(name) is expected
 
 
-def test_validate_correlation_refuses_an_upper_limit_in_a_pair():
-    """A correlation that involves an upper limit is refused; one between other observables is
-    kept."""
+def test_validate_correlation_refuses_upper_limits_with_any_correlation():
+    """An upper limit is refused with a correlation, also one between other observables, as the
+    objective then raises on the first scored run; without upper limits the table is kept."""
     from proteus.inference.objective import validate_sigma
 
     obs = {'R_obs': 7.0e6, 'T_obs': 600.0, 'C/O_atm': 0.1}
-    sigma = validate_sigma(
-        obs, {'R_obs': 1.0e5, 'T_obs': 20.0, 'C/O_atm': '0.1 dex'}, upper_limits=['C/O_atm']
-    )
+    given = {'R_obs': 1.0e5, 'T_obs': 20.0, 'C/O_atm': '0.1 dex'}
+    sigma = validate_sigma(obs, given, upper_limits=['C/O_atm'])
     assert sigma.upper == {'C/O_atm'}
-    kept = correlation_mod.validate_correlation(obs, sigma, {'R_obs': {'T_obs': 0.2}})
+    for corr in ({'R_obs': {'T_obs': 0.2}}, {'T_obs': {'C/O_atm': 0.2}}):
+        with pytest.raises(ValueError, match='C/O_atm'):
+            correlation_mod.validate_correlation(obs, sigma, corr)
+    kept = correlation_mod.validate_correlation(
+        obs, validate_sigma(obs, given), {'R_obs': {'T_obs': 0.2}}
+    )
     assert kept == {'R_obs': {'T_obs': 0.2}}
-    with pytest.raises(ValueError, match='C/O_atm'):
-        correlation_mod.validate_correlation(obs, sigma, {'T_obs': {'C/O_atm': 0.2}})
