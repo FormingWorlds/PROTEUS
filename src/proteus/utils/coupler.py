@@ -995,10 +995,21 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'M_dissolved_target',
         'M_volatile_change',
         'n_impacts_applied',
+        # last stellar updates: zero, as in a run that predates them, makes the resume compute a new spectrum
+        'star_inst_time',
+        'star_spec_age',
+        'star_spec_dist',
+        'star_spec_time',
         'step_dE_impact_J',
         # structure-solve flags: zero is no core temperature table, as in a run that predates it
         'struct_core_T_excess',
         'struct_core_T_used',
+        # structure-trigger references: zero, as in a run that predates them, makes the resume start from its row
+        'struct_ref_Phi',
+        'struct_ref_T_magma',
+        'struct_ref_time',
+        'struct_ref_w_H2_liquid',
+        'struct_ref_w_H2O_liquid',
         'T_magma_clipped',
     }
 )
@@ -1074,6 +1085,11 @@ def GetHelpfileKeys():
         'struct_mass_desync_frac',  # |trapezoid - ODE accumulator| / accumulator structure mass self-consistency [1]
         'struct_core_T_used',       # 1 when the last Zalmoxis solve set its core temperature from the core temperature table, else 0 [1]
         'struct_core_T_excess',     # largest distance of a core node of that solve beyond the core temperature table, as a fraction of its pressure range [1]
+        'struct_ref_time',          # time of the last structure update, the reference of the structure triggers; before the first, the time of the initial condition [yr]
+        'struct_ref_T_magma',       # T_magma at the last structure update, the reference of the dT/T trigger; before the first, T_magma after the initial condition [K]
+        'struct_ref_Phi',           # Phi_global at the last structure update, the reference of the dPhi trigger; before the first, Phi_global after the initial condition [1]
+        'struct_ref_w_H2O_liquid',  # dissolved H2O mass fraction of the mantle at the last structure update, the reference of the composition trigger [1]
+        'struct_ref_w_H2_liquid',   # dissolved H2 mass fraction of the mantle at the last structure update, the reference of the composition trigger [1]
 
         # Temperatures
         'T_surf',           # global surface temperature [K]
@@ -1183,6 +1199,10 @@ def GetHelpfileKeys():
         'R_star',           # photospheric radius [m]
         'age_star',         # age relative to deuterium fusion 'stellar birthline' [yr]
         'T_star',           # photospheric temperature [K]
+        'star_inst_time',   # time of the last update of the stellar radius, temperature and fluxes [yr]
+        'star_spec_time',   # time of the last update of the stellar spectrum [yr]
+        'star_spec_age',    # star age of that spectrum [yr]
+        'star_spec_dist',   # flux-weighted star-planet distance that spectrum is scaled to; 0 before the first [m]
 
         # Planet observational properties
         'p_obs',            # transit pressure level [bar]

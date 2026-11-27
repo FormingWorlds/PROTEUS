@@ -121,6 +121,8 @@ To track performance over a longer time, use [proteus-bench](https://github.com/
 
 A simulation can generate a large number of files, which becomes a problem when running large [parameter grids](usage_grids.md). The `params.out.archive_mod` configuration option tells PROTEUS when to gather a run's output files into `.tar` archives.
 
+A resumed run (`--resume`) unpacks from `data.tar` only the files it reads: the runtime files, such as the EOS tables, and the snapshots of the latest 10 snapshot times. The archive itself is not changed, and archiving skips a file whose archived copy has the same size and modification time.
+
 Archiving makes the files inaccessible for analysis or plotting. Extract the archives from a run using:
 
 ```console

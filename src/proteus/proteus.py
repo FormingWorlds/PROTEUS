@@ -290,10 +290,6 @@ class Proteus:
         # Giant impacts scheduled for this run, empty when accretion is off
         self.impact_events: list = []
 
-        # Time at which star was last updated
-        self.sspec_prev = -np.inf  # spectrum
-        self.sinst_prev = -np.inf  # instellation and radius
-
         # State at which structure was last re-computed via Zalmoxis
         self.last_struct_time = -np.inf
         self.last_struct_Tmagma = np.inf
@@ -518,6 +514,77 @@ class Proteus:
         self.hf_row['age_star'] += t_end - self.hf_row['Time']
         self.hf_row['Time'] = t_end
 
+    def _run_stellar_step(self) -> bool:
+        """Update the stellar quantities and the spectrum when their time intervals have passed.
+
+        The row keeps the times of the last updates and the star age and distance of the
+        last spectrum, so a resumed run computes that spectrum again and updates at the same
+        rows as a run that goes through in one go. Returns whether the spectrum changed.
+        """
+        from proteus.star.wrapper import (
+            flux_weighted_distance,
+            update_stellar_quantities,
+            write_spectrum,
+        )
+
+        log = logging.getLogger('fwl.' + __name__)
+
+        # Stellar quantities are also updated when the time-step is clamped.
+        if (
+            self.loops['total'] == 0
+            or getattr(self.interior_o, 'timestep_clamped', False)
+            or abs(self.hf_row['Time'] - self.hf_row['star_inst_time'])
+            > self.config.params.dt.starinst
+        ):
+            self.hf_row['star_inst_time'] = self.hf_row['Time']
+            update_stellar_quantities(
+                self.hf_row, self.config, stellar_track=self.stellar_track
+            )
+
+        # A resumed run has no spectrum yet; a helpfile without its distance gets a new one.
+        if self.star_wl is None and self.hf_row['star_spec_dist'] > 0:
+            log.info(
+                'Restoring the stellar spectrum of t = %g yr', self.hf_row['star_spec_time']
+            )
+            self.star_wl, self.star_fl = self._stellar_spectrum()
+
+        if self.star_wl is not None and (
+            abs(self.hf_row['Time'] - self.hf_row['star_spec_time'])
+            <= self.config.params.dt.starspec
+        ):
+            log.info('Updated spectrum not required')
+            return False
+
+        log.info('Updating stellar spectrum')
+        self.hf_row['star_spec_time'] = self.hf_row['Time']
+        self.hf_row['star_spec_age'] = self.hf_row['age_star']
+        self.hf_row['star_spec_dist'] = flux_weighted_distance(self.hf_row)
+        self.star_wl, self.star_fl = self._stellar_spectrum()
+        write_spectrum(self.star_wl, self.star_fl, self.hf_row, self.directories['output'])
+        return True
+
+    def _stellar_spectrum(self):
+        """Stellar spectrum at the row's `star_spec_age` [yr] and `star_spec_dist` [m].
+
+        Returns the wavelengths [nm] and fluxes [erg s-1 cm-2 nm-1] at the top of an
+        atmosphere at that distance, the flux-weighted one that F_ins and F_xuv use, so the
+        spectrum and the scalar fluxes derived from the same star agree on an eccentric orbit.
+        """
+        from proteus.star.wrapper import get_new_spectrum, scale_spectrum_to_toa
+
+        wl, fl = get_new_spectrum(
+            self.hf_row['star_spec_age'],
+            self.config,
+            # Variables needed for mors.spada
+            star_struct_modern=self.star_struct,
+            star_props_modern=self.star_props,
+            # Variables needed for mors.baraffe
+            stellar_track=self.stellar_track,
+            modern_wl=self.star_modern_wl,
+            modern_fl=self.star_modern_fl,
+        )
+        return wl, scale_spectrum_to_toa(fl, self.hf_row['star_spec_dist'])
+
     def _run_escape_step(self) -> bool:
         """Run escape and record the element mass it removed for the Zalmoxis target.
 
@@ -712,13 +779,8 @@ class Proteus:
 
         #   stellar spectrum and evolution
         from proteus.star.wrapper import (
-            flux_weighted_distance,
-            get_new_spectrum,
             init_star,
-            scale_spectrum_to_toa,
             update_stellar_mass,
-            update_stellar_quantities,
-            write_spectrum,
         )
 
         #   other utilities
@@ -1038,10 +1100,9 @@ class Proteus:
             if len(self.hf_all) <= self.loops['init_loops'] + 1:
                 raise RuntimeError('Simulation is too short to be resumed')
 
-            # Extract archived data files before choosing a resume point, so
-            # the loose per-iteration snapshots are present on disk.
-            log.debug('Extracting archived data files')
-            self.extract_archives()
+            # Unpack the latest snapshots and the runtime files before choosing a
+            # resume point; the older snapshots stay in the archive.
+            archive.extract_latest(self.directories['output/data'])
             self._require_paleos_tables()
 
             # Resume from the latest snapshot pair that is complete and belongs
@@ -1188,29 +1249,24 @@ class Proteus:
                     self.directories['spider_liquidus_ps'] = liquidus_ps
                 log.info('Restored spider_eos_dir: %s', eos_dir_restored)
 
-            # Initialize structure-update sentinels from last helpfile row
-            self.last_struct_time = self.hf_row.get('Time', 0.0)
-            self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
-            self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
+            # Structure-update triggers: the references of the last update, stored in the row.
+            # A helpfile written before they were stored falls back to the row itself.
+            from proteus.interior_energetics.wrapper import restore_structure_trigger_state
+
+            refs = restore_structure_trigger_state(self.hf_row, self.directories)
+            if refs is None:
+                refs = (
+                    self.hf_row.get('Time', 0.0),
+                    self.hf_row.get('T_magma', np.inf),
+                    self.hf_row.get('Phi_global', np.inf),
+                )
+            self.last_struct_time, self.last_struct_Tmagma, self.last_struct_Phi = refs
 
             if (
                 self.config.interior_struct.module == 'zalmoxis'
                 and self.config.interior_energetics.module == 'aragog'
             ):
                 self._resync_zalmoxis_mesh()
-
-            # Arm the resume-settling structure-re-solve guard. The resumed
-            # interior relaxes thermally over the first loops and would
-            # otherwise fire repeated dynamic structure re-solves that recompute
-            # the same converged radius at a large wall cost. The guard (in
-            # interior_energetics/wrapper.py) suppresses dT/T-only re-solves once
-            # the radius has converged, within this window. Only the resume path
-            # arms it, so a fresh run's re-solve cadence is unchanged.
-            from proteus.interior_energetics.wrapper import (
-                _RESUME_STRUCT_SETTLE_LOOPS,
-            )
-
-            self.directories['_resume_struct_settle_loops'] = _RESUME_STRUCT_SETTLE_LOOPS
 
         log.info(' ')
 
@@ -1379,13 +1435,6 @@ class Proteus:
                     _t_mod['structure'] = time.perf_counter() - _t0
                 # gc.collect() already called inside update_structure_from_interior()
 
-                # Count down the resume-settling structure-re-solve window once
-                # per loop. When it reaches zero the guard disengages and the
-                # normal dynamic re-solve cadence resumes. Only ever armed on the
-                # resume path, so a fresh run never decrements (the key is absent).
-                if self.directories.get('_resume_struct_settle_loops', 0) > 0:
-                    self.directories['_resume_struct_settle_loops'] -= 1
-
             ############### / INTERIOR AND STRUCTURE
 
             ############### VOLATILE TRAPPING
@@ -1421,57 +1470,7 @@ class Proteus:
             PrintHalfSeparator()
             log.info('Stellar flux management...')
             _t0_stellar = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-            update_stellar_spectrum = False
-
-            # Ensure stellar quantities are updated when time-step is clamped.
-            if getattr(self.interior_o, 'timestep_clamped', False):
-                self.sinst_prev = -np.inf
-
-            # Calculate new instellation and radius
-            if (
-                abs(self.hf_row['Time'] - self.sinst_prev) > self.config.params.dt.starinst
-            ) or (self.loops['total'] == 0):
-                self.sinst_prev = self.hf_row['Time']
-
-                update_stellar_quantities(
-                    self.hf_row, self.config, stellar_track=self.stellar_track
-                )
-
-            if (
-                abs(self.hf_row['Time'] - self.sspec_prev) > self.config.params.dt.starspec
-            ) or (self.loops['total'] == 0):
-                self.sspec_prev = self.hf_row['Time']
-                update_stellar_spectrum = True
-
-                # Get the new spectrum using the appropriate module
-                log.info('Updating stellar spectrum')
-                self.star_wl, self.star_fl = get_new_spectrum(
-                    # Required variables
-                    self.hf_row['age_star'],
-                    self.config,
-                    # Variables needed for mors.spada
-                    star_struct_modern=self.star_struct,
-                    star_props_modern=self.star_props,
-                    # Variables needed for mors.baraffe
-                    stellar_track=self.stellar_track,
-                    modern_wl=self.star_modern_wl,
-                    modern_fl=self.star_modern_fl,
-                )
-
-                # Scale fluxes from 1 AU to TOA. This uses the same orbital
-                # average as F_ins and F_xuv, so the spectrum and the scalar
-                # fluxes derived from the same star agree on an eccentric orbit.
-                self.star_fl = scale_spectrum_to_toa(
-                    self.star_fl, flux_weighted_distance(self.hf_row)
-                )
-
-                # Save spectrum to file
-                write_spectrum(
-                    self.star_wl, self.star_fl, self.hf_row, self.directories['output']
-                )
-
-            else:
-                log.info('Updated spectrum not required')
+            update_stellar_spectrum = self._run_stellar_step()
 
             if _IT_TIMING_ENABLED:
                 _t_mod['stellar'] = time.perf_counter() - _t0_stellar
@@ -1676,6 +1675,13 @@ class Proteus:
                 self.interior_o.ic = 2
 
             # Update full helpfile
+            from proteus.interior_energetics.wrapper import store_structure_trigger_state
+
+            store_structure_trigger_state(
+                self.hf_row,
+                self.directories,
+                (self.last_struct_time, self.last_struct_Tmagma, self.last_struct_Phi),
+            )
             if self.loops['total'] > 1:
                 # append row
                 self.hf_all = ExtendHelpfile(self.hf_all, self.hf_row)
