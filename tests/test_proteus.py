@@ -5674,3 +5674,18 @@ def test_main_loop_checks_chemistry_targets_only_on_steps_without_a_snapshot(tmp
     # is_snapshot reads the count before its increment, so steps 0, 2 and 4 write; the
     # check runs on steps 1, 3 and 5, by which time the count reads 2, 4 and 6
     assert calls == [2, 4, 6]
+
+
+def test_the_main_loop_checks_the_fo2_warnings_after_each_appended_row(tmp_path):
+    """Every iteration passes the helpfile, with its new row, to the fixed-fO2 warnings."""
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    seen = []
+
+    def _record(config, hf_all):
+        seen.append((p.loops['total'], hf_all.iloc[-1].to_dict()['Time']))
+
+    with patch('proteus.outgas.fo2_warnings.check_fo2_warnings', side_effect=_record) as check:
+        _run_main_loop_capturing_plots(p, stop_at_loop=4)
+    assert check.call_count == p.loops['total']
+    assert [n for n, _ in seen] == list(range(1, p.loops['total'] + 1))
+    assert all(c.args[0] is p.config for c in check.call_args_list)

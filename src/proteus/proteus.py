@@ -1677,6 +1677,10 @@ class Proteus:
                 # first iter => generate new HF from dict
                 self.hf_all = CreateHelpfileFromDict(self.hf_row)
 
+            from proteus.outgas.fo2_warnings import check_fo2_warnings
+
+            check_fo2_warnings(self.config, self.hf_all)
+
             # Write helpfile to disk (gated by is_snapshot, which
             # combines write_mod iteration check and dt_write time check)
             if is_snapshot:

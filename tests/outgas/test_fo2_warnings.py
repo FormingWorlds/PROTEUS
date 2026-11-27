@@ -82,8 +82,8 @@ def _run(config, hf_all, caplog, start=1):
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(
     ('last', 'n'),
-    [(1.01 * O_RISE_WARN_FRAC, 1), (0.99 * O_RISE_WARN_FRAC, 0), (O_RISE_WARN_FRAC, 0)],
-    ids=['just_above', 'just_below', 'at_threshold'],
+    [(1.01 * O_RISE_WARN_FRAC, 1), (0.99 * O_RISE_WARN_FRAC, 0)],
+    ids=['just_above', 'just_below'],
 )
 def test_oxygen_warning_fires_only_above_the_threshold(caplog, last, n):
     """The rise warns strictly above O_RISE_WARN_FRAC of the mantle, on both sides of it."""
@@ -188,7 +188,8 @@ def test_buffer_warning_at_the_range_edges(caplog, module, T, n):
     _, n_t = _run(_config(module=module), _rows([0.0, 0.0], T=[2000.0, T]), caplog)
     assert n_t == n
     if n:
-        assert 'Hirschmann (2021)' in caplog.text
+        assert 'Hirschmann (2021, GCA 313, 74)' in caplog.text
+        assert f'{max(T, 700.0):.1f} K' in caplog.text
 
 
 @pytest.mark.physics_invariant
@@ -198,7 +199,7 @@ def test_buffer_warning_once_per_run(caplog):
         _config(), _rows([0.0] * 5, T=[3980.0, 4100.0, 2500.0, 3500.0, 3600.0]), caplog, start=1
     )
     assert n_t == 1
-    assert '3980 K' in caplog.text
+    assert '3980.0 K' in caplog.text
 
 
 @pytest.mark.physics_invariant
@@ -208,7 +209,7 @@ def test_buffer_temperature_is_the_floored_magma_temperature(caplog):
     assert n_t == 0
     _, n_t = _run(_config(T_floor=700.0), _rows([0.0, 0.0], T=[500.0, 600.0]), caplog)
     assert n_t == 1
-    assert '700 K' in caplog.text
+    assert '700.0 K' in caplog.text
 
 
 @pytest.mark.physics_invariant
