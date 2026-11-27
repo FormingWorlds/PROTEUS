@@ -146,6 +146,11 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `struct_mass_desync_frac` | `1` | \|trapezoid - ODE accumulator\| / accumulator structure mass self-consistency | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct |
 | `struct_core_T_used` | `1` | 1 when the last Zalmoxis solve set its core temperature from the core temperature table, else 0 | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_energetics, interior_struct |
 | `struct_core_T_excess` | `1` | largest distance of a core node of that solve beyond the core temperature table, as a fraction of its pressure range | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_energetics |
+| `struct_ref_time` | `yr` | time of the last structure update, the reference of the structure triggers; before the first, the time of the initial condition | `interior_energetics/wrapper.py` | always | interior_energetics |
+| `struct_ref_T_magma` | `K` | T_magma at the last structure update, the reference of the dT/T trigger; before the first, T_magma after the initial condition | `interior_energetics/wrapper.py` | always | interior_energetics |
+| `struct_ref_Phi` | `1` | Phi_global at the last structure update, the reference of the dPhi trigger; before the first, Phi_global after the initial condition | `interior_energetics/wrapper.py` | always | interior_energetics |
+| `struct_ref_w_H2O_liquid` | `1` | dissolved H2O mass fraction of the mantle at the last structure update, the reference of the composition trigger | `interior_energetics/wrapper.py` | always | interior_energetics |
+| `struct_ref_w_H2_liquid` | `1` | dissolved H2 mass fraction of the mantle at the last structure update, the reference of the composition trigger | `interior_energetics/wrapper.py` | always | interior_energetics |
 
 ### Temperatures
 
@@ -256,7 +261,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `step_dE_core_J` | `J` | core heat change over the call net of its internal source, plus the jump of the heat content since the last kept call; computed only with core_bc = core_module, 0 otherwise | `interior_energetics/aragog_core.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog", interior_energetics.aragog.core_bc = "core_module"; interior_energetics.module = "aragog" | utils |
 | `E_core_residual_J` | `J` | cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J - step_dE_impact_core_refit_J - step_dE_struct_core_J); computed only with core_bc = core_module, 0 otherwise | `utils/coupler.py` | always | utils |
 | `E_core_residual_frac` | `1` | E_core_residual_J / max(sum(\|step_dE_F_cmb_J\| + \|the 3 booked terms\|), 1 J); a booked term equals the jump it explains by construction, so the fraction checks the bookkeeping of those terms and the solver's core heat against its CMB flux; computed only with core_bc = core_module, 0 otherwise | `utils/coupler.py` | always |   |
-| `Cp_eff` | `J kg-1 K-1` | effective mantle heat capacity | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "spider" |   |
+| `Cp_eff` | `J kg-1 K-1` | effective mantle heat capacity | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "spider" |   |
 
 ### Host star properties
 
@@ -266,6 +271,10 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `R_star` | `m` | photospheric radius | `star/wrapper.py` | always | atmos_chem, atmos_clim, observe, orbit, plot, star |
 | `age_star` | `yr` | age relative to deuterium fusion 'stellar birthline' | `proteus.py` | always | main loop, star |
 | `T_star` | `K` | photospheric temperature | `star/wrapper.py` | always | observe, star |
+| `star_inst_time` | `yr` | time of the last update of the stellar radius, temperature and fluxes | `proteus.py` | always | main loop |
+| `star_spec_time` | `yr` | time of the last update of the stellar spectrum | `proteus.py` | always | atmos_clim, main loop |
+| `star_spec_age` | `yr` | star age of that spectrum | `proteus.py` | always | main loop |
+| `star_spec_dist` | `m` | flux-weighted star-planet distance that spectrum is scaled to; 0 before the first | `proteus.py` | always | main loop |
 
 ### Planet observational properties
 

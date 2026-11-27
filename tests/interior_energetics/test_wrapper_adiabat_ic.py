@@ -794,7 +794,8 @@ def test_ic_adiabat_gate_fires_for_zalmoxis_liquidus_super_non_spider(
 
     config = _gate_config(module, temperature_mode)
     dirs = {'output': '/tmp/out', 'spider': '/tmp/spider'}
-    hf_row = {'P_cmb': 1.456e12, 'R_int': 1.2e7}
+    # The stubbed solve writes nothing, so the row holds a finite structure for the value check
+    hf_row = {'P_cmb': 1.456e12, 'R_int': 1.2e7, 'M_int': 5.97e24}
 
     with (
         patch.object(wmod, 'get_nlevb', return_value=80),
