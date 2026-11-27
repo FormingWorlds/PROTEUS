@@ -5697,22 +5697,36 @@ def _set_crystallized(self):
     self.crystallized = True
 
 
+def _called(dirs, config, hf_row, *args, **kwargs):
+    hf_row['outgas_called'] = 1.0
+
+
+def _seal_opens(dirs, config, hf_row, interior, sealed, **kwargs):
+    """Held for 2 steps, then open with an outgassing call, as run_lid_seal_step does."""
+    _seal_opens.n += 1
+    if _seal_opens.n > 2:
+        _called(dirs, config, hf_row)
+    return _seal_opens.n <= 2
+
+
 @pytest.mark.parametrize(
     ('case', 'expected'),
     [
         ('outgassing', [1.0] * 6),
         ('desiccated', [1.0, 1.0, 1.0, 1.0, 0.0, 0.0]),
         ('crystallized', [1.0, 1.0, 1.0, 1.0, 0.0, 0.0]),
-        ('seal_closes_then_held', [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-        ('seal_held_then_opens', [1.0, 0.0, 1.0, 1.0, 1.0, 1.0]),
+        ('seal_held', [0.0] * 6),
+        ('seal_held_then_opens', [0.0, 0.0, 1.0, 1.0, 1.0, 1.0]),
     ],
 )
 def test_the_main_loop_checks_the_fo2_warnings_after_each_appended_row(
     tmp_path, case, expected
 ):
     """Every iteration, also one without a snapshot, passes the helpfile to the fO2 warnings, and
-    the row records whether its volatile exchange ran an outgassing call."""
+    each step starts its row at no outgassing call, so only a step whose outgassing call runs
+    (run_outgassing sets the column) records one."""
     p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=3, dt_write_rel=1e9)
+    _seal_opens.n = 0
     dry = patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
     extra = {
         'outgassing': [dry],
@@ -5721,7 +5735,7 @@ def test_the_main_loop_checks_the_fo2_warnings_after_each_appended_row(
             dry,
             patch.object(type(p), '_check_crystallization', _set_crystallized),
         ],
-        'seal_closes_then_held': [
+        'seal_held': [
             dry,
             patch('proteus.outgas.lid_seal.seal_enabled', return_value=True),
             patch('proteus.outgas.lid_seal.run_lid_seal_step', return_value=True),
@@ -5729,13 +5743,14 @@ def test_the_main_loop_checks_the_fo2_warnings_after_each_appended_row(
         'seal_held_then_opens': [
             dry,
             patch('proteus.outgas.lid_seal.seal_enabled', return_value=True),
-            patch(
-                'proteus.outgas.lid_seal.run_lid_seal_step',
-                side_effect=[True, True, False, False, False, False],
-            ),
+            patch('proteus.outgas.lid_seal.run_lid_seal_step', side_effect=_seal_opens),
         ],
     }[case]
-    called = _fo2_rows(p, *extra)
+    called = _fo2_rows(
+        p,
+        patch('proteus.outgas.wrapper.run_outgassing_and_vapourisation', side_effect=_called),
+        *extra,
+    )
     assert len(called) == p.loops['total'] == 6
     assert called == expected
 
