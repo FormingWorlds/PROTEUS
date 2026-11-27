@@ -138,28 +138,16 @@ def test_oxygen_warning_once_per_crossing(caplog):
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize(
-    ('dry', 'outside'),
-    [
-        (
-            True,
-            'dry_mantle = true all of it is outside the structure mass, and the mantle loses that mass',
-        ),
-        (
-            False,
-            f'only O_kg_atm is outside the structure mass (its change since that row: {0.005 * M_MANTLE:.3e} kg), and',
-        ),
-    ],
-    ids=['dry_mantle', 'wet_mantle'],
-)
-def test_oxygen_warning_names_values_and_the_mass_outside_the_structure(caplog, dry, outside):
+def test_oxygen_warning_names_values_and_the_mass_outside_the_structure(caplog):
     """The message gives the O_kg_total rise, its fraction of the mantle and the mass outside the structure."""
-    O_atm = [1e22, 1e22 + 0.005 * M_MANTLE]
-    assert _run(_config(dry=dry), _rows([0.0, 0.02], O_atm=O_atm), caplog)[0] == 1
+    assert _run(_config(), _rows([0.0, 0.02]), caplog)[0] == 1
     assert f'rose by {0.02 * M_MANTLE:.3e} kg' in caplog.text
     assert f'2.00 % of the mantle mass of that row ({M_MANTLE:.3e} kg)' in caplog.text
     assert 'outgas.fO2_shift_IW = +2.00' in caplog.text
-    assert outside in caplog.text
+    assert (
+        'dry_mantle = true all of it is outside the structure mass, and the mantle loses'
+        in caplog.text
+    )
 
 
 @pytest.mark.physics_invariant
@@ -195,13 +183,11 @@ def test_an_impact_resolves_the_structure_without_update_interval(caplog):
 
 
 @pytest.mark.physics_invariant
-def test_wet_mantle_warns_on_the_derived_oxygen_not_on_degassing(caplog):
-    """With dry_mantle off, O_kg_atm that rises by degassing at a constant O_kg_total is quiet;
-    a rise of the derived O_kg_total warns."""
-    degassing = _rows([0.0, 0.0], O_atm=[1e22, 1e22 + 0.01 * M_MANTLE])
-    assert _run(_config(dry=False), degassing, caplog)[0] == 0
-    derived = _rows([0.0, 0.01], O_atm=[1e22, 1e22])
-    assert _run(_config(dry=False), derived, caplog)[0] == 1
+def test_wet_mantle_gives_no_oxygen_warning(caplog):
+    """With dry_mantle off the guard does not apply, for a rise of O_kg_total and of O_kg_atm."""
+    rows = _rows([0.0, 0.02], O_atm=[1e22, 1e22 + 0.02 * M_MANTLE])
+    assert _run(_config(dry=False), rows, caplog)[0] == 0
+    assert _run(_config(dry=True), rows, caplog)[0] == 1
 
 
 @pytest.mark.physics_invariant
@@ -220,15 +206,14 @@ def test_rise_is_relative_to_the_mantle_mass_of_the_baseline_row(caplog):
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize('dry', [True, False], ids=['dry_mantle', 'wet_mantle'])
-def test_the_warned_column_is_the_one_the_structure_target_removes(dry):
-    """Mass added to the warned column leaves the structure target; mass in the other column does not."""
+def test_the_warned_column_is_the_one_the_structure_target_removes():
+    """Mass added to O_kg_total leaves the dry structure target; mass in O_kg_atm alone does not."""
     from proteus.config import read_config_object
     from proteus.interior_struct.zalmoxis import _structure_target_masses
 
     config = read_config_object(QUICK)
-    config.interior_struct.zalmoxis.dry_mantle = dry
-    col, other = ('O_kg_total', 'O_kg_atm') if dry else ('O_kg_atm', 'O_kg_total')
+    config.interior_struct.zalmoxis.dry_mantle = True
+    col, other = 'O_kg_total', 'O_kg_atm'
     row = {'O_kg_total': 2e21, 'O_kg_atm': 1e21, 'H_kg_total': 3e20, 'H_kg_atm': 2e20}
     dm = 7e20
     base = _structure_target_masses(config, row)

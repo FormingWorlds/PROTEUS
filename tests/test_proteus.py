@@ -5678,21 +5678,6 @@ def test_main_loop_checks_chemistry_targets_only_on_steps_without_a_snapshot(tmp
     assert calls == [2, 4, 6]
 
 
-def _fo2_rows(p, *extra):
-    """Per iteration: the loop count, whether the check got p.config and p.hf_all, and outgas_called."""
-    rows = []
-
-    def _record(config, hf_all):
-        ok = config is p.config and hf_all is p.hf_all
-        rows.append((p.loops['total'], ok, hf_all.iloc[-1].to_dict()['outgas_called']))
-
-    with patch('proteus.outgas.fo2_warnings.check_fo2_warnings', side_effect=_record):
-        _run_main_loop_capturing_plots(p, *extra, stop_at_loop=6)
-    assert [n for n, _, _ in rows] == list(range(1, p.loops['total'] + 1))
-    assert all(ok for _, ok, _ in rows)
-    return [c for _, _, c in rows]
-
-
 def _set_crystallized(self):
     self.crystallized = True
 
@@ -5746,13 +5731,19 @@ def test_the_main_loop_checks_the_fo2_warnings_after_each_appended_row(
             patch('proteus.outgas.lid_seal.run_lid_seal_step', side_effect=_seal_opens),
         ],
     }[case]
-    called = _fo2_rows(
-        p,
-        patch('proteus.outgas.wrapper.run_outgassing_and_vapourisation', side_effect=_called),
-        *extra,
-    )
-    assert len(called) == p.loops['total'] == 6
-    assert called == expected
+    rows = []  # per iteration: loop count, check got p.config and p.hf_all, outgas_called
+
+    def _record(config, hf_all):
+        ok = config is p.config and hf_all is p.hf_all
+        rows.append((p.loops['total'], ok, hf_all.iloc[-1].to_dict()['outgas_called']))
+
+    run = patch('proteus.outgas.wrapper.run_outgassing_and_vapourisation', side_effect=_called)
+    with patch('proteus.outgas.fo2_warnings.check_fo2_warnings', side_effect=_record):
+        _run_main_loop_capturing_plots(p, run, *extra, stop_at_loop=6)
+    assert p.loops['total'] == 6
+    assert [n for n, _, _ in rows] == list(range(1, p.loops['total'] + 1))
+    assert all(ok for _, ok, _ in rows)
+    assert [c for _, _, c in rows] == expected
 
 
 # ---------------------------------------------------------------------------
