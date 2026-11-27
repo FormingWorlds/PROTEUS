@@ -271,6 +271,10 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `R_star` | `m` | photospheric radius | `star/wrapper.py` | always | atmos_chem, atmos_clim, observe, orbit, plot, star |
 | `age_star` | `yr` | age relative to deuterium fusion 'stellar birthline' | `proteus.py` | always | main loop, star |
 | `T_star` | `K` | photospheric temperature | `star/wrapper.py` | always | observe, star |
+| `star_inst_time` | `yr` | time of the last update of the stellar radius, temperature and fluxes | `proteus.py` | always | main loop |
+| `star_spec_time` | `yr` | time of the last update of the stellar spectrum | `proteus.py` | always | atmos_clim, main loop |
+| `star_spec_age` | `yr` | star age of that spectrum | `proteus.py` | always | main loop |
+| `star_spec_dist` | `m` | flux-weighted star-planet distance that spectrum is scaled to; 0 before the first | `proteus.py` | always | main loop |
 
 ### Planet observational properties
 
