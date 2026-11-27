@@ -175,6 +175,16 @@ def test_validate_bo_per_observable():
         comp.validate_bo_per_observable(True, 'TS')
 
 
+def test_validate_bo_per_observable_needs_more_initial_samples_than_parameters():
+    """Each observable GP needs d + 1 scored runs: 6 initial samples pass for 5 parameters, 5 do
+    not; a grid (n_init None) and the flag off are not checked here."""
+    assert comp.validate_bo_per_observable(True, 'LogEI', 6, 5) is True
+    with pytest.raises(ValueError, match='at least 6 for 5 parameters, got 5'):
+        comp.validate_bo_per_observable(True, 'LogEI', 5, 5)
+    assert comp.validate_bo_per_observable(True, 'LogEI', None, 5) is True
+    assert comp.validate_bo_per_observable(False, 'LogEI', 3, 5) is False
+
+
 def test_observable_objective_reproduces_eval_obj_with_an_upper_limit():
     """With o3 an upper limit, J of the observable rows equals eval_obj of the raw observables,
     and points below the limit differ from the two-sided objective."""

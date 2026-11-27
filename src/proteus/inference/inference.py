@@ -425,8 +425,13 @@ def run_inference(config):
     )
 
     # One GP per observable in the optimisation, instead of one GP of the objective
+    # Random initial samples as create_init counts them; None for a grid
+    n_init = None
+    if str(config.get('init_grid', 'none')).lower().strip() == 'none':
+        n_init = int(config.get('init_samps') or 0)
+        n_init = n_init if n_init >= 1 else int(config.get('n_workers', 1))
     config['bo_per_observable'] = validate_bo_per_observable(
-        config.get('bo_per_observable'), config['acqf']
+        config.get('bo_per_observable'), config['acqf'], n_init, len(config['parameters'])
     )
 
     # How each worker runs its evaluations, validated before the output folder is emptied.

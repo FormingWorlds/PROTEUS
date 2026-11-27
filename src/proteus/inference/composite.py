@@ -136,12 +136,19 @@ class ObservableSurrogate:
         )
 
 
-def validate_bo_per_observable(flag, acqf: str) -> bool:
-    """Check `bo_per_observable`: a bool, default false, with an acquisition that supports it."""
+def validate_bo_per_observable(flag, acqf: str, n_init: int | None = None, d: int = 0) -> bool:
+    """Check `bo_per_observable`: a bool, default false, with an acquisition that supports it
+    and, when `n_init` random initial samples are drawn, more of them than the `d` parameters,
+    which each observable GP needs (`fit_gp`). A grid's size is checked when it is loaded."""
     if flag is None:
         return False
     if not isinstance(flag, bool):
         raise ValueError(f'bo_per_observable must be true or false, got {flag!r}')
     if flag and acqf not in OBSERVABLE_ACQFS:
         raise ValueError(f'bo_per_observable needs acqf in {OBSERVABLE_ACQFS}, got {acqf!r}')
+    if flag and n_init is not None and n_init < d + 1:
+        raise ValueError(
+            f'bo_per_observable needs init_samps of at least {d + 1} for {d} parameters, '
+            f'got {n_init}'
+        )
     return flag
