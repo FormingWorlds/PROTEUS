@@ -4538,6 +4538,7 @@ def test_start_records_status_25_on_sigterm(monkeypatch, tmp_path):
             signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
 
     monkeypatch.setattr(cli, 'Proteus', FakeProteus)
+    monkeypatch.setattr('proteus.utils.julia_env.julia_handles_signals', lambda: False)
     # Without the handler under test, the stub calls this one and the run keeps status 1.
     signal.signal(signal.SIGTERM, lambda *_: None)
     res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
@@ -4576,6 +4577,7 @@ def test_a_second_sigterm_during_the_status_write_keeps_status_25(monkeypatch, t
     real_rm = helper.safe_rm
     monkeypatch.setattr(helper, 'safe_rm', remove_then_signal)
     monkeypatch.setattr(cli, 'Proteus', FakeProteus)
+    monkeypatch.setattr('proteus.utils.julia_env.julia_handles_signals', lambda: False)
     saved = signal.getsignal(signal.SIGTERM)
     try:
         res = CliRunner().invoke(cli.start, ['-c', str(cfg)])

@@ -373,6 +373,7 @@ def test_serve_records_status_25_when_sigterm_stops_a_run(monkeypatch, tmp_path)
             signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
 
     monkeypatch.setattr('proteus.proteus.Proteus', _Proteus)
+    monkeypatch.setattr('proteus.utils.julia_env.julia_handles_signals', lambda: False)
     request_r, request_w = os.pipe()
     reply_r, reply_w = os.pipe()
     with os.fdopen(request_w, 'w') as requests:

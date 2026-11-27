@@ -4,7 +4,6 @@ import importlib.util
 import logging
 import os
 import shlex
-import signal
 import sys
 from difflib import get_close_matches
 from pathlib import Path
@@ -84,6 +83,7 @@ from proteus.utils.install_env import (  # noqa: E402
     quoted_names,
     reload_instruction,
 )
+from proteus.utils.julia_env import exit_on_sigterm  # noqa: E402
 from proteus.utils.logs import bootstrap_logger, setup_logger  # noqa: E402
 
 log = logging.getLogger('fwl.' + __name__)
@@ -245,8 +245,7 @@ cli.add_command(plot)
 )
 def start(config_path: Path, resume: bool, offline: bool, deterministic: bool):
     """Start proteus run"""
-    # SLURM ends a job with SIGTERM; as SystemExit it lets Proteus.start record status 25.
-    signal.signal(signal.SIGTERM, lambda signum, _: sys.exit(128 + signum))
+    exit_on_sigterm()
     if deterministic and os.environ.get(_PROTEUS_DETERMINISTIC_SENTINEL) != '1':
         click.secho(
             '[!] --deterministic was requested but the env-var re-exec did not '

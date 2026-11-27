@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+import signal
+from unittest.mock import MagicMock, patch
 
 import pytest
-from hypothesis import given
-from hypothesis import strategies as st
 
-from proteus.utils import julia_env as je
+pytest.importorskip('hypothesis')
+from hypothesis import given  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
+
+from proteus.utils import julia_env as je  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -91,12 +94,40 @@ def test_status_hook_is_not_set_when_python_handles_the_signals(monkeypatch, tmp
     hook is set and no Julia code runs."""
     import juliacall
 
-    monkeypatch.setitem(juliacall.CONFIG, 'opt_handle_signals', None)
+    main = MagicMock()
+    monkeypatch.setattr(juliacall, 'Main', main)
     monkeypatch.setattr(je, '_status_hook', None)
-    with patch.object(juliacall.Main, 'seval') as seval:
-        assert je.register_status_hook(str(tmp_path), '25\nstopped\n') is False
-    seval.assert_not_called()
+    monkeypatch.setattr(je, 'julia_handles_signals', lambda: False)
+    assert je.register_status_hook(str(tmp_path), '25\nstopped\n') is False
+    main.seval.assert_not_called()
     assert je._status_hook is None
+
+
+@pytest.mark.parametrize('julia', [False, True])
+def test_python_sigterm_handler_only_without_the_julia_handlers(monkeypatch, julia):
+    """Python takes SIGTERM only when Julia does not: its handler would replace Julia's and
+    stop the Julia exit hook. The Python handler ignores every later SIGTERM, and SIGTERM
+    blocked from the parent process is unblocked so that the handler runs."""
+    import juliacall
+
+    monkeypatch.setitem(juliacall.CONFIG, 'opt_handle_signals', 'yes' if julia else None)
+    saved = signal.getsignal(signal.SIGTERM)
+    mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+    try:
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        assert je.exit_on_sigterm() is not julia
+        handler = signal.getsignal(signal.SIGTERM)
+        assert (handler is signal.SIG_DFL) is julia
+        blocked = signal.pthread_sigmask(signal.SIG_BLOCK, set())
+        assert (signal.SIGTERM in blocked) is julia
+        if not julia:
+            with pytest.raises(SystemExit) as stop:
+                handler(signal.SIGTERM, None)
+            assert stop.value.code == 143
+            assert signal.getsignal(signal.SIGTERM) is signal.SIG_IGN
+    finally:
+        signal.signal(signal.SIGTERM, saved)
+        signal.pthread_sigmask(signal.SIG_SETMASK, mask)
 
 
 def test_system_configuration_logs_the_thread_note():

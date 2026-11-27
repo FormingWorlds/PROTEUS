@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import select
-import signal
 import subprocess
 import sys
 import traceback
@@ -154,9 +153,9 @@ def handle_job(job: dict, run_simulation) -> dict:
 def serve(request_fd: int, reply_fd: int) -> None:
     """Serve simulation requests on the inherited pipes until they close."""
     from proteus.proteus import Proteus
+    from proteus.utils.julia_env import exit_on_sigterm
 
-    # SLURM ends a job with SIGTERM; as SystemExit it lets Proteus.start record status 25.
-    signal.signal(signal.SIGTERM, lambda signum, _: sys.exit(128 + signum))
+    exit_on_sigterm()
 
     def run_simulation(config_path: str) -> None:
         Proteus(config_path=config_path).start(offline=True)

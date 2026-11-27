@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from .proteus import Proteus
+from .utils.julia_env import set_julia_threads
+
+# Before the first import of juliacall, which starts Julia with these settings
+set_julia_threads()
+
+from .proteus import Proteus  # noqa: E402
 
 try:
     from ._version import __version__, __version_tuple__

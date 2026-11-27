@@ -33,6 +33,7 @@ from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import noble_gases, vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
+    CommentFromStatus,
     PrintHalfSeparator,
     PrintSeparator,
     ReadStatus,
@@ -40,6 +41,7 @@ from proteus.utils.helper import (
     is_write_snapshot,
     multiple,
 )
+from proteus.utils.julia_env import register_status_hook
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
@@ -87,6 +89,7 @@ def _status_on_exit(start):
 
     @functools.wraps(start)
     def wrapper(self, *args, **kwargs):
+        register_status_hook(self.directories['output'], '25\n%s\n' % CommentFromStatus(25))
         try:
             return start(self, *args, **kwargs)
         except BaseException as exc:

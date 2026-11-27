@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from proteus.utils import julia_env
 from proteus.utils.constants import (
     condensate_density,
     element_list,
@@ -427,6 +428,8 @@ def print_system_configuration(dirs: dict):
     log.info('Current time      ' + _get_current_time())
     log.info('Python version    ' + sys.version.split(' ')[0])
     log.info('Julia version     ' + _get_julia_version())
+    if julia_env.JULIA_THREADS_NOTE:
+        log.info(julia_env.JULIA_THREADS_NOTE)
     log.info('System hostname   ' + str(os.uname()[1]))
     log.info('System username   ' + str(username))
     log.info('Platform type     ' + str(platform.system()))
