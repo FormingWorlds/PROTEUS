@@ -504,6 +504,54 @@ def test_run_inference_reports_the_spectral_cache_the_study_uses(
         assert os.environ[SPECTRAL_CACHE_ENV] == '1'
 
 
+def test_run_inference_copies_the_config_as_given(monkeypatch, tmp_path):
+    """copy.infer.toml holds the config before validation: a sigma in dex stays a dex string and
+    the noise-free observables stay, so a rerun from the copy compares and draws the same, while
+    the study itself runs on the converted sigma and the noisy observables."""
+    config = {
+        'output': 'unit_inference',
+        'logging': 'INFO',
+        'n_workers': 1,
+        'ref_config': BASE_CONFIG,
+        'n_steps': 1,
+        'kernel': 'MAT3/2',
+        'acqf': 'LogEI',
+        'seed': 1,
+        'noise': True,
+        'observables': {'P_surf': 50.0, 'T_surf': 1500.0},
+        'sigma': {'P_surf': '0.1 dex', 'T_surf': 30.0},
+        'parameters': {'planet.mass_tot': [0.7, 3.0]},
+    }
+    output_root = tmp_path / 'output'
+    monkeypatch.setattr(
+        inference_mod,
+        'get_proteus_directories',
+        lambda _output: {'output': str(output_root), 'proteus': ''},
+    )
+    monkeypatch.setattr(inference_mod, 'setup_logger', lambda **_kwargs: None)
+    monkeypatch.setattr(inference_mod.os, 'cpu_count', lambda: 8)
+    seen = {}
+
+    def _stop(cfg):
+        seen.update(cfg)
+        raise _StopAfterSetup
+
+    monkeypatch.setattr(inference_mod, 'create_init', _stop)
+    for env in (SPECTRAL_CACHE_ENV, ABORT_ON_FAILURE_ENV, CHILD_TIMEOUT_ENV):
+        monkeypatch.setenv(env, 'unset')
+
+    with pytest.raises(_StopAfterSetup):
+        inference_mod.run_inference(config)
+
+    copied = toml.load(output_root / 'copy.infer.toml')
+    assert copied['sigma'] == {'P_surf': '0.1 dex', 'T_surf': 30.0}
+    assert copied['observables'] == {'P_surf': 50.0, 'T_surf': 1500.0}
+    assert 'observables_true' not in copied and 'loss' not in copied
+    # The study itself: sigma converted from dex, observables drawn with noise
+    assert seen['sigma']['P_surf'] != pytest.approx(0.1)
+    assert seen['observables'] != copied['observables']
+
+
 @pytest.mark.parametrize(
     ('switch', 'env'), [(None, '0'), (True, '1'), (False, '0')], ids=['default', 'on', 'off']
 )

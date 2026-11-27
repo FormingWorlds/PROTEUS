@@ -43,8 +43,6 @@ def apply_noise(config: dict) -> None:
         return
     if config['sigma'] is None:
         raise ValueError('noise needs [sigma] for its standard deviations')
-    if 'observables_true' in config:
-        raise ValueError('the observables already carry noise (observables_true is set)')
     seed = config.setdefault('noise_seed', config['seed'])
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise ValueError(f'noise_seed must be an integer, got {seed!r}')

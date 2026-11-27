@@ -369,6 +369,9 @@ def run_inference(config):
     - None
     """
 
+    # As given, so that copy.infer.toml reruns the same study (sigma in dex, noise drawn again)
+    given = copy.deepcopy(config)
+
     # dictionary of directories
     dirs = get_proteus_directories(config['output'])
 
@@ -455,7 +458,7 @@ def run_inference(config):
     infer_config = os.path.abspath(os.path.join(dirs['output'], 'copy.infer.toml'))
     with open(infer_config, 'w') as file:
         file.write(f'# Created: {str_time()}\n\n')
-        toml.dump(config, file)
+        toml.dump(given, file)
     log.info(f'Inference config: {infer_config}')
 
     # Bound each child PROTEUS run so one wedged simulation cannot hang the

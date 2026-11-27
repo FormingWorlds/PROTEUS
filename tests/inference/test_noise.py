@@ -106,10 +106,9 @@ def test_apply_noise_keeps_the_truth_and_repeats_with_the_seed():
     [
         ({'noise': 'yes'}, 'true or false'),
         ({'noise': True, 'sigma': None}, 'needs'),
-        ({'noise': True, 'observables_true': OBS}, 'already'),
         ({'noise': True, 'noise_seed': 1.5}, 'integer'),
     ],
-    ids=['not-bool', 'no-sigma', 'already-noisy', 'fractional-seed'],
+    ids=['not-bool', 'no-sigma', 'fractional-seed'],
 )
 def test_apply_noise_refuses_bad_settings_without_changing_the_config(kw, match):
     """Each bad setting raises before the observables change."""
