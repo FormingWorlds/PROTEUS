@@ -13,22 +13,13 @@ import os
 import numpy as np
 import pandas as pd
 import torch
-from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
-from botorch.models.transforms import Normalize, Standardize
-from gpytorch.mlls import ExactMarginalLogLikelihood
 
-from proteus.inference.correlation import CorrelationWhitener
-from proteus.inference.objective import (
-    BAD_OBJ_VALUE,
-    objective_from_observables,
-    observable_space,
-    observable_values,
-    upper_mask,
-)
-from proteus.inference.plot_fit import case_parameters
+from proteus.inference.BO import GP_NOISE
+from proteus.inference.composite import ObservableObjective, ObservableSurrogate, fit_gp
+from proteus.inference.objective import BAD_OBJ_VALUE, observable_values
 from proteus.inference.transforms import normalize_parameters, unnormalize_parameters
-from proteus.inference.utils import get_kernel
+from proteus.inference.utils import case_parameters
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -37,7 +28,6 @@ dtype = torch.double
 DEFAULT_POSTERIOR_SAMPLES = 2000
 N_PROPOSAL = 1_000_000  # uniform proposal draws
 BATCH = 50_000  # proposals per GP call
-GP_NOISE = 1e-4  # as in BO.py
 
 # Proposal refinement (optional): extra rounds near the best-weighted draws while the
 # effective sample size is below the samples asked for; ADAPT_ROUNDS = 0 turns it off
@@ -78,28 +68,6 @@ def fit_surrogate(X: torch.Tensor, Y: torch.Tensor, kernel: str, seed: int) -> S
     return fit_gp(X, Y, kernel, seed, torch.full_like(Y, GP_NOISE), 10)
 
 
-def fit_gp(X, Y, kernel: str, seed: int | None, Yvar, attempts: int) -> SingleTaskGP:
-    """GP on X in the unit cube; Yvar None learns the noise, seed None keeps the torch state."""
-    d = X.shape[-1]
-    if len(X) < d + 1:
-        raise ValueError(f'{len(X)} scored evaluations cannot constrain a GP in {d} parameters')
-    if seed is not None:
-        torch.manual_seed(seed)
-    gp = SingleTaskGP(
-        train_X=X,
-        train_Y=Y,
-        covar_module=get_kernel(kernel, d),
-        train_Yvar=Yvar,
-        input_transform=Normalize(d=d),
-        outcome_transform=Standardize(m=1),
-    )
-    fit_gpytorch_mll(
-        ExactMarginalLogLikelihood(gp.likelihood, gp),
-        kwargs={'pick_best_of_all_attempts': True, 'max_attempts': attempts},
-    )
-    return gp.eval()
-
-
 def observables_objective(config: dict, directory, cases: pd.DataFrame):
     """Objective Y at points in the unit cube from one GP per observable, each fitted to the
     observable as eval_obj compares it (log10 or linear), combined into Y as eval_obj does."""
@@ -116,23 +84,16 @@ def observables_objective(config: dict, directory, cases: pd.DataFrame):
         dtype=dtype,
     )
     log.info(f'    fitting one GP per observable to {len(X)} scored cases')
-    # One hyperparameter attempt each, with the noise learned per observable
-    gps = [
-        fit_gp(X, S[:, [j]], config['kernel'], config['seed'], None, 1)
-        for j in range(len(keys))
-    ]
-    _, tru, sig = observable_space(obs, obs, sigma)
-    tru, sig = torch.tensor(tru, dtype=dtype), torch.tensor(sig, dtype=dtype)
-    corr = config.get('correlation')
-    whitener = None if corr is None else CorrelationWhitener(keys, corr)
-    upper = upper_mask(keys, sigma)
+    objective = ObservableObjective(obs, sigma, config.get('correlation'), config.get('loss'))
+    # One hyperparameter attempt each, with the noise learned per observable; all rows scored
+    torch.manual_seed(config['seed'])
+    surrogate = ObservableSurrogate(objective, config['kernel'], attempts=1)
+    gps = surrogate.fit(X, torch.zeros(len(X), 1, dtype=dtype), S).models
 
-    def objective(U):
-        P = torch.stack([gp_mean(gp, U) for gp in gps], dim=1)
-        J = objective_from_observables(P, tru, sig, keys, whitener, config.get('loss'), upper)
-        return J[:, 0]
+    def predict(U):
+        return objective(torch.stack([gp_mean(gp, U) for gp in gps], dim=1))
 
-    return objective
+    return predict
 
 
 def gp_mean(gp: SingleTaskGP, U: torch.Tensor) -> torch.Tensor:

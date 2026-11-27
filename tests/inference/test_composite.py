@@ -19,7 +19,6 @@ pytest.importorskip('botorch')
 pytest.importorskip('gpytorch')
 
 import proteus.inference.composite as comp  # noqa: E402
-import proteus.inference.posterior as post  # noqa: E402
 from proteus.inference.correlation import CorrelationWhitener  # noqa: E402
 from proteus.inference.objective import (  # noqa: E402
     BAD_OBJ_VALUE,
@@ -104,7 +103,7 @@ def test_surrogate_fits_each_observable_to_its_own_usable_runs(monkeypatch):
     """Unscored runs are left out of every GP; a NaN observable only out of its own GP."""
     torch.manual_seed(0)
     np.random.seed(0)
-    monkeypatch.setattr(post, 'fit_gpytorch_mll', lambda *a, **kw: None)
+    monkeypatch.setattr(comp, 'fit_gpytorch_mll', lambda *a, **kw: None)
     U = torch.rand(20, 2, dtype=torch.double)
     S = _rows(U.numpy())
     Y = comp.ObservableObjective(TARGET, SIGMA)(S).reshape(-1, 1)
@@ -122,7 +121,7 @@ def test_surrogate_fits_each_observable_to_its_own_usable_runs(monkeypatch):
 
 def test_surrogate_refuses_too_few_usable_runs(monkeypatch):
     """With fewer usable runs than d + 1 for one observable the fit raises, as fit_gp does."""
-    monkeypatch.setattr(post, 'fit_gpytorch_mll', lambda *a, **kw: None)
+    monkeypatch.setattr(comp, 'fit_gpytorch_mll', lambda *a, **kw: None)
     U = torch.rand(6, 2, dtype=torch.double)
     S = _rows(U.numpy())
     S[2:, 1] = float('nan')

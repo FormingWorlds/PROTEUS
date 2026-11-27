@@ -19,6 +19,7 @@ pytest.importorskip('gpytorch')
 
 import torch  # noqa: E402
 
+import proteus.inference.composite as comp  # noqa: E402
 import proteus.inference.posterior as post  # noqa: E402
 from proteus.inference.objective import BAD_OBJ_VALUE, eval_obj, log_warp  # noqa: E402
 
@@ -29,7 +30,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 def no_hyperfit(monkeypatch):
     """Skip the slow GP hyperparameter fit; returns the kwargs of each skipped call."""
     calls = []
-    monkeypatch.setattr(post, 'fit_gpytorch_mll', lambda *a, **kw: calls.append(kw))
+    monkeypatch.setattr(comp, 'fit_gpytorch_mll', lambda *a, **kw: calls.append(kw))
     return calls
 
 
@@ -149,7 +150,7 @@ def test_gp_mean_matches_the_botorch_posterior_mean(learned_noise):
     X, Y = _study_data(n=40)
     Y = 100.0 * Y + 50.0
     Yvar = None if learned_noise else torch.full_like(Y, post.GP_NOISE)
-    gp = post.fit_gp(X, Y, 'MAT3/2', 0, Yvar, 1)
+    gp = comp.fit_gp(X, Y, 'MAT3/2', 0, Yvar, 1)
     U = torch.rand(300, 2, generator=torch.Generator().manual_seed(1), dtype=torch.double)
     with torch.no_grad():
         expected = gp.posterior(U.unsqueeze(1)).mean.reshape(-1)

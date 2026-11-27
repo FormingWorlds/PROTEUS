@@ -14,7 +14,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import toml
 import torch
 from matplotlib.ticker import MaxNLocator
 from scipy.stats import gaussian_kde
@@ -24,9 +23,8 @@ from proteus.inference.failures import read_failure_records
 from proteus.inference.objective import BAD_OBJ_VALUE, EPS_CLIP, eval_obj
 from proteus.inference.plot import dpi, fmt
 from proteus.inference.transforms import normalize_parameters, unnormalize_parameters
-from proteus.inference.utils import get_obs
+from proteus.inference.utils import case_parameters, get_obs
 from proteus.utils.coupler import variable_is_logarithmic
-from proteus.utils.helper import recursive_get
 from proteus.utils.plot import get_label
 
 log = logging.getLogger('fwl.' + __name__)
@@ -103,16 +101,6 @@ def collect_case_observables(
         )
 
     return pd.DataFrame(rows)
-
-
-def case_parameters(directory, cases: pd.DataFrame, keys: list) -> np.ndarray:
-    """Parameter values, one row per case and one column per key, each case actually ran with."""
-    workers = Path(directory) / 'workers'
-    confs = [
-        toml.load(workers / f'w_{w}' / f'i_{i}' / 'init_coupler.toml')
-        for w, i in zip(cases['worker'], cases['iter'])
-    ]
-    return np.array([[float(recursive_get(c, k.split('.'))) for k in keys] for c in confs])
 
 
 def _best_case(ok: pd.DataFrame, best_config=None) -> pd.Series:

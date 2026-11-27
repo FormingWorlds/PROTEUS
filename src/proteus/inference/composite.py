@@ -13,7 +13,10 @@ import torch
 from botorch.acquisition.logei import qLogExpectedImprovement
 from botorch.acquisition.monte_carlo import qProbabilityOfImprovement, qUpperConfidenceBound
 from botorch.acquisition.objective import GenericMCObjective
-from botorch.models import ModelListGP
+from botorch.fit import fit_gpytorch_mll
+from botorch.models import ModelListGP, SingleTaskGP
+from botorch.models.transforms import Normalize, Standardize
+from gpytorch.mlls import ExactMarginalLogLikelihood
 
 from proteus.inference.correlation import CorrelationWhitener
 from proteus.inference.objective import (
@@ -22,7 +25,7 @@ from proteus.inference.objective import (
     observable_space,
     upper_mask,
 )
-from proteus.inference.posterior import fit_gp
+from proteus.inference.utils import get_kernel
 
 dtype = torch.double
 log = logging.getLogger('fwl.' + __name__)
@@ -32,6 +35,28 @@ OBSERVABLE_ACQFS = ('LogEI', 'LogPI', 'UCB')
 
 # Hyperparameter attempts per observable GP, each with its noise learned
 OBSERVABLE_GP_ATTEMPTS = 3
+
+
+def fit_gp(X, Y, kernel: str, seed: int | None, Yvar, attempts: int) -> SingleTaskGP:
+    """GP on X in the unit cube; Yvar None learns the noise, seed None keeps the torch state."""
+    d = X.shape[-1]
+    if len(X) < d + 1:
+        raise ValueError(f'{len(X)} scored evaluations cannot constrain a GP in {d} parameters')
+    if seed is not None:
+        torch.manual_seed(seed)
+    gp = SingleTaskGP(
+        train_X=X,
+        train_Y=Y,
+        covar_module=get_kernel(kernel, d),
+        train_Yvar=Yvar,
+        input_transform=Normalize(d=d),
+        outcome_transform=Standardize(m=1),
+    )
+    fit_gpytorch_mll(
+        ExactMarginalLogLikelihood(gp.likelihood, gp),
+        kwargs={'pick_best_of_all_attempts': True, 'max_attempts': attempts},
+    )
+    return gp.eval()
 
 
 class ObservableObjective:

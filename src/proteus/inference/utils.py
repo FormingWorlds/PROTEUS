@@ -25,6 +25,7 @@ from proteus.inference.objective import BAD_OBJ_VALUE, EPS_CLIP, eval_obj
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import gas_list
 from proteus.utils.coupler import read_helpfile_table
+from proteus.utils.helper import recursive_get
 
 # Use double precision for tensor computations
 dtype = torch.double
@@ -438,3 +439,13 @@ def get_obj(true_obs: dict, n, path):
     Y = torch.vstack(results).reshape(n, n)
 
     return Y
+
+
+def case_parameters(directory, cases: pd.DataFrame, keys: list) -> np.ndarray:
+    """Parameter values, one row per case and one column per key, each case actually ran with."""
+    workers = Path(directory) / 'workers'
+    confs = [
+        toml.load(workers / f'w_{w}' / f'i_{i}' / 'init_coupler.toml')
+        for w, i in zip(cases['worker'], cases['iter'])
+    ]
+    return np.array([[float(recursive_get(c, k.split('.'))) for k in keys] for c in confs])
