@@ -283,8 +283,9 @@ class InteriorChem:
         cell's T and P, ``interior_chem/redox.py`` Step 10a) carries the
         pressure term int(dV dP) of FeO + 1/4 O2 = FeO1.5 from ``redox_dV_eos``,
         and its Delta-IW the Hirschmann (2021) IW buffer at the cell pressure.
-        Default False. With ``metal_saturation`` True the term is always
-        included and this option has no effect. The profile is a diagnostic: it
+        Default True; False evaluates the profile at 1 bar. With
+        ``metal_saturation`` True the term is always included and this option
+        has no effect. The profile is a diagnostic: it
         changes neither Fe3+/FeT nor the 1 bar surface fO2 passed to the
         outgassing.
     """
@@ -329,7 +330,7 @@ class InteriorChem:
 
     # int(dV dP) in the radial fO2 profile without the metal step (redox.py
     # Step 10a); always on with metal_saturation True.
-    fO2_pressure_term: bool = field(default=False)
+    fO2_pressure_term: bool = field(default=True)
 
 
 def _validate_ini_dsdr(instance, attribute, value):

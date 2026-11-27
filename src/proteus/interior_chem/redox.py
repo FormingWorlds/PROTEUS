@@ -83,13 +83,19 @@ Physics summary (docs/Explanations/redox.md gives the full derivation):
             P = 0.0001 GPa), while the disproportionation in Step 9 always
             carries the pressure term. Delta-IW uses the Hirschmann (2021)
             IW buffer at 1 bar and the same temperature, as Schaefer et al.
-            (2024) do (IW_H21.m, makefigures_Earth.m). Separately, a radial fO2
-            profile is evaluated in every melt cell at that cell's T and P
-            WITH int(dV dP) for FeO + 1/4 O2 = FeO1.5 (Schaefer Eq 10-11,
+            (2024) do (IW_H21.m, makefigures_Earth.m). Separately (Step
+            10a), a radial fO2 profile is evaluated in every melt cell at
+            that cell's T. With metal_saturation or fO2_pressure_term True it
+            is taken at the cell P, WITH int(dV dP) for FeO + 1/4 O2 =
+            FeO1.5 from redox_dV_eos (Schaefer Eq 10-11,
             interior_chem/eos_deng.int_dV_dP_oxidation; the oxidation dV,
-            not the disproportionation dV of Step 9c) and stored in the
-            interior snapshot as a diagnostic; it does not feed the
-            outgassing.
+            not the disproportionation dV of Step 9c), and its Delta-IW
+            against Hirschmann (2021) at the cell (T, P); otherwise both at
+            1 bar. The buffer is log10 fO2 = a + b T + c T ln T + d / T, with
+            a-d polynomials in P [GPa] (1, P, P^2, P^3, sqrt P) and separate
+            fcc/bcc and hcp sets (_iw_buffer_hirschmann2021). The profile is
+            stored in the interior snapshot as a diagnostic; it does not
+            feed the outgassing.
 
 BSE starting composition and partition coefficients are literature values
 (McDonough 2003 via Hirschmann 2022 for the oxide wt%; Schaefer et al. 2024

@@ -125,6 +125,9 @@ def test_redox_options_sit_in_the_interior_chem_section():
     assert default == InteriorChem()
     assert default.ferric_fraction_initial == pytest.approx(0.1, abs=0.0)
     assert default.metal_saturation is False
+    # The radial fO2 profile carries the pressure term unless switched off.
+    assert default.fO2_pressure_term is True
+    assert InteriorChem(fO2_pressure_term=False).fO2_pressure_term is False
     for key in ('ferric_fraction_initial', 'metal_saturation', 'partition_coefficients'):
         assert not hasattr(Planet(), key)
 

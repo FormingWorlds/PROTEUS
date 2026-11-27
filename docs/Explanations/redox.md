@@ -49,7 +49,7 @@ Setting `planet.fO2_source = "from_mantle_redox"` enables this calculation. PROT
 | `planet.interior_chem.ferric_fraction_initial` | Initial melt Fe$^{3+}$/Fe$_{\rm T}$, $f_0$, in the interval $(0,1)$. | `0.1` |
 | `planet.interior_chem.metal_saturation` | Off by default. `true` adds a check for Fe-metal saturation (3FeO = 2FeO$_{1.5}$ + Fe) between crystallization steps, following Schaefer et al. (2024, Section 2.7), and counts cells below $\phi=0.15$ as solid. This page describes the model with `false`; the module docstring of `interior_chem/redox.py` describes the metal step. | `false` |
 | `planet.interior_chem.partition_coefficients` | Fe$^{2+}$ and Fe$^{3+}$ partition coefficients: `"mgsio3"` (bridgmanite and pyroxenes), `"bulk_BSE"` (bulk values of the Schaefer et al. layers) or `"mgsio3_kd"` (`"mgsio3"` with a pressure- and temperature-dependent Fe$^{2+}$ coefficient in bridgmanite and post-perovskite); see [step 4](#4-partition-iron-into-the-new-solid). | `"mgsio3"` |
-| `planet.interior_chem.fO2_pressure_term` | `true` adds $\int \Delta V\,dP$ of FeO + ¼O$_2$ = FeO$_{1.5}$ (melt EOS `redox_dV_eos`) to the radial fO$_2$ profile, and takes its ΔIW against the IW buffer at the cell pressure, without the metal step. The profile is a diagnostic: Fe$^{3+}$/Fe$_{\rm T}$ and the 1 bar surface fO$_2$ are unchanged. Always on with `metal_saturation = true`. | `false` |
+| `planet.interior_chem.fO2_pressure_term` | `true` adds $\int \Delta V\,dP$ of FeO + ¼O$_2$ = FeO$_{1.5}$ (melt EOS `redox_dV_eos`) to the radial fO$_2$ profile, and takes its ΔIW against the IW buffer at the cell pressure, without the metal step. The profile is a diagnostic: Fe$^{3+}$/Fe$_{\rm T}$ and the 1 bar surface fO$_2$ are unchanged. `false` evaluates the profile at 1 bar. Always on with `metal_saturation = true`. | `true` |
 
 The tracker needs a melt fraction for every radial cell, so `interior_energetics.module` must be `spider` or `aragog`.
 
@@ -399,13 +399,40 @@ At fixed $f$, $\Delta$IW decreases with temperature, because the IW buffer rises
 
 ### Radial $f_{\rm O_2}$ profile
 
-The tracker also evaluates the same relation in every melt cell at the cell temperature and 1 bar.
+The tracker also evaluates the Hirschmann (2022) relation in every melt cell $i$, at the cell temperature $T_i$ and with the same melt redox ratio $R$, since the melt is uniform. Which pressure enters depends on two options:
 
-It then computes the offset from the Hirschmann (2021) IW buffer at that temperature.
+- With `fO2_pressure_term = true` (the default) or `metal_saturation = true`, cell $i$ is evaluated at its pressure $P_i$: the integral $\int_{P_0}^{P_i}\Delta V\,dP$ of FeO + ¼O$_2$ = FeO$_{1.5}$ comes from the melt EOS `redox_dV_eos` (`eos_deng.int_dV_dP_oxidation`), and a cell outside that EOS's range gets NaN.
+- With both `false`, every cell is evaluated at 1 bar, so the pressure integral is zero and the profile varies with depth only through $T_i$.
 
-Because the melt composition and $R$ are assumed uniform, the radial profile varies with depth only through temperature.
+Each cell's value is also written as an offset from the Hirschmann (2021) IW buffer, taken at the same temperature and pressure as the cell's $f_{\rm O_2}$:
 
-This profile is diagnostic only: it is written to the interior output but does not feed back into the model.
+$$
+\Delta{\rm IW}_i
+=
+\log_{10}f_{\rm O_2}(R,T_i,P_i)
+-
+\log_{10}f_{\rm O_2}^{\rm IW,H21}(T_i,P_i),
+$$
+
+with $P_i$ replaced by 1 bar when both options are `false`. This is the convention Schaefer et al. (2024) use for $\Delta$IW at depth. The surface $\Delta$IW passed to the outgassing always uses 1 bar.
+
+The buffer is the empirical fit of Hirschmann (2021) Table 1, as in Schaefer et al.'s `IW_H21.m` (`_iw_buffer_hirschmann2021` in `redox.py`):
+
+$$
+\log_{10}f_{\rm O_2}^{\rm IW,H21}(T,P)
+=
+A(P)+B(P)\,T+C(P)\,T\ln T+\frac{D(P)}{T},
+$$
+
+where each of $A$, $B$, $C$, $D$ is a polynomial in $P$ [GPa] with terms in $1$, $P$, $P^2$, $P^3$ and $\sqrt{P}$, and $T$ is in K. There are two coefficient sets, one for fcc/bcc iron and one for hcp iron; the hcp set applies where
+
+$$
+P \geq -18.640 + 0.04359\,T - 5.069\times10^{-6}\,T^2 .
+$$
+
+The fit is calibrated from $10^{-4}$ to 100 GPa and from 1000 to 3000 K; deeper or hotter cells, as in super-Earth mantles, are extrapolated.
+
+The profile is diagnostic only: it is written to the interior snapshot and does not feed back into the model.
 
 ## Outputs
 
@@ -413,8 +440,8 @@ This profile is diagnostic only: it is written to the interior output but does n
 |---|---|---|
 | `ferric_frac_mantle` | Helpfile | Melt Fe$^{3+}$/Fe$_{\rm T}$ after the current crystallization step |
 | `fO2_shift_IW_mantle` | Helpfile | Surface $\Delta$IW passed to outgassing \[log$_{10}$ units\] |
-| `log10_fO2_s` | Interior snapshot | Per-cell $\log_{10}f_{\rm O_2}$ \[log$_{10}$ bar\]; NaN in solid cells |
-| `dIW_H21_s` | Interior snapshot | Same profile expressed relative to the Hirschmann (2021) IW buffer |
+| `log10_fO2_s` | Interior snapshot | Per-cell $\log_{10}f_{\rm O_2}$ \[log$_{10}$ bar\]; NaN in solid cells and, with the pressure term, outside the `redox_dV_eos` range |
+| `dIW_H21_s` | Interior snapshot | Same profile relative to the Hirschmann (2021) IW buffer at each cell's $T_i$ and, with the pressure term, $P_i$ (otherwise 1 bar) \[log$_{10}$ units\] |
 | `fO2_top_index` | Interior snapshot | Staggered-grid index of the uppermost melt cell |
 | `redox_*` | Interior snapshot | Tracker state used when resuming a run |
 
