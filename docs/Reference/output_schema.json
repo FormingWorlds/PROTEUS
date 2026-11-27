@@ -22017,6 +22017,21 @@
       "consumers_possible": []
     },
     {
+      "name": "outgas_called",
+      "unit": "1",
+      "description": "whether the step's volatile exchange ran an outgassing call",
+      "group": "Quantities for each element",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/proteus.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
       "name": "seal_active",
       "unit": "1",
       "description": "whether the lid seal holds the melt inventory",

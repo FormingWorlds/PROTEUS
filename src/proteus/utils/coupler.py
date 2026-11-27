@@ -995,6 +995,8 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'M_dissolved_target',
         'M_volatile_change',
         'n_impacts_applied',
+        # zero reads as no outgassing call: a row of an older run never blocks a buffer warning
+        'outgas_called',
         'step_dE_impact_J',
         # structure-solve flags: zero is no core temperature table, as in a run that predates it
         'struct_core_T_excess',
@@ -1321,6 +1323,7 @@ def GetHelpfileKeys():
     # Element mass held in outgassing condensates (e.g. graphite), apart from the mantle
     for e in vol_element_list:
         keys.append(e + '_kg_condensed')  # mass in condensed phases at the surface [kg]
+    keys.append('outgas_called')  # whether the step's volatile exchange ran an outgassing call [1]
 
     # Melt inventory held under a closed crust (outgas.lid_seal), and its leak
     keys.append('seal_active')       # whether the lid seal holds the melt inventory [1]
