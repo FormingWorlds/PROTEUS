@@ -4543,3 +4543,44 @@ def test_start_records_status_25_on_sigterm(monkeypatch, tmp_path):
     res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
     assert ReadStatus(tmp_path) == 25
     assert res.exit_code == 128 + signal.SIGTERM == 143
+
+
+def test_a_second_sigterm_during_the_status_write_keeps_status_25(monkeypatch, tmp_path):
+    """At a SLURM time limit srun and slurmstepd both send SIGTERM. A second signal while
+    the guard rewrites the status file must not stop that write. The stub runs the SIGTERM
+    handler again where the second signal can come: after the old file is removed."""
+    import proteus.utils.helper as helper
+    from proteus.proteus import _status_on_exit
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
+    cfg = tmp_path / 'stub.toml'
+    cfg.write_text('# stub\n')
+    removed = []
+
+    def remove_then_signal(path):
+        real_rm(path)
+        removed.append(path)
+        handler = signal.getsignal(signal.SIGTERM)
+        if len(removed) == 2 and callable(handler):
+            handler(signal.SIGTERM, None)
+
+    class FakeProteus:
+        def __init__(self, config_path):
+            self.directories = {'output': str(tmp_path)}
+
+        @_status_on_exit
+        def start(self, resume, offline):
+            UpdateStatusfile(self.directories, 1)
+            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+
+    real_rm = helper.safe_rm
+    monkeypatch.setattr(helper, 'safe_rm', remove_then_signal)
+    monkeypatch.setattr(cli, 'Proteus', FakeProteus)
+    saved = signal.getsignal(signal.SIGTERM)
+    try:
+        res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
+    finally:
+        signal.signal(signal.SIGTERM, saved)
+    assert len(removed) == 2
+    assert ReadStatus(tmp_path) == 25
+    assert res.exit_code == 143
