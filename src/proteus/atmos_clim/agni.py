@@ -589,8 +589,8 @@ def init_agni_atmos(
     dirs: dict,
     config: Config,
     hf_row: dict,
+    star_file: str,
     use_cache: bool = True,
-    star_file: str | None = None,
     io_dir: str | None = None,
 ):
     """Initialise atmosphere struct for use by AGNI.
@@ -605,12 +605,11 @@ def init_agni_atmos(
             Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
+        star_file : str
+            Stellar spectrum (``.sflux``) to prepare the spectral file with: the
+            evolution passes that of the last update, postprocessing that of the snapshot.
         use_cache : bool
             Whether to read from and store into `atmos_clim.spectral_cache`.
-        star_file : str or None
-            Stellar spectrum (``.sflux``) to prepare the spectral file with, instead of
-            the newest in ``data/``; the prepared ``runtime.sf`` of the run is then not
-            reused. Postprocessing a snapshot passes the spectrum that snapshot used.
         io_dir : str or None
             Folder for AGNI's working files, instead of the output folder or the run's
             temporary folder.
@@ -622,6 +621,8 @@ def init_agni_atmos(
 
     Raises
     ----------
+        FileNotFoundError
+            The spectral file needs the stellar spectrum and ``star_file`` does not exist.
         ValueError
             The stellar spectrum goes into the spectral file and the path of
             ``io_dir/socstar.dat`` is longer than ``SOCRATES_MAX_PATH`` bytes.
@@ -631,12 +632,6 @@ def init_agni_atmos(
     log.debug('New AGNI atmosphere')
 
     atmos = jl.AGNI.atmosphere.Atmos_t()
-
-    # Decide the spectral-file path first; the stellar-flux glob only runs
-    # when we actually need a stellar spectrum (i.e. AGNI will copy + modify
-    # the spectral file from FWL_DATA). Grey-gas and user-provided paths
-    # bypass the glob entirely so a missing or empty `data/*.sflux` directory
-    # is not a precondition for those modes.
 
     # Fast I/O folder. Decided before the spectral file, because AGNI writes the
     # prepared runtime.sf pair here and so this is where the cache reads from.
@@ -653,51 +648,26 @@ def init_agni_atmos(
     cache_store_key = None
     cache_candidate = False
 
-    # Spectral file path provided?
-    if config.atmos_clim.agni.spectral_file is not None:
-        # Grey gas?
-        if str(config.atmos_clim.agni.spectral_file).lower() == 'greygas':
-            try_spfile = 'greygas'
-        else:
-            try_spfile = os.path.abspath(config.atmos_clim.agni.spectral_file)
-            if not os.path.isfile(try_spfile):
-                UpdateStatusfile(dirs, 20)
-                raise FileNotFoundError(
-                    f'AGNI spectral file not found at specified path: {try_spfile}'
-                )
-    else:
-        # No spectral file provided: use existing runtime.sf in output, or
-        # let AGNI copy from FWL_DATA + modify as required (always, for a given star file).
-        try_spfile = '' if star_file else os.path.join(dirs['output'], 'runtime.sf')
-
-    # Obtain spectral file
-    if try_spfile == 'greygas':
+    # Grey gas, a user-provided spectral file used as it is, or one that AGNI copies
+    # from FWL_DATA and inserts the stellar spectrum into
+    spectral_file = config.atmos_clim.agni.spectral_file
+    input_star = ''
+    if spectral_file is not None and str(spectral_file).lower() == 'greygas':
         log.info('Requested grey-gas radiative transfer scheme')
         input_sf = 'greygas'
-        input_star = ''
-    elif os.path.exists(try_spfile):
-        # exists in output folder => don't modify it
-        input_sf = try_spfile
-        input_star = ''
-    else:
-        # doesn't exist in output folder => AGNI will copy from FWL_DATA + modify.
-        # Resolve the stellar spectrum path here, where it is actually needed.
-        sflux_files = glob.glob(os.path.join(dirs['output'], 'data', '*.sflux'))
-        if star_file:
-            sflux_path = star_file
-        elif not sflux_files:
+    elif spectral_file is not None:
+        input_sf = os.path.abspath(spectral_file)
+        if not os.path.isfile(input_sf):
             UpdateStatusfile(dirs, 20)
             raise FileNotFoundError(
-                f'No stellar spectrum (*.sflux) found in {dirs["output"]}/data; '
-                'AGNI cannot construct a fresh spectral file without it'
+                f'AGNI spectral file not found at specified path: {input_sf}'
             )
-        else:
-            sflux_times = [int(s.split('/')[-1].split('.')[0]) for s in sflux_files]
-            sflux_path = os.path.join(
-                dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1])
-            )
+    else:
+        if not os.path.isfile(star_file):
+            UpdateStatusfile(dirs, 20)
+            raise FileNotFoundError(f'No stellar spectrum at {star_file}')
         input_sf = require_spfile_path(dirs, config)
-        input_star = sflux_path
+        input_star = star_file
 
         # The cache is consulted once the aerosol species are known, because they
         # are part of the cache key.
@@ -787,7 +757,7 @@ def init_agni_atmos(
     if cache_candidate:
         key = cache_key(
             input_sf,
-            sflux_path,
+            star_file,
             config.atmos_clim.spectral_group,
             config.atmos_clim.spectral_bands,
             rayleigh=config.atmos_clim.rayleigh,

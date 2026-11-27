@@ -716,7 +716,8 @@ def test_run_atmosphere_uses_the_spectral_cache_only_for_the_first_agni_build(
     have written.
     """
     atmos_o = Atmos_t()
-    atmos_o._atm = None if first_build else object()
+    previous = None if first_build else object()
+    atmos_o._atm = previous
     config = SimpleNamespace(
         atmos_clim=SimpleNamespace(
             module='agni',
@@ -732,13 +733,11 @@ def test_run_atmosphere_uses_the_spectral_cache_only_for_the_first_agni_build(
         params=SimpleNamespace(resume=resume),
     )
     hf_row = {'T_magma': 1800.0, 'T_surf': 0.0, 'star_spec_time': 1200.7}
-    # A rebuild removes the previous prepared file first.
-    (tmp_path / 'runtime.sf').write_text('from the previous spectrum', encoding='utf-8')
 
     seen = {}
     dirs = {'output': str(tmp_path), 'fwl': str(tmp_path)}
 
-    def _init(_dirs, _config, _hf_row, use_cache=True, star_file=None):
+    def _init(_dirs, _config, _hf_row, star_file, use_cache=True):
         seen['run'] = (_dirs, _config, _hf_row) == (dirs, config, hf_row)
         seen['use_cache'] = use_cache
         seen['star_file'] = star_file and os.path.relpath(star_file, tmp_path / 'data')
@@ -746,7 +745,7 @@ def test_run_atmosphere_uses_the_spectral_cache_only_for_the_first_agni_build(
 
     with (
         patch('proteus.atmos_clim.agni.activate_julia'),
-        patch('proteus.atmos_clim.agni.deallocate_atmos'),
+        patch('proteus.atmos_clim.agni.deallocate_atmos') as deallocate,
         patch('proteus.atmos_clim.agni.init_agni_atmos', side_effect=_init),
         pytest.raises(_StopAfterInit),
     ):
@@ -763,9 +762,8 @@ def test_run_atmosphere_uses_the_spectral_cache_only_for_the_first_agni_build(
         )
 
     assert seen == {'run': True, 'use_cache': use_cache, 'star_file': '1200.sflux'}
-    # Edge case: a rebuild removes the prepared file of the previous spectrum; the
-    # first build leaves a file on disk alone and does not read it.
-    assert (tmp_path / 'runtime.sf').exists() == first_build
+    # A rebuild frees the struct it replaces; the first build has none to free.
+    assert [c.args for c in deallocate.call_args_list] == ([] if first_build else [(previous,)])
 
 
 # ---------------------------------------------------------------------------

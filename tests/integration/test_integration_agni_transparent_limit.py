@@ -212,7 +212,9 @@ def _sweep_transparent(runner, t_surf_grid=T_SURF_GRID):
     cfg = runner.config
 
     activate_julia(dirs, 0)
-    atmos = init_agni_atmos(dirs, cfg, _make_hf_row(t_surf_grid[0]))
+    # Only the banded case reads the spectrum, which it writes at t = 0 yr
+    star_file = os.path.join(dirs['output'], 'data', '0.sflux')
+    atmos = init_agni_atmos(dirs, cfg, _make_hf_row(t_surf_grid[0]), star_file)
     assert bool(atmos.is_alloc), 'AGNI atmosphere struct was not allocated'
 
     results = []
