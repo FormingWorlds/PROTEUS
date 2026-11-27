@@ -1334,6 +1334,10 @@ class Interior_t:
 
         self.aragog_solver = None
 
+        # Melt-redox tracker state (interior_chem/redox.py), created on the first
+        # update_melt_redox call under planet.fO2_source = 'from_mantle_redox'.
+        self.redox_state = None
+
         # Counter for consecutive Aragog steps integrated on a stale
         # Zalmoxis structure (i.e. with self.structure_stale=True
         # set by a Zalmoxis fall-back). Resets to 0 on every successful
@@ -1370,6 +1374,7 @@ class Interior_t:
         self.rho_solid_b = None  # Solid density at the phase boundary [kg m-3]
         self.rho_melt_b = None  # Melt density at the phase boundary [kg m-3]
         self.g_b = None  # Gravitational acceleration [m s-2]
+        self.eddy_diff_b = None  # Mixing-length eddy diffusivity [m2 s-1]
 
     def _load_ps_table(self, spider_dir: str, eos_dir: str, filename: str) -> np.ndarray | None:
         """Load a SPIDER-format P-S lookup table.

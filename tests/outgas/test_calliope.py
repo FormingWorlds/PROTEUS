@@ -625,3 +625,44 @@ def test_calliope_cold_start_guess_draws_from_the_global_rng():
     assert first == again
     assert first != other
     assert all(p > 0.0 for p in first)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('T_magma', [900.0, 3500.0], ids=['cold melt 900 K', 'hot melt 3500 K'])
+def test_mantle_redox_offset_gives_calliope_the_tracked_absolute_fo2(T_magma, tmp_path):
+    """Under from_mantle_redox the tracker writes Delta-IW against Hirschmann
+    (2021) at 1 bar, and CALLIOPE turns it back into an absolute fO2 with the
+    buffer it is given. That absolute fO2 equals the tracker's Eq 13 value at
+    T_magma (above the 700 K floor). Guard: the Fischer buffer, CALLIOPE's
+    default before 26.11.8, misses by 0.48 dex at 900 K and 0.21 dex at 3500 K."""
+    from calliope.oxygen_fugacity import OxygenFugacity
+
+    from proteus.interior_chem import redox
+    from tests.outgas._from_o_budget_helpers import (
+        _earth_hf_row,
+        _make_from_o_budget_config,
+    )
+
+    # Fe3+/FeT = 0.05: an asymmetric ratio, so Eq 13 is not at its ratio-1 point.
+    log10_fO2 = redox._log10_fO2_surface(0.05 / 0.95, T_magma, redox._compute_mole_fractions())
+    iw = float(redox._iw_buffer_hirschmann2021(T_magma, redox.P_1BAR_GPA))
+    config = _make_from_o_budget_config(fO2_shift_IW=-2.5)
+    config.planet.fO2_source = 'from_mantle_redox'
+    config.outgas.T_floor = 700.0
+    hf_row = _earth_hf_row()
+    hf_row['T_magma'] = T_magma
+    hf_row['fO2_shift_IW_mantle'] = log10_fO2 - iw
+
+    with patch('proteus.outgas.calliope.equilibrium_atmosphere') as solve:
+        solve.side_effect = RuntimeError('stop after the call')
+        with pytest.raises(RuntimeError, match='stop after the call'):
+            calc_surface_pressures({'output': str(tmp_path)}, config, hf_row)
+
+    opts, kwargs = solve.call_args.args[1], solve.call_args.kwargs
+    fO2_calliope = OxygenFugacity(kwargs['fO2_model'])(opts['T_magma'], opts['fO2_shift_IW'])
+    fO2_fischer = OxygenFugacity('fischer')(opts['T_magma'], opts['fO2_shift_IW'])
+
+    assert opts['T_magma'] == pytest.approx(T_magma)
+    assert fO2_calliope == pytest.approx(log10_fO2, abs=1e-9)
+    assert abs(fO2_fischer - log10_fO2) > 0.15
+    assert -40.0 < log10_fO2 < 5.0  # scale guard: a log10 fO2 [bar], not a ratio
