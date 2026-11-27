@@ -115,18 +115,18 @@ Config section: `[escape]`. Reference: [Escape and outgassing configuration](../
 
 The outgassing module computes the thermodynamic equilibrium partitioning of volatiles between the atmosphere, silicate melt, and solid mantle.
 
-**[CALLIOPE](https://proteus-framework.org/CALLIOPE/)** (Python) solves for the equilibrium partial pressures and dissolved volatile concentrations given the mantle temperature, melt fraction, and total element inventories for H, C, N, S, and O [^cite-bower2019]. It uses parameterised solubility laws and an fO2 buffer (configurable as an IW offset) to compute the redox state [^cite-nicholls2024]. CALLIOPE handles the full set of major volcanic gases (H$_2$O, CO$_2$, H$_2$, CO, N$_2$, SO$_2$, S$_2$, CH$_4$).
+**[CALLIOPE](https://proteus-framework.org/CALLIOPE/)** (Python) solves for the equilibrium partial pressures and dissolved volatile concentrations given the mantle temperature, melt fraction, and total element inventories for H, C, N, S, and O [^cite-bower2019]. It uses parameterised solubility laws and an oxygen fugacity (fO$_2$) buffer to compute the redox state [^cite-nicholls2024]; the buffer is set as an offset from the iron-wüstite (IW) buffer. CALLIOPE handles the full set of major volcanic gases (H$_2$O, CO$_2$, H$_2$, CO, N$_2$, SO$_2$, S$_2$, CH$_4$).
 
 **[atmodeller](https://github.com/djbower/atmodeller)** (Python/JAX) is an alternative outgassing module that uses a real-gas equation of state and a more detailed thermochemical treatment [^cite-bower2025]. atmodeller provides an independent cross-check on CALLIOPE for the same volatile partitioning problem. Each solve may take up to `outgas.atmodeller.solver_multistart` attempts, a failed start being perturbed and tried again; a solve in which no attempt converges stops the run with an error, rather than writing the solver's start guess to the helpfile.
-When no H, C, N or S inventory is above `outgas.mass_thresh` and no noble gas remains, atmodeller solves for a pure O$_2$ atmosphere: at the IW buffer offset under `planet.fO2_source = "user_constant"`, and against the O budget under `"from_O_budget"`. CALLIOPE also keeps a pure O$_2$ atmosphere at the buffer offset in this case.
+When no H, C, N or S inventory is above `outgas.mass_thresh` and no noble gas remains, atmodeller solves for a pure O$_2$ atmosphere: at the IW buffer offset under `planet.fO2_source = "user_constant"`, and against the O budget under `"from_O_budget"`. CALLIOPE also keeps a pure O$_2$ atmosphere at the buffer offset in this case. Under `"from_O_budget"` with the O budget also at or below the threshold, atmodeller skips the solve and writes an empty atmosphere that keeps the last mixing ratios, as after desiccation.
 
-Both modules evaluate the iron-wüstite (IW) buffer of Hirschmann (2021)[^cite-hirschmann2021] at 1 bar. The fit is calibrated from 1000 K to 3000 K. A difference of 1 dex is a factor of 10 in fO$_2$.
+Both modules evaluate the IW buffer of Hirschmann (2021)[^cite-hirschmann2021] at 1 bar. The fit is calibrated from 1000 K to 3000 K. A difference of 1 dex is a factor of 10 in fO$_2$.
 
-- From 1000 K to 8100 K, the two modules give the same O$_2$ pressure.
+- From 1000 K to 8100 K, the two modules give the same O$_2$ pressure; above 3000 K both extrapolate the fit.
 - Below 1000 K, CALLIOPE extrapolates the fit and atmodeller uses a separate buffer, 0.10 dex lower in log fO$_2$ at 800 K.
-- Above about 8150 K, atmodeller takes the branch of the fit for hexagonal close-packed iron: at least 42 dex lower, and more at higher temperature.
+- Above about 8150 K, atmodeller takes the branch of the fit for hexagonal close-packed iron and gives a value at least 42 dex lower, more at higher temperature; CALLIOPE stays on the branch for cubic iron.
 
-Under `"from_O_budget"` with the O budget also at or below the threshold, atmodeller skips the solve and writes an empty atmosphere that keeps the last mixing ratios, as after desiccation.
+
 
 **[LavAtmos](https://github.com/FormingWorlds/LavAtmos)** (Python) is an optional addition, enabled with `outgas.vapourise = true`, that computes the thermodynamic vapourisation equilibrium of the surface melt [^cite-vanbuchem2023] and adds the resulting rock-vapour species to the volatile outgassing [^cite-vanbuchem2025]. Vapourisation is a distinct process from outgassing. It uses the FastChem equilibrium chemistry solver and requires [ThermoEngineLite](https://github.com/FormingWorlds/ThermoEngineLite) for melt thermodynamics. 
 

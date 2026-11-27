@@ -240,7 +240,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     threshold, no solve runs: every species column but the vmr is 0, ``P_surf`` is 0,
     each noble gas keeps its kg total with the matching mole total, the vmrs and
     ``atm_kg_per_mol`` keep their values as in ``run_desiccated``, and
-    ``fO2_shift_IW_derived`` and ``O_res`` are NaN.
+    ``fO2_shift_IW_derived`` and ``O_res`` are NaN, and ``outgas_called`` is 0.
     """
     from atmodeller import (
         ChemicalSpecies,
