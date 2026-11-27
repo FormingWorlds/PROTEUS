@@ -1226,9 +1226,9 @@ def GetHelpfileKeys():
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
         'M_vol_atm',        # atmospheric mass of volatiles and noble gases; rock vapour excluded [kg]
 
-        # IW offset the chemistry equilibrated to and its O mass residual: the input offset and 0
-        # under user_constant, solver outputs under from_O_budget. Both modules use the Hirschmann
-        # (2021) IW at 1000-8100 K. Rock-vapour columns: LavAtmos; zero without vapourisation.
+        # IW offset and O residual of the chemistry: input and 0 under user_constant, solved
+        # under from_O_budget; Hirschmann (2021) IW. Rock-vapour columns: LavAtmos, IW of
+        # outgas.lavatmos.fO2_buffer_model (O'Neill & Eggins 2002); 0 without vapourisation.
         'fO2_shift_IW_derived',  # equilibrated IW-buffer offset [log10 bar]
         'fO2_vapourise_derived',         # rock-vapour fO2 [log10 bar]
         'fO2_vapourise_shift_IW_derived',  # rock-vapour IW offset [log10 bar]
