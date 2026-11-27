@@ -424,7 +424,7 @@ $$
 A(P)+B(P)\,T+C(P)\,T\ln T+\frac{D(P)}{T},
 $$
 
-where each of $A$, $B$, $C$, $D$ is a polynomial in $P$ [GPa] with terms in $1$, $P$, $P^2$, $P^3$ and $\sqrt{P}$, and $T$ is in K. There are two coefficient sets, one for fcc/bcc iron and one for hcp iron; the hcp set applies where
+where each of $A$, $B$, $C$, $D$ is a polynomial in $P$ \[GPa\] with terms in $1$, $P$, $P^2$, $P^3$ and $\sqrt{P}$, and $T$ is in K. There are two coefficient sets, one for fcc/bcc iron and one for hcp iron; the hcp set applies where
 
 $$
 P \geq -18.640 + 0.04359\,T - 5.069\times10^{-6}\,T^2 .
