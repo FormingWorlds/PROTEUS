@@ -36,15 +36,24 @@ runner_max_jobs = 0
 n_workers  = 5                                    # Number of parallel workers
 kernel     = "MAT1/2"                             # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
 acqf       = "LogEI"                              # Acquisition function, "UCB" | "LogEI" | "LogPI" | "TS"
-n_steps    = 100                                  # Total number of evaluations (i.e. BO steps)
+n_steps    = 100                                  # Evaluations after the initial samples
 patience   = 0                                    # Stop after this many evaluations without improvement; 0 is off
-# bo_per_observable = true                       # Optimise with one GP per observable instead of one GP of the objective; acqf "LogEI" | "LogPI" | "UCB"; default false
+# bo_per_observable = true                       # One GP per observable instead of one GP of the objective; acqf "LogEI" | "LogPI" | "UCB", init_samps > number of parameters; default false
 # objective     = "student-t"                     # "chi-2" (default) | "student-t" | "huber": heavy-tailed errors; needs [sigma]
 # student_t_dof = 4                               # Degrees of freedom of "student-t", default 4
+# huber_k       = 1.345                           # Threshold of "huber" in sigma, default 1.345
 # posterior_samples = 2000                        # Posterior samples from the GP at the end; needs [sigma], default 2000 with it, 0 is off
 # posterior_per_observable = true               # Posterior from one GP per observable; false fits one GP to the objective; default true
 # noise = true                                   # Add one Gaussian draw of [sigma] to the observables, for tests on simulated data; default false
 # noise_seed = 42                                # Seed of that draw, default seed
+
+# Top-level keys go above the first [table]; below it, TOML reads them into that table.
+# Observables given as upper limits (non-detections): the value is the limit. Needs [sigma];
+# cannot be combined with [correlation] or correlate_ratios.
+# upper_limits = ["S/O_atm"]
+# Derive [correlation] for the ratio observables (e.g. "C/O_atm") from the elements they share,
+# assuming the same dex error for every element. Needs [sigma], equal in dex for every ratio.
+# correlate_ratios = true
 
 # Parameters to optimize (with bounds)
 [parameters]
@@ -59,8 +68,7 @@ patience   = 0                                    # Stop after this many evaluat
 
 # Target observables to match by optimisation...
 
-# helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
-# extracted at index: 24, time: 2.000e+09 years
+# Values from the final row of the reference run: python tools/extract_inference_truths.py <this file>
 [observables]
 "R_obs" = 9.2533288845e+06
 "T_obs" = 4.0923645346e+02
@@ -71,7 +79,7 @@ patience   = 0                                    # Stop after this many evaluat
 "O/H_atm" = 2.7986395281e+00
 
 # Optional 1-sigma uncertainty of each observable, in the same units as the observable.
-# Observables that are compared in log-space also take a string in dex, e.g., "0.1 dex".
+# Any observable also takes a string in dex, e.g. "0.1 dex", which compares it in log10.
 # [sigma]
 # "R_obs" = 1.0e5
 # "T_obs" = 20.0
@@ -82,13 +90,9 @@ patience   = 0                                    # Stop after this many evaluat
 # "O/H_atm" = "0.1 dex"
 
 # Optional correlation coefficient between the uncertainties of two observables, between (-1, 1).
-# Needs [sigma].
+# Needs [sigma]. Or set correlate_ratios above.
 # [correlation.R_obs]
 # "g_obs" = -0.4
-
-# Or, derive the correlations of the abundance-ratio observables (e.g. "C/O_atm") from the elements they share,
-# assuming the same dex error for every element. Needs [sigma], equal in dex for every ratio.
-# correlate_ratios = true
 
 # Optional true value of each parameter, when the observables above came from a simulation with known parameters.
 # [truth]
