@@ -15,10 +15,10 @@ name: CI - Nightly Science Validation
 #      when tier=extended. The aggregator picks up the new shard's
 #      .coverage and XML automatically via glob.
 #
-# macOS concurrent-slot ceiling on the GitHub free tier for public
-# repos is 5. The four critical shards consume 4 of those; a 5th
-# critical shard would queue. Future shards that do not need macOS
-# parity should be added as tier=extended (Linux only).
+# The GitHub free tier runs at most 20 jobs at a time, 5 of them on
+# macOS. All tiers start together after the cache job and share these
+# slots. Future shards that do not need macOS parity should be added
+# as tier=extended (Linux only).
 
 on:
   schedule:
@@ -42,6 +42,22 @@ env:
   PROTEUS_CI_NIGHTLY: "1"
 
 jobs:
+  # Restores or builds the Linux SOCRATES, AGNI, Julia depot and FWL_DATA caches once, so the
+  # tiers below start together; macOS is left out because its runners can wait long for a slot.
+  build-caches:
+    name: Build caches (ubuntu-latest)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    # A cold FWL_DATA download takes about 30 min on top of the builds.
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-proteus
+        with:
+          full-data: 'true'
+
   # ============================================================
   # Unit tier: fast Python-only tests, no real binaries.
   # Runs on both OS for parity. Each job produces its own
@@ -49,6 +65,9 @@ jobs:
   # ============================================================
   unit-tier:
     name: Unit tier (${{ matrix.os }})
+    needs: build-caches
+    # Runs when the cache job failed too; a tier then builds what it misses itself.
+    if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
@@ -141,16 +160,11 @@ jobs:
 
   # ============================================================
   # Integration tier: schema-tier cross-module pair tests, no
-  # real solver boots. Runs after unit tier so the build caches
-  # (SOCRATES, AGNI, Julia depot) are warm; FWL_DATA is cached
-  # separately per full-data flavor and is not shared here.
+  # real solver boots.
   # ============================================================
   integration-tier:
     name: Integration tier (${{ matrix.os }})
-    needs: unit-tier
-    # Ordered after the unit tier so the flavor-independent build caches
-    # are warm; it does not require the unit tier to pass. Cancelling the
-    # workflow still stops it.
+    needs: build-caches
     if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
@@ -221,9 +235,7 @@ jobs:
   # ============================================================
   slow-tier:
     name: Slow tier (${{ matrix.shard }} / ${{ matrix.os }})
-    needs: integration-tier
-    # Same rule as the integration tier above: ordered after it, and it does
-    # not require that tier to pass.
+    needs: build-caches
     if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
