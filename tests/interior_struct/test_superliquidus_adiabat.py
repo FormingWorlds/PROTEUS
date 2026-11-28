@@ -65,7 +65,6 @@ class TestSolveSuperliquidusReal:
 
     @pytest.mark.physics_invariant
     @pytest.mark.reference_pinned
-    @pytest.mark.timeout(5400)  # 90 min ceiling; a single solve measures ~47 min on the runner
     def test_m1_solved_adiabat_pinned(self):
         """Pin the 1 M_Earth PALEOS solve (delta_T_super = 500 K).
 
@@ -93,9 +92,6 @@ class TestSolveSuperliquidusReal:
         assert r['surface_T'] > 3500.0
 
     @pytest.mark.physics_invariant
-    # Three real solves in series (1, 5, 10 M_Earth); this test measures ~141 min
-    # on the runner, so it needs well above the file-level 3600 s net.
-    @pytest.mark.timeout(14400)
     def test_solved_entropy_is_mass_independent(self):
         """The shallow PALEOS binding depth makes the solved entropy
         essentially mass-independent, keeping the mass grid on a common initial
@@ -126,7 +122,6 @@ class TestSolveSuperliquidusReal:
         assert spread < 0.05 * min(entropies)
 
     @pytest.mark.reference_pinned
-    @pytest.mark.timeout(5400)  # 90 min ceiling; one solve, like test_m1_solved_adiabat_pinned
     def test_m1_zero_superheat_pinned(self):
         """Pin the 1 M_Earth PALEOS solve at delta_T_super = 0.
 
@@ -146,7 +141,6 @@ class TestSolveSuperliquidusReal:
         assert 0.0 <= r['achieved_superheat'] < 1.0
         assert r['clamped'] is False
 
-    @pytest.mark.timeout(5400)  # 90 min ceiling; about 3 min locally
     def test_unreachable_superheat_raises_real(self, monkeypatch):
         """A liquidus the EOS table cannot clear raises instead of returning a
         partially molten initial condition. The real PALEOS adiabat clears the
@@ -183,7 +177,6 @@ class TestSolveSuperliquidusReal:
         assert 'below the liquidus' in msg
         assert re.search(r'surface T=47[67]\d K', msg), msg
 
-    @pytest.mark.timeout(5400)  # 90 min ceiling; about 3 min locally
     def test_unreachable_superheat_clamps_real(self, caplog):
         """A superheat larger than the EOS table supports, on a molten
         adiabat, clamps to the largest achievable value (~1180 K, set by the
@@ -205,7 +198,6 @@ class TestSolveSuperliquidusReal:
         assert any('not reachable' in m and 'within the EOS table' in m for m in msgs), msgs
 
     @pytest.mark.physics_invariant
-    @pytest.mark.timeout(9000)  # 150 min; ~82 min on the runner, 8-9 min locally
     def test_zalmoxis_structure_ic_on_own_p_s_tables(self, tmp_path):
         """With the Zalmoxis structure, the initial entropy is solved on the
         run's own P-S tables (generated from PALEOS for S1_m1_dyn_IW4): at
