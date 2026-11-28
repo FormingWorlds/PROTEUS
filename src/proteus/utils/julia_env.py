@@ -22,6 +22,8 @@ _status_hook = None
 # The signal number once a Python stop handler (SIGTERM, SIGINT) has run
 STOP_SIGNAL = None
 _status_output = None
+# True while a status write must finish: a stop handler then only records the signal
+_writing = False
 
 
 def _more_than_one(value: str) -> bool:
@@ -95,29 +97,38 @@ def julia_handles_signals() -> bool:
     return juliacall.CONFIG.get('opt_handle_signals') == 'yes'
 
 
-def _record_stop(signum):
+def _record_stop(signum) -> bool:
     """Record the stop, and write status 25 while the run reads as started or running.
 
     The status is on disk before the handler raises, so a stop whose exception a finalizer
-    or a C solver drops, or a SIGKILL that follows it, still leaves status 25.
+    or a C solver drops, or a SIGKILL that follows it, still leaves status 25. During a
+    held status write (`sigterm_held`) only the signal is recorded.
+
+    Returns
+    -------
+    bool
+        True when the handler raises, False during a held status write.
     """
     global STOP_SIGNAL
     from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
     STOP_SIGNAL = signum
+    if _writing:
+        return False
     if _status_output is not None and ReadStatus(_status_output) in (0, 1):
         with sigterm_held():
             UpdateStatusfile({'output': _status_output}, 25)
+    return True
 
 
 def _exit_on_sigterm(signum, _frame):
-    _record_stop(signum)
-    sys.exit(128 + signum)
+    if _record_stop(signum):
+        sys.exit(128 + signum)
 
 
 def _interrupt(signum, frame):
-    _record_stop(signum)
-    signal.default_int_handler(signum, frame)
+    if _record_stop(signum):
+        signal.default_int_handler(signum, frame)
 
 
 def exit_if_stopped() -> None:
@@ -186,21 +197,19 @@ def run_was_stopped(exc: BaseException) -> bool:
 
 @contextmanager
 def sigterm_held():
-    """Ignore SIGTERM and SIGINT while the exit status is written, where the Python stop
-    handlers are installed.
+    """Let a status write finish when SIGTERM or SIGINT comes: the Python stop handlers
+    only record the signal in ``STOP_SIGNAL`` until the write ends.
 
     At a SLURM time limit srun and slurmstepd both send SIGTERM, and Ctrl-C can come twice;
-    a second exception would stop the status write. The handlers are put back afterwards.
+    an exception would stop the status write. The caller ends the process afterwards: the
+    handler raises after its own write, the status guard calls `exit_if_stopped`.
     """
-    ours = ((signal.SIGTERM, _exit_on_sigterm), (signal.SIGINT, _interrupt))
-    held = [(s, h) for s, h in ours if signal.getsignal(s) is h]
-    for s, _ in held:
-        signal.signal(s, signal.SIG_IGN)
+    global _writing
+    before, _writing = _writing, True
     try:
         yield
     finally:
-        for s, h in held:
-            signal.signal(s, h)
+        _writing = before
 
 
 def register_status_hook(output_dir: str) -> bool:

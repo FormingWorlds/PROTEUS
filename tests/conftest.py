@@ -85,6 +85,7 @@ def _restore_sigterm_handler(monkeypatch):
 
     monkeypatch.setattr(julia_env, 'STOP_SIGNAL', None)
     monkeypatch.setattr(julia_env, '_status_output', None)
+    monkeypatch.setattr(julia_env, '_writing', False)
     before = signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGINT)
     yield
     signal.signal(signal.SIGTERM, before[0])
