@@ -436,17 +436,16 @@ def test_serve_ends_when_a_solver_drops_the_stop(monkeypatch, tmp_path):
     assert not (tmp_path / 'b').exists()
 
 
-def test_serve_forgets_a_stop_recorded_before_a_job(monkeypatch, tmp_path):
-    """Each job starts with no stop recorded, so its own error reads as failed (20)."""
+def test_serve_ends_before_a_job_once_a_stop_is_recorded(monkeypatch, tmp_path):
+    """A job that drops a stop and returns ends the worker with 128 + signal before the next
+    job, so a stop that a finalizer or a solver dropped never waits for the job queue."""
     from proteus.utils import julia_env
 
-    def fails():
-        raise ValueError('bad config')
+    def drops_a_stop():
+        julia_env.STOP_SIGNAL = signal.SIGTERM
 
-    monkeypatch.setattr(julia_env, 'STOP_SIGNAL', signal.SIGTERM)
-    try:
-        ran = _serve_jobs(monkeypatch, tmp_path, fails, ['a'])
-    except SystemExit as stop:
-        pytest.fail(f'the stop recorded before the job ended it with {stop.code}')
-    assert ran == [str(tmp_path / 'a')]
-    assert ReadStatus(tmp_path / 'a') == 20
+    monkeypatch.setattr(julia_env, 'STOP_SIGNAL', None)
+    with pytest.raises(SystemExit) as stop:
+        _serve_jobs(monkeypatch, tmp_path, drops_a_stop, ['a', 'b'])
+    assert stop.value.code == 143
+    assert not (tmp_path / 'b').exists()

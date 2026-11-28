@@ -5982,3 +5982,64 @@ def test_a_clamped_step_updates_the_stellar_quantities_but_not_the_spectrum(tmp_
     assert (changed, quantities) == (False, 1)
     assert p.hf_row['star_inst_time'] == pytest.approx(300.0, rel=1e-15)
     assert p.hf_row['star_spec_time'] == pytest.approx(1.0, rel=1e-15)
+
+
+def _drop_a_stop_on_atmosphere_call(n, signum, out):
+    """Fake atmosphere step that, on call ``n``, runs the stop handler inside a weakref
+    callback, as matplotlib's finalizers do: Python prints its exception as ignored. The
+    handler has written status 25 to ``out`` before the run goes on."""
+    import signal
+    import weakref
+
+    from proteus.utils import julia_env
+    from proteus.utils.helper import ReadStatus
+
+    handler = {signal.SIGTERM: julia_env._exit_on_sigterm, signal.SIGINT: julia_env._interrupt}
+    seen = []
+
+    class Freed:
+        pass
+
+    def run(*args, **kwargs):
+        seen.append(1)
+        if len(seen) == n:
+            obj = Freed()
+            ref = weakref.ref(obj, lambda _: handler[signum](signum, None))
+            del obj
+            seen[-1] = (ref() is None, julia_env.STOP_SIGNAL, ReadStatus(out))
+
+    return run, seen
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('signame', ['SIGTERM', 'SIGINT'])
+@pytest.mark.parametrize('n, loops', [(0, 3), (1, 5), (2, 2)])
+def test_a_stop_dropped_in_a_finalizer_ends_the_run_at_the_next_check(
+    tmp_path, monkeypatch, signame, n, loops
+):
+    """A stop whose exception a finalizer drops is on disk as status 25 at once, and ends
+    the run with 128 + signal at the start of the next iteration, or after the final state
+    is written when it lands in the last one. Without a stop the run ends normally."""
+    import signal
+
+    from proteus.utils import julia_env
+    from proteus.utils.helper import ReadStatus
+
+    signum = getattr(signal, signame)
+    monkeypatch.setattr(julia_env, 'STOP_SIGNAL', None)
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='aragog')
+    p.config.params.out.plot_mod = p.config.params.out.archive_mod = None
+    atmosphere, seen = _drop_a_stop_on_atmosphere_call(n, signum, tmp_path)
+    args = (p, _make_resume_checkpoint_df(), lambda *a, **k: None, atmosphere)
+    final = patch('proteus.interior_energetics.aragog.write_final_snapshot')
+    if n == 0:
+        with final as written:
+            _run_resumed_loop_until_stop(*args, terminate_after=loops)
+        assert len(seen) == loops and written.called
+        return
+    with final as written, pytest.raises(SystemExit) as stop:
+        _run_resumed_loop_until_stop(*args, terminate_after=loops)
+    assert written.called is (n == loops)
+    assert stop.value.code == 128 + signum
+    assert seen[:-1] == [1] * (n - 1) and seen[-1] == (True, signum, 25)
+    assert ReadStatus(tmp_path) == 25
