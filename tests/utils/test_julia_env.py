@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import signal
+import sys
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 pytest.importorskip('hypothesis')
-from hypothesis import given  # noqa: E402
+from hypothesis import example, given  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
 from proteus.utils import julia_env as je  # noqa: E402
@@ -34,15 +36,23 @@ _VALUES = [
 _MANY = {'2', '1,1', '2,0', 'auto', 'auto,1', '1,auto', ' 2 '}
 
 
+@contextmanager
+def _before_juliacall():
+    """The state of a process that has not imported juliacall yet."""
+    with patch.dict(sys.modules):
+        sys.modules.pop('juliacall', None)
+        yield
+
+
 @pytest.mark.parametrize('value', _VALUES)
 def test_julia_num_threads_above_one_sets_one_thread(value):
     """JULIA_NUM_THREADS with more than 1 thread (also interactive or auto) sets
     PYTHON_JULIACALL_THREADS to 1 and returns the log line; 1 thread and a value Julia
     refuses leave the environment as it is."""
     env = {'JULIA_NUM_THREADS': value}
-    with patch.object(je, 'JULIA_THREADS_NOTE', ''):
-        note = je.set_julia_threads(env, {})
-        assert je.JULIA_THREADS_NOTE == note
+    with _before_juliacall(), patch.object(je, 'JULIA_THREADS_NOTE', ''):
+        je.set_julia_threads(env, {})
+        note = je.JULIA_THREADS_NOTE
     many = value in _MANY
     assert env == (
         {'JULIA_NUM_THREADS': value, 'PYTHON_JULIACALL_THREADS': '1'}
@@ -55,6 +65,7 @@ def test_julia_num_threads_above_one_sets_one_thread(value):
 _SETTING = st.one_of(st.none(), st.sampled_from(_VALUES), st.text(max_size=5))
 
 
+@example(julia='4', user='1', signals=None, xthreads=None)
 @given(
     julia=_SETTING,
     user=_SETTING,
@@ -65,13 +76,15 @@ def test_a_user_value_is_never_changed(julia, user, signals, xthreads):
     """Only an unset key is written, so every value the user set wins. A user thread
     count (-X juliacall-threads before PYTHON_JULIACALL_THREADS, as juliacall reads them)
     above 1 sets the signal handlers on; without one, a JULIA_NUM_THREADS above 1 sets 1
-    thread and never the signal handlers."""
+    thread and never the signal handlers. The note is logged whenever 1 thread runs while
+    JULIA_NUM_THREADS asks for more."""
     keys = ('JULIA_NUM_THREADS', 'PYTHON_JULIACALL_THREADS', 'PYTHON_JULIACALL_HANDLE_SIGNALS')
     env = {k: v for k, v in zip(keys, (julia, user, signals)) if v is not None}
     before = dict(env)
     xoptions = {} if xthreads is None else {'juliacall-threads': xthreads}
-    with patch.object(je, 'JULIA_THREADS_NOTE', ''):
-        note = je.set_julia_threads(env, xoptions)
+    with _before_juliacall(), patch.object(je, 'JULIA_THREADS_NOTE', ''):
+        je.set_julia_threads(env, xoptions)
+        note = je.JULIA_THREADS_NOTE
     changed = {k for k in env if env.get(k) != before.get(k)}
     assert not changed & set(before)
     asked = xthreads if xthreads is not None else user
@@ -86,7 +99,33 @@ def test_a_user_value_is_never_changed(julia, user, signals, xthreads):
         assert env.get('PYTHON_JULIACALL_HANDLE_SIGNALS') == (
             'yes' if sets_signals else signals
         )
-        assert note == ''
+        one = str(asked).strip() == '1'
+        assert bool(note) is (one and julia is not None and je._more_than_one(julia))
+
+
+def test_no_change_once_juliacall_has_started(monkeypatch):
+    """After juliacall has started Julia a new setting has no effect, so the environment
+    and the log note stay as they are; a note would claim 1 thread while Julia runs more."""
+    monkeypatch.setitem(sys.modules, 'juliacall', MagicMock())
+    env = {'JULIA_NUM_THREADS': '2'}
+    with patch.object(je, 'JULIA_THREADS_NOTE', ''):
+        je.set_julia_threads(env, {})
+        assert je.JULIA_THREADS_NOTE == ''
+    assert env == {'JULIA_NUM_THREADS': '2'}
+
+
+def test_an_inherited_single_thread_logs_the_note():
+    """A child process (a grid case, the --deterministic re-exec) inherits
+    PYTHON_JULIACALL_THREADS=1 from its parent and logs the same note."""
+    parent = {'JULIA_NUM_THREADS': '4'}
+    with _before_juliacall(), patch.object(je, 'JULIA_THREADS_NOTE', ''):
+        je.set_julia_threads(parent, {})
+        note = je.JULIA_THREADS_NOTE
+        je.JULIA_THREADS_NOTE = ''
+        child = dict(parent)
+        je.set_julia_threads(child, {})
+        assert je.JULIA_THREADS_NOTE == note != ''
+    assert child == parent
 
 
 def test_status_hook_is_not_set_when_python_handles_the_signals(monkeypatch, tmp_path):
