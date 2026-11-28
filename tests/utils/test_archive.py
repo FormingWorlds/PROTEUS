@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import tarfile
 from collections import Counter
+from unittest.mock import patch
 
 import pytest
 
@@ -391,6 +392,152 @@ def test_extract_latest_unpacks_everything_when_count_covers_all_times(tmp_path,
 
     assert _loose_files(data_dir) == files
     assert (data_dir / 'data.tar').exists()
+
+
+class _Killed(BaseException):
+    """The job is stopped from outside, as by Slurm at its time limit."""
+
+
+def test_a_stopped_unpack_leaves_no_cut_file_for_later_unpacks(tmp_path, monkeypatch):
+    """A resume whose unpack is stopped while it writes a file leaves no cut copy
+    under that file's name. The next resume unpacks the full file, and a full unpack
+    that removes the tar afterwards (as postprocessing does) keeps every file whole.
+
+    Discrimination: an unpack in place leaves the cut copy, every later unpack keeps
+    it as a newer loose file, and removing the tar then loses the only full copy.
+    """
+    data_dir = tmp_path / 'data'
+    files = _archived_run(data_dir)
+    copy = tarfile.copyfileobj
+    elsewhere = tmp_path / 'elsewhere'  # the job's working folder, which stays untouched
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    started = []
+
+    def _stop_in_the_third_file(src, dst, length=None, exception=OSError, bufsize=None):
+        started.append(dst.name)
+        if len(started) == 3:
+            dst.write(src.read(length // 3))
+            raise _Killed
+        return copy(src, dst, length, exception, bufsize)
+
+    # a hard stop runs no cleanup, so the hidden folder stays
+    with (
+        patch.object(tarfile, 'copyfileobj', _stop_in_the_third_file),
+        patch.object(archive_mod.shutil, 'rmtree'),
+        pytest.raises(_Killed),
+    ):
+        archive_mod.extract_latest(str(data_dir), count=3)
+
+    cut = next(n for n in files if started[2].endswith('/' + n))
+    loose = {n: c for n, c in _loose_files(data_dir).items() if not n.startswith('.unpacking/')}
+    assert cut not in loose
+    assert loose == {n: files[n] for n in loose}
+    assert (data_dir / '.unpacking').is_dir() and os.listdir(elsewhere) == []
+
+    archive_mod.extract_latest(str(data_dir), count=3)
+    assert _loose_files(data_dir)[cut] == files[cut]
+    archive_mod.extract(str(data_dir), remove_tar=True)
+
+    assert _loose_files(data_dir) == files
+    assert sorted(os.listdir(data_dir)) == sorted({n.split('/')[0] for n in files})
+    assert os.listdir(elsewhere) == []
+
+
+def test_an_unpack_with_nothing_missing_keeps_loose_files_and_removes_an_old_unpack(tmp_path):
+    """A second resume whose files are all loose already, as after a resume that
+    stopped before it archived again, unpacks nothing, keeps every loose file and
+    removes the hidden folder that a hard stop of an earlier unpack left."""
+    data_dir = tmp_path / 'data'
+    _archived_run(data_dir)
+    archive_mod.extract(str(data_dir))
+    loose = _loose_files(data_dir)
+    (data_dir / '.unpacking').mkdir()
+    (data_dir / '.unpacking' / 'cut.nc').write_bytes(b'cut')
+
+    archive_mod.extract_latest(str(data_dir), count=3)
+    archive_mod.extract(str(data_dir))
+
+    assert _loose_files(data_dir) == loose
+    assert not (data_dir / '.unpacking').exists()
+
+
+def test_extract_refuses_a_member_outside_the_data_folder(tmp_path):
+    """An archive member whose name points above the data folder is refused, and
+    nothing is written outside the data folder."""
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    source = tmp_path / 'payload.dat'
+    source.write_bytes(b'payload')
+    with tarfile.open(data_dir / 'data.tar', 'w') as tar_file:
+        tar_file.add(source, arcname='../outside.dat')
+    source.unlink()
+    (data_dir / '.unpacking').mkdir()  # so that only the filter can refuse the member
+
+    with pytest.raises(tarfile.OutsideDestinationError):
+        archive_mod.extract(str(data_dir))
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ['data']
+    assert sorted(os.listdir(data_dir)) == ['data.tar']
+
+
+def test_extract_keeps_an_absolute_folder_member_inside_the_data_folder(tmp_path):
+    """A folder member with an absolute name, which only a tar that PROTEUS did not
+    write holds, is made under the data folder, as the data filter strips the
+    leading slash. Joining the raw name would make it at the absolute path."""
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    folder = tarfile.TarInfo(str(tmp_path / 'outside' / 'ESC'))
+    folder.type = tarfile.DIRTYPE
+    with tarfile.open(data_dir / 'data.tar', 'w') as tar_file:
+        tar_file.addfile(folder)
+
+    archive_mod.extract(str(data_dir))
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ['data']
+    assert (data_dir / str(tmp_path / 'outside' / 'ESC').lstrip('/')).is_dir()
+    assert not (data_dir / '.unpacking').exists()
+
+
+def test_extract_unpacks_an_archive_with_full_paths_and_no_folder_members(tmp_path):
+    """An archive written before 25.05.20 stores each file under its full path and
+    holds no folder members; every file is unpacked under that path, whole."""
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    files = {'home/u/run/data/1000_int.nc': b'interior at 1000 yr', 'g.nc': b'atmosphere'}
+    source = tmp_path / 'source.dat'
+    with tarfile.open(data_dir / 'data.tar', 'w') as tar_file:
+        for name, content in files.items():
+            source.write_bytes(content)
+            tar_file.add(source, arcname=name)
+    source.unlink()
+    with tarfile.open(data_dir / 'data.tar') as tar_file:
+        assert not any(m.isdir() for m in tar_file.getmembers())
+
+    archive_mod.extract(str(data_dir), remove_tar=True)
+
+    assert _loose_files(data_dir) == files
+    assert sorted(os.listdir(data_dir)) == ['g.nc', 'home']
+
+
+def test_extract_unpacks_a_folder_member_that_follows_its_files(tmp_path):
+    """A folder member stored after a file inside it, as an append can order them,
+    finds the folder made already for that file and unpacks the file whole."""
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    source = tmp_path / 'source.dat'
+    source.write_bytes(b'escape state')
+    folder = tarfile.TarInfo('ESC')
+    folder.type = tarfile.DIRTYPE
+    with tarfile.open(data_dir / 'data.tar', 'w') as tar_file:
+        tar_file.add(source, arcname='ESC/1000_esc.json')
+        tar_file.addfile(folder)
+    source.unlink()
+
+    archive_mod.extract(str(data_dir), remove_tar=True)
+
+    assert _loose_files(data_dir) == {'ESC/1000_esc.json': b'escape state'}
+    assert sorted(os.listdir(data_dir)) == ['ESC']
 
 
 def test_extract_latest_without_tar_changes_nothing(tmp_path, caplog):

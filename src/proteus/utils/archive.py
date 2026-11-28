@@ -6,6 +6,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
+import shutil
 import tarfile
 
 from proteus.utils.helper import parse_subyear_time, safe_rm
@@ -176,15 +177,32 @@ def append(dir: str) -> str:
 
 def _extract_missing(tar_file, dir: str, keep=None) -> None:
     """Extract the last archived copy of each name that `keep` accepts and that is
-    not loose in `dir`; a loose file is newer than its archived copy."""
-    members = {m.name: m for m in tar_file.getmembers()}
-    wanted = [
-        m
-        for n, m in members.items()
-        if (keep is None or keep(n)) and not os.path.lexists(os.path.join(dir, n))
-    ]
-    log.info(f'Extracting {len(wanted)} of {len(members)} archived files in {dir}')
-    tar_file.extractall(dir, members=wanted, filter='data')
+    not loose in `dir`; a loose file is newer than its archived copy.
+
+    The files are unpacked into a hidden folder and then renamed into place, so an
+    unpack that is stopped part way leaves no cut file that a later unpack would keep.
+    A hard stop leaves the hidden folder, which the next unpack removes.
+    """
+    unpacking = os.path.join(dir, '.unpacking')
+    try:
+        filtered = (tarfile.data_filter(m, unpacking) for m in tar_file.getmembers())
+        members = {m.name: m for m in filtered}
+        wanted = [
+            m
+            for n, m in members.items()
+            if (keep is None or keep(n)) and not os.path.lexists(os.path.join(dir, n))
+        ]
+        log.info(f'Extracting {len(wanted)} of {len(members)} archived files in {dir}')
+        tar_file.extractall(unpacking, members=wanted, filter='data')
+        for m in wanted:
+            target = os.path.join(dir, m.name)
+            if m.isdir():
+                os.makedirs(target, exist_ok=True)
+            else:
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                os.replace(os.path.join(unpacking, m.name), target)
+    finally:
+        shutil.rmtree(unpacking, ignore_errors=True)
 
 
 def extract(dir: str, remove_tar: bool = False, ignore_warnings: bool = False) -> str:
