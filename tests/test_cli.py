@@ -4586,3 +4586,33 @@ def test_a_second_sigterm_during_the_status_write_keeps_status_25(monkeypatch, t
     assert len(removed) == 2
     assert ReadStatus(tmp_path) == 25
     assert res.exit_code == 143
+
+
+def test_a_stop_that_a_solver_drops_still_records_status_25(monkeypatch, tmp_path):
+    """CVODE can drop the SystemExit that the SIGTERM handler raises in its callback and
+    report a failed step; the run then ends with an error of its own. The handler stays
+    installed and records the stop, so the run reads as stopped (25), not failed (20)."""
+    from proteus.proteus import _status_on_exit
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
+    cfg = tmp_path / 'stub.toml'
+    cfg.write_text('# stub\n')
+
+    class FakeProteus:
+        def __init__(self, config_path):
+            self.directories = {'output': str(tmp_path)}
+
+        @_status_on_exit
+        def start(self, resume, offline):
+            UpdateStatusfile(self.directories, 1)
+            try:
+                signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+            except SystemExit:
+                pass
+            raise RuntimeError('CVODE step failed')
+
+    monkeypatch.setattr(cli, 'Proteus', FakeProteus)
+    monkeypatch.setattr('proteus.utils.julia_env.julia_handles_signals', lambda: False)
+    res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
+    assert isinstance(res.exception, RuntimeError)
+    assert ReadStatus(tmp_path) == 25

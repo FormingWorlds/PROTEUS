@@ -103,15 +103,16 @@ def test_a_user_value_is_never_changed(julia, user, signals, xthreads):
         assert bool(note) is (one and julia is not None and je._more_than_one(julia))
 
 
-def test_no_change_once_juliacall_has_started(monkeypatch):
+@pytest.mark.parametrize('key', ['JULIA_NUM_THREADS', 'PYTHON_JULIACALL_THREADS'])
+def test_no_change_once_juliacall_has_started(monkeypatch, key):
     """After juliacall has started Julia a new setting has no effect, so the environment
     and the log note stay as they are; a note would claim 1 thread while Julia runs more."""
     monkeypatch.setitem(sys.modules, 'juliacall', MagicMock())
-    env = {'JULIA_NUM_THREADS': '2'}
+    env = {key: '2'}
     with patch.object(je, 'JULIA_THREADS_NOTE', ''):
         je.set_julia_threads(env, {})
         assert je.JULIA_THREADS_NOTE == ''
-    assert env == {'JULIA_NUM_THREADS': '2'}
+    assert env == {key: '2'}
 
 
 def test_an_inherited_single_thread_logs_the_note():
@@ -147,15 +148,13 @@ def test_status_hook_is_set_once_and_follows_the_last_run(monkeypatch, tmp_path)
     points it to the status file of that run, with the text of status 25."""
     import juliacall
 
-    from proteus.utils.helper import CommentFromStatus
-
     main = MagicMock()
     monkeypatch.setattr(juliacall, 'Main', main)
     monkeypatch.setattr(je, '_status_hook', None)
     monkeypatch.setattr(je, 'julia_handles_signals', lambda: True)
     assert all(je.register_status_hook(str(tmp_path / d)) for d in ('a', 'b'))
     main.seval.assert_called_once()
-    text = f'25\n{CommentFromStatus(25)}\n'
+    text = '25\nError (died, or exit requested by user)\n'
     assert main.seval.return_value.call_args_list == [
         call(str(tmp_path / d / 'status'), text) for d in ('a', 'b')
     ]
@@ -164,8 +163,8 @@ def test_status_hook_is_set_once_and_follows_the_last_run(monkeypatch, tmp_path)
 @pytest.mark.parametrize('julia', [False, True])
 def test_python_sigterm_handler_only_without_the_julia_handlers(monkeypatch, julia):
     """Python takes SIGTERM only when Julia does not: its handler would replace Julia's and
-    stop the Julia exit hook. The Python handler ignores every later SIGTERM, and SIGTERM
-    blocked from the parent process is unblocked so that the handler runs."""
+    stop the Julia exit hook. The Python handler records the stop and stays installed, and
+    SIGTERM blocked from the parent process is unblocked so that the handler runs."""
     import juliacall
 
     monkeypatch.setitem(juliacall.CONFIG, 'opt_handle_signals', 'yes' if julia else None)
@@ -182,10 +181,50 @@ def test_python_sigterm_handler_only_without_the_julia_handlers(monkeypatch, jul
             with pytest.raises(SystemExit) as stop:
                 handler(signal.SIGTERM, None)
             assert stop.value.code == 143
-            assert signal.getsignal(signal.SIGTERM) is signal.SIG_IGN
+            assert je.STOP_SIGNAL == signal.SIGTERM
+            assert signal.getsignal(signal.SIGTERM) is handler
     finally:
         signal.signal(signal.SIGTERM, saved)
         signal.pthread_sigmask(signal.SIG_SETMASK, mask)
+
+
+@pytest.mark.parametrize('ours', [True, False])
+def test_sigterm_is_held_only_over_its_own_handler(ours):
+    """While a stop is recorded, SIGTERM is ignored and then the Python handler is back;
+    any other handler (Julia's, the default) is left alone."""
+    saved = signal.getsignal(signal.SIGTERM)
+    before = je._exit_on_sigterm if ours else signal.SIG_DFL
+    try:
+        signal.signal(signal.SIGTERM, before)
+        with je.sigterm_held():
+            inside = signal.getsignal(signal.SIGTERM)
+        assert inside is (signal.SIG_IGN if ours else before)
+        assert signal.getsignal(signal.SIGTERM) is before
+    finally:
+        signal.signal(signal.SIGTERM, saved)
+
+
+def test_a_stop_is_read_from_the_handler_or_the_exception_chain(monkeypatch):
+    """An error is a stop when the SIGTERM handler ran (a solver dropped its SystemExit) or
+    when a KeyboardInterrupt or SystemExit is in its cause or context chain."""
+
+    def chained(inner, outer, cause=False):
+        try:
+            raise inner
+        except BaseException as first:
+            try:
+                if cause:
+                    raise outer from first
+                raise outer
+            except BaseException as exc:
+                return exc
+
+    assert je.run_was_stopped(KeyboardInterrupt())
+    assert je.run_was_stopped(chained(SystemExit(143), SystemError('callback')))
+    assert je.run_was_stopped(chained(KeyboardInterrupt(), RuntimeError('x'), cause=True))
+    assert not je.run_was_stopped(chained(ValueError('a'), RuntimeError('b')))
+    monkeypatch.setattr(je, 'STOP_SIGNAL', signal.SIGTERM)
+    assert je.run_was_stopped(RuntimeError('solver failed'))
 
 
 def test_system_configuration_logs_the_thread_note():

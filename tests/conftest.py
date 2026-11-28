@@ -78,9 +78,12 @@ def _restore_fwl_logger():
 
 
 @pytest.fixture(autouse=True)
-def _restore_sigterm_handler():
+def _restore_sigterm_handler(monkeypatch):
     """`proteus start` and the inference `serve` install a SIGTERM handler; put the
-    earlier one back after each test."""
+    earlier one back after each test, and forget a stop that the handler recorded."""
+    from proteus.utils import julia_env
+
+    monkeypatch.setattr(julia_env, 'STOP_SIGNAL', None)
     before = signal.getsignal(signal.SIGTERM)
     yield
     signal.signal(signal.SIGTERM, before)

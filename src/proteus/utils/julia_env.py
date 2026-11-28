@@ -12,11 +12,15 @@ from __future__ import annotations
 import os
 import signal
 import sys
+from contextlib import contextmanager
 
 # The line `print_system_configuration` logs when 1 thread runs instead of JULIA_NUM_THREADS
 JULIA_THREADS_NOTE = ''
 
 _status_hook = None
+
+# The signal number once the Python SIGTERM handler has run
+STOP_SIGNAL = None
 
 
 def _more_than_one(value: str) -> bool:
@@ -91,7 +95,8 @@ def julia_handles_signals() -> bool:
 
 
 def _exit_on_sigterm(signum, _frame):
-    signal.signal(signum, signal.SIG_IGN)
+    global STOP_SIGNAL
+    STOP_SIGNAL = signum
     sys.exit(128 + signum)
 
 
@@ -99,8 +104,9 @@ def exit_on_sigterm() -> bool:
     """End the process on SIGTERM (scancel, a SLURM time limit) with SystemExit, so that
     ``Proteus.start`` records status 25.
 
-    Later SIGTERMs are ignored: at a time limit srun and slurmstepd both send one, and a
-    second SystemExit would stop the status write. SIGTERM is unblocked, since a process
+    The handler records the signal in ``STOP_SIGNAL``, so the run reads as stopped also when
+    a C solver (CVODE) turns the SystemExit raised in its callback into its own error, or
+    drops it; see `run_was_stopped`. SIGTERM is unblocked, since a process
     started from one whose Julia handles the signals inherits it blocked. When Julia
     handles the signals, its handler stays: a Python one would also stop the Julia exit hook.
 
@@ -114,6 +120,46 @@ def exit_on_sigterm() -> bool:
     signal.signal(signal.SIGTERM, _exit_on_sigterm)
     signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
     return True
+
+
+def run_was_stopped(exc: BaseException) -> bool:
+    """True when ``exc`` ends a run that was stopped, not one that failed.
+
+    A run was stopped when the Python SIGTERM handler has run, or when ``exc`` or an
+    exception in its cause or context chain is a KeyboardInterrupt or SystemExit.
+
+    Parameters
+    ----------
+    exc : BaseException
+        The exception that ends the run.
+
+    Returns
+    -------
+    bool
+        True for a stop (status 25), False for an error (status 20).
+    """
+    while exc is not None:
+        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+            return True
+        exc = exc.__cause__ or exc.__context__
+    return STOP_SIGNAL is not None
+
+
+@contextmanager
+def sigterm_held():
+    """Ignore SIGTERM while a stop is recorded, when the Python handler is installed.
+
+    At a SLURM time limit srun and slurmstepd both send SIGTERM; a second SystemExit
+    would stop the status write. The handler is put back afterwards.
+    """
+    ours = signal.getsignal(signal.SIGTERM) is _exit_on_sigterm
+    if ours:
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    try:
+        yield
+    finally:
+        if ours:
+            signal.signal(signal.SIGTERM, _exit_on_sigterm)
 
 
 def register_status_hook(output_dir: str) -> bool:

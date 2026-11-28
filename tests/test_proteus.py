@@ -886,10 +886,11 @@ def _in_solver_callback(stop):
 
 
 @pytest.mark.unit
-def test_cvode_turns_a_stop_in_its_callback_into_system_error():
-    """The premise of the solver-callback cases below, with the real CVODE."""
+def test_cvode_wraps_or_drops_a_stop_in_its_callback():
+    """The premise of the solver-callback cases below, with the real CVODE: a SystemExit
+    from the right-hand side comes back as SystemError with the stop as its context, or
+    CVODE drops it and reports a failed solve; it never passes through as SystemExit."""
     cvode = pytest.importorskip('scikits_odes_sundials.cvode')
-
     calls = []
 
     def rhs(t, y, ydot):
@@ -898,10 +899,13 @@ def test_cvode_turns_a_stop_in_its_callback_into_system_error():
             raise SystemExit(143)
         ydot[0] = -y[0]
 
-    with pytest.raises(SystemError) as err:
-        cvode.CVODE(rhs, old_api=False).solve(np.linspace(0.0, 1.0, 3), np.array([1.0]))
-    assert isinstance(err.value.__context__, SystemExit)
-    assert err.value.__context__.code == 143
+    try:
+        out = cvode.CVODE(rhs, old_api=False).solve(np.linspace(0.0, 1.0, 3), np.array([1.0]))
+    except SystemError as err:
+        assert isinstance(err.__context__, SystemExit)
+        assert err.__context__.code == 143
+    else:
+        assert out.flag < 0
 
 
 def _stop_with(exc, code_first, seen, dirs):

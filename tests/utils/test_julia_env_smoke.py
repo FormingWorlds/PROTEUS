@@ -49,23 +49,20 @@ import sys
 from proteus.utils.helper import UpdateStatusfile
 from proteus.utils.julia_env import register_status_hook
 
-for folder, status in zip(sys.argv[1:], (1, 10)):
-    UpdateStatusfile({'output': folder}, status)
-    register_status_hook(folder)
+first, last, status = sys.argv[1:]
+UpdateStatusfile({'output': first}, 1)
+assert register_status_hook(first)
+if status != 'none':
+    UpdateStatusfile({'output': last}, int(status))
+assert register_status_hook(last)
 """
 
 
+_STRIPPED = ('PYTHON_JULIACALL_THREADS', 'PYTHON_JULIACALL_HANDLE_SIGNALS', 'JULIA_NUM_THREADS')
+
+
 def _env(key):
-    env = {
-        k: v
-        for k, v in os.environ.items()
-        if k
-        not in (
-            'PYTHON_JULIACALL_THREADS',
-            'PYTHON_JULIACALL_HANDLE_SIGNALS',
-            'JULIA_NUM_THREADS',
-        )
-    }
+    env = {k: v for k, v in os.environ.items() if k not in _STRIPPED}
     env[key] = '2'
     env['PYTHONPATH'] = os.pathsep.join(filter(None, [_SRC, env.get('PYTHONPATH')]))
     return env
@@ -117,17 +114,26 @@ def test_sigterm_records_status_25(arm, tmp_path):
     assert proc.returncode == (128 + signal.SIGTERM if signals is None else -signal.SIGTERM)
 
 
-def test_status_hook_keeps_a_final_status_and_follows_the_last_run(tmp_path):
+@pytest.mark.parametrize(
+    'status, expected', [('0', 25), ('1', 25), ('10', 10), ('20', 20), ('none', None)]
+)
+def test_status_hook_keeps_a_final_status_and_follows_the_last_run(tmp_path, status, expected):
     """With Julia's signal handlers on, the exit hook runs at every exit, also a normal one.
-    It must keep a final status (10, completed) and must not write into the folder of an
+    It writes 25 only while the last run reads as started (0) or running (1); it keeps a
+    final status (10, 20), creates no status file and does not write into the folder of an
     earlier run of the same process, which still reads as running."""
     first, last = tmp_path / 'first', tmp_path / 'last'
     res = subprocess.run(
-        [sys.executable, '-c', _HOOK_RUN, str(first), str(last)],
+        [sys.executable, '-c', _HOOK_RUN, str(first), str(last), status],
         env=_env('PYTHON_JULIACALL_THREADS'),
         capture_output=True,
         text=True,
         timeout=100,
     )
     assert res.returncode == 0, res.stderr[-2000:]
-    assert (ReadStatus(first), ReadStatus(last)) == (1, 10)
+    assert ReadStatus(first) == 1
+    if expected is None:
+        assert not last.exists() or list(last.iterdir()) == []
+    else:
+        assert ReadStatus(last) == expected
+        assert [p.name for p in last.iterdir()] == ['status']

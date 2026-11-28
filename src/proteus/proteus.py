@@ -40,7 +40,7 @@ from proteus.utils.helper import (
     is_write_snapshot,
     multiple,
 )
-from proteus.utils.julia_env import register_status_hook
+from proteus.utils.julia_env import register_status_hook, run_was_stopped, sigterm_held
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
@@ -82,7 +82,7 @@ AGNI_DEADLOCK_MAX = 3
 
 def _status_on_exit(start):
     """Record why ``start`` stopped when it raises, so the run does not read as running:
-    25 for an interrupt or a requested exit (KeyboardInterrupt, SystemExit), 20 for any
+    25 for a stop (`run_was_stopped`: an interrupt, a requested exit or SIGTERM), 20 for any
     other error. Only a running status is replaced: a stop code the raise site wrote is kept, and
     a check that stops the run before its first status leaves the output folder alone."""
 
@@ -92,9 +92,9 @@ def _status_on_exit(start):
         try:
             return start(self, *args, **kwargs)
         except BaseException as exc:
-            if ReadStatus(self.directories['output']) in (0, 1):
-                stopped = isinstance(exc, (KeyboardInterrupt, SystemExit))
-                UpdateStatusfile(self.directories, 25 if stopped else 20)
+            with sigterm_held():
+                if ReadStatus(self.directories['output']) in (0, 1):
+                    UpdateStatusfile(self.directories, 25 if run_was_stopped(exc) else 20)
             raise
 
     return wrapper
