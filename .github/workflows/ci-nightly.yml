@@ -229,20 +229,27 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ---- shard: aragog (real Aragog + real outgas). The per-test timeouts (at most
-          # 7200 s) stop a hung test; the job cap sits above the longest one plus setup. ----
-          - shard: aragog
+          # ---- shards: aragog-* (real Aragog + real outgas), split in three on Linux ----
+          - shard: aragog-coupled
             tier: critical
             os: ubuntu-latest
-            job_minutes: 270
             files: >-
               tests/integration/test_slow_aragog_calliope.py
               tests/integration/test_slow_aragog_atmodeller.py
+              tests/integration/test_slow_aragog_separation_buoyancy.py
+          - shard: aragog-resume
+            tier: critical
+            os: ubuntu-latest
+            files: >-
               tests/integration/test_slow_aragog_resume.py
               tests/integration/test_slow_aragog_lid_resume.py
+          - shard: aragog-accretion
+            tier: critical
+            os: ubuntu-latest
+            files: >-
               tests/integration/test_slow_accretion_resume.py
               tests/integration/test_slow_accretion_partial_remelt.py
-              tests/integration/test_slow_aragog_separation_buoyancy.py
+          # macOS keeps all seven files in one shard: it has 5 concurrent runner slots.
           - shard: aragog
             tier: critical
             os: macos-latest
