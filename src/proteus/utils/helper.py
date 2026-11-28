@@ -602,11 +602,14 @@ def UpdateStatusfile(dirs: dict, status: int):
     Update the status file with the current state of the program. Once a stop signal is
     recorded (`julia_env.STOP_SIGNAL`), every write records 25, so a later termination
     check or error site cannot hide the stop. The new file replaces the old one in one
-    rename, so a reader (a stop handler, the grid manager) always finds a status.
+    rename, so a reader (a stop handler, the grid manager) always finds a status. A stop
+    recorded during a write that `julia_env.sigterm_held` does not hold, whose exception a
+    finalizer dropped, is written as 25 after it.
     """
     from proteus.utils import julia_env
 
-    if julia_env.STOP_SIGNAL is not None:
+    stopped = julia_env.STOP_SIGNAL is not None
+    if stopped:
         status = 25
 
     stsfile = os.path.join(os.path.abspath(dirs['output']), 'status')
@@ -621,6 +624,8 @@ def UpdateStatusfile(dirs: dict, status: int):
         if os.path.exists(tmp):
             os.remove(tmp)
         raise
+    if not stopped and julia_env.STOP_SIGNAL is not None and not julia_env._writing:
+        UpdateStatusfile(dirs, 25)
 
 
 # Status of a run with no readable status file.
