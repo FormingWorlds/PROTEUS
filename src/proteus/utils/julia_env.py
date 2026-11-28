@@ -19,7 +19,7 @@ JULIA_THREADS_NOTE = ''
 
 _status_hook = None
 
-# The signal number once the Python SIGTERM handler has run
+# The signal number once a Python stop handler (SIGTERM, SIGINT) has run
 STOP_SIGNAL = None
 
 
@@ -100,13 +100,31 @@ def _exit_on_sigterm(signum, _frame):
     sys.exit(128 + signum)
 
 
+def _interrupt(signum, frame):
+    global STOP_SIGNAL
+    STOP_SIGNAL = signum
+    signal.default_int_handler(signum, frame)
+
+
+def exit_if_stopped() -> None:
+    """End the process with 128 + signal when a stop is recorded in ``STOP_SIGNAL``.
+
+    A C solver (CVODE) can drop the SystemExit or KeyboardInterrupt that a stop handler
+    raises in its callback and report a failed step; code that retries or skips a failed
+    step calls this first, so that the stop ends the run.
+    """
+    if STOP_SIGNAL is not None:
+        sys.exit(128 + STOP_SIGNAL)
+
+
 def exit_on_sigterm() -> bool:
     """End the process on SIGTERM (scancel, a SLURM time limit) with SystemExit, so that
     ``Proteus.start`` records status 25.
 
-    The handler records the signal in ``STOP_SIGNAL``, so the run reads as stopped also when
-    a C solver (CVODE) turns the SystemExit raised in its callback into its own error, or
-    drops it; see `run_was_stopped`. SIGTERM is unblocked, since a process
+    The handler, and a SIGINT handler that raises KeyboardInterrupt, record the signal in
+    ``STOP_SIGNAL``, so the run reads as stopped also when a C solver (CVODE) turns the
+    exception raised in its callback into its own error, or drops it; see `run_was_stopped`
+    and `exit_if_stopped`. SIGTERM is unblocked, since a process
     started from one whose Julia handles the signals inherits it blocked. When Julia
     handles the signals, its handler stays: a Python one would also stop the Julia exit hook.
 
@@ -118,6 +136,7 @@ def exit_on_sigterm() -> bool:
     if julia_handles_signals():
         return False
     signal.signal(signal.SIGTERM, _exit_on_sigterm)
+    signal.signal(signal.SIGINT, _interrupt)
     signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
     return True
 
@@ -125,8 +144,8 @@ def exit_on_sigterm() -> bool:
 def run_was_stopped(exc: BaseException) -> bool:
     """True when ``exc`` ends a run that was stopped, not one that failed.
 
-    A run was stopped when the Python SIGTERM handler has run, or when ``exc`` or an
-    exception in its cause or context chain is a KeyboardInterrupt or SystemExit.
+    A run was stopped when a Python stop handler has run, or when ``exc`` or an exception
+    that its cause and context links reach is a KeyboardInterrupt or SystemExit.
 
     Parameters
     ----------
@@ -138,16 +157,21 @@ def run_was_stopped(exc: BaseException) -> bool:
     bool
         True for a stop (status 25), False for an error (status 20).
     """
-    while exc is not None:
+    todo, seen = [exc], set()
+    while todo:
+        exc = todo.pop()
+        if exc is None or id(exc) in seen:
+            continue
         if isinstance(exc, (KeyboardInterrupt, SystemExit)):
             return True
-        exc = exc.__cause__ or exc.__context__
+        seen.add(id(exc))
+        todo += [exc.__cause__, exc.__context__]
     return STOP_SIGNAL is not None
 
 
 @contextmanager
 def sigterm_held():
-    """Ignore SIGTERM while a stop is recorded, when the Python handler is installed.
+    """Ignore SIGTERM while the exit status is written, when the Python handler is installed.
 
     At a SLURM time limit srun and slurmstepd both send SIGTERM; a second SystemExit
     would stop the status write. The handler is put back afterwards.

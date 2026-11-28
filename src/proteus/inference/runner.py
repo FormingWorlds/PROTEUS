@@ -153,6 +153,7 @@ def handle_job(job: dict, run_simulation) -> dict:
 def serve(request_fd: int, reply_fd: int) -> None:
     """Serve simulation requests on the inherited pipes until they close."""
     from proteus.proteus import Proteus
+    from proteus.utils import julia_env
     from proteus.utils.julia_env import exit_on_sigterm
 
     exit_on_sigterm()
@@ -162,6 +163,7 @@ def serve(request_fd: int, reply_fd: int) -> None:
 
     reply = os.fdopen(reply_fd, 'w')
     for line in os.fdopen(request_fd, 'r'):
+        julia_env.STOP_SIGNAL = None
         reply.write(json.dumps(handle_job(json.loads(line), run_simulation)) + '\n')
         reply.flush()
 

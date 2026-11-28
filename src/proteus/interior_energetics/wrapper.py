@@ -34,6 +34,7 @@ from proteus.utils.constants import (
     vol_element_list,
 )
 from proteus.utils.helper import MissingDataError, UpdateStatusfile, energetics_eos_key
+from proteus.utils.julia_env import exit_if_stopped
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -2777,6 +2778,7 @@ def run_interior(
             UpdateStatusfile(dirs, 21)
             raise
         except RuntimeError as e:
+            exit_if_stopped()
             interior_o.aragog_fail_count += 1
             cause = _aragog_failure_cause(e)
             log.warning(

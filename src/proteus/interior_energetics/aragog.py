@@ -56,6 +56,7 @@ from proteus.interior_energetics.aragog_phase import (
 from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.radiogenic import radiogenic_inputs
 from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, TDEP_EOS_PREFIXES
+from proteus.utils.julia_env import exit_if_stopped
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data, secs_per_year
@@ -2816,6 +2817,7 @@ class AragogRunner:
             # budget (6, widened to max_attempts_stiff on a stiff failure)
             # and drives the exhaustion check below.
             for attempt in range(1, max_attempts_stiff + 1):
+                exit_if_stopped()
                 _t0 = time.perf_counter()
                 try:
                     solver.solve()
