@@ -240,7 +240,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     threshold, no solve runs: every species column but the vmr is 0, ``P_surf`` is 0,
     each noble gas keeps its kg total with the matching mole total, the vmrs and
     ``atm_kg_per_mol`` keep their values as in ``run_desiccated``, and
-    ``fO2_shift_IW_derived`` and ``O_res`` are NaN.
+    ``fO2_shift_IW_derived`` and ``O_res`` are NaN, and ``outgas_called`` is 0.
     """
     from atmodeller import (
         ChemicalSpecies,
@@ -539,6 +539,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             hf_row[f'{el}_kg_condensed'] = 0.0
         hf_row['fO2_shift_IW_derived'] = float('nan')
         hf_row['O_res'] = float('nan')
+        hf_row['outgas_called'] = 0.0  # no solve, so no buffer was evaluated
         return
 
     if fO2_source == 'from_O_budget' and 'O' not in mass_constraints:
@@ -911,18 +912,9 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # formed, written to O_kg_condensed above; zero without them.
     condensed_O_kg = float(hf_row.get('O_kg_condensed', 0.0))
 
-    # Plumb the derived IW-buffer offset only for the 'from_O_budget'
-    # source. Under
-    # user_constant the wrapper's pre-dispatch echo of
-    # config.outgas.fO2_shift_IW IS the offset the chemistry equilibrated
-    # to (the fugacity constraint set it), so overwriting with
-    # atmodeller's back-computed log10dIW_1_bar would lose bit-for-bit
-    # echo of the user input and introduce a small Hirschmann-buffer
-    # 1-bar-vs-P reconstruction drift. The IW buffer atmodeller uses
-    # for the 'from_O_budget' source is Hirschmann combined; CALLIOPE uses O'Neill & Eggins
-    # 2002 (~0.95 dex offset at 3000 K). Cross-backend comparison work
-    # later in the framework will quantify this; for now the column is
-    # backend-faithful (each wrapper reports its own buffer).
+    # Under user_constant the column keeps the input fO2_shift_IW; under from_O_budget it takes
+    # atmodeller's derived offset. Both modules use the Hirschmann (2021) IW at 1000-8100 K; below
+    # it atmodeller uses its low-temperature buffer and CALLIOPE extrapolates the 2021 fit.
     if fO2_source == 'from_O_budget':
         o2_dict = output_dict.get('O2_g', {})
         log10dIW = o2_dict.get('log10dIW_1_bar') if isinstance(o2_dict, dict) else None

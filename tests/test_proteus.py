@@ -5678,6 +5678,74 @@ def test_main_loop_checks_chemistry_targets_only_on_steps_without_a_snapshot(tmp
     assert calls == [2, 4, 6]
 
 
+def _set_crystallized(self):
+    self.crystallized = True
+
+
+def _called(dirs, config, hf_row, *args, **kwargs):
+    hf_row['outgas_called'] = 1.0
+
+
+def _seal_opens(dirs, config, hf_row, interior, sealed, **kwargs):
+    """Held for 2 steps, then open with an outgassing call, as run_lid_seal_step does."""
+    _seal_opens.n += 1
+    if _seal_opens.n > 2:
+        _called(dirs, config, hf_row)
+    return _seal_opens.n <= 2
+
+
+@pytest.mark.parametrize(
+    ('case', 'expected'),
+    [
+        ('outgassing', [1.0] * 6),
+        ('desiccated', [1.0, 1.0, 1.0, 1.0, 0.0, 0.0]),
+        ('crystallized', [1.0, 1.0, 1.0, 1.0, 0.0, 0.0]),
+        ('seal_held', [0.0] * 6),
+        ('seal_held_then_opens', [0.0, 0.0, 1.0, 1.0, 1.0, 1.0]),
+    ],
+)
+def test_the_main_loop_checks_the_fo2_warnings_after_each_appended_row(
+    tmp_path, case, expected
+):
+    """Every iteration, also one without a snapshot, passes the helpfile to the fO2 warnings, and
+    each step starts its row at no outgassing call, so only a step whose outgassing call runs
+    (run_outgassing sets the column) records one."""
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=3, dt_write_rel=1e9)
+    _seal_opens.n = 0
+    dry = patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+    extra = {
+        'outgassing': [dry],
+        'desiccated': [patch('proteus.outgas.wrapper.check_desiccation', return_value=True)],
+        'crystallized': [
+            dry,
+            patch.object(type(p), '_check_crystallization', _set_crystallized),
+        ],
+        'seal_held': [
+            dry,
+            patch('proteus.outgas.lid_seal.seal_enabled', return_value=True),
+            patch('proteus.outgas.lid_seal.run_lid_seal_step', return_value=True),
+        ],
+        'seal_held_then_opens': [
+            dry,
+            patch('proteus.outgas.lid_seal.seal_enabled', return_value=True),
+            patch('proteus.outgas.lid_seal.run_lid_seal_step', side_effect=_seal_opens),
+        ],
+    }[case]
+    rows = []  # per iteration: loop count, check got p.config and p.hf_all, outgas_called
+
+    def _record(config, hf_all):
+        ok = config is p.config and hf_all is p.hf_all
+        rows.append((p.loops['total'], ok, hf_all.iloc[-1].to_dict()['outgas_called']))
+
+    run = patch('proteus.outgas.wrapper.run_outgassing_and_vapourisation', side_effect=_called)
+    with patch('proteus.outgas.fo2_warnings.check_fo2_warnings', side_effect=_record):
+        _run_main_loop_capturing_plots(p, run, *extra, stop_at_loop=6)
+    assert p.loops['total'] == 6
+    assert [n for n, _, _ in rows] == list(range(1, p.loops['total'] + 1))
+    assert all(ok for _, ok, _ in rows)
+    assert [c for _, _, c in rows] == expected
+
+
 # ---------------------------------------------------------------------------
 # Stellar step: update intervals and the spectrum across a resume
 # ---------------------------------------------------------------------------
