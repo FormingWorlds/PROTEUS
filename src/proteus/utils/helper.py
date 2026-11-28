@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import glob
+import itertools
 import logging
 import math
 import os
@@ -593,33 +594,33 @@ def CommentFromStatus(status: int):
     return 'UNHANDLED STATUS (%d)' % status
 
 
+_STATUS_WRITES = itertools.count()
+
+
 def UpdateStatusfile(dirs: dict, status: int):
     """
     Update the status file with the current state of the program. Once a stop signal is
     recorded (`julia_env.STOP_SIGNAL`), every write records 25, so a later termination
-    check or error site cannot hide the stop.
+    check or error site cannot hide the stop. The new file replaces the old one in one
+    rename, so a reader (a stop handler, the grid manager) always finds a status.
     """
     from proteus.utils import julia_env
 
     if julia_env.STOP_SIGNAL is not None:
         status = 25
 
-    # Path to status file
-    stsfold = os.path.abspath(dirs['output'])
-    stsfile = os.path.join(stsfold, 'status')
-
-    # Does the folder exist?
-    if not os.path.exists(stsfold):
-        os.makedirs(stsfold)
-
-    # Does the status file exist?
-    safe_rm(stsfile)
-
-    # Write status file
-    with open(stsfile, 'x') as hdl:
-        hdl.write('%d\n' % status)
-        desc = CommentFromStatus(status)
-        hdl.write('%s\n' % desc)
+    stsfile = os.path.join(os.path.abspath(dirs['output']), 'status')
+    os.makedirs(os.path.dirname(stsfile), exist_ok=True)
+    # A stop handler can write the status inside this write, so each write has its own file
+    tmp = f'{stsfile}.{os.getpid()}.{next(_STATUS_WRITES)}.tmp'
+    try:
+        with open(tmp, 'w') as hdl:
+            hdl.write('%d\n%s\n' % (status, CommentFromStatus(status)))
+        os.replace(tmp, stsfile)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
 
 
 # Status of a run with no readable status file.
