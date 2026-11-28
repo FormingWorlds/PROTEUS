@@ -595,8 +595,14 @@ def CommentFromStatus(status: int):
 
 def UpdateStatusfile(dirs: dict, status: int):
     """
-    Update the status file with the current state of the program
+    Update the status file with the current state of the program. Once a stop signal is
+    recorded (`julia_env.STOP_SIGNAL`), every write records 25, so a later termination
+    check or error site cannot hide the stop.
     """
+    from proteus.utils import julia_env
+
+    if julia_env.STOP_SIGNAL is not None:
+        status = 25
 
     # Path to status file
     stsfold = os.path.abspath(dirs['output'])

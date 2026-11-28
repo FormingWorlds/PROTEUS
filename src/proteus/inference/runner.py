@@ -163,9 +163,9 @@ def serve(request_fd: int, reply_fd: int) -> None:
 
     reply = os.fdopen(reply_fd, 'w')
     for line in os.fdopen(request_fd, 'r'):
-        julia_env.exit_if_stopped()
         reply.write(json.dumps(handle_job(json.loads(line), run_simulation)) + '\n')
         reply.flush()
+        julia_env.exit_if_stopped()
 
 
 if __name__ == '__main__':

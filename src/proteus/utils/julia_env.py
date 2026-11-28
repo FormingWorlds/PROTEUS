@@ -185,19 +185,21 @@ def run_was_stopped(exc: BaseException) -> bool:
 
 @contextmanager
 def sigterm_held():
-    """Ignore SIGTERM while the exit status is written, when the Python handler is installed.
+    """Ignore SIGTERM and SIGINT while the exit status is written, where the Python stop
+    handlers are installed.
 
-    At a SLURM time limit srun and slurmstepd both send SIGTERM; a second SystemExit
-    would stop the status write. The handler is put back afterwards.
+    At a SLURM time limit srun and slurmstepd both send SIGTERM, and Ctrl-C can come twice;
+    a second exception would stop the status write. The handlers are put back afterwards.
     """
-    ours = signal.getsignal(signal.SIGTERM) is _exit_on_sigterm
-    if ours:
-        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    ours = ((signal.SIGTERM, _exit_on_sigterm), (signal.SIGINT, _interrupt))
+    held = [(s, h) for s, h in ours if signal.getsignal(s) is h]
+    for s, _ in held:
+        signal.signal(s, signal.SIG_IGN)
     try:
         yield
     finally:
-        if ours:
-            signal.signal(signal.SIGTERM, _exit_on_sigterm)
+        for s, h in held:
+            signal.signal(s, h)
 
 
 def register_status_hook(output_dir: str) -> bool:
