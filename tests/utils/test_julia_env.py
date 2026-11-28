@@ -5,7 +5,7 @@ from __future__ import annotations
 import signal
 import sys
 from contextlib import contextmanager
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -137,9 +137,28 @@ def test_status_hook_is_not_set_when_python_handles_the_signals(monkeypatch, tmp
     monkeypatch.setattr(juliacall, 'Main', main)
     monkeypatch.setattr(je, '_status_hook', None)
     monkeypatch.setattr(je, 'julia_handles_signals', lambda: False)
-    assert je.register_status_hook(str(tmp_path), '25\nstopped\n') is False
+    assert je.register_status_hook(str(tmp_path)) is False
     main.seval.assert_not_called()
     assert je._status_hook is None
+
+
+def test_status_hook_is_set_once_and_follows_the_last_run(monkeypatch, tmp_path):
+    """With Julia's signal handlers on, the first call sets the Julia exit hook; every call
+    points it to the status file of that run, with the text of status 25."""
+    import juliacall
+
+    from proteus.utils.helper import CommentFromStatus
+
+    main = MagicMock()
+    monkeypatch.setattr(juliacall, 'Main', main)
+    monkeypatch.setattr(je, '_status_hook', None)
+    monkeypatch.setattr(je, 'julia_handles_signals', lambda: True)
+    assert all(je.register_status_hook(str(tmp_path / d)) for d in ('a', 'b'))
+    main.seval.assert_called_once()
+    text = f'25\n{CommentFromStatus(25)}\n'
+    assert main.seval.return_value.call_args_list == [
+        call(str(tmp_path / d / 'status'), text) for d in ('a', 'b')
+    ]
 
 
 @pytest.mark.parametrize('julia', [False, True])

@@ -44,12 +44,27 @@ cli.Proteus = StubProteus
 cli.start.main(['-c', sys.argv[2]])
 """
 
+_HOOK_RUN = """
+import sys
+from proteus.utils.helper import UpdateStatusfile
+from proteus.utils.julia_env import register_status_hook
+
+for folder, status in zip(sys.argv[1:], (1, 10)):
+    UpdateStatusfile({'output': folder}, status)
+    register_status_hook(folder)
+"""
+
 
 def _env(key):
     env = {
         k: v
         for k, v in os.environ.items()
-        if not k.startswith(('PYTHON_JULIACALL_', 'JULIA_NUM_THREADS'))
+        if k
+        not in (
+            'PYTHON_JULIACALL_THREADS',
+            'PYTHON_JULIACALL_HANDLE_SIGNALS',
+            'JULIA_NUM_THREADS',
+        )
     }
     env[key] = '2'
     env['PYTHONPATH'] = os.pathsep.join(filter(None, [_SRC, env.get('PYTHONPATH')]))
@@ -61,7 +76,8 @@ def test_two_thread_request_starts_julia_as_set_and_exits_0(arm):
     """A process that asks for 2 Julia threads and imports PROTEUS exits with 0: through
     JULIA_NUM_THREADS it runs 1 Julia thread, through PYTHON_JULIACALL_THREADS 2 threads
     with Julia's signal handlers on. With 2 threads and the handlers off, the exit of this
-    process ends with SIGBUS (code 138) in most tries on macOS."""
+    process ends with SIGBUS (code 138) in some tries on macOS, so the exit code alone does
+    not show the fix; the thread count and the signal setting do."""
     key, threads, signals = _ARMS[arm]
     code = (
         'import proteus, juliacall\n'
@@ -99,3 +115,19 @@ def test_sigterm_records_status_25(arm, tmp_path):
         proc.kill()
     assert ReadStatus(out) == 25, err[-2000:]
     assert proc.returncode == (128 + signal.SIGTERM if signals is None else -signal.SIGTERM)
+
+
+def test_status_hook_keeps_a_final_status_and_follows_the_last_run(tmp_path):
+    """With Julia's signal handlers on, the exit hook runs at every exit, also a normal one.
+    It must keep a final status (10, completed) and must not write into the folder of an
+    earlier run of the same process, which still reads as running."""
+    first, last = tmp_path / 'first', tmp_path / 'last'
+    res = subprocess.run(
+        [sys.executable, '-c', _HOOK_RUN, str(first), str(last)],
+        env=_env('PYTHON_JULIACALL_THREADS'),
+        capture_output=True,
+        text=True,
+        timeout=100,
+    )
+    assert res.returncode == 0, res.stderr[-2000:]
+    assert (ReadStatus(first), ReadStatus(last)) == (1, 10)

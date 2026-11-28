@@ -13,7 +13,7 @@ import os
 import signal
 import sys
 
-# The line `print_system_configuration` logs when `set_julia_threads` changed the setting
+# The line `print_system_configuration` logs when 1 thread runs instead of JULIA_NUM_THREADS
 JULIA_THREADS_NOTE = ''
 
 _status_hook = None
@@ -43,14 +43,15 @@ def _more_than_one(value: str) -> bool:
     return min(counts) >= 0 and sum(counts) > 1
 
 
-def set_julia_threads(environ=os.environ, xoptions=None) -> str:
+def set_julia_threads(environ=os.environ, xoptions=None) -> None:
     """Choose the Julia threads and signal handling before juliacall starts Julia.
 
     A thread count from ``-X juliacall-threads`` or ``PYTHON_JULIACALL_THREADS`` is the
     user's choice and is kept; above 1 thread, ``PYTHON_JULIACALL_HANDLE_SIGNALS`` is set
     to ``yes`` unless already set. Without it, juliacall would take ``JULIA_NUM_THREADS``;
-    above 1 thread, ``PYTHON_JULIACALL_THREADS`` is set to 1 instead. Has no effect in a
-    process that has already started juliacall.
+    above 1 thread, ``PYTHON_JULIACALL_THREADS`` is set to 1 instead. ``JULIA_THREADS_NOTE``
+    is set whenever 1 thread runs while ``JULIA_NUM_THREADS`` asks for more, also in a
+    child process that inherits the setting. Has no effect once juliacall is imported.
 
     Parameters
     ----------
@@ -59,11 +60,6 @@ def set_julia_threads(environ=os.environ, xoptions=None) -> str:
     xoptions : Mapping or None
         The ``-X`` options; ``sys._xoptions`` when None.
 
-    Returns
-    -------
-    str
-        The line to log when the thread count was set to 1, else an empty string.
-
     Notes
     -----
     With the Julia handlers on, a SLURM time limit under ``srun`` can leave status 1:
@@ -71,21 +67,20 @@ def set_julia_threads(environ=os.environ, xoptions=None) -> str:
     Under ``exec`` in the batch script the process gets 1 SIGTERM and records status 25.
     """
     global JULIA_THREADS_NOTE
+    if 'juliacall' in sys.modules:
+        return
     xoptions = sys._xoptions if xoptions is None else xoptions
-    user = xoptions.get('juliacall-threads', environ.get('PYTHON_JULIACALL_THREADS'))
-    if user is not None:
-        if _more_than_one(user):
-            environ.setdefault('PYTHON_JULIACALL_HANDLE_SIGNALS', 'yes')
-        return ''
     julia = environ.get('JULIA_NUM_THREADS', '1')
-    if not _more_than_one(julia):
-        return ''
-    environ['PYTHON_JULIACALL_THREADS'] = '1'
-    JULIA_THREADS_NOTE = (
-        f'Julia threads     1 (JULIA_NUM_THREADS={julia} not used; '
-        'set PYTHON_JULIACALL_THREADS for more)'
-    )
-    return JULIA_THREADS_NOTE
+    user = xoptions.get('juliacall-threads', environ.get('PYTHON_JULIACALL_THREADS'))
+    if user is None and _more_than_one(julia):
+        user = environ['PYTHON_JULIACALL_THREADS'] = '1'
+    elif user is not None and _more_than_one(user):
+        environ.setdefault('PYTHON_JULIACALL_HANDLE_SIGNALS', 'yes')
+    if str(user).strip() == '1' and _more_than_one(julia):
+        JULIA_THREADS_NOTE = (
+            f'Julia threads     1 (JULIA_NUM_THREADS={julia} not used; '
+            'set PYTHON_JULIACALL_THREADS for more)'
+        )
 
 
 def julia_handles_signals() -> bool:
@@ -121,11 +116,11 @@ def exit_on_sigterm() -> bool:
     return True
 
 
-def register_status_hook(output_dir: str, text: str) -> bool:
+def register_status_hook(output_dir: str) -> bool:
     """Write status 25 at Julia exit while the run still reads as started or running.
 
     With ``handle_signals`` on, Julia ends the process on SIGTERM and SIGINT before
-    Python can record the stop; a Julia ``atexit`` hook still runs. It writes ``text``
+    Python can record the stop; a Julia ``atexit`` hook still runs. It writes status 25
     through a temporary file and a rename, so the status file is never absent. One hook
     per process; a later call moves it to the new output folder.
 
@@ -133,8 +128,6 @@ def register_status_hook(output_dir: str, text: str) -> bool:
     ----------
     output_dir : str
         Output folder of the run; the hook writes ``<output_dir>/status``.
-    text : str
-        Content of the status file for status 25.
 
     Returns
     -------
@@ -143,6 +136,8 @@ def register_status_hook(output_dir: str, text: str) -> bool:
     """
     global _status_hook
     import juliacall
+
+    from proteus.utils.helper import CommentFromStatus
 
     if not julia_handles_signals():
         return False
@@ -158,5 +153,7 @@ def register_status_hook(output_dir: str, text: str) -> bool:
                 end
                 (p, t) -> (path[] = p; text[] = t; nothing)
             end""")
-    _status_hook(os.path.join(os.path.abspath(output_dir), 'status'), text)
+    _status_hook(
+        os.path.join(os.path.abspath(output_dir), 'status'), f'25\n{CommentFromStatus(25)}\n'
+    )
     return True
