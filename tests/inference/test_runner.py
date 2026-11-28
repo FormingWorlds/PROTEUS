@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import select
 import signal
 import subprocess
 import sys
@@ -389,8 +390,9 @@ def test_serve_records_status_25_when_sigterm_stops_a_run(monkeypatch, tmp_path)
     assert ReadStatus(tmp_path) == 25
 
 
-def _serve_jobs(monkeypatch, tmp_path, start, names):
-    """Run `serve` over one job per name with `start` as the run; return the folders run."""
+def _serve_jobs(monkeypatch, tmp_path, start, names, replies=None):
+    """Run `serve` over one job per name with `start` as the run; return the folders run.
+    ``replies``, when given, receives each reply `serve` wrote, read without waiting."""
     ran = []
 
     class _Proteus:
@@ -413,6 +415,8 @@ def _serve_jobs(monkeypatch, tmp_path, start, names):
     try:
         serve(request_r, reply_w)
     finally:
+        if replies is not None and select.select([reply_r], [], [], 0)[0]:
+            replies += [json.loads(r) for r in os.read(reply_r, 65536).decode().splitlines()]
         os.close(reply_r)
     return ran
 
@@ -445,7 +449,18 @@ def test_serve_ends_after_the_job_that_recorded_a_stop(monkeypatch, tmp_path, na
     def drops_a_stop():
         julia_env.STOP_SIGNAL = signal.SIGTERM
 
+    replies = []
     with pytest.raises(SystemExit) as stop:
-        _serve_jobs(monkeypatch, tmp_path, drops_a_stop, names)
+        _serve_jobs(monkeypatch, tmp_path, drops_a_stop, names, replies)
     assert stop.value.code == 143
+    assert replies == []
     assert (tmp_path / 'a').exists() and not (tmp_path / 'b').exists()
+
+
+def test_serve_replies_once_per_job_without_a_stop(monkeypatch, tmp_path):
+    """Without a stop, `serve` writes one reply per job, so the stop test reads a reply
+    pipe that a reply would reach."""
+    replies = []
+    ran = _serve_jobs(monkeypatch, tmp_path, lambda: None, ['a', 'b'], replies)
+    assert ran == [str(tmp_path / 'a'), str(tmp_path / 'b')]
+    assert replies == [{'error': None}, {'error': None}]
