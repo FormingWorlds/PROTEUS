@@ -29,6 +29,7 @@ step-by-step guide or the advice below,
 | `libudev.so.1` not found | [libudev](#libudevso1-not-found) |
 | `OpenSSL_jll` / Julia error | [Julia compatibility](#julia-compatibility-error) |
 | Exit code 138 (macOS) after a run has finished, or `Julia threads     1` in the log | [Julia threads and signals](#julia-threads-and-signals) |
+| A run on SLURM keeps status 1 after `scancel` or the time limit | [Stop a run with scancel or the time limit](habrok_cluster_guide.md#stop-signals) |
 | `PythonCall ... is required but does not seem to be installed` / `failed to find source of parent package` | [Julia depot with no packages](#julia-depot-with-no-packages) |
 | `could not load library ".../.juliaup/bin/../lib/julia/sys.so"`, or pytest exits with code 1 and prints nothing | [Julia system image not found](#julia-system-image-not-found) |
 | PETSc fails on Apple Silicon | [PETSc Apple Silicon](#petsc-compilation-fails-on-apple-silicon) |
@@ -331,11 +332,13 @@ conda deactivate && conda activate proteus
 
 ### Julia threads and signals {#julia-threads-and-signals}
 
-A run on macOS can end with exit code 138 (SIGBUS) when the process exits, after the run has written its output. This happens with more than 1 Julia thread and the Julia signal handlers off, the default of juliacall (the package that runs Julia inside the Python process of PROTEUS). PROTEUS therefore starts Julia with 1 thread: when `JULIA_NUM_THREADS` asks for more, PROTEUS sets `PYTHON_JULIACALL_THREADS=1` before it starts Julia and logs `Julia threads     1 (JULIA_NUM_THREADS=... not used; ...)`. A script that imports `juliacall` before `proteus` keeps the Julia threads it started with.
+A run on macOS can end with exit code 138 (SIGBUS) when the process exits, after the run has written its output. This happens with more than 1 Julia thread and the Julia signal handlers off. Handlers off is the default of juliacall, the package that runs Julia inside the Python process of PROTEUS.
 
-To run Julia with more threads, set `PYTHON_JULIACALL_THREADS` (or start Python with `-X juliacall-threads=N`). PROTEUS then sets `PYTHON_JULIACALL_HANDLE_SIGNALS=yes`, unless you set it yourself. Julia, not Python, then takes SIGTERM and Ctrl-C:
+PROTEUS therefore starts Julia with 1 thread: when `JULIA_NUM_THREADS` asks for more, PROTEUS sets `PYTHON_JULIACALL_THREADS=1` before it starts Julia and logs `Julia threads     1 (JULIA_NUM_THREADS=... not used; ...)`. A script that imports `juliacall` before `proteus` keeps the Julia threads it started with.
 
-- The run stops with a Julia backtrace. A Julia exit hook records status 25 (died, or exit requested by user).
+To run Julia with more threads, set `PYTHON_JULIACALL_THREADS` (or start Python with `-X juliacall-threads=N`). PROTEUS then sets `PYTHON_JULIACALL_HANDLE_SIGNALS=yes`, unless you set it yourself. Julia, not Python, then handles SIGTERM (the request to stop from SLURM and from `kill`) and Ctrl-C:
+
+- The run stops with a Julia backtrace. A Julia exit hook records status 25 (died, or exit requested by user) when the status was 0 (started) or 1 (running).
 - The temporary folder `proteus_*` of the run stays in `$TMPDIR`.
 - A program that the run started, such as SPIDER, can go on after the run has stopped, and it does not react to SIGTERM or Ctrl-C. Stop it with `kill -KILL <pid>`.
 
