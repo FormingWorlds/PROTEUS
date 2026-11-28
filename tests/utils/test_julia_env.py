@@ -193,20 +193,23 @@ def test_python_sigterm_handler_only_without_the_julia_handlers(monkeypatch, jul
         signal.pthread_sigmask(signal.SIG_SETMASK, mask)
 
 
+@pytest.mark.parametrize('signame', ['SIGTERM', 'SIGINT'])
 @pytest.mark.parametrize('ours', [True, False])
-def test_sigterm_is_held_only_over_its_own_handler(ours):
-    """While a stop is recorded, SIGTERM is ignored and then the Python handler is back;
-    any other handler (Julia's, the default) is left alone."""
-    saved = signal.getsignal(signal.SIGTERM)
-    before = je._exit_on_sigterm if ours else signal.SIG_DFL
+def test_sigterm_is_held_only_over_its_own_handler(ours, signame):
+    """While a stop is recorded, SIGTERM and SIGINT are ignored and then the Python handlers
+    are back; any other handler (Julia's, the default) is left alone."""
+    signum = getattr(signal, signame)
+    handler = {signal.SIGTERM: je._exit_on_sigterm, signal.SIGINT: je._interrupt}[signum]
+    saved = signal.getsignal(signum)
+    before = handler if ours else signal.SIG_DFL
     try:
-        signal.signal(signal.SIGTERM, before)
+        signal.signal(signum, before)
         with je.sigterm_held():
-            inside = signal.getsignal(signal.SIGTERM)
+            inside = signal.getsignal(signum)
         assert inside is (signal.SIG_IGN if ours else before)
-        assert signal.getsignal(signal.SIGTERM) is before
+        assert signal.getsignal(signum) is before
     finally:
-        signal.signal(signal.SIGTERM, saved)
+        signal.signal(signum, saved)
 
 
 def test_a_stop_is_read_from_the_handler_or_the_exception_chain(monkeypatch):
@@ -283,3 +286,41 @@ def test_the_status_guard_reraises_an_interrupt_or_exit_unchanged(monkeypatch, t
         Stub().start()
     assert end.value is exc
     assert ReadStatus(tmp_path) == 25
+
+
+@pytest.mark.parametrize('signame', ['SIGTERM', 'SIGINT'])
+@pytest.mark.parametrize('status', [0, 1, 10, 12, 20, 22, 25, None])
+def test_a_stop_writes_status_25_only_over_a_started_or_running_run(
+    monkeypatch, tmp_path, status, signame
+):
+    """The stop handlers write 25 when the run reads as started (0) or running (1), keep a
+    final or error status and a missing file, and write nothing without a run folder."""
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
+    signum = getattr(signal, signame)
+    handler = {signal.SIGTERM: je._exit_on_sigterm, signal.SIGINT: je._interrupt}[signum]
+    run = tmp_path / 'run'
+    if status is not None:
+        UpdateStatusfile({'output': str(run)}, status)
+    for folder in (None, str(run)):
+        monkeypatch.setattr(je, '_status_output', folder)
+        monkeypatch.setattr(je, 'STOP_SIGNAL', None)
+        with pytest.raises((SystemExit, KeyboardInterrupt)):
+            handler(signum, None)
+        assert je.STOP_SIGNAL == signum
+        if folder is None:
+            assert ReadStatus(run) == (-1 if status is None else status)
+    assert ReadStatus(run) == (25 if status in (0, 1) else -1 if status is None else status)
+
+
+def test_a_status_written_after_a_stop_records_the_stop(monkeypatch, tmp_path):
+    """Once a stop is recorded, every status write records 25, so a termination check or an
+    error site later in the same step cannot hide the stop."""
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
+    UpdateStatusfile({'output': str(tmp_path)}, 13)
+    assert ReadStatus(tmp_path) == 13
+    monkeypatch.setattr(je, 'STOP_SIGNAL', signal.SIGTERM)
+    for code in (1, 13, 21):
+        UpdateStatusfile({'output': str(tmp_path)}, code)
+        assert ReadStatus(tmp_path) == 25

@@ -436,16 +436,30 @@ def test_serve_ends_when_a_solver_drops_the_stop(monkeypatch, tmp_path):
     assert not (tmp_path / 'b').exists()
 
 
-def test_serve_ends_before_a_job_once_a_stop_is_recorded(monkeypatch, tmp_path):
-    """A job that drops a stop and returns ends the worker with 128 + signal before the next
-    job, so a stop that a finalizer or a solver dropped never waits for the job queue."""
+@pytest.mark.parametrize('names', [['a'], ['a', 'b']])
+def test_serve_ends_after_the_job_that_recorded_a_stop(monkeypatch, tmp_path, names):
+    """A job that drops a stop and returns ends the worker with 128 + signal after its own
+    reply, also as the last job; the next job is left for a new worker."""
     from proteus.utils import julia_env
 
     def drops_a_stop():
         julia_env.STOP_SIGNAL = signal.SIGTERM
 
-    monkeypatch.setattr(julia_env, 'STOP_SIGNAL', None)
+    replies = []
+    monkeypatch.setattr('proteus.inference.runner.handle_job', _record_reply(replies))
     with pytest.raises(SystemExit) as stop:
-        _serve_jobs(monkeypatch, tmp_path, drops_a_stop, ['a', 'b'])
+        _serve_jobs(monkeypatch, tmp_path, drops_a_stop, names)
     assert stop.value.code == 143
-    assert not (tmp_path / 'b').exists()
+    assert replies == [{'error': None}]
+    assert (tmp_path / 'a').exists() and not (tmp_path / 'b').exists()
+
+
+def _record_reply(replies):
+    """`handle_job` that also keeps each reply it returns."""
+    from proteus.inference.runner import handle_job
+
+    def handle(job, run_simulation):
+        replies.append(handle_job(job, run_simulation))
+        return replies[-1]
+
+    return handle

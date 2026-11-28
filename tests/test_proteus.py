@@ -5987,12 +5987,13 @@ def test_a_clamped_step_updates_the_stellar_quantities_but_not_the_spectrum(tmp_
 def _drop_a_stop_on_atmosphere_call(n, signum, out):
     """Fake atmosphere step that, on call ``n``, runs the stop handler inside a weakref
     callback, as matplotlib's finalizers do: Python prints its exception as ignored. The
-    handler has written status 25 to ``out`` before the run goes on."""
+    handler has written status 25 to ``out`` before the run goes on; a later status write
+    (here 13, as a termination check makes) keeps it."""
     import signal
     import weakref
 
     from proteus.utils import julia_env
-    from proteus.utils.helper import ReadStatus
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
     handler = {signal.SIGTERM: julia_env._exit_on_sigterm, signal.SIGINT: julia_env._interrupt}
     seen = []
@@ -6007,6 +6008,7 @@ def _drop_a_stop_on_atmosphere_call(n, signum, out):
             ref = weakref.ref(obj, lambda _: handler[signum](signum, None))
             del obj
             seen[-1] = (ref() is None, julia_env.STOP_SIGNAL, ReadStatus(out))
+            UpdateStatusfile({'output': str(out)}, 13)
 
     return run, seen
 

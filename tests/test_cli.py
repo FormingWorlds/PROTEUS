@@ -4617,3 +4617,30 @@ def test_a_stop_that_a_solver_drops_still_records_status_25(monkeypatch, tmp_pat
     res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
     assert res.exit_code == 143
     assert ReadStatus(tmp_path) == 25
+
+
+def test_a_stop_dropped_after_the_last_check_ends_proteus_start(monkeypatch, tmp_path):
+    """A stop dropped after the last check of `Proteus.start` (a finalizer in the final
+    plots) ends `proteus start` with 128 + signal after `start` returns, and keeps the final
+    status."""
+    from proteus.proteus import _status_on_exit
+    from proteus.utils import julia_env
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
+    cfg = tmp_path / 'stub.toml'
+    cfg.write_text('# stub\n')
+
+    class FakeProteus:
+        def __init__(self, config_path):
+            self.directories = {'output': str(tmp_path)}
+
+        @_status_on_exit
+        def start(self, resume, offline):
+            UpdateStatusfile(self.directories, 10)
+            julia_env.STOP_SIGNAL = signal.SIGTERM
+
+    monkeypatch.setattr(cli, 'Proteus', FakeProteus)
+    monkeypatch.setattr('proteus.utils.julia_env.julia_handles_signals', lambda: False)
+    res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
+    assert res.exit_code == 143
+    assert ReadStatus(tmp_path) == 10
