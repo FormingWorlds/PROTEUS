@@ -1514,6 +1514,7 @@ class Proteus:
             # Handle volatile exchange
             log.info('Solving for atmosphere composition...')
             first_iter = self.init_stage
+            self.hf_row['outgas_called'] = 0.0  # 1 once run_outgassing runs a solve
             if self.desiccated:
                 # no volatiles
                 run_desiccated(self.directories, self.config, self.hf_row, first_iter)
@@ -1697,6 +1698,10 @@ class Proteus:
             else:
                 # first iter => generate new HF from dict
                 self.hf_all = CreateHelpfileFromDict(self.hf_row)
+
+            from proteus.outgas.fo2_warnings import check_fo2_warnings
+
+            check_fo2_warnings(self.config, self.hf_all)
 
             # Write helpfile to disk (gated by is_snapshot, which
             # combines write_mod iteration check and dt_write time check)
