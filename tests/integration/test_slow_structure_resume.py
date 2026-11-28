@@ -1,8 +1,8 @@
 """Structure re-solves of a resumed run happen at the rows of the run it continues.
 
-Source under test: the structure-trigger references that ``Proteus`` stores in each helpfile
-row (``store_structure_trigger_state``) and restores on resume
-(``restore_structure_trigger_state``, ``src/proteus/interior_energetics/wrapper.py``).
+Source under test: the structure-trigger references (``struct_ref_*``) that
+``update_structure_from_interior`` (``src/proteus/interior_energetics/wrapper.py``) keeps in the
+helpfile row, which carries them to the next step and to a resume.
 
 A run of ``tests/integration/zalmoxis_aragog_calliope.toml`` with a fixed 50 yr step and a
 structure update at most every 100 yr runs to 302 yr in one go. The same run stops at 152 yr

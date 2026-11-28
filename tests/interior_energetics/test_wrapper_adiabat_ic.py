@@ -73,8 +73,8 @@ from proteus.interior_energetics.wrapper import (
     _sample_adiabat_temperature_arrays,
     _solve_structure_with_adiabat_or_rollback,
     _use_superliquidus_adiabat_ic,
-    update_structure_from_interior,
 )
+from tests.interior_energetics.test_wrapper import _update_from_refs
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -1356,9 +1356,7 @@ def _run_monotonic_resolve(config, dirs, hf_row, interior_o, R_int_returned, M_t
         patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=_solver),
         patch('proteus.interior_energetics.spider.blend_mesh_files', return_value=0.0),
     ):
-        return update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
-        )
+        return _update_from_refs(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
 
 
 def _monotonic_dirs(tmp_path, prev_content):

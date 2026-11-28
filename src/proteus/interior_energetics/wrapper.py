@@ -3020,100 +3020,23 @@ def _clear_jax_caches_after_resolve(config: Config) -> None:
     )
 
 
-def _refresh_composition_sentinels(dirs: dict, hf_row: dict) -> None:
-    """Refresh the dissolved-volatile composition sentinels to the current state.
+def _commit_structure_refs(hf_row: dict) -> None:
+    """Make the current state the reference of the structure-update triggers.
 
-    The composition trigger in :func:`update_structure_from_interior` fires when
-    a per-species dissolved mass fraction ``w = {species}_kg_liquid / M_mantle``
-    drifts from its stored baseline ``dirs['_last_w_{species}_liquid']`` by more
-    than the configured threshold. Both the accepted-re-solve success path and
-    the super-liquidus monotonic-radius reject path advance that baseline to the
-    current fractions through this helper, so the two sites cannot drift apart.
-
-    Parameters
-    ----------
-    dirs : dict
-        Per-run scratch dictionary holding the ``_last_w_{species}_liquid``
-        sentinels for ``H2O`` and ``H2``.
-    hf_row : dict
-        Current helpfile row; supplies ``M_mantle`` and ``{species}_kg_liquid``.
-
-    Returns
-    -------
-    None
-        ``dirs`` is mutated in place: the ``_last_w_{species}_liquid`` keys are
-        set for each species in ``_COMPOSITION_SENTINEL_SPECIES`` (or left
-        untouched when ``M_mantle <= 0``).
-
-    Notes
-    -----
-    A non-positive mantle mass leaves the sentinels untouched, matching the
-    trigger, which also skips the comparison when ``M_mantle <= 0``; no spurious
-    zero baseline is written.
+    Sets ``struct_ref_time`` [yr], ``struct_ref_T_magma`` [K], ``struct_ref_Phi`` and, when
+    ``M_mantle > 0``, the dissolved mass fractions ``struct_ref_w_{species}_liquid``
+    (``{species}_kg_liquid / M_mantle``) in the row, which carries them to the next step and
+    to a resume.
     """
+    hf_row['struct_ref_time'] = float(hf_row['Time'])
+    hf_row['struct_ref_T_magma'] = float(hf_row['T_magma'])
+    hf_row['struct_ref_Phi'] = float(hf_row['Phi_global'])
     M_mantle = float(hf_row.get('M_mantle', 0.0))
     if M_mantle > 0:
         for species in _COMPOSITION_SENTINEL_SPECIES:
-            dirs[f'_last_w_{species}_liquid'] = (
+            hf_row[f'struct_ref_w_{species}_liquid'] = (
                 float(hf_row.get(f'{species}_kg_liquid', 0.0)) / M_mantle
             )
-
-
-def store_structure_trigger_state(hf_row: dict, dirs: dict, refs: tuple) -> None:
-    """Write the references of the structure-update triggers into the helpfile row.
-
-    The resume restores them from the row it continues (:func:`restore_structure_trigger_state`),
-    so a resumed run re-solves the structure at the same rows as the run it continues.
-
-    Parameters
-    ----------
-    hf_row : dict
-        Current helpfile row; gains ``struct_ref_*`` keys.
-    dirs : dict
-        Per-run scratch dictionary holding the ``_last_w_{species}_liquid`` sentinels.
-    refs : tuple[float, float, float]
-        Time [yr], T_magma [K] and Phi_global [1] of the last structure update. A
-        non-finite value (no update yet) is written as 0.
-    """
-    time, T_magma, Phi = (float(v) if np.isfinite(v) else 0.0 for v in refs)
-    hf_row['struct_ref_time'] = time
-    hf_row['struct_ref_T_magma'] = T_magma
-    hf_row['struct_ref_Phi'] = Phi
-    for species in _COMPOSITION_SENTINEL_SPECIES:
-        hf_row[f'struct_ref_w_{species}_liquid'] = float(
-            dirs.get(f'_last_w_{species}_liquid', 0.0)
-        )
-
-
-def restore_structure_trigger_state(hf_row: dict, dirs: dict) -> tuple | None:
-    """Read the references of the structure-update triggers from a helpfile row.
-
-    Parameters
-    ----------
-    hf_row : dict
-        Helpfile row the resumed run continues.
-    dirs : dict
-        Per-run scratch dictionary; gains the ``_last_w_{species}_liquid`` sentinels that
-        the row holds.
-
-    Returns
-    -------
-    tuple[float, float, float] or None
-        Time [yr], T_magma [K] and Phi_global [1] of the last structure update, or None when
-        the row holds no reference: a T_magma reference of 0, as in a helpfile written before
-        these columns existed.
-    """
-    if not hf_row.get('struct_ref_T_magma', 0.0) > 0.0:
-        return None
-    for species in _COMPOSITION_SENTINEL_SPECIES:
-        w = float(hf_row.get(f'struct_ref_w_{species}_liquid', 0.0))
-        if w > 0.0:
-            dirs[f'_last_w_{species}_liquid'] = w
-    return (
-        float(hf_row['struct_ref_time']),
-        float(hf_row['struct_ref_T_magma']),
-        float(hf_row['struct_ref_Phi']),
-    )
 
 
 def _eos_grid_extent_up_step(eos_path: str, hf_row: dict) -> bool:
@@ -3239,11 +3162,8 @@ def update_structure_from_interior(
     config: Config,
     hf_row: dict,
     interior_o: Interior_t,
-    last_struct_time: float,
-    last_Tmagma: float,
-    last_Phi: float,
     force: bool = False,
-) -> tuple[float, float, float]:
+) -> None:
     """Re-run Zalmoxis with SPIDER's current T(r) to update structure.
 
     Uses a hybrid trigger: fires when either the relative change in
@@ -3263,39 +3183,30 @@ def update_structure_from_interior(
     config : Config
         Model configuration.
     hf_row : dict
-        Current runtime variables.
+        Current runtime variables. Its ``struct_ref_*`` keys hold the state of the last
+        structure update, which the triggers compare with; an update sets them to the
+        current state. A T_magma reference of 0 means that there is none.
     interior_o : Interior_t
         Interior state with current T(r) on staggered nodes.
-    last_struct_time : float
-        Simulation time [yr] of the last structure update.
-    last_Tmagma : float
-        T_magma [K] at the last structure update.
-    last_Phi : float
-        Phi_global at the last structure update.
     force : bool, optional
         When True, bypass the dynamic-update interval guard and every
         change-based trigger and perform exactly one structure solve in
         the interior-fed callable representation. Used once at the
         init/evolution boundary so dynamic and static runs share an
         identical, self-consistent starting structure. Default False.
-
-    Returns
-    -------
-    tuple[float, float, float]
-        (last_struct_time, last_Tmagma, last_Phi), updated to current
-        values if an update occurred, otherwise returned unchanged.
     """
-    no_update = (last_struct_time, last_Tmagma, last_Phi)
+    last_struct_time = hf_row['struct_ref_time']
+    last_Tmagma = hf_row['struct_ref_T_magma']
+    last_Phi = hf_row['struct_ref_Phi']
 
     # Dynamic updates disabled. The one-time init baseline solve passes
     # force=True to bypass this guard and the change-based triggers below,
     # so dynamic and static runs share an identical callable-representation
     # starting structure (set at the proteus.py init/evolution boundary).
     if not force and config.interior_struct.zalmoxis.update_interval <= 0:
-        return no_update
+        return
 
-    current_time = hf_row['Time']
-    elapsed = current_time - last_struct_time
+    elapsed = hf_row['Time'] - last_struct_time
 
     # Evaluate triggers. A forced baseline counts as an unconditional
     # trigger, so every change-based test below self-skips on `not triggered`.
@@ -3318,7 +3229,7 @@ def update_structure_from_interior(
 
     # Floor: don't update too frequently (only for non-convergence triggers)
     if not triggered and elapsed < config.interior_struct.zalmoxis.update_min_interval:
-        return no_update
+        return
 
     # Ceiling: guaranteed update after max interval
     if not triggered and elapsed >= config.interior_struct.zalmoxis.update_interval:
@@ -3362,7 +3273,7 @@ def update_structure_from_interior(
         if M_mantle > 0:
             for species in _COMPOSITION_SENTINEL_SPECIES:
                 w_new = float(hf_row.get(f'{species}_kg_liquid', 0.0)) / M_mantle
-                w_old = dirs.get(f'_last_w_{species}_liquid', w_new)
+                w_old = hf_row.get(f'struct_ref_w_{species}_liquid', 0.0)
                 if w_old > 1e-6:
                     dw = abs(w_new - w_old) / w_old
                     dw_threshold = config.interior_struct.zalmoxis.update_dw_comp_abs
@@ -3373,7 +3284,7 @@ def update_structure_from_interior(
                         break
 
     if not triggered:
-        return no_update
+        return
 
     log.info('Updating structure from interior T(r) via Zalmoxis (trigger: %s)', reason)
 
@@ -3551,13 +3462,12 @@ def update_structure_from_interior(
         # Runtime cooling discriminator. An up-step is a representation artifact
         # only while the interior is cooling. If active heating is re-inflating
         # the mantle (T_magma rising, or Phi rising as melt returns) the up-step
-        # is physical and must be accepted, not clamped. A finite prior thermal
-        # reference is required: before the first committed structure the
-        # reference is the +inf sentinel, so neither comparison below can hold
-        # and the up-step is rejected by the conservative default.
+        # is physical and must be accepted, not clamped. A positive prior T_magma
+        # reference is required: without one (0) the up-step is rejected by the
+        # conservative default.
         _Tmagma_now = float(hf_row.get('T_magma', 0.0) or 0.0)
         _Phi_now = float(hf_row.get('Phi_global', 0.0) or 0.0)
-        _interior_reinflating = np.isfinite(last_Tmagma) and (
+        _interior_reinflating = last_Tmagma > 0 and (
             _Tmagma_now > last_Tmagma * (1.0 + _REINFLATE_TMAGMA_REL_TOL)
             or _Phi_now > last_Phi + _REINFLATE_PHI_ABS_TOL
         )
@@ -3700,7 +3610,7 @@ def update_structure_from_interior(
             # recurring cross-table up-step does not re-fire a re-solve every step.
             # Advance the dissolved-volatile composition sentinels exactly as the
             # success path does. This reject path returns before the success-path
-            # refresh, so without it the baseline _last_w_{species}_liquid stays
+            # refresh, so without it the baseline struct_ref_w_{species}_liquid stays
             # frozen at the pre-reject fractions while outgassing keeps moving the
             # live fractions; the growing delta re-fires the composition trigger
             # every step, each firing an inert molten up-step re-solve that is
@@ -3709,13 +3619,9 @@ def update_structure_from_interior(
             # through the molten phase; once crystallization begins the radius
             # contracts, the down-step re-solve is accepted, and EOS regeneration
             # resumes on the success path.
-            _refresh_composition_sentinels(dirs, hf_row)
+            _commit_structure_refs(hf_row)
             _warn_committed_mass_miss(hf_row)
-            return (
-                current_time,
-                float(hf_row['T_magma']),
-                float(hf_row['Phi_global']),
-            )
+            return
 
         if interior_o.zalmoxis_fail_count > 0:
             # Quantify how often the relaxed budget actually saved a run: log
@@ -3937,8 +3843,7 @@ def update_structure_from_interior(
                     'bounds-checked against their new range.'
                 )
 
-    # Update composition sentinels for next trigger check
-    _refresh_composition_sentinels(dirs, hf_row)
+    _commit_structure_refs(hf_row)
 
     log.info(
         'Structure updated: R_int=%.3e m, gravity=%.3f m/s^2',
@@ -3946,7 +3851,6 @@ def update_structure_from_interior(
         hf_row['gravity'],
     )
     _warn_committed_mass_miss(hf_row)
-    return (current_time, float(hf_row['T_magma']), float(hf_row['Phi_global']))
 
 
 def _warn_mass_escape_radius_step(

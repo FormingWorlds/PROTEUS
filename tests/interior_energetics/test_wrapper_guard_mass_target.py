@@ -18,16 +18,14 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from proteus.interior_energetics.wrapper import (
-    _ZALMOXIS_MASS_ANCHOR_TOL,
-    update_structure_from_interior,
-)
+from proteus.interior_energetics.wrapper import _ZALMOXIS_MASS_ANCHOR_TOL
 from tests.interior_energetics.test_wrapper import (
     _composition_trigger_scenario,
     _dtmagma_scenario,
     _mock_dirs,
     _mock_interior_o,
     _solver_patches,
+    _update_from_refs,
     _write_eos_dat,
 )
 
@@ -113,7 +111,7 @@ def run_guard(caplog, hf_row, config, base, solve, dirs=None, interior_o=None):
         if dirs is None:
             dirs = _mock_dirs()
             dirs['output'] = out
-        update_structure_from_interior(dirs, config, hf_row, interior_o, *base)
+        _update_from_refs(dirs, config, hf_row, interior_o, *base)
     mock_solver.assert_called_once()
     return [r.getMessage() for r in caplog.records], dirs, interior_o
 

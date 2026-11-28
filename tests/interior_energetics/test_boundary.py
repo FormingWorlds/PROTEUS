@@ -2561,10 +2561,8 @@ def test_adiabat_structure_resolve_does_not_heat_the_mantle(mock_config, tmp_pat
     move. The shell-mean hand-off with the top node written back would raise
     T_magma by the top shell's adiabatic increment on every cycle.
     """
-    from proteus.interior_energetics.wrapper import (
-        interior_temperature_handoff,
-        update_structure_from_interior,
-    )
+    from proteus.interior_energetics.wrapper import interior_temperature_handoff
+    from tests.interior_energetics.test_wrapper import _update_from_refs
 
     t_p = 2600.0
     write_mantle_mesh(tmp_path, _ADB_R_CORE, _ADB_R_INT, _ADB_M_MANTLE)
@@ -2599,7 +2597,7 @@ def test_adiabat_structure_resolve_does_not_heat_the_mantle(mock_config, tmp_pat
         )
         _, out = _run_to(runner, interior_o, tmp_path, runner.T_p_0)
         hf_row.update(out)
-        update_structure_from_interior(
+        _update_from_refs(
             dirs, config, hf_row, interior_o, 0.0, hf_row['T_magma'], 0.5, force=True
         )
 

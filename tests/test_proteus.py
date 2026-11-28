@@ -36,6 +36,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from proteus.proteus import _STRUCT_REF_KEYS
+
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 # Stall cap the fixture config carries. Deliberately not ATMOS_STALL_MAX, and
@@ -687,6 +689,7 @@ def _make_hf_df():
             'R_int': [6.371e6] * 5,
             'gravity': [9.81] * 5,
             'T_magma': [3000.0, 2800.0, 2600.0, 2400.0, 2200.0],
+            'Phi_global': [1.0, 0.9, 0.8, 0.7, 0.6],
             'T_eqm': [255.0] * 5,
             'F_atm': [100.0] * 5,
         }
@@ -992,8 +995,8 @@ def test_a_lid_stop_keeps_its_status_through_the_exit_guard(tmp_path, site, code
 
 @pytest.mark.unit
 def test_resume_reads_the_stale_sidecar_of_the_output_folder(tmp_path):
-    """A resume restores the stale-structure flag from the sidecar of the output folder, and
-    the resumed time is the last attempt from which the recovery counts."""
+    """A resume restores the stale-structure flag from the sidecar of the output folder and
+    continues from the last row."""
     p = _make_proteus_instance(tmp_path)
     (tmp_path / 'data').mkdir(exist_ok=True)
     hf = _make_hf_df()
@@ -1001,7 +1004,7 @@ def test_resume_reads_the_stale_sidecar_of_the_output_folder(tmp_path):
     _resume_with_patches(p, hf)
 
     p.interior_o.resume_structure_stale.assert_called_once_with(p.directories['output'])
-    assert p.last_struct_time == hf['Time'].iloc[-1]
+    assert p.hf_row['Time'] == hf['Time'].iloc[-1]
 
 
 @pytest.mark.unit
@@ -1451,10 +1454,9 @@ def test_snapshot_copy_holds_the_structure_of_its_row_after_a_resolve(tmp_path):
     mesh = tmp_path / 'data' / 'zalmoxis_output.dat'
     _write_mesh(mesh, 3.4e6, 6.4e6)
 
-    def resolve(dirs, config, hf_row, interior_o, t, T, phi, force=False):
+    def resolve(dirs, config, hf_row, interior_o, force=False):
         hf_row['R_int'] += 50.0
         _write_mesh(mesh, hf_row['R_core'], hf_row['R_int'])
-        return t, T, phi
 
     with patch(
         'proteus.interior_energetics.wrapper.update_structure_from_interior',
@@ -1552,14 +1554,14 @@ def test_resume_runs_the_resync_for_zalmoxis_and_aragog_only(
 
     # _resume_with_patches stops at init_star, so a recorded call came before it.
     assert resync.called is called
-    # Without stored references the structure triggers start from the last row.
-    assert p.last_struct_time == pytest.approx(400.0, rel=0, abs=0)
+    # A row without structure references takes its own state as the reference.
+    assert tuple(p.hf_all.iloc[-1][k] for k in _STRUCT_REF_KEYS) == (400.0, 2200.0, 0.6)
 
 
 @pytest.mark.unit
 def test_resume_takes_the_structure_trigger_references_from_the_row(tmp_path):
-    """start(resume=True) sets the structure-update sentinels to the references the last row
-    stored (the update at 200 yr), not to the time, T_magma and Phi of that row (400 yr)."""
+    """start(resume=True) keeps the structure-update references the last row stored (the
+    update at 200 yr), not the time, T_magma and Phi of that row (400 yr)."""
     p = _make_proteus_instance(tmp_path)
     (tmp_path / 'data').mkdir(exist_ok=True)
     hf = _make_hf_df()
@@ -1572,29 +1574,64 @@ def test_resume_takes_the_structure_trigger_references_from_the_row(tmp_path):
 
     _resume_with_patches(p, hf)
 
-    refs = (p.last_struct_time, p.last_struct_Tmagma, p.last_struct_Phi)
+    refs = tuple(p.hf_row[k] for k in _STRUCT_REF_KEYS)
     assert refs == pytest.approx((200.0, 2600.0, 0.8), rel=0, abs=0)
-    assert p.directories['_last_w_H2O_liquid'] == pytest.approx(2.0e-3, rel=0, abs=0)
-    # 0 means no dissolved H2 at the update: the trigger then has no baseline, as before.
-    assert '_last_w_H2_liquid' not in p.directories
+    assert p.hf_row['struct_ref_w_H2O_liquid'] == pytest.approx(2.0e-3, rel=0, abs=0)
+    assert p.hf_row['struct_ref_w_H2_liquid'] == 0.0
+
+
+class _Resolved(Exception):
+    """Raised by the patched Zalmoxis solver, so a test sees whether a re-solve started."""
+
+
+def _first_resumed_step_resolves(hf_row):
+    """Whether the structure update of the step after the resumed row (150 yr later, inside
+    the 1000 yr ceiling, T_magma and Phi unchanged) starts a re-solve."""
+    from proteus.interior_energetics.wrapper import update_structure_from_interior
+    from tests.interior_energetics.test_wrapper import (
+        _mock_config,
+        _mock_dirs,
+        _mock_interior_o,
+        _solver_patches,
+    )
+
+    row = {**hf_row, 'Time': hf_row['Time'] + 150.0}
+    s, ns, cp = _solver_patches(side_effect=_Resolved)
+    no_core_table = patch(
+        'proteus.interior_energetics.wrapper._structure_core_table', return_value=None
+    )
+    with s, ns, cp, no_core_table:
+        try:
+            update_structure_from_interior(
+                _mock_dirs(), _mock_config(), row, _mock_interior_o()
+            )
+        except _Resolved:
+            return True
+    return False
 
 
 @pytest.mark.unit
-def test_resume_of_a_helpfile_without_trigger_references_starts_from_the_row(tmp_path):
-    """A helpfile written before the references were stored (columns read as 0) resumes with
-    the sentinels at its last row, as before."""
+@pytest.mark.parametrize('columns', ['zero', 'missing'])
+def test_resume_of_a_helpfile_without_trigger_references_starts_from_the_row(tmp_path, columns):
+    """A helpfile written before the references were stored (columns read as 0, or absent)
+    resumes with its last row's time, T_magma and Phi as the references, as before they were
+    stored, so the first resumed step does not re-solve the structure. With the zero
+    references kept, the same step would re-solve (Phi 0.6 against 0)."""
     p = _make_proteus_instance(tmp_path)
     (tmp_path / 'data').mkdir(exist_ok=True)
     hf = _make_hf_df()
-    hf['Phi_global'] = [1.0, 0.9, 0.8, 0.7, 0.6]
-    hf['struct_ref_time'] = [0.0] * 5
-    hf['struct_ref_T_magma'] = [0.0] * 5
+    if columns == 'zero':
+        for key in _STRUCT_REF_KEYS:
+            hf[key] = [0.0] * 5
 
     _resume_with_patches(p, hf)
 
-    refs = (p.last_struct_time, p.last_struct_Tmagma, p.last_struct_Phi)
-    assert refs == pytest.approx((400.0, 2200.0, 0.6), rel=0, abs=0)
-    assert '_last_w_H2O_liquid' not in p.directories
+    # The main loop builds each new row from the last row of the helpfile.
+    next_row = p.hf_all.iloc[-1].to_dict()
+    refs = tuple(next_row[k] for k in _STRUCT_REF_KEYS)
+    assert refs == (400.0, 2200.0, 0.6)
+    assert not _first_resumed_step_resolves(next_row)
+    assert _first_resumed_step_resolves({**next_row, **dict.fromkeys(_STRUCT_REF_KEYS, 0.0)})
 
 
 class _StopAtRunningStatus(Exception):
@@ -1703,6 +1740,7 @@ def test_resume_walks_back_past_an_impact_step_to_its_own_structure(tmp_path):
             'R_int': [6.4e6] * 6 + [6.5e6],
             'gravity': 9.81,
             'T_magma': 3000.0,
+            'Phi_global': 0.5,
             'T_eqm': 255.0,
             'F_atm': 100.0,
             'M_accreted_rock': [0.0] * 6 + [0.05 * M_earth],
@@ -2715,8 +2753,8 @@ def _make_baseline_proteus(tmp_path, *, module='zalmoxis', init_stage=False, don
     """Build a Proteus positioned for the structure-baseline gate.
 
     The method reads init_stage, the one-shot flag, the interior_struct module,
-    the interior object and the structure sentinels; everything else is left at
-    its post-__init__ default.
+    the interior object and the structure references in the row, here those of the
+    state after init; everything else is left at its post-__init__ default.
     """
     p = _make_proteus_instance(tmp_path, struct_module=module)
     p.init_stage = init_stage
@@ -2725,33 +2763,40 @@ def _make_baseline_proteus(tmp_path, *, module='zalmoxis', init_stage=False, don
     # The baseline retry check reads interior_o.structure_stale; seed the fresh-run
     # value so a bare MagicMock attribute does not read truthy and skip the solve.
     p.interior_o.structure_stale = False
-    p.hf_row = {}
-    p.last_struct_time = 0.0
-    p.last_struct_Tmagma = float('inf')
-    p.last_struct_Phi = float('inf')
+    p.hf_row = dict(zip(_STRUCT_REF_KEYS, _INIT_REFS))
     return p
+
+
+_INIT_REFS = (0.0, 3000.0, 0.9)
+
+
+def _commit_refs(hf_row, refs):
+    """Stand-in for the reference commit at the end of the structure update."""
+    hf_row.update(zip(_STRUCT_REF_KEYS, refs))
 
 
 def test_structure_baseline_fires_once_with_force_then_is_idempotent(tmp_path):
     """The first evolution step solves the baseline once with force=True and
-    commits the returned structure sentinels; a second call is a no-op.
+    keeps the structure references it commits; a second call is a no-op.
 
-    Discriminating: the sentinels are pinned to the solver's returned values
-    (123.0, 2500.0, 0.71), which differ from the post-__init__ defaults, so a
-    regression that failed to commit them would be caught; and the second-call
+    Discriminating: the references are pinned to the values the solve commits
+    (123.0, 2500.0, 0.71), which differ from those after init, so a regression
+    that put the old ones back would be caught; and the second-call
     assertion guards against the one-shot flag not latching (which would
     re-solve every iteration and inject a spurious radius step).
     """
     p = _make_baseline_proteus(tmp_path)
-    with patch(_BASELINE_TARGET, return_value=(123.0, 2500.0, 0.71)) as mock_update:
+
+    def _solve(directories, config, hf_row, interior_o, **kwargs):
+        _commit_refs(hf_row, (123.0, 2500.0, 0.71))
+
+    with patch(_BASELINE_TARGET, side_effect=_solve) as mock_update:
         p._solve_structure_baseline_if_needed()
 
         assert mock_update.call_count == 1
         assert mock_update.call_args.kwargs['force'] is True
         assert p._baseline_structure_done is True
-        assert p.last_struct_time == pytest.approx(123.0, rel=1e-12)
-        assert p.last_struct_Tmagma == pytest.approx(2500.0, rel=1e-12)
-        assert p.last_struct_Phi == pytest.approx(0.71, rel=1e-12)
+        assert tuple(p.hf_row[k] for k in _STRUCT_REF_KEYS) == (123.0, 2500.0, 0.71)
 
         # Idempotent: the latched flag prevents any further forced solve.
         p._solve_structure_baseline_if_needed()
@@ -2776,7 +2821,7 @@ def test_structure_baseline_skipped(tmp_path, kwargs):
     value, so a regression that dropped a guard and solved anyway is caught.
     """
     p = _make_baseline_proteus(tmp_path, **kwargs)
-    with patch(_BASELINE_TARGET, return_value=(1.0, 2.0, 0.3)) as mock_update:
+    with patch(_BASELINE_TARGET) as mock_update:
         p._solve_structure_baseline_if_needed()
     mock_update.assert_not_called()
     assert p._baseline_structure_done is kwargs.get('done', False)
@@ -2791,17 +2836,15 @@ def test_structure_baseline_retries_after_failed_solve(tmp_path):
     the representation offset to the dynamic-vs-static comparison.
 
     Discriminating: the solver signals failure by setting
-    interior_o.structure_stale True; the test asserts the baseline is not
-    latched (retry) AND the sentinels are NOT advanced from their defaults,
-    distinguishing a real fall-back from a committed solve.
+    interior_o.structure_stale True and, as the wrapper fall-back does, commits
+    the current state as the references; the test asserts the baseline is not
+    latched (retry) AND the references after init are put back, distinguishing a
+    real fall-back from a committed solve.
     """
 
-    def _failed_solve(directories, config, hf_row, interior_o, *args, **kwargs):
-        # Mirror the wrapper fall-back: flag the structure stale on interior_o,
-        # return the unchanged sentinels (last_struct_time/Tmagma/Phi are
-        # args[0:3] here).
+    def _failed_solve(directories, config, hf_row, interior_o, **kwargs):
         interior_o.structure_stale = True
-        return (args[0], args[1], args[2])
+        _commit_refs(hf_row, (123.0, 2500.0, 0.71))
 
     p = _make_baseline_proteus(tmp_path)
     with patch(_BASELINE_TARGET, side_effect=_failed_solve) as mock_update:
@@ -2809,8 +2852,7 @@ def test_structure_baseline_retries_after_failed_solve(tmp_path):
 
     mock_update.assert_called_once()
     assert p._baseline_structure_done is False  # retried, not latched
-    assert p.last_struct_time == pytest.approx(0.0, abs=0.0)  # sentinels untouched
-    assert p.last_struct_Phi == float('inf')
+    assert tuple(p.hf_row[k] for k in _STRUCT_REF_KEYS) == _INIT_REFS
 
 
 def test_structure_baseline_skipped_for_superliquidus_adiabat(tmp_path):

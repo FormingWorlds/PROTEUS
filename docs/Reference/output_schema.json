@@ -967,10 +967,15 @@
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "always"
+        },
+        {
+          "file": "src/proteus/proteus.py",
+          "condition": "always"
         }
       ],
       "consumers": [
-        "interior_energetics"
+        "interior_energetics",
+        "main loop"
       ],
       "consumers_possible": []
     },
@@ -984,10 +989,15 @@
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "always"
+        },
+        {
+          "file": "src/proteus/proteus.py",
+          "condition": "always"
         }
       ],
       "consumers": [
-        "interior_energetics"
+        "interior_energetics",
+        "main loop"
       ],
       "consumers_possible": []
     },
@@ -1001,10 +1011,15 @@
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "always"
+        },
+        {
+          "file": "src/proteus/proteus.py",
+          "condition": "always"
         }
       ],
       "consumers": [
-        "interior_energetics"
+        "interior_energetics",
+        "main loop"
       ],
       "consumers_possible": []
     },
