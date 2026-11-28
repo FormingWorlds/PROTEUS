@@ -63,6 +63,12 @@ def set_julia_threads(environ=os.environ, xoptions=None) -> str:
     -------
     str
         The line to log when the thread count was set to 1, else an empty string.
+
+    Notes
+    -----
+    With the Julia handlers on, a SLURM time limit under ``srun`` can leave status 1:
+    2 SIGTERMs within a few ms can end the process before the Julia exit hook runs.
+    Under ``exec`` in the batch script the process gets 1 SIGTERM and records status 25.
     """
     global JULIA_THREADS_NOTE
     xoptions = sys._xoptions if xoptions is None else xoptions

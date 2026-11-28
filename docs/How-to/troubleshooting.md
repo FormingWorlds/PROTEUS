@@ -333,7 +333,7 @@ conda deactivate && conda activate proteus
 
 With more than 1 Julia thread and the Julia signal handlers off (the juliacall default), a process can end with SIGBUS (exit code 138 on macOS) when it exits, after the run has written its output. PROTEUS therefore starts Julia with 1 thread: when `JULIA_NUM_THREADS` asks for more, PROTEUS sets `PYTHON_JULIACALL_THREADS=1` before it starts Julia and logs `Julia threads     1 (JULIA_NUM_THREADS=... not used; ...)`.
 
-To run Julia with more threads, set `PYTHON_JULIACALL_THREADS` (or start Python with `-X juliacall-threads=N`). PROTEUS then sets `PYTHON_JULIACALL_HANDLE_SIGNALS=yes`, unless you set it yourself. With these handlers Julia, not Python, takes SIGTERM and Ctrl-C: the run stops with a Julia backtrace, a Julia exit hook records status 25 (stopped). The temporary folder `proteus_*` of the run then stays in `$TMPDIR`.
+To run Julia with more threads, set `PYTHON_JULIACALL_THREADS` (or start Python with `-X juliacall-threads=N`). PROTEUS then sets `PYTHON_JULIACALL_HANDLE_SIGNALS=yes`, unless you set it yourself. With these handlers Julia, not Python, takes SIGTERM and Ctrl-C: the run stops with a Julia backtrace, a Julia exit hook records status 25 (stopped). The temporary folder `proteus_*` of the run then stays in `$TMPDIR`. On SLURM, start such a run with `exec`, not `srun`; see [the Habrok guide](habrok_cluster_guide.md).
 
 ---
 
