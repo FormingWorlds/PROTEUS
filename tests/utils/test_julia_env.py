@@ -221,16 +221,26 @@ def test_a_stop_in_a_held_status_write_is_recorded_not_raised(monkeypatch, tmp_p
     assert ReadStatus(tmp_path) == 25
 
 
-def test_a_status_write_over_files_left_by_a_killed_write(tmp_path):
-    """Temporary files that a killed write left next to the status file do not stop the
-    next write, and the status reads as written."""
+def test_a_status_write_over_files_left_by_a_killed_write(monkeypatch, tmp_path):
+    """Temporary files that a killed write left next to the status file, one of them with
+    the name the next write takes, do not stop that write."""
+    import itertools
+
+    import proteus.utils.helper as helper
     from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
     UpdateStatusfile({'output': str(tmp_path)}, 1)
-    for name in ('status.tmp', f'status.{os.getpid()}.0.tmp', f'status.{os.getpid()}.1.tmp'):
+    monkeypatch.setattr(helper, '_STATUS_WRITES', itertools.count())
+    for name in ('status.tmp', f'status.{os.getpid()}.0.tmp'):
         (tmp_path / name).write_text('9\n')
-    UpdateStatusfile({'output': str(tmp_path)}, 10)
+    errors = []
+    try:
+        UpdateStatusfile({'output': str(tmp_path)}, 10)
+    except OSError as exc:
+        errors.append(exc)
+    assert errors == []
     assert ReadStatus(tmp_path) == 10
+    assert sorted(os.listdir(tmp_path)) == ['status', 'status.tmp']
 
 
 @pytest.mark.usefixtures('signals_unblocked')
@@ -260,6 +270,111 @@ def test_a_stop_inside_a_status_write_leaves_status_25(monkeypatch, tmp_path, be
     assert calls == [13, 25]
     assert ReadStatus(tmp_path) == 25
     assert sorted(os.listdir(tmp_path)) == ['status']
+
+
+@pytest.mark.usefixtures('signals_unblocked')
+@pytest.mark.parametrize('signame', ['SIGTERM', 'SIGINT'])
+def test_a_stop_after_the_data_of_a_status_write_leaves_status_25(
+    monkeypatch, tmp_path, signame
+):
+    """A stop after a write has put its data in the file, before the file is closed, writes
+    25 through a file of its own: the data of the interrupted write never reaches the
+    status file."""
+    import proteus.utils.helper as helper
+    from proteus.utils.helper import UpdateStatusfile
+
+    signum = getattr(signal, signame)
+    signal.signal(signum, je._HANDLERS[signum])
+    UpdateStatusfile({'output': str(tmp_path)}, 1)
+    monkeypatch.setattr(je, '_status_output', str(tmp_path))
+    opened = []
+
+    class SignalAfterWrite:
+        def __init__(self, f):
+            self.f = f
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.f.close()
+
+        def write(self, text):
+            self.f.write(text)
+            signal.raise_signal(signum)
+
+    def first_write_signals(path, mode='r'):
+        f = open(path, mode)
+        if mode != 'w':
+            return f
+        opened.append(path)
+        return SignalAfterWrite(f) if len(opened) == 1 else f
+
+    monkeypatch.setattr(helper, 'open', first_write_signals, raising=False)
+    with pytest.raises(SystemExit if signum == signal.SIGTERM else KeyboardInterrupt):
+        UpdateStatusfile({'output': str(tmp_path)}, 13)
+    assert len(opened) == 2
+    assert (tmp_path / 'status').read_text() == '25\nError (died, or exit requested by user)\n'
+    assert sorted(os.listdir(tmp_path)) == ['status']
+
+
+def test_a_status_write_inside_a_status_write_leaves_the_outer_status(monkeypatch, tmp_path):
+    """A status write that runs inside another one, with no stop, ends first; the outer write
+    then replaces it whole, and no other file is left."""
+    import proteus.utils.helper as helper
+    from proteus.utils.helper import UpdateStatusfile
+
+    real, calls = helper.CommentFromStatus, []
+
+    def nested(status):
+        calls.append(status)
+        if len(calls) == 1:
+            UpdateStatusfile({'output': str(tmp_path)}, 25)
+        return real(status)
+
+    monkeypatch.setattr(helper, 'CommentFromStatus', nested)
+    errors = []
+    try:
+        UpdateStatusfile({'output': str(tmp_path)}, 13)
+    except OSError as exc:
+        errors.append(exc)
+    assert errors == []
+    assert calls == [13, 25]
+    assert (tmp_path / 'status').read_text() == '13\nCompleted (target time)\n'
+    assert sorted(os.listdir(tmp_path)) == ['status']
+
+
+@pytest.mark.usefixtures('signals_unblocked')
+@pytest.mark.parametrize('signame', ['SIGTERM', 'SIGINT'])
+def test_a_dropped_stop_inside_a_status_write_leaves_status_25(monkeypatch, tmp_path, signame):
+    """A stop whose exception a finalizer drops inside a status write that is not held leaves
+    25: the status that write chose before the stop does not replace the 25 of the handler.
+    A held write (the error status of the guard) keeps its status."""
+    import proteus.utils.helper as helper
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
+    signum = getattr(signal, signame)
+    signal.signal(signum, je._HANDLERS[signum])
+    monkeypatch.setattr(je, '_status_output', str(tmp_path))
+    real = helper.CommentFromStatus
+
+    def dropped(status):
+        if je.STOP_SIGNAL is None:
+            try:
+                signal.raise_signal(signum)
+            except (SystemExit, KeyboardInterrupt):
+                pass
+        return real(status)
+
+    for held, final in ((False, 25), (True, 20)):
+        monkeypatch.setattr(je, 'STOP_SIGNAL', None)
+        monkeypatch.setattr(helper, 'CommentFromStatus', real)
+        UpdateStatusfile({'output': str(tmp_path)}, 1)
+        monkeypatch.setattr(helper, 'CommentFromStatus', dropped)
+        with je.sigterm_held() if held else contextmanager(lambda: (yield))():
+            UpdateStatusfile({'output': str(tmp_path)}, 13 if final == 25 else 20)
+        assert (je.STOP_SIGNAL, ReadStatus(tmp_path)) == (signum, final)
+        assert sorted(os.listdir(tmp_path)) == ['status']
 
 
 def test_a_stop_is_read_from_the_handler_or_the_exception_chain(monkeypatch):
