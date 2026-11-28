@@ -26,7 +26,7 @@ from proteus.atmos_clim.common import (
 from proteus.atmos_clim.surface_skin import effective_surf_state
 from proteus.star.wrapper import flux_weighted_distance
 from proteus.utils.constants import const_R, gas_list
-from proteus.utils.helper import UpdateStatusfile, safe_rm
+from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -358,7 +358,6 @@ def run_atmosphere(
 
         # Run AGNI
         # Initialise atmosphere struct
-        spfile_path = os.path.join(dirs['output'], 'runtime.sf')
         no_atm = bool(atmos_o._atm is None)
         if no_atm or update_stellar_spectrum:
             log.debug('Initialise new atmosphere struct')
@@ -369,20 +368,13 @@ def run_atmosphere(
                 if not config.params.resume:
                     hf_row['T_surf'] = hf_row['T_magma']
             else:
-                # Remove old spectral file if it exists
-                safe_rm(spfile_path)
-                safe_rm(spfile_path + '_k')
-
-                # deallocate old atmosphere
                 deallocate_atmos(atmos_o._atm)
 
-            # Only the first build can match another run's spectral file. A resumed run
-            # takes the spectrum of its last update, not a newer file of a dropped row.
-            star_file = None
-            if no_atm and config.params.resume:
-                star_file = os.path.join(
-                    dirs['output'], 'data', '%d.sflux' % hf_row['star_spec_time']
-                )
+            # The spectrum of the last update, not the newest file: a resumed run keeps
+            # the files of the rows it dropped. Only the first build can use the cache.
+            star_file = os.path.join(
+                dirs['output'], 'data', '%d.sflux' % hf_row['star_spec_time']
+            )
             atmos_o._atm = init_agni_atmos(
                 dirs, config, hf_row, use_cache=no_atm, star_file=star_file
             )

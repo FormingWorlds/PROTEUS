@@ -110,7 +110,8 @@ def _make_snapshot(tmpdir: str):
     write_spectrum(wl, fl, hf_row, dirs['output'])
 
     activate_julia(dirs, 0)
-    atmos = init_agni_atmos(dirs, cfg, hf_row)
+    star_file = os.path.join(dirs['output'], 'data', '%d.sflux' % hf_row['Time'])
+    atmos = init_agni_atmos(dirs, cfg, hf_row, star_file)
     atmos, output = run_agni(atmos, 0, dirs, cfg, hf_row, write_data=True)
     assert output['agni_converged'], 'the snapshot climate must converge'
     hf_row['F_atm'] = output['F_atm']
