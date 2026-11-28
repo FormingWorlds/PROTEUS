@@ -242,3 +242,5 @@
 .grid-explorer .gx-cell { min-width: 1.9em; padding: 0.1em 0.2em; font-family: var(--md-code-font); font-size: 0.6rem; text-align: center; background: var(--md-code-bg-color); }
 .grid-explorer .gx-idle { background: transparent; outline: 1px dashed var(--pt-warning); outline-offset: -1px; }
 .grid-explorer .gx-more { align-self: center; font-size: 0.75rem; }
+.grid-explorer .gx-sbu { margin: 0 0 0.8em; font-size: 0.75rem; }
+.grid-explorer .gx-sbu select { margin-left: 0.4em; }

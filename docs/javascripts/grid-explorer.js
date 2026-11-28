@@ -8,8 +8,17 @@ const SLIDERS = [
   ["maxJobs", "max_jobs", 1, 64, 1, 16],
   ["maxArray", "MaxArraySize", 1, 40, 1, 40],
   ["days", "max_days", 0.5, 3, 0.5, 1],
-  ["mem", "max_mem [GB]", 0.5, 8, 0.25, 1.75],
+  ["mem", "max_mem [GiB]", 0.5, 8, 0.25, 1.75],
 ];
+
+// Snellius partitions: cores and GiB per node, SBU per charged core-hour (sources in the
+// Snellius guide). A single-node job is charged in eighths of a node, by cores or memory.
+const PARTITIONS = {
+  rome: [128, 224, 1.0],
+  genoa: [192, 336, 1.0],
+  fat_rome: [128, 960, 1.5],
+  fat_genoa: [192, 1440, 1.5],
+};
 
 function layout(n, k, maxArray) {
   const jobs = Math.min(Math.ceil(n / k), maxArray);
@@ -17,11 +26,40 @@ function layout(n, k, maxArray) {
   return { jobs, waves };
 }
 
-function idleShare(n, k, jobs) {
+// Rows summed over all jobs: core time in units of one case on cores_per_job cores.
+function runs(n, k, jobs) {
   const q = Math.floor(n / jobs);
   const r = n % jobs;
-  const runs = r * Math.ceil((q + 1) / k) + (jobs - r) * Math.ceil(q / k);
-  return 1 - n / (runs * k);
+  return r * Math.ceil((q + 1) / k) + (jobs - r) * Math.ceil(q / k);
+}
+
+function idleShare(n, k, jobs) {
+  return 1 - n / (runs(n, k, jobs) * k);
+}
+
+// The job asks for cores_per_job cores and cores_per_job * max_mem as one --mem request.
+function charge(k, mem, partition) {
+  const [cores, nodeMem, weight] = PARTITIONS[partition];
+  const eighths = Math.ceil(Math.max((8 * k) / cores, (8 * k * mem) / nodeMem));
+  const charged = (eighths * cores) / 8;
+  return { charged, perHour: charged * weight };
+}
+
+function sbuStats(v, jobs) {
+  const c = charge(v.cores, v.mem, v.partition);
+  const rows = runs(v.cases, v.cores, jobs);
+  const grid = rows * v.days * 24 * c.perHour;
+  return [
+    ["Charged cores per job", c.charged],
+    ["SBU per job-hour", c.perHour],
+    ["SBU per case-hour", (grid / (v.cases * v.days * 24)).toFixed(2)],
+    ["SBU for the grid", Math.round(grid)],
+    ["Charged cores without a case", `${((1 - v.cases / (rows * c.charged)) * 100).toFixed(1)} %`],
+  ];
+}
+
+function statList(stats) {
+  return stats.map(([name, value]) => `<div><dt>${name}</dt><dd>${value}</dd></div>`).join("");
 }
 
 function warnings(v, jobs, waves, throttle, idle) {
@@ -57,7 +95,7 @@ function jobBox(j, v, jobs, running) {
 }
 
 function render(root) {
-  const v = {};
+  const v = { partition: root.querySelector("select").value };
   for (const input of root.querySelectorAll("input")) {
     v[input.name] = Number(input.value);
     input.nextElementSibling.textContent = input.value;
@@ -71,11 +109,11 @@ function render(root) {
     ["Jobs at once", throttle],
     ["Cases at once", Math.min(throttle * v.cores, v.cases)],
     ["Walltime per job [days]", v.days * waves],
-    ["Memory per job [GB]", v.cores * v.mem],
+    ["Memory per job [GiB]", v.cores * v.mem],
     ["Idle core share", `${(idle * 100).toFixed(1)} %`],
   ];
-  root.querySelector(".gx-stats").innerHTML = stats
-    .map(([name, value]) => `<div><dt>${name}</dt><dd>${value}</dd></div>`).join("");
+  root.querySelector(":scope > .gx-stats").innerHTML = statList(stats);
+  root.querySelector(".gx-sbu .gx-stats").innerHTML = statList(sbuStats(v, jobs));
   root.querySelector(".gx-warnings").innerHTML = warnings(v, jobs, waves, throttle, idle)
     .map((w) => `<li>${w}</li>`).join("");
   const shown = Math.min(jobs, 24);
@@ -91,7 +129,12 @@ function wire() {
     root.innerHTML = `<div class="gx-controls">${SLIDERS.map(([name, label, min, max, step, value]) =>
       `<label><span>${label}</span><input type="range" name="${name}" min="${min}" max="${max}" step="${step}" value="${value}"><output></output></label>`
     ).join("")}</div>
-    <dl class="gx-stats"></dl><ul class="gx-warnings"></ul><div class="gx-jobs"></div>`;
+    <dl class="gx-stats"></dl><ul class="gx-warnings"></ul>
+    <details class="gx-sbu"><summary>Snellius SBU cost</summary>
+      <label>Partition <select name="partition">${Object.keys(PARTITIONS).map((p) => `<option>${p}</option>`).join("")}</select></label>
+      <dl class="gx-stats"></dl>
+    </details>
+    <div class="gx-jobs"></div>`;
     root.addEventListener("input", () => render(root));
     render(root);
   }

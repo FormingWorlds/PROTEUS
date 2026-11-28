@@ -188,6 +188,8 @@ The explorer uses the formulas of the grid manager. To check it, compare these l
 - 20 cases with `cores_per_job = 16` give 2 jobs in 1 wave, with 37.5 % idle.
 - 50 cases with `cores_per_job = 4` and a MaxArraySize of 5 give 5 jobs in 3 waves, with 16.7 % idle.
 
+The collapsed section "Snellius SBU cost" shows what the grid costs on a Snellius partition: the cores that Snellius charges for each job, the SBU, and the share of charged cores that no case uses. It assumes, as the drawing does, that every case runs for `max_days`. [Snellius charging](snellius_cluster_guide.md#how-snellius-charges-a-grid) explains the rule and gives the partition figures.
+
 #### How `max_jobs` is enforced
 
 No lock or counter counts the running cases over the whole cluster. Two different mechanisms enforce `max_jobs`, one with Slurm and one without.
