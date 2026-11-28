@@ -92,6 +92,15 @@ def _restore_sigterm_handler(monkeypatch):
     signal.signal(signal.SIGINT, before[1])
 
 
+@pytest.fixture
+def signals_unblocked():
+    """Unblock SIGTERM and SIGINT in this thread for a test that sends them with
+    `signal.raise_signal`; Julia blocks both when it handles the signals."""
+    mask = signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM, signal.SIGINT})
+    yield
+    signal.pthread_sigmask(signal.SIG_SETMASK, mask)
+
+
 @pytest.fixture(autouse=True)
 def _default_fwl_data(monkeypatch, tmp_path_factory):
     """Set FWL_DATA to an empty data root of its own when the environment has none, so a

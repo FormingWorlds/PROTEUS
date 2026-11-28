@@ -4563,6 +4563,7 @@ def _signal_in_status_write(monkeypatch, signum, status):
     return written
 
 
+@pytest.mark.usefixtures('signals_unblocked')
 @pytest.mark.parametrize('signame, code', [('SIGTERM', 143), ('SIGINT', 1)])
 def test_a_second_sigterm_during_the_status_write_keeps_status_25(
     monkeypatch, tmp_path, signame, code
@@ -4653,6 +4654,7 @@ def test_a_stop_dropped_after_the_last_check_ends_proteus_start(monkeypatch, tmp
     assert ReadStatus(tmp_path) == 10
 
 
+@pytest.mark.usefixtures('signals_unblocked')
 def test_a_sigterm_during_the_error_status_write_ends_with_143(monkeypatch, tmp_path):
     """A SIGTERM while the status guard writes 20 for an error lets that write finish,
     is recorded, and then ends the process with 143."""

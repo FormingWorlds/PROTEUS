@@ -440,6 +440,7 @@ def test_serve_ends_when_a_solver_drops_the_stop(monkeypatch, tmp_path):
     assert not (tmp_path / 'b').exists()
 
 
+@pytest.mark.usefixtures('signals_unblocked')
 def test_a_sigterm_during_an_error_status_write_ends_serve_before_the_next_job(
     monkeypatch, tmp_path
 ):

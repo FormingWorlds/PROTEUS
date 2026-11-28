@@ -194,6 +194,7 @@ def test_python_sigterm_handler_only_without_the_julia_handlers(monkeypatch, jul
         signal.pthread_sigmask(signal.SIG_SETMASK, mask)
 
 
+@pytest.mark.usefixtures('signals_unblocked')
 @pytest.mark.parametrize('signame', ['SIGTERM', 'SIGINT'])
 def test_a_stop_in_a_held_status_write_is_recorded_not_raised(monkeypatch, tmp_path, signame):
     """A stop signal while a status write is held records the signal and lets the write
@@ -234,6 +235,7 @@ def test_a_status_write_over_files_left_by_a_killed_write(tmp_path):
     assert ReadStatus(tmp_path) == 10
 
 
+@pytest.mark.usefixtures('signals_unblocked')
 @pytest.mark.parametrize('signame', ['SIGTERM', 'SIGINT'])
 @pytest.mark.parametrize('before', [0, 1])
 def test_a_stop_inside_a_status_write_leaves_status_25(monkeypatch, tmp_path, before, signame):
