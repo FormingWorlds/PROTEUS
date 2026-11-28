@@ -4645,3 +4645,41 @@ def test_a_stop_dropped_after_the_last_check_ends_proteus_start(monkeypatch, tmp
     res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
     assert res.exit_code == 143
     assert ReadStatus(tmp_path) == 10
+
+
+def test_a_sigterm_during_the_error_status_write_keeps_status_20(monkeypatch, tmp_path):
+    """A SIGTERM while the status guard writes 20 for an error must not stop that write:
+    the guard holds the stop signals over its own write, so the run reads as failed, not
+    as having no status."""
+    import proteus.utils.helper as helper
+    from proteus.proteus import _status_on_exit
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
+    cfg = tmp_path / 'stub.toml'
+    cfg.write_text('# stub\n')
+    removed = []
+
+    def remove_then_signal(path):
+        real_rm(path)
+        removed.append(path)
+        handler = signal.getsignal(signal.SIGTERM)
+        if len(removed) == 2 and callable(handler):
+            handler(signal.SIGTERM, None)
+
+    class FakeProteus:
+        def __init__(self, config_path):
+            self.directories = {'output': str(tmp_path)}
+
+        @_status_on_exit
+        def start(self, resume, offline):
+            UpdateStatusfile(self.directories, 1)
+            raise RuntimeError('solver failed')
+
+    real_rm = helper.safe_rm
+    monkeypatch.setattr(helper, 'safe_rm', remove_then_signal)
+    monkeypatch.setattr(cli, 'Proteus', FakeProteus)
+    monkeypatch.setattr('proteus.utils.julia_env.julia_handles_signals', lambda: False)
+    res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
+    assert len(removed) == 2
+    assert ReadStatus(tmp_path) == 20
+    assert isinstance(res.exception, RuntimeError)
