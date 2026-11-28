@@ -21,6 +21,7 @@ _status_hook = None
 
 # The signal number once a Python stop handler (SIGTERM, SIGINT) has run
 STOP_SIGNAL = None
+_status_output = None
 
 
 def _more_than_one(value: str) -> bool:
@@ -94,24 +95,37 @@ def julia_handles_signals() -> bool:
     return juliacall.CONFIG.get('opt_handle_signals') == 'yes'
 
 
-def _exit_on_sigterm(signum, _frame):
+def _record_stop(signum):
+    """Record the stop, and write status 25 while the run reads as started or running.
+
+    The status is on disk before the handler raises, so a stop whose exception a finalizer
+    or a C solver drops, or a SIGKILL that follows it, still leaves status 25.
+    """
     global STOP_SIGNAL
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
     STOP_SIGNAL = signum
+    if _status_output is not None and ReadStatus(_status_output) in (0, 1):
+        with sigterm_held():
+            UpdateStatusfile({'output': _status_output}, 25)
+
+
+def _exit_on_sigterm(signum, _frame):
+    _record_stop(signum)
     sys.exit(128 + signum)
 
 
 def _interrupt(signum, frame):
-    global STOP_SIGNAL
-    STOP_SIGNAL = signum
+    _record_stop(signum)
     signal.default_int_handler(signum, frame)
 
 
 def exit_if_stopped() -> None:
     """End the process with 128 + signal when a stop is recorded in ``STOP_SIGNAL``.
 
-    A C solver (CVODE) can drop the SystemExit or KeyboardInterrupt that a stop handler
-    raises in its callback and report a failed step; code that retries or skips a failed
-    step calls this first, so that the stop ends the run.
+    A C solver (CVODE) or a finalizer (a weakref callback, ``__del__``) can drop the
+    SystemExit or KeyboardInterrupt that a stop handler raises; the main loop calls this once
+    per iteration, and code that retries or skips a failed step calls it first.
     """
     if STOP_SIGNAL is not None:
         sys.exit(128 + STOP_SIGNAL)
@@ -192,7 +206,8 @@ def register_status_hook(output_dir: str) -> bool:
     With ``handle_signals`` on, Julia ends the process on SIGTERM and SIGINT before
     Python can record the stop; a Julia ``atexit`` hook still runs. It writes status 25
     through a temporary file and a rename, so the status file is never absent. One hook
-    per process; a later call moves it to the new output folder.
+    per process; a later call moves it to the new output folder. The folder is also where
+    the Python stop handler writes status 25.
 
     Parameters
     ----------
@@ -204,11 +219,12 @@ def register_status_hook(output_dir: str) -> bool:
     bool
         True when the hook is set, False when Julia does not handle the signals.
     """
-    global _status_hook
+    global _status_hook, _status_output
     import juliacall
 
     from proteus.utils.helper import CommentFromStatus
 
+    _status_output = os.path.abspath(output_dir)
     if not julia_handles_signals():
         return False
     if _status_hook is None:

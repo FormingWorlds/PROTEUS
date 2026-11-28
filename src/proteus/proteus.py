@@ -1333,6 +1333,7 @@ class Proteus:
             _initstr = ' '.join(f'{k}={v:.3f}' for k, v in _t_init.items())
             log.info('[INIT_TIMING] %s', _initstr)
         while not self.finished_both:
+            exit_if_stopped()
             # Determine whether this iteration is a data-write snapshot.
             # Conditions that are individually sufficient:
             #   1. iteration count matches write_mod, or
@@ -1784,6 +1785,7 @@ class Proteus:
         # Ensure the final atmosphere state is on disk, since it won't always happen to
         # be written on the last iteration of the model.
         write_atmosphere_snapshot(self.atmos_o, self.config, self.directories, self.hf_row)
+        exit_if_stopped()
 
         # Run offline chemistry
         # at the snapshots set by atmos_chem.times
