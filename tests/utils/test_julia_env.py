@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import signal
 import sys
 from contextlib import contextmanager
@@ -210,6 +211,48 @@ def test_sigterm_is_held_only_over_its_own_handler(ours, signame):
         assert signal.getsignal(signum) is before
     finally:
         signal.signal(signum, saved)
+
+
+def test_a_status_write_over_files_left_by_a_killed_write(tmp_path):
+    """Temporary files that a killed write left next to the status file do not stop the
+    next write, and the status reads as written."""
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
+    UpdateStatusfile({'output': str(tmp_path)}, 1)
+    for name in ('status.tmp', f'status.{os.getpid()}.0.tmp', f'status.{os.getpid()}.1.tmp'):
+        (tmp_path / name).write_text('9\n')
+    UpdateStatusfile({'output': str(tmp_path)}, 10)
+    assert ReadStatus(tmp_path) == 10
+
+
+@pytest.mark.parametrize('signame', ['SIGTERM', 'SIGINT'])
+@pytest.mark.parametrize('before', [0, 1])
+def test_a_stop_inside_a_status_write_leaves_status_25(monkeypatch, tmp_path, before, signame):
+    """A stop that comes while the status file is rewritten finds the old status on disk,
+    writes 25 over it, and leaves no other file in the run folder."""
+    import proteus.utils.helper as helper
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
+    signum = getattr(signal, signame)
+    signal.signal(
+        signum, {signal.SIGTERM: je._exit_on_sigterm, signal.SIGINT: je._interrupt}[signum]
+    )
+    UpdateStatusfile({'output': str(tmp_path)}, before)
+    monkeypatch.setattr(je, '_status_output', str(tmp_path))
+    real, calls = helper.CommentFromStatus, []
+
+    def stop_in_write(status):
+        calls.append(status)
+        if len(calls) == 1:
+            signal.raise_signal(signum)
+        return real(status)
+
+    monkeypatch.setattr(helper, 'CommentFromStatus', stop_in_write)
+    with pytest.raises(SystemExit if signum == signal.SIGTERM else KeyboardInterrupt):
+        UpdateStatusfile({'output': str(tmp_path)}, 13)
+    assert calls == [13, 25]
+    assert ReadStatus(tmp_path) == 25
+    assert sorted(os.listdir(tmp_path)) == ['status']
 
 
 def test_a_stop_is_read_from_the_handler_or_the_exception_chain(monkeypatch):

@@ -4546,29 +4546,36 @@ def test_start_records_status_25_on_sigterm(monkeypatch, tmp_path):
     assert res.exit_code == 128 + signal.SIGTERM == 143
 
 
+def _signal_in_status_write(monkeypatch, signum, status):
+    """Send ``signum`` to this process inside the first write of ``status``; return the
+    statuses written."""
+    import proteus.utils.helper as helper
+
+    real, written = helper.CommentFromStatus, []
+
+    def comment(code):
+        written.append(code)
+        if code == status and written.count(status) == 1:
+            signal.raise_signal(signum)
+        return real(code)
+
+    monkeypatch.setattr(helper, 'CommentFromStatus', comment)
+    return written
+
+
 @pytest.mark.parametrize('signame, code', [('SIGTERM', 143), ('SIGINT', 1)])
 def test_a_second_sigterm_during_the_status_write_keeps_status_25(
     monkeypatch, tmp_path, signame, code
 ):
     """At a SLURM time limit srun and slurmstepd both send SIGTERM, and Ctrl-C can come
-    twice. A second signal while the status file is rewritten must not stop that write. The
-    stub runs the handler again where the second signal can come: after the old file is
-    removed. Click reports a KeyboardInterrupt as Aborted, exit code 1."""
-    import proteus.utils.helper as helper
+    twice. A second signal while the handler writes 25 must not stop that write. Click
+    reports a KeyboardInterrupt as Aborted, exit code 1."""
     from proteus.proteus import _status_on_exit
     from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
     signum = getattr(signal, signame)
     cfg = tmp_path / 'stub.toml'
     cfg.write_text('# stub\n')
-    removed = []
-
-    def remove_then_signal(path):
-        real_rm(path)
-        removed.append(path)
-        handler = signal.getsignal(signum)
-        if len(removed) == 2 and callable(handler):
-            handler(signum, None)
 
     class FakeProteus:
         def __init__(self, config_path):
@@ -4577,14 +4584,13 @@ def test_a_second_sigterm_during_the_status_write_keeps_status_25(
         @_status_on_exit
         def start(self, resume, offline):
             UpdateStatusfile(self.directories, 1)
-            signal.getsignal(signum)(signum, None)
+            signal.raise_signal(signum)
 
-    real_rm = helper.safe_rm
-    monkeypatch.setattr(helper, 'safe_rm', remove_then_signal)
+    written = _signal_in_status_write(monkeypatch, signum, 25)
     monkeypatch.setattr(cli, 'Proteus', FakeProteus)
     monkeypatch.setattr('proteus.utils.julia_env.julia_handles_signals', lambda: False)
     res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
-    assert len(removed) == 2
+    assert written == [1, 25]
     assert ReadStatus(tmp_path) == 25
     assert res.exit_code == code
 
@@ -4651,20 +4657,11 @@ def test_a_sigterm_during_the_error_status_write_keeps_status_20(monkeypatch, tm
     """A SIGTERM while the status guard writes 20 for an error must not stop that write:
     the guard holds the stop signals over its own write, so the run reads as failed, not
     as having no status."""
-    import proteus.utils.helper as helper
     from proteus.proteus import _status_on_exit
     from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
     cfg = tmp_path / 'stub.toml'
     cfg.write_text('# stub\n')
-    removed = []
-
-    def remove_then_signal(path):
-        real_rm(path)
-        removed.append(path)
-        handler = signal.getsignal(signal.SIGTERM)
-        if len(removed) == 2 and callable(handler):
-            handler(signal.SIGTERM, None)
 
     class FakeProteus:
         def __init__(self, config_path):
@@ -4675,11 +4672,10 @@ def test_a_sigterm_during_the_error_status_write_keeps_status_20(monkeypatch, tm
             UpdateStatusfile(self.directories, 1)
             raise RuntimeError('solver failed')
 
-    real_rm = helper.safe_rm
-    monkeypatch.setattr(helper, 'safe_rm', remove_then_signal)
+    written = _signal_in_status_write(monkeypatch, signal.SIGTERM, 20)
     monkeypatch.setattr(cli, 'Proteus', FakeProteus)
     monkeypatch.setattr('proteus.utils.julia_env.julia_handles_signals', lambda: False)
     res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
-    assert len(removed) == 2
+    assert written == [1, 20]
     assert ReadStatus(tmp_path) == 20
     assert isinstance(res.exception, RuntimeError)
