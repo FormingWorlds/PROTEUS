@@ -137,3 +137,35 @@ def test_status_hook_keeps_a_final_status_and_follows_the_last_run(tmp_path, sta
     else:
         assert ReadStatus(last) == expected
         assert [p.name for p in last.iterdir()] == ['status']
+
+
+_MOVE_RUN = """
+import os, sys
+from proteus.utils.helper import UpdateStatusfile
+from proteus.utils.julia_env import register_status_hook
+
+UpdateStatusfile({'output': 'run'}, 1)
+print(os.stat('run/status').st_ino, flush=True)
+assert register_status_hook('run')
+os.makedirs('elsewhere')
+os.chdir('elsewhere')
+"""
+
+
+def test_status_hook_writes_a_new_file_into_the_folder_it_was_given(tmp_path):
+    """The exit hook takes the output folder as an absolute path, so a later change of the
+    working folder does not move the status file. It writes a new file and renames it over
+    the old one, so a reader never sees a truncated status."""
+    res = subprocess.run(
+        [sys.executable, '-c', _MOVE_RUN],
+        cwd=tmp_path,
+        env=_env('PYTHON_JULIACALL_THREADS'),
+        capture_output=True,
+        text=True,
+        timeout=100,
+    )
+    assert res.returncode == 0, res.stderr[-2000:]
+    run = tmp_path / 'run'
+    assert ReadStatus(run) == 25
+    assert [p.name for p in run.iterdir()] == ['status']
+    assert (run / 'status').stat().st_ino != int(res.stdout.split()[0])

@@ -2914,9 +2914,9 @@ def test_a_stop_that_cvode_dropped_ends_the_ladder_before_a_retry(monkeypatch):
 
     solver.solve.side_effect = solve_and_drop
     runner, interior_o, hf_row = _retry_runner(solver, monkeypatch)
-    with pytest.raises(SystemExit) as stop:
+    with pytest.raises((SystemExit, RetryLadderExhaustedError)) as stop:
         runner._solve_with_retry(hf_row, interior_o)
-    assert stop.value.code == 143
+    assert stop.type is SystemExit and stop.value.code == 143
     assert len(calls) == 1
 
 

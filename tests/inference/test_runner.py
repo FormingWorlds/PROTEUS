@@ -444,5 +444,9 @@ def test_serve_forgets_a_stop_recorded_before_a_job(monkeypatch, tmp_path):
         raise ValueError('bad config')
 
     monkeypatch.setattr(julia_env, 'STOP_SIGNAL', signal.SIGTERM)
-    assert _serve_jobs(monkeypatch, tmp_path, fails, ['a']) == [str(tmp_path / 'a')]
+    try:
+        ran = _serve_jobs(monkeypatch, tmp_path, fails, ['a'])
+    except SystemExit as stop:
+        pytest.fail(f'the stop recorded before the job ended it with {stop.code}')
+    assert ran == [str(tmp_path / 'a')]
     assert ReadStatus(tmp_path / 'a') == 20

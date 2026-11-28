@@ -66,6 +66,7 @@ _SETTING = st.one_of(st.none(), st.sampled_from(_VALUES), st.text(max_size=5))
 
 
 @example(julia='4', user='1', signals=None, xthreads=None)
+@example(julia='2', user=' 1 ', signals=None, xthreads=None)
 @given(
     julia=_SETTING,
     user=_SETTING,
@@ -246,3 +247,39 @@ def test_system_configuration_logs_the_thread_note():
         lines = [c.args[0] for c in log.info.call_args_list]
         assert (note in lines) is bool(note)
         assert len(lines) == 8 + bool(note)
+
+
+@pytest.mark.parametrize('stop', [None, signal.SIGTERM, signal.SIGINT])
+def test_exit_if_stopped_exits_with_128_plus_the_recorded_signal(monkeypatch, stop):
+    """No stop recorded: the call returns. A recorded SIGTERM or SIGINT ends the process with
+    143 or 130, the code a shell reports for that signal."""
+    monkeypatch.setattr(je, 'STOP_SIGNAL', stop)
+    if stop is None:
+        assert je.exit_if_stopped() is None
+        return
+    with pytest.raises(SystemExit) as end:
+        je.exit_if_stopped()
+    assert end.value.code == {signal.SIGTERM: 143, signal.SIGINT: 130}[stop]
+
+
+@pytest.mark.parametrize('exc', [KeyboardInterrupt(), SystemExit(2)])
+def test_the_status_guard_reraises_an_interrupt_or_exit_unchanged(monkeypatch, tmp_path, exc):
+    """A KeyboardInterrupt or SystemExit leaves `Proteus.start` as raised, also while a stop
+    is recorded: only an error that hides a dropped stop becomes the exit of that signal."""
+    from proteus.proteus import _status_on_exit
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
+    class Stub:
+        directories = {'output': str(tmp_path)}
+
+        @_status_on_exit
+        def start(self):
+            UpdateStatusfile(self.directories, 1)
+            raise exc
+
+    monkeypatch.setattr(je, 'julia_handles_signals', lambda: False)
+    monkeypatch.setattr(je, 'STOP_SIGNAL', signal.SIGTERM)
+    with pytest.raises(BaseException) as end:
+        Stub().start()
+    assert end.value is exc
+    assert ReadStatus(tmp_path) == 25
