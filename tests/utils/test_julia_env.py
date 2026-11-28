@@ -305,9 +305,12 @@ def test_a_stop_writes_status_25_only_over_a_started_or_running_run(
     for folder in (None, str(run)):
         monkeypatch.setattr(je, '_status_output', folder)
         monkeypatch.setattr(je, 'STOP_SIGNAL', None)
-        with pytest.raises((SystemExit, KeyboardInterrupt)):
+        with pytest.raises(
+            SystemExit if signum == signal.SIGTERM else KeyboardInterrupt
+        ) as end:
             handler(signum, None)
         assert je.STOP_SIGNAL == signum
+        assert getattr(end.value, 'code', 128 + signum) == 128 + signum
         if folder is None:
             assert ReadStatus(run) == (-1 if status is None else status)
     assert ReadStatus(run) == (25 if status in (0, 1) else -1 if status is None else status)

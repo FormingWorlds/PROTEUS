@@ -169,3 +169,52 @@ def test_status_hook_writes_a_new_file_into_the_folder_it_was_given(tmp_path):
     assert ReadStatus(run) == 25
     assert [p.name for p in run.iterdir()] == ['status']
     assert (run / 'status').stat().st_ino != int(res.stdout.split()[0])
+
+
+_STOP_WORKER = """
+import sys
+import proteus.proteus
+from proteus.inference import runner
+from proteus.utils import julia_env
+
+class StubProteus:
+    def __init__(self, config_path):
+        self.config_path = config_path
+
+    def start(self, offline):
+        open(self.config_path, 'a').write('ran\\n')
+        if self.config_path.endswith('a.toml'):
+            julia_env.STOP_SIGNAL = 15
+
+proteus.proteus.Proteus = StubProteus
+runner.serve(int(sys.argv[1]), int(sys.argv[2]))
+"""
+
+
+def test_a_stopped_worker_fails_its_own_job_and_the_next_gets_a_new_worker(
+    monkeypatch, tmp_path
+):
+    """A serve worker whose job recorded a stop ends without a reply, so the parent books
+    that job as crashed with 143 and runs the next job in a new worker, not in the one that
+    is ending."""
+    from proteus.inference.runner import _CRASHED, ProteusRunner
+
+    script = tmp_path / 'worker.py'
+    script.write_text(_STOP_WORKER)
+    for key in _STRIPPED:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv('PYTHONPATH', _env('JULIA_NUM_THREADS')['PYTHONPATH'])
+    runner = ProteusRunner(tmp_path / 'console.log', command=[sys.executable, str(script)])
+    try:
+        first = runner.run(tmp_path / 'a.toml', timeout=100)
+        second = runner.run(tmp_path / 'b.toml', timeout=100)
+    except BrokenPipeError:
+        pytest.fail('the parent wrote the next job into the worker that is ending')
+    finally:
+        try:
+            runner.stop()
+        except BrokenPipeError:
+            pass
+    assert first == (_CRASHED, 128 + signal.SIGTERM)
+    assert second is None
+    assert (tmp_path / 'b.toml').read_text() == 'ran\n'

@@ -4546,14 +4546,19 @@ def test_start_records_status_25_on_sigterm(monkeypatch, tmp_path):
     assert res.exit_code == 128 + signal.SIGTERM == 143
 
 
-def test_a_second_sigterm_during_the_status_write_keeps_status_25(monkeypatch, tmp_path):
-    """At a SLURM time limit srun and slurmstepd both send SIGTERM. A second signal while
-    the guard rewrites the status file must not stop that write. The stub runs the SIGTERM
-    handler again where the second signal can come: after the old file is removed."""
+@pytest.mark.parametrize('signame, code', [('SIGTERM', 143), ('SIGINT', 1)])
+def test_a_second_sigterm_during_the_status_write_keeps_status_25(
+    monkeypatch, tmp_path, signame, code
+):
+    """At a SLURM time limit srun and slurmstepd both send SIGTERM, and Ctrl-C can come
+    twice. A second signal while the status file is rewritten must not stop that write. The
+    stub runs the handler again where the second signal can come: after the old file is
+    removed. Click reports a KeyboardInterrupt as Aborted, exit code 1."""
     import proteus.utils.helper as helper
     from proteus.proteus import _status_on_exit
     from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
+    signum = getattr(signal, signame)
     cfg = tmp_path / 'stub.toml'
     cfg.write_text('# stub\n')
     removed = []
@@ -4561,9 +4566,9 @@ def test_a_second_sigterm_during_the_status_write_keeps_status_25(monkeypatch, t
     def remove_then_signal(path):
         real_rm(path)
         removed.append(path)
-        handler = signal.getsignal(signal.SIGTERM)
+        handler = signal.getsignal(signum)
         if len(removed) == 2 and callable(handler):
-            handler(signal.SIGTERM, None)
+            handler(signum, None)
 
     class FakeProteus:
         def __init__(self, config_path):
@@ -4572,20 +4577,16 @@ def test_a_second_sigterm_during_the_status_write_keeps_status_25(monkeypatch, t
         @_status_on_exit
         def start(self, resume, offline):
             UpdateStatusfile(self.directories, 1)
-            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+            signal.getsignal(signum)(signum, None)
 
     real_rm = helper.safe_rm
     monkeypatch.setattr(helper, 'safe_rm', remove_then_signal)
     monkeypatch.setattr(cli, 'Proteus', FakeProteus)
     monkeypatch.setattr('proteus.utils.julia_env.julia_handles_signals', lambda: False)
-    saved = signal.getsignal(signal.SIGTERM)
-    try:
-        res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
-    finally:
-        signal.signal(signal.SIGTERM, saved)
+    res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
     assert len(removed) == 2
     assert ReadStatus(tmp_path) == 25
-    assert res.exit_code == 143
+    assert res.exit_code == code
 
 
 def test_a_stop_that_a_solver_drops_still_records_status_25(monkeypatch, tmp_path):
