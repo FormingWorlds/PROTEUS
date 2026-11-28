@@ -195,22 +195,31 @@ def test_python_sigterm_handler_only_without_the_julia_handlers(monkeypatch, jul
 
 
 @pytest.mark.parametrize('signame', ['SIGTERM', 'SIGINT'])
-@pytest.mark.parametrize('ours', [True, False])
-def test_sigterm_is_held_only_over_its_own_handler(ours, signame):
-    """While a stop is recorded, SIGTERM and SIGINT are ignored and then the Python handlers
-    are back; any other handler (Julia's, the default) is left alone."""
+def test_a_stop_in_a_held_status_write_is_recorded_not_raised(monkeypatch, tmp_path, signame):
+    """A stop signal while a status write is held records the signal and lets the write
+    finish; after the hold, also one that a raise ended, the handler writes 25 and raises."""
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
     signum = getattr(signal, signame)
-    handler = {signal.SIGTERM: je._exit_on_sigterm, signal.SIGINT: je._interrupt}[signum]
-    saved = signal.getsignal(signum)
-    before = handler if ours else signal.SIG_DFL
-    try:
-        signal.signal(signum, before)
+    signal.signal(
+        signum, {signal.SIGTERM: je._exit_on_sigterm, signal.SIGINT: je._interrupt}[signum]
+    )
+    monkeypatch.setattr(je, '_status_output', str(tmp_path))
+    UpdateStatusfile({'output': str(tmp_path)}, 1)
+    ends = []
+    with pytest.raises(ValueError):
         with je.sigterm_held():
-            inside = signal.getsignal(signum)
-        assert inside is (signal.SIG_IGN if ours else before)
-        assert signal.getsignal(signum) is before
-    finally:
-        signal.signal(signum, saved)
+            try:
+                signal.raise_signal(signum)
+                ends.append('returned')
+            except (SystemExit, KeyboardInterrupt):
+                ends.append('raised')
+            ends.append((je.STOP_SIGNAL, ReadStatus(tmp_path)))
+            raise ValueError
+    assert ends == ['returned', (signum, 1)]
+    with pytest.raises(SystemExit if signum == signal.SIGTERM else KeyboardInterrupt):
+        signal.raise_signal(signum)
+    assert ReadStatus(tmp_path) == 25
 
 
 def test_a_status_write_over_files_left_by_a_killed_write(tmp_path):

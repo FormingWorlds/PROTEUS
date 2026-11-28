@@ -440,6 +440,33 @@ def test_serve_ends_when_a_solver_drops_the_stop(monkeypatch, tmp_path):
     assert not (tmp_path / 'b').exists()
 
 
+def test_a_sigterm_during_an_error_status_write_ends_serve_before_the_next_job(
+    monkeypatch, tmp_path
+):
+    """A SIGTERM while the guard writes 20 for a failed job is recorded, so the worker ends
+    with 143 before its reply and before the next job."""
+    import proteus.utils.helper as helper
+
+    real = helper.CommentFromStatus
+
+    def comment(code):
+        if code == 20:
+            signal.raise_signal(signal.SIGTERM)
+        return real(code)
+
+    def fails():
+        raise RuntimeError('solver failed')
+
+    monkeypatch.setattr(helper, 'CommentFromStatus', comment)
+    replies = []
+    with pytest.raises(SystemExit) as stop:
+        _serve_jobs(monkeypatch, tmp_path, fails, ['a', 'b'], replies)
+    assert stop.value.code == 143
+    assert replies == []
+    assert ReadStatus(tmp_path / 'a') == 20
+    assert not (tmp_path / 'b').exists()
+
+
 @pytest.mark.parametrize('names', [['a'], ['a', 'b']])
 def test_serve_ends_after_the_job_that_recorded_a_stop(monkeypatch, tmp_path, names):
     """A job that drops a stop and returns ends the worker with 128 + signal before its reply,

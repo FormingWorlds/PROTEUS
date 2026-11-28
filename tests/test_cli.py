@@ -4653,11 +4653,11 @@ def test_a_stop_dropped_after_the_last_check_ends_proteus_start(monkeypatch, tmp
     assert ReadStatus(tmp_path) == 10
 
 
-def test_a_sigterm_during_the_error_status_write_keeps_status_20(monkeypatch, tmp_path):
-    """A SIGTERM while the status guard writes 20 for an error must not stop that write:
-    the guard holds the stop signals over its own write, so the run reads as failed, not
-    as having no status."""
+def test_a_sigterm_during_the_error_status_write_ends_with_143(monkeypatch, tmp_path):
+    """A SIGTERM while the status guard writes 20 for an error lets that write finish,
+    is recorded, and then ends the process with 143."""
     from proteus.proteus import _status_on_exit
+    from proteus.utils import julia_env
     from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
     cfg = tmp_path / 'stub.toml'
@@ -4678,4 +4678,5 @@ def test_a_sigterm_during_the_error_status_write_keeps_status_20(monkeypatch, tm
     res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
     assert written == [1, 20]
     assert ReadStatus(tmp_path) == 20
-    assert isinstance(res.exception, RuntimeError)
+    assert julia_env.STOP_SIGNAL == signal.SIGTERM
+    assert res.exit_code == 143
