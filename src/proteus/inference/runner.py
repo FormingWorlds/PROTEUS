@@ -163,9 +163,11 @@ def serve(request_fd: int, reply_fd: int) -> None:
 
     reply = os.fdopen(reply_fd, 'w')
     for line in os.fdopen(request_fd, 'r'):
-        reply.write(json.dumps(handle_job(json.loads(line), run_simulation)) + '\n')
-        reply.flush()
+        result = handle_job(json.loads(line), run_simulation)
+        # A stopped worker ends without a reply: the parent fails this job and starts anew.
         julia_env.exit_if_stopped()
+        reply.write(json.dumps(result) + '\n')
+        reply.flush()
 
 
 if __name__ == '__main__':

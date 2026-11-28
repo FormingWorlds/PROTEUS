@@ -124,8 +124,9 @@ def exit_if_stopped() -> None:
     """End the process with 128 + signal when a stop is recorded in ``STOP_SIGNAL``.
 
     A C solver (CVODE) or a finalizer (a weakref callback, ``__del__``) can drop the
-    SystemExit or KeyboardInterrupt that a stop handler raises; the main loop calls this once
-    per iteration, and code that retries or skips a failed step calls it first.
+    SystemExit or KeyboardInterrupt that a stop handler raises. The main loop calls this once
+    per iteration and after the final snapshots, code that retries or skips a failed step
+    calls it first, and so do ``proteus start`` after the run and ``serve`` after each job.
     """
     if STOP_SIGNAL is not None:
         sys.exit(128 + STOP_SIGNAL)
