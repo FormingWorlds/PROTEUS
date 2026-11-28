@@ -202,9 +202,7 @@ def test_a_stop_in_a_held_status_write_is_recorded_not_raised(monkeypatch, tmp_p
     from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
     signum = getattr(signal, signame)
-    signal.signal(
-        signum, {signal.SIGTERM: je._exit_on_sigterm, signal.SIGINT: je._interrupt}[signum]
-    )
+    signal.signal(signum, je._HANDLERS[signum])
     monkeypatch.setattr(je, '_status_output', str(tmp_path))
     UpdateStatusfile({'output': str(tmp_path)}, 1)
     ends = []
@@ -245,9 +243,7 @@ def test_a_stop_inside_a_status_write_leaves_status_25(monkeypatch, tmp_path, be
     from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
     signum = getattr(signal, signame)
-    signal.signal(
-        signum, {signal.SIGTERM: je._exit_on_sigterm, signal.SIGINT: je._interrupt}[signum]
-    )
+    signal.signal(signum, je._HANDLERS[signum])
     UpdateStatusfile({'output': str(tmp_path)}, before)
     monkeypatch.setattr(je, '_status_output', str(tmp_path))
     real, calls = helper.CommentFromStatus, []
@@ -352,7 +348,7 @@ def test_a_stop_writes_status_25_only_over_a_started_or_running_run(
     from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
     signum = getattr(signal, signame)
-    handler = {signal.SIGTERM: je._exit_on_sigterm, signal.SIGINT: je._interrupt}[signum]
+    handler = je._HANDLERS[signum]
     run = tmp_path / 'run'
     if status is not None:
         UpdateStatusfile({'output': str(run)}, status)

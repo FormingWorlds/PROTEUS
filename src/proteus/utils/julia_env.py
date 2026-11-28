@@ -131,6 +131,9 @@ def _interrupt(signum, frame):
         signal.default_int_handler(signum, frame)
 
 
+_HANDLERS = {signal.SIGTERM: _exit_on_sigterm, signal.SIGINT: _interrupt}
+
+
 def exit_if_stopped() -> None:
     """End the process with 128 + signal when a stop is recorded in ``STOP_SIGNAL``.
 
@@ -161,8 +164,8 @@ def exit_on_sigterm() -> bool:
     """
     if julia_handles_signals():
         return False
-    signal.signal(signal.SIGTERM, _exit_on_sigterm)
-    signal.signal(signal.SIGINT, _interrupt)
+    for signum, handler in _HANDLERS.items():
+        signal.signal(signum, handler)
     signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
     return True
 
@@ -232,14 +235,14 @@ def register_status_hook(output_dir: str) -> bool:
         True when the hook is set, False when Julia does not handle the signals.
     """
     global _status_hook, _status_output
-    import juliacall
-
     from proteus.utils.helper import CommentFromStatus
 
     _status_output = os.path.abspath(output_dir)
     if not julia_handles_signals():
         return False
     if _status_hook is None:
+        import juliacall
+
         _status_hook = juliacall.Main.seval("""
             let path = Ref(""), text = Ref("")
                 Base.atexit() do
@@ -251,7 +254,5 @@ def register_status_hook(output_dir: str) -> bool:
                 end
                 (p, t) -> (path[] = p; text[] = t; nothing)
             end""")
-    _status_hook(
-        os.path.join(os.path.abspath(output_dir), 'status'), f'25\n{CommentFromStatus(25)}\n'
-    )
+    _status_hook(os.path.join(_status_output, 'status'), f'25\n{CommentFromStatus(25)}\n')
     return True

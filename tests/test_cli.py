@@ -4563,18 +4563,11 @@ def _signal_in_status_write(monkeypatch, signum, status):
     return written
 
 
-@pytest.mark.usefixtures('signals_unblocked')
-@pytest.mark.parametrize('signame, code', [('SIGTERM', 143), ('SIGINT', 1)])
-def test_a_second_sigterm_during_the_status_write_keeps_status_25(
-    monkeypatch, tmp_path, signame, code
-):
-    """At a SLURM time limit srun and slurmstepd both send SIGTERM, and Ctrl-C can come
-    twice. A second signal while the handler writes 25 must not stop that write. Click
-    reports a KeyboardInterrupt as Aborted, exit code 1."""
+def _start_stub(monkeypatch, tmp_path, run):
+    """Invoke `proteus start` on a stub whose guarded `start` calls ``run(directories)``
+    with ``tmp_path`` as the output folder, under the Python stop handlers."""
     from proteus.proteus import _status_on_exit
-    from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
-    signum = getattr(signal, signame)
     cfg = tmp_path / 'stub.toml'
     cfg.write_text('# stub\n')
 
@@ -4584,13 +4577,31 @@ def test_a_second_sigterm_during_the_status_write_keeps_status_25(
 
         @_status_on_exit
         def start(self, resume, offline):
-            UpdateStatusfile(self.directories, 1)
-            signal.raise_signal(signum)
+            run(self.directories)
 
-    written = _signal_in_status_write(monkeypatch, signum, 25)
     monkeypatch.setattr(cli, 'Proteus', FakeProteus)
     monkeypatch.setattr('proteus.utils.julia_env.julia_handles_signals', lambda: False)
-    res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
+    return CliRunner().invoke(cli.start, ['-c', str(cfg)])
+
+
+@pytest.mark.usefixtures('signals_unblocked')
+@pytest.mark.parametrize('signame, code', [('SIGTERM', 143), ('SIGINT', 1)])
+def test_a_second_sigterm_during_the_status_write_keeps_status_25(
+    monkeypatch, tmp_path, signame, code
+):
+    """At a SLURM time limit srun and slurmstepd both send SIGTERM, and Ctrl-C can come
+    twice. A second signal while the handler writes 25 must not stop that write. Click
+    reports a KeyboardInterrupt as Aborted, exit code 1."""
+    from proteus.utils.helper import ReadStatus, UpdateStatusfile
+
+    signum = getattr(signal, signame)
+
+    def run(directories):
+        UpdateStatusfile(directories, 1)
+        signal.raise_signal(signum)
+
+    written = _signal_in_status_write(monkeypatch, signum, 25)
+    res = _start_stub(monkeypatch, tmp_path, run)
     assert written == [1, 25]
     assert ReadStatus(tmp_path) == 25
     assert res.exit_code == code
@@ -4601,28 +4612,17 @@ def test_a_stop_that_a_solver_drops_still_records_status_25(monkeypatch, tmp_pat
     report a failed step; the run then ends with an error of its own. The handler stays
     installed and records the stop, so the run reads as stopped (25), not failed (20), and
     the process exits with 143 as for any SIGTERM."""
-    from proteus.proteus import _status_on_exit
     from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
-    cfg = tmp_path / 'stub.toml'
-    cfg.write_text('# stub\n')
+    def run(directories):
+        UpdateStatusfile(directories, 1)
+        try:
+            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+        except SystemExit:
+            pass
+        raise RuntimeError('CVODE step failed')
 
-    class FakeProteus:
-        def __init__(self, config_path):
-            self.directories = {'output': str(tmp_path)}
-
-        @_status_on_exit
-        def start(self, resume, offline):
-            UpdateStatusfile(self.directories, 1)
-            try:
-                signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
-            except SystemExit:
-                pass
-            raise RuntimeError('CVODE step failed')
-
-    monkeypatch.setattr(cli, 'Proteus', FakeProteus)
-    monkeypatch.setattr('proteus.utils.julia_env.julia_handles_signals', lambda: False)
-    res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
+    res = _start_stub(monkeypatch, tmp_path, run)
     assert res.exit_code == 143
     assert ReadStatus(tmp_path) == 25
 
@@ -4631,25 +4631,14 @@ def test_a_stop_dropped_after_the_last_check_ends_proteus_start(monkeypatch, tmp
     """A stop dropped after the last check of `Proteus.start` (a finalizer in the final
     plots) ends `proteus start` with 128 + signal after `start` returns, and keeps the final
     status."""
-    from proteus.proteus import _status_on_exit
     from proteus.utils import julia_env
     from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
-    cfg = tmp_path / 'stub.toml'
-    cfg.write_text('# stub\n')
+    def run(directories):
+        UpdateStatusfile(directories, 10)
+        julia_env.STOP_SIGNAL = signal.SIGTERM
 
-    class FakeProteus:
-        def __init__(self, config_path):
-            self.directories = {'output': str(tmp_path)}
-
-        @_status_on_exit
-        def start(self, resume, offline):
-            UpdateStatusfile(self.directories, 10)
-            julia_env.STOP_SIGNAL = signal.SIGTERM
-
-    monkeypatch.setattr(cli, 'Proteus', FakeProteus)
-    monkeypatch.setattr('proteus.utils.julia_env.julia_handles_signals', lambda: False)
-    res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
+    res = _start_stub(monkeypatch, tmp_path, run)
     assert res.exit_code == 143
     assert ReadStatus(tmp_path) == 10
 
@@ -4658,26 +4647,15 @@ def test_a_stop_dropped_after_the_last_check_ends_proteus_start(monkeypatch, tmp
 def test_a_sigterm_during_the_error_status_write_ends_with_143(monkeypatch, tmp_path):
     """A SIGTERM while the status guard writes 20 for an error lets that write finish,
     is recorded, and then ends the process with 143."""
-    from proteus.proteus import _status_on_exit
     from proteus.utils import julia_env
     from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
-    cfg = tmp_path / 'stub.toml'
-    cfg.write_text('# stub\n')
-
-    class FakeProteus:
-        def __init__(self, config_path):
-            self.directories = {'output': str(tmp_path)}
-
-        @_status_on_exit
-        def start(self, resume, offline):
-            UpdateStatusfile(self.directories, 1)
-            raise RuntimeError('solver failed')
+    def run(directories):
+        UpdateStatusfile(directories, 1)
+        raise RuntimeError('solver failed')
 
     written = _signal_in_status_write(monkeypatch, signal.SIGTERM, 20)
-    monkeypatch.setattr(cli, 'Proteus', FakeProteus)
-    monkeypatch.setattr('proteus.utils.julia_env.julia_handles_signals', lambda: False)
-    res = CliRunner().invoke(cli.start, ['-c', str(cfg)])
+    res = _start_stub(monkeypatch, tmp_path, run)
     assert written == [1, 20]
     assert ReadStatus(tmp_path) == 20
     assert julia_env.STOP_SIGNAL == signal.SIGTERM

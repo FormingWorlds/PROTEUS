@@ -153,8 +153,7 @@ def handle_job(job: dict, run_simulation) -> dict:
 def serve(request_fd: int, reply_fd: int) -> None:
     """Serve simulation requests on the inherited pipes until they close."""
     from proteus.proteus import Proteus
-    from proteus.utils import julia_env
-    from proteus.utils.julia_env import exit_on_sigterm
+    from proteus.utils.julia_env import exit_if_stopped, exit_on_sigterm
 
     exit_on_sigterm()
 
@@ -165,7 +164,7 @@ def serve(request_fd: int, reply_fd: int) -> None:
     for line in os.fdopen(request_fd, 'r'):
         result = handle_job(json.loads(line), run_simulation)
         # A stopped worker ends without a reply: the parent fails this job and starts anew.
-        julia_env.exit_if_stopped()
+        exit_if_stopped()
         reply.write(json.dumps(result) + '\n')
         reply.flush()
 

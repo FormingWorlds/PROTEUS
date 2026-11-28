@@ -88,8 +88,10 @@ AGNI_DEADLOCK_MAX = 3
 def _status_on_exit(start):
     """Record why ``start`` stopped when it raises, so the run does not read as running:
     25 for a stop (`run_was_stopped`: an interrupt, a requested exit or SIGTERM), 20 for any
-    other error. A stop that a solver dropped, or that came during this write, then ends the process with 128 + signal. Only a running status is replaced: a stop code the raise site wrote is kept, and
-    a check that stops the run before its first status leaves the output folder alone."""
+    other error. A stop that a solver dropped, or that came during this write, then ends
+    the process with 128 + signal. Only a running status is replaced: a stop code the raise
+    site wrote is kept, and a check that stops the run before its first status leaves the
+    output folder alone."""
 
     @functools.wraps(start)
     def wrapper(self, *args, **kwargs):

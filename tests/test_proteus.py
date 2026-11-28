@@ -950,8 +950,9 @@ def test_a_run_stopped_after_the_output_is_cleaned_records_why(
 ):
     """A fresh run that stops between cleaning its output folder and the main loop leaves
     a stop code, not a missing status file (#778, #744): 20 for an error, 25 for an interrupt
-    or a requested exit (also when a solver callback wraps it in its own error), and the code the raise site wrote itself when it wrote one. The
-    logger setup is the first step after the clean. While it initialises the run reads 0
+    or a requested exit (also when a solver callback wraps it in its own error), and the
+    code the raise site wrote itself when it wrote one. The logger setup is the first step
+    after the clean. While it initialises the run reads 0
     (Started), so a run killed there without a handler (SIGKILL, out of memory) does not read
     as a stale code or no file. The output folder is cleaned for real, so a status written
     before the clean would be gone."""
@@ -5989,13 +5990,12 @@ def _drop_a_stop_on_atmosphere_call(n, signum, out):
     callback, as matplotlib's finalizers do: Python prints its exception as ignored. The
     handler has written status 25 to ``out`` before the run goes on; a later status write
     (here 13, as a termination check makes) keeps it."""
-    import signal
     import weakref
 
     from proteus.utils import julia_env
     from proteus.utils.helper import ReadStatus, UpdateStatusfile
 
-    handler = {signal.SIGTERM: julia_env._exit_on_sigterm, signal.SIGINT: julia_env._interrupt}
+    handler = julia_env._HANDLERS
     seen = []
 
     class Freed:
