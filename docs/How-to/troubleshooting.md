@@ -331,9 +331,15 @@ conda deactivate && conda activate proteus
 
 ### Julia threads and signals {#julia-threads-and-signals}
 
-With more than 1 Julia thread and the Julia signal handlers off (the juliacall default), a process can end with SIGBUS (exit code 138 on macOS) when it exits, after the run has written its output. PROTEUS therefore starts Julia with 1 thread: when `JULIA_NUM_THREADS` asks for more, PROTEUS sets `PYTHON_JULIACALL_THREADS=1` before it starts Julia and logs `Julia threads     1 (JULIA_NUM_THREADS=... not used; ...)`.
+A run on macOS can end with exit code 138 (SIGBUS) when the process exits, after the run has written its output. This happens with more than 1 Julia thread and the Julia signal handlers off, the default of juliacall (the package that runs Julia inside the Python process of PROTEUS). PROTEUS therefore starts Julia with 1 thread: when `JULIA_NUM_THREADS` asks for more, PROTEUS sets `PYTHON_JULIACALL_THREADS=1` before it starts Julia and logs `Julia threads     1 (JULIA_NUM_THREADS=... not used; ...)`. A script that imports `juliacall` before `proteus` keeps the Julia threads it started with.
 
-To run Julia with more threads, set `PYTHON_JULIACALL_THREADS` (or start Python with `-X juliacall-threads=N`). PROTEUS then sets `PYTHON_JULIACALL_HANDLE_SIGNALS=yes`, unless you set it yourself. With these handlers Julia, not Python, takes SIGTERM and Ctrl-C: the run stops with a Julia backtrace, a Julia exit hook records status 25 (stopped). The temporary folder `proteus_*` of the run then stays in `$TMPDIR`. On SLURM, start such a run with `exec`, not `srun`; see [the Habrok guide](habrok_cluster_guide.md).
+To run Julia with more threads, set `PYTHON_JULIACALL_THREADS` (or start Python with `-X juliacall-threads=N`). PROTEUS then sets `PYTHON_JULIACALL_HANDLE_SIGNALS=yes`, unless you set it yourself. Julia, not Python, then takes SIGTERM and Ctrl-C:
+
+- The run stops with a Julia backtrace. A Julia exit hook records status 25 (died, or exit requested by user).
+- The temporary folder `proteus_*` of the run stays in `$TMPDIR`.
+- A program that the run started, such as SPIDER, can go on after the run has stopped, and it does not react to SIGTERM or Ctrl-C. Stop it with `kill -KILL <pid>`.
+
+On SLURM, start such a run with `exec`, not `srun`; see [Stop a run with scancel or the time limit](habrok_cluster_guide.md#stop-signals).
 
 ---
 

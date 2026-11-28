@@ -106,14 +106,22 @@ conda activate proteus
 srun proteus start --offline -c input/all_options.toml
 ```
 
-Start `proteus` with `srun`, as above. At `scancel` and at the time limit, SLURM sends SIGTERM to each job step and to the batch shell, but not to a program that the batch shell started on its own. Such a program gets SIGKILL 30 s later (`KillWait` on Habrok), and its run keeps status 1 (running) instead of 25 (stopped).
-
-With Julia threads (`PYTHON_JULIACALL_THREADS` above 1, or `PYTHON_JULIACALL_HANDLE_SIGNALS=yes`), Julia handles the signals. At the time limit, a run under `srun` can then get 2 SIGTERMs within a few milliseconds, and the second one can end it before it records status 25. Start a single run with Julia threads with `exec proteus start --offline -c input/all_options.toml` instead: it then gets 1 SIGTERM and records status 25 at `scancel` and at the time limit. A grid (`proteus grid`) writes status 25 for each case that ends with status 1.
-
 Submit it with:
 ```console
 sbatch run_proteus.sh
 ```
+
+### Stop a run with scancel or the time limit {#stop-signals}
+
+At `scancel` and at the time limit, SLURM sends SIGTERM to each job step and to the batch shell. It does not send it to a program that the batch shell started on its own: such a program gets SIGKILL 30 s later (`KillWait` on Habrok), and its run keeps status 1 (running) instead of 25 (died, or exit requested by user). Therefore start `proteus` with `srun`, as in the script above. PROTEUS takes the signal when the current call into Julia (for example an AGNI solve) returns; when that takes more than 30 s, the run also keeps status 1.
+
+With Julia threads (`PYTHON_JULIACALL_THREADS` above 1, or `PYTHON_JULIACALL_HANDLE_SIGNALS=yes`), Julia takes the signals at once (see [Julia threads and signals](troubleshooting.md#julia-threads-and-signals)). At the time limit, a run under `srun` can then get 2 SIGTERMs within a few milliseconds, and the second one can end it before it records status 25. For a single run with Julia threads, change the last line of the script to:
+
+```bash
+exec proteus start --offline -c input/all_options.toml
+```
+
+The run then gets 1 SIGTERM and records status 25 at `scancel` and at the time limit. A grid (`proteus grid`) writes status 25 for each case that ends with status 0 (started), 1 (running) or no status.
 
 ## Transferring data from Habrok to Kapteyn
 
