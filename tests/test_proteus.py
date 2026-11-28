@@ -873,6 +873,37 @@ def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(
 _MODULE_CONFIG = 'proteus.utils.coupler.print_module_configuration'
 
 
+def _in_solver_callback(stop):
+    """The error a C solver raises when `stop` comes from its Python callback: CVODE of
+    scikits.odes (the Aragog solve) gives SystemError with `stop` as its context."""
+    try:
+        raise stop
+    except BaseException:
+        try:
+            raise SystemError('the right-hand side routine failed')
+        except SystemError as exc:
+            return exc
+
+
+@pytest.mark.unit
+def test_cvode_turns_a_stop_in_its_callback_into_system_error():
+    """The premise of the solver-callback cases below, with the real CVODE."""
+    cvode = pytest.importorskip('scikits_odes_sundials.cvode')
+
+    calls = []
+
+    def rhs(t, y, ydot):
+        calls.append(t)
+        if len(calls) == 5:  # inside the C time stepping; a first call can come from Python
+            raise SystemExit(143)
+        ydot[0] = -y[0]
+
+    with pytest.raises(SystemError) as err:
+        cvode.CVODE(rhs, old_api=False).solve(np.linspace(0.0, 1.0, 3), np.array([1.0]))
+    assert isinstance(err.value.__context__, SystemExit)
+    assert err.value.__context__.code == 143
+
+
 def _stop_with(exc, code_first, seen, dirs):
     """A start-up step that records the status it finds and raises `exc`, after writing
     its own stop code if given."""
@@ -897,6 +928,9 @@ def _stop_with(exc, code_first, seen, dirs):
         (_MODULE_CONFIG, FileNotFoundError(2, 'cwd is gone'), None, '20'),
         (_MODULE_CONFIG, KeyboardInterrupt(), None, '25'),
         (_MODULE_CONFIG, SystemExit(143), None, '25'),
+        (_MODULE_CONFIG, _in_solver_callback(SystemExit(143)), None, '25'),
+        (_MODULE_CONFIG, _in_solver_callback(KeyboardInterrupt()), None, '25'),
+        (_MODULE_CONFIG, _in_solver_callback(ValueError('bad state')), None, '20'),
         (_MODULE_CONFIG, RuntimeError('AGNI deadlock'), 22, '22'),
         ('proteus.proteus.setup_logger', OSError(28, 'disk full'), None, '20'),
     ],
@@ -904,6 +938,9 @@ def _stop_with(exc, code_first, seen, dirs):
         'startup-error',
         'ctrl-c',
         'system-exit',
+        'system-exit-in-solver-callback',
+        'ctrl-c-in-solver-callback',
+        'error-in-solver-callback',
         'own-stop-code-kept',
         'logger-setup-error',
     ],
@@ -913,7 +950,7 @@ def test_a_run_stopped_after_the_output_is_cleaned_records_why(
 ):
     """A fresh run that stops between cleaning its output folder and the main loop leaves
     a stop code, not a missing status file (#778, #744): 20 for an error, 25 for an interrupt
-    or a requested exit, and the code the raise site wrote itself when it wrote one. The
+    or a requested exit (also when a solver callback wraps it in its own error), and the code the raise site wrote itself when it wrote one. The
     logger setup is the first step after the clean. While it initialises the run reads 0
     (Started), so a run killed there without a handler (SIGKILL, out of memory) does not read
     as a stale code or no file. The output folder is cleaned for real, so a status written
