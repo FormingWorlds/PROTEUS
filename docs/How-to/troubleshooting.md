@@ -336,13 +336,13 @@ A run on macOS can end with exit code 138 (SIGBUS) when the process exits, after
 
 PROTEUS therefore starts Julia with 1 thread: when `JULIA_NUM_THREADS` asks for more, PROTEUS sets `PYTHON_JULIACALL_THREADS=1` before it starts Julia and logs `Julia threads     1 (JULIA_NUM_THREADS=... not used; ...)`. A script that imports `juliacall` before `proteus` keeps the Julia threads it started with.
 
-To run Julia with more threads, set `PYTHON_JULIACALL_THREADS` (or start Python with `-X juliacall-threads=N`). PROTEUS then sets `PYTHON_JULIACALL_HANDLE_SIGNALS=yes`, unless you set it yourself. Julia, not Python, then handles SIGTERM (the request to stop from SLURM and from `kill`) and Ctrl-C:
+To run Julia with more threads, set `PYTHON_JULIACALL_THREADS`. PROTEUS then sets `PYTHON_JULIACALL_HANDLE_SIGNALS=yes`, unless you set it yourself. Julia, not Python, then handles SIGTERM (the request to stop from SLURM and from `kill`) and Ctrl-C:
 
 - The run stops with a Julia backtrace. A Julia exit hook records status 25 (died, or exit requested by user) when the status was 0 (started) or 1 (running).
 - The temporary folder `proteus_*` of the run stays in `$TMPDIR`.
 - A program that the run started, such as SPIDER, can keep running after the run has stopped, and it does not react to SIGTERM or Ctrl-C. Stop it with `kill -KILL <pid>`.
 
-On SLURM, start a single run with more than 1 Julia thread with `exec`, not `srun`; see [Stop a run with scancel or the time limit](habrok_cluster_guide.md#stop-signals).
+On SLURM, start a single run in which Julia handles the signals with `exec`, not `srun`; see [Stop a run with scancel or the time limit](habrok_cluster_guide.md#stop-signals).
 
 ---
 
