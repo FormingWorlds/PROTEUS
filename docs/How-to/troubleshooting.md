@@ -340,9 +340,9 @@ To run Julia with more threads, set `PYTHON_JULIACALL_THREADS` (or start Python 
 
 - The run stops with a Julia backtrace. A Julia exit hook records status 25 (died, or exit requested by user) when the status was 0 (started) or 1 (running).
 - The temporary folder `proteus_*` of the run stays in `$TMPDIR`.
-- A program that the run started, such as SPIDER, can go on after the run has stopped, and it does not react to SIGTERM or Ctrl-C. Stop it with `kill -KILL <pid>`.
+- A program that the run started, such as SPIDER, can keep running after the run has stopped, and it does not react to SIGTERM or Ctrl-C. Stop it with `kill -KILL <pid>`.
 
-On SLURM, start such a run with `exec`, not `srun`; see [Stop a run with scancel or the time limit](habrok_cluster_guide.md#stop-signals).
+On SLURM, start a single run with more than 1 Julia thread with `exec`, not `srun`; see [Stop a run with scancel or the time limit](habrok_cluster_guide.md#stop-signals).
 
 ---
 
