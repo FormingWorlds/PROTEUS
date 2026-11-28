@@ -21,6 +21,7 @@ import subprocess
 import sys
 import textwrap
 import time
+from pathlib import Path
 
 import pytest
 
@@ -386,3 +387,62 @@ def test_serve_records_status_25_when_sigterm_stops_a_run(monkeypatch, tmp_path)
     os.close(reply_r)
     assert stopped.value.code == 143
     assert ReadStatus(tmp_path) == 25
+
+
+def _serve_jobs(monkeypatch, tmp_path, start, names):
+    """Run `serve` over one job per name with `start` as the run; return the folders run."""
+    ran = []
+
+    class _Proteus:
+        def __init__(self, config_path):
+            self.directories = {'output': str(tmp_path / Path(config_path).stem)}
+
+        @_status_on_exit
+        def start(self, offline):
+            ran.append(self.directories['output'])
+            UpdateStatusfile(self.directories, 1)
+            start()
+
+    monkeypatch.setattr('proteus.proteus.Proteus', _Proteus)
+    monkeypatch.setattr('proteus.utils.julia_env.julia_handles_signals', lambda: False)
+    request_r, request_w = os.pipe()
+    reply_r, reply_w = os.pipe()
+    with os.fdopen(request_w, 'w') as requests:
+        for name in names:
+            requests.write(json.dumps({'config': str(tmp_path / f'{name}.toml')}) + '\n')
+    try:
+        serve(request_r, reply_w)
+    finally:
+        os.close(reply_r)
+    return ran
+
+
+def test_serve_ends_when_a_solver_drops_the_stop(monkeypatch, tmp_path):
+    """CVODE can drop the SystemExit that the SIGTERM handler raises in its callback; the run
+    then ends with an error of its own, which `handle_job` would answer. The recorded stop
+    ends the worker with 143 after the status 25 write, and no later job runs."""
+
+    def dropped():
+        try:
+            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+        except SystemExit:
+            pass
+        raise RuntimeError('CVODE step failed')
+
+    with pytest.raises(SystemExit) as stopped:
+        _serve_jobs(monkeypatch, tmp_path, dropped, ['a', 'b'])
+    assert stopped.value.code == 143
+    assert ReadStatus(tmp_path / 'a') == 25
+    assert not (tmp_path / 'b').exists()
+
+
+def test_serve_forgets_a_stop_recorded_before_a_job(monkeypatch, tmp_path):
+    """Each job starts with no stop recorded, so its own error reads as failed (20)."""
+    from proteus.utils import julia_env
+
+    def fails():
+        raise ValueError('bad config')
+
+    monkeypatch.setattr(julia_env, 'STOP_SIGNAL', signal.SIGTERM)
+    assert _serve_jobs(monkeypatch, tmp_path, fails, ['a']) == [str(tmp_path / 'a')]
+    assert ReadStatus(tmp_path / 'a') == 20

@@ -4923,6 +4923,35 @@ def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
 
 
 @pytest.mark.unit
+def test_a_failed_aragog_step_after_a_dropped_stop_ends_the_run(monkeypatch):
+    """When the handler recorded a SIGTERM that CVODE dropped, the failed step ends the run
+    with 128 + signal instead of keeping the previous state and going on."""
+    import signal
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import run_interior
+    from proteus.utils import julia_env
+
+    monkeypatch.setattr(julia_env, 'STOP_SIGNAL', signal.SIGTERM)
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 2
+    interior_o.dt = 0.0
+    interior_o.aragog_fail_count = 0
+    runner_mock = MagicMock()
+    runner_mock.run_solver.side_effect = RetryLadderExhaustedError('retry ladder exhausted')
+    with (
+        _patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
+        _patch('proteus.interior_energetics.timestep.next_step', return_value=42.0),
+        pytest.raises(SystemExit) as stop,
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
+    assert stop.value.code == 143
+    assert interior_o.aragog_fail_count == 0
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_a_skipped_aragog_step_adds_nothing_to_the_energy_ledgers():
     """A retry-ladder fallback integrates nothing: the per-call energy columns of its row

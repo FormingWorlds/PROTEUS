@@ -2897,6 +2897,30 @@ def test_solve_with_retry_other_mode_caps_at_six_and_only_halves_dt(monkeypatch)
 
 
 @pytest.mark.unit
+def test_a_stop_that_cvode_dropped_ends_the_ladder_before_a_retry(monkeypatch):
+    """A SIGTERM in the CVODE right-hand side can be dropped: the solve reports a failure
+    and only the record of the handler holds the stop. The ladder ends the run (128 + signal)
+    before a retry, which would use up the time SLURM leaves before SIGKILL."""
+    import signal
+
+    from proteus.utils import julia_env
+
+    solver, calls = _retry_solver([_retry_out(-1, cvode_flag=0, cvode_flag_name='')] * 8)
+    record = solver.solve.side_effect
+
+    def solve_and_drop():
+        record()
+        julia_env.STOP_SIGNAL = signal.SIGTERM
+
+    solver.solve.side_effect = solve_and_drop
+    runner, interior_o, hf_row = _retry_runner(solver, monkeypatch)
+    with pytest.raises(SystemExit) as stop:
+        runner._solve_with_retry(hf_row, interior_o)
+    assert stop.value.code == 143
+    assert len(calls) == 1
+
+
+@pytest.mark.unit
 def test_solve_with_retry_stiff_success_returns_state_and_restores_controls(monkeypatch):
     """A stiff retry that succeeds returns the state and restores base controls.
 

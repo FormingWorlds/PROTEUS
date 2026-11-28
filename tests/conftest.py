@@ -84,9 +84,10 @@ def _restore_sigterm_handler(monkeypatch):
     from proteus.utils import julia_env
 
     monkeypatch.setattr(julia_env, 'STOP_SIGNAL', None)
-    before = signal.getsignal(signal.SIGTERM)
+    before = signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGINT)
     yield
-    signal.signal(signal.SIGTERM, before)
+    signal.signal(signal.SIGTERM, before[0])
+    signal.signal(signal.SIGINT, before[1])
 
 
 @pytest.fixture(autouse=True)

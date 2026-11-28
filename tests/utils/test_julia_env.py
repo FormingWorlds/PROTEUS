@@ -168,7 +168,7 @@ def test_python_sigterm_handler_only_without_the_julia_handlers(monkeypatch, jul
     import juliacall
 
     monkeypatch.setitem(juliacall.CONFIG, 'opt_handle_signals', 'yes' if julia else None)
-    saved = signal.getsignal(signal.SIGTERM)
+    saved = signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGINT)
     mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
     try:
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
@@ -183,8 +183,12 @@ def test_python_sigterm_handler_only_without_the_julia_handlers(monkeypatch, jul
             assert stop.value.code == 143
             assert je.STOP_SIGNAL == signal.SIGTERM
             assert signal.getsignal(signal.SIGTERM) is handler
+            with pytest.raises(KeyboardInterrupt):
+                signal.getsignal(signal.SIGINT)(signal.SIGINT, None)
+            assert je.STOP_SIGNAL == signal.SIGINT
     finally:
-        signal.signal(signal.SIGTERM, saved)
+        signal.signal(signal.SIGTERM, saved[0])
+        signal.signal(signal.SIGINT, saved[1])
         signal.pthread_sigmask(signal.SIG_SETMASK, mask)
 
 
@@ -208,21 +212,21 @@ def test_a_stop_is_read_from_the_handler_or_the_exception_chain(monkeypatch):
     """An error is a stop when the SIGTERM handler ran (a solver dropped its SystemExit) or
     when a KeyboardInterrupt or SystemExit is in its cause or context chain."""
 
-    def chained(inner, outer, cause=False):
-        try:
-            raise inner
-        except BaseException as first:
-            try:
-                if cause:
-                    raise outer from first
-                raise outer
-            except BaseException as exc:
-                return exc
+    def chained(outer, inner, link='__context__'):
+        setattr(outer, link, inner)
+        return outer
 
     assert je.run_was_stopped(KeyboardInterrupt())
-    assert je.run_was_stopped(chained(SystemExit(143), SystemError('callback')))
-    assert je.run_was_stopped(chained(KeyboardInterrupt(), RuntimeError('x'), cause=True))
-    assert not je.run_was_stopped(chained(ValueError('a'), RuntimeError('b')))
+    assert je.run_was_stopped(chained(SystemError('callback'), SystemExit(143)))
+    assert je.run_was_stopped(chained(RuntimeError('x'), KeyboardInterrupt(), '__cause__'))
+    both = chained(
+        chained(RuntimeError('y'), ValueError('cause'), '__cause__'), SystemExit(143)
+    )
+    assert je.run_was_stopped(both)
+    assert not je.run_was_stopped(chained(RuntimeError('b'), ValueError('a')))
+    loop = chained(ValueError('a'), ValueError('b'), '__cause__')
+    loop.__cause__.__cause__ = loop
+    assert not je.run_was_stopped(loop)
     monkeypatch.setattr(je, 'STOP_SIGNAL', signal.SIGTERM)
     assert je.run_was_stopped(RuntimeError('solver failed'))
 

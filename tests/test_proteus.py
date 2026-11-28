@@ -876,13 +876,9 @@ _MODULE_CONFIG = 'proteus.utils.coupler.print_module_configuration'
 def _in_solver_callback(stop):
     """The error a C solver raises when `stop` comes from its Python callback: CVODE of
     scikits.odes (the Aragog solve) gives SystemError with `stop` as its context."""
-    try:
-        raise stop
-    except BaseException:
-        try:
-            raise SystemError('the right-hand side routine failed')
-        except SystemError as exc:
-            return exc
+    exc = SystemError('the right-hand side routine failed')
+    exc.__context__ = stop
+    return exc
 
 
 @pytest.mark.unit
