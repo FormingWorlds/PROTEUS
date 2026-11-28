@@ -130,7 +130,8 @@ def dispatch_script(
         Wall time per job [days], written in whole minutes, at least 1, since a zero
         Slurm time limit means no limit.
     mem_per_case_mb : int
-        Memory per core, so per case [MB].
+        Memory per case [MiB], the limit of its job step; the job asks for
+        ``cores_per_job`` times it as one ``--mem`` request.
     command : str
         Command that runs one case; the config path follows it.
     casedir : str or None
@@ -158,7 +159,7 @@ def dispatch_script(
 #SBATCH --time={minutes}
 #SBATCH --signal=B:TERM@{signal_s}
 #SBATCH --cpus-per-task={cores_per_job}
-#SBATCH --mem-per-cpu={mem_per_case_mb}M
+#SBATCH --mem={cores_per_job * mem_per_case_mb}M
 #SBATCH -i /dev/null
 #SBATCH -o {logdir}/proteus-%A_%a.log
 #SBATCH --array=0-{jobs - 1}%{throttle}

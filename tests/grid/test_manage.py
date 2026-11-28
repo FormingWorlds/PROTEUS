@@ -953,8 +953,8 @@ class TestSlurmConfig:
         # ceil(5 / 2) = 3 jobs; 5 // 2 = 2 at a time (5 would exceed max_jobs cases)
         assert '--array=0-2%2' in contents
         assert '--cpus-per-task=2' in contents
-        assert '--mem-per-cpu=3072M' in contents
-        assert '--mem-per-cpu=6144M' not in contents  # memory per job, not per case
+        assert '#SBATCH --mem=6144M\n' in contents  # 2 cores x 3072 MiB for the job
+        assert '--cpus-per-task=1 --mem-per-cpu=3072M' in contents  # per case step
         assert 'seq $SLURM_ARRAY_TASK_ID 3 4' in contents
 
     def test_array_limit_stretches_the_wall_time_by_the_waves(
@@ -1048,7 +1048,7 @@ class TestSlurmConfig:
         # max_days propagated:
         assert '--time=2880\n' in contents  # 2 days in minutes
         # max_mem propagated, converted from GB to MB: 8 GB is 8192 MB
-        assert '--mem-per-cpu=8192M' in contents
+        assert '#SBATCH --mem=8192M\n' in contents
 
     def test_slurm_script_converts_non_integer_days_and_memory(
         self, grid_with_mocks, monkeypatch
@@ -1076,10 +1076,10 @@ class TestSlurmConfig:
         contents = Path(g.outdir, 'slurm_dispatch.sh').read_text()
         # 1.5 days is 2160 minutes; 2.5 GB is 2.5 * 1024 = 2560 MB
         assert '--time=2160\n' in contents
-        assert '--mem-per-cpu=2560M' in contents
+        assert '#SBATCH --mem=2560M\n' in contents
         # Truncating to whole days or whole GB would give these instead
         assert '--time=1440\n' not in contents
-        assert '--mem-per-cpu=2048M' not in contents
+        assert '#SBATCH --mem=2048M\n' not in contents
 
     def test_slurm_script_real_run_uses_proteus(self, grid_with_mocks, monkeypatch):
         """When ``test_run=False`` the dispatch command is the real CLI."""

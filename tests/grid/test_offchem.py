@@ -290,7 +290,7 @@ def test_offchem_grid_slurm_packs_the_selected_cases_as_the_grid_run(grid, monke
     assert '#SBATCH --array=0-1%1\n' in script
     assert '#SBATCH --cpus-per-task=2\n' in script
     assert '#SBATCH --time=2160\n' in script  # 1.5 days
-    assert '#SBATCH --mem-per-cpu=4096M\n' in script  # 4 GB
+    assert '#SBATCH --mem=8192M\n' in script  # 2 cores x 4 GB
     assert 'proteus offchem --network-compiled --config "$cfgs/$1.toml"' in script
     assert f'-o {grid}/logs/offchem/proteus-%A_%a.log' in script
     assert (grid / 'offchem_cases.txt').read_text().split() == names

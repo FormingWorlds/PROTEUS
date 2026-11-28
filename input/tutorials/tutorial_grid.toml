@@ -19,7 +19,7 @@ symlink = ""
 use_slurm = false
 max_jobs  = 8
 max_days  = 1     # per-job walltime limit [days] (used by Slurm)
-max_mem   = 12    # per-CPU memory limit [GB] (used by Slurm)
+max_mem   = 12    # memory limit per case [GB] (used by Slurm)
 
 # Stop every case at solidification (already on in the base) or at energy
 # balance, whichever comes first. A single value sets the field for all cases.
