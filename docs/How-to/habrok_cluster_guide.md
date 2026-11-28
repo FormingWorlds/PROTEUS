@@ -128,7 +128,7 @@ When SLURM stops a job, the run must write status 25 (died, or exit requested by
 
 **Why `srun`.** At `scancel` and at the time limit, SLURM sends SIGTERM (the request to stop) to each job step and to the batch shell (the shell that runs your script). It does not send it to a program that the batch shell started on its own. Such a program gets SIGKILL (the forced stop) 30 s later (`KillWait` on Habrok), and its run keeps status 1.
 
-**Why a long Julia call matters.** With 1 Julia thread, PROTEUS handles SIGTERM when the current call into Julia (for example an AGNI solve) returns. When that takes more than 30 s, the run also keeps status 1.
+**Why a long Julia call matters.** With 1 Julia thread, PROTEUS handles SIGTERM when the current call into Julia (for example an AGNI solve) returns: it writes status 25 at once and ends the run. When that call takes more than 30 s, the run also keeps status 1.
 
 **Why Julia threads need `exec`.** With Julia threads, Julia handles the signals itself, at once (see [Julia threads and signals](troubleshooting.md#julia-threads-and-signals)). At the time limit, a run under `srun` can then get 2 SIGTERMs within a few milliseconds, and the second one can end it before it records status 25.
 
